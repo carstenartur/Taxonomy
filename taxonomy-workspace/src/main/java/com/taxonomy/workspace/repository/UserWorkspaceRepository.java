@@ -18,7 +18,7 @@ import java.util.Optional;
  * JPA repository for {@link UserWorkspace} entities.
  */
 @Repository
-public interface UserWorkspaceRepository extends JpaRepository<UserWorkspace, Long> {
+public interface UserWorkspaceRepository extends JpaRepository<UserWorkspace, Long>, WorkspaceProvisioningFence {
 
     List<UserWorkspace> findByUsername(String username);
 
@@ -72,20 +72,37 @@ public interface UserWorkspaceRepository extends JpaRepository<UserWorkspace, Lo
 
     long countByUsernameAndArchivedFalse(String username);
 
-    /** Claim a pending/retryable workspace atomically across application instances. */
+    /** Start a single grace period for legacy running rows first encountered after an ORM-managed schema upgrade. */
     @Transactional
     @Modifying
     @Query("""
-            update UserWorkspace w set w.provisioningStatus = :inProgress
+            update UserWorkspace w set w.provisioningLeaseUntil = :expiresAt where w.workspaceId = :workspaceId
+                and w.username = :username and w.archived = false and w.shared = false
+                and w.provisioningStatus = :inProgress and w.provisioningLeaseOwner is null
+                and w.provisioningLeaseUntil is null
+            """)
+    int observeLegacyProvisioning(@Param("workspaceId") String workspaceId, @Param("username") String username,
+            @Param("inProgress") WorkspaceProvisioningStatus inProgress, @Param("expiresAt") java.time.Instant expiresAt);
+
+    /** Claim new work or take over one expired lease atomically across application instances. */
+    @Transactional
+    @Modifying
+    @Query("""
+            update UserWorkspace w set w.provisioningStatus = :inProgress,
+                w.provisioningLeaseOwner = :leaseOwner, w.provisioningLeaseUntil = :expiresAt,
+                w.provisioningAttemptAt = :now, w.provisioningAttempt = w.provisioningAttempt + 1
             where w.workspaceId = :workspaceId and w.username = :username
               and w.archived = false and w.shared = false
-              and w.provisioningStatus in :previousStates
+              and (w.provisioningStatus in :previousStates or
+                   (w.provisioningStatus = :inProgress and w.provisioningLeaseUntil <= :now))
             """)
     int claimProvisioning(@Param("workspaceId") String workspaceId,
                           @Param("username") String username,
                           @Param("inProgress") WorkspaceProvisioningStatus inProgress,
-                          @Param("previousStates") Collection<WorkspaceProvisioningStatus> previousStates);
-
+                          @Param("previousStates") Collection<WorkspaceProvisioningStatus> previousStates,
+                          @Param("leaseOwner") String leaseOwner,
+                          @Param("now") java.time.Instant now,
+                          @Param("expiresAt") java.time.Instant expiresAt);
 
     /**
      * Count active, disclosure-authorized rows without materializing metadata.

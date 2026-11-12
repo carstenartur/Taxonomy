@@ -103,6 +103,8 @@ Default first use or explicit "Prepare Workspace"
 | `READY` | Workspace is fully provisioned and ready for use |
 | `FAILED` | Provisioning failed; see error message for details |
 
+While a worker is provisioning a workspace, `GET /api/workspace/provisioning-status` returns `attemptCount`, `attemptStartedAt`, and `leaseExpiresAt`. Normal claims last fifteen minutes. After a worker stops, the owner can repeat `POST /api/workspace/provision` for the same workspace after that timestamp. The retry uses the captured source commit and current source permissions. A live claim returns HTTP 409. During a schema upgrade, pre-existing in-progress allocations receive the same grace period.
+
 ## System Repository
 
 The system automatically creates a primary repository record on startup with:

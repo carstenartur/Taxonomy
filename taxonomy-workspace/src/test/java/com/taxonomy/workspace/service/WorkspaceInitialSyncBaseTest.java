@@ -55,8 +55,9 @@ class WorkspaceInitialSyncBaseTest {
             workspace.setProvisioningStatus(WorkspaceProvisioningStatus.NOT_PROVISIONED);
             var rows = mock(UserWorkspaceRepository.class);
             when(rows.findByWorkspaceId("initial-sync")).thenReturn(Optional.of(workspace));
+            WorkspaceProvisioningTestClaims.enable(rows);
             when(rows.claimProvisioning(anyString(), anyString(),
-                    eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection())).thenReturn(1);
+                    eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection(), anyString(), any(), any())).thenReturn(1);
             when(rows.save(any(UserWorkspace.class))).thenAnswer(call -> call.getArgument(0));
             var manager = new WorkspaceManager(rows, 50, catalog, factory);
             manager.provisionWorkspaceRepository("fork-owner", "initial-sync");

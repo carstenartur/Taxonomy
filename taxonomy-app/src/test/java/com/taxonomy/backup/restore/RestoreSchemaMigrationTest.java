@@ -30,7 +30,7 @@ class RestoreSchemaMigrationTest {
         for (String table : List.of("source_artifact", "source_version", "source_fragment", "user_workspace", "app_user", "app_principal", "principal_binding", "backup_capability_grant", "git_packs", "workspace_git_reflog_provenance", "analysis_cluster_call", "analysis_cluster_attempt", "inventory_comparison", "inventory_assertion", "inventory_observation", "inventory_review", "inventory_mapping", "interop_file"))
             assertThat(rows.queryForObject("select count(*) from " + table, Long.class)).as(table).isZero();
         assertThat(rows.queryForObject("select count(*) from principal_installation", Long.class)).isEqualTo(1);
-        assertThat(rows.queryForObject("select count(*) from \"restore_business_schema_history\" where \"success\"=true", Long.class)).isEqualTo(19);
+        assertThat(rows.queryForObject("select count(*) from \"restore_business_schema_history\" where \"success\"=true", Long.class)).isEqualTo(20);
         assertFileExportSchema(target);
         assertReasonLengthColumn(target);
         assertLanguageColumn(target);
@@ -192,6 +192,32 @@ class RestoreSchemaMigrationTest {
         migrated.remove("ADMITTED_MODEL_JSON");
         assertThat(migrated).isEqualTo(legacy);
     }
+    @Test void workspaceLeaseUpgradeKeepsRecordedAuthorityAndGivesRunningAllocationsAGracePeriod() throws Exception {
+        var target = database();
+        migrateBusinessSchema(target, "1");
+        PrincipalSchemaMigration.migrate(target);
+        migrateBusinessSchema(target, "19");
+        var rows = new JdbcTemplate(target);
+        for (String state : List.of("READY", "PROVISIONING")) {
+            rows.update("""
+                    insert into user_workspace (workspace_id, username, created_at, current_branch, archived, is_default,
+                        shared, provisioning_status, topology_mode, base_commit)
+                    values (?, 'owner', current_timestamp, 'draft', false, false, false, ?, 'INTERNAL_SHARED', ?)
+                    """, state, state, "a".repeat(40));
+        }
+
+        migrateBusinessSchema(target, "20");
+
+        assertThat(rows.queryForObject("select count(*) from user_workspace where base_commit = ? and provisioning_attempt = 0",
+                Integer.class, "a".repeat(40))).isEqualTo(2);
+        assertThat(rows.queryForObject("""
+                select count(*) from user_workspace where workspace_id = 'PROVISIONING' and provisioning_lease_owner is null
+                  and provisioning_lease_until > current_timestamp and provisioning_lease_until <= current_timestamp + interval '15' minute
+                """, Integer.class)).isOne();
+        assertThat(rows.queryForObject("select count(*) from user_workspace where workspace_id='READY' and provisioning_lease_until is null",
+                Integer.class)).isOne();
+    }
+
     @Test void relationLedgerMigrationPreservesLegacyEvidenceAndUnknownAccounting() throws Exception {
         var target = database();
         migrateBusinessSchema(target, "1");

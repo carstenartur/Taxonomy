@@ -559,7 +559,8 @@ public class WorkspaceManager {
             return workspace;
         }
         if (workspace.getProvisioningStatus() == null
-                || workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.PROVISIONING) {
+                || (workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.PROVISIONING
+                    && workspace.getProvisioningLeaseUntil() != null && workspace.getProvisioningLeaseUntil().isAfter(Instant.now()))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Workspace provisioning is already running or its state is unavailable");
         }
@@ -576,15 +577,16 @@ public class WorkspaceManager {
                     provisionWorkspaceRepository(username,
                             workspaceRepository.findByWorkspaceId(workspaceId).orElse(null), targetBranch));
         }
-        int claimed = workspaceRepository.claimProvisioning(workspace.getWorkspaceId(), username,
-                WorkspaceProvisioningStatus.PROVISIONING,
-                List.of(WorkspaceProvisioningStatus.NOT_PROVISIONED, WorkspaceProvisioningStatus.FAILED));
-        if (claimed != 1) {
+        var claim = new WorkspaceProvisioningClaim(workspace);
+        if (workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.PROVISIONING
+                && workspace.getProvisioningLeaseUntil() == null) {
+            claim.observeLegacyWorker(workspaceRepository);
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Legacy workspace provisioning is awaiting recovery");
+        }
+        if (!claim.acquire(workspaceRepository)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Workspace provisioning was claimed or its lifecycle changed");
         }
-        workspace.setProvisioningStatus(WorkspaceProvisioningStatus.PROVISIONING);
-
         try {
             if (targetBranch == null || targetBranch.isBlank()) {
                 throw new IllegalStateException("Workspace has no destination branch");
@@ -627,23 +629,51 @@ public class WorkspaceManager {
             }
             systemGit.verifySnapshot(baseCommit);
 
-            if (repositoryFactory != null) {
-                // Retain the exact authority and destination before writing any Git objects.
-                workspace.setSourceRepositoryId(systemRepository.getRepositoryId());
-                workspace.setSourceBranch(baseBranch);
-                workspace.setTopologyMode(systemRepository.getTopologyMode());
-                workspace.setBaseBranch(baseBranch);
-                workspace.setBaseCommit(baseCommit);
-                workspace.setCurrentBranch(targetBranch);
-                workspace.setSyncTargetBranch(baseBranch);
-                workspaceRepository.save(workspace);
+            String destination = repositoryFactory == null ? legacyBranch : targetBranch;
+            claim.apply(workspaceRepository, current -> {
+                if (current.getBaseCommit() != null && !current.getBaseCommit().equals(baseCommit)) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "The captured provisioning checkpoint changed");
+                }
+                current.setProvisioningStatus(WorkspaceProvisioningStatus.PROVISIONING);
+                current.setSourceRepositoryId(systemRepository.getRepositoryId());
+                current.setSourceBranch(baseBranch);
+                current.setTopologyMode(systemRepository.getTopologyMode());
+                current.setBaseBranch(baseBranch);
+                current.setBaseCommit(baseCommit);
+                current.setCurrentBranch(destination);
+                current.setSyncTargetBranch(baseBranch);
+            });
 
-                DslGitRepository workspaceGit =
-                        repositoryFactory.openWorkspaceRepository(workspace.getWorkspaceId());
-                String existingHead = workspaceGit.getHeadCommit(targetBranch);
-                if (existingHead == null || existingHead.equals(baseCommit)) {
-                    GitHistoryTransfer.copyCommitClosure(systemGit, workspaceGit, baseCommit, List.of());
-                    requireProvisioningAuthority(systemRepository.getRepositoryId(), username);
+            if (repositoryFactory == null) {
+                return claim.apply(workspaceRepository, current -> {
+                    if (existingLegacyHead == null) {
+                        gitRepository.createBranchAtCommit(legacyBranch, baseCommit);
+                    } else if (recordedBase != null && recordedBase.equals(existingLegacyHead)) {
+                        gitRepository.verifyExpectedHead(legacyBranch, recordedBase);
+                    } else {
+                        throw new IllegalStateException("Existing workspace branch does not match its recorded checkpoint");
+                    }
+                    WorkspaceProvisioningClaim.markProvisioned(current, baseCommit);
+                });
+            }
+
+            DslGitRepository workspaceGit = repositoryFactory.openWorkspaceRepository(workspace.getWorkspaceId());
+            String existingHead = workspaceGit.getHeadCommit(targetBranch);
+            boolean originalHistory = existingHead == null || existingHead.equals(baseCommit);
+            if (originalHistory) {
+                // Object transfer is outside the lease lock. The next owner can adopt any verified objects.
+                GitHistoryTransfer.copyCommitClosure(systemGit, workspaceGit, baseCommit, List.of());
+            } else {
+                if (recordedBase == null || !existingHead.equals(workspace.getCurrentCommit())
+                        || !isRootCommit(workspaceGit, existingHead)
+                        || !systemDsl.equals(workspaceGit.getDslAtCommit(existingHead))) {
+                    throw new IllegalStateException("Existing workspace content does not match its recorded allocation");
+                }
+                workspaceGit.verifySnapshot(existingHead);
+            }
+            return claim.apply(workspaceRepository, current -> {
+                requireProvisioningAuthority(systemRepository.getRepositoryId(), username);
+                if (originalHistory) {
                     workspaceGit.recordUpstreamForkPoint(systemRepository.getRepositoryId(), baseBranch, baseCommit, username);
                     if (existingHead == null) {
                         workspaceGit.fastForwardIfHeadMatches(targetBranch, null, baseCommit, username,
@@ -651,59 +681,20 @@ public class WorkspaceManager {
                     } else {
                         workspaceGit.verifyExpectedHead(targetBranch, baseCommit);
                     }
-                    workspace.setCurrentCommit(baseCommit);
-                } else {
-                    // Upgrades can encounter an interrupted content-only allocation. Retain
-                    // that recorded root if intact so recovery never rewrites an existing ref.
-                    if (recordedBase == null || !existingHead.equals(workspace.getCurrentCommit())
-                            || !isRootCommit(workspaceGit, existingHead)
-                            || !systemDsl.equals(workspaceGit.getDslAtCommit(existingHead))) {
-                        throw new IllegalStateException(
-                                "Existing workspace content does not match its recorded allocation");
+                    String integrationBaseBranch = current.getProvisioningSyncBaseBranch();
+                    if (integrationBaseBranch != null) {
+                        WorkspaceProvisioningClaim.adoptIntegrationBase(workspaceGit, integrationBaseBranch, baseCommit);
+                        current.setLastFetchedCommit(baseCommit);
+                        current.setLastIntegratedCommit(baseCommit);
                     }
-                    workspaceGit.verifySnapshot(existingHead);
-                    requireProvisioningAuthority(systemRepository.getRepositoryId(), username);
+                } else {
                     workspaceGit.verifyExpectedHead(targetBranch, existingHead);
                 }
-
-                workspace.setProvisioningStatus(WorkspaceProvisioningStatus.READY);
-                workspace.setProvisionedAt(Instant.now());
-                workspace.setProvisioningError(null);
-                workspaceRepository.save(workspace);
-
-                log.info("Provisioned workspace for user '{}': repo='ws-{}', base='{}'",
-                        username, workspace.getWorkspaceId(), baseBranch);
-            } else {
-                String userBranch = legacyBranch;
-                if (existingLegacyHead == null) {
-                    gitRepository.createBranchAtCommit(userBranch, baseCommit);
-                } else if (recordedBase != null && recordedBase.equals(existingLegacyHead)) {
-                    // Adopt only the recorded, unchanged result of an earlier allocation.
-                    gitRepository.verifyExpectedHead(userBranch, recordedBase);
-                } else {
-                    throw new IllegalStateException("Existing workspace branch does not match its recorded checkpoint");
-                }
-
-                workspace.setProvisioningStatus(WorkspaceProvisioningStatus.READY);
-                workspace.setSourceRepositoryId(systemRepository.getRepositoryId());
-                workspace.setTopologyMode(systemRepository.getTopologyMode());
-                workspace.setBaseBranch(baseBranch);
-                workspace.setBaseCommit(baseCommit);
-                workspace.setCurrentBranch(userBranch);
-                workspace.setCurrentCommit(baseCommit);
-                workspace.setSyncTargetBranch(baseBranch);
-                workspace.setProvisionedAt(Instant.now());
-                workspace.setProvisioningError(null);
-                workspaceRepository.save(workspace);
-
-                log.info("Provisioned workspace for user '{}': branch='{}', base='{}'",
-                        username, userBranch, baseBranch);
-            }
-            return workspace;
+                WorkspaceProvisioningClaim.markProvisioned(current, originalHistory ? baseCommit : existingHead);
+            });
         } catch (Exception exception) {
-            workspace.setProvisioningStatus(WorkspaceProvisioningStatus.FAILED);
-            workspace.setProvisioningError(exception.getMessage());
-            workspaceRepository.save(workspace);
+            claim.fail(workspaceRepository, exception, ignored -> {});
+            if (exception instanceof ResponseStatusException conflict) throw conflict;
             if (exception instanceof AccessDeniedException denied) throw denied;
             throw new RuntimeException(
                     "Could not provision workspace for " + username,

@@ -40,8 +40,9 @@ class WorkspaceRepositoryIsolationTest {
 
         manager = new WorkspaceManager(wsRepo, 50, sysRepoService, factory);
 
+        WorkspaceProvisioningTestClaims.enable(wsRepo);
         when(wsRepo.claimProvisioning(anyString(), anyString(),
-                eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection())).thenReturn(1);
+                eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection(), anyString(), any(), any())).thenReturn(1);
         when(wsRepo.save(any(UserWorkspace.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
     }

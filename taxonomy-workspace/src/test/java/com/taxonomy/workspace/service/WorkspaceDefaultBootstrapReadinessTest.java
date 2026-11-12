@@ -57,7 +57,7 @@ class WorkspaceDefaultBootstrapReadinessTest {
                 assertNull(fixture.saved.get().getCurrentCommit());
                 assertNull(fixture.saved.get().getProvisionedAt());
             }
-            verify(fixture.rows, never()).claimProvisioning(anyString(), anyString(), any(), anyCollection());
+            verify(fixture.rows, never()).claimProvisioning(anyString(), anyString(), any(), anyCollection(), anyString(), any(), any());
             verify(fixture.rows, never()).save(any());
             verify(fixture.factory, never()).openWorkspaceRepository(anyString());
             verify(fixture.factory, never()).getWorkspaceRepository(anyString());
@@ -82,7 +82,7 @@ class WorkspaceDefaultBootstrapReadinessTest {
             assertEquals(REPOSITORY, ready.getSourceRepositoryId());
             assertEquals("draft", ready.getSourceBranch());
             verify(fixture.rows, times(1)).claimProvisioning(eq(workspaceId), eq(USER),
-                    eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection());
+                    eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection(), anyString(), any(), any());
         }
     }
 
@@ -105,7 +105,7 @@ class WorkspaceDefaultBootstrapReadinessTest {
             assertEquals(409, assertThrows(ResponseStatusException.class,
                     () -> fixture.manager.provisionDefaultWorkspaceRepository(USER, workspaceId)).getStatusCode().value());
             verify(fixture.rows, times(1)).claimProvisioning(eq(workspaceId), eq(USER),
-                    eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection());
+                    eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection(), anyString(), any(), any());
             verify(fixture.factory, times(1)).openWorkspaceRepository(workspaceId);
 
             var ready = fixture.manager.provisionWorkspaceRepository(USER, workspaceId);
@@ -114,7 +114,7 @@ class WorkspaceDefaultBootstrapReadinessTest {
             assertNull(ready.getProvisioningError());
             assertEquals(SOURCE, fixture.factory.openWorkspaceRepository(workspaceId).getDslAtHead(ready.getCurrentBranch()));
             verify(fixture.rows, times(2)).claimProvisioning(eq(workspaceId), eq(USER),
-                    eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection());
+                    eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection(), anyString(), any(), any());
         }
     }
 
@@ -132,7 +132,7 @@ class WorkspaceDefaultBootstrapReadinessTest {
                     () -> fixture.manager.provisionDefaultWorkspaceRepository(USER, row.getWorkspaceId()));
 
             verifyNoInteractions(fixture.factory, fixture.catalog);
-            verify(fixture.rows, never()).claimProvisioning(anyString(), anyString(), any(), anyCollection());
+            verify(fixture.rows, never()).claimProvisioning(anyString(), anyString(), any(), anyCollection(), anyString(), any(), any());
             assertEquals(WorkspaceProvisioningStatus.NOT_PROVISIONED, row.getProvisioningStatus());
         }
     }
@@ -149,7 +149,7 @@ class WorkspaceDefaultBootstrapReadinessTest {
             assertEquals(WorkspaceProvisioningStatus.READY, ready.getProvisioningStatus());
             assertEquals(row.getWorkspaceId(), ready.getWorkspaceId());
             verifyNoInteractions(fixture.factory, fixture.catalog);
-            verify(fixture.rows, never()).claimProvisioning(anyString(), anyString(), any(), anyCollection());
+            verify(fixture.rows, never()).claimProvisioning(anyString(), anyString(), any(), anyCollection(), anyString(), any(), any());
         }
     }
 
@@ -177,7 +177,7 @@ class WorkspaceDefaultBootstrapReadinessTest {
                         () -> fixture.manager.provisionDefaultWorkspaceRepository(USER, row.getWorkspaceId()))
                         .getStatusCode().value());
                 assertEquals(WorkspaceProvisioningStatus.NOT_PROVISIONED, fixture.saved.get().getProvisioningStatus());
-                verify(fixture.rows, never()).claimProvisioning(anyString(), anyString(), any(), anyCollection());
+                verify(fixture.rows, never()).claimProvisioning(anyString(), anyString(), any(), anyCollection(), anyString(), any(), any());
                 retained = selected.commitDsl("release/ready", SOURCE, "source-owner", "Delayed selected source");
             }
             var ready = fixture.manager.provisionDefaultWorkspaceRepository(USER, row.getWorkspaceId());
@@ -207,7 +207,7 @@ class WorkspaceDefaultBootstrapReadinessTest {
             assertSame(unavailable, failure.getCause());
             assertEquals(WorkspaceProvisioningStatus.NOT_PROVISIONED, fixture.saved.get().getProvisioningStatus());
             assertNull(fixture.saved.get().getProvisioningError());
-            verify(fixture.rows, never()).claimProvisioning(anyString(), anyString(), any(), anyCollection());
+            verify(fixture.rows, never()).claimProvisioning(anyString(), anyString(), any(), anyCollection(), anyString(), any(), any());
             verify(fixture.rows, never()).save(any());
             verify(fixture.factory, never()).openWorkspaceRepository(anyString());
         }
@@ -228,8 +228,9 @@ class WorkspaceDefaultBootstrapReadinessTest {
                 saved.set(snapshot(call.getArgument(0)));
                 return snapshot(saved.get());
             });
+            WorkspaceProvisioningTestClaims.enable(rows);
             when(rows.claimProvisioning(eq(id), eq(USER),
-                    eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection())).thenAnswer(call -> {
+                    eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection(), anyString(), any(), any())).thenAnswer(call -> {
                 var current = snapshot(saved.get());
                 if (!List.of(WorkspaceProvisioningStatus.NOT_PROVISIONED, WorkspaceProvisioningStatus.FAILED)
                         .contains(current.getProvisioningStatus())) return 0;
