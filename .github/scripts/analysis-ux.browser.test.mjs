@@ -1450,3 +1450,66 @@ test('reload during the first physical document request discovers the admitted o
         await page.close();
     }
 });
+
+for (const surface of ['node','leaf','editor-focus','source-focus']) {
+    test('reopening the same ' + surface + ' action after reload uses only its original scoped observation', async () => {
+        const page = await browser.newPage(), origin = 'https://taxonomy.fixture';
+        const id = '04474a8c-3188-4191-871e-c409ee4f0ff7', source = 'b'.repeat(40);
+        let token, release, submitted, wrongSource = false;
+        const original = new Promise(resolve => { release = resolve; });
+        const admission = new Promise(resolve => { submitted = resolve; });
+        const calls = [];
+        try {
+            await page.route(origin + '/**', async route => {
+                const request = route.request(), path = new URL(request.url()).pathname;
+                if (path === '/') return route.fulfill({contentType:'text/html',body:'<html><body></body></html>'});
+                calls.push([request.method(),path]);
+                if (!path.startsWith('/api/analysis-adapters/')) {
+                    token = request.headers()['x-analysis-observer']; submitted();
+                    await original;
+                    return route.abort().catch(() => {});
+                }
+                assert.equal(request.method(),'GET');
+                assert.equal(path,wrongSource ? '/api/analysis-adapters/' + id : '/api/analysis-adapters/observations/' + token);
+                await route.fulfill({status:200,headers:{'Content-Type':'application/json',
+                    'X-Analysis-Operation-Id':id,'X-Analysis-Source-Commit':wrongSource ? 'c'.repeat(40) : source},body:JSON.stringify({native:'original result'})});
+            });
+            async function reopen() {
+                await installBrowserApiFixture(page,resources);
+                for (const file of ['analysis-adapter-api.js','architecture-editor-api.js','architecture-source-focus-api.js'])
+                    await page.addScriptTag({path:path.join(resources,'static/js/api',file)});
+                await page.evaluate(surface => {
+                    const policy = {onPending:() => {}, isCurrent:() => true};
+                    const scope = {repositoryId:'repo',workspaceScopeKey:'test',branch:'main',revision:1};
+                    const payload = {sourceId:'CP',businessText:'private request must not enter sessionStorage'};
+                    const call = surface === 'node' ? window.AnalysisApi.analyzeNode(payload,policy).then(r => r.json())
+                        : surface === 'leaf' ? window.AnalysisApi.justifyLeaf(payload,policy).then(r => r.json())
+                        : surface === 'editor-focus' ? window.ArchitectureEditorApi.suggest({...payload,context:scope},policy)
+                        : window.ArchitectureSourceFocusApi.suggest({...payload,source:scope,useAi:true},policy);
+                    call.then(result => { window.retainedNativeResult = result; }).catch(error => { window.nativeError = error.message; });
+                },surface);
+            }
+            await page.goto(origin);
+            await reopen();
+            await admission;
+            assert.ok(token);
+            assert.doesNotMatch(await page.evaluate(() => JSON.stringify(sessionStorage)),/private request|businessText/);
+            const beforeReload = calls.length;
+            await page.reload();
+            await reopen();
+            await page.waitForFunction(() => window.retainedNativeResult?.native === 'original result',null,{timeout:5000});
+            assert.deepEqual(calls.slice(beforeReload),[['GET','/api/analysis-adapters/observations/' + token]]);
+            if (surface === 'leaf') {
+                wrongSource = true;
+                await page.reload();
+                await reopen();
+                await page.waitForFunction(() => window.nativeError === 'Analysis source changed',null,{timeout:5000});
+                assert.equal(await page.evaluate(() => window.retainedNativeResult),undefined);
+                assert.deepEqual(calls.at(-1),['GET','/api/analysis-adapters/' + id]);
+            }
+        } finally {
+            release();
+            await page.close();
+        }
+    });
+}
