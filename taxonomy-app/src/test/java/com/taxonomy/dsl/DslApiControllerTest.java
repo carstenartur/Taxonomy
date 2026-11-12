@@ -153,7 +153,7 @@ class DslApiControllerTest {
 
     @Test
     void listHypothesesReturnsArray() throws Exception {
-        mockMvc.perform(get("/api/dsl/hypotheses"))
+        mockMvc.perform(get("/api/dsl/hypotheses").param("view", "working"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray());
     }
@@ -321,7 +321,7 @@ class DslApiControllerTest {
         scopeToCurrentWorkspace(h1);
         hypothesisRepository.save(h1);
 
-        mockMvc.perform(get("/api/dsl/hypotheses").param("status", "PROPOSED"))
+        mockMvc.perform(get("/api/dsl/hypotheses").param("view", "working").param("status", "PROPOSED"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray());
     }

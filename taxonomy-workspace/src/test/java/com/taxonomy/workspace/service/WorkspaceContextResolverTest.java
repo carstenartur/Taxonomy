@@ -133,6 +133,17 @@ class WorkspaceContextResolverTest {
     }
 
     @Test
+    void readingAKnownLegacyPrimaryProvenanceLeavesThePersistedWorkspaceUntouched() {
+        var workspace = workspace("alice", "legacy-ws", "draft");
+        when(workspaceManager.findActiveWorkspace("alice")).thenReturn(workspace);
+        when(systemRepositoryService.getPrimaryRepository()).thenReturn(repository("primary-repo", "draft"));
+
+        assertThat(resolver.resolveRepositoryContextForRead("alice").repositoryId()).isEqualTo("primary-repo");
+        assertThat(workspace.getSourceRepositoryId()).isNull();
+        org.mockito.Mockito.verifyNoInteractions(workspaceRepository);
+    }
+
+    @Test
     void legacyWorkspaceWithoutSourceRepositoryIsBoundAndPersistedToPrimaryRepository() {
         UserWorkspace workspace = workspace("alice", "legacy-ws", "draft");
         SystemRepository primary = repository("primary-repo", "draft");

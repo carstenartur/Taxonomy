@@ -4,6 +4,7 @@ import com.taxonomy.model.HypothesisStatus;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.model.RelationHypothesis;
 import com.taxonomy.relations.service.HypothesisService;
+import com.taxonomy.relations.service.HypothesisSourceReadService;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,40 +31,43 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standal
 class HypothesisApiControllerTest {
 
     @Mock private HypothesisService hypothesisService;
+    @Mock private HypothesisSourceReadService sourceReads;
     @Mock private WorkspaceResolver workspaceResolver;
     private HypothesisApiController controller;
     private final RepositoryContext context = RepositoryContext.workspace("repo-a", "ws-1", "draft", "alice");
 
     @BeforeEach
     void setUp() {
-        controller = new HypothesisApiController(hypothesisService, workspaceResolver);
-        when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(context);
+        controller = new HypothesisApiController(hypothesisService, workspaceResolver, sourceReads);
+        org.mockito.Mockito.lenient().when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(context);
+        org.mockito.Mockito.lenient().when(workspaceResolver.resolveUnambiguousRepositoryForRead()).thenReturn(context);
     }
 
     @Test
     void repositoryResolutionFailuresPropagateBeforeEveryHypothesisOperation() {
         IllegalArgumentException failure = new IllegalArgumentException("Selected workspace is unavailable");
+        when(workspaceResolver.resolveUnambiguousRepositoryForRead()).thenThrow(failure);
         when(workspaceResolver.resolveCurrentRepositoryContext()).thenThrow(failure);
 
-        assertThatThrownBy(() -> controller.listHypotheses(null)).isSameAs(failure);
-        assertThatThrownBy(() -> controller.listHypotheses(HypothesisStatus.PROVISIONAL)).isSameAs(failure);
+        assertThatThrownBy(() -> controller.listHypotheses(null, null, "working")).isSameAs(failure);
+        assertThatThrownBy(() -> controller.listHypotheses(HypothesisStatus.PROVISIONAL, null, "working")).isSameAs(failure);
         assertThatThrownBy(() -> controller.acceptHypothesis(42L)).isSameAs(failure);
         assertThatThrownBy(() -> controller.rejectHypothesis(42L)).isSameAs(failure);
         assertThatThrownBy(() -> controller.applyHypothesisForSession(42L)).isSameAs(failure);
-        assertThatThrownBy(() -> controller.getHypothesisEvidence(42L)).isSameAs(failure);
+        assertThatThrownBy(() -> controller.getHypothesisEvidence(42L, null)).isSameAs(failure);
 
         verifyNoInteractions(hypothesisService);
     }
 
     @Test
     void missingRepositoryContextFailsClosed() {
-        when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(null);
+        when(workspaceResolver.resolveUnambiguousRepositoryForRead()).thenReturn(null);
 
-        assertThatThrownBy(() -> controller.listHypotheses(null))
+        assertThatThrownBy(() -> controller.listHypotheses(null, null, "current"))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("Repository context resolver returned null for a hypothesis operation");
 
-        verifyNoInteractions(hypothesisService);
+        verifyNoInteractions(hypothesisService, sourceReads);
     }
 
     @Test
@@ -76,8 +80,8 @@ class HypothesisApiControllerTest {
         when(hypothesisService.applyForSession(42L, context)).thenThrow(new IllegalArgumentException("missing"));
         when(hypothesisService.findEvidence(42L, context)).thenReturn(List.of());
 
-        mvc.perform(get("/api/dsl/hypotheses")).andExpect(status().isOk()).andExpect(content().json("[]"));
-        mvc.perform(get("/api/dsl/hypotheses").param("status", "PROVISIONAL"))
+        mvc.perform(get("/api/dsl/hypotheses").param("view", "working")).andExpect(status().isOk()).andExpect(content().json("[]"));
+        mvc.perform(get("/api/dsl/hypotheses").param("view", "working").param("status", "PROVISIONAL"))
                 .andExpect(status().isOk()).andExpect(content().json("[]"));
         mvc.perform(post("/api/dsl/hypotheses/42/accept")).andExpect(status().isNotFound());
         mvc.perform(post("/api/dsl/hypotheses/42/reject")).andExpect(status().isNotFound());
@@ -102,8 +106,8 @@ class HypothesisApiControllerTest {
 
         when(hypothesisService.findAll(context)).thenReturn(List.of(provisional));
         when(hypothesisService.findByStatus(HypothesisStatus.PROVISIONAL, context)).thenReturn(List.of(provisional));
-        assertThat(controller.listHypotheses(null).getBody()).containsExactly(provisional);
-        assertThat(controller.listHypotheses(HypothesisStatus.PROVISIONAL).getBody()).containsExactly(provisional);
+        assertThat(controller.listHypotheses(null, null, "working").getBody()).isEqualTo(List.of(provisional));
+        assertThat(controller.listHypotheses(HypothesisStatus.PROVISIONAL, null, "working").getBody()).isEqualTo(List.of(provisional));
 
         when(hypothesisService.accept(7L, context)).thenReturn(accepted);
         assertThat(controller.acceptHypothesis(7L).getBody())
@@ -127,9 +131,9 @@ class HypothesisApiControllerTest {
         assertThat(controller.applyHypothesisForSession(404L).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
 
         when(hypothesisService.findEvidence(7L, context)).thenReturn(List.of());
-        assertThat(controller.getHypothesisEvidence(7L).getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(controller.getHypothesisEvidence(7L, null).getStatusCode()).isEqualTo(HttpStatus.OK);
         when(hypothesisService.findEvidence(404L, context)).thenThrow(new IllegalArgumentException("missing"));
-        assertThat(controller.getHypothesisEvidence(404L).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(controller.getHypothesisEvidence(404L, null).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     private static RelationHypothesis hypothesis(Long id, HypothesisStatus status, boolean applied) {
