@@ -22,7 +22,7 @@ import static com.taxonomy.exchange.backup.PortableRows.text;
 public final class AnalysisAdapterBackup {
     private static final String REFERENCE = "analysis.adapter";
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final Set<String> FAILURES = Set.of("ANALYSIS_FAILED", "RESULT_TOO_LARGE", "STALE_SOURCE", "OUTCOME_UNKNOWN");
+    private static final Set<String> FAILURES = Set.of("ANALYSIS_FAILED", "RESULT_TOO_LARGE", "STALE_SOURCE", "OUTCOME_UNKNOWN", "SOURCE_UNAVAILABLE");
     private AnalysisAdapterBackup() {}
 
     public record Receipt(SourceRecordId sourceId, AnalysisAdapterStore.Scope scope, String kind, String sourceCommit,
@@ -62,9 +62,16 @@ public final class AnalysisAdapterBackup {
             row.kind = receipt.kind(); row.sourceCommit = receipt.sourceCommit(); row.requestKey = receipt.requestKey();
             row.commandKey = AnalysisAdapterStore.command(target, row.kind, row.requestKey);
             row.fingerprint = receipt.fingerprint();
+            String result = receipt.resultJson();
             boolean interrupted = "RUNNING".equals(receipt.state());
-            row.state = interrupted ? "FAILED" : receipt.state(); row.failureCode = interrupted ? "OUTCOME_UNKNOWN" : receipt.failureCode();
-            row.resultJson = receipt.resultJson(); row.createdAt = receipt.createdAt(); row.updatedAt = receipt.updatedAt();
+            if (result != null && !document(receipt.kind())) {
+                var restored = ChildAnalysisReceipt.restoreResult(receipt.kind(),receipt.sourceId().value(),targetId,JSON.readTree(result));
+                interrupted = restored == null;
+                result = interrupted ? null : JSON.writeValueAsString(restored);
+            }
+            row.state = interrupted ? "FAILED" : receipt.state();
+            row.failureCode = interrupted ? "OUTCOME_UNKNOWN" : receipt.failureCode();
+            row.resultJson = result; row.createdAt = receipt.createdAt(); row.updatedAt = receipt.updatedAt();
             em.persist(row); em.flush();
             long revision = Math.addExact(receipt.sequence(), interrupted ? 1L : 0L);
             em.createQuery("update AnalysisAdapterOperation o set o.revision=:revision where o.id=:id")
@@ -83,9 +90,8 @@ public final class AnalysisAdapterBackup {
                 if (r.failureCode() != null || r.resultJson() == null
                         || r.resultJson().getBytes(StandardCharsets.UTF_8).length > PortableRows.MAX_RECORD_BYTES / 4) throw invalid();
                 var result = JSON.readTree(r.resultJson());
-                if ("DOCUMENT_EXTRACTION".equals(r.kind()) || "REGULATION_MAPPING".equals(r.kind())) {
-                    String list = "DOCUMENT_EXTRACTION".equals(r.kind()) ? "aiCandidates" : "matches";
-                    if (!result.isObject() || !result.path(list).isArray()) throw invalid();
+                if (document(r.kind())) {
+                    validateDocument(r.kind(), result);
                 } else ChildAnalysisReceipt.validate(r.kind(),r.sourceId().value(),result);
             }
             case "RUNNING","EXPIRED","CANCELLED" -> { if (r.resultJson() != null || r.failureCode() != null) throw invalid(); }
@@ -93,6 +99,36 @@ public final class AnalysisAdapterBackup {
             default -> throw invalid();
         }
     }
+    private static boolean document(String kind) {
+        return "DOCUMENT_EXTRACTION".equals(kind) || "REGULATION_MAPPING".equals(kind);
+    }
+
+    private static void validateDocument(String kind, tools.jackson.databind.JsonNode result) {
+        boolean extraction = "DOCUMENT_EXTRACTION".equals(kind);
+        var fields = new java.util.HashSet<>(Set.of("fileName","totalPages","inputTruncated","inputCharacters"));
+        fields.add(extraction ? "aiCandidates" : "matches");
+        if (extraction) fields.add("ruleBased");
+        if (!result.isObject() || !Set.copyOf(result.propertyNames()).equals(fields) || !result.path("fileName").isString()
+                || !result.path("totalPages").isIntegralNumber() || !result.path("inputCharacters").isIntegralNumber()
+                || result.path("totalPages").asLong() < 0 || result.path("inputCharacters").asLong() < 0
+                || !result.path("inputTruncated").isBoolean()) throw invalid();
+        if (extraction) {
+            validateRows(result.path("aiCandidates"), Set.of("text","sectionRef","confidence","type"),com.taxonomy.dto.AiExtractedCandidate.class);
+            validateRows(result.path("ruleBased"), Set.of("index","sectionHeading","text","pageNumber","selected"),com.taxonomy.dto.RequirementCandidate.class);
+        } else {
+            validateRows(result.path("matches"), Set.of("nodeCode","linkType","confidence","paragraphRef","reason"),com.taxonomy.dto.RegulationArchitectureMatch.class);
+        }
+    }
+
+    private static void validateRows(tools.jackson.databind.JsonNode rows, Set<String> fields, Class<?> dto) {
+        if (!rows.isArray()) throw invalid();
+        for (var row : rows) {
+            if (!row.isObject() || !fields.containsAll(row.propertyNames())) throw invalid();
+            for (var field : row) if (field.isContainer()) throw invalid();
+            JSON.treeToValue(row, dto);
+        }
+    }
+
     private static boolean canonicalId(String id) {
         try { return UUID.fromString(id).toString().equals(id); } catch (NullPointerException | IllegalArgumentException invalid) { return false; }
     }

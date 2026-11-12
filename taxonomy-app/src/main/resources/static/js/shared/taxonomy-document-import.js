@@ -136,7 +136,7 @@
         statusArea.innerHTML = '<span class="text-muted">⏳ ' + i18n('docimport.ai.extracting', 'AI is analyzing the document…') + '</span>';
 
         try {
-            var result = await window.ImportApi.extractDocumentWithAi(formData, operation.isCurrent, pendingDocument);
+            var result = await window.ImportApi.extractDocumentWithAi(formData, operation.isCurrent, window.AnalysisAdapterApi.pendingButton(statusArea));
             if (!operation.isCurrent()) return;
             currentAiCandidates = result.aiCandidates || [];
 
@@ -159,20 +159,6 @@
 
     // ── Regulation-to-architecture mapping ─────────────────────────────────────
 
-    function pendingDocument(cancel) {
-        var button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'btn btn-sm btn-outline-secondary ms-2';
-        button.textContent = window.TaxonomyI18n.t('docimport.operation.cancel');
-        button.addEventListener('click', async function () {
-            button.disabled = true;
-            try { await cancel(); }
-            catch (error) { if (error.code !== 'ABORTED') { button.disabled = false; statusArea.append(document.createTextNode(error.message)); } }
-        });
-        statusArea.append(button);
-        return function () { button.remove(); };
-    }
-
     async function uploadAndMapRegulation(file) {
         const operation = beginUpload();
         var formData = new FormData();
@@ -184,7 +170,7 @@
         statusArea.innerHTML = '<span class="text-muted">⏳ ' + i18n('docimport.regmap.mapping', 'Mapping regulation to architecture…') + '</span>';
 
         try {
-            var result = await window.ImportApi.mapRegulation(formData, operation.isCurrent, pendingDocument);
+            var result = await window.ImportApi.mapRegulation(formData, operation.isCurrent, window.AnalysisAdapterApi.pendingButton(statusArea));
             if (!operation.isCurrent()) return;
             var matches = result.matches || [];
 

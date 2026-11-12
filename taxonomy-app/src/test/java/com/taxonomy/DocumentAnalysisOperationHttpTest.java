@@ -78,6 +78,19 @@ class DocumentAnalysisOperationHttpTest {
         }
     }
 
+    @Test void inaccessibleSourceAfterDispatchRetainsUnknownOutcomeAcrossIdenticalRetry() throws Exception {
+        try (var fixture = new Fixture()) {
+            when(fixture.analysis.mapRegulationToArchitecture(anyString())).thenAnswer(call -> {
+                fixture.commit.set(null); return List.of();
+            });
+            fixture.mvc.perform(multipart("/api/documents/map-regulation").file(fixture.file)).andExpect(status().isConflict());
+            fixture.commit.set("a".repeat(40));
+            fixture.mvc.perform(multipart("/api/documents/map-regulation").file(fixture.file))
+                    .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code").value("OUTCOME_UNKNOWN"));
+            verify(fixture.analysis,times(1)).mapRegulationToArchitecture(anyString());
+        }
+    }
+
     static final class Fixture implements AutoCloseable {
         final ClusterAnalysisDatabaseContract db = ClusterAnalysisDatabaseContract.hsql();
         final AtomicReference<PrincipalId> actor = new AtomicReference<>(PrincipalId.create());

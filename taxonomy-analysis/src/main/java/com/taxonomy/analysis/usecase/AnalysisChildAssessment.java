@@ -79,7 +79,7 @@ public class AnalysisChildAssessment {
         var children = List.copyOf(read.get());
         var source = llm.interactiveSource(children, true);
         BooleanSupplier current = () -> providers.parentCurrent(parent, owner, workspace) && source.equals(llm.interactiveSource(read.get(), true));
-        var fingerprint = AnalysisAdapterStore.digest("node-v1", source, parent, requestedProvider,
+        var fingerprint = AnalysisAdapterStore.digest("node-v1", source, parent == null || parent.isBlank() ? null : parent, providerCommand(requestedProvider),
                 command.parentCode(), command.businessText(), Double.toString(command.parentScore()),
                 pin.length().value(), pin.language().value());
         boolean hasParent = parent != null && !parent.isBlank();
@@ -114,7 +114,7 @@ public class AnalysisChildAssessment {
         Supplier<List<TaxonomyNode>> read = () -> catalogue.getPathToRoot(command.nodeCode());
         var path = List.copyOf(read.get());
         var source = llm.interactiveSource(path, false);
-        String fingerprint = AnalysisAdapterStore.digest("leaf-v1", source, parent, requestedProvider,
+        String fingerprint = AnalysisAdapterStore.digest("leaf-v1", source, parent == null || parent.isBlank() ? null : parent, providerCommand(requestedProvider),
                 command.nodeCode(), command.businessText(), mapDigest(command.scores()), mapDigest(command.reasons()),
                 pin.length().value(), pin.language().value());
         Supplier<JustifyLeafResult> result = () -> providers.execute(pin.require(), () -> leaves.justify(command, path));
@@ -131,6 +131,10 @@ public class AnalysisChildAssessment {
         } catch (RuntimeException unavailable) {
             return false;
         }
+    }
+
+    private static String providerCommand(String requested) {
+        return requested == null || requested.isBlank() ? null : requested.strip().toUpperCase(java.util.Locale.ROOT);
     }
 
     private static String mapDigest(Map<String, ?> values) {

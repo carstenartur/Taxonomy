@@ -217,7 +217,7 @@
                 button.disabled = false;
                 button.onclick = async () => {
                     button.disabled = true;
-                    try { await cancel(); } catch (error) { if (owns()) { button.disabled = false; showError(error); } }
+                    try { await cancel(); } catch (error) { if (owns() && error?.responseBody?.code !== 'CANCELLED') { button.disabled = false; showError(error); } }
                 };
                 return () => { button.classList.add('d-none'); button.onclick = null; };
             });

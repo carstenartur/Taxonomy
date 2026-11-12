@@ -13,7 +13,12 @@ window.ArchitectureSourceFocusApi = Object.freeze({
         return window.TaxonomyApiClient.request('/api/architecture/focus/suggestions?' + query, {
             method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Taxonomy-Workspace-Id': workspace },
             body: JSON.stringify(body), cache: 'no-store', signal: options && options.signal
-        }, { retries: 0, timeoutMillis: 120000, signal: options && options.signal, pinnedWorkspaceId: workspace })
+        }, { retries: 0, timeoutMillis: 120000, signal: options && options.signal, pinnedWorkspaceId: workspace,
+            isCurrent: options?.isCurrent, onPending: options?.onPending,
+            operationError: function (error) { return window.AnalysisAdapterApi?.describe(error) || error; },
+            observeResponse: function (response, url, init, policy, current) {
+                return response.status === 202 ? window.AnalysisAdapterApi.follow(response, url, init, policy, current) : response;
+            } })
             .then(function (response) { return response.json(); });
     }
 });

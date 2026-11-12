@@ -36,7 +36,7 @@ class AnalysisRecordsExportIT {
                         +"source_commit,command_key,request_key,fingerprint,state,result_json,created_at,updated_at,row_version) "
                         +"values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",id,owner,"repo-a",workspace,"draft","REGULATION_MAPPING",
                         "f".repeat(40),com.taxonomy.analysis.operation.AnalysisAdapterStore.digest(id),"a".repeat(64),"b".repeat(64),
-                        "COMPLETED","{\"matches\":[{\"nodeCode\":\"CP\"}]}",1L,2L,3L);
+                        "COMPLETED","{\"fileName\":\"notice.pdf\",\"totalPages\":1,\"inputCharacters\":12,\"inputTruncated\":false,\"matches\":[{\"nodeCode\":\"CP\",\"confidence\":0.8}]}",1L,2L,3L);
             }
             var output = new Contents();
             new AnalysisBackupContributor(fixture.database,"alice").write(snapshot,output);

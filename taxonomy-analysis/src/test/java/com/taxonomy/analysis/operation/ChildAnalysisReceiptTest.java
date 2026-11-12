@@ -26,6 +26,10 @@ class ChildAnalysisReceiptTest {
         assertThat(ChildAnalysisReceipt.publicResult("NODE_CHILDREN", stored)).isEqualTo(json.valueToTree(node));
         assertThatThrownBy(() -> ChildAnalysisReceipt.validate("NODE_CHILDREN", UUID.randomUUID().toString(), stored))
                 .isInstanceOf(IllegalArgumentException.class);
+        var target = UUID.randomUUID().toString();
+        var moved = ChildAnalysisReceipt.restoreResult("NODE_CHILDREN", id, target, stored);
+        assertThat(moved.path("result").path("analysisOperationId").asString()).isEqualTo(target);
+        assertThat(stored.path("result").path("analysisOperationId").asString()).isEqualTo(id);
         var tampered = (tools.jackson.databind.node.ObjectNode) stored.get("result");
         tampered.put("rawResponse","private wire response");
         assertThatThrownBy(() -> ChildAnalysisReceipt.validate("NODE_CHILDREN",id,stored)).isInstanceOf(IllegalArgumentException.class);
@@ -39,6 +43,8 @@ class ChildAnalysisReceiptTest {
         var stored = json.valueToTree(new AnalysisNodeReceipts.BoundLeaf(leaf, new AnalysisNodeReceipts.Source("CP-1",hash,null)));
         ChildAnalysisReceipt.validate("LEAF_JUSTIFICATION", id, stored);
         assertThat(ChildAnalysisReceipt.publicResult("LEAF_JUSTIFICATION", stored)).isEqualTo(json.valueToTree(leaf));
+        ((tools.jackson.databind.node.ObjectNode) stored.get("source")).put("parentId",UUID.randomUUID().toString());
+        assertThat(ChildAnalysisReceipt.restoreResult("LEAF_JUSTIFICATION",id,UUID.randomUUID().toString(),stored)).isNull();
         ((tools.jackson.databind.node.ObjectNode) stored.get("source")).put("nodeCode","other");
         assertThatThrownBy(() -> ChildAnalysisReceipt.validate("LEAF_JUSTIFICATION", id, stored)).isInstanceOf(IllegalArgumentException.class);
     }

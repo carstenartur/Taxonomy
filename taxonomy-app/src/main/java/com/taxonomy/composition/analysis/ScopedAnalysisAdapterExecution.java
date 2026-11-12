@@ -78,20 +78,29 @@ public class ScopedAnalysisAdapterExecution {
         }
         if (admission == null) return ResponseEntity.ok(local.get());
         var accepted = admission.operation();
-        boolean current = commit.equals(head(handle)) && sourceCurrent.getAsBoolean();
-        if (!admission.claimed()) return current && retainedSourceCurrent(accepted) ? response(accepted) : stale();
-        if (!current) return response(store.settle(owner, accepted.id(), accepted.revision(), null, "STALE_SOURCE"));
+        BooleanSupplier current = () -> commit.equals(head(handle)) && sourceCurrent.getAsBoolean();
+        if (!admission.claimed()) return current.getAsBoolean() && retainedSourceCurrent(accepted) ? response(accepted) : stale();
+        if (!verifySource(current, accepted, "SOURCE_UNAVAILABLE"))
+            return response(store.settle(owner, accepted.id(), accepted.revision(), null, "STALE_SOURCE"));
         String payload;
         try {
             payload = json.writeValueAsString(work.apply(accepted.id()));
         } catch (RuntimeException failed) {
             return response(store.settle(owner, accepted.id(), accepted.revision(), null, "ANALYSIS_FAILED"));
         }
-        if (!commit.equals(head(handle)) || !sourceCurrent.getAsBoolean())
+        if (!verifySource(current, accepted, "OUTCOME_UNKNOWN"))
             return response(store.settle(owner, accepted.id(), accepted.revision(), null, "STALE_SOURCE"));
         if (payload.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > com.taxonomy.exchange.backup.PortableRows.MAX_RECORD_BYTES / 4)
             return response(store.settle(owner, accepted.id(), accepted.revision(), null, "RESULT_TOO_LARGE"));
         return response(store.settle(owner, accepted.id(), accepted.revision(), payload, null));
+    }
+
+    private boolean verifySource(BooleanSupplier current, AnalysisAdapterStore.Operation accepted, String failureCode) {
+        try { return current.getAsBoolean(); }
+        catch (RuntimeException unavailable) {
+            store.settle(accepted.scope(), accepted.id(), accepted.revision(), null, failureCode);
+            throw unavailable;
+        }
     }
 
     private AnalysisAdapterStore.Scope scope(RepositoryContext context) {

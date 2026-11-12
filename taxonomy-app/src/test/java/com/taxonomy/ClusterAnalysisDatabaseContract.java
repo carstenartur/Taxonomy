@@ -72,7 +72,7 @@ final class ClusterAnalysisDatabaseContract implements AutoCloseable {
             var first = f1.get(15,TimeUnit.SECONDS); var second = f2.get(15,TimeUnit.SECONDS);
             assertNotEquals(first.claimed(), second.claimed());
             var run = first.operation(); assertEquals(run.id(), second.operation().id());
-            String result = "{\"matches\":[{\"code\":\"CP\"}]}";
+            String result = "{\"fileName\":\"notice.pdf\",\"totalPages\":1,\"inputCharacters\":12,\"inputTruncated\":false,\"matches\":[{\"nodeCode\":\"CP\",\"confidence\":0.8}]}";
             var completed = service.settle(owner,run.id(),run.revision(),result,null);
             assertEquals(result, completed.resultJson());
             assertEquals(404, assertThrows(org.springframework.web.server.ResponseStatusException.class, () -> service.read(other,run.id())).getStatusCode().value());
@@ -80,9 +80,15 @@ final class ClusterAnalysisDatabaseContract implements AutoCloseable {
             var cancel = service.admit(owner,"REGULATION_MAPPING",source,inputs,"cancel",true).operation();
             assertEquals("CANCELLED", service.cancel(owner,cancel.id()).state());
             assertEquals("CANCELLED", service.settle(owner,cancel.id(),cancel.revision(),result,null).state());
+            var orphan = service.admit(owner,"REGULATION_MAPPING",source,inputs,"orphan",true).operation();
+            var recovered = new com.taxonomy.analysis.operation.AnalysisAdapterStore(em,transactions,Clock.fixed(
+                    instant.plus(java.time.Duration.ofHours(1)),java.time.ZoneOffset.UTC));
+            assertEquals("OUTCOME_UNKNOWN",recovered.read(owner,orphan.id()).failureCode());
+            assertEquals("FAILED",recovered.settle(owner,orphan.id(),orphan.revision(),result,null).state());
             var foreign = service.admit(other,"REGULATION_MAPPING",source,inputs,"one-command",true).operation();
             var future = new com.taxonomy.analysis.operation.AnalysisAdapterStore(em,transactions,Clock.fixed(
                     instant.plus(java.time.Duration.ofDays(31)),java.time.ZoneOffset.UTC));
+            future.sweepScope(owner,instant.plus(java.time.Duration.ofDays(31)).toEpochMilli());
             assertEquals("EXPIRED", future.read(owner,run.id()).state());
             var expired = future.admit(owner,"REGULATION_MAPPING",source,inputs,"one-command",true);
             assertFalse(expired.claimed()); assertNull(expired.operation().resultJson());
@@ -91,10 +97,18 @@ final class ClusterAnalysisDatabaseContract implements AutoCloseable {
                     new com.taxonomy.backup.SourceRecordId("analysis.adapter",run.id()),owner,run.kind(),source,run.requestKey(),inputs,
                     "COMPLETED",result,null,run.createdAt(),completed.updatedAt(),completed.revision());
             var target = new com.taxonomy.analysis.operation.AnalysisAdapterStore.Scope(other.actor(),"restored-repo",null,"other");
+            var untrusted = new com.taxonomy.analysis.operation.AnalysisAdapterBackup.Receipt(record.sourceId(),owner,run.kind(),source,
+                    run.requestKey(),inputs,"COMPLETED",result.replace("\"matches\"","\"unexpectedTrace\":\"fixture\",\"matches\""),
+                    null,run.createdAt(),completed.updatedAt(),completed.revision());
+            assertThrows(IllegalArgumentException.class, () -> com.taxonomy.analysis.operation.AnalysisAdapterBackup.restore(
+                    em,transactions,untrusted,UUID.randomUUID().toString(),target));
             String remapped = UUID.randomUUID().toString();
             com.taxonomy.analysis.operation.AnalysisAdapterBackup.restore(em,transactions,record,remapped,target);
             var replayed = service.admit(target,"REGULATION_MAPPING",source,inputs,"one-command",false).operation();
             assertEquals(remapped,replayed.id()); assertEquals(result,replayed.resultJson()); assertEquals(completed.revision(),replayed.revision());
+            future.sweepScope(owner,instant.plus(java.time.Duration.ofDays(121)).toEpochMilli());
+            assertEquals(404,assertThrows(org.springframework.web.server.ResponseStatusException.class,() -> service.read(owner,run.id())).getStatusCode().value());
+            assertEquals("RUNNING",service.read(other,foreign.id()).state());
         }
     }
 

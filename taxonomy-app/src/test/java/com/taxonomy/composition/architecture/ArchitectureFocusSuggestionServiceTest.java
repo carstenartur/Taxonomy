@@ -80,6 +80,19 @@ class ArchitectureFocusSuggestionServiceTest {
         assertThat(calls).hasValue(1);
     }
 
+    @Test void replayedFocusCanReturnItsNativeAssessmentWithoutAdmittingPhysicalWork() throws Exception {
+        generative(validReply("Processes and validates customer orders"));
+        when(llm.interactiveDispatchAvailable(false)).thenReturn(false);
+        service.useChildOperations(new com.taxonomy.analysis.operation.AnalysisChildOperations() {
+            @Override public <T> T execute(String kind, String fingerprint, Class<T> type, boolean dispatch,
+                    java.util.function.Supplier<T> work, java.util.function.BooleanSupplier current) {
+                assertThat(dispatch).isFalse();
+                return work.get();
+            }
+        });
+        assertThat(service.investigate(scope, request(true)).outcome()).isEqualTo("ASSESSED");
+    }
+
     @Test void localCandidatesUseCustomUncheckpointedElementsWithoutProviderAccess() throws Exception {
         var response = service.investigate(scope, request(false));
         assertThat(response.outcome()).isEqualTo("LOCAL_CANDIDATES");
@@ -413,6 +426,7 @@ class ArchitectureFocusSuggestionServiceTest {
     }
 
     private void generative(String reply) {
+        when(llm.interactiveDispatchAvailable(false)).thenReturn(true);
         when(llm.supportsGenerativeCompletion()).thenReturn(true);
         when(llm.getActiveProviderName()).thenReturn("test-provider");
         when(llm.getActiveProviderId()).thenReturn(new ProviderId("TEST_PROVIDER"));

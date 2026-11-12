@@ -126,17 +126,30 @@ public final class AnalysisAdapterStore {
         return row;
     }
 
-    public void sweep(long now) {
-        List<String> ids = transactions.execute(status -> em.createQuery("""
-                select o.id from AnalysisAdapterOperation o where (o.state='RUNNING' and o.updatedAt<=:orphan)
+    public void sweep(long now) { sweep(null, now); }
+    public void sweepScope(Scope scope, long now) { sweep(Objects.requireNonNull(scope), now); }
+
+    private void sweep(Scope scope, long now) {
+        String where = """
+                ((o.state='RUNNING' and o.updatedAt<=:orphan)
                 or (o.state in ('COMPLETED','FAILED','CANCELLED') and o.updatedAt<=:retained)
-                or (o.state='EXPIRED' and o.updatedAt<=:marker) order by o.updatedAt,o.id
-                """, String.class).setParameter("orphan", now - ORPHAN_MILLIS)
-                .setParameter("retained", now - RETAIN_MILLIS).setParameter("marker", now - MARKER_MILLIS)
-                .setMaxResults(64).getResultList());
+                or (o.state='EXPIRED' and o.updatedAt<=:marker))
+                """;
+        if (scope != null) where += " and o.actor=:actor and o.repository=:repository and o.branch=:branch and "
+                + (scope.workspace() == null ? "o.workspace is null" : "o.workspace=:workspace");
+        String selection = "select o.id from AnalysisAdapterOperation o where " + where + " order by o.updatedAt,o.id";
+        List<String> ids = transactions.execute(status -> {
+            var query = em.createQuery(selection,String.class).setParameter("orphan",now - ORPHAN_MILLIS)
+                    .setParameter("retained",now - RETAIN_MILLIS).setParameter("marker",now - MARKER_MILLIS);
+            if (scope != null) {
+                query.setParameter("actor",scope.actor()).setParameter("repository",scope.repository()).setParameter("branch",scope.branch());
+                if (scope.workspace() != null) query.setParameter("workspace",scope.workspace());
+            }
+            return query.setMaxResults(64).getResultList();
+        });
         for (String id : ids) transactions.executeWithoutResult(status -> {
             var row = em.find(AnalysisAdapterOperation.class, id, LockModeType.PESSIMISTIC_WRITE);
-            if (row != null) age(row, now);
+            if (row != null && (scope == null || scope.equals(scope(row)))) age(row, now);
         });
     }
 
