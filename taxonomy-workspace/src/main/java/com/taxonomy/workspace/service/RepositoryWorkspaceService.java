@@ -2,7 +2,7 @@ package com.taxonomy.workspace.service;
 
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
-import com.taxonomy.workspace.storage.CommitProvenance;
+import com.taxonomy.workspace.storage.GitHistoryTransfer;
 import com.taxonomy.workspace.model.RepositoryLifecycleState;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
@@ -10,9 +10,11 @@ import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import com.taxonomy.workspace.model.WorkspaceRelationshipType;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 /** Creates isolated working copies from an explicitly selected central repository. */
@@ -25,14 +27,17 @@ public class RepositoryWorkspaceService {
     private final UserWorkspaceRepository workspaceRepository;
     private final SystemRepositoryService systemRepositoryService;
     private final DslGitRepositoryFactory repositoryFactory;
+    private final RepositoryMembershipService memberships;
 
     public RepositoryWorkspaceService(
             UserWorkspaceRepository workspaceRepository,
             SystemRepositoryService systemRepositoryService,
-            DslGitRepositoryFactory repositoryFactory) {
+            DslGitRepositoryFactory repositoryFactory,
+            RepositoryMembershipService memberships) {
         this.workspaceRepository = workspaceRepository;
         this.systemRepositoryService = systemRepositoryService;
         this.repositoryFactory = repositoryFactory;
+        this.memberships = memberships;
     }
 
     /**
@@ -44,9 +49,8 @@ public class RepositoryWorkspaceService {
      * remain durable even though the caller receives an exception. Each Spring Data
      * {@code save} operation supplies its own transaction boundary.</p>
      *
-     * <p>Capture one immutable source checkpoint, seed the historic {@code draft}
-     * branch once, and create {@code sync-base} at that same workspace commit.
-     * A concurrent source update must not change either the copied content or its provenance.</p>
+     * <p>Persist the captured source checkpoint before copying its Git objects. Start
+     * {@code draft} and {@code sync-base} at that commit even if the source advances.</p>
      */
     public UserWorkspace createWorkingCopy(
             String username,
@@ -65,6 +69,7 @@ public class RepositoryWorkspaceService {
                 ? source.getDefaultBranch()
                 : requestedSourceBranch.strip();
         String name = requireText(displayName, "displayName");
+        requireContribution(source, user);
         Instant now = Instant.now();
 
         UserWorkspace workspace = new UserWorkspace();
@@ -85,31 +90,31 @@ public class RepositoryWorkspaceService {
         workspace.setSyncTargetBranch(sourceBranch);
         workspace.setCreatedAt(now);
         workspace.setLastAccessedAt(now);
-        workspaceRepository.save(workspace);
-
         boolean workspaceStorageAttempted = false;
         try {
             DslGitRepository sourceGit =
                     repositoryFactory.getCentralRepository(source.getRepositoryId());
             String sourceCommit = sourceGit.getHeadCommit(sourceBranch);
             if (sourceCommit == null) throw new IOException("Source branch has no commit");
-            CommitProvenance provenance = CommitProvenance.capture("fork", sourceGit,
-                    source.getRepositoryId(), sourceBranch, sourceCommit, null);
-            String sourceDsl = sourceCommit == null ? null : sourceGit.getDslAtCommit(sourceCommit);
-            if (sourceDsl == null || sourceDsl.isBlank() || sourceCommit == null) {
+            sourceGit.verifySnapshot(sourceCommit);
+            String sourceDsl = sourceGit.getDslAtCommit(sourceCommit, GitHistoryTransfer.MAX_OBJECT_BYTES);
+            if (sourceDsl == null || sourceDsl.isBlank()) {
                 throw new IllegalStateException(
                         "Source branch has no architecture content: " + sourceBranch);
             }
 
+            workspace.setBaseCommit(sourceCommit);
+            workspaceRepository.save(workspace);
             workspaceStorageAttempted = true;
             DslGitRepository workspaceGit = repositoryFactory.openWorkspaceRepository(workspace.getWorkspaceId());
-            String workspaceCommit = workspaceGit.commitDslIfHeadMatches(
-                    WORKSPACE_BRANCH, null, sourceDsl, user,
-                    "Fork from " + source.getRepositoryId() + "/" + sourceBranch, provenance);
-            workspaceGit.createBranchAtCommit(TRACKING_BRANCH, workspaceCommit);
+            GitHistoryTransfer.copyCommitClosure(sourceGit, workspaceGit, sourceCommit, List.of());
+            systemRepositoryService.readCurrentAuthorization(source.getRepositoryId(),
+                    current -> requireContribution(current, user));
+            workspaceGit.fastForwardIfHeadMatches(WORKSPACE_BRANCH, null, sourceCommit, user,
+                    "Create working copy from " + sourceBranch);
+            workspaceGit.createBranchAtCommit(TRACKING_BRANCH, sourceCommit);
 
-            workspace.setBaseCommit(sourceCommit);
-            workspace.setCurrentCommit(workspaceCommit);
+            workspace.setCurrentCommit(sourceCommit);
             workspace.setLastFetchedCommit(sourceCommit);
             workspace.setLastIntegratedCommit(sourceCommit);
             workspace.setProvisioningStatus(WorkspaceProvisioningStatus.READY);
@@ -128,9 +133,18 @@ public class RepositoryWorkspaceService {
             workspace.setProvisioningError(safeMessage(exception));
             workspace.setLastAccessedAt(Instant.now());
             workspaceRepository.save(workspace);
+            if (exception instanceof AccessDeniedException denied) {
+                throw denied;
+            }
             throw new IllegalStateException(
                     "Could not provision working copy from repository " + sourceRepositoryId,
                     exception);
+        }
+    }
+
+    private void requireContribution(SystemRepository repository, String user) {
+        if (!memberships.canContribute(repository, user)) {
+            throw new AccessDeniedException("Current source repository CONTRIBUTOR role is required");
         }
     }
 
