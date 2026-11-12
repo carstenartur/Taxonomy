@@ -191,7 +191,9 @@ public final class ClusterAnalysisBackupExport {
                 || !Objects.equals(context.requirement().requirementId(), number(row, "requirement_id")))
             throw new IOException("Cluster analysis indexed authority is inconsistent");
         try {
-            return new Metadata(id, principal, context, contextJson, ClusterAnalysisState.valueOf(text(row, "run_state")),
+            var state = ClusterAnalysisState.valueOf(text(row, "run_state"));
+            if (state == ClusterAnalysisState.CANCELLED && row.getInt("total_roots") == 0) state = ClusterAnalysisState.EXPIRED;
+            return new Metadata(id, principal, context, contextJson, state,
                     row.getInt("total_roots"), row.getInt("completed_roots"), row.getLong("event_revision"),
                     row.getLong("created_at"), row.getLong("updated_at"), row.getLong("row_version"));
         } catch (IllegalArgumentException invalid) { throw new IOException("Cluster analysis state is invalid"); }

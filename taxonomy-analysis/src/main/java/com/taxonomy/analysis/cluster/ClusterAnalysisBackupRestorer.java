@@ -173,7 +173,7 @@ public final class ClusterAnalysisBackupRestorer {
             var run = new ClusterAnalysisRun();
             run.id = target.operationId(); run.username = workspace.username(); run.scopeKey = ClusterAnalysisStore.scopeKey(workspace);
             run.contextJson = json.writeValueAsString(target); run.projectId = target.requirement().projectId();
-            run.requirementId = target.requirement().requirementId(); run.commandJson = "{}"; run.state = ClusterAnalysisState.EXPIRED;
+            run.requirementId = target.requirement().requirementId(); run.commandJson = "{}"; run.state = ClusterAnalysisState.CANCELLED;
             run.revision = marker.revision(); run.createdAt = marker.createdAt(); run.updatedAt = marker.updatedAt();
             em.persist(run);
         });

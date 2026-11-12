@@ -42,6 +42,10 @@ class ClusterAnalysisRetentionTest {
             var owner = command("requirement").workspaceContext();
             var foreign = new WorkspaceContext("bob", "workspace", "draft", "repo");
             var original = context("expired-original");
+            // HSQL restore V1 and existing vendor installations can retain the original enum constraint.
+            new TransactionTemplate(db.transactions).executeWithoutResult(status -> db.em.createNativeQuery(
+                    "alter table analysis_cluster_run add constraint legacy_cluster_states check (state in "
+                            + "('QUEUED','RUNNING','RELATIONS','FINALIZING','COMPLETED','PARTIAL','CANCELLED'))").executeUpdate());
             db.admit(original);
             var late = db.task(TaxonomyShardRoot.of("CP"));
             db.store.cancel(original);
@@ -59,7 +63,8 @@ class ClusterAnalysisRetentionTest {
             assertEquals(0, db.store.retention().sweepScope(owner, now));
             tx.executeWithoutResult(status -> {
                 var marker = db.em.find(ClusterAnalysisRun.class, original.operationId());
-                assertEquals("EXPIRED", marker.state.name());
+                assertTrue(marker.expired());
+                assertEquals(ClusterAnalysisState.CANCELLED, marker.state);
                 assertEquals("{}", marker.commandJson);
                 assertNull(marker.resultJson); assertNull(marker.relationPlanJson); assertNull(marker.viewJson);
                 for (String entity : List.of("ClusterAnalysisWork", "ClusterAnalysisInput", "ClusterAnalysisEvent",

@@ -17,8 +17,8 @@ public final class ClusterAnalysisRetention {
     private static final int BATCH = 64;
     private static final List<String> CHILDREN = List.of("ClusterAnalysisAttempt", "ClusterAnalysisCall",
             "ClusterAnalysisEvent", "ClusterAnalysisWork", "ClusterAnalysisInput", "AnalysisTaskCompletionRecord", "AnalysisDispatchIntent");
-    private static final String DUE = "((r.state=EXPIRED and r.updatedAt<=:tombstone)"
-            + " or (r.state<>EXPIRED and r.updatedAt<=:history))";
+    private static final String DUE = "((r.totalRoots=0 and r.state=CANCELLED and r.updatedAt<=:tombstone)"
+            + " or (r.totalRoots>0 and r.updatedAt<=:history))";
     private static final String OWNED = "r.id=:id and r.username=:owner and r.scopeKey=:scope and r.version=:version";
 
     private final EntityManager em;
@@ -47,7 +47,7 @@ public final class ClusterAnalysisRetention {
 
     private int sweep(WorkspaceContext scope, long now) {
         var candidates = transactions.execute(status -> {
-            var query = em.createQuery("select r.id,r.username,r.scopeKey,r.version,r.state from ClusterAnalysisRun r where "
+            var query = em.createQuery("select r.id,r.username,r.scopeKey,r.version,r.totalRoots from ClusterAnalysisRun r where "
                     + DUE + (scope == null ? "" : " and r.username=:owner and r.scopeKey=:scope")
                     + " order by r.updatedAt,r.id", Object[].class)
                     .setParameter("tombstone", now - TOMBSTONE).setParameter("history", now - HISTORY).setMaxResults(BATCH);
@@ -58,10 +58,10 @@ public final class ClusterAnalysisRetention {
         for (var row : candidates) {
             // An intervening progress update, cleanup or admission changes the version.
             // The first write fences late workers before any children are removed.
-            boolean expired = row[4] == ClusterAnalysisState.EXPIRED;
+            boolean expired = ((Integer) row[4]) == 0;
             boolean applied = transactions.execute(status -> {
                 var sql = expired ? "delete from ClusterAnalysisRun r where "
-                        : "update ClusterAnalysisRun r set r.state=EXPIRED, r.commandJson='{}', r.viewJson=null,"
+                        : "update ClusterAnalysisRun r set r.state=CANCELLED, r.commandJson='{}', r.viewJson=null,"
                         + " r.resultJson=null,r.relationPlanJson=null,r.completedRoots=0,r.totalRoots=0,"
                         + " r.updatedAt=:now,r.revision=r.revision+1,r.version=r.version+1 where ";
                 var write = em.createQuery(sql + OWNED)

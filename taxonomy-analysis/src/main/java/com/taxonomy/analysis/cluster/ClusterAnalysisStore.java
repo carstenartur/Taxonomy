@@ -311,7 +311,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
             var run = requireRun(task.envelope().operationId(), true);
             var context = context(task.envelope());
             requireSource(run, context);
-            if (run.state == ClusterAnalysisState.EXPIRED) return new Input(context, null, false, null, 0);
+            if (run.expired()) return new Input(context, null, false, null, 0);
             var work = requireWork(task);
             boolean executable = !run.state.terminal() && work.resultJson == null && work.failureReason == null;
             if (executable) {
@@ -504,7 +504,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
         return Boolean.TRUE.equals(tx.execute(status -> {
             var run = requireRun(completion.envelope().operationId(), true);
             requireSource(run, context(completion.envelope()));
-            if (run.state == ClusterAnalysisState.EXPIRED) return false;
+            if (run.expired()) return false;
             var work = em.find(ClusterAnalysisWork.class, key(completion.taskId().value()));
             if (work == null) throw new IllegalStateException("Completion has no expected task");
             var task = (AnalysisTaskMessage) decode(work.messageJson);
@@ -603,7 +603,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
             if (run == null) return Optional.empty();
             if (!Objects.equals(run.username, owner) || !Objects.equals(run.scopeKey, scopeKey(workspace)))
                 throw new SecurityException("Analysis operation is unavailable in this scope");
-            if (run.state == ClusterAnalysisState.EXPIRED) throw ClusterAnalysisRetention.expired();
+            if (run.expired()) throw ClusterAnalysisRetention.expired();
             var command = read(run.commandJson, AnalyzeRequirementCommand.class);
             if (!Objects.equals(run.username, owner) || !Objects.equals(command.workspaceContext(), workspace))
                 throw new SecurityException("Analysis operation is unavailable in this scope");
@@ -613,7 +613,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
 
     public List<AnalysisOperationContext> recent(String owner, WorkspaceContext workspace, Long projectId, Long requirementId) {
         return tx.execute(status -> {
-            var query = em.createQuery("select r.contextJson from ClusterAnalysisRun r where r.username=:owner and r.scopeKey=:scope and r.state<>EXPIRED"
+            var query = em.createQuery("select r.contextJson from ClusterAnalysisRun r where r.username=:owner and r.scopeKey=:scope and r.totalRoots>0"
                     + (projectId == null ? "" : " and r.projectId=:project")
                     + (requirementId == null ? "" : " and r.requirementId=:requirement")
                     + " order by r.createdAt desc,r.id", String.class)
@@ -633,7 +633,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
                                                 Long projectId, Long requirementId) {
         return tx.execute(status -> {
             var query = em.createQuery("select r.id,r.contextJson,r.state,r.revision,r.completedRoots,r.totalRoots,"
-                    + "r.createdAt,r.updatedAt,r.resultJson,r.projectId,r.requirementId from ClusterAnalysisRun r where r.username=:owner and r.scopeKey=:scope and r.state<>EXPIRED"
+                    + "r.createdAt,r.updatedAt,r.resultJson,r.projectId,r.requirementId from ClusterAnalysisRun r where r.username=:owner and r.scopeKey=:scope and r.totalRoots>0"
                     + (projectId == null ? "" : " and r.projectId=:project")
                     + (requirementId == null ? "" : " and r.requirementId=:requirement")
                     + " order by r.createdAt desc,r.id", Object[].class)
@@ -1020,7 +1020,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
     }
     private void requireAuthority(ClusterAnalysisRun run, AnalysisOperationContext context) {
         requireSource(run, context);
-        if (run.state == ClusterAnalysisState.EXPIRED) throw ClusterAnalysisRetention.expired();
+        if (run.expired()) throw ClusterAnalysisRetention.expired();
     }
     private void requireSource(ClusterAnalysisRun run, AnalysisOperationContext context) {
         if (!read(run.contextJson, AnalysisOperationContext.class).equals(context))
