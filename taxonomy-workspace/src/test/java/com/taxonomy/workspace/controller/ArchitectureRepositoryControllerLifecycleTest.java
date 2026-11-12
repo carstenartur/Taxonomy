@@ -162,18 +162,18 @@ class ArchitectureRepositoryControllerLifecycleTest {
     @EnumSource(MembershipAction.class)
     void membershipOperationsRequireOwnership(MembershipAction action) {
         assertEquals(403, membershipOperation(action).getStatusCode().value());
-        verify(memberships, never()).assignRole(any(SystemRepository.class), any(), any(), any());
-        verify(memberships, never()).removeMembership(any(), any(), any());
+        verify(memberships, never()).assignRole(any(SystemRepository.class), any(), any(), any(), any());
+        verify(memberships, never()).removeMembership(any(), any(), any(), any());
     }
 
     @ParameterizedTest
     @EnumSource(value = MembershipAction.class, names = {"UPDATE", "REMOVE"})
     void membershipServiceRejectionsAreNotReportedAsSuccess(MembershipAction action) {
         when(memberships.isOwner(repository, "alice")).thenReturn(true);
-        when(memberships.assignRole(any(SystemRepository.class), any(), any(), any()))
+        when(memberships.assignRole(any(SystemRepository.class), any(), any(), any(), any()))
                 .thenThrow(new AccessDeniedException("denied"), new IllegalStateException("last owner"));
         doThrow(new AccessDeniedException("denied"), new IllegalStateException("last owner"))
-                .when(memberships).removeMembership(any(), any(), any());
+                .when(memberships).removeMembership(any(), any(), any(), any());
         assertEquals("denied", body(membershipOperation(action), 403).get("error"));
         assertEquals("last owner", body(membershipOperation(action), 400).get("error"));
     }
@@ -182,8 +182,8 @@ class ArchitectureRepositoryControllerLifecycleTest {
         return switch (action) {
             case LIST -> controller.listMemberships("repo-a");
             case UPDATE -> controller.updateMembership("repo-a", "bob",
-                    new ArchitectureRepositoryController.UpdateMembershipRequest(RepositoryRole.READER));
-            case REMOVE -> controller.removeMembership("repo-a", "bob");
+                    new ArchitectureRepositoryController.UpdateMembershipRequest(RepositoryRole.READER, -1L));
+            case REMOVE -> controller.removeMembership("repo-a", "bob", 0L);
         };
     }
 
