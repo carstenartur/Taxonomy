@@ -325,3 +325,20 @@ ${baseline?'if identity_unchanged; then exit 0; else exit 1; fi':'frozen_identit
     assert.notEqual(observe(incomplete,false).status,0,'Incomplete graph must fail, including the jq no-output exit status');
   } finally { rmSync(root,{recursive:true,force:true}); }
 });
+
+test('requires one complete canonical administrative receipt before hashing the slot and attempt', () => {
+  const helper = join(dirname(script), 'artemis-provider-fault.sh');
+  const permit = '9a0a5a7b-1d1c-4c21-8479-f03d5323da56';
+  const attempt = 'a6606304-2749-4dd7-b644-78244b914c32';
+  const row = [permit, attempt, '1794478400000'].join('\t');
+  const complete = 'Inspection truncated=false; observation is not proof of no active remote requests';
+  const parse = lines => spawnSync('bash', ['-c', 'source "$1"; parse_quarantined_permit', 'test', helper],
+    {input: lines.join('\n') + '\n', encoding: 'utf8'});
+  const parsed = parse(['broker connected', row, complete]);
+  assert.equal(parsed.status, 0, parsed.stderr);
+  assert.equal(parsed.stdout.trim(), permit + ' ' + attempt);
+  for (const invalid of [[complete], [row, row, complete], [row], [row, complete.replace('false', 'true')],
+    [row.replace(permit, '-'.repeat(36)), complete], [row.replace('1794478400000', 'unknown'), complete]]) {
+    assert.notEqual(parse(invalid).status, 0);
+  }
+});
