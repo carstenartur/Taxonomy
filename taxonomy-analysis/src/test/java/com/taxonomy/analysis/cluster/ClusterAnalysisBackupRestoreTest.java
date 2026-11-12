@@ -1023,7 +1023,7 @@ class ClusterAnalysisBackupRestoreTest {
         }
     }
 
-    private static Archive exportedArchive(Database database) throws Exception {
+    static Archive exportedArchive(Database database) throws Exception {
         var now = Instant.now();
         var request = new BackupRequest(BackupProfile.REPOSITORY_HISTORY, new BackupScope.Workspace("repo", "workspace"),
                 new BackupTime.History(), GitRepresentation.BUNDLE, SecretsSelection.EXCLUDE);

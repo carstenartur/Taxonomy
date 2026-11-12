@@ -80,6 +80,7 @@ class ClusterAnalysisDatabaseContractTest {
     @Test void ownerSourceAndRequirementScopeIsAppliedBeforeTheHistoryLimit() {
         try (var contract = ClusterAnalysisDatabaseContract.hsql()) {
             contract.ownerSourceAndRequirementScopeIsAppliedBeforeTheHistoryLimit();
+            contract.scopedExpiryFencesRedeliveryAndPreservesForeignDatabaseRows();
         }
     }
 

@@ -364,6 +364,27 @@ final class ClusterAnalysisDatabaseContract implements AutoCloseable {
         assertContinuousEvents(selected, 1);
     }
 
+    void scopedExpiryFencesRedeliveryAndPreservesForeignDatabaseRows() {
+        var workspace = scope("retention", "draft", "repository");
+        var other = scope("retention-foreign", "draft", "repository");
+        var selected = admit("expiry", workspace, null, null);
+        var foreign = admit("other-expiry", other, null, null);
+        var delivered = task(selected, CP);
+        store.cancel(selected);
+        store.cancel(foreign);
+        var future = System.currentTimeMillis() + java.time.Duration.ofDays(31).toMillis();
+        assertEquals(1, store.retention().sweepScope(workspace, future));
+        assertEquals(0, store.retention().sweepScope(workspace, future));
+        var gone = assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> store.findAuthorized(selected.operationId(), owner, workspace));
+        assertEquals(410, gone.getStatusCode().value());
+        assertFalse(store.start(delivered).executable());
+        assertFalse(store.accept(completion(delivered, 80)));
+        assertNotNull(store.snapshot(foreign).result());
+        assertThrows(SecurityException.class, () -> store.findAuthorized(selected.operationId(), owner, other));
+        assertTrue(store.recent(owner, workspace, null, null).isEmpty());
+    }
+
     private AnalysisOperationContext admit(String label, WorkspaceContext scope, Long project, Long requirement) {
         var context = context(label, scope, "requirement", project, requirement);
         store.admit(context, command(scope, "requirement"), null, Map.of(CP, "{}", IP, "{}"));
