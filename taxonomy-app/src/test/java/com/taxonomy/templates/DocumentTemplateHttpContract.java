@@ -64,12 +64,7 @@ final class DocumentTemplateHttpContract implements AutoCloseable {
         for (String depth : List.of("0", "1")) {
             var listing = send("PROPFIND", DAV, EMPTY, "Depth", depth);
             status(listing, 207);
-            var factory = DocumentBuilderFactory.newInstance();
-            factory.setNamespaceAware(true);
-            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
-            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
-            var xml = factory.newDocumentBuilder().parse(new ByteArrayInputStream(listing.body()));
+            var xml = parseDav(listing.body());
             require("DAV:".equals(xml.getDocumentElement().getNamespaceURI()), "DAV namespace");
             require("multistatus".equals(xml.getDocumentElement().getLocalName()), "DAV multistatus body");
             int responses = xml.getElementsByTagNameNS("DAV:", "response").getLength();
@@ -119,6 +114,15 @@ final class DocumentTemplateHttpContract implements AutoCloseable {
         var credential = createDavCredential(true);
         String auth = credential.authorization();
 
+        String controlId = fixtureId();
+        byte[] controlBytes = modified(original, "unrelated-control");
+        var controlPut = send("PUT", API + controlId, controlBytes, "Content-Type", DOTX);
+        status(controlPut, 201);
+        var control = new Revision(etag(controlPut), controlBytes);
+        peer.verifyCollectionFile(id, initial);
+        peer.verifyCollectionFile(controlId, control);
+        verifyDownload(peer.send("GET", DAV + controlId + ".dotx", EMPTY), control);
+
         var acquired = acquireDavLock(auth, resource);
         status(acquired, 200);
         String token = acquired.headers().firstValue("Lock-Token").orElseThrow();
@@ -139,6 +143,9 @@ final class DocumentTemplateHttpContract implements AutoCloseable {
                         + a.statusCode() + " and " + b.statusCode());
         var winner = a.statusCode() == 204 ? new Revision(etag(a), firstEdit) : new Revision(etag(b), peerEdit);
         verifyDownload(peer.scoped(auth, "GET", resource), winner);
+        peer.verifyCollectionFile(id, winner);
+        peer.verifyCollectionFile(controlId, control);
+        status(peer.send("GET", DAV + controlId + ".dotx", EMPTY, "If-None-Match", control.etag()), 304);
 
         byte[] uncertainEdit = modified(winner.bytes(), "proxy-dropped-acknowledgement");
         var committed = peer.dropDavPutAcknowledgement(resource, auth, uncertainEdit, winner.etag(), token);
@@ -146,7 +153,7 @@ final class DocumentTemplateHttpContract implements AutoCloseable {
         var unacknowledged = new Revision(etag(committed), uncertainEdit);
         require(!unacknowledged.etag().equals(winner.etag()), "The upstream PUT advanced the revision");
         verifyDownload(scoped(auth, "GET", resource), unacknowledged);
-        return new PendingDavRecovery(id, credential, token, initial, winner, unacknowledged);
+        return new PendingDavRecovery(id, credential, token, initial, winner, unacknowledged, controlId, control);
     }
 
     void recoverDavSave(DocumentTemplateHttpContract restarted, PendingDavRecovery pending) throws Exception {
@@ -155,6 +162,9 @@ final class DocumentTemplateHttpContract implements AutoCloseable {
         String token = pending.token();
         var recovered = restarted.scoped(auth, "GET", resource);
         verifyDownload(recovered, pending.unacknowledged());
+        restarted.verifyCollectionFile(pending.id(), pending.unacknowledged());
+        restarted.verifyCollectionFile(pending.controlId(), pending.control());
+        verifyDownload(restarted.send("GET", DAV + pending.controlId() + ".dotx", EMPTY), pending.control());
         restarted.refreshDavLock(auth, resource, token);
 
         status(restarted.scoped(auth, "PUT", resource, pending.unacknowledged().bytes(), "Content-Type", DOTX,
@@ -184,9 +194,37 @@ final class DocumentTemplateHttpContract implements AutoCloseable {
         var expectedHistory = List.of(current, pending.unacknowledged(), pending.winner(), pending.initial());
         require(commitIds.equals(expectedHistory.stream().map(Revision::commitId).toList()),
                 "History includes every accepted save exactly once and excludes rejected writes");
+        restarted.verifyCollectionFile(pending.id(), current);
+        verifyCollectionFile(pending.controlId(), pending.control());
         for (var revision : expectedHistory) {
             verifyDownload(restarted.send("GET", path + "/download?revision=" + revision.commitId(), EMPTY), revision);
         }
+    }
+
+    private void verifyCollectionFile(String templateId, Revision expected) throws Exception {
+        var response = send("PROPFIND", DAV, EMPTY, "Depth", "1");
+        status(response, 207);
+        var rows = parseDav(response.body()).getElementsByTagNameNS("DAV:", "response");
+        String suffix = "/" + templateId + ".dotx";
+        for (int i = 0; i < rows.getLength(); i++) {
+            var row = (org.w3c.dom.Element) rows.item(i);
+            if (!row.getElementsByTagNameNS("DAV:", "href").item(0).getTextContent().endsWith(suffix)) continue;
+            String etag = row.getElementsByTagNameNS("DAV:", "getetag").item(0).getTextContent();
+            String length = row.getElementsByTagNameNS("DAV:", "getcontentlength").item(0).getTextContent();
+            require(expected.etag().equals(etag), "Wrong per-template ETag for " + templateId);
+            require(Integer.parseInt(length) == expected.bytes().length, "Wrong representation length for " + templateId);
+            return;
+        }
+        throw new AssertionError("Missing WebDAV collection resource " + templateId);
+    }
+
+    private static org.w3c.dom.Document parseDav(byte[] bytes) throws Exception {
+        var factory = DocumentBuilderFactory.newInstance();
+        factory.setNamespaceAware(true);
+        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+        factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
+        return factory.newDocumentBuilder().parse(new ByteArrayInputStream(bytes));
     }
 
     private HttpResponse<byte[]> acquireDavLock(String auth, String resource) throws Exception {
@@ -250,7 +288,8 @@ final class DocumentTemplateHttpContract implements AutoCloseable {
     }
 
     record PendingDavRecovery(String id, DavCredential credential, String token,
-                              Revision initial, Revision winner, Revision unacknowledged) { }
+                              Revision initial, Revision winner, Revision unacknowledged,
+                              String controlId, Revision control) { }
     private record Revision(String etag, byte[] bytes) {
         private String commitId() { return etag.substring(1, etag.length() - 1); }
     }

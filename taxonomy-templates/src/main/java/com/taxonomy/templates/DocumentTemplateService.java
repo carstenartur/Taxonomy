@@ -155,6 +155,11 @@ public class DocumentTemplateService implements DocumentTemplates {
         return toTemplateFile(repository.readCurrent(templateId));
     }
 
+    int packedLength(TemplateDescriptor template) throws IOException {
+        return materializations.packedLength(template.templateId(), template.headCommit(),
+                () -> download(template.templateId(), template.headCommit()).content().length);
+    }
+
     public TemplateFile downloadCurrentValidated(String templateId) throws IOException {
         return toTemplateFile(repository.readCurrent(templateId));
     }
