@@ -38,6 +38,10 @@ function element(className = '') {
       attributes.set(key, String(value));
       if (key.startsWith('data-')) this.dataset[dataKey(key)] = String(value);
     },
+    removeAttribute(key) {
+      attributes.delete(key);
+      if (key.startsWith('data-')) delete this.dataset[dataKey(key)];
+    },
     getAttribute(key) {
       return key.startsWith('data-') ? this.dataset[dataKey(key)] ?? null : attributes.get(key) ?? null;
     },
@@ -783,10 +787,9 @@ function interactiveHarness(response) {
   const classes = new Set(['tax-has-unevaluated']);
   const children = { style: { display: 'none' }, dataset: { renderState: 'ready' } };
   const wrapper = {
-    dataset: { taxonomyContainer: 'IP' }, isConnected: false,
+    ...element(), dataset: { taxonomyContainer: 'IP' }, isConnected: false,
     classList: { add: key => classes.add(key), remove: key => classes.delete(key) },
-    querySelector: selector => selector === ':scope > .tax-children' ? children : null,
-    setAttribute() {}
+    querySelector: selector => selector === ':scope > .tax-children' ? children : null
   };
   const status = { innerHTML: '', dataset: {} }; const logs = []; const errors = [];
   const state = { currentScores: { IP: 100 }, currentRawScores: { IP: 100 }, currentReasons: {},
@@ -811,7 +814,9 @@ function interactiveHarness(response) {
     'evaluateNodeChildren: evaluateNodeChildren, renderView: renderView,'), context);
   return { state, classes, logs, status, errors, async run() {
     window.TaxonomyBrowse.evaluateNodeChildren('IP', wrapper, { textContent: '' });
+    assert.equal(wrapper.getAttribute('aria-busy'), 'true');
     await new Promise(resolve => setImmediate(resolve));
+    assert.equal(wrapper.getAttribute('aria-busy'), null);
   } };
 }
 

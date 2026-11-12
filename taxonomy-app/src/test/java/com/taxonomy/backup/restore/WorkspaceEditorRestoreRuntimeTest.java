@@ -73,7 +73,17 @@ class WorkspaceEditorRestoreRuntimeTest {
         }
     }
 
-    private Fixture fixture(String actor)throws Exception {
+    @Test void verifiedArchiveRestoresPersistedAnalysesThroughTheIsolatedGitIdentityAndWorkspaceOwners() throws Exception {
+        var analysis = new AnalysisArchiveRoundTrip();
+        try (var fixture = fixture(SOURCE_SCOPE,analysis)) {
+            var owners = fixture.restore();
+            analysis.verify(fixture.archive,fixture.generation,owners.identities(),owners.git(),WORKSPACE);
+        }
+    }
+
+    private Fixture fixture(String actor)throws Exception { return fixture(actor,null); }
+
+    private Fixture fixture(String actor,AnalysisArchiveRoundTrip analysis)throws Exception {
         var source=database();var target=database();RestoreSchemaMigration.bootstrap(database(),source,CHECK);
         var sourceFactory=RestoreSchemaMigration.openValidatedFactory(database(),source,model(),CHECK);
         var sourceRepositories=new DslGitRepositoryFactory(new DefaultHibernateRepositoryFactory(sourceFactory));
@@ -90,7 +100,8 @@ class WorkspaceEditorRestoreRuntimeTest {
         sourceJournal.locked(sourceContext,sourceJournal.read(sourceContext).state(),session->session.prepare(metadata(SAVE),actor,"a".repeat(64)));
         assertThat(accepted.context().revision()).isEqualTo(1);
         assertThat(sourceJournal.read(sourceContext).state().pendingCheckpoint()).isEqualTo(SAVE);
-        var archive=export(source,sourceFactory,principal);
+        if (analysis != null) analysis.seed(sourceFactory,principal,sourceContext,baseline);
+        var archive=export(source,sourceFactory,principal,analysis != null);
         RestoreSchemaMigration.bootstrap(source,target,CHECK);
         var targetFactory=RestoreSchemaMigration.openValidatedFactory(source,target,model(),CHECK);
         var allocations=Map.of(CENTRAL,new RestoreRepositoryAllocation(new BackupRepositoryKey("editor-target-repository",null),"editor-target-central-storage"),
@@ -100,13 +111,13 @@ class WorkspaceEditorRestoreRuntimeTest {
         return new Fixture(source,target,sourceFactory,targetFactory,sourceRepositories,sourceJournal,sourceContext,archive,generation,principals,authority(principal));
     }
 
-    private VerifiedBackup export(JDBCDataSource source,org.hibernate.SessionFactory sourceFactory,PrincipalId principal)throws Exception {
+    private VerifiedBackup export(JDBCDataSource source,org.hibernate.SessionFactory sourceFactory,PrincipalId principal,boolean includeAnalysis)throws Exception {
         BackupMaintenanceLease.initialize(source);var prerequisites=BackupFeaturePrerequisites.discover();
         var existing=new ExistingGitBackupRepositories(source,sourceFactory);
         var history=new GitHistoryBackupContributor(existing,new GitStandBackupSource(source,existing,document->document),new WorkspaceGitHistoryReferences(source,existing),GitHistoryCapture.Limits.defaults(),
                 new GitStandBackupSource.Limits(new GitTreeCapture.Limits(100,1_000_000,2_000_000),100_000));
         var authorization=authority(principal);var request=new BackupRequest(BackupProfile.INSTALLATION_FULL,new BackupScope.Installation(),new BackupTime.History(),GitRepresentation.BUNDLE,SecretsSelection.EXCLUDE);
-        var components=Map.of(APPLICATION,new BackupSnapshotCoordinator.CaptureComponent(1,BackupCompleteness.COMPLETE,Set.of()),WORKSPACE_OWNER,new BackupSnapshotCoordinator.CaptureComponent(1,BackupCompleteness.COMPLETE,Set.of(APPLICATION)));
+        var components=new HashMap<>(Map.of(APPLICATION,new BackupSnapshotCoordinator.CaptureComponent(1,BackupCompleteness.COMPLETE,Set.of()),WORKSPACE_OWNER,new BackupSnapshotCoordinator.CaptureComponent(1,BackupCompleteness.COMPLETE,Set.of(APPLICATION))));
         // Coordinator accepts one contributor per component. This fixture tests real owner adapters,
         // not production inventory/readiness registration for the installation as a whole.
         var data=new WorkspaceBackupContributor(source,document->document);
@@ -115,11 +126,19 @@ class WorkspaceEditorRestoreRuntimeTest {
             public int schemaVersion(){return 1;}
             public void write(SnapshotContext snapshot,ComponentSink sink)throws IOException{data.write(snapshot,sink);history.write(snapshot,sink);}
         };
+        var contributors = new ArrayList<BackupContributor>(List.of(new IdentityBackupContributor(source,(snapshot,checkpoint)->Set.of(principal)),workspace));
+        var versions = new HashMap<>(Map.of(APPLICATION,1,WORKSPACE_OWNER,1,new BackupComponentId("capture-proof"),1));
+        if (includeAnalysis) {
+            var owner = new com.taxonomy.analysis.backup.AnalysisBackupContributor(source,SOURCE_SCOPE);
+            components.put(owner.componentId(),new BackupSnapshotCoordinator.CaptureComponent(1,BackupCompleteness.COMPLETE,Set.of(APPLICATION,WORKSPACE_OWNER)));
+            versions.put(owner.componentId(),owner.schemaVersion());
+            contributors.add(owner);
+        }
         var coordinator=new BackupSnapshotCoordinator(new BackupMaintenanceLease(source,Duration.ofSeconds(30)),authorization,
                 auth->new BackupSnapshotCoordinator.CapturePlan(VERSION,"editor-owner-runtime-fixture",new JdbcTemplate(source).queryForObject("select installation_id from principal_installation",String.class),history.inspect(auth,Set.of(CENTRAL,WORKSPACE),CHECK),components,List.of(),List.of(),new SourceDatabaseMetadata(1,SourceDatabaseFamily.HSQLDB)),
-                List.of(new IdentityBackupContributor(source,(snapshot,checkpoint)->Set.of(principal)),workspace),temporary.resolve(UUID.randomUUID()+"-capture"),BackupSnapshotCoordinator.CaptureLimits.defaults(),Clock.systemUTC(),prerequisites);
+                contributors,temporary.resolve(UUID.randomUUID()+"-capture"),BackupSnapshotCoordinator.CaptureLimits.defaults(),Clock.systemUTC(),prerequisites);
         Path output=temporary.resolve(UUID.randomUUID()+".taxbackup");try(var captured=coordinator.capture(authorization.authorize(principal,request))){new BackupArchiveWriter(ArchiveProtectionProvider.unprotected(),ArchiveLimits.defaults(),prerequisites).write(captured,output);}
-        return new BackupArchiveReader(ArchiveProtectionProvider.unprotected(),ArchiveLimits.defaults(),VERSION,Map.of(APPLICATION,1,WORKSPACE_OWNER,1,new BackupComponentId("capture-proof"),1),prerequisites).verify(output);
+        return new BackupArchiveReader(ArchiveProtectionProvider.unprotected(),ArchiveLimits.defaults(),VERSION,versions,prerequisites).verify(output);
     }
 
     private static BackupAuthorizationService authority(PrincipalId principal) {
@@ -133,6 +152,7 @@ class WorkspaceEditorRestoreRuntimeTest {
     private static Metadata metadata(String command){return new Metadata(command,command,command,"Editor restore acceptance");}
     private static JDBCDataSource database(){var database=new JDBCDataSource();database.setUrl("jdbc:hsqldb:mem:editor-restore-"+UUID.randomUUID()+";hsqldb.tx=mvcc");database.setUser("sa");return database;}
     private static List<Class<?>> model()throws Exception {try(var input=WorkspaceEditorRestoreRuntimeTest.class.getResourceAsStream("/db/restore/hsqldb/approved-business-model.txt")){var model=new ArrayList<Class<?>>();for(String name:new String(input.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8).lines().toList())if(!name.isBlank()&&!name.startsWith("#"))model.add(Class.forName(name));return model;}}
+    private record RestoredOwners(GitRestoreImporter.Result git,RestoreIdentityImporter.Result identities) {}
     private final class Fixture implements AutoCloseable {
         final JDBCDataSource source,target;final org.hibernate.SessionFactory sourceFactory,targetFactory;final DslGitRepositoryFactory sourceRepositories;
         final EditorJournal sourceJournal;final RepositoryContext sourceContext;final VerifiedBackup archive;final RestoreTargetGeneration generation;
@@ -140,12 +160,13 @@ class WorkspaceEditorRestoreRuntimeTest {
         Fixture(JDBCDataSource source,JDBCDataSource target,org.hibernate.SessionFactory sourceFactory,org.hibernate.SessionFactory targetFactory,DslGitRepositoryFactory sourceRepositories,EditorJournal sourceJournal,RepositoryContext sourceContext,VerifiedBackup archive,RestoreTargetGeneration generation,Map<PrincipalId,RestorePrincipalAllocation> principals,BackupAuthorizationService authority){
             this.source=source;this.target=target;this.sourceFactory=sourceFactory;this.targetFactory=targetFactory;this.sourceRepositories=sourceRepositories;this.sourceJournal=sourceJournal;this.sourceContext=sourceContext;this.archive=archive;this.generation=generation;this.principals=principals;this.authority=authority;
         }
-        void restore()throws IOException {
+        RestoredOwners restore()throws IOException {
             var git=new ApplicationGitHistoryRestoreImporter(()->principals.keySet().iterator().next(),authority,temporary.resolve("restore-private"),GitHistoryCapture.Limits.defaults());
             Files.createDirectories(temporary.resolve("restore-private"));
             var proof=git.importGit(archive,generation.allocations(),generation,CHECK);
-            new RestoreIdentityImporter().restore(archive,generation,principals,CHECK);
+            var identities=new RestoreIdentityImporter().restore(archive,generation,principals,CHECK);
             new WorkspaceRestoreImporter().restore(archive,generation,principals,proof,CHECK);
+            return new RestoredOwners(proof,identities);
         }
         public void close()throws IOException{archive.close();sourceRepositories.close();sourceFactory.close();targetFactory.close();}
     }

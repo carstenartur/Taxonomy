@@ -33,7 +33,7 @@ public final class AnalysisBackupContributor implements BackupDataContributor {
     @Override public Set<String> categories() { return Set.of("com.taxonomy.analysis.session.AnalysisWorkingDraft", "com.taxonomy.analysis.recovery.AnalysisContinuationRun", "com.taxonomy.analysis.recovery.AnalysisQuestionCheckpoint",
             "com.taxonomy.analysis.cluster.ClusterAnalysisRun", "com.taxonomy.analysis.cluster.ClusterAnalysisWork",
             "com.taxonomy.analysis.cluster.ClusterAnalysisInput", "com.taxonomy.analysis.cluster.ClusterAnalysisEvent",
-            "com.taxonomy.analysis.cluster.ClusterAnalysisCall", "com.taxonomy.analysis.cluster.ClusterAnalysisAttempt"); }
+            "com.taxonomy.analysis.cluster.ClusterAnalysisCall", "com.taxonomy.analysis.cluster.ClusterAnalysisAttempt", "com.taxonomy.analysis.operation.AnalysisAdapterOperation"); }
     @Override public List<String> omissions(BackupProfile profile) {
         if (profile == BackupProfile.SELECTED_VERSION) return List.of("analysis: drafts, continuations and clustered runs are not versioned by Git and cannot be attributed to a selected historical commit");
         if (!profile.includesHistory()) return List.of("analysis: stale draft results, earlier continuations/clustered runs and unattached historical checkpoints are excluded", "analysis: worker claims, broker deliveries, provider permits and live execution are excluded");
@@ -110,6 +110,7 @@ public final class AnalysisBackupContributor implements BackupDataContributor {
             }
             return new QuestionRecord(reference(r,"analysis.question","id"),new SourceRecordId("analysis.continuation",run.id()),text(r,"question_key"),text(r,"input_hash"),text(r,"provider"),nodeCodes,detail,prompt,text(r,"state"),r.getInt("attempts"),r.getLong("started_at"),text(r,"error_text"));
         });
+        com.taxonomy.analysis.operation.AnalysisAdapterBackup.write(rows, snapshot, sink);
         new ClusterAnalysisBackupExport(rows, principalScope).write(snapshot, sink, (owner, authority, businessText, terminal) -> {
             if (authority.workspaceId() == null || authority.branch() == null) return !terminal;
             String tenant = new RepositoryTenantIdentity(authority.repositoryId(), "WORKSPACE:" + authority.workspaceId(), authority.branch()).scopeKey();

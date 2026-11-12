@@ -181,10 +181,11 @@ Git-/Workspace-Kommandos und Historienindexierung/-suche bleiben bei
 Architecture-Archiv oder von Dokumentexport-Adaptern ab.
 
 Beide Controller nutzen denselben Workspace-eigenen HTTP-Resolver
-`DslReadWorkspaceContextResolver`. Er erhält die historische Abfolge von
-Provisionierung und Read-Kontextauflösung sowie den Shared-Kontext-Fallback.
-Request-Pre-Resolution-Interceptor und Git-Fassade bleiben bei Fehlern der
-Repository-Auswahl Fail-Closed. Git bleibt die Autorität für versionierte Inhalte;
+`DslReadWorkspaceContextResolver`. Er erhält die Abfolge von Provisionierung
+und Read-Kontextauflösung. Eine fehlende oder gescheiterte Repository-Auswahl
+führt zu HTTP 503 statt zu einem Wechsel ins gemeinsame Repository. Explizite
+Zugriffsverbote und HTTP-Konflikte bleiben erhalten; auch Request-Interceptor
+und Git-Fassade verhalten sich bei Ausfällen Fail-Closed. Git bleibt die Autorität für versionierte Inhalte;
 numerische Dokumentvergleiche erhalten die Archivkompatibilität ohne Git-Auflösung.
 `ArchitectureDslDocument` und sein Repository bleiben Architecture-eigen.
 Archivpolitik und globale Abfragen, URLs, Security, Repository-Identität,

@@ -90,6 +90,9 @@ public class AnalysisApiController {
     private AnalysisProgressRegistry analysisProgressRegistry;
 
     @Autowired(required = false)
+    private com.taxonomy.analysis.usecase.AnalysisChildAssessment childAssessments;
+
+    @Autowired(required = false)
     private ClusterAnalysisExecution clusterExecution;
 
     @Autowired(required = false)
@@ -614,6 +617,11 @@ public class AnalysisApiController {
         if (guard != null) return guard;
         try {
             var requestedLanguage = AnalysisLanguage.fromValue(analysisLanguage);
+            if (childAssessments != null && childAssessments.available()) {
+                String owner = workspaceResolver.resolveCurrentUsername();
+                return ResponseEntity.ok(childAssessments.node(new AnalyzeNodeChildrenCommand(parentCode, businessText, parentScore),
+                        operationId, provider, owner, resolveWorkspaceContext(owner), resolveReasonLength(null), resolveLanguage(requestedLanguage)));
+            }
             if (followUpProviders != null && (operationId == null || operationId.isBlank())) {
                 String owner = workspaceResolver.resolveCurrentUsername();
                 WorkspaceContext workspace = resolveWorkspaceContext(owner);
@@ -685,6 +693,12 @@ public class AnalysisApiController {
         ResponseEntity<JustifyLeafResult> guard = checkInitialized();
         if (guard != null) return guard;
         try {
+            if (childAssessments != null && childAssessments.available()) {
+                String owner = workspaceResolver.resolveCurrentUsername();
+                return ResponseEntity.ok(childAssessments.leaf(new JustifyLeafCommand(request.nodeCode(), request.businessText(),
+                        request.scores(), request.reasons()), request.operationId(), request.provider(), owner,
+                        resolveWorkspaceContext(owner), resolveReasonLength(null), resolveLanguage(request.analysisLanguage())));
+            }
             JustifyLeafResult result = withFollowUpProvider(request.operationId(), request.provider(), request.businessText(), request.analysisLanguage(),
                     () -> justifyLeafUseCase.justify(new JustifyLeafCommand(
                             request.nodeCode(), request.businessText(), request.scores(), request.reasons())));

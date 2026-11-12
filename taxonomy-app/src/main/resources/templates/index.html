@@ -417,7 +417,7 @@
                             <span id="docImportSpinner" class="spinner-border spinner-border-sm d-none me-1" role="status"></span>
                             <span th:text="#{docimport.btn.upload}">&#128196; Upload &amp; Extract</span>
                         </button>
-                        <div id="docImportStatus" class="mt-2 small"></div>
+                        <div id="docImportStatus" class="mt-2 small" role="status" aria-live="polite"></div>
                     </div>
                 </details>
 
@@ -1621,6 +1621,7 @@
 <script th:src="@{/js/shared/taxonomy-utils.js}"></script>
 <script th:src="@{/js/shared/architecture-workflow.js}" src="/js/shared/architecture-workflow.js"></script>
 <th:block th:replace="~{fragments/application-chrome :: scripts}"></th:block>
+<script th:src="@{/js/api/analysis-adapter-api.js}" src="/js/api/analysis-adapter-api.js"></script>
 <script th:src="@{/js/api/import-api.js}"></script>
 <script th:src="@{/js/api/analysis-api.js}"></script>
 <script th:src="@{/js/api/reference-api.js}"></script>

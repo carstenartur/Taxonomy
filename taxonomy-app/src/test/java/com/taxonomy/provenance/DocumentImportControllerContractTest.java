@@ -9,6 +9,7 @@ import com.taxonomy.provenance.config.DocumentImportLimits;
 import com.taxonomy.provenance.controller.DocumentImportController;
 import com.taxonomy.provenance.controller.DocumentImportController.ConfirmCandidatesRequest;
 import com.taxonomy.provenance.controller.DocumentImportController.ConfirmedCandidate;
+import com.taxonomy.provenance.service.DocumentAnalysisExecution;
 import com.taxonomy.provenance.service.DocumentAnalysisService;
 import com.taxonomy.provenance.service.DocumentLimitException;
 import com.taxonomy.provenance.service.DocumentParserService;
@@ -49,10 +50,20 @@ class DocumentImportControllerContractTest {
     private final DocumentProvenanceCommandService commands = mock(DocumentProvenanceCommandService.class);
     private final DocumentAnalysisService analysis = mock(DocumentAnalysisService.class);
     private final DocumentImportLimits limits = new DocumentImportLimits();
+    private final DocumentAnalysisExecution operations = mock(DocumentAnalysisExecution.class);
     private final DocumentImportController controller = new DocumentImportController(
-            parser, mock(SourceProvenanceService.class), commands, analysis, limits);
+            parser, mock(SourceProvenanceService.class), commands, analysis, limits, operations);
     private final MockMultipartFile upload = new MockMultipartFile(
             "file", "requirements.pdf", "application/pdf", new byte[]{1});
+
+    @BeforeEach
+    void nativeAnalysisBoundary() throws Exception {
+        when(parser.computeContentHash(upload)).thenReturn("a".repeat(64));
+        org.mockito.Mockito.doAnswer(call -> org.springframework.http.ResponseEntity.ok(
+                ((java.util.function.Supplier<?>) call.getArgument(3)).get())).when(operations).execute(
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyBoolean(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
 
     @BeforeEach
     void configureBoundedInput() {

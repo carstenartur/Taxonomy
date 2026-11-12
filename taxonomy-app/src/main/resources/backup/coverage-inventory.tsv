@@ -1,4 +1,5 @@
 # Category	Owner	Rule	Rationale
+com.taxonomy.analysis.operation.AnalysisAdapterOperation	analysis	PORTABLE_PRIMARY	Scoped native outcome and retention marker; restore active receipts as interrupted without dispatch
 com.taxonomy.analysis.cluster.ClusterAnalysisRun	analysis	PORTABLE_PRIMARY	Durable frozen operation authority and terminal result; restore in-flight work interrupted without dispatch
 com.taxonomy.analysis.cluster.ClusterAnalysisWork	analysis	PORTABLE_PRIMARY	Expected tasks and committed effects; restore only settled evidence, never reactivate execution
 com.taxonomy.analysis.cluster.ClusterAnalysisInput	analysis	PORTABLE_PRIMARY	Exact immutable catalogue shard inputs owned by the captured run

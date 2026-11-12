@@ -26,7 +26,11 @@ class AnalysisBrowserFollowUpTest {
             S.storedBusinessText = 'requirement';
             S.analysisProviderId = 'DEMO.TIME-TRACKING-V1.R0';
             S.analysisOperationId = '10000000-0000-4000-8000-000000000001';
-            window.TaxonomyScoring.requestLeafJustification('BP', {textContent: 'Explain'});
+            const attributes = new Map();
+            const button = {textContent: 'Explain', setAttribute: (key,value) => attributes.set(key,value),
+                removeAttribute: key => attributes.delete(key)};
+            window.TaxonomyScoring.requestLeafJustification('BP', button);
+            assert.equal(attributes.get('aria-busy'), 'true');
             assert.equal(requests.length, 1);
             const payload = JSON.parse(requests[0].options.body);
             assert.equal(payload.provider, S.analysisProviderId);
