@@ -215,6 +215,47 @@ class VerifiedLegacyOwnerMigrationTest {
                 Integer.class)).isZero();
     }
 
+    @Test void postV3LegacyWritesCannotBeHiddenByAnOtherwiseCompleteApprovedPlan() {
+        var initial = migration.preview(admin, 256);
+        assertThat(LegacyOwnerMigrationReadiness.inspect(database).missingReservations()).isZero();
+
+        // This write happens after the one-time V3 reservation migration.
+        jdbc.update("insert into user_workspace values ('late-legacy-owner', 'late-private-workspace')");
+        var readiness = LegacyOwnerMigrationReadiness.inspect(database);
+        assertThat(readiness.observedScopes()).isEqualTo(3);
+        assertThat(readiness.missingReservations()).isEqualTo(1);
+        assertThat(readiness.ready()).isFalse();
+        assertThatThrownBy(() -> migration.linkVerified(admin, initial.fingerprint(), List.of(
+                verified(initial.owners().get(0), "sub-a"),
+                verified(initial.owners().get(1), "sub-b"))))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("reserved principal");
+        assertThat(migration.preview(admin, 256).total()).isEqualTo(2);
+        assertThat(jdbc.queryForObject("select count(*) from principal_access_audit", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from principal_binding where binding_kind='OIDC'",
+                Integer.class)).isZero();
+    }
+
+    @Test void verifiedLinksClearTheReadinessFenceWithoutInferringUsernames() {
+        var initial = migration.preview(admin, 256);
+        var inventory = LegacyOwnerMigrationReadiness.inspect(database);
+        assertThat(inventory.unresolvedReservations()).isEqualTo(2);
+        assertThat(inventory.ready()).isFalse();
+
+        migration.linkVerified(admin, initial.fingerprint(), List.of(
+                verified(initial.owners().get(0), "opaque-subject-a"),
+                verified(initial.owners().get(1), "opaque-subject-b")));
+        assertThat(LegacyOwnerMigrationReadiness.inspect(database).ready()).isTrue();
+
+        // Re-using a mapped historical name as a newly created unverified OIDC identity
+        // must not be accepted merely because its owner row has a binding.
+        var late = identities.oidc("https://idp.example", "different-subject");
+        jdbc.update("insert into user_workspace values (?, 'new-private-workspace')", late.scopeKey());
+        assertThat(LegacyOwnerMigrationReadiness.inspect(database).ready()).isTrue();
+        jdbc.update("insert into user_workspace values ('unmapped-after-link', 'other')");
+        assertThat(LegacyOwnerMigrationReadiness.inspect(database).ready()).isFalse();
+    }
+
     @Test void removalRequiresExactFieldsAndCannotReuseARevokedSubject() {
         var before = migration.preview(admin, 256);
         var alice = before.owners().get(0);
