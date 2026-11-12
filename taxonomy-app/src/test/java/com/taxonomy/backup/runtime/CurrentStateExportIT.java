@@ -234,7 +234,7 @@ class CurrentStateExportIT {
                     SystemRepository.class, UserWorkspace.class, RepositoryMembership.class, SyncState.class,
                     com.taxonomy.versioning.model.ArchitectureCommitIndex.class, com.taxonomy.versioning.model.ContextHistoryRecord.class,
                     AnalysisWorkingDraft.class, AnalysisContinuationRun.class, AnalysisQuestionCheckpoint.class,
-                    com.taxonomy.analysis.cluster.ClusterAnalysisRun.class, com.taxonomy.analysis.cluster.ClusterAnalysisWork.class,
+                    com.taxonomy.analysis.operation.AnalysisAdapterOperation.class, com.taxonomy.analysis.cluster.ClusterAnalysisRun.class, com.taxonomy.analysis.cluster.ClusterAnalysisWork.class,
                     com.taxonomy.analysis.cluster.ClusterAnalysisInput.class, com.taxonomy.analysis.cluster.ClusterAnalysisEvent.class, com.taxonomy.analysis.cluster.ClusterAnalysisCall.class, com.taxonomy.analysis.cluster.ClusterAnalysisAttempt.class))
                 configuration.addAnnotatedClass(type);
             try (var inventory = CurrentStateExportIT.class.getResourceAsStream("/backup/coverage-inventory.tsv")) {

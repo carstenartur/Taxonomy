@@ -187,3 +187,9 @@ All three prompt families can be customized in the Admin panel under
 3. **Select the correct source type** to maintain accurate provenance records
 4. **Combine related candidates** into a single analysis run for coherent
    architecture views
+
+### Recovering AI extraction and regulation mapping
+
+Both provider-backed document routes commit a receipt scoped to the initiating account, repository, workspace, branch and source commit before calling the provider. Supplying the same `Idempotency-Key` reuses the original receipt. Without that header, a repeated file with the same filename, options and source also reuses its receipt. Changing the input or source while reusing an explicit key returns HTTP 409. A request-local response when no provider is configured creates no receipt.
+
+A concurrent request returns HTTP 202 and the original operation ID. Read `GET /api/analysis-adapters/{id}` to recover the native document response. Both import pages poll that URL while the receipt is running. The cancellation control sends `POST /api/analysis-adapters/{id}/cancel`. Once cancelled, a late provider completion cannot replace the terminal state. A receipt still awaiting completion after 30 minutes reports an unknown outcome. The store keeps terminal results for 30 days. A compact marker then protects against replay for a further 90 days and returns HTTP 410. Portable restoration preserves the recorded time and makes an interrupted operation terminal without dispatch.

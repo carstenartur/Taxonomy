@@ -648,7 +648,9 @@ class LlmServiceBranchCoverageTest {
 
         when(gateway.sendHttpRequest("leaf prompt", "test-key")).thenThrow(new IllegalStateException("leaf failure"));
         assertThat(service.generateLeafJustification("x", "A", List.of(leaf), scores, reasons))
-                .contains("leaf failure");
+                .isEqualTo("Error generating justification. Please try again.");
+        assertThatThrownBy(() -> service.requireLeafJustification("x", "A", List.of(leaf), scores, reasons))
+                .hasMessage("Error generating justification. Please try again.");
     }
 
     @Test

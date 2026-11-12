@@ -136,6 +136,8 @@ class ClusterRelationCoordinatorTest {
             var workspace = command("requirement").workspaceContext();
             assertEquals(context, db.store.findAuthorized("owned", "alice", workspace).orElseThrow());
             assertTrue(db.store.findAuthorized("absent", "alice", workspace).isEmpty());
+            assertTrue(db.store.findAuthorized(null, "alice", workspace).isEmpty());
+            assertTrue(db.store.findAuthorized("", "alice", workspace).isEmpty());
             assertThrows(SecurityException.class, () -> db.store.findAuthorized("owned", "bob", workspace));
             assertThrows(SecurityException.class, () -> db.store.findAuthorized("owned", "alice", new WorkspaceContext("alice", "workspace", "other", "repo")));
             assertEquals(List.of(context), db.store.recent("alice", workspace, null, null));

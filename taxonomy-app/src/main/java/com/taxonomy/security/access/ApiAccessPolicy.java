@@ -191,7 +191,8 @@ public final class ApiAccessPolicy {
             rules.add(new Rule("POST", path, Access.PERMISSION, ARCHITECTURE_WRITE, RESOURCE_CHECKS,
                     PathPatternParser.defaultInstance.parse(path), List.of(ANALYSIS_RUN), List.of(), List.of()));
         }
-        add(rules, "GET", ANALYSIS_READ, "/api/analysis-drafts/**", "/api/analysis-runs/**", "/api/analysis-continuations/**", "/api/analysis-progress/**");
+        add(rules, "POST", ANALYSIS_RUN, "/api/analysis-adapters/*/cancel");
+        add(rules, "GET", ANALYSIS_READ, "/api/analysis-adapters/*", "/api/analysis-drafts/**", "/api/analysis-runs/**", "/api/analysis-continuations/**", "/api/analysis-progress/**");
         add(rules, "GET", ANALYSIS_READ, "/api/projects/*/analysis-jobs/**", "/api/projects/*/requirements/*/snapshots",
                 "/api/projects/*/snapshots/**", "/api/projects/*/architecture-workbench/*",
                 "/api/projects/*/requirements/*/copilot/latest", "/api/projects/*/copilot-operations/*");

@@ -50,6 +50,11 @@ abstract class AbstractExternalDatabaseContainerIT extends AbstractDatabaseConta
         }
     }
 
+    @Test @Order(25)
+    void durableDocumentAdapterRetainsItsNativeResultAndFencesLateCompletion() throws Exception {
+        try (var db = clusterContract()) { db.durableDocumentAdapterRetainsItsNativeResultAndFencesLateCompletion(); }
+    }
+
     @Test @Order(24)
     void webDavLeasesFenceIndependentApplicationHandlesAndRetainExactGitVersions() throws Exception {
         var database = getDatabaseContainer();
