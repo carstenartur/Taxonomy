@@ -190,6 +190,7 @@ public class ArchitectureRepositoryProvisioningService {
             systemRepositoryService.readCurrentAuthorization(fork.getUpstreamRepositoryId(),
                     current -> requireForkSource(current, ownerId, fork.getVisibility()));
             source.verifyExpectedHead(fork.getUpstreamBranch(), forkPoint);
+            destination.recordUpstreamForkPoint(fork.getUpstreamRepositoryId(), fork.getUpstreamBranch(), forkPoint, ownerId);
             destination.fastForwardIfHeadMatches(branch, null, forkPoint, ownerId, "Provision repository fork");
             return systemRepositoryService.markProvisioningReady(repositoryId);
         } catch (BranchHeadConflictException conflict) {

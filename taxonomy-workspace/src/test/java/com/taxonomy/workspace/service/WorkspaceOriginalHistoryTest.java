@@ -15,6 +15,7 @@ import com.taxonomy.workspace.signing.SignatureStatus;
 import com.taxonomy.workspace.signing.SigningTestKeys;
 import com.taxonomy.workspace.storage.DslCommit;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.GitUpstreamRef;
 import io.github.carstenartur.jgit.storage.hibernate.DefaultHibernateRepositoryFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -46,6 +47,8 @@ class WorkspaceOriginalHistoryTest {
         String parent;
         String captured;
         String workspaceId;
+        org.eclipse.jgit.lib.ObjectId tagId;
+        byte[] annotation;
         try (var fixture = new Fixture(database, signatures)) {
             var source = fixture.createSource();
             var sourceId = source.getRepositoryId();
@@ -54,6 +57,16 @@ class WorkspaceOriginalHistoryTest {
             captured = git.commitDsl(BRANCH, "second architecture", OWNER, "Selected");
             var copies = new RepositoryWorkspaceService(fixture.rows, fixture.catalog, fixture.git, fixture.memberships);
             workspaceId = copies.createWorkingCopy(OWNER, sourceId, BRANCH, "Working copy", null).getWorkspaceId();
+            try (var walk = new org.eclipse.jgit.revwalk.RevWalk(git.getGitRepository())) {
+                var tag = org.eclipse.jgit.api.Git.wrap(git.getGitRepository()).tag().setName("reviewed/v1")
+                        .setAnnotated(true).setMessage("Reviewed version").setTagger(new org.eclipse.jgit.lib.PersonIdent(OWNER, "owner@example.test"))
+                        .setObjectId(walk.parseCommit(org.eclipse.jgit.lib.ObjectId.fromString(parent))).call();
+                tagId = tag.getObjectId();
+            }
+            annotation = git.getGitRepository().open(tagId).getBytes();
+            var upstream = new WorkspaceUpstreamService(fixture.rows, fixture.catalog, fixture.memberships, fixture.git);
+            var selected = RepositoryContext.workspace(sourceId, workspaceId, "draft", OWNER);
+            upstream.fetchTag(selected, new WorkspaceUpstreamService.TagRequest("reviewed/v1", tagId.name(), captured));
             fixture.git.deleteCentralRepository(sourceId);
             assertNull(fixture.git.getCentralRepository(sourceId).getHeadCommit(BRANCH));
         }
@@ -65,11 +78,15 @@ class WorkspaceOriginalHistoryTest {
             assertEquals(captured, metadata.getCurrentCommit());
             assertEquals(captured, workspace.getHeadCommit("draft"));
             assertEquals(captured, workspace.getHeadCommit("sync-base"));
+            assertEquals(captured, new GitUpstreamRef(
+                    metadata.getSourceRepositoryId(), BRANCH).head(workspace));
             assertEquals(List.of(captured, parent),
                     workspace.getDslHistory("draft").stream().map(DslCommit::commitId).toList());
             assertEquals("first architecture", workspace.getDslAtCommit(parent));
             assertEquals(SignatureStatus.VERIFIED, workspace.verifyCommit(captured).status());
             assertEquals(SignatureStatus.VERIFIED, workspace.verifyCommit(parent).status());
+            assertEquals(tagId, workspace.getGitRepository().exactRef("refs/tags/reviewed/v1").getObjectId());
+            assertArrayEquals(annotation, workspace.getGitRepository().open(tagId).getBytes());
         }
     }
 
@@ -123,6 +140,7 @@ class WorkspaceOriginalHistoryTest {
         try (var fixture = new Fixture(database, verifier)) {
             var workspace = fixture.git.openWorkspaceRepository(workspaceId);
             assertEquals(captured, workspace.getHeadCommit(BRANCH));
+            assertEquals(captured, new GitUpstreamRef(sourceId, BRANCH).head(workspace));
             assertEquals(List.of(captured, ancestor), workspace.getDslHistory(BRANCH).stream().map(DslCommit::commitId).toList());
             assertEquals("first architecture", workspace.getDslAtCommit(ancestor));
             assertEquals("second architecture", workspace.getDslAtHead(BRANCH));

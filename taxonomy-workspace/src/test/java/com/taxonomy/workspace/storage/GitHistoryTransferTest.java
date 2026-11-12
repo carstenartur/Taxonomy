@@ -17,6 +17,68 @@ import static org.assertj.core.api.Assertions.*;
 class GitHistoryTransferTest {
     @TempDir Path keys;
 
+    @Test void incrementalFetchAdvancesOnlyTheSelectedUpstreamAndRejectsStaleOrRewoundHeads() throws Exception {
+        try (var upstream = new DslGitRepository(); var target = new DslGitRepository()) {
+            String base = upstream.commitDsl("main", "initial", "alice", "Initial");
+            String local = target.commitDsl("draft", "personal edits", "bob", "Local only");
+            var tracked = new GitUpstreamRef("source-a", "main");
+            var other = new GitUpstreamRef("source-b", "main");
+            assertThat(tracked.head(target)).isNull();
+            long firstBytes = GitHistoryTransfer.copyCommitClosure(upstream, target, base, List.of());
+            tracked.advance(target, null, base, "alice");
+            assertThat(firstBytes).isPositive();
+            String next = upstream.commitDsl("main", "new", "alice", "New source");
+            long deltaBytes = GitHistoryTransfer.copyCommitClosure(upstream, target, next, List.of(base));
+            assertThat(deltaBytes).isPositive();
+            tracked.advance(target, base, next, "alice");
+            assertThat(tracked.head(target)).isEqualTo(next);
+            assertThat(GitHistoryTransfer.copyCommitClosure(upstream, target, next, List.of(next))).isZero();
+            tracked.advance(target, next, next, "alice");
+            assertThatThrownBy(() -> tracked.advance(target, base, base, "alice")).isInstanceOf(BranchHeadConflictException.class);
+            assertThatThrownBy(() -> tracked.advance(target, next, base, "alice")).isInstanceOf(BranchHeadConflictException.class);
+            assertThat(other.head(target)).isNull();
+            assertThat(tracked.head(target)).isEqualTo(next);
+            assertThat(target.getHeadCommit("draft")).isEqualTo(local);
+            assertThat(target.listBranches()).extracting(DslBranch::name).containsExactly("draft");
+        }
+    }
+
+    @Test void independentHibernateHandlesCompeteForOneExpectedTrackingRef() throws Exception {
+        String database = "jdbc:hsqldb:mem:tracking-cas-" + java.util.UUID.randomUUID();
+        try (var persistence = new com.taxonomy.editor.EditorPersistenceFixture(database);
+             var secondFactory = new DslGitRepositoryFactory(
+                     new io.github.carstenartur.jgit.storage.hibernate.DefaultHibernateRepositoryFactory(persistence.factory));
+             var pool = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var a = persistence.repositories.openWorkspaceRepository("target");
+            var b = secondFactory.openWorkspaceRepository("target");
+            String base = a.commitDsl("main", "common", "owner", "Common");
+            a.createBranchAtCommit("topic", base);
+            String left = a.commitDsl("main", "left", "owner", "Left");
+            String right = a.commitDsl("topic", "right", "owner", "Right");
+            var ref = new GitUpstreamRef("origin", "main");
+            ref.advance(a, null, base, "owner");
+            var barrier = new java.util.concurrent.CyclicBarrier(2);
+            var updates = new java.util.ArrayList<java.util.concurrent.Future<Boolean>>();
+            for (var attempt : java.util.Map.of(a, left, b, right).entrySet()) {
+                updates.add(pool.submit(() -> {
+                    barrier.await(15, java.util.concurrent.TimeUnit.SECONDS);
+                    try {
+                        ref.advance(attempt.getKey(), base, attempt.getValue(), "owner");
+                        return true;
+                    } catch (BranchHeadConflictException changed) {
+                        return false;
+                    }
+                }));
+            }
+            assertThat(List.of(updates.get(0).get(20, java.util.concurrent.TimeUnit.SECONDS),
+                    updates.get(1).get(20, java.util.concurrent.TimeUnit.SECONDS))).containsExactlyInAnyOrder(true, false);
+            assertThat(ref.head(a)).isIn(left, right);
+            assertThat(ref.head(b)).isEqualTo(ref.head(a));
+            assertThat(a.getHeadCommit("main")).isEqualTo(left);
+            assertThat(b.getHeadCommit("topic")).isEqualTo(right);
+        }
+    }
+
     @Test void transferredHistorySurvivesClosingAndReopeningHibernateStorage() throws Exception {
         String database = "jdbc:hsqldb:mem:history-transfer-" + java.util.UUID.randomUUID();
         String first, published;

@@ -159,6 +159,16 @@ Returns the repository topology mode and shared source information.
 }
 ```
 
+### Fetch upstream history into a personal working copy
+
+The selected personal workspace must be ready, and its owner must still have contributor access to the source repository. Use the same workspace and repository context for all requests.
+
+1. Read `GET /api/workspace/upstream` to obtain the source branch, its current `sourceCommit`, and the local `trackedCommit`.
+2. Send `POST /api/workspace/upstream/fetch` with the captured `sourceCommit` and `expectedTrackedCommit` set to that `trackedCommit`. A working copy created before tracking refs were introduced can return `null` for its initial tracking commit.
+3. The response identifies the commit available in the destination. Its Git parents, trees and blobs are now available locally. The working branch stays at its reviewed version until a separate integration.
+
+To retain a specific tag, read `GET /api/workspace/upstream/tag?name=release-1` after fetching its commit. Send the returned `name`, `sourceTagObject`, and `trackedCommit` to `POST /api/workspace/upstream/fetch-tag`. Lightweight tags and annotated commit tags keep their original object identities. Importing an existing tag at the same identity is safe to repeat. A stale capture or a conflicting local tag returns HTTP 409. Read the status again before deciding whether to retry.
+
 ## User-Facing Terminology
 
 The following terminology is used in the user interface to avoid exposing

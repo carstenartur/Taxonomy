@@ -265,6 +265,13 @@ public class UserWorkspace {
         this.lastIntegratedCommit = lastIntegratedCommit;
     }
 
+    /** The same upstream selection applies to standalone fetch, pull, and publication. */
+    public String resolveUpstreamBranch(SystemRepository sourceRepository) {
+        if (syncTargetBranch != null && !syncTargetBranch.isBlank()) return syncTargetBranch;
+        if (sourceBranch != null && !sourceBranch.isBlank()) return sourceBranch;
+        return sourceRepository.getDefaultBranch();
+    }
+
     public String getSyncTargetBranch() {
         return syncTargetBranch;
     }
