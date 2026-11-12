@@ -1,10 +1,10 @@
 package com.taxonomy.shared.config;
 
-import com.taxonomy.catalog.service.TaxonomyService;
-import com.taxonomy.dsl.export.TaxDslExportService;
+import com.taxonomy.support.AnalysisCatalogueSourceFixture;
+import com.taxonomy.security.repository.UserRepository;
+import com.taxonomy.security.service.DatabaseUserDetailsService;
+import com.taxonomy.security.service.UserManagementService;
 import com.taxonomy.preferences.PreferencesService;
-import com.taxonomy.workspace.service.SystemRepositoryService;
-import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import jakarta.servlet.Filter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,8 +21,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
-import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -38,15 +38,25 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
+    "spring.datasource.url=jdbc:hsqldb:mem:rate-limit-security-chain",
     "llm.mock=true",
     "taxonomy.rate-limit.per-minute=1",
     "taxonomy.init.async=false",
     "taxonomy.git.bootstrap=false"
 })
-class RateLimitFilterSecurityChainTest {
+class RateLimitFilterSecurityChainTest implements AnalysisCatalogueSourceFixture {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private UserRepository users;
+
+    @Autowired
+    private UserManagementService accounts;
+
+    @Autowired
+    private DatabaseUserDetailsService authentication;
 
     @Autowired
     private RateLimitFilter rateLimitFilter;
@@ -58,38 +68,15 @@ class RateLimitFilterSecurityChainTest {
     @Qualifier("springSecurityFilterChain")
     private FilterChainProxy securityFilterChain;
 
-    @Autowired
-    private TaxonomyService taxonomyService;
-
-    @Autowired
-    private TaxDslExportService exportService;
-
-    @Autowired
-    private SystemRepositoryService systemRepositoryService;
-
-    @Autowired
-    private DslGitRepositoryFactory repositories;
-
     @MockitoBean
     private PreferencesService preferencesService;
 
     @BeforeEach
-    void configureLimit() throws IOException {
+    void configureLimit() {
         when(preferencesService.getInt(
                 eq("rate-limit.per-minute"), anyInt())).thenReturn(1);
         rateLimitFilter.clearCounters();
 
-        // The production bootstrap guard is JVM-wide and may belong to a different
-        // test database. Own the real source checkpoint needed by analysis pinning.
-        assertThat(taxonomyService.isInitialized()).as("real catalogue startup completed").isTrue();
-        var primary = systemRepositoryService.getPrimaryRepository();
-        var source = repositories.getCentralRepository(primary.getRepositoryId());
-        String branch = primary.getDefaultBranch();
-        if (source.getHeadCommit(branch) == null) {
-            source.commitDsl(branch, exportService.exportAll("rate-limit-security-chain"),
-                    "system", "Catalogue source for rate-limit security-chain fixture");
-        }
-        assertThat(source.getDslAtHead(branch)).as("readable source checkpoint for analysis workspace").isNotBlank();
     }
 
     @Test
@@ -169,9 +156,14 @@ class RateLimitFilterSecurityChainTest {
             String contextPath,
             String username,
             String forwardedFor) throws Exception {
+        String account = "rate-limit-" + username;
+        if (users.findByUsername(account).isEmpty()) {
+            accounts.createUser(Map.of("username", account, "roles", List.of("ROLE_USER")),
+                    java.util.UUID.randomUUID().toString(), "rate-limit-test");
+        }
         String requestPath = contextPath + "/api/analyze-node";
         var request = get(requestPath)
-                .with(user(username).roles("USER"))
+                .with(user(authentication.loadUserByUsername(account)))
                 .header("X-Forwarded-For", forwardedFor)
                 .param("parentCode", "BP")
                 .param("businessText", "resilient communications");

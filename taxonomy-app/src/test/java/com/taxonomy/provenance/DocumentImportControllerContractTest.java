@@ -9,6 +9,7 @@ import com.taxonomy.provenance.config.DocumentImportLimits;
 import com.taxonomy.provenance.controller.DocumentImportController;
 import com.taxonomy.provenance.controller.DocumentImportController.ConfirmCandidatesRequest;
 import com.taxonomy.provenance.controller.DocumentImportController.ConfirmedCandidate;
+import com.taxonomy.provenance.service.DocumentAnalysisExecution;
 import com.taxonomy.provenance.service.DocumentAnalysisService;
 import com.taxonomy.provenance.service.DocumentLimitException;
 import com.taxonomy.provenance.service.DocumentParserService;
@@ -49,7 +50,7 @@ class DocumentImportControllerContractTest {
     private final DocumentProvenanceCommandService commands = mock(DocumentProvenanceCommandService.class);
     private final DocumentAnalysisService analysis = mock(DocumentAnalysisService.class);
     private final DocumentImportLimits limits = new DocumentImportLimits();
-    private final com.taxonomy.composition.analysis.ScopedAnalysisAdapterExecution operations = mock(com.taxonomy.composition.analysis.ScopedAnalysisAdapterExecution.class);
+    private final DocumentAnalysisExecution operations = mock(DocumentAnalysisExecution.class);
     private final DocumentImportController controller = new DocumentImportController(
             parser, mock(SourceProvenanceService.class), commands, analysis, limits, operations);
     private final MockMultipartFile upload = new MockMultipartFile(

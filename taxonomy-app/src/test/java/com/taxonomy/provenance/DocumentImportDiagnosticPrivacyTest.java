@@ -7,6 +7,7 @@ import ch.qos.logback.core.read.ListAppender;
 import com.taxonomy.dto.DocumentParseResult;
 import com.taxonomy.provenance.config.DocumentImportLimits;
 import com.taxonomy.provenance.controller.DocumentImportController;
+import com.taxonomy.provenance.service.DocumentAnalysisExecution;
 import com.taxonomy.provenance.service.DocumentAnalysisService;
 import com.taxonomy.provenance.service.DocumentParserService;
 import com.taxonomy.provenance.service.DocumentProvenanceCommandService;
@@ -38,7 +39,7 @@ class DocumentImportDiagnosticPrivacyTest {
     private final DocumentParserService parser = mock(DocumentParserService.class);
     private final DocumentProvenanceCommandService commands = mock(DocumentProvenanceCommandService.class);
     private final DocumentAnalysisService analysis = mock(DocumentAnalysisService.class);
-    private final com.taxonomy.composition.analysis.ScopedAnalysisAdapterExecution operations = mock(com.taxonomy.composition.analysis.ScopedAnalysisAdapterExecution.class);
+    private final DocumentAnalysisExecution operations = mock(DocumentAnalysisExecution.class);
     private final DocumentImportController controller = new DocumentImportController(
             parser, mock(SourceProvenanceService.class), commands, analysis, new DocumentImportLimits(), operations);
     private final MockMultipartFile upload = new MockMultipartFile(
