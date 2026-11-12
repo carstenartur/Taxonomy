@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const root = new URL('../../taxonomy-app/src/main/resources/static/js/', import.meta.url);
 const sources = new Map();
-for (const path of ['api/taxonomy-api-client.js', 'api/analysis-api.js', 'api/portfolio-api.js',
+for (const path of ['api/taxonomy-api-client.js', 'api/analysis-adapter-api.js', 'api/analysis-api.js', 'api/portfolio-api.js',
   'api/workspace-api.js', 'versioning/taxonomy-context-bar.js',
   'api/import-api.js', 'api/analysis-session-api.js', 'core/taxonomy-analysis-session-core.js',
   'core/taxonomy-analysis-session-transport.js', 'portfolio/taxonomy-portfolio-async.js',
@@ -71,7 +71,7 @@ function boot(fetchImpl, {analysis = false, portfolio = false, beforeCanonical =
   const marker = source.indexOf('(function loadAuthenticatedUiSurfaces');
   assert.ok(marker > 0);
   vm.runInContext(source.slice(0, marker), context, {filename: 'taxonomy-api-client.js'});
-  load('api/analysis-api.js'); load('api/portfolio-api.js'); load('api/import-api.js');
+  load('api/analysis-adapter-api.js'); load('api/analysis-api.js'); load('api/portfolio-api.js'); load('api/import-api.js');
   if (workflow && !beforeCanonical) load('shared/architecture-workflow.js');
   if (analysis && !beforeCanonical) load('core/taxonomy-analysis-session-transport.js');
   if (portfolio && !beforeCanonical) load('portfolio/taxonomy-portfolio-async.js');
@@ -726,6 +726,8 @@ test('actual scoring leaf catch cannot release a newer request button or show it
   app.window.TaxonomyBrowse = {showStatus: (...args) => statuses.push(args)};
   app.load('core/taxonomy-scoring.js');
   const button = node(); button.textContent = 'Explain';
+  button.setAttribute = function (key, value) { this[key] = value; };
+  button.removeAttribute = function (key) { delete this[key]; };
   app.window.TaxonomyScoring.requestLeafJustification('BP', button);
   app.runtime.workspaceId = 'workspace-b';
   app.window.TaxonomyScoring.requestLeafJustification('BP', button);
@@ -822,4 +824,72 @@ for(const status of [401,403])test(`long main analysis retains shared authentica
   await assert.rejects(app.window.AnalysisApi.main({businessText:'controlled-long-operation'}),error=>error.status===status);
   assert.equal(app.events.filter(event=>event.type==='taxonomy-api-auth-failure').length,1);
   assert.equal(app.timers.size,0);
+});
+
+test('child observation consumes only a matching terminal native response and never repeats the command', async () => {
+  const id = '10000000-0000-0000-0000-000000000001', commit = 'a'.repeat(40), calls = [];
+  const headers = {'X-Analysis-Operation-Id':id, 'X-Analysis-Source-Commit':commit, 'Retry-After':'1'};
+  const app = boot(async (url, init) => {
+    calls.push({url, init});
+    return calls.length === 1
+      ? Response.json({operationId:id, sourceCommit:commit, state:'RUNNING', sequence:1}, {status:202,headers})
+      : Response.json({nodeCode:'CP', justification:'Retained reason'}, {headers});
+  });
+  let cancel, cleanup = 0;
+  const result = app.window.AnalysisApi.justifyLeaf({nodeCode:'CP',businessText:'controlled'}, {
+    onPending:fn => {cancel = fn; return () => cleanup++;},
+  }).then(response => response.json());
+  await flush(); await flush();
+  assert.equal(typeof cancel, 'function');
+  const delay = [...app.timers].find(([,timer]) => timer.delay === 1000);
+  assert.ok(delay); app.timers.delete(delay[0]); delay[1].callback();
+  assert.deepEqual(await result, {nodeCode:'CP', justification:'Retained reason'});
+  assert.deepEqual(calls.map(call => call.init.method), ['POST','GET']);
+  assert.match(calls[1].url, new RegExp('/api/analysis-adapters/'+id));
+  assert.equal(cleanup,1);
+});
+
+test('child operation refuses regressed observations and never follows an untrusted location', async () => {
+  const id = '10000000-0000-0000-0000-000000000002', commit = 'c'.repeat(40), calls = [];
+  const app = boot(async (url, init) => {
+    calls.push({url,init});
+    return Response.json({operationId:id,sourceCommit:commit,state:'RUNNING',sequence:calls.length === 1 ? 3 : 2},
+      {status:202,headers:{'X-Analysis-Operation-Id':id,'X-Analysis-Source-Commit':commit,
+        'Retry-After':'1','Content-Location':'https://other.invalid/private'}});
+  });
+  const result = app.window.AnalysisApi.analyzeNode({parentCode:'CP',businessText:'controlled'});
+  const rejected = assert.rejects(result,/Invalid analysis observation/);
+  await flush(); await flush();
+  const delay = [...app.timers].find(([,timer]) => timer.delay === 1000);
+  assert.ok(delay); app.timers.delete(delay[0]); delay[1].callback();
+  await rejected;
+  assert.equal(calls.length,2);
+  assert.match(calls[1].url, new RegExp('/api/analysis-adapters/'+id));
+});
+
+test('navigation abandons pending child observation without cancelling shared work', async () => {
+  const id = '10000000-0000-0000-0000-000000000003', commit = 'b'.repeat(40), calls = [];
+  const app = boot(async (url, init) => {
+    calls.push({url,init});
+    return Response.json({operationId:id,sourceCommit:commit,state:'RUNNING',sequence:1}, {status:202,
+      headers:{'X-Analysis-Operation-Id':id,'X-Analysis-Source-Commit':commit,'Retry-After':'1'}});
+  });
+  let cleanup = 0;
+  const result = app.window.AnalysisApi.justifyLeaf({nodeCode:'CP',businessText:'controlled'},
+    {onPending:() => () => cleanup++});
+  const rejected = assert.rejects(result,error => error.code === 'ABORTED');
+  await flush(); await flush();
+  app.runtime.workspaceId='other';
+  const delay = [...app.timers].find(([,timer]) => timer.delay === 1000);
+  assert.ok(delay); app.timers.delete(delay[0]); delay[1].callback();
+  await rejected;
+  assert.equal(calls.length,1);
+  assert.equal(cleanup,1);
+});
+
+test('an expired child keeps its HTTP status and exposes its localized explanation', async () => {
+  const app = boot(async () => Response.json({code:'ANALYSIS_EXPIRED'}, {status:410}));
+  await assert.rejects(app.window.AnalysisApi.analyzeNode({parentCode:'CP',businessText:'controlled'}),
+    error => error.status === 410 && error.responseBody.code === 'ANALYSIS_EXPIRED'
+      && error.message === 'analysis.adapter.expired');
 });

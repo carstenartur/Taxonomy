@@ -103,6 +103,8 @@ Default first use or explicit "Prepare Workspace"
 | `READY` | Workspace is fully provisioned and ready for use |
 | `FAILED` | Provisioning failed; see error message for details |
 
+While a worker is provisioning a workspace, `GET /api/workspace/provisioning-status` returns `attemptCount`, `attemptStartedAt`, and `leaseExpiresAt`. Normal claims last fifteen minutes. After a worker stops, the owner can repeat `POST /api/workspace/provision` for the same workspace after that timestamp. The retry uses the captured source commit and current source permissions. A live claim returns HTTP 409. During a schema upgrade, pre-existing in-progress allocations receive the same grace period.
+
 ## System Repository
 
 The system automatically creates a primary repository record on startup with:
@@ -158,6 +160,18 @@ Returns the repository topology mode and shared source information.
   "displayName": "Shared Architecture Repository"
 }
 ```
+
+### Fetch upstream history into a personal working copy
+
+The selected personal workspace must be ready, and its owner must still have contributor access to the source repository. Use the same workspace and repository context for all requests.
+
+1. Read `GET /api/workspace/upstream` to obtain the source branch, its current `sourceCommit`, and the local `trackedCommit`.
+2. Send `POST /api/workspace/upstream/fetch` with the captured `sourceCommit` and `expectedTrackedCommit` set to that `trackedCommit`. A working copy created before tracking refs were introduced can return `null` for its initial tracking commit.
+3. The response identifies the commit available in the destination. Its Git parents, trees and blobs are now available locally. The working branch stays at its reviewed version until a separate integration.
+
+To retain a specific tag, read `GET /api/workspace/upstream/tag?name=release-1` after fetching its commit. Send the returned `name`, `sourceTagObject`, and `trackedCommit` to `POST /api/workspace/upstream/fetch-tag`. Lightweight tags and annotated commit tags keep their original object identities. Importing an existing tag at the same identity is safe to repeat. A stale capture or a conflicting local tag returns HTTP 409. Read the status again before deciding whether to retry.
+
+A central fork uses the same request and response fields under `/api/repositories/{forkId}/upstream` when the multi-repository API is enabled. Use `GET` on the base route or `/tag`, and `POST` on `/fetch` or `/fetch-tag`. The fork catalogue fixes the upstream repository and branch. Reading requires current contributor access to both repositories. Publication additionally requires architecture write permission. A fork of a restricted source must still be private at publication. Fetch advances the fork's upstream tracking ref. Its default branch, independently created branches and original fork point retain their values.
 
 ## User-Facing Terminology
 

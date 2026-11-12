@@ -667,10 +667,10 @@ public class LlmService {
         if (pendingFailure != null) throw pendingFailure.failure;
 
         List<TaxonomyNode> productNodes = nodes.stream().filter(this::isProduct).toList();
-        if (!productNodes.isEmpty() && batch.productEvaluationComplete()
+        if (!productNodes.isEmpty() && minimumProductScore() > 0 && batch.productEvaluationComplete()
                 && productNodes.stream().noneMatch(
                         node -> scores.getOrDefault(node.getCode(), 0d) > 0)) {
-            addProductCoverageGap(productCoverageGaps, productNodes, parentScore);
+            addProductCoverageGap(productCoverageGaps, productNodes, parentScore, detail.getAssessedProductScores());
         }
 
         for (Map.Entry<String, Double> entry : scores.entrySet()) {
@@ -1051,8 +1051,8 @@ public class LlmService {
         int minimumScore = minimumProductScore();
 
         if (providerConfig.isMockMode()) {
-            ScoreParseResult mock = buildMockProductScores(products, minimumScore);
-            detail.setScores(mock.scores());
+            ScoreParseResult mock = buildMockProductScores(products);
+            recordProductScores(detail, mock.scores(), products, minimumScore);
             detail.setReasons(mock.reasons());
             detail.setPrompt("(mock mode – independent product scores)");
             detail.setRawResponse("(mock product suitability scores)");
@@ -1077,7 +1077,7 @@ public class LlmService {
             detail.setPrompt("(local embedding – independent product suitability)");
             try {
                 Map<String, Double> rawScores = scoreLocalNodes(businessText, products);
-                detail.setScores(applyProductThreshold(rawScores, products, minimumScore));
+                recordProductScores(detail, rawScores, products, minimumScore);
                 detail.setRawResponse("(cosine similarity scores computed via local ONNX embeddings)");
                 detail.setError(missingLocalScores(rawScores, products));
                 if (hasError(detail)) recordFailure(detail.getError()); else recordSuccess();
@@ -1154,8 +1154,8 @@ public class LlmService {
 
         try {
             ScoreParseResult parsed = responseParser.parseIndependentScoreParseResult(
-                    rawText, products, minimumScore);
-            detail.setScores(parsed.scores());
+                    rawText, products, 0);
+            recordProductScores(detail, parsed.scores(), products, minimumScore);
             detail.setReasons(parsed.reasons());
             recordSuccess();
         } catch (AnalysisStoppedException stopped) {
@@ -1172,8 +1172,7 @@ public class LlmService {
         return detail;
     }
 
-    private ScoreParseResult buildMockProductScores(
-            List<TaxonomyNode> products, int minimumScore) {
+    private ScoreParseResult buildMockProductScores(List<TaxonomyNode> products) {
         SavedAnalysis mockAnalysis = loadMockAnalysis();
         Map<String, Double> scores = new LinkedHashMap<>();
         Map<String, String> reasons = new LinkedHashMap<>();
@@ -1184,7 +1183,7 @@ public class LlmService {
                 raw = (double) Math.floorMod(product.getCode().hashCode(), 101);
             }
             double score = Math.max(0, Math.min(100, raw));
-            scores.put(product.getCode(), score >= minimumScore ? score : 0);
+            scores.put(product.getCode(), score);
             String reason = mockAnalysis != null && mockAnalysis.getReasons() != null
                     ? mockAnalysis.getReasons().get(product.getCode()) : null;
             reasons.put(product.getCode(), reason != null ? reason
@@ -1195,7 +1194,7 @@ public class LlmService {
         return new ScoreParseResult(scores, reasons, null);
     }
 
-    private Map<String, Double> applyProductThreshold(
+    private void recordProductScores(LlmCallDetail detail,
             Map<String, Double> rawScores,
             List<TaxonomyNode> products,
             int minimumScore) {
@@ -1206,7 +1205,8 @@ public class LlmService {
             double clamped = com.taxonomy.dto.AnalysisPercentages.require(raw);
             scores.put(product.getCode(), clamped >= minimumScore ? clamped : 0);
         }
-        return scores;
+        detail.setAssessedProductScores(rawScores);
+        detail.setScores(scores);
     }
 
     private static String missingLocalScores(Map<String, Double> scores, List<TaxonomyNode> nodes) {
@@ -1256,7 +1256,7 @@ public class LlmService {
 
     private void addProductCoverageGap(List<ProductCoverageGap> gaps,
                                        List<TaxonomyNode> products,
-                                       double familyScore) {
+                                       double familyScore, Map<String, Double> assessedScores) {
         String parentCode = products.get(0).getParentCode();
         if (gaps.stream().anyMatch(gap -> Objects.equals(gap.productFamilyCode(), parentCode))) {
             return;
@@ -1267,6 +1267,8 @@ public class LlmService {
                 .map(TaxonomyNode::getCode)
                 .sorted()
                 .toList();
+        Map<String, Double> retained = new LinkedHashMap<>(assessedScores);
+        retained.keySet().retainAll(candidateCodes);
         gaps.add(new ProductCoverageGap(
                 parentCode,
                 parentName,
@@ -1274,7 +1276,7 @@ public class LlmService {
                 candidateCodes,
                 "The product family is relevant, but none of its " + candidateCodes.size()
                         + " catalogued products reached the suitability threshold of "
-                        + minimumProductScore() + "."));
+                        + minimumProductScore() + ".", minimumProductScore(), retained));
     }
 
     private void captureScoreContexts(List<TaxonomyNode> nodes,
@@ -1618,6 +1620,31 @@ public class LlmService {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    public com.taxonomy.extension.api.plugin.PluginInvocation captureInteractiveProvider(String provider) {
+        return providerConfig.captureProviderBinding(provider);
+    }
+
+    /** Interactive operations reserve durable work only when the selected provider can perform inference. */
+    public boolean interactiveDispatchAvailable(boolean scoring) {
+        if (providerConfig.isMockMode() || isReplayActive()) return false;
+        var provider = getActiveProviderId();
+        if (providerConfig.isScenarioReplay(provider)) return false;
+        if (provider.equals(LlmProvider.LOCAL_ONNX.id())) return scoring && localEmbeddingService.isAvailable();
+        return !missingCredential(provider, getApiKey(provider));
+    }
+
+    /** Captures the exact catalogue evidence used by interactive assessment, including root context and product roles. */
+    public String interactiveSource(List<TaxonomyNode> nodes, boolean scoring) {
+        var evidence = new java.util.ArrayList<String>();
+        var contexts = scoring ? taxonomyService.getAssessmentContexts(nodes) : Map.<String,String>of();
+        for (var node : nodes) {
+            evidence.add(com.taxonomy.analysis.operation.AnalysisAdapterStore.digest(node.getCode(), node.getParentCode(),
+                    node.getNameEn(), node.getNameDe(), node.getDescriptionEn(), node.getDescriptionDe(),
+                    contexts.get(node.getCode()), scoring ? Boolean.toString(isProduct(node)) : null));
+        }
+        return com.taxonomy.analysis.operation.AnalysisAdapterStore.digest(evidence.toArray(String[]::new));
+    }
+
     private boolean missingCredential(ProviderId provider, String key) {
         if (key != null && !key.isBlank()) return false;
         // Existing built-ins retain their credential/no-auth-marker behavior.
@@ -1735,6 +1762,20 @@ public class LlmService {
                                              List<TaxonomyNode> pathNodes,
                                              Map<String, Double> allScores,
                                              Map<String, String> allReasons) {
+        try {
+            return requireLeafJustification(businessText, leafCode, pathNodes, allScores, allReasons);
+        } catch (LeafJustificationUnavailable unavailable) {
+            return unavailable.getMessage();
+        }
+    }
+
+    private static final class LeafJustificationUnavailable extends RuntimeException {
+        private LeafJustificationUnavailable(String publicMessage) { super(publicMessage); }
+    }
+
+    /** A durable caller settles an unavailable result as failed instead of saving an error as an explanation. */
+    public String requireLeafJustification(String businessText, String leafCode, List<TaxonomyNode> pathNodes,
+                                           Map<String, Double> allScores, Map<String, String> allReasons) {
         try (var reasons = withAnalysisReasonLength(null);
              var language = AnalysisLanguageContext.open(AnalysisLanguageContext.resolveCurrentRequest(null))) {
             return generateLeafJustificationWithFrozenReasonLength(businessText, leafCode, pathNodes, allScores, allReasons);
@@ -1754,13 +1795,13 @@ public class LlmService {
         ProviderId provider = getActiveProviderId();
 
         if (provider.equals(LlmProvider.LOCAL_ONNX.id())) {
-            return "Leaf justification is not available for the LOCAL_ONNX provider "
-                    + "(cosine-similarity scores do not produce textual reasons).";
+            throw new LeafJustificationUnavailable("Leaf justification is not available for the LOCAL_ONNX provider "
+                    + "(cosine-similarity scores do not produce textual reasons).");
         }
 
         String apiKey = getApiKey(provider);
         if (missingCredential(provider, apiKey)) {
-            return "Leaf justification unavailable: no API key configured for provider " + provider + ".";
+            throw new LeafJustificationUnavailable("Leaf justification unavailable: no API key configured for provider " + provider + ".");
         }
 
         // Build the path description
@@ -1801,23 +1842,25 @@ public class LlmService {
         log.info("Generating leaf justification for node {} via {}", leafCode, provider);
         log.debug("Leaf justification prompt:\n{}", prompt);
 
+        String rawText;
         try {
             LlmGateway gateway = gatewayRegistry.getGatewayById(provider);
             String body = gateway.sendHttpRequest(prompt, apiKey);
-            String rawText = body != null ? gateway.extractResponseText(body) : null;
-            if (rawText == null || rawText.isBlank()) {
-                return "The LLM did not return a justification. Please try again.";
-            }
-            recordSuccess();
-            return rawText.trim();
+            rawText = body != null ? gateway.extractResponseText(body) : null;
         } catch (AnalysisStoppedException stopped) {
             throw stopped;
         } catch (Exception e) {
             AnalysisExecutionFailures.rethrow(e);
             log.error("Failed to generate leaf justification for {}", leafCode, e);
             recordFailure(e.getMessage());
-            return "Error generating justification: " + e.getMessage();
+            if (providerConfig.isScenarioReplay(provider))
+                throw new LeafJustificationUnavailable("DEMO_REPLAY: No authored justification is available.");
+            throw new LeafJustificationUnavailable("Error generating justification. Please try again.");
         }
+        if (rawText == null || rawText.isBlank())
+            throw new LeafJustificationUnavailable("The LLM did not return a justification. Please try again.");
+        recordSuccess();
+        return rawText.trim();
     }
 
     // ── Raw LLM call (free-form prompt → raw text) ────────────────────────────

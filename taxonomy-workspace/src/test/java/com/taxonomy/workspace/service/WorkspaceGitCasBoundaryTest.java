@@ -71,7 +71,8 @@ class WorkspaceGitCasBoundaryTest {
             workspace.setBaseCommit(base); workspace.setProvisioningStatus(WorkspaceProvisioningStatus.NOT_PROVISIONED);
             when(rows.findByWorkspaceId("workspace")).thenReturn(Optional.of(workspace));
             when(rows.findByUsernameAndSharedFalse("alice")).thenReturn(Optional.of(workspace));
-            when(rows.claimProvisioning(eq("workspace"),eq("alice"),any(),any())).thenReturn(1);
+            WorkspaceProvisioningTestClaims.enable(rows);
+            when(rows.claimProvisioning(eq("workspace"),eq("alice"),any(),any(), anyString(), any(), any())).thenReturn(1);
             when(rows.save(any())).thenAnswer(c -> c.getArgument(0));
             when(states.findByUsername("alice")).thenReturn(Optional.of(new SyncState()));
             when(states.save(any())).thenAnswer(c -> c.getArgument(0));

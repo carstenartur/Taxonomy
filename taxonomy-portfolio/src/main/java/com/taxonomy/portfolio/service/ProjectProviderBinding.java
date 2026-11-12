@@ -39,6 +39,9 @@ public interface ProjectProviderBinding {
     Optional<String> admittedProvider(Long projectId, List<Target> targets, String requestedProvider,
                                       String username, WorkspaceContext context);
 
+    /** Whether a stored provider ID identifies replay evidence, including after its run closed. */
+    default boolean isRecordedReplay(String provider) { return false; }
+
     /** Null object: no project is bound. */
     ProjectProviderBinding NONE = (projectId, targets, requestedProvider, username, context) -> Optional.empty();
 }

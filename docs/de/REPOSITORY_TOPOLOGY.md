@@ -103,6 +103,8 @@ Erste Nutzung des Standards oder ausdrückliches "Arbeitsbereich vorbereiten"
 | `READY` | Arbeitsbereich ist vollständig bereitgestellt und einsatzbereit |
 | `FAILED` | Bereitstellung fehlgeschlagen; siehe Fehlermeldung für Details |
 
+Während der Bereitstellung liefert `GET /api/workspace/provisioning-status` die Felder `attemptCount`, `attemptStartedAt` und `leaseExpiresAt`. Ein Bereitstellungsversuch reserviert den Arbeitsbereich für 15 Minuten. Nach einem Prozessabbruch kann der Eigentümer `POST /api/workspace/provision` nach Ablauf dieser Frist für denselben Arbeitsbereich wiederholen. Die Wiederaufnahme verwendet den gespeicherten Quell-Commit und prüft die aktuellen Quellrechte. Bei einem noch laufenden Versuch antwortet die API mit HTTP 409. Beim Schema-Upgrade erhalten bereits laufende Bereitstellungen dieselbe Frist.
+
 ## System-Repository
 
 Das System erstellt beim Start automatisch einen primären Repository-Datensatz mit:
@@ -159,6 +161,18 @@ Gibt den Repository-Topologiemodus und Informationen zur gemeinsamen Quelle zur�
   "displayName": "Shared Architecture Repository"
 }
 ```
+
+### Quellhistorie in eine persönliche Arbeitskopie abrufen
+
+Der ausgewählte persönliche Arbeitsbereich muss bereit sein. Sein Eigentümer benötigt weiterhin Mitwirkungsrechte am Quell-Repository. Alle Anfragen beziehen sich auf denselben Arbeitsbereich und dasselbe Repository.
+
+1. `GET /api/workspace/upstream` liefert den Quell-Branch, dessen aktuellen `sourceCommit` und den lokal gespeicherten `trackedCommit`.
+2. `POST /api/workspace/upstream/fetch` erwartet den ermittelten `sourceCommit` und den Wert von `trackedCommit` im Feld `expectedTrackedCommit`. Bei älteren Arbeitskopien kann der erste `trackedCommit` den Wert `null` haben.
+3. Die Antwort nennt den lokal verfügbaren Commit. Seine Eltern, Verzeichnisbäume und Dateien sind jetzt in der Arbeitskopie gespeichert. Der Arbeits-Branch behält seine geprüfte Version bis zu einer gesonderten Integration.
+
+Um ein bestimmtes Tag zu übernehmen, rufen Sie nach dem zugehörigen Commit `GET /api/workspace/upstream/tag?name=release-1` ab. Übergeben Sie die zurückgegebenen Felder `name`, `sourceTagObject` und `trackedCommit` an `POST /api/workspace/upstream/fetch-tag`. Leichtgewichtige und annotierte Commit-Tags behalten ihre ursprünglichen Objekt-IDs. Ein bereits vorhandenes identisches Tag kann erneut abgerufen werden. Ein veralteter Stand oder ein abweichendes lokales Tag führt zu HTTP 409. Lesen Sie in diesem Fall den Status erneut, bevor Sie den Abruf wiederholen.
+
+Bei aktivierter Multi-Repository-API verwendet ein zentraler Fork dieselben Anfrage- und Antwortfelder unter `/api/repositories/{forkId}/upstream`. Für den Basis-Endpunkt und `/tag` gilt `GET`, für `/fetch` und `/fetch-tag` gilt `POST`. Der Fork-Katalog legt Quell-Repository und Quell-Branch fest. Das Lesen erfordert aktuelle Contributor-Rechte in beiden Repositories. Für die Veröffentlichung ist zusätzlich die Berechtigung zum Schreiben von Architekturdaten erforderlich. Ein Fork aus einer eingeschränkten Quelle muss auch bei der Veröffentlichung privat sein. Der Abruf aktualisiert die Tracking-Ref des Forks. Sein Standardbranch, unabhängig angelegte Branches und der ursprüngliche Forkpunkt behalten ihre Werte.
 
 ## Benutzerfreundliche Terminologie
 

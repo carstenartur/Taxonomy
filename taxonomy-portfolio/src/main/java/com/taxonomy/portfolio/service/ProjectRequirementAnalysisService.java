@@ -43,6 +43,7 @@ public class ProjectRequirementAnalysisService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ProjectRequirementAnalysisService.class);
     private static final int DEFAULT_ARCHITECTURE_NODES = 25;
+    private static final int MAX_CLAIM_TRANSACTION_ATTEMPTS = 3;
 
     private final ProjectPortfolioService projectService;
     private final PortfolioAnalysisPersistenceService persistenceService;
@@ -363,13 +364,10 @@ public class ProjectRequirementAnalysisService {
         String effectiveProvider = job.provider() != null
                 ? job.provider() : llmService.getActiveProviderName();
 
-        List<PortfolioAnalysisWorkQueue.WorkItem> workItems =
-                workQueue.pending(jobId, projectId, scopeKey);
+        List<PortfolioAnalysisWorkQueue.WorkItem> workItems = claimPendingItems(jobId, projectId, scopeKey);
         if (workItems.isEmpty()) {
             return reconcileJobState(jobId, projectId, username, context, scopeKey);
         }
-        persistenceService.markJobRunning(jobId, projectId, scopeKey);
-
         for (PortfolioAnalysisWorkQueue.WorkItem workItem : workItems) {
             String snapshotId = UUID.randomUUID().toString();
             String analysisSessionId = "portfolio:" + snapshotId;
@@ -460,6 +458,17 @@ public class ProjectRequirementAnalysisService {
             }
         }
         return reconcileJobState(jobId, projectId, username, context, scopeKey);
+    }
+
+    private List<PortfolioAnalysisWorkQueue.WorkItem> claimPendingItems(String jobId, Long projectId, String scopeKey) {
+        // Each call starts a new transaction. Only retry a rolled-back claim, before any provider work.
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return workQueue.pending(jobId, projectId, scopeKey);
+            } catch (org.springframework.dao.PessimisticLockingFailureException contention) {
+                if (attempt == MAX_CLAIM_TRANSACTION_ATTEMPTS) throw contention;
+            }
+        }
     }
 
     private AnalysisJobView reconcileJobState(String jobId,

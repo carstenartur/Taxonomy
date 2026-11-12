@@ -28,5 +28,9 @@ public class ClusterAnalysisRun {
     @Column(name = "created_at", nullable = false) long createdAt;
     @Column(name = "updated_at", nullable = false) long updatedAt;
     @Version @Column(name = "row_version", nullable = false) long version;
+    // Every admitted run has at least one root. Reuse the prior terminal storage tag so
+    // installations with the original enum CHECK constraint can read and write tombstones.
+    boolean expired() { return state == ClusterAnalysisState.CANCELLED && totalRoots == 0; }
+
     protected ClusterAnalysisRun() { }
 }

@@ -121,6 +121,8 @@ class GitNativeSyncIntegrationServiceTest {
                 .thenReturn(isolatedWorkspaceRepository);
         // Immutable-head reads use the same fixed content fixtures as before.
         when(sourceRepository.getHeadCommit(any(String.class))).thenReturn("source-head");
+        when(isolatedWorkspaceRepository.recordIntegratedUpstream(any(String.class), any(String.class),
+                any(String.class), any(String.class))).thenAnswer(call -> call.getArgument(2));
         when(sourceRepository.getDslAtCommit("source-head"))
                 .thenAnswer(call -> sourceRepository.getDslAtHead(sourceMetadata.getDefaultBranch()));
         when(isolatedWorkspaceRepository.getHeadCommit(any(String.class))).thenReturn("workspace-head");

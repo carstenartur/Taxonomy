@@ -106,8 +106,18 @@ public final class ApiAccessPolicy {
             rules.add(rule(method, "/api/repositories/*/members/**", Access.PERMISSION, REPOSITORY_MANAGE, OWNER));
         }
         add(rules, "POST", ADMIN_CONFIGURATION, "/api/repositories");
-        for (String path : List.of("/api/repositories/*/workspaces", "/api/architecture/editor/workspaces", "/api/workspace/provision")) {
+        for (String path : List.of("/api/repositories/*/workspaces", "/api/architecture/editor/workspaces",
+                "/api/workspace/provision", "/api/workspace/upstream/fetch", "/api/workspace/upstream/fetch-tag")) {
             rules.add(rule("POST", path, Access.PERMISSION, ANALYSIS_RUN, CONTRIBUTOR));
+        }
+        for (String path : List.of("/api/workspace/upstream", "/api/workspace/upstream/tag")) {
+            rules.add(rule("GET", path, Access.PERMISSION, ARCHITECTURE_READ, CONTRIBUTOR));
+        }
+        for (String path : List.of("/api/repositories/*/upstream", "/api/repositories/*/upstream/tag")) {
+            rules.add(rule("GET", path, Access.PERMISSION, ARCHITECTURE_READ, CONTRIBUTOR));
+        }
+        for (String path : List.of("/api/repositories/*/upstream/fetch", "/api/repositories/*/upstream/fetch-tag")) {
+            rules.add(rule("POST", path, Access.PERMISSION, ARCHITECTURE_WRITE, CONTRIBUTOR));
         }
         add(rules, "POST", ARCHITECTURE_WRITE, "/api/repositories/*/forks");
         add(rules, "POST", ADMIN_CONFIGURATION, "/api/workspace/external/fetch");
@@ -181,7 +191,8 @@ public final class ApiAccessPolicy {
             rules.add(new Rule("POST", path, Access.PERMISSION, ARCHITECTURE_WRITE, RESOURCE_CHECKS,
                     PathPatternParser.defaultInstance.parse(path), List.of(ANALYSIS_RUN), List.of(), List.of()));
         }
-        add(rules, "GET", ANALYSIS_READ, "/api/analysis-drafts/**", "/api/analysis-runs/**", "/api/analysis-continuations/**", "/api/analysis-progress/**");
+        add(rules, "POST", ANALYSIS_RUN, "/api/analysis-adapters/*/cancel");
+        add(rules, "GET", ANALYSIS_READ, "/api/analysis-adapters/*", "/api/analysis-drafts/**", "/api/analysis-runs/**", "/api/analysis-continuations/**", "/api/analysis-progress/**");
         add(rules, "GET", ANALYSIS_READ, "/api/projects/*/analysis-jobs/**", "/api/projects/*/requirements/*/snapshots",
                 "/api/projects/*/snapshots/**", "/api/projects/*/architecture-workbench/*",
                 "/api/projects/*/requirements/*/copilot/latest", "/api/projects/*/copilot-operations/*");

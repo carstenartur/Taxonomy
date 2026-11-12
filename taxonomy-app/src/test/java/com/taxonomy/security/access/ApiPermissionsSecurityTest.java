@@ -60,6 +60,25 @@ class ApiPermissionsSecurityTest {
                 .andExpect(status().isForbidden());
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/workspace/upstream/fetch", "/api/workspace/upstream/fetch-tag"})
+    void upstreamPublicationRequiresAnExecutionRoleAndSessionCsrf(String path) throws Exception {
+        mvc.perform(post(path).with(csrf()).with(user("reader").roles("READER")))
+                .andExpect(status().isForbidden());
+        mvc.perform(post(path).with(user("analyst").roles("USER")))
+                .andExpect(status().isForbidden());
+        mvc.perform(post(path).with(csrf()).with(user("analyst").roles("USER")))
+                .andExpect(status().isOk());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/repositories/fork/upstream/fetch", "/api/repositories/fork/upstream/fetch-tag"})
+    void centralForkPublicationRequiresArchitectureWriteAndSessionCsrf(String path) throws Exception {
+        mvc.perform(post(path).with(csrf()).with(user("analyst").roles("USER"))).andExpect(status().isForbidden());
+        mvc.perform(post(path).with(user("architect").roles("ARCHITECT"))).andExpect(status().isForbidden());
+        mvc.perform(post(path).with(csrf()).with(user("architect").roles("ARCHITECT"))).andExpect(status().isOk());
+    }
+
     @Test
     void provisionalCatalogueQueueRequiresTechnicalAdministrationBeforeReadingEvidence() throws Exception {
         String path = "/api/admin/catalogue/provisional-information-products";
@@ -72,6 +91,20 @@ class ApiPermissionsSecurityTest {
                 new SimpleGrantedAuthority("SCOPE_architecture:read")))).andExpect(status().isForbidden());
         mvc.perform(get(path).with(user("operator").roles("ADMIN"))).andExpect(status().isServiceUnavailable());
         mvc.perform(post(path).with(csrf()).with(user("operator").roles("ADMIN"))).andExpect(status().isMethodNotAllowed());
+    }
+
+    @Test
+    void mappingReviewHistorySubmissionAndDownloadsRequireTechnicalAdministration() throws Exception {
+        String history = "/api/admin/catalogue/provisional-information-products/IP-1/reviews";
+        String proposal = history + "/0000000000000000000000000000000000000001/overlay";
+        for (String path : java.util.List.of(history, proposal)) {
+            mvc.perform(get(path)).andExpect(status().isUnauthorized());
+            mvc.perform(get(path).with(user("architect").roles("ARCHITECT"))).andExpect(status().isForbidden());
+            mvc.perform(get(path).with(user("admin").roles("ADMIN"))).andExpect(status().isOk());
+        }
+        mvc.perform(post(history).with(csrf()).with(user("reader").roles("READER"))).andExpect(status().isForbidden());
+        mvc.perform(post(history).with(csrf()).with(user("architect").roles("ARCHITECT"))).andExpect(status().isForbidden());
+        mvc.perform(post(history).with(csrf()).with(user("admin").roles("ADMIN"))).andExpect(status().isOk());
     }
 
     @Test
@@ -386,7 +419,11 @@ class ApiPermissionsSecurityTest {
 
     @RestController
     static class Probe {
-        @RequestMapping({"/api/projects/p", "/api/analyze", "/api/analysis-drafts", "/api/workspace/provision",
+        @RequestMapping({"/api/admin/catalogue/provisional-information-products/IP-1/reviews",
+                "/api/admin/catalogue/provisional-information-products/IP-1/reviews/0000000000000000000000000000000000000001/overlay",
+                "/api/projects/p", "/api/analyze", "/api/analysis-drafts", "/api/workspace/provision",
+                "/api/workspace/upstream/fetch", "/api/workspace/upstream/fetch-tag",
+                "/api/repositories/fork/upstream/fetch", "/api/repositories/fork/upstream/fetch-tag",
                 "/api/export/mermaid", "/api/dsl/validate", "/api/admin/users", "/api/unclassified-write", "/api/account/me",
                 "/api/analyze-stream", "/api/analyze-node", "/api/workspace/external/push", "/api/workspace/external/full-sync",
                 "/api/workspace/create", "/api/workspace/copy", "/api/workspace/compare", "/api/workspace/unclassified",

@@ -98,7 +98,8 @@ measure_small_search() {
   done
   jq -se -f "${CHART_DIR}/small-search-budget.jq" "${samples}" >"${directory}/resources.json"
   sample_resources >"${directory}/inference-samples.ndjson"
-  exercise_small_provider_fault "${pod}" "${directory}"
+  capture_small_inference() { sample_resources >>"${directory}/inference-samples.ndjson"; }
+  exercise_small_provider_fault "${pod}" "${directory}" capture_small_inference
   sample_resources >>"${directory}/post-fault.ndjson"
   jq -en --arg sha "${SOURCE_SHA}" --arg tree "$(git -C "${ROOT_DIR}" rev-parse "${SOURCE_SHA}^{tree}")" \
     --arg chart "$(git -C "${ROOT_DIR}" rev-parse "${SOURCE_SHA}:deploy/helm/taxonomy")" \

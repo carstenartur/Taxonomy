@@ -12,8 +12,14 @@ import com.taxonomy.workspace.signing.GitCommitSignatureService;
 import com.taxonomy.workspace.signing.SignatureStatus;
 import com.taxonomy.workspace.signing.SigningTestKeys;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.GitUpstreamRef;
 import com.taxonomy.workspace.storage.DslWorkspaceReadAdapter;
 import io.github.carstenartur.jgit.storage.hibernate.DefaultHibernateRepositoryFactory;
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.PersonIdent;
+import org.eclipse.jgit.revwalk.RevWalk;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -30,6 +36,9 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.AdditionalAnswers.delegatesTo;
@@ -77,6 +86,8 @@ class CentralForkOriginalHistoryTest {
         try (var fixture = new Fixture(database, verifier)) {
             var fork = fixture.catalog.getRepository(forkId);
             assertEquals(tip, fork.getForkPointCommit());
+            assertEquals(tip, new GitUpstreamRef(sourceId, BRANCH)
+                    .head(fixture.git.getCentralRepository(forkId)));
             var reads = new DslWorkspaceReadAdapter(fixture.git);
             var forkRead = reads.openRead(RepositoryContext.centralRead(forkId, BRANCH, OWNER));
             var sourceRead = reads.openRead(RepositoryContext.centralRead(sourceId, BRANCH, OWNER));
@@ -138,6 +149,105 @@ class CentralForkOriginalHistoryTest {
             assertEquals(captured, failed.getForkPointCommit());
             assertFalse(fixture.memberships.canRead(failed, actor));
             assertNull(fixture.git.getCentralRepository(failed.getRepositoryId()).getHeadCommit(branch));
+        }
+    }
+
+    @Test
+    void incrementalFetchAndSelectedTagSurviveSourceDeletionWithoutMovingForkBranches() throws Exception {
+        String database = "jdbc:hsqldb:file:" + directory.resolve("incremental") + ";shutdown=true";
+        var signer = SigningTestKeys.createService(directory.resolve("keys"));
+        String sourceId, forkId, base, local, incoming, tag;
+        try (var fixture = new Fixture(database, signer)) {
+            var source = fixture.createSource(RepositoryVisibility.PRIVATE);
+            sourceId = source.getRepositoryId();
+            var origin = fixture.git.getCentralRepository(sourceId);
+            base = origin.commitDsl(BRANCH, "initial", OWNER, "Initial");
+            var fork = fixture.service.createFork(sourceId, BRANCH, "Fork", "incremental-fork", null, null, OWNER);
+            forkId = fork.getRepositoryId();
+            var target = fixture.git.getCentralRepository(forkId);
+            local = target.commitDsl(BRANCH, "independent fork edits", OWNER, "Fork edit");
+            incoming = origin.commitDsl(BRANCH, "new upstream architecture", OWNER, "Upstream edit");
+            var service = new CentralForkUpstreamService(fixture.catalog, fixture.memberships, fixture.git);
+            var status = service.inspect(forkId, OWNER);
+            assertEquals(sourceId, status.sourceRepositoryId());
+            assertEquals(incoming, status.sourceCommit());
+            assertEquals(base, status.trackedCommit());
+            var fetch = new WorkspaceUpstreamService.Request(incoming, base);
+            assertEquals(incoming, service.fetch(forkId, OWNER, fetch).trackedCommit());
+            assertEquals(incoming, service.fetch(forkId, OWNER, fetch).trackedCommit());
+            assertThrows(BranchHeadConflictException.class, () -> service.fetch(forkId, OWNER,
+                    new WorkspaceUpstreamService.Request(base, base)));
+            try (var walk = new RevWalk(origin.getGitRepository())) {
+                var commit = walk.parseCommit(ObjectId.fromString(incoming));
+                var git = Git.wrap(origin.getGitRepository());
+                git.tag().setName("omitted").setAnnotated(false).setObjectId(commit).call();
+                tag = git.tag().setName("review/v1").setAnnotated(true).setMessage("Reviewed upstream")
+                        .setTagger(new PersonIdent(OWNER, "owner@example.test")).setObjectId(commit).call().getObjectId().name();
+            }
+            assertEquals(tag, service.inspectTag(forkId, OWNER, "review/v1").sourceTagObject());
+            var selection = new WorkspaceUpstreamService.TagRequest("review/v1", tag, incoming);
+            assertEquals(tag, service.fetchTag(forkId, OWNER, selection).destinationTagObject());
+            assertEquals(tag, service.fetchTag(forkId, OWNER, selection).destinationTagObject());
+            assertNull(target.getGitRepository().exactRef("refs/tags/omitted"));
+            assertEquals(local, target.getHeadCommit(BRANCH));
+            fixture.git.deleteCentralRepository(sourceId);
+        }
+        var verifier = new GitCommitSignatureService(SigningTestKeys.verifierProperties(directory.resolve("keys")));
+        try (var fixture = new Fixture(database, verifier)) {
+            var target = fixture.git.getCentralRepository(forkId);
+            assertEquals(base, fixture.catalog.getRepository(forkId).getForkPointCommit());
+            assertEquals(local, target.getHeadCommit(BRANCH));
+            assertEquals(incoming, new GitUpstreamRef(sourceId, BRANCH).head(target));
+            assertEquals("new upstream architecture", target.getDslAtCommit(incoming));
+            assertEquals(SignatureStatus.VERIFIED, target.verifyCommit(incoming).status());
+            assertEquals(tag, target.getGitRepository().exactRef("refs/tags/review/v1").getObjectId().name());
+            assertEquals(Constants.OBJ_TAG, target.getGitRepository().open(ObjectId.fromString(tag)).getType());
+            assertTrue(target.isAncestor(base, incoming));
+            assertFalse(target.isAncestor(local, incoming));
+        }
+    }
+
+    @Test
+    void concurrentFetchesWithMatchingBranchAndTagNamesStayInsideTheirOwnForks() throws Exception {
+        String database = "jdbc:hsqldb:file:" + directory.resolve("overlap") + ";shutdown=true";
+        try (var fixture = new Fixture(database, GitCommitSignatureService.disabled());
+             var workers = Executors.newFixedThreadPool(2)) {
+            var first = fixture.createSource(RepositoryVisibility.PRIVATE);
+            var second = fixture.catalog.createCentralRepository("Second", "second-origin", null,
+                    RepositoryVisibility.PRIVATE, OWNER, BRANCH);
+            fixture.catalog.markProvisioningReady(second.getRepositoryId());
+            var service = new CentralForkUpstreamService(fixture.catalog, fixture.memberships, fixture.git);
+            record Pair(String forkId, String base, String incoming) {}
+            var pairs = new java.util.ArrayList<Pair>();
+            for (var origin : List.of(first, second)) {
+                String sourceId = origin.getRepositoryId();
+                var source = fixture.git.getCentralRepository(sourceId);
+                String base = source.commitDsl(BRANCH, "base " + sourceId, OWNER, "Initial");
+                var fork = fixture.service.createFork(sourceId, BRANCH, "Fork", "fork-" + origin.getSlug(),
+                        null, RepositoryVisibility.PRIVATE, OWNER);
+                String incoming = source.commitDsl(BRANCH, "next " + sourceId, OWNER, "New upstream");
+                try (var walk = new RevWalk(source.getGitRepository())) {
+                    Git.wrap(source.getGitRepository()).tag().setName("same-name").setAnnotated(false)
+                            .setObjectId(walk.parseCommit(ObjectId.fromString(incoming))).call();
+                }
+                pairs.add(new Pair(fork.getRepositoryId(), base, incoming));
+            }
+            var start = new CountDownLatch(1);
+            var tasks = pairs.stream().map(pair -> workers.submit(() -> {
+                start.await();
+                service.fetch(pair.forkId(), OWNER, new WorkspaceUpstreamService.Request(pair.incoming(), pair.base()));
+                return service.fetchTag(pair.forkId(), OWNER,
+                        new WorkspaceUpstreamService.TagRequest("same-name", pair.incoming(), pair.incoming()));
+            })).toList();
+            start.countDown();
+            for (int i = 0; i < pairs.size(); i++) {
+                var pair = pairs.get(i);
+                assertEquals(pair.incoming(), tasks.get(i).get(30, TimeUnit.SECONDS).destinationTagObject());
+                var fork = fixture.git.getCentralRepository(pair.forkId());
+                assertEquals(pair.base(), fork.getHeadCommit(BRANCH));
+                assertEquals(pair.incoming(), fork.getGitRepository().exactRef("refs/tags/same-name").getObjectId().name());
+                assertFalse(fork.getGitRepository().getObjectDatabase().has(ObjectId.fromString(pairs.get(1 - i).incoming())));
+            }
         }
     }
 

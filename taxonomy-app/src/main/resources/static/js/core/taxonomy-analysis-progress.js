@@ -132,7 +132,11 @@
                 if (current() && options.onCancelling) options.onCancelling();
             } catch (error) {
                 cancelling = false;
-                if (error.status === 404 && !seen) {
+                if (error.status === 410) {
+                    cancelPending = false;
+                    if (current()) options.onUnavailable('ANALYSIS_EXPIRED', true);
+                    stop();
+                } else if (error.status === 404 && !seen) {
                     // Registration can follow the first cancel request. Keep the intent;
                     // only a later observed QUEUED/RUNNING state permits this rejected write to retry.
                     cancelPending = true;
@@ -216,7 +220,7 @@
                 } catch (error) {
                     // Never retry a write whose delivery is ambiguous. The bounded server
                     // operation deadline remains the final safeguard when transport is lost.
-                    if (writing || error.status === 400 || error.status === 401 || error.status === 403
+                    if (writing || error.status === 410 || error.status === 400 || error.status === 401 || error.status === 403
                             || (error.status === 404 && cleanupSeen)) endCleanup();
                 } finally {
                     if (readTimeout !== null) options.clearTimeout(readTimeout);
@@ -245,10 +249,10 @@
                 await acceptSnapshot(data, null, false);
             } catch (error) {
                 if (current()) {
-                    var reason = error.status === 404 && !seen ? 'WAITING_FOR_RUN'
+                    var reason = error.status === 410 ? 'ANALYSIS_EXPIRED' : error.status === 404 && !seen ? 'WAITING_FOR_RUN'
                         : error.name === 'AbortError' || error.code === 'ABORTED' || error.code === 'TIMEOUT'
                             ? 'CONNECTION_TIMEOUT' : error.message;
-                    var terminal = error.status === 400 || error.status === 401 || error.status === 403
+                    var terminal = error.status === 410 || error.status === 400 || error.status === 401 || error.status === 403
                         || (error.status === 404 && seen);
                     options.onUnavailable(reason, terminal);
                     if (terminal) { cancelPending = false; stop(); }
@@ -914,6 +918,14 @@
                 cancelState(true, text('Analyse beendet', 'Analysis finished'));
             },
             unavailable: function (reason, terminal) {
+                if (reason === 'ANALYSIS_EXPIRED') {
+                    title.textContent = text('Analyse abgelaufen', 'Analysis expired');
+                    state.textContent = text('Die Aufbewahrungsfrist für diesen Lauf ist abgelaufen.', 'The retention period for this run has ended.');
+                    retryResult.hidden = true;
+                    cancelState(true, text('Abgelaufen', 'Expired'));
+                    showDuration(terminalDuration);
+                    return;
+                }
                 if (reason === 'RESULT_UNAVAILABLE') {
                     retryResult.hidden = false;
                     retryResult.disabled = false;

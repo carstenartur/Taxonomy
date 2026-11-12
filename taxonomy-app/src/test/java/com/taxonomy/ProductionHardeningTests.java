@@ -1,5 +1,6 @@
 package com.taxonomy;
 
+import com.taxonomy.support.AnalysisCatalogueSourceFixture;
 import com.taxonomy.preferences.PreferencesService;
 import com.taxonomy.shared.config.RateLimitFilter;
 import org.junit.jupiter.api.BeforeEach;
@@ -9,6 +10,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.security.test.context.support.WithUserDetails;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -31,6 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
+    "spring.datasource.url=jdbc:hsqldb:mem:production-hardening",
     "gemini.api.key=",
     "openai.api.key=",
     "deepseek.api.key=",
@@ -40,7 +43,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     "taxonomy.rate-limit.per-minute=3"
 })
 @WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
-class ProductionHardeningTests {
+class ProductionHardeningTests implements AnalysisCatalogueSourceFixture {
 
     @Autowired
     private MockMvc mockMvc;
@@ -75,6 +78,7 @@ class ProductionHardeningTests {
     // ── RateLimitFilter Tests ────────────────────────────────────────────────
 
     @Test
+    @WithUserDetails("admin")
     void rateLimitFilterAllowsRequestsUnderLimit() throws Exception {
         // With limit=3, first 3 requests should succeed
         for (int i = 0; i < 3; i++) {
@@ -87,6 +91,7 @@ class ProductionHardeningTests {
     }
 
     @Test
+    @WithUserDetails("admin")
     void rateLimitFilterBlocks429AfterLimitExceeded() throws Exception {
         // Exhaust the limit (3 requests)
         for (int i = 0; i < 3; i++) {
@@ -105,6 +110,7 @@ class ProductionHardeningTests {
     }
 
     @Test
+    @WithUserDetails("admin")
     void rateLimitFilter429ResponseContainsJsonError() throws Exception {
         // Exhaust the limit
         for (int i = 0; i < 3; i++) {

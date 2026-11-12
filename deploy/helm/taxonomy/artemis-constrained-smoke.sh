@@ -136,7 +136,7 @@ rm -f -- "${EVIDENCE_DIR}/evidence.json" \
   "${EVIDENCE_DIR}"/coordinator-{before-dispatch,after-dispatch}.json \
   "${EVIDENCE_DIR}"/serial-{waiting-broker,first-dispatched,successor-dispatched,completed}.json \
   "${EVIDENCE_DIR}"/broker-ip-{before-settlement,after-settlement,completed}.json
-rm -rf -- "${EVIDENCE_DIR}/startup" "${EVIDENCE_DIR}/diagnostics"
+rm -rf -- "${EVIDENCE_DIR}/startup" "${EVIDENCE_DIR}/diagnostics" "${EVIDENCE_DIR}/provider-capacity"
 [[ "${MODE}" == live || "${MODE}" == --render-only ]] || fail "Usage: $0 [--render-only]"
 [[ "${SOURCE_SHA}" =~ ^[0-9a-f]{40}$ ]] || fail "SOURCE_SHA must be a full Git commit"
 [[ "${IMAGE_TAG}" == "sha-${SOURCE_SHA}" ]] || fail "IMAGE_TAG must identify SOURCE_SHA exactly"
@@ -189,7 +189,8 @@ openssl pkcs12 -export -in "${PRIVATE_DIR}/broker.crt" -inkey "${PRIVATE_DIR}/br
 keytool -importcert -noprompt -alias smoke-broker -file "${PRIVATE_DIR}/broker.crt" \
   -keystore "${PRIVATE_DIR}/client.p12" -storetype PKCS12 -storepass "${tls_password}" >/dev/null 2>&1
 # Reuse the schema-tested operator XML. Its single password substitution stays in a Secret.
-sed 's/${artemis.keystore.password}/'"${tls_password}"'/g' "${ROOT_DIR}/deploy/artemis/broker.xml" >"${PRIVATE_DIR}/broker.xml"
+sed 's/${artemis.keystore.password}/'"${tls_password}"'/g' "${ROOT_DIR}/deploy/artemis/broker.xml" |
+  sed '/<address-setting match="taxonomy.analysis.provider-quotas.#">/a\        <management-message-attribute-size-limit>4096</management-message-attribute-size-limit>' >"${PRIVATE_DIR}/broker.xml"
 printf 'taxonomy-admin=taxonomy-smoke\n' >"${PRIVATE_DIR}/artemis-roles.properties"
 kubectl create secret generic taxonomy-artemis-broker-config --namespace "${NAMESPACE}" \
   --from-file="${PRIVATE_DIR}/broker.xml" --from-file="${PRIVATE_DIR}/artemis-roles.properties" --dry-run=client -o yaml | kubectl apply -f -
@@ -197,12 +198,13 @@ kubectl create secret generic taxonomy-artemis-broker-tls --namespace "${NAMESPA
   --from-file="${PRIVATE_DIR}/broker.p12" --dry-run=client -o yaml | kubectl apply -f -
 kubectl create secret generic taxonomy-artemis-client-tls --namespace "${NAMESPACE}" \
   --from-file="${PRIVATE_DIR}/client.p12" --dry-run=client -o yaml | kubectl apply -f -
+# Keep this broker connector on its own trust material when the HTTPS provider installs a JVM trust store.
 kubectl create secret generic taxonomy-artemis-smoke --namespace "${NAMESPACE}" \
   --from-literal=SPRING_DATASOURCE_URL='jdbc:postgresql://smoke-postgres:5432/taxonomy' \
   --from-literal=SPRING_DATASOURCE_USERNAME=taxonomy --from-literal="SPRING_DATASOURCE_PASSWORD=${db_password}" \
   --from-literal="ADMIN_PASSWORD=${admin_password}" --from-literal="ADMIN_TOKEN=${admin_token}" \
   --from-literal=ARTEMIS_USER=taxonomy-smoke --from-literal="ARTEMIS_PASSWORD=${broker_password}" \
-  --from-literal="ARTEMIS_BROKER_URL=tcp://smoke-broker:61617?sslEnabled=true&verifyHost=true&trustStoreType=PKCS12&trustStorePath=/var/run/taxonomy-artemis/client.p12&trustStorePassword=${tls_password}" \
+  --from-literal="ARTEMIS_BROKER_URL=tcp://smoke-broker:61617?sslEnabled=true&verifyHost=true&forceSSLParameters=true&trustStoreType=PKCS12&trustStorePath=/var/run/taxonomy-artemis/client.p12&trustStorePassword=${tls_password}" \
   --dry-run=client -o yaml | kubectl apply -f -
 printf 'user = "admin:%s"\n' "${admin_password}" >"${PRIVATE_DIR}/web.curl"
 printf 'user = "taxonomy-smoke:%s"\n' "${broker_password}" >"${PRIVATE_DIR}/broker.curl"
@@ -290,8 +292,7 @@ WORKSPACE=$(jq -er '.workspaceId' "${PRIVATE_DIR}/workspace.json")
 curl --fail --silent --show-error --config "${PRIVATE_DIR}/web.curl" -H 'Content-Type: application/json' --data '{}' \
   "http://127.0.0.1:18081/api/workspace/provision?workspaceId=${WORKSPACE}" >"${PRIVATE_DIR}/provision.json"
 jq -e '.status == "READY"' "${PRIVATE_DIR}/provision.json" >/dev/null
-# The fixture broker uses emptyDir. It is stopped only before the first task/permit
-# debit exists. This is a dispatch-unavailable case, not broker durability/HA evidence.
+# Exercise initial dispatch unavailability before any task or provider debit exists.
 [[ $(sql "select count(*) from analysis_dispatch_intent") == 0 ]] || fail "Broker stop would destroy an existing dispatch authority"
 broker_stats && jq -e '.value.MessageCount == 0 and .value.DeliveringCount == 0 and .value.MessagesAdded == 0' "${PRIVATE_DIR}/broker-stats.json" >/dev/null
 kubectl scale deployment/smoke-broker --namespace "${NAMESPACE}" --replicas=0
@@ -549,6 +550,8 @@ jq -en --arg op "${OPERATION}" --arg old "${pg_uid}" --arg new "$(jq -er .uid "$
 kubectl get pod,deployment,service,networkpolicy,resourcequota,limitrange --namespace "${NAMESPACE}" -o json >"${EVIDENCE_DIR}/cluster-resources.json"
 REPLACEMENT_UIDS=$(kubectl get pod --namespace "${NAMESPACE}" --selector "${WORKER_SELECTOR},taxonomy.io/worker-set=cp" -o json | jq '[.items[].metadata.uid]')
 jq -e --arg lost "${LOST_UID}" 'index($lost) == null and length == 2' <<<"${REPLACEMENT_UIDS}" >/dev/null
+source "${CHART_DIR}/artemis-provider-fault.sh"
+exercise_artemis_provider_capacity
 jq -n --arg source "${SOURCE_SHA}" --arg tree "$(git -C "${ROOT_DIR}" rev-parse "${SOURCE_SHA}^{tree}")" \
   --arg image "${IMAGE_REFERENCE}" --arg imageId "${IMAGE_ID}" --arg started "${STARTED_AT}" --arg completed "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --arg operation "${OPERATION}" --arg lostPod "${LOST_POD}" --arg lostUid "${LOST_UID}" --argjson replacementUids "${REPLACEMENT_UIDS}" \
@@ -557,5 +560,6 @@ jq -n --arg source "${SOURCE_SHA}" --arg tree "$(git -C "${ROOT_DIR}" rev-parse 
     topology:{coordinator:1,cpWorkers:2,ipWorkers:1,sharedDatabase:"PostgreSQL",externalBroker:"Artemis TLS"},
     assertions:{quota:true,brokerTls:true,allowedDatabaseAndBrokerEgress:true,deniedBrokerManagementEgress:true,coordinatorLossBeforeDispatch:true,coordinatorLossAfterDispatch:true,unchangedFrozenAdmissionAndRevision:true,scopedResultRecovery:true,workerLossRedelivery:true,serialRootDispatch:true,twoFinalDispatchIntents:true,oneBrokerMessagePerRoot:true,oneCommittedEffectPerRoot:true,contiguousProgress:true,independentWorkerScaling:true,retainedPostgresVolumeAcrossPodReplacement:true},
     loss:{pod:$lostPod,uid:$lostUid,replacementUids:$replacementUids},startupEvidence:"startup/ (heap/RSS/config; local-heap indexes, fixture only)",
-    limits:["Disposable broker replaced only before first dispatch; no broker HA or database HA claim","No external provider or throughput claim","No during-provider-call failure claim"]}' >"${EVIDENCE_DIR}/evidence.json"
+    controlledProviderCapacity:"provider-capacity/evidence.json",
+    limits:["Single-volume broker and database replacement; no HA claim","Controlled provider with RPM/RPD limits; no production throughput or TPM claim"]}' >"${EVIDENCE_DIR}/evidence.json"
 echo "Artemis constrained smoke passed; evidence: ${EVIDENCE_DIR}/evidence.json"

@@ -165,12 +165,13 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         SystemRepository sourceMetadata = requireSourceRepository(workspaceMetadata);
         requireMatchingRepository(context, sourceMetadata);
         requireSourceAuthority(username, sourceMetadata, false);
-        String sourceBranch = sourceBranch(workspaceMetadata, sourceMetadata);
+        String sourceBranch = workspaceMetadata.resolveUpstreamBranch(sourceMetadata);
         DslGitRepository sourceRepository =
                 repositoryFactory.getCentralRepository(sourceMetadata.getRepositoryId());
         DslGitRepository workspaceGit =
                 repositoryFactory.openWorkspaceRepository(context.workspaceId());
         BranchSnapshot sourceSnapshot = snapshot(sourceRepository, sourceBranch);
+        workspaceGit.verifyUpstreamLineage(sourceRepository, sourceMetadata.getRepositoryId(), sourceBranch, sourceSnapshot.head());
         requiredSnapshot(sourceSnapshot, "Source branch has no content: " + sourceBranch);
         CommitProvenance provenance = CommitProvenance.capture("pull", sourceRepository,
                 sourceMetadata.getRepositoryId(), sourceBranch, sourceSnapshot.head(), integrationBase(workspaceMetadata));
@@ -203,7 +204,8 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
 
         // Movement after the checked read remains a future change, never integrated metadata.
         String sourceHead = sourceSnapshot.head();
-        workspaceMetadata.setLastFetchedCommit(sourceHead);
+        workspaceMetadata.setLastFetchedCommit(workspaceGit.recordIntegratedUpstream(
+                sourceMetadata.getRepositoryId(), sourceBranch, sourceHead, username));
         workspaceMetadata.setLastIntegratedCommit(sourceHead);
         workspaceMetadata.setCurrentCommit(localCommit);
         workspaceMetadata.setLastAccessedAt(Instant.now());
@@ -237,12 +239,13 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         SystemRepository sourceMetadata = requireSourceRepository(workspaceMetadata);
         requireMatchingRepository(context, sourceMetadata);
         requireSourceAuthority(username, sourceMetadata, true);
-        String sourceBranch = sourceBranch(workspaceMetadata, sourceMetadata);
+        String sourceBranch = workspaceMetadata.resolveUpstreamBranch(sourceMetadata);
         DslGitRepository sourceRepository =
                 repositoryFactory.getCentralRepository(sourceMetadata.getRepositoryId());
         DslGitRepository workspaceGit =
                 repositoryFactory.openWorkspaceRepository(context.workspaceId());
         BranchSnapshot sourceSnapshot = snapshot(sourceRepository, sourceBranch);
+        workspaceGit.verifyUpstreamLineage(sourceRepository, sourceMetadata.getRepositoryId(), sourceBranch, sourceSnapshot.head());
         // Reject an invalid incoming workspace checkpoint before creating synchronization bases.
         snapshot(workspaceGit, userBranch);
         WorkspaceMergeState state = keepWorkspace ? trackingState(workspaceGit) : initialiseWorkspaceMergeBase(
@@ -289,7 +292,8 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         portfolioGitPort.materializePortfolio(
                 merge.mergedText(), username, context);
 
-        workspaceMetadata.setLastFetchedCommit(sourceCommit);
+        workspaceMetadata.setLastFetchedCommit(workspaceGit.recordIntegratedUpstream(
+                sourceMetadata.getRepositoryId(), sourceBranch, sourceCommit, username));
         workspaceMetadata.setLastIntegratedCommit(sourceCommit);
         workspaceMetadata.setCurrentCommit(workspaceCommit);
         workspaceMetadata.setLastAccessedAt(Instant.now());
@@ -528,18 +532,6 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
             throw new IllegalStateException("Source repository has no repositoryId");
         }
         return repository.getRepositoryId().strip();
-    }
-
-    private static String sourceBranch(
-            UserWorkspace workspace, SystemRepository sourceRepository) {
-        if (workspace.getSyncTargetBranch() != null
-                && !workspace.getSyncTargetBranch().isBlank()) {
-            return workspace.getSyncTargetBranch();
-        }
-        if (workspace.getSourceBranch() != null && !workspace.getSourceBranch().isBlank()) {
-            return workspace.getSourceBranch();
-        }
-        return sourceRepository.getDefaultBranch();
     }
 
     private String sharedBranch() {

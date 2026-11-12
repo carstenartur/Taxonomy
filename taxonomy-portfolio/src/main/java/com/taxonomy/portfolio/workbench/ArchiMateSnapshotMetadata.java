@@ -4,6 +4,7 @@ import com.taxonomy.archimate.ArchiMateExportMetadata;
 import com.taxonomy.archimate.ArchiMateLoss;
 import com.taxonomy.archimate.ArchiMateProperty;
 import com.taxonomy.diagram.DiagramModel;
+import com.taxonomy.portfolio.service.SnapshotExportLabel;
 import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.Projection;
 
 import java.util.ArrayList;
@@ -21,6 +22,9 @@ final class ArchiMateSnapshotMetadata {
         String id = projection.snapshotId();
         put(properties, "snapshotId", id);
         put(properties, "snapshotStatus", projection.snapshotStatus());
+        if (projection.exportLabel() == SnapshotExportLabel.DEMO) {
+            put(properties, "analysisProvider", projection.provider());
+        }
         put(properties, "snapshotCreatedAt", projection.snapshotCreatedAt());
         put(properties, "projectId", projection.projectId());
         put(properties, "requirementId", projection.requirementId());

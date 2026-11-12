@@ -18,7 +18,7 @@ import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFFooter;
 import org.apache.poi.xwpf.usermodel.XWPFHeader;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
-import org.apache.poi.xwpf.usermodel.XWPFRun;
+import com.taxonomy.reporting.templates.RepeatableWordLayout;
 import org.apache.poi.xwpf.usermodel.XWPFTable;
 import org.apache.poi.xwpf.usermodel.XWPFTableCell;
 import org.apache.poi.xwpf.usermodel.XWPFTableRow;
@@ -109,8 +109,9 @@ public final class DecisionRationaleTemplateRenderer {
         DecisionReportTemplateProvenance provenance =
                 DecisionReportTemplateProvenance.from(template);
         DecisionReportLabels labels = new DecisionReportLabels(report.languageTag());
+        var layout = new RepeatableWordLayout();
         try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(
-                    convertDotxToDocx(template.content())));
+                    rewriteWordPackage(template.content(), layout::extract, true)));
              ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             contract.validateDocument(document);
             replaceTokens(document, tokenValues(report, labels, template));
@@ -120,8 +121,9 @@ public final class DecisionRationaleTemplateRenderer {
             writeTemplateProvenanceProperties(document, provenance);
 
             document.write(output);
-            return new ReportRenderResult(
-                    output.toByteArray(), provenance.artifactMetadata());
+            byte[] generated = output.toByteArray();
+            if (!layout.isEmpty()) generated = rewriteWordPackage(generated, xml -> layout.materialize(xml, report), false);
+            return new ReportRenderResult(generated, provenance.artifactMetadata());
         } catch (com.taxonomy.reporting.render.document.WordReportLayoutException exception) {
             throw exception;
         } catch (Exception exception) {
@@ -249,36 +251,20 @@ public final class DecisionRationaleTemplateRenderer {
      * Replace tokens across run boundaries while retaining the first run's formatting.
      *
      * <p>Word may split a visually contiguous placeholder into several runs after an
-     * administrator edits its formatting. Reconstructing the paragraph text makes that
-     * common case deterministic rather than relying on one token per run.</p>
+     * administrator edits its formatting. Preserve text and formatting on either side
+     * and place each replacement in the first text run participating in its token.</p>
      */
     private static void replaceParagraph(
             XWPFParagraph paragraph,
             Map<String, String> values) {
-        String original = paragraph.getText();
-        if (original == null || original.isEmpty()) {
-            return;
-        }
-        String replaced = original;
-        for (Map.Entry<String, String> token : values.entrySet()) {
-            replaced = replaced.replace(token.getKey(), token.getValue());
-        }
-        if (replaced.equals(original)) {
-            return;
-        }
-
-        List<XWPFRun> runs = paragraph.getRuns();
-        XWPFRun first = runs.isEmpty() ? paragraph.createRun() : runs.get(0);
-        for (int index = paragraph.getRuns().size() - 1; index >= 1; index--) {
-            paragraph.removeRun(index);
-        }
-        while (first.getCTR().sizeOfTArray() > 1) {
-            first.getCTR().removeT(first.getCTR().sizeOfTArray() - 1);
-        }
-        if (first.getCTR().sizeOfTArray() == 0) {
-            first.setText(replaced);
-        } else {
-            first.setText(replaced, 0);
+        var texts = paragraph.getRuns().stream().flatMap(run -> run.getCTR().getTList().stream()).toList();
+        var pieces = texts.stream().map(org.apache.xmlbeans.XmlString::getStringValue).toList();
+        var replaced = RepeatableWordLayout.replaceRuns(pieces, values);
+        for (int i = 0; i < texts.size(); i++) {
+            if (!pieces.get(i).equals(replaced.get(i))) {
+                texts.get(i).setStringValue(replaced.get(i));
+                texts.get(i).setSpace(org.apache.xmlbeans.impl.xb.xmlschema.SpaceAttribute.Space.PRESERVE);
+            }
         }
     }
 
@@ -347,15 +333,17 @@ public final class DecisionRationaleTemplateRenderer {
      * types. Convert before Apache POI opens the package so the emitted artifact is a
      * genuine DOCX rather than a template with a misleading file extension.
      */
-    private static byte[] convertDotxToDocx(byte[] dotx) throws IOException {
-        ByteArrayOutputStream output = new ByteArrayOutputStream(dotx.length);
+    private static byte[] rewriteWordPackage(byte[] archive, java.util.function.UnaryOperator<byte[]> mainDocument,
+                                             boolean convertTemplate) throws IOException {
+        ByteArrayOutputStream output = new ByteArrayOutputStream(archive.length);
         boolean contentTypeChanged = false;
-        try (ZipInputStream input = new ZipInputStream(new ByteArrayInputStream(dotx));
+        try (ZipInputStream input = new ZipInputStream(new ByteArrayInputStream(archive));
              ZipOutputStream zip = new ZipOutputStream(output)) {
             ZipEntry entry;
             while ((entry = input.getNextEntry()) != null) {
                 byte[] content = input.readAllBytes();
-                if ("[Content_Types].xml".equals(entry.getName())) {
+                if ("word/document.xml".equals(entry.getName())) content = mainDocument.apply(content);
+                if (convertTemplate && "[Content_Types].xml".equals(entry.getName())) {
                     String xml = new String(content, StandardCharsets.UTF_8);
                     if (!xml.contains(com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MAIN_CONTENT_TYPE)) {
                         throw new IOException(
@@ -379,7 +367,7 @@ public final class DecisionRationaleTemplateRenderer {
                 input.closeEntry();
             }
         }
-        if (!contentTypeChanged) {
+        if (convertTemplate && !contentTypeChanged) {
             throw new IOException("Template package is missing [Content_Types].xml");
         }
         return output.toByteArray();

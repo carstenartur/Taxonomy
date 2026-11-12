@@ -49,6 +49,12 @@ public final class ClusterAnalysisBackupRestorer {
     /** The target portfolio owner supplies its already allocated immutable version identities. */
     public void restore(Archive archive, AnalysisOperationContext target, AnalyzeRequirementCommand command,
             Map<SourceRecordId, Long> requirementVersions) {
+        if (ClusterAnalysisState.EXPIRED.name().equals(archive.run().sourceState())) {
+            try { ClusterAnalysisBackupExport.validateCommand(target, command.username(), command); }
+            catch (java.io.IOException invalid) { throw new IllegalArgumentException("Invalid restore authority", invalid); }
+            restoreExpired(archive, target, command.workspaceContext(), requirementVersions);
+            return;
+        }
         validate(archive, target, command, Map.copyOf(requirementVersions));
         if (command.providerBinding() != null && !plugins.test(command.providerBinding()))
             throw new IllegalArgumentException("Required provider artifact or configuration is unavailable for restore");
@@ -135,6 +141,41 @@ public final class ClusterAnalysisBackupRestorer {
                         AnalysisProgressPhase.OPERATION_STOPPED, null, run.completedRoots, run.totalRoots));
             }
             em.flush();
+        });
+    }
+
+    /** Restores a scoped idempotency marker without reconstructing or dispatching its expired command. */
+    public void restoreExpired(Archive archive, AnalysisOperationContext target,
+            com.taxonomy.workspace.service.WorkspaceContext workspace, Map<SourceRecordId, Long> requirementVersions) {
+        var marker = archive.run();
+        var source = marker.context();
+        require(ClusterAnalysisState.EXPIRED.name().equals(marker.sourceState())
+                && marker.resumePolicy() == com.taxonomy.analysis.backup.AnalysisBackupContributor.ResumePolicy.REVIEW_REQUIRED
+                && marker.sourceId().equals(new SourceRecordId("analysis.cluster-run", source.operationId()))
+                && marker.principalScope() != null && !marker.principalScope().isBlank()
+                && marker.revision() > 0 && marker.revision() < Long.MAX_VALUE
+                && marker.createdAt() > 0 && marker.updatedAt() >= marker.createdAt()
+                && marker.commandJson() == null && marker.resultJson() == null && marker.viewJson() == null
+                && marker.relationPlanJson() == null && marker.totalRoots() == 0 && marker.completedRoots() == 0
+                && archive.work().isEmpty() && archive.events().isEmpty() && archive.inputs().isEmpty()
+                && archive.calls().isEmpty() && archive.attempts().isEmpty(), "Invalid expired analysis marker");
+        var version = source.requirement().requirementVersionId();
+        var targetVersion = version == null ? null : requirementVersions.get(new SourceRecordId("portfolio.requirement-version", version.toString()));
+        require(!target.operationId().equals(source.operationId())
+                && source.requirement().textSha256().equals(target.requirement().textSha256())
+                && (version == null || targetVersion != null) && Objects.equals(targetVersion, target.requirement().requirementVersionId())
+                && workspace.username() != null && !workspace.username().isBlank()
+                && Objects.equals(target.authority().workspaceId(), workspace.workspaceId())
+                && Objects.equals(target.authority().repositoryId(), workspace.repositoryId())
+                && Objects.equals(target.authority().branch(), workspace.currentBranch()), "Invalid target for expired operation");
+        transactions.executeWithoutResult(status -> {
+            if (em.find(ClusterAnalysisRun.class, target.operationId()) != null) throw new IllegalStateException("Restore target operation already exists");
+            var run = new ClusterAnalysisRun();
+            run.id = target.operationId(); run.username = workspace.username(); run.scopeKey = ClusterAnalysisStore.scopeKey(workspace);
+            run.contextJson = json.writeValueAsString(target); run.projectId = target.requirement().projectId();
+            run.requirementId = target.requirement().requirementId(); run.commandJson = "{}"; run.state = ClusterAnalysisState.CANCELLED;
+            run.revision = marker.revision(); run.createdAt = marker.createdAt(); run.updatedAt = marker.updatedAt();
+            em.persist(run);
         });
     }
 

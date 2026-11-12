@@ -1,4 +1,5 @@
 # Category	Owner	Rule	Rationale
+com.taxonomy.analysis.operation.AnalysisAdapterOperation	analysis	PORTABLE_PRIMARY	Scoped native outcome and retention marker; restore active receipts as interrupted without dispatch
 com.taxonomy.analysis.cluster.ClusterAnalysisRun	analysis	PORTABLE_PRIMARY	Durable frozen operation authority and terminal result; restore in-flight work interrupted without dispatch
 com.taxonomy.analysis.cluster.ClusterAnalysisWork	analysis	PORTABLE_PRIMARY	Expected tasks and committed effects; restore only settled evidence, never reactivate execution
 com.taxonomy.analysis.cluster.ClusterAnalysisInput	analysis	PORTABLE_PRIMARY	Exact immutable catalogue shard inputs owned by the captured run
@@ -40,6 +41,7 @@ com.taxonomy.relations.model.RelationProposal	knowledge	PORTABLE_PRIMARY	Explici
 com.taxonomy.relations.model.RequirementCoverage	knowledge	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.portfolio.model.ArchitectureProject	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.portfolio.model.ProductCatalogEntry	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.portfolio.model.ProductGapReview	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.portfolio.model.ProductTaxonomyCoverage	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.portfolio.model.ProjectConflict	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.portfolio.model.ProjectRequirement	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys

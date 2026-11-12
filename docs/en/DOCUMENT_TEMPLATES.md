@@ -83,6 +83,14 @@ contract in addition to the generic OOXML security validation. The
 `decisionRationaleTemplate` Actuator health component reports `DOWN` when the
 required template is missing or structurally invalid.
 
+## Preflighting an exact candidate
+
+From a template's history, choose **Preflight a candidate**, submit a DOTX and open its representative DOCX sample. The original upload and bounded JSON validation report are available on the candidate page. The sample's `Taxonomy.Template.Commit` property identifies the immutable candidate source. Administrators can activate that candidate while the displayed active revision still matches. A failed sample leaves the candidate available for inspection and repair. After another administrator changes the active revision, submit a fresh candidate. The submitted original and sample are stored in the installation's separate Git repository `taxonomy-document-template-candidates`. The current template's existing Git history and canonical DOTX downloads remain accessible on its history page.
+
+The decision-report family accepts two version-one block content controls in the main Word body. Set the **Tag** property to `taxonomy.repeat.chapters.v1` or `taxonomy.repeat.appendix.v1`. Place styled paragraphs or tables inside the block and add inline controls tagged `taxonomy.field.<name>` inside their paragraphs. Use one block per kind. Chapter fields are `number`, `code`, `title`, `score`, `summary` and `comparison`. Appendix fields are `code`, `title`, `score`, `path` and `reason`. The sample text in each field supplies the run formatting. The DOCX renderer places one styled copy per frozen chapter or leading leaf below its generated section heading, strips the authoring controls and retains the ordinary evidence sections. Omitted sections and empty collections produce zero copies.
+
+Use static branding and supported text tokens in the ordinary header/footer stories. Repeat blocks support unbound text and tables in the main story. Drawing/text-box tokens, nested repeat blocks, data bindings, section breaks, bookmarks, fields and linked or review-bearing content inside the repeat are rejected. The repeated copies are bounded to 120,000 XML elements and eight million text characters, including values. The validation report contains identities, digests and status; private text from a failed render is excluded.
+
 ## Audit provenance
 
 Every template-backed DOCX stores its exact Word-template identity independently of
@@ -150,6 +158,12 @@ filter rejects oversized Basic headers, invalid UTF-8, overlong decoded username
 passwords, and malformed `taxdav_` candidates before repository lookup or BCrypt.
 Ordinary account passwords that do not start with `taxdav_` continue to the normal
 Spring Security HTTP-Basic flow.
+
+When the credential store cannot complete verification, the WebDAV request receives
+HTTP 503 with an empty body and `Cache-Control: no-store`. The client can retry
+with the same credential once storage recovers. Taxonomy counts only authentication
+failures toward lockout and records a revocation in the audit log after its database
+transaction commits.
 
 Failed application-credential attempts are tracked by a fixed-size SHA-256 digest of
 the framework-resolved peer and normalized supplied username; raw identities are not

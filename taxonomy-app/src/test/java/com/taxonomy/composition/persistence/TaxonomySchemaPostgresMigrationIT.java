@@ -165,7 +165,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "52");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52");
     }
 
     @Test
@@ -240,7 +240,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "52");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52");
         assertIntegrationSchema(dataSource);
         assertInventorySchema(dataSource);
         assertReformulationSchema(dataSource);
@@ -249,6 +249,33 @@ class TaxonomySchemaPostgresMigrationIT {
         assertClusterAnalysisSchema(dataSource);
         assertProviderBindingSchema(dataSource);
         assertAnalysisReasonLengthSchema(dataSource);
+    }
+
+    @Test
+    void workspaceLeaseUpgradePreservesCapturedCommitsAndGivesOnlyRunningAllocationsAGracePeriod() throws Exception {
+        var dataSource = isolatedDataSource("workspace_provisioning_lease");
+        migrateJgit(dataSource);
+        installApplicationAtVersion(dataSource, "49");
+        execute(dataSource, """
+                insert into user_workspace (workspace_id, username, created_at, current_branch, archived, is_default,
+                    shared, provisioning_status, topology_mode, base_commit)
+                values ('running', 'owner', current_timestamp, 'draft', false, false, false,
+                        'PROVISIONING', 'INTERNAL_SHARED', 'old-source'),
+                       ('ready', 'owner', current_timestamp, 'draft', false, false, false,
+                        'READY', 'INTERNAL_SHARED', 'ready-source')
+                """);
+
+        installApplicationAtVersion(dataSource, "50");
+
+        assertThat(singleString(dataSource, """
+                select base_commit from user_workspace where workspace_id='running' and provisioning_attempt=0
+                and provisioning_lease_owner is null and provisioning_lease_until > current_timestamp
+                and provisioning_lease_until <= current_timestamp + interval '15 minutes'
+                """)).isEqualTo("old-source");
+        assertThat(singleString(dataSource, """
+                select base_commit from user_workspace where workspace_id='ready'
+                and provisioning_attempt=0 and provisioning_lease_until is null
+                """)).isEqualTo("ready-source");
     }
 
     @Test

@@ -120,7 +120,7 @@ public class ArchitectureSnapshotExportService {
         }
         return new Artifact(
                 format,
-                fileName(projection, format),
+                projection.exportLabel().fileName(fileName(projection, format)),
                 format.mediaType(),
                 format.profile(),
                 projection.projectId(),

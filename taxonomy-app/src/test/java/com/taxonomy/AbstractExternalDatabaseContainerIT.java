@@ -46,7 +46,13 @@ abstract class AbstractExternalDatabaseContainerIT extends AbstractDatabaseConta
     void clusterOwnerSourceAndRequirementScopeIsAppliedBeforeTheHistoryLimit() {
         try (var contract = clusterContract()) {
             contract.ownerSourceAndRequirementScopeIsAppliedBeforeTheHistoryLimit();
+            contract.scopedExpiryFencesRedeliveryAndPreservesForeignDatabaseRows();
         }
+    }
+
+    @Test @Order(25)
+    void durableDocumentAdapterRetainsItsNativeResultAndFencesLateCompletion() throws Exception {
+        try (var db = clusterContract()) { db.durableDocumentAdapterRetainsItsNativeResultAndFencesLateCompletion(); }
     }
 
     @Test @Order(24)
