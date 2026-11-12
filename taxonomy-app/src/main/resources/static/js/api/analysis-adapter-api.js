@@ -26,7 +26,7 @@ window.AnalysisAdapterApi = (function () {
             for (;;) {
                 guard();
                 if (response.headers.get('X-Analysis-Operation-Id') !== id
-                        || response.headers.get('X-Analysis-Source-Commit') !== commit) throw new Error('Analysis source changed');
+                        || response.headers.get('X-Analysis-Source-Commit') !== commit) throw staleSource();
                 if (response.status !== 202) return response;
                 var state = await response.json();
                 guard();
@@ -61,10 +61,16 @@ window.AnalysisAdapterApi = (function () {
     }
 
     function describe(error) {
+        var code = error?.responseBody?.code || error?.responseBody?.error || error?.code;
         var key = {ANALYSIS_EXPIRED:'expired', CANCELLED:'cancelled', STALE_SOURCE:'stale',
-            COMMAND_CONFLICT:'stale', OUTCOME_UNKNOWN:'unknown', ANALYSIS_FAILED:'failed', RESULT_TOO_LARGE:'failed'}[error?.responseBody?.code];
+            COMMAND_CONFLICT:'stale', OUTCOME_UNKNOWN:'unknown', ANALYSIS_FAILED:'failed', RESULT_TOO_LARGE:'failed',
+            AI_EXTRACTION_FAILED:'failed', REGULATION_MAPPING_FAILED:'failed'}[code];
         if (key && window.TaxonomyI18n?.t) error.message = window.TaxonomyI18n.t('analysis.adapter.' + key);
         return error;
+    }
+
+    function staleSource() {
+        return describe(Object.assign(new Error('Analysis source changed'), {code:'STALE_SOURCE'}));
     }
 
     function pendingButton(anchor) {
@@ -223,7 +229,7 @@ window.AnalysisAdapterApi = (function () {
         } else response = await lookup(path,saved.token,options,current,() => false,false);
         var id = response.headers.get('X-Analysis-Operation-Id'), source = response.headers.get('X-Analysis-Source-Commit');
         if (!uuid.test(id || '') || !gitCommit.test(source || '')
-                || saved.id && (id !== saved.id || source !== saved.source)) throw new Error('Analysis source changed');
+                || saved.id && (id !== saved.id || source !== saved.source)) throw staleSource();
         rememberIdentity(options,id,source);
         return response;
     }
