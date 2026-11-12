@@ -31,6 +31,11 @@
         el('editorUnfocus').disabled = state.mode !== 'focus';
     });
     var tree = window.TaxonomyResponsibilityTree.create({root: el('editorTree'), t: t, onSelect: selectElement});
+    var responsibilityDisplay = window.TaxonomyResponsibilityDisplay;
+    var displayedAssignments;
+    document.addEventListener('taxonomy:responsibility-display-changed', function () {
+        if (active && view) renderTree();
+    });
     var directoryRoot = window.TaxonomyOrganizationDirectory && el('editorOrganizationDirectory');
     var directory = directoryRoot && window.TaxonomyOrganizationDirectory?.create({root: directoryRoot, t: t, stage: stage});
     var legacyOption = ':legacy:';
@@ -273,6 +278,11 @@
         window.TaxonomyArchitectureLifecycle?.observe(view.document, view.mayEdit);
     }
     function render(preserveDraft) {
+        if (responsibilityDisplay) {
+            displayedAssignments = null;
+            var controls = el('editorResponsibilityControl');
+            if (!controls.firstChild) controls.append(responsibilityDisplay.control(true));
+        }
         directory?.render(view.model.organizations || [], view.mayEdit, preserveDraft);
         renderPackages(preserveDraft);
         briefPanel?.render(view, preserveDraft);
@@ -342,8 +352,12 @@
         el('editorCollaborationLink').value = url.href;
     }
     function renderTree() {
+        if (responsibilityDisplay?.enabled() && !displayedAssignments) {
+            displayedAssignments = responsibilityDisplay.fromEditor(view);
+        }
         tree.render({elements: view.model.elements, hierarchy: view.hierarchy,
-            selected: selected, query: el('editorSearch').value});
+            selected: selected, query: el('editorSearch').value,
+            assignments: responsibilityDisplay?.enabled() ? displayedAssignments : null});
     }
     function renderResponsibility(item) {
         var picker = el('editorOrganization');

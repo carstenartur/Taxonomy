@@ -119,7 +119,22 @@ public class DecisionRationaleReportController {
             com.taxonomy.dto.AnalysisCoverage analysisCoverage,
             AnalysisScope analysisScope, DecisionReportOptions exportOptions,
             com.taxonomy.dto.AnalysisReasonLength analysisReasonLength,
-            com.taxonomy.dto.AnalysisLanguage analysisLanguage) {
+            com.taxonomy.dto.AnalysisLanguage analysisLanguage, com.taxonomy.dto.AnalysisModelBinding modelBinding,
+            Boolean liveResponsibilities) {
+        public DecisionReportRequest(Map<String, Double> scores, Map<String, Double> rawScores,
+                Map<String, Double> effectiveScores, Map<String, AnalysisScoreDetail> scoreDetails,
+                Map<String, Double> productSuitabilityScores, Integer scoreSemanticsVersion,
+                Map<String, String> reasons, String businessText, String provider, String analysisStatus,
+                List<TaxonomyDiscrepancy> discrepancies, List<ProductCoverageGap> productCoverageGaps,
+                String language, Long analysisDurationMillis, com.taxonomy.dto.AnalysisCoverage analysisCoverage,
+                AnalysisScope analysisScope, DecisionReportOptions exportOptions,
+                com.taxonomy.dto.AnalysisReasonLength analysisReasonLength, com.taxonomy.dto.AnalysisLanguage analysisLanguage) {
+            this(scores, rawScores, effectiveScores, scoreDetails, productSuitabilityScores, scoreSemanticsVersion,
+                    reasons, businessText, provider, analysisStatus, discrepancies, productCoverageGaps, language,
+                    analysisDurationMillis, analysisCoverage, analysisScope, exportOptions, analysisReasonLength,
+                    analysisLanguage, null, false);
+        }
+
         public DecisionReportRequest(Map<String, Double> scores, Map<String, Double> rawScores,
                 Map<String, Double> effectiveScores, Map<String, AnalysisScoreDetail> scoreDetails,
                 Map<String, Double> productSuitabilityScores, Integer scoreSemanticsVersion,
@@ -303,7 +318,11 @@ public class DecisionRationaleReportController {
                 scoreDetails, request.analysisDurationMillis()).withRecordedReasons(request.reasons())
                 .withScope(request.analysisScope(), request.analysisCoverage())
                 .withAnalysisReasonLength(request.analysisReasonLength());
-        DecisionRationaleReport report = request.exportOptions() == null
+        DecisionRationaleReport report;
+        if (request.exportOptions() != null && request.exportOptions().showResponsibilities()) {
+            report = reportService.generate(input, context, viewContext, locale, request.exportOptions(),
+                    request.modelBinding(), Boolean.TRUE.equals(request.liveResponsibilities()));
+        } else report = request.exportOptions() == null
                 ? reportService.generate(input, context, viewContext, locale)
                 : reportService.generate(input, context, viewContext, locale, request.exportOptions());
         return scoreSemanticsAdapter.adapt(report, scoreDetails, locale);

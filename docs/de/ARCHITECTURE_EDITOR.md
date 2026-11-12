@@ -40,6 +40,8 @@ Im **Architekturbaum** öffnet die Suche den Pfad zum Treffer. Unter **Organisat
 
 Einen Ast im Baum auswählen, unter **Verantwortliche Organisationseinheit für diesen Ast** die Einheit wählen und die Änderung über die Vorschau übernehmen. Unterelemente erben die nächstgelegene Zuweisung. Eine eigene Zuweisung am Unterast hat Vorrang. **Vom übergeordneten Element erben** entfernt die Ausnahme. Das Formular zeigt, an welchem Element die wirksame Zuständigkeit festgelegt wurde. Vorhandene Freitexteinträge bleiben sichtbar und lassen sich durch eine Einheit aus dem Verzeichnis ersetzen.
 
+Mit **Zuständigkeiten anzeigen** erhält jedes zugewiesene Element im Architektur- und Entscheidungsbaum einen Farbstreifen. Wo die Zuweisung beginnt oder wechselt, steht zusätzlich der Name der Einheit. Im Exportdialog lässt sich die Anzeige auch für den Entscheidungsbericht einschalten. Bei gespeicherten Analysen stammen die Zuständigkeiten aus dem zugehörigen Modellstand. Fehlt dieser Bezug, bleiben die Markierungen aus.
+
 Baum und Graph verwenden dieselbe Auswahl. Der Graph stellt bis zu 200 Knoten und 400 Kanten gleichzeitig dar. Im fokussierten Graph verschieben Pfeiltasten den Ausschnitt, +/− ändern den Zoom.
 
 SVG und Vektor-PDF verwenden das vollständige deterministische Serverlayout der angezeigten Workspace-Revision oder des Git-Checkpoints, unabhängig von lokalem Zoom und Ausschnitt. Der Editor verwendet derzeit abgeleitetes Layout und eine synchronisierte DSL-Leseansicht. Bearbeitbare DSL-Übersetzung, gespeicherte Layouts, gemeinsames Undo, weitergehende Belegentscheidungen und erweiterte Historie bleiben in [#814](https://github.com/carstenartur/Taxonomy/issues/814) verfolgt. Bestehende Analysesnapshots bleiben unveränderlich.

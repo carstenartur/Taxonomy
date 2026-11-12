@@ -5,6 +5,7 @@ import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
 import com.taxonomy.catalog.service.CatalogueOverlayService;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dsl.model.CanonicalArchitectureModel;
+import com.taxonomy.dsl.model.CatalogueDefinition;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
@@ -35,7 +36,12 @@ public class CatalogueParentIndex {
             return element.getTaxonomy() != null && !element.getTaxonomy().equals(parent) && !elementIds.contains(parent);
         });
         if (!needsLookup) return Map.of();
-        String revision = model.getCatalogueRevision();
+        return parentsFor(model, model.getCatalogueRevision(), null);
+    }
+
+    /** Read an exact catalogue even if only one assigned ancestor exists in the architecture. */
+    public synchronized Map<String, String> parentsFor(CanonicalArchitectureModel model, String revision,
+                                                       CatalogueDefinition definition) {
         if (cached == null || !java.util.Objects.equals(revision, cachedRevision)) {
             var loaded = read(revision);
             cached = loaded;
@@ -45,7 +51,12 @@ public class CatalogueParentIndex {
         cached.forEach((id, parent) -> parents.put(id, parent.code()));
         for (var element : model.getElements()) {
             var candidate = cached.get(element.getId());
-            if (candidate != null && !candidate.root().equals(element.getTaxonomy())) parents.remove(element.getId());
+            if (candidate == null) continue;
+            // Analysis adoption carries the catalogue ID and DSL type but may omit the taxonomy field.
+            boolean sameRoot = candidate.root().equals(element.getTaxonomy())
+                    || element.getTaxonomy() == null && definition != null
+                    && element.getType() != null && element.getType().equals(definition.typeFor(candidate.root()));
+            if (!sameRoot) parents.remove(element.getId());
         }
         return parents;
     }

@@ -21,7 +21,11 @@ public final class DecisionTreeFigureRenderer {
     private static final Font FONT = new Font("SansSerif", Font.PLAIN, FONT_SIZE);
     public record Panel(String rootCode, List<String> nodeCodes, String svg, byte[] png,
                         int width, int height, int fontSize, boolean a3, String description) {}
-    private record Line(DecisionTreeRow row, List<String> text, int indent, int height, String parent) {}
+    private record Line(DecisionTreeRow row, List<String> text, List<String> ownerText, int indent,
+                        String parent, boolean showOwner) {
+        int height() { return 16 + 14 * (text.size() + (showOwner ? ownerText.size() : 0)); }
+        Line pageStart() { return showOwner || ownerText.isEmpty() ? this : new Line(row, text, ownerText, indent, parent, true); }
+    }
 
     public List<Panel> render(DecisionTreeOverview tree, String language, TreeLayout layout) {
         var result = new ArrayList<Panel>();
@@ -48,12 +52,13 @@ public final class DecisionTreeFigureRenderer {
             var page = new ArrayList<Line>();
             int used = 28;
             for (var line : lines) {
-                if (line.height() + 28 > budget) throw new WordReportLayoutException(
+                if (line.pageStart().height() + 28 > budget) throw new WordReportLayoutException(
                         "A tree label is too long for a readable page. Choose the table layout.");
                 if (used + line.height() > budget && !page.isEmpty()) {
                     result.add(draw(rows.getFirst().code(), page, width, used, a3));
                     page = new ArrayList<>(); used = 28;
                 }
+                if (page.isEmpty()) line = line.pageStart();
                 page.add(line); used += line.height();
             }
             if (!page.isEmpty()) result.add(draw(rows.getFirst().code(), page, width, used, a3));
@@ -69,11 +74,12 @@ public final class DecisionTreeFigureRenderer {
         var page = new ArrayList<Line>();
         int used = 28;
         for (var line : lines) {
-            if (line.height() + 28 > 360) throw new WordReportLayoutException("A chapter label exceeds a readable page; use the tree table");
+            if (line.pageStart().height() + 28 > 360) throw new WordReportLayoutException("A chapter label exceeds a readable page; use the tree table");
             if (used + line.height() > 360 && !page.isEmpty()) {
                 result.add(draw(tree.rows().getFirst().code(), page, width, used, false));
                 page = new ArrayList<>(); used = 28;
             }
+            if (page.isEmpty()) line = line.pageStart();
             page.add(line); used += line.height();
         }
         if (!page.isEmpty()) result.add(draw(tree.rows().getFirst().code(), page, width, used, false));
@@ -89,6 +95,7 @@ public final class DecisionTreeFigureRenderer {
         try {
             var lines = new ArrayList<Line>();
             var ancestors = new ArrayList<String>();
+            com.taxonomy.dto.TaxonomyResponsibilityLookup.Assignment previous = null;
             for (var row : rows) {
                 while (ancestors.size() > row.depth()) ancestors.removeLast();
                 String parent = ancestors.isEmpty() ? "" : ancestors.getLast();
@@ -103,10 +110,16 @@ public final class DecisionTreeFigureRenderer {
                         || (row.score() != null && row.score() == 0d) && row.disposition() == com.taxonomy.reporting.api.decision.DecisionRationaleReport.Disposition.REJECTED;
                 String text = row.code() + " · " + row.title() + "  |  " + (stateIncludesScore ? state
                         : (row.score() == null ? labels.notEvaluated() : AnalysisPercentages.display(row.score())) + " · " + state);
-                if (FONT.canDisplayUpTo(text) >= 0) throw new WordReportLayoutException(
+                var owner = row.responsibility();
+                String ownerLabel = owner == null ? "" : labels.responsibility() + ": " + owner.name();
+                if (FONT.canDisplayUpTo(text) >= 0 || FONT.canDisplayUpTo(ownerLabel) >= 0) throw new WordReportLayoutException(
                         "The server font cannot display a tree label. Choose the table layout or install a font covering its characters.");
-                var wrapped = wrap(text, width - indent - 36, g.getFontMetrics());
-                lines.add(new Line(row, wrapped, indent, wrapped.size() * 14 + 16, parent));
+                int textWidth = width - indent - 36;
+                var wrapped = wrap(text, textWidth, g.getFontMetrics());
+                var ownerText = wrap(ownerLabel, textWidth, g.getFontMetrics());
+                boolean showOwner = owner != null && (row.depth() == 0 || !owner.equals(previous) || row.code().equals(owner.sourceId()));
+                lines.add(new Line(row, wrapped, ownerText, indent, parent, showOwner));
+                previous = owner;
                 ancestors.add(row.code());
             }
             return lines;
@@ -139,7 +152,8 @@ public final class DecisionTreeFigureRenderer {
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g.setColor(Color.WHITE); g.fillRect(0, 0, width, height); g.setFont(FONT);
         String description = root + ": " + lines.stream().map(l -> l.row().code()
-                + (l.parent().isEmpty() ? "" : " (parent: " + l.parent() + ")")).collect(java.util.stream.Collectors.joining(", "));
+                + (l.parent().isEmpty() ? "" : " (parent: " + l.parent() + ")")
+                + (l.showOwner() ? " · " + String.join(" ", l.ownerText()) : "")).collect(java.util.stream.Collectors.joining(", "));
         var svg = new StringBuilder("<svg xmlns=\"http://www.w3.org/2000/svg\" role=\"img\" viewBox=\"0 0 ")
                 .append(width).append(' ').append(height).append("\"><title>").append(xml(description))
                 .append("</title><rect width=\"100%\" height=\"100%\" fill=\"white\"/>");
@@ -160,6 +174,13 @@ public final class DecisionTreeFigureRenderer {
             g.setColor(new Color(Integer.parseInt(fill, 16))); g.fillRoundRect(x, y, width-x-8, h, 5, 5);
             svg.append("<rect x=\"").append(x).append("\" y=\"").append(y).append("\" width=\"").append(width-x-8)
                     .append("\" height=\"").append(h).append("\" rx=\"5\" fill=\"#").append(fill).append("\"/>");
+            var owner = line.row().responsibility();
+            if (owner != null) {
+                g.setColor(Color.decode(owner.color()));
+                g.fillRect(x + 1, y + 2, 3, h - 4);
+                svg.append("<rect class=\"responsibility-marker\" x=\"").append(x + 1).append("\" y=\"").append(y + 2)
+                        .append("\" width=\"3\" height=\"").append(h - 4).append("\" fill=\"").append(owner.color()).append("\"/>");
+            }
             if (line.row().score() != null) {
                 // Numeric relevance remains authoritative; length is only a visual cue, never probability.
                 // A common 120pt track fits the minimum supported row width and is invariant across depth and page sizes.
@@ -173,7 +194,9 @@ public final class DecisionTreeFigureRenderer {
             }
             g.setColor(new Color(0x243746));
             int textY = y + 14;
-            for (var text : line.text()) {
+            var linesToDraw = new ArrayList<>(line.text());
+            if (line.showOwner()) linesToDraw.addAll(line.ownerText());
+            for (var text : linesToDraw) {
                 g.drawString(text, x + 7, textY);
                 svg.append("<text x=\"").append(x+7).append("\" y=\"").append(textY)
                         .append("\" font-family=\"sans-serif\" font-size=\"10\" fill=\"#243746\">")

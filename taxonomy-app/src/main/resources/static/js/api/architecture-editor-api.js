@@ -41,6 +41,13 @@ window.ArchitectureEditorApi = (function () {
         load: function (context, revision, signal, layout, layoutRevision, viewId) {
             return window.TaxonomyApiClient.getJson(base + '?' + query(context, revision, layout, layoutRevision, viewId), Object.assign({ signal: signal }, exactPolicy(context)));
         },
+        analysisResponsibilities: function (context, pin) {
+            var params = new URLSearchParams(query(context));
+            for (var key of ['expectedCommit', 'expectedSemanticRevision', 'modelSha256', 'catalogueRevision', 'live']) {
+                if (pin[key] != null) params.set(key, String(pin[key]));
+            }
+            return window.TaxonomyApiClient.getJson(base + '/analysis-responsibilities?' + params, exactPolicy(context));
+        },
         analysisBrief: function (context, model) {
             var params = new URLSearchParams(query(context));
             if (model?.expectedCommit) params.set('expectedCommit', model.expectedCommit);

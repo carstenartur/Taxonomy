@@ -15,7 +15,8 @@
         if (!roots.length || roots.some(code => !available.has(code))) throw new Error(reportText('Select at least one available taxonomy.', 'Wählen Sie mindestens eine verfügbare Taxonomie.'));
         return {profile: input.profile || 'STANDARD', taxonomyRoots: [...new Set(roots)],
             contents: input.contents || 'SHORT', treeLayout: input.treeLayout || 'AUTO',
-            sections: input.sections || presets[input.profile || 'STANDARD']};
+            sections: input.sections || presets[input.profile || 'STANDARD'],
+            ...(input.showResponsibilities ? {showResponsibilities:true} : {})};
     }
     function query(options) {
         const params = new URLSearchParams();
@@ -109,6 +110,11 @@
         const contents = select(t('Contents','Inhaltsverzeichnis'),'contents', [['NONE',t('None','Keines')],['SHORT',t('Short — main sections','Kurz – Hauptabschnitte')],['FULL',t('Detailed','Ausführlich')]], 'SHORT', advanced);
         const layout = select(t('Decision tree','Entscheidungsbaum'), 'treeLayout', [['AUTO',t('Automatic (landscape)','Automatisch (Querformat)')],['A4_LANDSCAPE',t('A4 landscape — one page','A4 quer – eine Seite')],['A3_LANDSCAPE',t('A3 landscape — one page','A3 quer – eine Seite')],['TABLE',t('Table','Tabelle')]], 'AUTO', advanced);
         advanced.append(el('p', t('Automatic uses A4, A3 or continuation pages. A fixed page size reports when the complete tree cannot fit legibly.', 'Automatisch nutzt A4, A3 oder Folgeseiten. Bei fester Seitengröße erhalten Sie einen Hinweis, falls der vollständige Baum nicht lesbar hineinpasst.')));
+        const responsibilityLabel = el('label');
+        const responsibility = el('input', null, {type:'checkbox',name:'showResponsibilities'});
+        responsibility.checked = !!window.TaxonomyResponsibilityDisplay?.enabled();
+        responsibilityLabel.append(responsibility, document.createTextNode(t('Show organizational responsibilities', 'Organisatorische Zuständigkeiten anzeigen')));
+        advanced.append(responsibilityLabel);
         const sectionGroup = el('fieldset'); sectionGroup.append(el('legend',t('Sections','Abschnitte'))); advanced.append(sectionGroup);
         const sectionNames = {TITLE_PAGE:t('Cover','Deckblatt'),SUMMARY:t('Summary','Zusammenfassung'),TREE:t('Complete tree','Vollständiger Baum'),CHAPTERS:t('Decision reasoning','Entscheidungsbegründungen'),ARCHITECTURE:t('Saved architecture and boundary context','Gespeicherte Architektur und Kontext'),EVIDENCE:t('Detailed evidence','Ausführliche Nachweise')};
         const sections = Object.entries(sectionNames).filter(([key]) => key !== 'ARCHITECTURE' || config.saved).map(([key,title]) => {
@@ -177,7 +183,7 @@
             if (!selected.length) {error.textContent=t('Select at least one taxonomy.','Wählen Sie mindestens eine Taxonomie.');return;}
             const included = sections.filter(c=>c.checked).map(c=>c.value);
             if(format.value!=='json'&&!included.length){error.textContent=t('Select at least one section.','Wählen Sie mindestens einen Abschnitt.');return;}
-            const options = selection({roots,selectedRoots:selected,profile:profile.value,contents:contents.value,treeLayout:layout.value,sections:included});
+            const options = selection({roots,selectedRoots:selected,profile:profile.value,contents:contents.value,treeLayout:layout.value,sections:included,showResponsibilities:responsibility.checked});
             if(format.value==='json') {options.profile='FULL';delete options.sections;delete options.contents;delete options.treeLayout;}
             const controller=new AbortController();
             exportController=controller;

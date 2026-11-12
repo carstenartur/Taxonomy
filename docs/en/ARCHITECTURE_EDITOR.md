@@ -37,6 +37,8 @@ Search in the **Architecture tree** opens the path to a matching element. Under 
 
 Select a branch in the tree, choose its **Responsible unit for this branch**, preview the change and accept it. Descendants inherit the closest assignment. A nested branch may have its own assignment. **Inherit from parent** removes that override. The form identifies the element where the effective assignment originated. Existing free-text entries remain visible and can be replaced with directory units.
 
+Enable **Show responsibilities** to add a color stripe to each assigned element in the architecture and decision trees. The unit name appears where an assignment starts or changes. The report export dialog has the same option. Saved analyses show responsibilities from the model used for that analysis. Older results without a recorded model binding have no responsibility markings.
+
 The tree and graph share their selection. The graph displays up to 200 nodes and 400 edges at once. Arrow keys pan the focused graph and +/− change zoom.
 
 SVG and vector PDF use the complete deterministic server layout at the displayed workspace revision or Git checkpoint. They are independent of local pan/zoom. The editor currently uses derived layout and a read-only synchronized DSL view; editable DSL translation, saved layouts, shared undo, richer evidence decisions and extended history remain tracked in [#814](https://github.com/carstenartur/Taxonomy/issues/814). Existing analysis snapshots remain immutable.

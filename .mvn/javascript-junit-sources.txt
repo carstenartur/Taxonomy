@@ -24,6 +24,7 @@
 .github/scripts/architecture-organization-directory.browser.test.mjs
 .github/scripts/architecture-planning.test.mjs
 .github/scripts/architecture-responsibility-tree.test.mjs
+.github/scripts/responsibility-display.test.mjs
 .github/scripts/architecture-workbench-basepath.test.mjs
 .github/scripts/architecture-workbench-fit.test.mjs
 .github/scripts/architecture-workbench-print.test.mjs

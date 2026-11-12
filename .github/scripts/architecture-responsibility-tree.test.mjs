@@ -11,6 +11,7 @@ class TestElement {
         this.ownerDocument = document;
         this.children = [];
         this.dataset = {};
+        this.style = {setProperty:(k,v)=>{this.style[k]=v;}};
         this.attributes = {};
         this.events = {};
         this.textContent = '';
@@ -123,4 +124,22 @@ test('graph selection reopens a collapsed ancestor even when its nested branch r
     assert.equal(f.by('selectId','BR-1057'), undefined);
     f.tree.render({elements:roles, hierarchy, selected:'BR-1002'});
     assert.equal(f.by('selectId','BR-1002').getAttribute('aria-current'), 'true');
+});
+
+test('ownership stripes follow descendants and names mark each change in a monochrome tree', () => {
+    const f = fixture();
+    const a={unitId:'org-a',name:'Department A',sourceId:'BR-1000',color:'#0072B2'};
+    const b={unitId:'org-b',name:'Office B',sourceId:'BR-1002',color:'#D55E00'};
+    const units=new Map([['BR-1000',a],['BR-1057',a],['BR-1002',b],['BR-1081',b]]);
+    function render(assignments) { f.tree.render({elements:roles,hierarchy,selected:'BR-1081',assignments}); }
+    render(units);
+    function row(id) { return f.by('selectId',id); }
+    assert.equal(row('BR-1057').style['--responsible-unit-color'],a.color);
+    assert.equal(row('BR-1081').style['--responsible-unit-color'],b.color);
+    assert.ok(row('BR-1000').children.some(c=>c.textContent.includes('Department A')));
+    assert.ok(row('BR-1002').children.some(c=>c.textContent.includes('Office B')));
+    assert.equal(row('BR-OTHER').style['--responsible-unit-color'],undefined);
+    render(null);
+    assert.equal(row('BR-1002').style['--responsible-unit-color'],undefined);
+    assert.ok(row('BR-1002').children.every(c=>!c.textContent.includes('Office B')));
 });

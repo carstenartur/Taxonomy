@@ -49,6 +49,13 @@ public final class DecisionTreeWordSectionRenderer {
                             + (entry.depth() > 12
                                     ? " (" + labels.depth() + " " + entry.depth() + ")"
                                     : ""));
+            if (entry.responsibility() != null) {
+                var mark = p.createRun();
+                mark.addBreak();
+                mark.setColor(entry.responsibility().color().substring(1));
+                mark.setText("■ ");
+                p.createRun().setText(labels.responsibility() + ": " + entry.responsibility().name());
+            }
             writer.cell(
                     row.getCell(1),
                     entry.score() == null ? labels.notEvaluated() : entry.score() + "%");

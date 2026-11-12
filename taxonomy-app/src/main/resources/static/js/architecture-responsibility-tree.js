@@ -51,7 +51,7 @@
         const document = root.ownerDocument;
         const expanded = new Set(), queryCollapsed = new Set(), pages = new Map();
         let index, elements, hierarchy, selected, query = '', enteredQuery = '', extraSearchSelection;
-        let focusedControls = new Map();
+        let focusedControls = new Map(), assignments = null;
 
         function ancestors(id, output) {
             for (let parent = index.parents.get(id); parent !== undefined && !output.has(parent);
@@ -135,6 +135,21 @@
                             const id = document.createElement('small'); id.textContent = node.id;
                             select.append(id);
                         }
+                        const unit = assignments?.get(node.id);
+                        if (unit) {
+                            select.className += ' responsibility-assigned';
+                            select.style.setProperty('--responsible-unit-color', unit.color);
+                            const label = t('views.diagram.responsibleUnit', unit.name);
+                            select.title = label;
+                            const parentUnit = assignments.get(group.parent);
+                            if (parentUnit?.unitId !== unit.unitId || parentUnit.sourceId !== unit.sourceId) {
+                                const name = document.createElement('small');
+                                name.textContent = label;
+                                select.append(name);
+                            } else {
+                                select.setAttribute('aria-label', node.label + ' (' + node.id + ') · ' + label);
+                            }
+                        }
                         select.addEventListener('click', () => onSelect(node.id));
                         row.append(select);
                     } else {
@@ -174,6 +189,7 @@
         }
 
         function render(data) {
+            assignments = data.assignments;
             const changed = !index || elements !== data.elements || hierarchy !== data.hierarchy;
             if (changed) {
                 elements = data.elements; hierarchy = data.hierarchy;
@@ -199,7 +215,7 @@
         }
 
         function reset() {
-            index = null; elements = null; hierarchy = null; selected = null; query = ''; extraSearchSelection = null;
+            assignments = null; index = null; elements = null; hierarchy = null; selected = null; query = ''; extraSearchSelection = null;
             expanded.clear(); pages.clear(); queryCollapsed.clear(); focusedControls.clear();
             root.replaceChildren();
         }

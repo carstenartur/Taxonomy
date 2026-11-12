@@ -10,6 +10,15 @@ import tools.jackson.databind.ObjectMapper;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class CatalogueParentIndexTest {
+    @Test void decisionHierarchyIncludesUnadoptedDescendantsOfAnAdoptedTypedCode() {
+        var overlays = new CatalogueOverlayService(new ObjectMapper(), new DefaultResourceLoader(), true, "unused");
+        var index = new CatalogueParentIndex(null, overlays);
+        var model = new CanonicalArchitectureModel();
+        model.getElements().add(new ArchitectureElement("BR-1002", "BusinessRole", "Staff", "", null));
+        var hierarchy = index.parentsFor(model, null, com.taxonomy.dsl.model.CatalogueDefinition.standard());
+        assertThat(hierarchy).containsEntry("BR-1002", "BR-1057").containsEntry("BR-1081", "BR-1002");
+    }
+
     @Test void restoresTheActualMedicalAdvisorPathForLegacyWorkingCopies() {
         var overlays = new CatalogueOverlayService(new ObjectMapper(), new DefaultResourceLoader(), true, "unused");
         var index = new CatalogueParentIndex(null, overlays);
