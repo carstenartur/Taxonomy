@@ -253,9 +253,9 @@ class AnalysisWorkingDraftServiceTest {
                 .thenThrow(new IllegalArgumentException("not found"));
 
         assertThatThrownBy(() -> service.read("Alice", "ws-1"))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Workspace source repository is not available")
-                .hasMessageContaining("repo-1");
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Workspace source repository is unavailable")
+                .hasNoCause();
 
         verify(systemRepositoryService, never()).getPrimaryRepository();
         verify(repository, never()).findByScopeKeyAndUsername(any(), any());
