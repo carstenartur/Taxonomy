@@ -1188,6 +1188,21 @@
         window.TaxonomyAnalysisSessionReady.then(function (ready) { if (ready) refreshRecent(); });
     }
     if (typeof document !== 'undefined' && document.addEventListener) {
+        document.addEventListener('taxonomy:repository-context-changed', function (event) {
+            if (!event.detail?.selectionChanged) return;
+            var streaming = window.TaxonomyScoring?.cancelStreamingAnalysis?.();
+            var observing = active !== null;
+            if (active) {
+                // Only detach the local observer. Other tabs can still use the admitted job.
+                active.stop();
+                active = null;
+            }
+            if (observing || streaming) window.TaxonomyScoring?.setAnalyzing?.(false);
+            document.getElementById('analysisLiveProgress')?.remove();
+            var refresh = recentRead || document.getElementById('analysisRecentRuns');
+            clearRecent();
+            if (refresh) refreshRecent();
+        });
         ['taxonomy:analysis-invalidated', 'taxonomy:analysis-cancelled'].forEach(function (name) {
             document.addEventListener(name, function (event) {
                 if (active) {

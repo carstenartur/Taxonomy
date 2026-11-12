@@ -12,10 +12,11 @@ import static org.mockito.Mockito.*;
 
 class RepositoryWorkspaceSnapshotTest {
     @Test
-    void workingCopyContentAndProvenanceUseOneCapturedCommit() throws Exception {
+    void workingCopyPreservesTheOriginalCapturedCommitAndItsParents() throws Exception {
         try (var factory = spy(new DslGitRepositoryFactory(null))) {
             var source = spy(factory.getSystemRepository());
             doReturn(source).when(factory).getCentralRepository("source");
+            String parent = source.commitDsl("approved", "initial content", "owner", "Initial");
             String captured = source.commitDsl("approved", "captured content", "owner", "Captured");
             var first = new AtomicBoolean(true);
             doAnswer(call -> {
@@ -28,22 +29,25 @@ class RepositoryWorkspaceSnapshotTest {
             when(catalog.getRepository("source")).thenReturn(metadata);
             var rows = mock(UserWorkspaceRepository.class);
             when(rows.save(any(UserWorkspace.class))).thenAnswer(call -> call.getArgument(0));
-            var service = new RepositoryWorkspaceService(rows, catalog, factory);
+            var memberships = mock(RepositoryMembershipService.class);
+            when(memberships.canContribute(metadata, "owner")).thenReturn(true);
+            doAnswer(call -> {
+                call.<java.util.function.Consumer<SystemRepository>>getArgument(1).accept(metadata);
+                return null;
+            }).when(catalog).readCurrentAuthorization(eq("source"), any());
+            var service = new RepositoryWorkspaceService(rows, catalog, factory, memberships);
             var result = service.createWorkingCopy("owner", "source", "approved", "Working copy", null);
             var destination = factory.openWorkspaceRepository(result.getWorkspaceId());
             assertEquals(captured, result.getBaseCommit());
             assertEquals("captured content", destination.getDslAtHead("draft"));
-            assertEquals(result.getCurrentCommit(), destination.getHeadCommit("draft"));
-            assertEquals(result.getCurrentCommit(), destination.getHeadCommit("sync-base"));
-            assertEquals(1, destination.getDslHistory("draft").size());
-            var evidence = destination.getProvenance(result.getCurrentCommit());
-            assertEquals("fork", evidence.operation());
-            assertEquals("source", evidence.sources().getFirst().repositoryId());
-            assertEquals("approved", evidence.sources().getFirst().branch());
-            assertEquals(captured, evidence.sources().getFirst().commitId());
-            assertEquals(org.eclipse.jgit.lib.ObjectId.fromString(captured),
-                    new org.eclipse.jgit.lib.ObjectInserter.Formatter().idFor(
-                            org.eclipse.jgit.lib.Constants.OBJ_COMMIT, evidence.sources().getFirst().rawCommit()));
+            assertEquals(captured, result.getCurrentCommit());
+            assertEquals(captured, destination.getHeadCommit("draft"));
+            assertEquals(captured, destination.getHeadCommit("sync-base"));
+            assertEquals("source", result.getSourceRepositoryId());
+            assertEquals("approved", result.getSourceBranch());
+            assertTrue(destination.isAncestor(parent, captured));
+            assertEquals("initial content", destination.getDslAtCommit(parent));
+            assertEquals(2, destination.getDslHistory("draft").size());
             assertNotEquals(captured, source.getHeadCommit("approved"));
         }
     }

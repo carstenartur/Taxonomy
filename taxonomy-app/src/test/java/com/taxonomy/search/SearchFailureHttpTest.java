@@ -9,8 +9,18 @@ import com.taxonomy.relations.service.HybridSearchService;
 import com.taxonomy.search.controller.SearchApiController;
 import com.taxonomy.search.service.SearchFacade;
 import com.taxonomy.shared.config.GlobalExceptionHandler;
+import com.taxonomy.versioning.controller.DslApiController;
+import com.taxonomy.versioning.controller.DslReadWorkspaceContextResolver;
+import com.taxonomy.versioning.repository.ArchitectureCommitIndexRepository;
+import com.taxonomy.versioning.service.CommitIndexService;
+import com.taxonomy.versioning.service.ConflictDetectionService;
+import com.taxonomy.versioning.service.DslOperationsFacade;
+import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryStateGuard;
+import com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort;
 import com.taxonomy.workspace.service.WorkspaceResolver;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import jakarta.persistence.EntityManager;
 import org.hibernate.search.mapper.orm.Search;
 import org.junit.jupiter.api.BeforeEach;
@@ -56,6 +66,35 @@ class SearchFailureHttpTest {
         messages.setDefaultEncoding("UTF-8");
         mvc = standaloneSetup(new SearchApiController(facade, messages, workspaces))
                 .setControllerAdvice(new GlobalExceptionHandler(messages)).build();
+    }
+
+    @Test
+    void unavailableCommitIndexReachesEveryDerivedHistoryEndpoint() throws Exception {
+        var repositories = mock(DslGitRepositoryFactory.class);
+        var history = new CommitIndexService(repositories, mock(ArchitectureCommitIndexRepository.class));
+        ReflectionTestUtils.setField(history, "entityManager", manager);
+        when(workspaces.resolveCurrentRepositoryContext()).thenReturn(
+                RepositoryContext.workspace("repo", "workspace", "draft", "alice"));
+        var operations = new DslOperationsFacade(repositories, history, mock(ConflictDetectionService.class),
+                mock(RepositoryStateGuard.class), mock(RepositoryStateService.class), workspaces,
+                mock(WorkspaceArchitectureVersionPort.class));
+        var historyMvc = standaloneSetup(new DslApiController(operations, workspaces,
+                mock(DslReadWorkspaceContextResolver.class)))
+                .setControllerAdvice(new GlobalExceptionHandler(new ResourceBundleMessageSource())).build();
+        try (var search = mockStatic(Search.class)) {
+            search.when(() -> Search.session(manager)).thenThrow(new IllegalStateException("private-index-path"));
+            for (var request : java.util.List.of(
+                    get("/api/dsl/history/search").param("query", "CP"),
+                    get("/api/dsl/history/search-versioned").param("query", "CP"),
+                    get("/api/dsl/history/element/CP"),
+                    get("/api/dsl/history/relation").param("key", "CP REALIZES BP"),
+                    get("/api/dsl/history/element/CP/aggregation"))) {
+                historyMvc.perform(request)
+                        .andExpect(status().isServiceUnavailable())
+                        .andExpect(jsonPath("$.status").value(503))
+                        .andExpect(content().string(not(containsString("private-index-path"))));
+            }
+        }
     }
 
     @Test
