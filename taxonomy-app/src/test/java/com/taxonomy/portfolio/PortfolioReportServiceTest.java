@@ -43,6 +43,9 @@ class PortfolioReportServiceTest {
     private ProjectPortfolioService projectService;
 
     @Autowired
+    private com.taxonomy.portfolio.service.ProjectProductGapReviewService gapReviews;
+
+    @Autowired
     private PortfolioAnalysisPersistenceService analyses;
 
     // The fixture imports retained evidence from before model-bound admission.
@@ -78,6 +81,23 @@ class PortfolioReportServiceTest {
                 evidence, null, null, null, null, null, "frozen-prompt", "frozen-catalogue",
                 context.username(), context, 1);
 
+        var gap = gapReviews.list(project.id(), context.username(), context).getFirst();
+        assertThat(gap.classification().name()).isEqualTo("UNDECIDED");
+        var classify = new com.taxonomy.portfolio.service.ProjectProductGapReviewService.ReviewRequest(0,
+                gap.evidenceFingerprint(), com.taxonomy.portfolio.model.ProductGapReview.Classification.PROCURE, "Reviewed candidates");
+        var reviewed = gapReviews.review(project.id(), gap.reviewKey(), classify, context.username(), context);
+        assertThat(reviewed.revision()).isOne();
+        assertThat(reviewed.history().getFirst().reviewer()).isEqualTo(context.username());
+        assertThat(reviewed.history().getFirst().evidenceFingerprint()).isEqualTo(gap.evidenceFingerprint());
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> gapReviews.review(project.id(), gap.reviewKey(),
+                classify, context.username(), context)).isInstanceOf(com.taxonomy.portfolio.service.PortfolioException.class)
+                .hasMessageContaining("changed");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> gapReviews.review(project.id(), gap.reviewKey(),
+                new com.taxonomy.portfolio.service.ProjectProductGapReviewService.ReviewRequest(1, "stale",
+                        com.taxonomy.portfolio.model.ProductGapReview.Classification.CHANGE, "New information"),
+                context.username(), context)).hasMessageContaining("changed");
+        assertThat(gapReviews.list(project.id(), context.username(), context).getFirst().history()).hasSize(1);
+
         var markdown = reportService.render(
                 project.id(), null, Format.MARKDOWN, "taxonomy", context.username(), context);
         var html = reportService.render(
@@ -90,7 +110,7 @@ class PortfolioReportServiceTest {
                 project.id(), requirement.id(), Format.DOCX, "taxonomy", context.username(), context);
 
         assertThat(new String(markdown.bytes(), StandardCharsets.UTF_8))
-                .contains(project.projectKey(), "REQ-001", "Reproducibility baseline", snapshotId, "frozen-catalogue", "18.5% assessed", "50%");
+                .contains(project.projectKey(), "REQ-001", "Reproducibility baseline", snapshotId, "frozen-catalogue", "18.5% assessed", "50%", "PROCURE (v1)");
         assertThat(new String(html.bytes(), StandardCharsets.UTF_8))
                 .contains("<!doctype html>", project.projectKey(), "REQ-001")
                 .contains(snapshotId, "18.5% assessed", "50%").doesNotContain("REQ-999");

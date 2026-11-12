@@ -6,7 +6,6 @@ import com.taxonomy.portfolio.dto.PortfolioDtos.MatrixView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.ProjectPortfolioView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.ProjectSolutionView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
-import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.portfolio.model.RequirementAnalysisSnapshot;
 import com.taxonomy.portfolio.repository.RequirementAnalysisSnapshotRepository;
 import com.taxonomy.workspace.service.WorkspaceContext;
@@ -25,7 +24,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -60,13 +58,15 @@ public class PortfolioReportService {
     private final PortfolioAggregationService aggregationService;
     private final RequirementAnalysisSnapshotRepository snapshotRepository;
     private final ObjectMapper objectMapper;
+    private final ProjectProductGapReviewService gapReviews;
 
     public PortfolioReportService(PortfolioAggregationService aggregationService,
                                   RequirementAnalysisSnapshotRepository snapshotRepository,
-                                  ObjectMapper objectMapper) {
+                                  ObjectMapper objectMapper, ProjectProductGapReviewService gapReviews) {
         this.aggregationService = aggregationService;
         this.snapshotRepository = snapshotRepository;
         this.objectMapper = objectMapper;
+        this.gapReviews = gapReviews;
     }
 
     @Transactional(readOnly = true)
@@ -136,20 +136,7 @@ public class PortfolioReportService {
                 portfolio.requirementTaxonomyMatrix(),
                 portfolio.requirementSolutionMatrix(),
                 portfolio.solutionProductMatrix(),
-                baselines, format == Format.CSV ? List.of() : productGaps(portfolio.project().id(), requirementId, scopeKey));
-    }
-
-    private List<ProjectProductGaps.Family> productGaps(Long projectId, Long requirementId, String scopeKey) {
-        var result = new ProjectProductGaps();
-        var completed = EnumSet.of(AnalysisStatus.SUCCESS, AnalysisStatus.PARTIAL);
-        try (var rows = snapshotRepository.streamProductGapEvidence(projectId, scopeKey, requirementId, completed)) {
-            rows.forEach(row -> {
-                if (row.analysisPayload() != null) {
-                    result.include(row, objectMapper.readValue(row.analysisPayload(), ProjectProductGaps.Evidence.class));
-                }
-            });
-        }
-        return result.families();
+                baselines, format == Format.CSV ? List.of() : gapReviews.forReport(portfolio.project().id(), requirementId, scopeKey));
     }
 
     private SnapshotBaseline baseline(RequirementView requirement,
@@ -216,6 +203,7 @@ public class PortfolioReportService {
             for (var family : model.productCoverageGaps()) {
                 output.append("### ").append(escapeMarkdown(family.familyCode())).append(" — ")
                         .append(escapeMarkdown(family.familyName())).append("\n\n");
+                output.append("- Classification: ").append(family.classification()).append(" (v").append(family.revision()).append(")\n");
                 for (var observation : family.observations()) {
                     output.append("- ").append(escapeMarkdown(gapEvidence(observation))).append('\n');
                 }
@@ -322,6 +310,7 @@ public class PortfolioReportService {
                 title(document, "Product coverage gaps", 2);
                 for (var family : model.productCoverageGaps()) {
                     title(document, family.familyCode() + " — " + nullSafe(family.familyName()), 3);
+                    paragraph(document, "Classification: " + family.classification() + " (v" + family.revision() + ")", false);
                     for (var observation : family.observations()) paragraph(document, gapEvidence(observation), false);
                 }
             }
@@ -499,6 +488,6 @@ public class PortfolioReportService {
             MatrixView requirementTaxonomyMatrix,
             MatrixView requirementSolutionMatrix,
             MatrixView solutionProductMatrix,
-            List<SnapshotBaseline> baselines, List<ProjectProductGaps.Family> productCoverageGaps) {
+            List<SnapshotBaseline> baselines, List<ProjectProductGapReviewService.ReviewedFamily> productCoverageGaps) {
     }
 }

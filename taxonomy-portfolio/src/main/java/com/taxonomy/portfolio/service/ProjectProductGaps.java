@@ -17,7 +17,20 @@ public final class ProjectProductGaps {
     public record Observation(String snapshotId, Long requirementId, String requirementKey, Long requirementVersionId,
                               int requirementVersion, String catalogueFingerprint, Integer minimumSuitabilityScore,
                               double familyScore, String reason, List<Candidate> candidates) { }
-    public record Family(String familyCode, String familyName, String catalogueFingerprint, List<Observation> observations) { }
+    public record Family(String familyCode, String familyName, String catalogueFingerprint, List<Observation> observations) {
+        public String reviewKey() {
+            String source = catalogueFingerprint == null || catalogueFingerprint.isBlank()
+                    ? "snapshot:" + observations.getFirst().snapshotId() : "catalogue:" + catalogueFingerprint;
+            return com.taxonomy.identity.StableIdentityHash.sha256(familyCode.length() + ":" + familyCode + source);
+        }
+
+        public String evidenceFingerprint() {
+            StringBuilder identity = new StringBuilder(reviewKey());
+            observations.stream().map(Observation::snapshotId).sorted()
+                    .forEach(id -> identity.append(id.length()).append(':').append(id));
+            return com.taxonomy.identity.StableIdentityHash.sha256(identity.toString());
+        }
+    }
     private record Key(String family, String catalogue, String unpinnedSnapshot) { }
 
     /** Read only the evidence fields from a saved snapshot; old payloads used scores as their score map. */

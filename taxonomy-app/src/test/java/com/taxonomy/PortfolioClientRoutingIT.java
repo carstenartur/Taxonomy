@@ -355,6 +355,46 @@ class PortfolioClientRoutingIT {
         assertThat(href("reportsLink")).isEqualTo(prefix + "/projects/42/reports?lang=de");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"en", "de"})
+    void projectGapReviewPreservesFrozenEvidenceAndExpectedRevision(String language) {
+        String prefix = "/taxonomy";
+        installRoutes(prefix);
+        String key = "a".repeat(64);
+        String fingerprint = "b".repeat(64);
+        var candidate = Map.of("code", "IP-P", "assessedScore", 18.5, "recordedScore", 0, "reason", "Frozen reason");
+        var observation = Map.of("snapshotId", "saved-1", "requirementKey", "REQ-7", "requirementVersion", 1,
+                "minimumSuitabilityScore", 50, "reason", "Coverage gap", "candidates", List.of(candidate));
+        var initial = Map.of("reviewKey", key, "familyCode", "IP-F", "familyName", "Family", "catalogueFingerprint", "archived",
+                "evidenceFingerprint", fingerprint, "revision", 0, "classification", "UNDECIDED",
+                "observations", List.of(observation), "history", List.of());
+        page.route("GET", prefix + "/api/projects/42/product-gaps", request -> PortfolioClientTestPage.json(200, List.of(initial)));
+        var command = new java.util.concurrent.atomic.AtomicReference<String>();
+        page.route("POST", prefix + "/api/projects/42/product-gaps/" + key + "/reviews", request -> {
+            command.set(request.body());
+            var revised = new java.util.HashMap<String,Object>(initial);
+            revised.put("revision", 1); revised.put("classification", "PROCURE");
+            revised.put("history", List.of(Map.of("revision", 1, "classification", "PROCURE", "reviewer", "architect",
+                    "reviewedAt", "2026-11-12T00:00:00Z", "rationale", "Supplier evidence", "evidenceFingerprint", fingerprint)));
+            return PortfolioClientTestPage.json(200, revised);
+        });
+        page.open("portfolio-reports", prefix, "/projects/42/reports", language, "localStorage.clear();");
+        element("projectProductGaps").findElement(By.tagName("summary")).sendKeys(org.openqa.selenium.Keys.ENTER);
+        wait.until(ignored -> text("productGapFamilies").contains("IP-F"));
+        var group = element("productGapFamilies").findElement(By.tagName("details"));
+        group.findElement(By.tagName("summary")).sendKeys(org.openqa.selenium.Keys.ENTER);
+        group.findElement(By.tagName("details")).findElement(By.tagName("summary")).click();
+        assertThat(text("productGapFamilies")).contains("IP-P", "saved-1", "archived", "Frozen reason");
+        new Select(element("class-" + key)).selectByValue("PROCURE");
+        element("reason-" + key).sendKeys("Supplier evidence");
+        group.findElement(By.cssSelector("button[type=submit]")).click();
+        wait.until(ignored -> text("productGapFamilies").contains("Supplier evidence"));
+        assertThat(command.get()).contains("\"expectedRevision\":0", fingerprint, "PROCURE");
+        assertThat(text("productGapStatus")).contains("1");
+        element("productGapFilter").sendKeys("unrelated");
+        wait.until(ignored -> element("productGapFamilies").getDomProperty("childElementCount").equals("0"));
+    }
+
     @ParameterizedTest(name = "report downloads and matrix detail navigation retain [{0}]")
     @ValueSource(strings = {"", "/taxonomy", "/teams/blue/taxonomy"})
     void reportDownloadAndMatrixDetailNavigationRetainContext(String prefix) throws Exception {
