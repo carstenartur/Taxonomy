@@ -651,12 +651,34 @@
         setDraftDecisionPending(false);
     }
 
+    var restoredFromCache = false;
+    var retainedDraft = null;
+
+    function historyAnalysisSource() {
+        if (!window.location.href || (!restoredFromCache
+                && window.performance?.getEntriesByType?.('navigation')?.[0]?.type !== 'back_forward')) return null;
+        var url = new URL(window.location.href);
+        if (/\/architecture\/(editor|workbench)$/.test(url.pathname)) return null;
+        var query = url.searchParams;
+        if (query.get('architectureSource') !== 'analysis') return null;
+        var keys = ['architectureSource', 'repositoryId', 'workspaceId', 'workspaceScopeKey', 'branch'];
+        if (!keys.every(function (key) {
+            var values = query.getAll(key);
+            return values.length === 1 && values[0] && values[0] === values[0].trim();
+        })) return null;
+        var id = query.get('workspaceId');
+        if (id === '__shared__' || query.get('workspaceScopeKey') !== id) return null;
+        return {workspaceId:id, repositoryId:query.get('repositoryId'), branch:query.get('branch')};
+    }
+
     function resolveWorkspaceAndLoad(options) {
         beginDraftResolution();
         var remembered = rememberedWorkspaceId();
         installWorkspaceFetchRouting();
         installWorkspaceEventSourceRouting();
 
+        var historySource = historyAnalysisSource();
+        if (historySource) return resolveActiveWorkspaceAndLoad(options, historySource);
         if (remembered) {
             runtime.workspaceId = remembered;
             return loadDraft(Object.assign({}, options, { probe: true })).then(function (view) {
@@ -677,10 +699,22 @@
         return resolveActiveWorkspaceAndLoad(options);
     }
 
-    function resolveActiveWorkspaceAndLoad(options) {
+    function resolveActiveWorkspaceAndLoad(options, historySource) {
         beginDraftResolution();
-        return jsonRequest('/api/workspace/current', { method: 'GET' })
-            .then(function (workspace) {
+        historySource = historySource || historyAnalysisSource();
+        // A previous entry may have a different workspace than this tab's most recent switch.
+        // Confirm that exact private source before assigning the draft or enabling its actions.
+        var lookup = historySource
+            ? window.TaxonomyWorkspaceApi.current({pinnedWorkspaceId:historySource.workspaceId})
+            : jsonRequest('/api/workspace/current', { method: 'GET' });
+        return lookup.then(function (workspace) {
+                if (historySource && (workspace?.workspaceId !== historySource.workspaceId
+                        || workspace.sourceRepositoryId !== historySource.repositoryId
+                        || workspace.currentBranch !== historySource.branch
+                        || workspace.archived !== false || workspace.shared !== false
+                        || workspace.provisioningStatus !== 'READY')) {
+                    throw new Error(text('serverWorkspaceMissingTitle'));
+                }
                 runtime.workspaceResolved = true;
                 if (!workspace || !workspace.workspaceId) {
                     runtime.workspaceId = null;
@@ -690,6 +724,16 @@
                 }
                 runtime.workspaceId = workspace.workspaceId;
                 rememberWorkspaceId(runtime.workspaceId);
+                if (historySource && retainedDraft?.workspaceId === workspace.workspaceId) {
+                    // The retained document can contain unsaved input or an unresolved draft choice.
+                    // Only the verified source may resume that document's normal reconciliation.
+                    runtime.restoring = retainedDraft.restoring;
+                    setDraftDecisionPending(retainedDraft.decisionPending);
+                    runtime.sourceReady = false;
+                    return C.reconcileDraft().then(function (view) {
+                        return confirmInitialSource(true).then(function () { return view; });
+                    });
+                }
                 return loadDraft(options);
             }).then(function (view) {
                 // Do not await this here: architecture source initialization
@@ -700,8 +744,13 @@
             .catch(function (error) {
                 runtime.workspaceResolved = false;
                 finishDraftResolution();
+                if (historySource) {
+                    runtime.workspaceId = null;
+                    if (!retainedDraft) runtime.version = null;
+                    C.serverUnavailable(error);
+                }
                 if (options?.probe) throw error;
-                if (options?.reconcile) C.serverUnavailable(error);
+                if (!historySource && options?.reconcile) C.serverUnavailable(error);
                 if (window.console) window.console.warn('[Taxonomy] Workspace draft unavailable', error);
                 return null;
             });
@@ -793,7 +842,15 @@
         });
         window.addEventListener('online', retryServerState);
         window.addEventListener('pageshow', function (event) {
-            if (event.persisted) retryServerState();
+            if (!event.persisted) return;
+            restoredFromCache = true;
+            var source = historyAnalysisSource();
+            if (!source) return retryServerState();
+            if (runtime.workspaceResolved) {
+                retainedDraft = {workspaceId:runtime.workspaceId, restoring:runtime.restoring,
+                    decisionPending:runtime.draftDecisionPending};
+            }
+            return resolveActiveWorkspaceAndLoad({reconcile:true}, source);
         });
         window.addEventListener('pagehide', function () { saveLocalDraft(); });
     }

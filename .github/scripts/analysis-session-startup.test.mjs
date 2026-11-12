@@ -169,7 +169,7 @@ function createStartupHarness(workspaceResponse, loadDraft = async () => null, m
     TaxonomyI18n: null,
     ...metadata,
     console,
-    location: { assign() {} },
+    location: metadata.location || { assign() {} },
     setInterval() {
       return 1;
     },
@@ -184,6 +184,7 @@ function createStartupHarness(workspaceResponse, loadDraft = async () => null, m
 
   vm.runInNewContext(projectsSource, {
     CustomEvent: class {constructor(type, options) {this.type = type; this.detail = options?.detail;}},
+    URL,
     window,
     document,
     console,
@@ -658,4 +659,81 @@ test('current ContextBar readiness observers share a read while a departed sourc
   assert.equal(requests.at(-2).options.signal.aborted, true);
   assert.deepEqual(await next, changed);
   assert.deepEqual(bar.getCurrentContext(), changed);
+});
+
+const historyAddress = 'https://qa.example/taxonomy/?architectureSource=analysis&repositoryId=repo-a&workspaceId=ws-a&workspaceScopeKey=ws-a&branch=draft#versions';
+function historyMetadata(current, href = historyAddress) {
+  return {location:{href}, performance:{getEntriesByType: () => [{type:'back_forward'}]},
+    TaxonomyWorkspaceApi:{current}};
+}
+test('browser history confirms the exact private analysis workspace before loading its draft', async () => {
+  const check = deferred(), reads = [], draftCalls = [];
+  const h = createStartupHarness(Promise.resolve({workspaceId:'ws-b'}), () => { draftCalls.push(true); },
+    historyMetadata(options => { reads.push(options.pinnedWorkspaceId); return check.promise; }));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(reads, ['ws-a']); assert.deepEqual(draftCalls, []);
+  check.resolve({workspaceId:'ws-a',sourceRepositoryId:'repo-a',currentBranch:'draft',provisioningStatus:'READY',archived:false,shared:false});
+  await h.session.whenInitialized();
+  assert.equal(h.runtime.workspaceId,'ws-a'); assert.deepEqual(draftCalls,[true]);
+});
+for (const mismatch of ['foreign repository','revoked access','branch moved','archived','shared workspace']) {
+  test('browser history leaves the analysis draft unresolved on ' + mismatch, async () => {
+    const result = {workspaceId:'ws-a',sourceRepositoryId:'repo-a',currentBranch:'draft',provisioningStatus:'READY',archived:false,shared:false};
+    if (mismatch==='foreign repository') result.sourceRepositoryId='repo-b';
+    if (mismatch==='branch moved') result.currentBranch='other';
+    if (mismatch==='archived') result.archived=true;
+    if (mismatch==='shared workspace') result.shared=true;
+    const loads=[];
+    const h=createStartupHarness(Promise.resolve({workspaceId:'ws-b'}), () => { loads.push(true); },
+      historyMetadata(async () => { if(mismatch==='revoked access') throw new Error('HTTP 404'); return result; }));
+    await h.session.whenInitialized();
+    assert.deepEqual(loads,[]); assert.equal(h.runtime.workspaceResolved,false);
+    assert.equal(h.session.state().ready,false); assert.ok(h.observations.includes('unavailable'));
+  });
+}
+test('a snapshot history entry retains its independent analysis workspace', async () => {
+  const h=createStartupHarness(Promise.resolve({workspaceId:'ws-b'}),async () => null,
+    historyMetadata(() => { throw new Error('unexpected private history lookup'); },historyAddress.replace('architectureSource=analysis','architectureSource=snapshot')));
+  await h.session.whenInitialized();
+  assert.equal(h.runtime.workspaceId,'ws-b');
+});
+
+for (const allowed of [true, false]) {
+  test('a retained private page rechecks authority before reconciling its existing draft, access ' + allowed, async () => {
+    const pending = deferred(), calls = [], loaded = [];
+    const meta = historyMetadata(options => {
+      calls.push(options.pinnedWorkspaceId);
+      return pending.promise;
+    });
+    meta.performance = {getEntriesByType: () => [{type:'navigate'}]};
+    const h = createStartupHarness(Promise.resolve({workspaceId:'ws-a'}), () => loaded.push('load'), meta);
+    await h.session.whenInitialized();
+    const restored = h.emit('pageshow', null, 'window');
+    assert.deepEqual(calls, ['ws-a']);
+    assert.equal(h.session.state().ready, false);
+    assert.deepEqual(h.observations, []);
+    if (allowed) pending.resolve({workspaceId:'ws-a',sourceRepositoryId:'repo-a',currentBranch:'draft',provisioningStatus:'READY',archived:false,shared:false});
+    else pending.reject(new Error('HTTP 403'));
+    await restored;
+    assert.deepEqual(loaded, ['load'], 'a retained draft must never be replaced by startup');
+    assert.deepEqual(h.observations, [allowed ? 'check' : 'unavailable']);
+    assert.equal(h.session.state().ready, allowed);
+    if (allowed) assert.equal(h.runtime.draftDecisionPending, false);
+  });
+}
+
+test('a retained local draft choice stays pending after the private source is confirmed', async () => {
+  const meta = historyMetadata(async () => ({
+    workspaceId:'ws-a', sourceRepositoryId:'repo-a', currentBranch:'draft',
+    provisioningStatus:'READY', archived:false, shared:false
+  }));
+  meta.performance = {getEntriesByType: () => [{type:'navigate'}]};
+  const h = createStartupHarness(Promise.resolve({workspaceId:'ws-a'}), async () => null, meta);
+  await h.session.whenInitialized();
+  h.runtime.restoring = true;
+  h.context.setDraftDecisionPending(true);
+  await h.emit('pageshow', null, 'window');
+  assert.equal(h.runtime.restoring, true);
+  assert.equal(h.runtime.draftDecisionPending, true);
+  assert.equal(h.session.state().ready, false);
 });
