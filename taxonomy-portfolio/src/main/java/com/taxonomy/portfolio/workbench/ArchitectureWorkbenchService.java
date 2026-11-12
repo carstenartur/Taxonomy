@@ -23,7 +23,8 @@ import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.Projection;
 import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.RelationMetadata;
 import com.taxonomy.portfolio.service.SnapshotExportLabel;
 import com.taxonomy.workspace.service.WorkspaceContext;
-import com.taxonomy.reporting.render.decision.DecisionReportLanguage;
+import com.taxonomy.dto.DocumentLanguage;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -224,7 +225,7 @@ public class ArchitectureWorkbenchService {
 
     private static Locale diagramLocale(Projection projection, Locale override) {
         var source = projection.exportProvenance();
-        return DecisionReportLanguage.resolve(override, source == null ? null : source.analysisLanguage());
+        return DocumentLanguage.resolve(override, source == null ? null : source.analysisLanguage(), LocaleContextHolder.getLocale());
     }
 
     private static <T> List<T> safe(List<T> values) {

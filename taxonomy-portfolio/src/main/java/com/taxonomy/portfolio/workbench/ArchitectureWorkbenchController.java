@@ -1,7 +1,7 @@
 package com.taxonomy.portfolio.workbench;
 
 import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
-import com.taxonomy.reporting.render.decision.DecisionReportLanguage;
+import com.taxonomy.dto.DocumentLanguage;
 import com.taxonomy.editor.ArchitectureWorkspaceRedirect;
 import com.taxonomy.model.WorkspaceOverlayScope;
 import com.taxonomy.portfolio.service.PortfolioException;
@@ -151,7 +151,7 @@ public class ArchitectureWorkbenchController {
             @RequestParam(required = false) String language) {
         RequestScope scope = scope();
         var projection = service.load(projectId, snapshotId, scope.username(), scope.context());
-        String content = service.renderSvg(projection, DecisionReportLanguage.optionalOverride(language));
+        String content = service.renderSvg(projection, DocumentLanguage.optionalOverride(language));
         return ResponseEntity.ok()
                 .contentType(SVG)
                 .header(
@@ -173,7 +173,7 @@ public class ArchitectureWorkbenchController {
             @RequestParam(required = false) String language) {
         RequestScope scope = scope();
         var projection = service.load(projectId, snapshotId, scope.username(), scope.context());
-        byte[] content = service.renderPdf(projection, DecisionReportLanguage.optionalOverride(language));
+        byte[] content = service.renderPdf(projection, DocumentLanguage.optionalOverride(language));
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_PDF)
                 .contentLength(content.length)
