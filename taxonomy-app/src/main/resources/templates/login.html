@@ -4,6 +4,7 @@
     <meta charset="UTF-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title th:text="#{login.title} + ' — ' + #{app.title}">Sign in — Taxonomy Architecture Analyzer</title>
+    <link th:replace="~{fragments/favicon :: link}"/>
     <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css}"
           href="/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css"/>
     <th:block th:replace="~{fragments/customer-stylesheet :: link}"></th:block>
