@@ -7,6 +7,7 @@ import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.RepositoryMembershipService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceManager;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,6 +44,9 @@ class AnalysisWorkingDraftServiceTest {
     @Mock
     private SystemRepositoryService systemRepositoryService;
 
+    @Mock
+    private RepositoryMembershipService membership;
+
     private final ObjectMapper objectMapper = JsonMapper.builder().build();
     private AnalysisWorkingDraftService service;
     private UserWorkspace workspace;
@@ -54,7 +58,9 @@ class AnalysisWorkingDraftServiceTest {
                 workspaceManager,
                 systemRepositoryService,
                 objectMapper,
-                50_000);
+                50_000,
+                membership);
+        lenient().when(membership.canRead(any(), any())).thenReturn(true);
         workspace = new UserWorkspace();
         workspace.setWorkspaceId("ws-1");
         workspace.setUsername("Alice");
@@ -69,8 +75,6 @@ class AnalysisWorkingDraftServiceTest {
 
     @Test
     void collaborativeContributorsUseOnlyTheirOwnAnalysisDraftAndRevocationBlocksThem() {
-        var membership = org.mockito.Mockito.mock(com.taxonomy.workspace.service.RepositoryMembershipService.class);
-        service = new AnalysisWorkingDraftService(repository, workspaceManager, systemRepositoryService, objectMapper, 50_000, membership);
         service.setActorAccess(username -> {});
         workspace.setCollaborative(true);
         var source = repository("repo-1", "main");
@@ -106,11 +110,35 @@ class AnalysisWorkingDraftServiceTest {
         org.mockito.Mockito.verifyNoInteractions(repository);
     }
 
-    @Test void privateOwnerDraftAccessRetainsItsExistingArchivedSourceBehavior() {
-        var source=repository("repo-1", "main");
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"read", "status", "save", "reset", "delete"})
+    void privateOwnersCannotUseDraftsAfterSourceArchive(String operation) {
+        var source = repository("repo-1", "main");
         source.setLifecycleState(com.taxonomy.workspace.model.RepositoryLifecycleState.ARCHIVED);
         when(systemRepositoryService.getRepository("repo-1")).thenReturn(source);
-        assertThat(service.read("Alice", "ws-1")).isEmpty();
+        assertThatThrownBy(() -> invokeDraftOperation(operation))
+                .isInstanceOf(AccessDeniedException.class);
+        org.mockito.Mockito.verifyNoInteractions(repository);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"read", "status", "save", "reset", "delete"})
+    void privateOwnersCannotUseDraftsAfterSourceMembershipRevocation(String operation) {
+        var source = repository("repo-1", "main");
+        when(systemRepositoryService.getRepository("repo-1")).thenReturn(source);
+        org.mockito.Mockito.doReturn(false).when(membership).canRead(source, "Alice");
+        assertThatThrownBy(() -> invokeDraftOperation(operation))
+                .isInstanceOf(AccessDeniedException.class);
+        org.mockito.Mockito.verifyNoInteractions(repository);
+    }
+
+    @Test
+    void missingRepositoryAuthorizationServiceFailsClosed() {
+        service = new AnalysisWorkingDraftService(
+                repository, workspaceManager, systemRepositoryService, objectMapper, 50_000);
+        assertThatThrownBy(() -> service.read("Alice", "ws-1"))
+                .isInstanceOf(AccessDeniedException.class);
+        org.mockito.Mockito.verifyNoInteractions(repository);
     }
 
     @Test
@@ -359,6 +387,18 @@ class AnalysisWorkingDraftServiceTest {
                 .hasMessageContaining("current 0");
 
         verify(repository, never()).delete(any());
+    }
+
+    private void invokeDraftOperation(String operation) {
+        switch (operation) {
+            case "read" -> service.read("Alice", "ws-1");
+            case "status" -> service.status("Alice", "ws-1");
+            case "save" -> service.save("Alice", "ws-1",
+                    new SaveAnalysisDraftRequest(objectMapper.createObjectNode(), null));
+            case "reset" -> service.reset("Alice", "ws-1", null);
+            case "delete" -> service.delete("Alice", "ws-1", null);
+            default -> throw new AssertionError(operation);
+        }
     }
 
     private AnalysisWorkingDraft existingDraft() {
