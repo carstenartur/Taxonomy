@@ -38,6 +38,19 @@ class ChildAnalysisReceiptTest {
         assertThatThrownBy(() -> ChildAnalysisReceipt.validate("NODE_CHILDREN",id,stored)).isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test void unrecordedLanguageIsAcceptedOnlyForAnInheritedHistoricalNode() {
+        String parentId = UUID.randomUUID().toString();
+        var historical = new AnalyzeNodeChildrenResult(Map.of(), Map.of(), "", "", "GEMINI", 0,
+                null, parentId, "GEMINI", AnalysisReasonLength.STANDARD, null);
+        var nested = json.valueToTree(new AnalysisNodeReceipts.BoundNode(historical, null,
+                new AnalysisNodeReceipts.Source("CP", hash, parentId)));
+        ChildAnalysisReceipt.validate("NODE_CHILDREN", id, nested);
+        var first = json.valueToTree(new AnalysisNodeReceipts.BoundNode(historical, null,
+                new AnalysisNodeReceipts.Source("CP", hash, null)));
+        assertThatThrownBy(() -> ChildAnalysisReceipt.validate("NODE_CHILDREN", parentId, first))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
     @Test void leafRestoresOnlyItsMatchingNativeNodeAndSource() {
         var leaf = new JustifyLeafResult("CP-1", "explanation");
         var stored = json.valueToTree(new AnalysisNodeReceipts.BoundLeaf(leaf, new AnalysisNodeReceipts.Source("CP-1",hash,null)));

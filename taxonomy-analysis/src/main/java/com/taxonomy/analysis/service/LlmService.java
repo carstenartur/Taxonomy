@@ -1762,6 +1762,20 @@ public class LlmService {
                                              List<TaxonomyNode> pathNodes,
                                              Map<String, Double> allScores,
                                              Map<String, String> allReasons) {
+        try {
+            return requireLeafJustification(businessText, leafCode, pathNodes, allScores, allReasons);
+        } catch (LeafJustificationUnavailable unavailable) {
+            return unavailable.getMessage();
+        }
+    }
+
+    private static final class LeafJustificationUnavailable extends RuntimeException {
+        private LeafJustificationUnavailable(String publicMessage) { super(publicMessage); }
+    }
+
+    /** A durable caller settles an unavailable result as failed instead of saving an error as an explanation. */
+    public String requireLeafJustification(String businessText, String leafCode, List<TaxonomyNode> pathNodes,
+                                           Map<String, Double> allScores, Map<String, String> allReasons) {
         try (var reasons = withAnalysisReasonLength(null);
              var language = AnalysisLanguageContext.open(AnalysisLanguageContext.resolveCurrentRequest(null))) {
             return generateLeafJustificationWithFrozenReasonLength(businessText, leafCode, pathNodes, allScores, allReasons);
@@ -1781,13 +1795,13 @@ public class LlmService {
         ProviderId provider = getActiveProviderId();
 
         if (provider.equals(LlmProvider.LOCAL_ONNX.id())) {
-            return "Leaf justification is not available for the LOCAL_ONNX provider "
-                    + "(cosine-similarity scores do not produce textual reasons).";
+            throw new LeafJustificationUnavailable("Leaf justification is not available for the LOCAL_ONNX provider "
+                    + "(cosine-similarity scores do not produce textual reasons).");
         }
 
         String apiKey = getApiKey(provider);
         if (missingCredential(provider, apiKey)) {
-            return "Leaf justification unavailable: no API key configured for provider " + provider + ".";
+            throw new LeafJustificationUnavailable("Leaf justification unavailable: no API key configured for provider " + provider + ".");
         }
 
         // Build the path description
@@ -1828,23 +1842,25 @@ public class LlmService {
         log.info("Generating leaf justification for node {} via {}", leafCode, provider);
         log.debug("Leaf justification prompt:\n{}", prompt);
 
+        String rawText;
         try {
             LlmGateway gateway = gatewayRegistry.getGatewayById(provider);
             String body = gateway.sendHttpRequest(prompt, apiKey);
-            String rawText = body != null ? gateway.extractResponseText(body) : null;
-            if (rawText == null || rawText.isBlank()) {
-                return "The LLM did not return a justification. Please try again.";
-            }
-            recordSuccess();
-            return rawText.trim();
+            rawText = body != null ? gateway.extractResponseText(body) : null;
         } catch (AnalysisStoppedException stopped) {
             throw stopped;
         } catch (Exception e) {
             AnalysisExecutionFailures.rethrow(e);
             log.error("Failed to generate leaf justification for {}", leafCode, e);
             recordFailure(e.getMessage());
-            return "Error generating justification. Please try again.";
+            if (providerConfig.isScenarioReplay(provider))
+                throw new LeafJustificationUnavailable("DEMO_REPLAY: No authored justification is available.");
+            throw new LeafJustificationUnavailable("Error generating justification. Please try again.");
         }
+        if (rawText == null || rawText.isBlank())
+            throw new LeafJustificationUnavailable("The LLM did not return a justification. Please try again.");
+        recordSuccess();
+        return rawText.trim();
     }
 
     // ── Raw LLM call (free-form prompt → raw text) ────────────────────────────

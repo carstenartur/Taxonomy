@@ -48,7 +48,7 @@ class ChildAnalysisOperationHttpTest {
             replica.perform(get(NODE)).andExpect(status().isOk()).andExpect(header().string(KEY,id))
                     .andExpect(content().json(first.getContentAsString()));
             String body = f.json.writeValueAsString(Map.of("operationId", id, "nodeCode","CP-1","businessText","Need"));
-            when(f.leaves.justify(any(), anyList())).thenReturn(new JustifyLeafResult("CP-1","Original explanation"));
+            when(f.leaves.require(any(), anyList())).thenReturn(new JustifyLeafResult("CP-1","Original explanation"));
             var leaf = replica.perform(post("/api/justify-leaf").contentType("application/json").content(body))
                     .andExpect(status().isOk()).andExpect(jsonPath("$.justification").value("Original explanation"))
                     .andReturn().getResponse();
@@ -57,7 +57,7 @@ class ChildAnalysisOperationHttpTest {
             f.mvc().perform(post("/api/justify-leaf").contentType("application/json").content(body))
                     .andExpect(status().isOk()).andExpect(header().string(KEY,leaf.getHeader(KEY)))
                     .andExpect(content().json(leaf.getContentAsString()));
-            verify(f.leaves).justify(any(),anyList());
+            verify(f.leaves).require(any(),anyList());
             verify(f.nodes).analyze(any(),anyList());
             replica.perform(get(leaf.getHeader("Content-Location"))).andExpect(status().isOk()).andExpect(content().json(leaf.getContentAsString()));
             when(f.llm.interactiveSource(anyList(),anyBoolean())).thenReturn("c".repeat(64));
@@ -65,6 +65,27 @@ class ChildAnalysisOperationHttpTest {
             f.actor.set(PrincipalId.create());
             replica.perform(post("/api/justify-leaf").contentType("application/json").content(body)).andExpect(status().isNotFound());
             replica.perform(get("/api/analysis-adapters/"+UUID.randomUUID())).andExpect(status().isNotFound());
+        }
+    }
+
+    @Test void physicalChildFailuresStayFailedDuringReadbackWithoutPublishingProviderDiagnostics() throws Exception {
+        try (var f = new Fixture()) {
+            var mvc = f.mvc();
+            String sensitive = "private provider payload";
+            when(f.nodes.analyze(any(), anyList())).thenReturn(new AnalyzeNodeChildrenResult(
+                    Map.of(), Map.of(), sensitive, sensitive, "OPENAI", 1, sensitive));
+            when(f.leaves.require(any(), anyList())).thenThrow(new IllegalStateException(sensitive));
+            var leaf = post("/api/justify-leaf").contentType("application/json")
+                    .content(f.json.writeValueAsString(Map.of("nodeCode", "CP-1", "businessText", "Need")));
+            for (var command : java.util.List.of(get(NODE), leaf)) {
+                var failure = mvc.perform(command).andExpect(status().isUnprocessableEntity())
+                        .andExpect(jsonPath("$.state").value("FAILED")).andReturn().getResponse();
+                assertFalse(failure.getContentAsString().contains(sensitive));
+                mvc.perform(get(failure.getHeader("Content-Location"))).andExpect(status().isUnprocessableEntity())
+                        .andExpect(content().json(failure.getContentAsString()));
+            }
+            verify(f.nodes).analyze(any(), anyList());
+            verify(f.leaves).require(any(), anyList());
         }
     }
 

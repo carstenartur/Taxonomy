@@ -85,6 +85,19 @@ class AnalysisChildAssessmentTest {
                 AnalysisReasonLength.STANDARD, AnalysisLanguage.ENGLISH)).isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test void optionalParentUsesTheAuthenticatedWorkspaceEvenForANewAnalysis() {
+        var providers = new AnalysisFollowUpProviders(config);
+        var cluster = mock(com.taxonomy.analysis.cluster.ClusterAnalysisStore.class);
+        ReflectionTestUtils.setField(providers, "cluster", cluster);
+        assertThat(providers.openParentCatalogue(null, "owner", workspace)).isNull();
+        assertThat(providers.parentCurrent(null, "owner", workspace)).isTrue();
+        verify(cluster, times(2)).findAuthorized(null, "owner", workspace);
+        assertThatThrownBy(() -> providers.openParentCatalogue(null, "other", workspace))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        assertThat(providers.parentCurrent(null, "other", workspace)).isFalse();
+        verifyNoMoreInteractions(cluster);
+    }
+
     @Test void freshEmptyNodeDoesNotReserveProviderWork() {
         var command = new AnalyzeNodeChildrenCommand("leaf", "requirement", 100);
         when(config.getActiveProviderId()).thenReturn(new ProviderId("GEMINI"));

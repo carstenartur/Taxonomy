@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.service;
 
 import com.taxonomy.analysis.cluster.ClusterAnalysisStore;
+import com.taxonomy.analysis.dag.AnalysisOperationContext;
 import com.taxonomy.analysis.dag.RequirementReference;
 import com.taxonomy.extension.api.plugin.PluginInvocation;
 import com.taxonomy.dto.AnalysisReasonLength;
@@ -13,6 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 /** Resolves a follow-up's provider only within its original owner, source and requirement. */
@@ -29,7 +31,7 @@ public class AnalysisFollowUpProviders {
                 throw new IllegalArgumentException("Invalid provider identity");
             Objects.requireNonNull(requirement);
             Objects.requireNonNull(reasonLength);
-            Objects.requireNonNull(analysisLanguage);
+            // A durable parent predating language pinning keeps its original prompt contract.
         }
     }
     @Autowired(required = false) private com.taxonomy.analysis.operation.AnalysisNodeReceipts nodeReceipts;
@@ -103,22 +105,27 @@ public class AnalysisFollowUpProviders {
     }
 
     private Pin resolve(String operationId, String owner, WorkspaceContext workspace) {
-        if (owner == null || owner.isBlank() || workspace == null) throw unavailable();
-        if (cluster != null) {
-            try {
-                var context = cluster.findAuthorized(operationId, owner, workspace);
-                if (context.isPresent()) {
-                    var command = cluster.command(context.get());
-                    if (!Objects.equals(command.username(), owner) || !Objects.equals(command.workspaceContext(), workspace))
-                        throw unavailable();
-                    if (command.provider() == null || command.provider().isBlank()
-                            || !context.get().requirement().matches(command.businessText())) throw unavailable();
-                    return new Pin(command.provider(), command.providerBinding(),
-                            AnalysisReasonContext.effective(command.analysisReasonLength()), command.analysisLanguage(),
-                            context.get().requirement(), owner, workspace, Instant.MAX);
-                }
-            } catch (SecurityException denied) { throw unavailable(); }
-        }
+        var selected = authorizedClusterParent(operationId, owner, workspace);
+        if (selected.isEmpty()) return resolveNative(operationId, owner, workspace);
+        var context = selected.get();
+        var command = cluster.command(context);
+        if (!Objects.equals(command.username(), owner) || !Objects.equals(command.workspaceContext(), workspace))
+            throw unavailable();
+        if (command.provider() == null || command.provider().isBlank()
+                || !context.requirement().matches(command.businessText())) throw unavailable();
+        return new Pin(command.provider(), command.providerBinding(),
+                AnalysisReasonContext.effective(command.analysisReasonLength()), command.analysisLanguage(),
+                context.requirement(), owner, workspace, Instant.MAX);
+    }
+
+    private Optional<AnalysisOperationContext> authorizedClusterParent(String id, String owner, WorkspaceContext workspace) {
+        if (owner == null || owner.isBlank() || workspace == null || !owner.equals(workspace.username())) throw unavailable();
+        if (cluster == null) return Optional.empty();
+        try { return cluster.findAuthorized(id, owner, workspace); }
+        catch (SecurityException denied) { throw unavailable(); }
+    }
+
+    private Pin resolveNative(String operationId, String owner, WorkspaceContext workspace) {
         synchronized (this) {
             var pin = local.get(operationId);
             if (pin != null && !pin.expires().isBefore(Instant.now()) && Objects.equals(pin.owner(), owner)
@@ -133,10 +140,7 @@ public class AnalysisFollowUpProviders {
     /** Cluster follow-ups read the exact catalogue shards accepted by their parent. */
     public com.taxonomy.catalog.snapshot.FrozenCatalogueContext.Scope openParentCatalogue(String id, String owner,
                                                                                           WorkspaceContext workspace) {
-        if (cluster == null || id == null || id.isBlank()) return null;
-        java.util.Optional<com.taxonomy.analysis.dag.AnalysisOperationContext> selected;
-        try { selected = cluster.findAuthorized(id, owner, workspace); }
-        catch (SecurityException denied) { throw unavailable(); }
+        var selected = authorizedClusterParent(id, owner, workspace);
         if (selected.isEmpty()) return null;
         var context = selected.get();
         var authority = context.authority();
@@ -153,25 +157,22 @@ public class AnalysisFollowUpProviders {
 
     /** The workspace's current semantic generation must still match its historical parent. */
     public boolean parentCurrent(String id, String owner, WorkspaceContext workspace) {
-        if (id == null || id.isBlank()) return true;
         try {
-            if (cluster != null) {
-                var selected = cluster.findAuthorized(id, owner, workspace);
-                if (selected.isPresent()) {
-                    var context = selected.get();
-                    var command = cluster.command(context);
-                    if (models == null) return false;
-                    var current = models.capture(workspace, null, null, command.analysisScope());
-                    var accepted = command.modelBinding();
-                    var authority = context.authority();
-                    return Objects.equals(current.commit(), authority.sourceCommit())
-                            && (authority.semanticModelSha256() == null || authority.semanticModelSha256().equals(current.modelSha256()))
-                            && (accepted == null || Objects.equals(accepted.semanticRevision(), current.semanticRevision())
-                                && Objects.equals(accepted.modelSha256(), current.modelSha256()));
-                }
+            var selected = authorizedClusterParent(id, owner, workspace);
+            if (selected.isEmpty()) {
+                if (id != null && !id.isBlank()) resolveNative(id, owner, workspace);
+                return true;
             }
-            resolve(id, owner, workspace);
-            return true;
+            var context = selected.get();
+            var command = cluster.command(context);
+            if (models == null) return false;
+            var current = models.capture(workspace, null, null, command.analysisScope());
+            var accepted = command.modelBinding();
+            var authority = context.authority();
+            return Objects.equals(current.commit(), authority.sourceCommit())
+                    && (authority.semanticModelSha256() == null || authority.semanticModelSha256().equals(current.modelSha256()))
+                    && (accepted == null || Objects.equals(accepted.semanticRevision(), current.semanticRevision())
+                        && Objects.equals(accepted.modelSha256(), current.modelSha256()));
         } catch (ResponseStatusException | SecurityException unavailable) {
             return false;
         }

@@ -46,7 +46,7 @@ public final class ChildAnalysisReceipt {
                 var node = JSON.treeToValue(result, AnalyzeNodeChildrenResult.class);
                 if (node.scores().values().stream().anyMatch(score -> !com.taxonomy.dto.AnalysisPercentages.valid(score))
                         || node.durationMs() < 0 || node.analysisOperationId() == null || node.analysisProviderId() == null
-                        || node.analysisLanguage() == null || node.analysisReasonLength() == null
+                        || (source.parentId() == null && node.analysisLanguage() == null) || node.analysisReasonLength() == null
                         || node.error() != null && !"ANALYSIS_FAILED".equals(node.error())) throw invalid();
                 if (stored.hasNonNull("parentBinding")) {
                     var pin = stored.path("parentBinding");

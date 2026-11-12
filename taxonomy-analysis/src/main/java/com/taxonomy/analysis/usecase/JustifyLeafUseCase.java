@@ -32,4 +32,9 @@ public class JustifyLeafUseCase {
                 command.reasons());
         return new JustifyLeafResult(command.nodeCode(), justification);
     }
+    public JustifyLeafResult require(JustifyLeafCommand command, List<TaxonomyNode> path) {
+        return new JustifyLeafResult(command.nodeCode(), llmService.requireLeafJustification(command.businessText(),
+                command.nodeCode(), path, command.scores(), command.reasons()));
+    }
+
 }

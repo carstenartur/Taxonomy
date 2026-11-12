@@ -590,7 +590,10 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
 
     public Optional<AnalysisOperationContext> findAuthorized(String id, String owner, WorkspaceContext workspace) {
         return tx.execute(status -> {
-            var run = em.find(ClusterAnalysisRun.class, id);
+            // A new interactive request has no parent. A nullable parameter is safe for
+            // this indexed lookup and yields no row without bypassing the owner check.
+            var run = em.createQuery("select r from ClusterAnalysisRun r where r.id = :id", ClusterAnalysisRun.class)
+                    .setParameter("id", id).getSingleResultOrNull();
             if (run == null) return Optional.empty();
             var command = read(run.commandJson, AnalyzeRequirementCommand.class);
             if (!Objects.equals(run.username, owner) || !Objects.equals(command.workspaceContext(), workspace))

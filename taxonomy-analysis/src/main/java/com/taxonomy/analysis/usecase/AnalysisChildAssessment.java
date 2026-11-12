@@ -41,6 +41,8 @@ public class AnalysisChildAssessment {
 
     private record Pin(AnalysisFollowUpProviders.Binding binding, RuntimeException unavailable,
                        AnalysisReasonLength length, AnalysisLanguage language) {
+        String languageIdentity() { return language == null ? null : language.value(); }
+
         AnalysisFollowUpProviders.Binding require() {
             if (unavailable != null) throw unavailable;
             return binding;
@@ -81,13 +83,15 @@ public class AnalysisChildAssessment {
         BooleanSupplier current = () -> providers.parentCurrent(parent, owner, workspace) && source.equals(llm.interactiveSource(read.get(), true));
         var fingerprint = AnalysisAdapterStore.digest("node-v1", source, parent == null || parent.isBlank() ? null : parent, providerCommand(requestedProvider),
                 command.parentCode(), command.businessText(), Double.toString(command.parentScore()),
-                pin.length().value(), pin.language().value());
+                pin.length().value(), pin.languageIdentity());
         boolean hasParent = parent != null && !parent.isBlank();
         boolean dispatch = !children.isEmpty() && dispatch(pin, true);
         Supplier<AnalyzeNodeChildrenResult> evaluate = () -> providers.execute(pin.require(), () -> nodes.analyze(command, children));
         return receipts.executeNode(fingerprint, dispatch, id -> {
             var binding = pin.require();
             var result = evaluate.get();
+            if (result.error() != null && !result.error().isBlank() && result.scores().isEmpty())
+                throw new IllegalStateException("Node analysis returned no assessment");
             var safe = new AnalyzeNodeChildrenResult(result.scores(), result.reasons(), "", "", result.provider(),
                     result.durationMs(), result.error() == null || result.error().isBlank() ? null : "ANALYSIS_FAILED",
                     hasParent ? parent : id, binding.provider(), binding.reasonLength(), binding.analysisLanguage());
@@ -116,10 +120,11 @@ public class AnalysisChildAssessment {
         var source = llm.interactiveSource(path, false);
         String fingerprint = AnalysisAdapterStore.digest("leaf-v1", source, parent == null || parent.isBlank() ? null : parent, providerCommand(requestedProvider),
                 command.nodeCode(), command.businessText(), mapDigest(command.scores()), mapDigest(command.reasons()),
-                pin.length().value(), pin.language().value());
+                pin.length().value(), pin.languageIdentity());
         Supplier<JustifyLeafResult> result = () -> providers.execute(pin.require(), () -> leaves.justify(command, path));
         var retainedSource = new AnalysisNodeReceipts.Source(command.nodeCode(), source, parent);
-        return receipts.executeLeaf(fingerprint, dispatch(pin, false), () -> new AnalysisNodeReceipts.BoundLeaf(result.get(), retainedSource),
+        return receipts.executeLeaf(fingerprint, dispatch(pin, false),
+                () -> providers.execute(pin.require(), () -> new AnalysisNodeReceipts.BoundLeaf(leaves.require(command, path), retainedSource)),
                 result, () -> providers.parentCurrent(parent, owner, workspace) && source.equals(llm.interactiveSource(read.get(), false)));
     }
 
