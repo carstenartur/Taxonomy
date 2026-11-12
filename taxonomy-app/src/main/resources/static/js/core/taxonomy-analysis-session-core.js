@@ -286,12 +286,14 @@
             var switchRequest = url && url.origin === window.location.origin
                 && /^\/api\/workspace\/[^/]+\/switch$/.test(apiPath)
                 && String(request.method || (input && input.method) || 'GET').toUpperCase() === 'POST';
-            if (!switchRequest) return nativeFetch(input, request);
-
-            var target = decodeURIComponent(url.pathname.split('/').slice(-2, -1)[0]);
-            var generation = ++legacySwitchGeneration;
-            var acknowledge = window.TaxonomyWorkspaceApi?.beginSwitch?.(target);
+            var target, generation, acknowledge;
+            if (switchRequest) {
+                target = decodeURIComponent(url.pathname.split('/').slice(-2, -1)[0]);
+                generation = ++legacySwitchGeneration;
+                acknowledge = window.TaxonomyWorkspaceApi?.beginSwitch?.(target);
+            }
             var response = nativeFetch(input, request);
+            if (!switchRequest) return response;
             response.then(function (result) {
                 if (!result.ok) return;
                 return result.clone().json().then(function (workspace) {

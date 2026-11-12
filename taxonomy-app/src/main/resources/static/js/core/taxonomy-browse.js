@@ -1894,6 +1894,8 @@
             S.evaluatedNodes.delete(parentCode);
             return;
         }
+        const ownsView = window.TaxonomyApiClient.captureContext();
+        wrapper.setAttribute('aria-busy','true');
         wrapper.classList.add('tax-evaluating');
         console.log('[Taxonomy] evaluateNodeChildren: parentCode=' + parentCode
             + ', businessText=' + (S.storedBusinessText ? S.storedBusinessText.substring(0, 80) : ''));
@@ -1902,12 +1904,15 @@
             ? S.currentScores[parentCode] : 100;
         window.AnalysisApi.analyzeNode({parentCode:parentCode, businessText:S.storedBusinessText, parentScore:parentScore,
             analysisLanguage:S.activeAnalysisLanguage || S.lastAnalysisLanguage || window.TaxonomyContentLanguage?.analysis() || document.documentElement.lang,
-            provider:S.analysisProviderId || undefined, operationId:S.analysisOperationId || undefined})
+            provider:S.analysisProviderId || undefined, operationId:S.analysisOperationId || undefined},
+            {isCurrent: ownsView, onPending: window.AnalysisAdapterApi?.pendingButton(wrapper.querySelector('.tax-node-header') || wrapper)})
             .then(r => {
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 return r.json();
             })
             .then(result => {
+                if (!ownsView()) return;
+                wrapper.removeAttribute('aria-busy');
                 console.log('[Taxonomy] analyze-node response for', parentCode, result);
                 if (result.analysisOperationId) S.analysisOperationId = result.analysisOperationId;
                 if (result.analysisProviderId) S.analysisProviderId = result.analysisProviderId;
@@ -2036,8 +2041,10 @@
                 console.log('[Taxonomy] Interactive eval of', parentCode, ':', matched.length, 'matches', scores);
             })
             .catch(err => {
-                if (err?.code === 'ABORTED') return;
+                if (!ownsView()) return;
+                wrapper.removeAttribute('aria-busy');
                 wrapper.classList.remove('tax-evaluating');
+                if (err?.code === 'ABORTED') { S.evaluatedNodes.delete(parentCode); return; }
                 S.evaluatedNodes.delete(parentCode); // allow retry
                 console.error('[Taxonomy] Failed to evaluate', parentCode, err);
                 showStatus('danger', t('browse.eval.failed', parentCode, err.message));

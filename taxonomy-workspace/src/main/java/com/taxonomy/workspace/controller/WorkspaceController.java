@@ -504,6 +504,11 @@ public class WorkspaceController {
             result.put("status", ws.getProvisioningStatus().name());
             result.put("topologyMode", ws.getTopologyMode().name());
             result.put("sourceRepository", ws.getSourceRepositoryId());
+            result.put("attemptCount", ws.getProvisioningAttempt());
+            result.put("attemptStartedAt", ws.getProvisioningAttemptAt());
+            if (ws.getProvisioningStatus() == com.taxonomy.workspace.model.WorkspaceProvisioningStatus.PROVISIONING) {
+                result.put("leaseExpiresAt", ws.getProvisioningLeaseUntil());
+            }
             result.put("error", ws.getProvisioningError());
         }
         return ResponseEntity.ok(result);

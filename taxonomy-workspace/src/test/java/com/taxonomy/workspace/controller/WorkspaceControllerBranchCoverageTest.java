@@ -250,6 +250,14 @@ class WorkspaceControllerBranchCoverageTest {
         assertThat(controller.getProvisioningStatus().getBody())
                 .containsEntry("status", "READY").containsEntry("topologyMode", "INTERNAL_SHARED");
 
+        var started = java.time.Instant.parse("2026-11-01T10:00:00Z");
+        workspace.startProvisioningLease("internal-worker", started, started.plusSeconds(900));
+        workspace.setProvisioningStatus(com.taxonomy.workspace.model.WorkspaceProvisioningStatus.PROVISIONING);
+        assertThat(controller.getProvisioningStatus().getBody())
+                .containsEntry("attemptCount", 1).containsEntry("attemptStartedAt", started)
+                .containsEntry("leaseExpiresAt", started.plusSeconds(900)).doesNotContainValue("internal-worker");
+        workspace.setProvisioningStatus(com.taxonomy.workspace.model.WorkspaceProvisioningStatus.READY);
+
         when(workspaceManager.provisionWorkspaceRepository("alice")).thenReturn(workspace);
         assertThat(controller.provisionWorkspace().getBody())
                 .containsEntry("status", "READY").containsEntry("branch", "draft");

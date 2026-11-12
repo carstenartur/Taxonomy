@@ -42,6 +42,7 @@ class DiagnosticsOracleContainerIT extends AbstractExternalDatabaseContainerIT {
 
     @Container
     static GenericContainer<?> app = ContainerTestUtils.oracleAppContainer(network)
+            .withEnv("TAXONOMY_FEATURES_MULTI_REPOSITORY_API_ENABLED", "true")
             .dependsOn(db);
 
     @Override

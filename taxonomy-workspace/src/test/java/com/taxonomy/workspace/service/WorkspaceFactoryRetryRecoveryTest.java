@@ -126,8 +126,9 @@ class WorkspaceFactoryRetryRecoveryTest {
             workspace.setProvisioningStatus(WorkspaceProvisioningStatus.NOT_PROVISIONED);
             var rows = mock(UserWorkspaceRepository.class);
             when(rows.findByWorkspaceId("retry-workspace")).thenReturn(Optional.of(workspace));
+            WorkspaceProvisioningTestClaims.enable(rows);
             when(rows.claimProvisioning(anyString(), anyString(),
-                    eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection())).thenReturn(1);
+                    eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection(), anyString(), any(), any())).thenReturn(1);
             var failReadyOnce = new AtomicBoolean(failReadySave);
             when(rows.save(any(UserWorkspace.class))).thenAnswer(call -> {
                 UserWorkspace value = call.getArgument(0);

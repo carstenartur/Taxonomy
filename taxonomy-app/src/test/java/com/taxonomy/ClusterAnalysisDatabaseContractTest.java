@@ -18,6 +18,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** Executes the exact external-database contract locally; this is not vendor acceptance. */
 class ClusterAnalysisDatabaseContractTest {
+    @Test void durableDocumentAdapterRetainsItsNativeResultAndFencesLateCompletion() throws Exception {
+        try (var db = ClusterAnalysisDatabaseContract.hsql()) { db.durableDocumentAdapterRetainsItsNativeResultAndFencesLateCompletion(); }
+    }
+
     @Test void historyFixtureBoundsPhysicalConnectionsAndClosesThem() {
         var database = new ConnectionCounter();
         try (var contract = ClusterAnalysisDatabaseContract.hsql(database)) {

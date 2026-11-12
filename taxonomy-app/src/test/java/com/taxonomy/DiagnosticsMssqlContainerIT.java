@@ -28,6 +28,7 @@ class DiagnosticsMssqlContainerIT extends AbstractExternalDatabaseContainerIT {
 
     @Container
     static GenericContainer<?> app = ContainerTestUtils.mssqlAppContainer(network)
+            .withEnv("TAXONOMY_FEATURES_MULTI_REPOSITORY_API_ENABLED", "true")
             .dependsOn(db);
 
     @org.junit.jupiter.api.Test

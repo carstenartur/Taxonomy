@@ -56,6 +56,19 @@ class DslWorkspacePreResolutionInterceptorTest {
         when(workspaceResolver.resolveCurrentUsername()).thenReturn(WORKSPACE.username());
     }
 
+    @ParameterizedTest
+    @CsvSource({"GET,/api/dsl/hypotheses", "HEAD,/api/dsl/hypotheses/head", "GET,/api/dsl/hypotheses/12/evidence"})
+    void hypothesisReadsNeverAllocateWorkspaceEvenForProvisioningCapableActor(String method, String path) {
+        when(request.getMethod()).thenReturn(method);
+        when(request.getContextPath()).thenReturn("/taxonomy");
+        when(request.getRequestURI()).thenReturn("/taxonomy" + path);
+        when(workspaceResolver.resolveCurrentRepositoryContextForRead()).thenReturn(REPOSITORY);
+
+        assertThat(interceptor.preHandle(request, response, new Object())).isTrue();
+        verify(workspaceResolver).resolveCurrentRepositoryContextForRead();
+        verifyNoInteractions(repositoryStateService);
+    }
+
     @Test
     void acceptsMatchingRepositoryAndWorkspaceContexts() {
         when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(REPOSITORY);

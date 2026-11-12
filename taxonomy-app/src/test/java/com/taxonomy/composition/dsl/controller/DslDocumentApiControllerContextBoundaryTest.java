@@ -16,6 +16,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.List;
@@ -23,8 +24,10 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -81,23 +84,20 @@ class DslDocumentApiControllerContextBoundaryTest {
     }
 
     @Test
-    void getHistoryFallsBackToSharedContextWhenWorkspaceProvisioningFails() throws Exception {
-        ViewContext viewContext = new ViewContext("shared123", "draft", Instant.parse("2026-01-01T00:00:00Z"),
-                true, false, false);
-
+    void getHistoryStopsBeforeGitReadIfWorkspaceProvisioningFails() {
         when(workspaceResolver.resolveCurrentUsername()).thenReturn("alice");
-        when(dslOperationsFacade.getDslHistory("draft", WorkspaceContext.SHARED)).thenReturn(List.of());
-        // When SHARED context is used, getViewContext receives SHARED.username() ("system"), not the authenticated user
-        when(dslOperationsFacade.getViewContext(WorkspaceContext.SHARED.username(), "draft", WorkspaceContext.SHARED)).thenReturn(viewContext);
-        doThrow(new IllegalStateException("boom")).when(repositoryStateService).ensureWorkspaceState("alice");
+        doThrow(new IllegalStateException("private-workspace-detail"))
+                .when(repositoryStateService).ensureWorkspaceState("alice");
 
-        ResponseEntity<Map<String, Object>> response = controller.getHistory("draft");
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody()).containsEntry("headCommit", "shared123");
+        assertThatThrownBy(() -> controller.getHistory("draft"))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(error -> {
+                    var response = (ResponseStatusException) error;
+                    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                    assertThat(response.getReason()).doesNotContain("private");
+                });
 
         verify(workspaceResolver, never()).resolveCurrentContext();
-        verify(dslOperationsFacade).getDslHistory("draft", WorkspaceContext.SHARED);
-        verify(dslOperationsFacade).getViewContext(WorkspaceContext.SHARED.username(), "draft", WorkspaceContext.SHARED);
+        verifyNoInteractions(dslOperationsFacade, documents, projects);
     }
 }

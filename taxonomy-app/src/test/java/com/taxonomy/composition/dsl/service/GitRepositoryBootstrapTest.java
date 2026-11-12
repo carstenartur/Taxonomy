@@ -49,6 +49,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -298,8 +299,13 @@ class GitRepositoryBootstrapTest {
         when(rows.findByUsernameAndSharedFalse(owner)).thenReturn(Optional.of(workspace));
         when(rows.findByWorkspaceId(workspaceId)).thenReturn(Optional.of(workspace));
         when(rows.save(any(UserWorkspace.class))).thenAnswer(call -> call.getArgument(0));
+        doAnswer(call -> {
+            UserWorkspace selected = call.getArgument(0);
+            call.<UserWorkspaceRepository.ProvisioningStep>getArgument(2).apply(selected);
+            return rows.save(selected);
+        }).when(rows).withProvisioningLease(any(UserWorkspace.class), anyString(), any());
         when(rows.claimProvisioning(eq(workspaceId), eq(owner),
-                eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection())).thenAnswer(call -> {
+                eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection(), anyString(), any(), any())).thenAnswer(call -> {
             if (workspace.getProvisioningStatus() != WorkspaceProvisioningStatus.NOT_PROVISIONED) return 0;
             workspace.setProvisioningStatus(WorkspaceProvisioningStatus.PROVISIONING);
             return 1;

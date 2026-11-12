@@ -48,6 +48,8 @@ public class DocumentAnalysisService {
         this.objectMapper = objectMapper;
     }
 
+    public boolean providerAvailable() { return llmService.isAvailable(); }
+
     /**
      * Extracts requirement candidates from document text using the LLM.
      * Falls back to an empty list if the LLM is unavailable or returns invalid JSON.
