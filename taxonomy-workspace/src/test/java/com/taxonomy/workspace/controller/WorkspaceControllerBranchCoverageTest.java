@@ -124,7 +124,11 @@ class WorkspaceControllerBranchCoverageTest {
         when(workspaceManager.archiveWorkspace("w1", "alice")).thenReturn(workspace);
         when(workspaceManager.getWorkspaceById("w1")).thenReturn(workspace);
 
-        assertThat(controller.switchWorkspace("w1").getStatusCode()).isEqualTo(HttpStatus.OK);
+        workspace.setSourceRepositoryId("source-repository");
+        var switched = controller.switchWorkspace("w1");
+        assertThat(switched.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(switched.getBody()).containsEntry("sourceRepositoryId", "source-repository")
+                .containsEntry("workspaceId", "w1").containsEntry("currentBranch", "draft");
         assertThat(controller.archiveWorkspace("w1").getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(controller.deleteWorkspace("w1").getBody()).containsEntry("deleted", "w1");
         assertThat(controller.getWorkspaceInfo("w1").getBody()).containsEntry("workspaceId", "w1");

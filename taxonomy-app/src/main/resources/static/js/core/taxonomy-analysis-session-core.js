@@ -254,6 +254,7 @@
     function installWorkspaceFetchRouting() {
         if (window.fetch.__taxonomyWorkspaceRouting === true) return;
         var nativeFetch = window.fetch.bind(window);
+        var legacySwitchGeneration = 0;
 
         function routedFetch(input, init) {
             var url = requestUrl(input);
@@ -282,16 +283,26 @@
                 request.headers = headers;
             }
 
+            var switchRequest = url && url.origin === window.location.origin
+                && /^\/api\/workspace\/[^/]+\/switch$/.test(apiPath)
+                && String(request.method || (input && input.method) || 'GET').toUpperCase() === 'POST';
+            if (!switchRequest) return nativeFetch(input, request);
+
+            var target = decodeURIComponent(url.pathname.split('/').slice(-2, -1)[0]);
+            var generation = ++legacySwitchGeneration;
+            var acknowledge = window.TaxonomyWorkspaceApi?.beginSwitch?.(target);
             var response = nativeFetch(input, request);
-            if (url && /\/api\/workspace\/[^/]+\/switch$/.test(url.pathname)
-                    && String(request.method || (input && input.method) || 'GET').toUpperCase() === 'POST') {
-                var target = decodeURIComponent(url.pathname.split('/').slice(-2, -1)[0]);
-                response.then(function (result) {
-                    if (!result.ok) return;
+            response.then(function (result) {
+                if (!result.ok) return;
+                return result.clone().json().then(function (workspace) {
+                    if (acknowledge) return acknowledge(workspace);
+                    if (generation !== legacySwitchGeneration || workspace?.workspaceId !== target) return;
                     rememberWorkspaceId(target);
-                    window.setTimeout(function () { window.location.reload(); }, 0);
-                }).catch(function () { /* caller handles the transport failure */ });
-            }
+                    window.setTimeout(function () {
+                        if (generation === legacySwitchGeneration) window.location.reload();
+                    }, 0);
+                });
+            }).catch(function () { /* The caller retains the original response. */ });
             return response;
         }
 

@@ -138,3 +138,77 @@ test('a completed save never erases newer title and description edits',async()=>
   assert.equal(h.node('versionTitle').value,'New human title');assert.equal(h.node('versionDescription').value,'New human description');
  } finally {h.hide();}
 });
+
+test('an acknowledged switch replaces private source pins and retains the mounted page and locale', async () => {
+  const destination = {workspaceId:'work-b', sourceRepositoryId:'repo-b', currentBranch:'review/b'};
+  const h = harness(async () => Response.json(destination));
+  const win = h.context.window;
+  const retained = new URL('https://example.test/taxonomy/?lang=de&architectureSource=snapshot&repositoryId=repo-a&workspaceId=work-a&workspaceScopeKey=work-a&branch=draft&commit=old&snapshotId=old&sourceSnapshotId=old&projectId=7&element=shared#versions');
+  win.location.href = retained.href;
+  let navigation;
+  win.location.assign = value => { navigation = new URL(value, retained); };
+  win.location.reload = () => { navigation = new URL(retained); };
+  win.setTimeout = callback => callback();
+  win.__TaxonomyAnalysisSessionContext.rememberWorkspaceId = id => assert.equal(id, 'work-b');
+  const originalLookup = h.context.document.getElementById;
+  h.context.document.getElementById = id => id === 'architectureWorkspace' ? null : originalLookup(id);
+  h.load('shared/architecture-workspace.js');
+  await win.TaxonomyWorkspaceApi.switchWorkspace('work-b');
+  assert.equal(navigation.pathname, '/taxonomy/');
+  assert.equal(navigation.hash, '#versions');
+  assert.equal(navigation.searchParams.get('lang'), 'de');
+  assert.equal(navigation.searchParams.get('repositoryId'), 'repo-b');
+  assert.equal(navigation.searchParams.get('workspaceId'), 'work-b');
+  assert.equal(navigation.searchParams.get('workspaceScopeKey'), 'work-b');
+  assert.equal(navigation.searchParams.get('branch'), 'review/b');
+  for (const key of ['commit','snapshotId','sourceSnapshotId','projectId','element']) assert.equal(navigation.searchParams.has(key), false, key);
+});
+
+test('a mismatched switch acknowledgement cannot change storage or navigate', async () => {
+  const h = harness(async () => Response.json({workspaceId:'other'}));
+  const effects = [];
+  const win = h.context.window;
+  win.__TaxonomyAnalysisSessionContext.rememberWorkspaceId = id => effects.push(id);
+  win.setTimeout = callback => callback();
+  win.location.reload = () => effects.push('reload');
+  await assert.rejects(win.TaxonomyWorkspaceApi.switchWorkspace('requested'));
+  assert.deepEqual(effects, []);
+});
+test('out-of-order workspace replies retain only the latest acknowledged selection', async () => {
+  const pending = new Map(), stored = [], timers = [], navigations = [];
+  const h = harness(url => new Promise(resolve => pending.set(new URL(url, "https://example.test").pathname.split('/').at(-2), resolve)));
+  const win = h.context.window;
+  win.__TaxonomyAnalysisSessionContext.rememberWorkspaceId = id => stored.push(id);
+  win.setTimeout = callback => timers.push(callback);
+  win.location.reload = () => navigations.push(stored.at(-1));
+  const first = win.TaxonomyWorkspaceApi.switchWorkspace('first');
+  const last = win.TaxonomyWorkspaceApi.switchWorkspace('last');
+  await settle();
+  pending.get('last')(Response.json({workspaceId:'last'})); await last;
+  pending.get('first')(Response.json({workspaceId:'first'}));
+  await assert.rejects(first, error => error.code === 'ABORTED');
+  for (const callback of timers) callback();
+  assert.deepEqual(stored, ['last']);
+  assert.deepEqual(navigations, ['last']);
+});
+test('legacy and named switch requests share ordering and callers retain the legacy response body', async () => {
+  const pending = new Map(), stored = [], navigations = [];
+  const h = harness(url => new Promise(resolve => pending.set(new URL(url, 'https://example.test').pathname.split('/').at(-2), resolve)));
+  const win = h.context.window;
+  delete win.__TaxonomyAnalysisSessionContext;
+  win.TaxonomyState = {};
+  win.sessionStorage = {setItem: (_key, id) => stored.push(id)};
+  win.setTimeout = callback => callback();
+  win.location.reload = () => navigations.push(stored.at(-1));
+  h.load('core/taxonomy-analysis-session-core.js');
+  win.__TaxonomyAnalysisSessionContext.installWorkspaceFetchRouting();
+  const legacy = win.fetch('https://example.test/api/workspace/first/switch', {method:'POST'});
+  const named = win.TaxonomyWorkspaceApi.switchWorkspace('last');
+  await settle();
+  pending.get('last')(Response.json({workspaceId:'last'})); await named;
+  pending.get('first')(Response.json({workspaceId:'first'}));
+  assert.deepEqual(await (await legacy).json(), {workspaceId:'first'});
+  await settle();
+  assert.deepEqual(stored, ['last']);
+  assert.deepEqual(navigations, ['last']);
+});
