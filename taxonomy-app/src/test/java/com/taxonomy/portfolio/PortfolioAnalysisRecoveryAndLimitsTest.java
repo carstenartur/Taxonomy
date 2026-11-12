@@ -19,7 +19,7 @@ import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.portfolio.service.ProjectRequirementAnalysisService;
-import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.WorkspaceResolver;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,10 +34,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest(properties = "taxonomy.portfolio.max-analysis-batch=2")
 @Tag("ci-app-shard-domain-integration")
-class PortfolioAnalysisRecoveryAndLimitsTest {
+class PortfolioAnalysisRecoveryAndLimitsTest extends RetainedPortfolioCatalogue {
 
     @Autowired
-    private SystemRepositoryService systemRepositoryService;
+    private WorkspaceResolver workspaceResolver;
 
     @Autowired
     private ProjectPortfolioService projectService;
@@ -74,7 +74,7 @@ class PortfolioAnalysisRecoveryAndLimitsTest {
     }
 
     @Test
-    void recoversExpiredClaimExactlyOnceAndIncrementsAttemptOnce() {
+    void recoversExpiredClaimUsingAdmittedTextEvenWhenANewerVersionExists() {
         WorkspaceContext context = context("claim-recovery");
         var project = createProject(context);
         var requirement = createRequirement(project.id(), context, "REQ-001");
@@ -103,7 +103,7 @@ class PortfolioAnalysisRecoveryAndLimitsTest {
                 requirement.id(),
                 new CreateRequirementVersionRequest(
                         "Updated requirement text for the recovered attempt",
-                        "Rebind the retry to the current immutable version",
+                        "New text for a future analysis",
                         null),
                 context.username(),
                 context);
@@ -131,9 +131,14 @@ class PortfolioAnalysisRecoveryAndLimitsTest {
                     assertThat(item.status()).isEqualTo(AnalysisStatus.PENDING);
                     assertThat(item.attempt()).isEqualTo(2);
                     assertThat(item.startedAt()).isNull();
+                    assertThat(item.requirementVersionId()).isEqualTo(job.items().getFirst().requirementVersionId());
+                    assertThat(item.requirementVersionNumber()).isEqualTo(job.items().getFirst().requirementVersionNumber());
+                });
+        var reanalysis = persistenceService.createOrReuseJob(project.id(), List.of(requirement.id()),
+                "MOCK", 25, "new-analysis-" + UUID.randomUUID(), context.username(), context);
+        assertThat(reanalysis.items()).singleElement().satisfies(item -> {
                     assertThat(item.requirementVersionId()).isEqualTo(retryVersion.id());
-                    assertThat(item.requirementVersionNumber())
-                            .isEqualTo(retryVersion.versionNumber());
+                    assertThat(item.requirementVersionNumber()).isEqualTo(retryVersion.versionNumber());
                 });
     }
 
@@ -174,10 +179,7 @@ class PortfolioAnalysisRecoveryAndLimitsTest {
     }
 
     private WorkspaceContext context(String username) {
-        return new WorkspaceContext(
-                username,
-                "ws-" + username + "-" + shortId(),
-                "draft", systemRepositoryService.getPrimaryRepository().getRepositoryId());
+        return PortfolioAnalysisWorkspace.select(workspaceResolver, username);
     }
 
     private static String shortId() {

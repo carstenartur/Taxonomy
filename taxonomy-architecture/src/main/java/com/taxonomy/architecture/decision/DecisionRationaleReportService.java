@@ -18,6 +18,7 @@ import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AnalysisScoreDetail;
 import com.taxonomy.dto.AnalysisScope;
+import com.taxonomy.dto.AnalysisModelBinding;
 import com.taxonomy.dto.AnalysisCoverage;
 import com.taxonomy.reporting.api.document.DecisionTreeOverview;
 import com.taxonomy.dto.ProductCoverageGap;
@@ -57,6 +58,8 @@ import java.util.stream.Collectors;
  */
 @Service
 public class DecisionRationaleReportService {
+    private static final tools.jackson.databind.ObjectWriter MODEL_EVIDENCE =
+            new tools.jackson.databind.ObjectMapper().writerFor(AnalysisModelBinding.class);
 
     private static final Comparator<TaxonomyNode> NODE_ORDER = Comparator
             .comparing((TaxonomyNode node) -> node.getSortOrder() == null
@@ -234,7 +237,14 @@ public class DecisionRationaleReportService {
             String createdBy,
             String modelName,
             String taxonomyFingerprintSha256,
-            String promptFingerprintSha256) {
+            String promptFingerprintSha256,
+            AnalysisModelBinding modelBinding) {
+        public AnalysisSnapshotProvenance(String snapshotId, Long projectId, Long requirementId,
+                Long requirementVersionId, Integer requirementVersionNumber, Instant createdAt, String createdBy,
+                String modelName, String taxonomyFingerprintSha256, String promptFingerprintSha256) {
+            this(snapshotId, projectId, requirementId, requirementVersionId, requirementVersionNumber, createdAt,
+                    createdBy, modelName, taxonomyFingerprintSha256, promptFingerprintSha256, null);
+        }
     }
 
     @Transactional(readOnly = true)
@@ -413,7 +423,8 @@ public class DecisionRationaleReportService {
                 selectedCompleteness.complete()).withRecordedReasons(recordedReasons.entrySet().stream()
                         .filter(entry -> selectedCodes.contains(entry.getKey()))
                         .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)))
-                .withAnalysisReasonLength(input.analysisReasonLength());
+                .withAnalysisReasonLength(input.analysisReasonLength())
+                .withModelBinding(input.snapshotProvenance() == null ? null : input.snapshotProvenance().modelBinding());
         return new DecisionRationaleReport(
                 german ? "Hierarchischer Entscheidungs- und Begründungsbericht"
                         : "Hierarchical Decision Rationale Report",
@@ -1298,6 +1309,8 @@ public class DecisionRationaleReportService {
                         .forEach(entry -> updateDigest(digest, "coverage:" + entry.getKey(), entry.getValue().toString()));
             }
             if (input.snapshotProvenance() != null) {
+                var model = input.snapshotProvenance().modelBinding();
+                if (model != null) updateDigest(digest, "analysis-model", MODEL_EVIDENCE.writeValueAsString(model));
                 updateDigest(digest, "snapshot-id",
                         normalized(input.snapshotProvenance().snapshotId(), ""));
                 updateDigest(digest, "snapshot-created-at",

@@ -7,6 +7,7 @@ import com.taxonomy.analysis.reformulation.FrozenReformulationEngine;
 import com.taxonomy.composition.reformulation.ReformulationExecutionService;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.TaxonomyNodeDto;
+import com.taxonomy.portfolio.PortfolioAnalysisWorkspace;
 import com.taxonomy.portfolio.dto.PortfolioDtos.*;
 import com.taxonomy.portfolio.model.PortfolioTypes.*;
 import com.taxonomy.portfolio.service.*;
@@ -102,7 +103,7 @@ public final class ReformulationCheckpointDriver {
             if (write) {
                 var workspaces = app.getBean(WorkspaceManager.class);
                 var workspace = workspaces.createWorkspace("architect", "Checkpoint recovery", "Restart proof");
-                workspace = workspaces.provisionWorkspaceRepository("architect", workspace.getWorkspaceId());
+                workspace = PortfolioAnalysisWorkspace.provisionSelected(workspaces, "architect", workspace.getWorkspaceId());
                 scope = new WorkspaceContext("architect", workspace.getWorkspaceId(), workspace.getCurrentBranch(), workspace.getSourceRepositoryId());
                 var project = projects.createProject(new CreateProjectRequest("P", "Checkpoint recovery", "Fixture", ProjectStatus.ACTIVE, null, null, null, null), "architect", scope);
                 projectId = project.id();

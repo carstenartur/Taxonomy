@@ -41,8 +41,13 @@ public final class AnalysisContinuationBackupRestorer {
         bounded(source.requestJson(),MAX_QUESTION_CHARACTERS);var request=json.readValue(source.requestJson(),AnalysisRequest.class);
         request.setContinuationId(targetId);request.setContinuationAction(null);request.setContinuationVersion(null);request.setContinuationQuestion(null);request.setContinuationQuestions(null);
         AnalysisResult result;
-        if(source.resultJson()==null)result=new AnalysisResult(Map.of(),List.of());
-        else { result=json.readValue(unpackResult(source.resultJson()),AnalysisResult.class); }
+        if (source.resultJson() == null) {
+            result = new AnalysisResult(Map.of(), List.of());
+            result.setModelBinding(request.getModelBinding());
+        } else {
+            result = json.readValue(unpackResult(source.resultJson()), AnalysisResult.class);
+            if (!Objects.equals(result.getModelBinding(), request.getModelBinding())) throw invalid();
+        }
         var keys=new HashSet<String>();var ids=new HashSet<SourceRecordId>();long payload=0;
         var preparedQuestions=new ArrayList<PreparedQuestion>();
         var scores=new LinkedHashMap<String,Double>(result.getRawScores());var reasons=new LinkedHashMap<String,String>(result.getReasons());

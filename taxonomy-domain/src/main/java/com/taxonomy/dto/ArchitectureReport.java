@@ -14,6 +14,22 @@ import java.util.Map;
  */
 public class ArchitectureReport {
 
+    /** Model, catalogue, scope and profile recorded by the retained analysis. */
+    private AnalysisModelBinding modelBinding;
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    public AnalysisModelBinding getModelBinding() { return modelBinding; }
+    public void setModelBinding(AnalysisModelBinding value) { modelBinding = value; }
+
+    private Long requirementVersionId;
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    public Long getRequirementVersionId() { return requirementVersionId; }
+    public void setRequirementVersionId(Long value) { requirementVersionId = value; }
+
+    private AnalysisScope analysisScope;
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    public AnalysisScope getAnalysisScope() { return analysisScope; }
+    public void setAnalysisScope(AnalysisScope value) { analysisScope = value; }
+
     private String businessText;
     private Instant generatedAt;
     private Map<String, Double> scores;

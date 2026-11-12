@@ -41,6 +41,12 @@ window.ArchitectureEditorApi = (function () {
         load: function (context, revision, signal, layout, layoutRevision, viewId) {
             return window.TaxonomyApiClient.getJson(base + '?' + query(context, revision, layout, layoutRevision, viewId), Object.assign({ signal: signal }, exactPolicy(context)));
         },
+        analysisBrief: function (context, model) {
+            var params = new URLSearchParams(query(context));
+            if (model?.expectedCommit) params.set('expectedCommit', model.expectedCommit);
+            if (model?.expectedSemanticRevision != null) params.set('expectedSemanticRevision', String(model.expectedSemanticRevision));
+            return window.TaxonomyApiClient.getJson(base + '/analysis-brief?' + params, exactPolicy(context));
+        },
         suggest: function (request) { return write('/focus/suggestions', request, request.context, { timeoutMillis: 120000 }); },
         previewAdoption: function (request) { return write('/snapshot-adoptions/preview', request, request.context); },
         adoptSnapshot: function (request) { return write('/snapshot-adoptions', request, request.context); },

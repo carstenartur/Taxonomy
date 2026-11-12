@@ -5,6 +5,7 @@ import com.taxonomy.extension.api.llm.ProviderId;
 import com.taxonomy.analysis.dag.*;
 import com.taxonomy.analysis.service.LlmProvider;
 import com.taxonomy.analysis.service.LlmProviderConfig;
+import com.taxonomy.analysis.usecase.AdmittedCatalogue;
 import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
 import com.taxonomy.analysis.usecase.UnknownAnalysisProviderException;
 import com.taxonomy.catalog.snapshot.CatalogueSnapshotService;
@@ -81,19 +82,32 @@ public final class DurableClusterAnalysisExecution implements ClusterAnalysisExe
         var admitted = new AnalyzeRequirementCommand(command.businessText(), command.includeArchitectureView(),
                 command.maxArchitectureNodes(), provider, command.username(), command.workspaceContext(),
                 command.provenance(), command.analysisScope(), binding, command.continuationBinding(),
-                com.taxonomy.analysis.service.AnalysisReasonContext.effective(command.analysisReasonLength()), command.retainedAnalysis(), command.analysisLanguage());
-        var definition = definitions.get();
+                com.taxonomy.analysis.service.AnalysisReasonContext.effective(command.analysisReasonLength()),
+                command.retainedAnalysis(), command.analysisLanguage(), command.modelBinding());
+        var source = source(context);
+        var model = command.modelBinding();
+        java.util.List<RootCatalogueSnapshot> archive = null;
+        com.taxonomy.dsl.model.CatalogueDefinition definition;
+        if (model != null) {
+            AdmittedCatalogue.requireWorkspace(model, command.workspaceContext());
+            archive = catalogue.captureRevision(source, AdmittedCatalogue.revision(model), java.util.Set.of());
+            var spec = archive.getFirst().catalogueDefinition();
+            definition = spec == null ? com.taxonomy.dsl.model.CatalogueDefinition.standard() : spec.definition();
+        } else {
+            definition = definitions.get();
+        }
         var available = definition.rootCodes();
         command.analysisScope().validateRoots(available);
         Map<TaxonomyShardRoot, String> scoring = new LinkedHashMap<>();
         Map<TaxonomyShardRoot, String> targets = new LinkedHashMap<>();
-        var source = source(context);
         boolean allTargets = command.analysisScope().includesRelations() || command.includeArchitectureView();
         var required = available.stream().filter(root -> allTargets || command.analysisScope().selects(root))
                 .collect(Collectors.toSet());
         // All roots belong to one official catalogue generation, independently of the operation's Git source.
         // ONNX text can name relation endpoints in other roots. Capture them atomically, then retain only required roots.
-        var frozenRoots = catalogue.captureRoots(source, localOnnx ? available : required);
+        var captureRoots = localOnnx ? available : required;
+        var frozenRoots = archive == null ? catalogue.captureRoots(source, captureRoots)
+                : archive.stream().filter(root -> captureRoots.contains(root.rootCode())).toList();
         if (localOnnx) {
             var repository = source.workspaceId() == null
                     ? RepositoryContext.centralRead(source.repositoryId(), source.branch(), command.username())
@@ -143,6 +157,14 @@ public final class DurableClusterAnalysisExecution implements ClusterAnalysisExe
         var workspace = command.workspaceContext();
         // Recheck the request's authorized branch, not another tab's active workspace.
         String branch = workspace.currentBranch();
+        var model = command.modelBinding();
+        if (model != null) {
+            AdmittedCatalogue.requireWorkspace(model, workspace);
+            if (!Objects.equals(context.authority().sourceCommit(), model.commit())
+                    || !Objects.equals(context.authority().semanticModelSha256(), model.commit() == null ? model.modelSha256() : null))
+                throw new IllegalStateException("Durable analysis does not match the admitted model commit");
+            return;
+        }
         ViewContext current = workspaceViews.getViewContext(workspace.username(), branch, workspace);
         if (!Objects.equals(context.authority().branch(), branch)
                 || !Objects.equals(context.authority().sourceCommit(), current == null ? null : current.basedOnCommit())
@@ -173,7 +195,7 @@ public final class DurableClusterAnalysisExecution implements ClusterAnalysisExe
 
     static CatalogueSourceIdentity source(AnalysisOperationContext context) {
         var source = context.authority();
-        return new CatalogueSourceIdentity(source.repositoryId(), source.workspaceId(), source.branch(), source.sourceCommit());
+        return new CatalogueSourceIdentity(source.repositoryId(), source.workspaceId(), source.branch(), source.sourceCommit(), source.semanticModelSha256());
     }
 
     private static void requireInput(AnalysisOperationContext context, AnalyzeRequirementCommand command, ViewContext view) {

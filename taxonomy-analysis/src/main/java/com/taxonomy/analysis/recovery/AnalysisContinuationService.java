@@ -3,6 +3,10 @@ package com.taxonomy.analysis.recovery;
 import com.taxonomy.analysis.relations.RelationRecoveryPolicy;
 import com.taxonomy.analysis.relations.RequirementRelationSearch;
 import com.taxonomy.analysis.service.*;
+import com.taxonomy.analysis.usecase.AdmittedCatalogue;
+import com.taxonomy.analysis.usecase.AnalysisAdmissionModelPort;
+import com.taxonomy.analysis.usecase.AnalysisRequestModelAdmission;
+import com.taxonomy.catalog.snapshot.CatalogueSnapshotService;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.*;
 import com.taxonomy.workspace.service.*;
@@ -19,6 +23,10 @@ public class AnalysisContinuationService {
     private final LlmService llm;
     private final WorkspaceManager workspaces;
     private final ObjectMapper mapper;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private AnalysisAdmissionModelPort admissionModels;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private CatalogueSnapshotService catalogueSnapshots;
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.taxonomy.analysis.relations.RequirementRelationSearchService relations;
     @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -43,6 +51,8 @@ public class AnalysisContinuationService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Relations extension requires a durable source revision");
         var input = store.relationInput(decision, scope);
         var saved = input.request();
+        AnalysisRequestModelAdmission.requireExpected(saved.getModelBinding(),
+                decision.getExpectedCommit(), decision.getExpectedSemanticRevision());
         boolean replay = saved.getRelationSourceContinuationId() != null;
         if (decision.getBusinessText() != null && !Objects.equals(decision.getBusinessText(), saved.getBusinessText()))
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Requirement text differs from the retained source");
@@ -64,13 +74,14 @@ public class AnalysisContinuationService {
             try (var ignored = providers == null ? null : providers.withRequestProvider(provider, binding);
                  var reasons = AnalysisReasonContext.open(saved.getAnalysisReasonLength());
                  var language = AnalysisLanguageContext.open(saved.getAnalysisLanguage())) {
-                var tree = catalogue.getFullTree();
+                var tree = treeFor(saved, scope);
                 store.verifySourceSignature(decision.getRelationSourceContinuationId(), scope, signature(saved, tree));
                 Authority authority = saved.getContinuationAuthority() == null
                         ? authority(provider, binding, tree) : mapper.readValue(saved.getContinuationAuthority(), Authority.class);
                 requireProvider(authority, provider, binding);
                 validateAuthority(authority, tree);
-                requireCurrentSource(result, scope);
+                if (saved.getModelBinding() == null) requireCurrentSource(result, scope);
+                else AdmittedCatalogue.requireWorkspace(saved.getModelBinding(), scope);
                 frozen.setProvider(authority.provider());
                 frozen.setContinuationAuthority(saved.getContinuationAuthority() == null
                         ? mapper.writeValueAsString(authority) : saved.getContinuationAuthority());
@@ -125,11 +136,18 @@ public class AnalysisContinuationService {
         if (compatible == null) throw changedAuthority();
         return compatible;
     }
-    private AnalysisRequest frozenRequest(AnalysisRequest request, String username, WorkspaceContext scope, int maxNodes) {
+    private AnalysisRequest frozenRequest(AnalysisRequest request, String username, WorkspaceContext scope, int maxNodes,
+            AnalysisAdmissionModelPort initialModel) {
         if (request.getRelationSourceContinuationId() != null) return resolveRelationsRequest(request, username, scope);
         var frozen = mapper.readValue(mapper.writeValueAsString(request), AnalysisRequest.class);
         frozen.setMaxArchitectureNodes(maxNodes);
         var original = freezeGenerationContract(frozen, scope);
+        var model = original == null
+                ? AnalysisRequestModelAdmission.capture(initialModel, scope, request.getExpectedCommit(),
+                        request.getExpectedSemanticRevision(), request.getAnalysisScope())
+                : AnalysisRequestModelAdmission.requireExpected(original.getModelBinding(),
+                        request.getExpectedCommit(), request.getExpectedSemanticRevision());
+        frozen.setModelBinding(model);
         String originalAuthority = original == null ? null : original.getContinuationAuthority();
         Authority savedAuthority = originalAuthority == null ? null : mapper.readValue(originalAuthority, Authority.class);
         frozen.setRelationSourcePartial(false);
@@ -142,7 +160,7 @@ public class AnalysisContinuationService {
             try (var ignored = providers.withRequestProvider(provider, binding);
                  var reasons = AnalysisReasonContext.open(frozen.getAnalysisReasonLength());
                  var language = AnalysisLanguageContext.open(frozen.getAnalysisLanguage())) {
-                var tree = catalogue.getFullTree();
+                var tree = treeFor(frozen, scope);
                 if (savedAuthority == null) frozen.setContinuationAuthority(mapper.writeValueAsString(authority(provider, binding, tree)));
                 else {
                     requireProvider(savedAuthority, provider, binding);
@@ -154,7 +172,7 @@ public class AnalysisContinuationService {
             requireProvider(savedAuthority, frozen.getProvider(), null);
             try (var reasons = AnalysisReasonContext.open(frozen.getAnalysisReasonLength());
                  var language = AnalysisLanguageContext.open(frozen.getAnalysisLanguage())) {
-                validateAuthority(savedAuthority, catalogue.getFullTree());
+                validateAuthority(savedAuthority, treeFor(frozen, scope));
                 frozen.setContinuationAuthority(originalAuthority);
             }
         } else frozen.setContinuationAuthority(null);
@@ -164,14 +182,32 @@ public class AnalysisContinuationService {
         if (request.getRelationSourceContinuationId() == null
                 || !"START".equals(Objects.toString(request.getContinuationAction(), "START"))) return null;
         var input = store.relationInput(request, scope);
+        AnalysisRequestModelAdmission.requireExpected(input.request().getModelBinding(),
+                request.getExpectedCommit(), request.getExpectedSemanticRevision());
         return input.request().getRelationSourceContinuationId() != null && !"RUNNING".equals(input.recovery().state())
-                ? new Execution(new AnalysisContinuationStore.Claim(request.getContinuationId(), null, input.result()), null, input.request(), null) : null;
+                ? new Execution(new AnalysisContinuationStore.Claim(request.getContinuationId(), null, input.result()), null, input.request(), null, scope) : null;
     }
     public Execution begin(AnalysisRequest request, String username, WorkspaceContext scope, int maxNodes) {
         authorize(username, scope);
         var replay = relationsReplay(request, scope); if (replay != null) return replay;
-        AnalysisRequest frozen = frozenRequest(request, username, scope, maxNodes);
-        var tree = catalogue.getFullTree();
+        return beginFrozen(frozenRequest(request, username, scope, maxNodes, admissionModels), scope);
+    }
+
+    /** A claimed portfolio item uses the model stored with its authorized job, including on a background thread. */
+    public Execution beginPortfolio(AnalysisRequest request, String username, WorkspaceContext scope, int maxNodes,
+            AnalysisModelBinding model) {
+        authorize(username, scope);
+        if (model != null) {
+            AdmittedCatalogue.requireWorkspace(model, scope);
+            if (!Objects.equals(model.scope(), request.getAnalysisScope())) throw changedAuthority();
+        }
+        var frozen = frozenRequest(request, username, scope, maxNodes, (workspace, commit, revision, roots) -> model);
+        if (!Objects.equals(frozen.getModelBinding(), model)) throw changedAuthority();
+        return beginFrozen(frozen, scope);
+    }
+
+    private Execution beginFrozen(AnalysisRequest frozen, WorkspaceContext scope) {
+        var tree = treeFor(frozen, scope);
         try {
             frozen.getAnalysisScope().validateRoots(tree.stream().map(TaxonomyNodeDto::getCode)
                     .collect(java.util.stream.Collectors.toSet()));
@@ -186,16 +222,16 @@ public class AnalysisContinuationService {
             // A claim may authorize execution only after its server-captured authority matches.
             // Standalone local callers without a provider envelope bind their policy in this scope.
             validateAuthority(authority == null ? authority(frozen.getProvider(), binding, tree) : authority, tree);
-            return new Execution(store.begin(frozen, scope, signature(frozen, tree), tree), null, frozen, binding);
+            return new Execution(store.begin(frozen, scope, signature(frozen, tree), tree), null, frozen, binding, scope);
         }
     }
     public Execution beginDistributed(AnalysisRequest request, String username, WorkspaceContext scope, int maxNodes) {
         authorize(username, scope);
         var replay = relationsReplay(request, scope); if (replay != null) return replay;
         if (providers == null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Frozen provider authority is unavailable");
-        var frozen = frozenRequest(request, username, scope, maxNodes);
+        var frozen = frozenRequest(request, username, scope, maxNodes, admissionModels);
         String provider = frozen.getProvider();
-        var tree = catalogue.getFullTree();
+        var tree = treeFor(frozen, scope);
         try { frozen.getAnalysisScope().validateRoots(tree.stream().map(TaxonomyNodeDto::getCode).collect(java.util.stream.Collectors.toSet())); }
         catch (IllegalArgumentException invalid) { throw new ResponseStatusException(HttpStatus.BAD_REQUEST, invalid.getMessage(), invalid); }
         Authority authority = frozen.getContinuationAuthority() == null ? null : mapper.readValue(frozen.getContinuationAuthority(), Authority.class);
@@ -210,7 +246,7 @@ public class AnalysisContinuationService {
             var binding = claim.completedResult() == null ? new AnalysisContinuationBinding(claim.id(), claim.token(), signature,
                     llm.recoveryPolicyFingerprint(provider), AnalysisCheckpointSession.digest(relations == null ? "" : relations.recoveryPolicyFingerprint()),
                     budget == null ? 0 : budget.sourceCohortSize(), budget) : null;
-            return new Execution(claim, binding, frozen, pluginBinding);
+            return new Execution(claim, binding, frozen, pluginBinding, scope);
         }
     }
     private AnalysisRequest freezeGenerationContract(AnalysisRequest request, WorkspaceContext scope) {
@@ -260,7 +296,7 @@ public class AnalysisContinuationService {
         authorize(username, scope);
         var snapshot = store.read(id, scope);
         if (snapshot.result() == null || snapshot.result().getTree() == null) {
-            var tree = catalogue.getFullTree();
+            var tree = treeFor(snapshot.request(), scope);
             snapshot = store.cancel(id, scope, tree, signature(snapshot.request(), tree));
         } else snapshot = store.cancel(id, scope);
         var cancelled = snapshot;
@@ -274,6 +310,13 @@ public class AnalysisContinuationService {
     public LlmCallDetail detail(String id, String key, String username, WorkspaceContext scope) {
         authorize(username, scope); return store.detail(id, key, scope);
     }
+    private java.util.List<TaxonomyNodeDto> treeFor(AnalysisRequest request, WorkspaceContext workspace) {
+        try (var ignored = AdmittedCatalogue.open(catalogueSnapshots,
+                request == null ? null : request.getModelBinding(), workspace)) {
+            return catalogue.getFullTree();
+        }
+    }
+
     private String signature(AnalysisRequest request, java.util.List<TaxonomyNodeDto> tree) {
         try (var reasons = AnalysisReasonContext.open(request.getAnalysisReasonLength());
                  var language = AnalysisLanguageContext.open(request.getAnalysisLanguage())) {
@@ -290,6 +333,8 @@ public class AnalysisContinuationService {
                 AnalysisReasonContext.POLICY, request.getAnalysisReasonLength().value());
         if (request.getAnalysisLanguage() != null) reasoned = AnalysisCheckpointSession.digest(reasoned,
                 AnalysisLanguageContext.POLICY, request.getAnalysisLanguage().value());
+        if (request.getModelBinding() != null) reasoned = AnalysisCheckpointSession.digest(reasoned,
+                "architecture-model-v1", mapper.writeValueAsString(request.getModelBinding()));
         return request.getRelationSourceContinuationId() == null ? reasoned
                 : AnalysisCheckpointSession.digest(reasoned, "retained-relations-v1", request.getRelationSourceContinuationId(),
                         String.valueOf(request.getRelationSourceVersion()));
@@ -309,11 +354,13 @@ public class AnalysisContinuationService {
         private boolean completed;
         private final AnalysisContinuationBinding distributedBinding;
         private final AnalysisRequest frozenRequest;
+        private final WorkspaceContext workspace;
         private final com.taxonomy.extension.api.plugin.PluginInvocation providerBinding;
         private final RequirementRelationSearch.BudgetPolicy relationBudget;
-        Execution(AnalysisContinuationStore.Claim claim) { this(claim, null, null, null); }
+        Execution(AnalysisContinuationStore.Claim claim) { this(claim, null, null, null, null); }
         Execution(AnalysisContinuationStore.Claim claim, AnalysisContinuationBinding binding, AnalysisRequest request,
-                com.taxonomy.extension.api.plugin.PluginInvocation pluginBinding) {
+                com.taxonomy.extension.api.plugin.PluginInvocation pluginBinding, WorkspaceContext workspace) {
+            this.workspace = workspace;
             this.claim = claim; distributedBinding = binding; frozenRequest = request; providerBinding = pluginBinding;
             relationBudget = binding == null ? captureBudgetPolicy(claim, request) : binding.relationBudget();
             session = claim.completedResult() != null || binding != null ? null : new AnalysisCheckpointSession(new AnalysisCheckpointSession.Store() {
@@ -357,11 +404,11 @@ public class AnalysisContinuationService {
             if (frozenRequest == null) return command.withContinuationBinding(distributedBinding);
             return new com.taxonomy.analysis.usecase.AnalyzeRequirementCommand(frozenRequest.getBusinessText(), frozenRequest.isIncludeArchitectureView(),
                     frozenRequest.getMaxArchitectureNodes(), frozenRequest.getProvider(), command.username(), command.workspaceContext(), command.provenance(),
-                    frozenRequest.getAnalysisScope(), providerBinding, distributedBinding, analysisReasonLength(), claim.retainedAnalysis(), analysisLanguage());
+                    frozenRequest.getAnalysisScope(), providerBinding, distributedBinding, analysisReasonLength(), claim.retainedAnalysis(), analysisLanguage(), frozenRequest.getModelBinding());
         }
         public AnalysisResult replay() { return claim.completedResult(); }
         public AnalysisResult complete(AnalysisResult result) {
-            AnalysisResult completedResult = store.completeWithFallback(claim, result, catalogue::getFullTree);
+            AnalysisResult completedResult = store.completeWithFallback(claim, result, () -> treeFor(frozenRequest, workspace));
             completed = true; return completedResult;
         }
         @Override public void close() {

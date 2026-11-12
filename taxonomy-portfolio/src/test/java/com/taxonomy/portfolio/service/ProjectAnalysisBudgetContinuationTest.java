@@ -8,10 +8,13 @@ import com.taxonomy.analysis.recovery.AnalysisQuestionCheckpoint;
 import com.taxonomy.analysis.relations.RelationSearchBudgetSettings;
 import com.taxonomy.analysis.relations.RequirementRelationSearchService;
 import com.taxonomy.analysis.service.*;
+import com.taxonomy.analysis.usecase.AnalysisAdmissionModelPort;
 import com.taxonomy.analysis.usecase.AnalyzeRequirementUseCase;
 import com.taxonomy.architecture.service.*;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.catalog.snapshot.CatalogueSnapshotService;
+import com.taxonomy.catalog.snapshot.RootCatalogueSnapshot;
 import com.taxonomy.dto.*;
 import com.taxonomy.portfolio.dto.PortfolioDtos.*;
 import com.taxonomy.portfolio.model.*;
@@ -450,6 +453,46 @@ class ProjectAnalysisBudgetContinuationTest {
     }
 
     @Test
+    void pinnedRequirementVersionCanResumeAfterANewerVersionBecomesCurrent() throws Exception {
+        var binding = new AnalysisModelBinding(AnalysisModelBinding.State.RESOLVED, "repository", "owned-workspace",
+                "draft", "a".repeat(40), 2L, "PROJECT_DSL", "b".repeat(64), "catalogue-v1",
+                "1", Set.of("BP", "IP"), AnalysisScope.full(), "brief-1", Map.of(), List.of(), Set.of(), null);
+        try (var f = new Fixture(database, binding)) {
+            var version = new TransactionTemplate(f.transactions).execute(status ->
+                    f.shared.find(ProjectRequirement.class, f.requirementId).getCurrentVersionId());
+            var first = f.service.analyzeProject(f.projectId, new AnalyzeProjectRequest(List.of(f.requirementId),
+                    false, "CUSTOM_OPENAI", 100, "pinned-version", null, version), "owner", f.scope);
+            assertThat(first.status()).as(first.errorSummary()).isEqualTo(AnalysisStatus.PARTIAL);
+            assertThat(f.snapshot(first).analysis().getModelBinding()).isEqualTo(binding);
+            f.transaction(em -> {
+                var requirement = em.find(ProjectRequirement.class, f.requirementId);
+                var next = f.version(requirement, 2);
+                em.persist(next);
+                em.flush();
+                requirement.pointToVersion(next.getId(), Instant.now());
+            });
+            var decision = f.eligibility(first);
+            assertThat(decision.available()).as(decision.reason()).isTrue();
+            assertThat(decision.requirementVersionId()).isEqualTo(version);
+            assertThatThrownBy(() -> f.continueWith(first,
+                    new ContinueAnalysisRequest("another-snapshot", decision.continuationVersion())))
+                    .isInstanceOf(PortfolioException.class).hasMessageContaining("refresh before continuing");
+            int originalCalls = f.prompts.size();
+            f.continueWith(first, new ContinueAnalysisRequest(decision.snapshotId(), decision.continuationVersion()));
+            f.runQueued();
+            var resumed = f.current(first);
+            var result = f.snapshot(resumed);
+            assertThat(resumed.items().getFirst().attempt()).isEqualTo(2);
+            assertThat(result.summary().id()).isNotEqualTo(decision.snapshotId());
+            assertThat(result.summary().requirementVersionId()).isEqualTo(version);
+            assertThat(result.analysis().getRecovery().id()).isEqualTo(decision.continuationId());
+            assertThat(result.analysis().getModelBinding()).isEqualTo(binding);
+            assertThat(f.prompts.subList(originalCalls, f.prompts.size())).isNotEmpty()
+                    .allSatisfy(prompt -> assertThat(prompt).contains(Fixture.TEXT).doesNotContain("retains access history"));
+        }
+    }
+
+    @Test
     void queuedContinuationCanBeCancelledWithoutConsumingAnotherCycle() throws Exception {
         try (var f = new Fixture(database)) {
             var first = f.start("cancel");
@@ -593,7 +636,14 @@ class ProjectAnalysisBudgetContinuationTest {
         Long projectId;
         Long requirementId;
 
+        final AnalysisModelBinding binding;
+
         Fixture(Path directory) throws Exception {
+            this(directory, null);
+        }
+
+        Fixture(Path directory, AnalysisModelBinding binding) throws Exception {
+            this.binding = binding;
             url = "jdbc:hsqldb:file:" + directory.resolve("continuation");
             node("BP", "BP", null); node("IP", "IP", null); node("IP-record", "IP", "IP");
             for (int i = 0; i < 33; i++) {
@@ -714,6 +764,20 @@ class ProjectAnalysisBudgetContinuationTest {
                     mock(AnalysisRelationGenerator.class), mock(HypothesisService.class), mock(WorkspaceViewContextReadPort.class),
                     () -> com.taxonomy.export.DiagramViewMetadata.fromConfig(com.taxonomy.export.DiagramSelectionConfig.trace(), "trace"));
             ReflectionTestUtils.setField(useCase, "requirementRelationSearch", relations);
+            if (binding != null) {
+                AnalysisAdmissionModelPort model = (authorizedWorkspace, commit, revision, requestedScope) -> binding;
+                persistence.admissionModels(model);
+                ReflectionTestUtils.setField(continuation, "admissionModels", model);
+                var archives = mock(CatalogueSnapshotService.class);
+                var roots = binding.rootCodes().stream().map(code -> {
+                    var root = mock(RootCatalogueSnapshot.class);
+                    when(root.rootCode()).thenReturn(code);
+                    return root;
+                }).toList();
+                when(archives.captureRevision(any(), eq(binding.catalogueRevision()), eq(Set.of()))).thenReturn(roots);
+                ReflectionTestUtils.setField(continuation, "catalogueSnapshots", archives);
+                ReflectionTestUtils.setField(useCase, "catalogueSnapshots", archives);
+            }
             service = new ProjectRequirementAnalysisService(projectService, persistence, claims, workQueue, recovery, useCase,
                     mock(ArchitectureGapService.class), mock(ArchitecturePatternService.class), mock(ArchitectureRecommendationService.class),
                     fingerprints, llm, new TaskExecutorAdapter(queue::add), 100, 100, 900);

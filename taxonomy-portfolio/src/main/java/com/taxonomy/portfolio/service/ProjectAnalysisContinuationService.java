@@ -104,7 +104,7 @@ public class ProjectAnalysisContinuationService {
      */
     @Transactional
     public AnalysisContinuationService.Execution begin(PortfolioAnalysisWorkQueue.WorkItem work,
-            AnalysisJobView job, String username, WorkspaceContext context) {
+            AnalysisJobView job, String username, WorkspaceContext context, com.taxonomy.dto.AnalysisModelBinding admittedModel) {
         String limitation = scopeLimitation(username, context);
         if (work.continuationSnapshotId() == null && limitation != null) return null;
         if (limitation != null) throw PortfolioException.conflict(limitation);
@@ -119,6 +119,7 @@ public class ProjectAnalysisContinuationService {
         }
         AnalysisRequest request = new AnalysisRequest();
         request.setBusinessText(work.requirementText());
+        if (admittedModel != null) request.setAnalysisScope(admittedModel.scope());
         request.setIncludeArchitectureView(true);
         request.setMaxArchitectureNodes(job.maxArchitectureNodes());
         request.setProvider(job.provider());
@@ -134,11 +135,13 @@ public class ProjectAnalysisContinuationService {
             request.setContinuationAction("START");
         } else {
             var snapshot = requireSnapshot(item, work.continuationSnapshotId());
-            if (!Objects.equals(item.getSnapshotId(), snapshot.getId())
-                    || !Objects.equals(item.getRequirement().getCurrentVersionId(), work.requirementVersionId())) {
+            if (!Objects.equals(item.getSnapshotId(), snapshot.getId())) {
                 throw PortfolioException.conflict("The requirement version or continuation snapshot changed");
             }
             AnalysisResult saved = requireAnalysis(item, snapshot.getId());
+            if (!canResumeVersion(saved, work.requirementVersionId(), item.getRequirement().getCurrentVersionId())) {
+                throw PortfolioException.conflict("The requirement version or continuation snapshot changed");
+            }
             String problem = budgetProblem(saved);
             if (problem == null) problem = questionProblem(saved.getRecovery(), username, context);
             if (problem != null) throw PortfolioException.conflict(problem);
@@ -148,7 +151,7 @@ public class ProjectAnalysisContinuationService {
             request.setContinuationVersion(saved.getRecovery().version());
             request.setContinuationAction("CONTINUE");
         }
-        return continuations.begin(request, username, context, job.maxArchitectureNodes());
+        return continuations.beginPortfolio(request, username, context, job.maxArchitectureNodes(), admittedModel);
     }
 
     private AnalysisContinuationView view(AnalysisContinuationReadRow item, String username, WorkspaceContext context) {
@@ -160,7 +163,7 @@ public class ProjectAnalysisContinuationService {
             AnalysisResult saved = requireAnalysis(item);
             recovery = saved == null ? null : saved.getRecovery();
             if (problem == null) problem = budgetProblem(saved);
-            if (problem == null && !Objects.equals(item.currentRequirementVersionId(), item.requirementVersionId()))
+            if (problem == null && !canResumeVersion(saved, item.requirementVersionId(), item.currentRequirementVersionId()))
                 problem = "The requirement version changed; start a new analysis for the current version";
             if (problem == null) {
                 var durable = continuations.read(recovery.id(), username, context);
@@ -201,7 +204,7 @@ public class ProjectAnalysisContinuationService {
             AnalysisResult saved = requireAnalysis(item, snapshot.getId());
             recovery = saved == null ? null : saved.getRecovery();
             if (problem == null) problem = budgetProblem(saved);
-            if (problem == null && !Objects.equals(item.getRequirement().getCurrentVersionId(), item.getRequirementVersionId()))
+            if (problem == null && !canResumeVersion(saved, item.getRequirementVersionId(), item.getRequirement().getCurrentVersionId()))
                 problem = "The requirement version changed; start a new analysis for the current version";
             if (problem == null) {
                 var durable = continuations.read(recovery.id(), username, context);
@@ -227,6 +230,12 @@ public class ProjectAnalysisContinuationService {
                 recovery == null ? null : recovery.id(), recovery == null ? null : recovery.version(),
                 recovery == null ? null : recovery.state(), problem == null,
                 problem == null ? "The saved analysis stopped at a budget limit. Continue one further bounded cycle; accepted open questions remain open." : problem);
+    }
+
+    /** The scoped snapshot read has already matched its immutable version to this job item. */
+    private static boolean canResumeVersion(AnalysisResult saved, Long itemVersion, Long currentVersion) {
+        return Objects.equals(itemVersion, currentVersion)
+                || (itemVersion != null && saved != null && saved.getModelBinding() != null);
     }
 
     private void requireProviderBinding(RequirementAnalysisJobItem item, String username, WorkspaceContext context) {

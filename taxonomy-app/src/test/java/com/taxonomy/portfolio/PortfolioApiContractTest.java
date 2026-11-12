@@ -38,7 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "mistral.api.key="
 })
 @Tag("ci-app-shard-domain-integration")
-class PortfolioApiContractTest {
+class PortfolioApiContractTest extends RetainedPortfolioCatalogue {
 
     @Autowired
     private MockMvc mockMvc;

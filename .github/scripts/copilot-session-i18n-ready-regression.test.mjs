@@ -13,6 +13,7 @@ test('delayed translations recover initialization after bounded polling', async 
   let readyCalls = 0;
   let timers = 0;
   let animationFrames = 0;
+  const windowListeners = new Map();
   const elements = {
     businessText: {
       value: '',
@@ -50,7 +51,7 @@ test('delayed translations recover initialization after bounded polling', async 
       callback();
       return animationFrames;
     },
-    addEventListener() {},
+    addEventListener(type, listener) { windowListeners.set(type, listener); },
     innerWidth: 1280,
     innerHeight: 720
   };
@@ -95,4 +96,13 @@ test('delayed translations recover initialization after bounded polling', async 
   assert.equal(timers, 30, 'translation completion must not restart polling');
   assert.ok(animationFrames >= 2,
     'the fallback and overlay hardening should run after promise handlers settle');
+  assert.equal(typeof window.TaxonomyOnboarding.isElementUnobscured, 'function');
+  assert.equal(typeof window.TaxonomyOnboarding.overlayPlacement.targets, 'function');
+
+  let refreshes = 0;
+  const earlyPlacement = window.TaxonomyOnboarding.overlayPlacement;
+  window.TaxonomyOnboarding = { refreshOverlayLane() { refreshes += 1; } };
+  windowListeners.get('scroll')();
+  assert.equal(window.TaxonomyOnboarding.overlayPlacement, earlyPlacement);
+  assert.equal(refreshes, 1, 'a later shared placement API must receive the overlay event');
 });

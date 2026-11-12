@@ -171,6 +171,17 @@
                         </label>
                         <textarea id="businessText" class="form-control mb-3" rows="7"
                                   th:placeholder="#{analyze.placeholder}" placeholder="Example: We need a company-wide system for recording working hours.&#10;&#10;Demo without AI: Enter &quot;produktdemo&quot; and select &quot;Analyze with AI&quot;."></textarea>
+                        <section id="analysisIntakeChoices" class="mb-3" aria-labelledby="analysisIntakeLabel" hidden>
+                            <p id="analysisIntakeLabel" class="form-text mb-1" th:text="#{analyze.intake.draft}">Analyze this text as a draft, or review it for a project.</p>
+                            <div class="d-flex gap-2 flex-wrap">
+                                <button type="button" id="analysisIntakeProject" class="btn btn-sm btn-outline-primary"
+                                        th:text="#{analyze.intake.project}">Review in an existing project</button>
+                                <button type="button" id="analysisIntakeNewProject" class="btn btn-sm btn-outline-secondary"
+                                        th:text="#{analyze.intake.new.project}">Create a project with this text</button>
+                                <button type="button" id="analysisIntakeVersion" class="btn btn-sm btn-outline-secondary" hidden
+                                        th:text="#{analyze.intake.version}">Review as a new version</button>
+                            </div>
+                        </section>
                         <div class="d-flex gap-2 align-items-center flex-wrap">
                             <select id="providerSelect" class="form-select form-select-sm"
                                     style="width: auto; min-width: 160px;"
@@ -272,6 +283,11 @@
                         <p id="analysisGuideError" class="small text-danger mt-2 mb-0" role="alert" hidden></p>
                     </div>
                 </section>
+
+                <p id="analysisProfileChoice" class="small mb-3" hidden>
+                    <span id="analysisProfileReason"></span>
+                    <a id="analysisProfileEditor" href="#architecture"></a>
+                </p>
 
                 <!-- Status / error messages -->
                 <div id="analysisRecoveryHost"></div>
@@ -2009,6 +2025,7 @@
 <script th:src="@{/js/api/architecture-source-focus-api.js}" src="/js/api/architecture-source-focus-api.js"></script>
 <script th:src="@{/js/shared/architecture-source-lens.js}" src="/js/shared/architecture-source-lens.js"></script>
 <script th:src="@{/js/shared/architecture-workspace.js}" src="/js/shared/architecture-workspace.js"></script>
+<script th:src="@{/js/core/analysis-profile-choice.js}" src="/js/core/analysis-profile-choice.js"></script>
 
 <!-- System Status Bar -->
 <div id="systemStatusBar" style="position:fixed;bottom:0;left:0;right:0;background:rgba(33,37,41,0.85);color:#adb5bd;font-size:0.72rem;padding:3px 12px;z-index:1050;text-align:center;backdrop-filter:blur(4px);">

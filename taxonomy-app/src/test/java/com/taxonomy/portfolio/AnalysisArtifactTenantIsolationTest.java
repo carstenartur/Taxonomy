@@ -15,12 +15,18 @@ import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.workspace.model.RepositoryVisibility;
-import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.ArchitectureRepositoryProvisioningService;
 import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
 
@@ -29,7 +35,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** End-to-end evidence that asynchronous analysis identities cannot cross tenants. */
 @SpringBootTest
-class AnalysisArtifactTenantIsolationTest {
+class AnalysisArtifactTenantIsolationTest extends RetainedPortfolioCatalogue {
+
+    @Autowired
+    private DslGitRepositoryFactory repositories;
 
     @Autowired
     private ProjectPortfolioService projectService;
@@ -47,12 +56,15 @@ class AnalysisArtifactTenantIsolationTest {
     private RequirementAnalysisJobItemRepository itemRepository;
 
     @Autowired
-    private SystemRepositoryService systemRepositoryService;
+    private ArchitectureRepositoryProvisioningService provisioning;
 
     @Test
-    void identicalAnalysisRequestsRemainRepositoryAndBranchLocal() {
+    @WithMockUser(username = "architect", roles = "ARCHITECT")
+    void identicalAnalysisRequestsRemainRepositoryAndBranchLocal() throws IOException {
         String repositoryA = repository("Analysis tenant A");
         String repositoryB = repository("Analysis tenant B");
+        var gitA = repositories.getCentralRepository(repositoryA);
+        gitA.createBranchAtCommit("draft", gitA.getHeadCommit("main"));
         WorkspaceContext aMain = context(repositoryA, "main");
         WorkspaceContext aDraft = context(repositoryA, "draft");
         WorkspaceContext bMain = context(repositoryB, "main");
@@ -123,14 +135,18 @@ class AnalysisArtifactTenantIsolationTest {
             Long projectId,
             Long requirementId,
             WorkspaceContext context) {
-        return persistenceService.createOrReuseJob(
-                projectId,
-                List.of(requirementId),
-                "MOCK",
-                25,
-                "same-idempotency-key",
-                "architect",
-                context);
+        var request = new MockHttpServletRequest();
+        request.addParameter("workspaceId", "");
+        request.addParameter("repositoryId", context.repositoryId());
+        request.addParameter("branch", context.currentBranch());
+        var previous = RequestContextHolder.getRequestAttributes();
+        try {
+            RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+            return persistenceService.createOrReuseJob(projectId, List.of(requirementId), "MOCK", 25,
+                    "same-idempotency-key", "architect", context);
+        } finally {
+            RequestContextHolder.setRequestAttributes(previous);
+        }
     }
 
     private com.taxonomy.portfolio.dto.PortfolioDtos.ProjectView createProject(
@@ -172,7 +188,7 @@ class AnalysisArtifactTenantIsolationTest {
 
     private String repository(String displayName) {
         String discriminator = UUID.randomUUID().toString();
-        return systemRepositoryService.createCentralRepository(
+        return provisioning.createRepository(
                 displayName,
                 "analysis-tenant-" + discriminator,
                 "Analysis isolation fixture",

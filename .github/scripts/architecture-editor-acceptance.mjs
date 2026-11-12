@@ -708,6 +708,12 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     await preview(() => page.locator('#editorBriefSave').click());
     const briefResult = await commit();
     assert.ok(briefResult.change.changedIds.includes('source:architecture-brief'));
+    const profileAt = context => page.evaluate(pinned => window.ArchitectureEditorApi.analysisBrief(pinned,
+      {expectedSemanticRevision:pinned.revision}), context);
+    const unassigned = await profileAt(briefResult.context);
+    assert.equal(unassigned.decision, 'UNASSIGNED');
+    assert.equal(unassigned.editable, true);
+    assert.equal(unassigned.semanticRevision, briefResult.context.revision);
     await page.locator('#editorBriefReferenceFields-identifier').fill(`Municipal decision ${suffix}`);
     await page.locator('#editorBriefReferenceFields-edition').fill('2026');
     await page.locator('#editorBriefReferenceFields-section').fill('4.2');
@@ -719,6 +725,12 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     await preview(() => page.locator('#editorBriefReferenceSave').click());
     const referenceResult = await commit();
     assert.ok(referenceResult.change.changedIds.some(id => id.startsWith('sourceVersion:')));
+    const assigned = await profileAt(referenceResult.context);
+    assert.equal(assigned.decision, 'ASSIGNED');
+    assert.equal(assigned.brief.references[0].values.edition, '2026');
+    const previousBrief = await profileAt(briefResult.context);
+    assert.equal(previousBrief.decision, 'UNASSIGNED');
+    assert.equal(previousBrief.editable, false);
     await reloadEditor();
     await select(system);
     assert.equal(await page.locator('#editorBriefFields-objective').inputValue(), briefObjective);

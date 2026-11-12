@@ -182,13 +182,30 @@ public final class PortfolioDtos {
      * Analysis request. {@code all} is boxed so that clients may omit the field or send
      * {@code null} without triggering a Jackson primitive-coercion failure (HTTP 400).
      */
+    public record AnalysisModelSelection(String expectedCommit, Long expectedSemanticRevision,
+                                         com.taxonomy.dto.AnalysisScope scope) { }
+
     public record AnalyzeProjectRequest(
             List<Long> requirementIds,
             Boolean all,
             String provider,
             Integer maxArchitectureNodes,
             String idempotencyKey,
-            com.taxonomy.dto.AnalysisLanguage analysisLanguage) {
+            com.taxonomy.dto.AnalysisLanguage analysisLanguage,
+            Long requirementVersionId,
+            AnalysisModelSelection model) {
+
+        public AnalyzeProjectRequest(List<Long> requirementIds, Boolean all, String provider,
+                                     Integer maxArchitectureNodes, String idempotencyKey,
+                                     com.taxonomy.dto.AnalysisLanguage analysisLanguage, Long requirementVersionId) {
+            this(requirementIds, all, provider, maxArchitectureNodes, idempotencyKey, analysisLanguage, requirementVersionId, null);
+        }
+
+        public AnalyzeProjectRequest(List<Long> requirementIds, Boolean all, String provider,
+                                     Integer maxArchitectureNodes, String idempotencyKey,
+                                     com.taxonomy.dto.AnalysisLanguage analysisLanguage) {
+            this(requirementIds, all, provider, maxArchitectureNodes, idempotencyKey, analysisLanguage, null);
+        }
 
         public AnalyzeProjectRequest(List<Long> requirementIds, Boolean all, String provider,
                                      Integer maxArchitectureNodes, String idempotencyKey) {

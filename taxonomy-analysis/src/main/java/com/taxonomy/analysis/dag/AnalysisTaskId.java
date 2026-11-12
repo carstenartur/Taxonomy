@@ -80,7 +80,8 @@ public record AnalysisTaskId(String value) {
     public boolean matchesRelation(String operationId, java.util.List<TaxonomyShardRoot> roots, int schemaVersion) {
         if (equals(relation(operationId, roots))) return true;
         var ordinal = relationWorkOrdinal();
-        return schemaVersion == 2 && roots.size() == 1 && roots.getFirst().catalogueIdentifier()
+        return (schemaVersion == 2 || schemaVersion == AnalysisEnvelope.SCHEMA_VERSION)
+                && roots.size() == 1 && roots.getFirst().catalogueIdentifier()
                 && ordinal.isPresent() && equals(relationWork(operationId, roots.getFirst(), ordinal.getAsInt()));
     }
 

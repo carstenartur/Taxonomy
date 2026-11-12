@@ -19,6 +19,7 @@
         currentProductCoverageGaps: [], // relevant product families without a suitable product
         currentRelationSearchReport: null, // independent of the optional architecture diagram
         currentArchView: null, // latest architecture view from analysis
+        currentModelBinding: null, // portable evidence from the displayed result
         currentCopilot: null, // retained server-owned Copilot reports
         analysisOperationId: null,
         analysisProviderId: null,

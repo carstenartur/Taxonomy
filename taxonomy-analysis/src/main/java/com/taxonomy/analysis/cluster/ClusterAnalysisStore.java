@@ -789,7 +789,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
         for (var grant : RelationSearchDistribution.ready(plan, results)) {
             var id = AnalysisTaskId.relationWork(run.id, grant.targetRoot(), grant.ordinal());
             if (tasks.stream().anyMatch(w -> w.taskId.equals(id.value()))) continue;
-            var header = new AnalysisEnvelope(2, AnalysisMessageType.RELATION_ANALYSIS_TASK, run.id, id,
+            var header = new AnalysisEnvelope(AnalysisEnvelope.versionFor(context, 2), AnalysisMessageType.RELATION_ANALYSIS_TASK, run.id, id,
                     AnalysisTaskType.RELATION_ANALYSIS, context.authority(), context.requirement(), List.of(grant.targetRoot()),
                     1, relationTasks.getFirst().taskId, context.correlationId(),
                     java.time.Instant.now(), null);
@@ -907,7 +907,9 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
         result.setProvider(provider); result.setStatus(warnings.isEmpty() && (retained == null || "SUCCESS".equals(retained.getStatus())) ? "SUCCESS" : "PARTIAL");
         result.setAnalysisOperationId(run.id);
         result.setAnalysisProviderId(read(run.commandJson, AnalyzeRequirementCommand.class).provider());
-        result.setAnalysisScope(read(run.commandJson, AnalyzeRequirementCommand.class).analysisScope());
+        var admitted = read(run.commandJson, AnalyzeRequirementCommand.class);
+        result.setAnalysisScope(admitted.analysisScope());
+        result.setModelBinding(admitted.modelBinding());
         result.setAnalysisReasonLength(read(run.commandJson, AnalyzeRequirementCommand.class).analysisReasonLength());
         result.setAnalysisLanguage(read(run.commandJson, AnalyzeRequirementCommand.class).analysisLanguage());
         result.setViewContext(run.viewJson == null ? null : read(run.viewJson, ViewContext.class));

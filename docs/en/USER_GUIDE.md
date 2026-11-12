@@ -96,6 +96,10 @@ lists scroll independently and can be focused with the keyboard.
 <a id="analysis-requirement-promotion"></a>
 ## Save an analysis as a project requirement
 
+From the analysis page, enter text and select **Analyze with AI** to analyze a draft. **Review in an existing project** opens the intake, where you can create a requirement, link an existing one, or propose a new text version. **Create a project with this text** carries the text into a new project. On the requirement detail page, choose a text version and click **Analyze selected version**. When the job finishes, that version stays selected for another run. The queued job and its retries use the version you selected, even if another tab edits the requirement.
+
+When an analysis starts, it records the selected model, the analysis scope and the rules from the architecture brief. If an older model has no catalogue reference, its historical catalogue remains unknown. A new analysis records the catalogue generation used for that run separately. When an explicitly referenced generation cannot be read, the start returns a conflict.
+
 Saving a working analysis into a project is an explicit action. Review the incoming
 text and choose `NEW`, `CHANGE` or `LINK` in the
 [intake workflow](PROJECT_REQUIREMENT_PORTFOLIO.md#requirement-intake). Candidate

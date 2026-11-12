@@ -3,6 +3,7 @@ package com.taxonomy.portfolio.reformulation;
 import com.taxonomy.TaxonomyApplication;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.portfolio.PortfolioAnalysisWorkspace;
 import com.taxonomy.portfolio.dto.PortfolioDtos.*;
 import com.taxonomy.portfolio.model.PortfolioTypes.*;
 import com.taxonomy.portfolio.service.*;
@@ -54,8 +55,7 @@ public final class ReformulationUsageChecks {
                 System.out.println("REFORMULATION_USAGE_RESTART_OK"); return;
             }
             var workspace = workspaces.createWorkspace("admin", "Usage persistence", "Transport evidence, not billing");
-            workspace = workspaces.provisionWorkspaceRepository("admin", workspace.getWorkspaceId());
-            workspaces.switchWorkspace("admin", workspace.getWorkspaceId());
+            workspace = PortfolioAnalysisWorkspace.provisionSelected(workspaces, "admin", workspace.getWorkspaceId());
             var context = new WorkspaceContext("admin", workspace.getWorkspaceId(), workspace.getCurrentBranch(), workspace.getSourceRepositoryId());
             var project = projects.createProject(new CreateProjectRequest("USAGE", "Usage", "Fixture", ProjectStatus.ACTIVE, null, null, null, null), "admin", context);
             var requirement = projects.createRequirement(project.id(), new CreateRequirementRequest("TIME", "Time", ORIGINAL, RequirementStatus.APPROVED,

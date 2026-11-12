@@ -749,6 +749,27 @@ export async function runRoleStateFlow({
     `Undo touch target is too small: ${JSON.stringify(overlayGeometry)}`);
   assert(overlayGeometry.activeUnobscured,
     `Focused control is obscured by overlay lane at ${overlayGeometry.position}`);
+  if (zoom === 4) {
+    const before = await businessText.evaluate(input => {
+      // Start with the focused requirement fully visible beside the open notification rail.
+      const lane = document.getElementById('taxonomyOverlayLane');
+      lane.dataset.position = 'top-start';
+      input.scrollIntoView({ block: 'center', behavior: 'instant' });
+      const state = { top: input.getBoundingClientRect().top, version: Number(lane.dataset.refreshVersion),
+        visible: window.TaxonomyOnboarding.isElementUnobscured(input) };
+      window.TaxonomyOnboarding.refreshOverlayLane();
+      return state;
+    });
+    assert(before.visible, 'The centered requirement must be visible beside the notification rail');
+    await page.waitForFunction(version =>
+      Number(document.getElementById('taxonomyOverlayLane').dataset.refreshVersion) > version, before.version);
+    const after = await businessText.evaluate(input => ({
+      top: input.getBoundingClientRect().top,
+      visible: input === document.activeElement && window.TaxonomyOnboarding.isElementUnobscured(input)
+    }));
+    assert(after.visible && Math.abs(after.top - before.top) <= 1,
+      `Notification repositioning moved the focused requirement: ${JSON.stringify({ before, after })}`);
+  }
   await runAxe('overlay-lane');
   await saveState('overlay-lane');
   await page.evaluate(() => {

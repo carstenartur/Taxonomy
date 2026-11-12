@@ -43,7 +43,13 @@ public final class ClusterAnalysisBackupRestorer {
     }
 
     public void restore(Archive archive, AnalysisOperationContext target, AnalyzeRequirementCommand command) {
-        validate(archive, target, command);
+        restore(archive, target, command, Map.of());
+    }
+
+    /** The target portfolio owner supplies its already allocated immutable version identities. */
+    public void restore(Archive archive, AnalysisOperationContext target, AnalyzeRequirementCommand command,
+            Map<SourceRecordId, Long> requirementVersions) {
+        validate(archive, target, command, Map.copyOf(requirementVersions));
         if (command.providerBinding() != null && !plugins.test(command.providerBinding()))
             throw new IllegalArgumentException("Required provider artifact or configuration is unavailable for restore");
         boolean interrupted = !ClusterAnalysisState.valueOf(archive.run().sourceState()).terminal();
@@ -130,7 +136,8 @@ public final class ClusterAnalysisBackupRestorer {
         });
     }
 
-    private void validate(Archive archive, AnalysisOperationContext target, AnalyzeRequirementCommand command) {
+    private void validate(Archive archive, AnalysisOperationContext target, AnalyzeRequirementCommand command,
+            Map<SourceRecordId, Long> requirementVersions) {
         Objects.requireNonNull(archive); Objects.requireNonNull(target); Objects.requireNonNull(command);
         var run = Objects.requireNonNull(archive.run()); var source = Objects.requireNonNull(run.context());
         require(run.sourceId().equals(new SourceRecordId("analysis.cluster-run", source.operationId())), "Invalid archived operation reference");
@@ -143,6 +150,12 @@ public final class ClusterAnalysisBackupRestorer {
             ClusterAnalysisBackupExport.validateCommand(source, run.principalScope(), sourceCommand);
             ClusterAnalysisBackupExport.validateCommand(target, command.username(), command);
         } catch (java.io.IOException invalid) { throw new IllegalArgumentException("Invalid restore authority"); }
+        var sourceVersion = source.requirement().requirementVersionId();
+        Long targetVersion = sourceVersion == null ? null
+                : requirementVersions.get(new SourceRecordId("portfolio.requirement-version", sourceVersion.toString()));
+        require((sourceVersion == null || targetVersion != null)
+                && Objects.equals(targetVersion, target.requirement().requirementVersionId()),
+                "An archived requirement version requires an explicit target version mapping");
         require(source.requirement().textSha256().equals(target.requirement().textSha256())
                 && sourceCommand.businessText().equals(command.businessText()) && sourceCommand.analysisScope().equals(command.analysisScope())
                 && sourceCommand.includeArchitectureView() == command.includeArchitectureView()
@@ -150,10 +163,16 @@ public final class ClusterAnalysisBackupRestorer {
                 && Objects.equals(sourceCommand.providerBinding(), command.providerBinding())
                 && Objects.equals(sourceCommand.analysisReasonLength(), command.analysisReasonLength())
                 && Objects.equals(sourceCommand.analysisLanguage(), command.analysisLanguage())
+                && Objects.equals(sourceCommand.modelBinding(), command.modelBinding())
                 && Objects.equals(json.valueToTree(sourceCommand.retainedAnalysis()), json.valueToTree(command.retainedAnalysis())),
                 "Restore cannot change the captured analysis request");
         var state = ClusterAnalysisState.valueOf(run.sourceState());
-        if (state.terminal()) { require(run.resultJson() != null, "Terminal archived result is missing"); read(run.resultJson(), AnalysisResult.class); }
+        if (state.terminal()) {
+            require(run.resultJson() != null, "Terminal archived result is missing");
+            var result = read(run.resultJson(), AnalysisResult.class);
+            require(Objects.equals(result.getModelBinding(), sourceCommand.modelBinding()),
+                    "Archived result differs from its admitted model evidence");
+        }
         var taskIds = new HashSet<String>(); var ordinals = new HashSet<Integer>(); var roots = new HashSet<String>();
         var inputRoots = new HashSet<String>(); var sourceIds = new HashSet<SourceRecordId>(); int completed = 0;
         long characters = bounded(run.commandJson()) + bounded(run.viewJson()) + bounded(run.resultJson()) + bounded(run.relationPlanJson());
@@ -399,6 +418,7 @@ public final class ClusterAnalysisBackupRestorer {
         result.setAnalysisScope(command.analysisScope());
         result.setAnalysisReasonLength(command.analysisReasonLength());
         result.setAnalysisLanguage(command.analysisLanguage());
+        result.setModelBinding(command.modelBinding());
         if (archive.run().viewJson() != null) result.setViewContext(read(archive.run().viewJson(), ViewContext.class));
         result.setAnalysisDurationMillis(Math.max(0, archive.run().updatedAt() - archive.run().createdAt()));
         if (result.getArchitectureView() != null) {

@@ -3,6 +3,7 @@ package com.taxonomy.portfolio.reformulation;
 import com.taxonomy.TaxonomyApplication;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.portfolio.PortfolioAnalysisWorkspace;
 import com.taxonomy.portfolio.dto.PortfolioDtos.*;
 import com.taxonomy.portfolio.model.PortfolioTypes.*;
 import com.taxonomy.portfolio.service.*;
@@ -58,7 +59,7 @@ public final class ReformulationAdoptionChecks {
     }
     Fixture fixture() {
         var ws=workspaces.createWorkspace("admin","Adoption "+UUID.randomUUID(),"Explicit version transition");
-        ws=workspaces.provisionWorkspaceRepository("admin",ws.getWorkspaceId()); workspaces.switchWorkspace("admin",ws.getWorkspaceId());
+        ws=PortfolioAnalysisWorkspace.provisionSelected(workspaces, "admin", ws.getWorkspaceId());
         var scope=new WorkspaceContext("admin",ws.getWorkspaceId(),ws.getCurrentBranch(),ws.getSourceRepositoryId());
         var p=projects.createProject(new CreateProjectRequest("P","Adoption","Fixture",ProjectStatus.ACTIVE,null,null,null,null),"admin",scope);
         var r=projects.createRequirement(p.id(),new CreateRequirementRequest("R","Time",ORIGINAL,RequirementStatus.APPROVED,50,

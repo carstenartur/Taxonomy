@@ -13,7 +13,7 @@ import com.taxonomy.portfolio.service.PortfolioAnalysisRecoveryService;
 import com.taxonomy.portfolio.service.PortfolioAnalysisWorkQueue;
 import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
-import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.WorkspaceResolver;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,10 +26,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** Regression coverage for aggregate status reconciliation around prepared retries. */
 @SpringBootTest
-class PortfolioAnalysisRecoveryAggregateStateTest {
+class PortfolioAnalysisRecoveryAggregateStateTest extends RetainedPortfolioCatalogue {
 
     @Autowired
-    private SystemRepositoryService systemRepositoryService;
+    private WorkspaceResolver workspaceResolver;
 
     @Autowired
     private ProjectPortfolioService projectService;
@@ -119,8 +119,7 @@ class PortfolioAnalysisRecoveryAggregateStateTest {
     private WorkspaceContext context() {
         String suffix = shortId().toLowerCase();
         String username = "aggregate-recovery-" + suffix;
-        return new WorkspaceContext(username, "ws-" + suffix, "draft",
-                systemRepositoryService.getPrimaryRepository().getRepositoryId());
+        return PortfolioAnalysisWorkspace.select(workspaceResolver, username);
     }
 
     private static String shortId() {

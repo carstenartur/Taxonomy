@@ -116,6 +116,15 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
 
     public Document read(RepositoryContext context, String commit) throws IOException { return read(context, commit, null); }
 
+    /** Find the completed Git checkpoint for these historical journal bytes in the selected workspace. */
+    public String historicalCheckpoint(RepositoryContext context, Document document, String expectedCommit) {
+        requireContext(context, document.context());
+        if (!"WORKSPACE_REVISION".equals(document.source()) || !"HISTORICAL".equals(document.projectionState())) {
+            throw new IllegalArgumentException("A historical workspace revision is required");
+        }
+        return journal.checkpointAtRevision(context, document.context().revision(), document.dsl(), expectedCommit);
+    }
+
     public Document read(RepositoryContext context, String commit, Long revision) throws IOException {
         if (commit != null && revision != null) throw new IllegalArgumentException("Select a version or a semantic revision");
         DslGitRepository repository = repositories.resolveRepository(context);

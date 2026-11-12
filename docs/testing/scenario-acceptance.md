@@ -248,7 +248,7 @@ Die Emulation verändert weder Anwendungsdaten noch Netzwerkantworten.
 | Anforderung / Portfolio / Matrices | Öffnet die Projektübersicht bzw. die Matrizen des Projekts. |
 | Anforderung / EN / DE | Wechselt die Sprache der Seite. |
 | Anforderung / Open architecture workbench | Öffnet die Architektur des ausgewählten gespeicherten Ergebnisses. |
-| Anforderung / Analyze current version | Startet die einzelne Analyse der aktuellen Anforderungsversion. Der Referenzablauf verwendet den vollständigen Copilot darunter. |
+| Anforderung / Analyze selected version | Startet die einzelne Analyse der ausgewählten Anforderungsversion. Der Referenzablauf verwendet den vollständigen Copilot darunter. |
 | Anforderung / New version | Öffnet den Dialog für einen neuen Textstand; Create version speichert ihn, Cancel schließt den Dialog. |
 | Anforderung / Text & source | Zeigt Anforderungstext und gegebenenfalls das importierte Quellfragment. Die Quellen dieses manuell angelegten Falls stehen in der Szenariodatei. |
 | Anforderung / Versions / Analyses | Zeigt gespeicherte Textstände bzw. Analysen und deren auswählbare Snapshots. |

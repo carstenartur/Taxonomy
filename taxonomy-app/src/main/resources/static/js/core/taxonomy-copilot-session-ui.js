@@ -15,7 +15,6 @@
     var resultFreshnessObserverInstalled = false;
     var resultEvidence = new WeakMap();
     var taskRewriteFrame = null;
-    var overlayRepositionFrame = null;
 
     function scoresPresent() {
         var scores = C.S.currentScores;
@@ -298,12 +297,6 @@
             && element.getClientRects().length > 0;
     }
 
-    function overlap(left, right, margin) {
-        var spacing = margin || 0;
-        return left.left < right.right + spacing && left.right > right.left - spacing
-            && left.top < right.bottom + spacing && left.bottom > right.top - spacing;
-    }
-
     function unobscured(element) {
         if (!visible(element)) return false;
         var rect = element.getBoundingClientRect();
@@ -322,9 +315,7 @@
         });
     }
 
-    function repositionOverlay() {
-        var lane = document.getElementById('taxonomyOverlayLane');
-        if (!lane || !Array.from(lane.children).some(visible)) return;
+    function copilotOverlayTargets(lane) {
         var targets = [document.activeElement, document.getElementById('copilotBtn'),
             document.getElementById('analyzeBtn'), document.getElementById('cancelAnalysisBtn'),
             document.getElementById('taskNextAction')].filter(function (target) {
@@ -332,40 +323,36 @@
                 && target !== document.body && target !== document.documentElement
                 && !lane.contains(target) && visible(target);
         });
-        var positions = ['bottom-end', 'bottom-start', 'top-end', 'top-start'];
-        for (var index = 0; index < positions.length; index++) {
-            lane.dataset.position = positions[index];
-            var laneRect = lane.getBoundingClientRect();
-            if (!targets.some(function (target) {
-                return overlap(laneRect, target.getBoundingClientRect(), 8);
-            })) break;
-        }
+        return targets;
     }
 
+    var copilotOverlayPlacement = {
+        positions: ['bottom-end', 'bottom-start', 'top-end', 'top-start'],
+        targets: copilotOverlayTargets
+    };
+
     function scheduleOverlayReposition() {
-        if (overlayRepositionFrame !== null) return;
-        overlayRepositionFrame = window.requestAnimationFrame(function () {
-            overlayRepositionFrame = null;
-            repositionOverlay();
-        });
+        var onboarding = window.TaxonomyOnboarding;
+        if (!onboarding) return;
+        // Translations can create the lane before the shared placement API is available.
+        if (onboarding.overlayPlacement !== copilotOverlayPlacement) {
+            onboarding.isElementUnobscured = unobscured;
+            onboarding.overlayPlacement = copilotOverlayPlacement;
+        }
+        if (typeof onboarding.refreshOverlayLane === 'function') onboarding.refreshOverlayLane();
     }
 
     function installOverlayHardening() {
         if (overlayObserverInstalled) return;
         var lane = document.getElementById('taxonomyOverlayLane');
-        if (!lane) return;
+        if (!lane || !window.TaxonomyOnboarding) return;
         overlayObserverInstalled = true;
-        if (window.TaxonomyOnboarding) {
-            window.TaxonomyOnboarding.isElementUnobscured = unobscured;
-        }
         if (typeof MutationObserver === 'function') {
             new MutationObserver(scheduleOverlayReposition)
                 .observe(lane, { childList: true, subtree: true });
         }
-        document.addEventListener('focusin', scheduleOverlayReposition);
-        window.addEventListener('resize', scheduleOverlayReposition);
         window.addEventListener('scroll', scheduleOverlayReposition, { passive: true });
-        scheduleOverlayReposition();
+        window.requestAnimationFrame(scheduleOverlayReposition);
     }
 
     function syncCopilotResultFreshness() {

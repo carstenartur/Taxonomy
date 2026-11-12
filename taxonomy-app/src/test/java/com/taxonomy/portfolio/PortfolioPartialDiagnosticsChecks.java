@@ -9,7 +9,7 @@ import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
-import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.WorkspaceResolver;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 
@@ -30,10 +30,10 @@ public final class PortfolioPartialDiagnosticsChecks {
                 "--spring.datasource.url=jdbc:hsqldb:mem:partialdiagnostic", "--logging.level.root=WARN")) {
             var projects = app.getBean(ProjectPortfolioService.class);
             var persistence = app.getBean(PortfolioAnalysisPersistenceService.class);
-            var repositories = app.getBean(SystemRepositoryService.class);
+            var workspaceResolver = app.getBean(WorkspaceResolver.class);
             int failures = 0;
             for (String name : List.of("error", "warning", "bounded", "bounded-warning", "unicode", "boundary", "success", "unknown")) {
-                try { check(projects, persistence, repositories, name); System.out.println("PASS " + name); }
+                try { check(projects, persistence, workspaceResolver, name); System.out.println("PASS " + name); }
                 catch (AssertionError | RuntimeException failure) { failures++; System.err.println("FAIL " + name + ": " + failure.getMessage()); }
             }
             if (failures != 0) throw new AssertionError(failures + " diagnostic checks failed");
@@ -43,7 +43,7 @@ public final class PortfolioPartialDiagnosticsChecks {
 
     public static void check(ProjectPortfolioService projects,
                              PortfolioAnalysisPersistenceService persistence,
-                             SystemRepositoryService repositories, String name) {
+                             WorkspaceResolver workspaceResolver, String name) {
         String error = switch (name) {
             case "error" -> "MEMORY_PRESSURE: Analysis stopped cooperatively";
             case "bounded" -> "Incomplete analysis for IP: " + "detail ".repeat(500);
@@ -67,9 +67,8 @@ public final class PortfolioPartialDiagnosticsChecks {
             default -> null;
         };
         String actor = "diagnostic-test";
-        var scope = new WorkspaceContext(actor, "partial-" + UUID.randomUUID(), "draft",
-                repositories.getPrimaryRepository().getRepositoryId());
-        var project = projects.createProject(new CreateProjectRequest("DIAG", "Diagnostic test", null,
+        var scope = PortfolioAnalysisWorkspace.select(workspaceResolver, actor);
+        var project = projects.createProject(new CreateProjectRequest("DIAG-" + name, "Diagnostic test", null,
                 null, null, null, null, null), actor, scope);
         String original = "Provide readable explanations for incomplete scenario information-product analyses.";
         var requirement = projects.createRequirement(project.id(), new CreateRequirementRequest("CIV-1",

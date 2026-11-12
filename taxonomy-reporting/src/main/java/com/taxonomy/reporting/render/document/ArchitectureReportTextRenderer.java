@@ -52,6 +52,16 @@ public final class ArchitectureReportTextRenderer {
             report.getCopilot().notes().forEach(note -> md.append(note).append("\n\n"));
         }
 
+        var modelEvidence = AnalysisModelEvidence.rows(report, labels);
+        if (!modelEvidence.isEmpty()) {
+            md.append("## ").append(labels.provenance()).append("\n\n");
+            tableHeader(md, labels.titleLabel(), labels.value());
+            for (var row : modelEvidence) {
+                md.append("| ").append(tableText(row.get(0))).append(" | ").append(tableText(row.get(1))).append(" |\n");
+            }
+            md.append("\n");
+        }
+
         // Architecture Summary
         md.append("## 1. ").append(labels.architectureSummary()).append("\n\n");
         RequirementArchitectureView view = report.getArchitectureView();

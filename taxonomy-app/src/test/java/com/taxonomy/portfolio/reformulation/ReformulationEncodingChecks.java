@@ -5,6 +5,7 @@ import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.composition.reformulation.ReformulationExecutionService;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.portfolio.PortfolioAnalysisWorkspace;
 import com.taxonomy.portfolio.dto.PortfolioDtos.*;
 import com.taxonomy.portfolio.model.PortfolioTypes.*;
 import com.taxonomy.portfolio.service.*;
@@ -39,7 +40,7 @@ public final class ReformulationEncodingChecks {
             var json = app.getBean(ObjectMapper.class).rebuild().enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).build();
             var manager = app.getBean(WorkspaceManager.class);
             var workspace = manager.createWorkspace(ACTOR, "Encoding regression", "Exact input identity");
-            workspace = manager.provisionWorkspaceRepository(ACTOR, workspace.getWorkspaceId());
+            workspace = PortfolioAnalysisWorkspace.provisionSelected(manager, ACTOR, workspace.getWorkspaceId());
             var context = new WorkspaceContext(ACTOR, workspace.getWorkspaceId(), workspace.getCurrentBranch(), workspace.getSourceRepositoryId());
             var project = projects.createProject(new CreateProjectRequest("ENC", "Encoding regression", "Fixture",
                     ProjectStatus.ACTIVE, null, null, null, null), ACTOR, context);

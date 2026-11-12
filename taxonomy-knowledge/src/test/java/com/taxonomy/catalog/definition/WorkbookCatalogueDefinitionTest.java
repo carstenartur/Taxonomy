@@ -5,13 +5,22 @@ import com.taxonomy.dsl.model.ArchitectureRelation;
 import com.taxonomy.dsl.model.CanonicalArchitectureModel;
 import com.taxonomy.dsl.model.CatalogueDefinition;
 import com.taxonomy.dsl.validation.DslValidator;
+import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
+import com.taxonomy.catalog.provenance.CatalogueSourceBytes;
 import org.apache.poi.ss.usermodel.Sheet;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class WorkbookCatalogueDefinitionTest {
     @Test void bundledWorkbookKeepsEveryStandardSheetAndRootIdentity() throws Exception {
@@ -56,6 +65,40 @@ class WorkbookCatalogueDefinitionTest {
             assertThat(definition.allows("MC", "UNKNOWN", "IP")).isFalse();
             assertThat(original.rootCodes()).doesNotContain("MC");
             assertThat(original.allows("MC", "USES", "IP")).isFalse();
+        }
+    }
+
+    @Test void archiveLookupReopensVersionAAfterAnotherWorkbookBecameCurrent() throws Exception {
+        var journal = mock(CatalogueSourceJournal.class);
+        try (var workbook = new XSSFWorkbook(); var bytes = new ByteArrayOutputStream()) {
+            var schema = workbook.createSheet("Catalogue Definition");
+            row(schema, 0, "catalogue-definition-v1", "registers-A", "empty");
+            row(schema, 1, "root", "Public registers", "PR", "PublicRegister");
+            row(schema, 2, "direction", "PR", "USES", "PR");
+            workbook.createSheet("Public registers");
+            workbook.write(bytes);
+            var archived = CatalogueSourceBytes.read(new ByteArrayInputStream(bytes.toByteArray()));
+            var reference = new CatalogueSourceJournal.InputReference(CatalogueSourceJournal.Use.APPLIED, archived.sha256(), archived.length());
+            var absent = new CatalogueSourceJournal.InputReference(CatalogueSourceJournal.Use.NOT_RETAINED, null, 0);
+            var generationA = new CatalogueSourceJournal.Snapshot("A", Instant.EPOCH, reference, absent, absent);
+            var generationB = new CatalogueSourceJournal.Snapshot("B", Instant.EPOCH.plusSeconds(1), absent, absent, absent);
+            when(journal.findRevision("A")).thenReturn(Optional.of(generationA));
+            when(journal.findRevision("B")).thenReturn(Optional.of(generationB));
+            when(journal.retainedWorkbook(reference)).thenReturn(archived);
+            when(journal.current()).thenReturn(generationB);
+            var reader = new RetainedCatalogueDefinitions(journal);
+            assertThat(reader.current().rootCodes()).doesNotContain("PR");
+            assertThat(reader.forRevision("A").typeFor("PR")).isEqualTo("PublicRegister");
+            assertThat(reader.forRevision("A").allows("PR", "USES", "PR")).isTrue();
+            assertThatIllegalStateException().isThrownBy(() -> reader.forRevision("B"));
+            assertThat(reader.appliedGeneration(null)).isEmpty();
+            assertThat(reader.appliedGeneration("A")).hasValueSatisfying(applied -> {
+                assertThat(applied.revision()).isEqualTo("A");
+                assertThat(applied.definition().allows("PR", "USES", "PR")).isTrue();
+            });
+            assertThat(reader.appliedGeneration("B")).isEmpty();
+            assertThat(reader.appliedGeneration("unknown")).isEmpty();
+            org.mockito.Mockito.verify(journal, org.mockito.Mockito.times(2)).current();
         }
     }
 

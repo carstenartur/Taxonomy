@@ -959,6 +959,7 @@ class CopilotAutomationServiceCoverageTest {
             return persisted.computeIfAbsent(key, unused -> withLanguage(jobWithKey("job-" + persisted.size(), key,
                     AnalysisStatus.SUCCESS, null, Instant.now()), expectedLanguage.get()));
         });
+        stubVerificationPass(fixture, persisted);
         when(fixture.analysisService.listJobs(PROJECT_ID, context.username(), context))
                 .thenAnswer(ignored -> List.copyOf(persisted.values()));
         when(fixture.analysisService.getJob(anyString(), eq(PROJECT_ID), eq(context.username()), eq(context)))
@@ -1005,10 +1006,9 @@ class CopilotAutomationServiceCoverageTest {
                 anyString(), eq(context.username()), eq(context))).thenAnswer(call -> {
             assertThat(com.taxonomy.analysis.service.AnalysisLanguageContext.resolveCurrentRequest(null))
                     .isEqualTo(recorded);
-            String key = call.getArgument(4);
-            return persisted.computeIfAbsent(key, unused -> withLanguage(jobWithKey("job-2", key,
-                    AnalysisStatus.SUCCESS, null, Instant.now()), recorded));
+            return persisted.get(call.getArgument(4, String.class));
         });
+        stubVerificationPass(fixture, persisted);
         when(fixture.analysisService.getJob(anyString(), eq(PROJECT_ID), eq(context.username()), eq(context)))
                 .thenAnswer(call -> persisted.values().stream().filter(job -> job.id().equals(call.getArgument(0))).findFirst().orElseThrow());
         when(fixture.resultSelector.selectForOperation(anyList())).thenReturn(Optional.empty());
@@ -1022,6 +1022,16 @@ class CopilotAutomationServiceCoverageTest {
             assertThat(persisted.values()).hasSize(2).allSatisfy(job -> assertThat(job.analysisLanguage()).isEqualTo(recorded));
         } finally { org.springframework.context.i18n.LocaleContextHolder.setLocaleContext(previous); }
         assertThat(com.taxonomy.analysis.service.AnalysisLanguageContext.current()).isNull();
+    }
+
+    private void stubVerificationPass(Fixture fixture, java.util.Map<String, AnalysisJobView> persisted) {
+        when(fixture.analysisService.enqueueVerificationPass(eq(PROJECT_ID), eq(REQUIREMENT_ID),
+                any(CopilotOperationKey.class), eq(context.username()), eq(context))).thenAnswer(call -> {
+            CopilotOperationKey key = call.getArgument(2);
+            var first = persisted.get(key.forPass(1).value());
+            return persisted.computeIfAbsent(key.value(), value -> withLanguage(jobWithKey("pass-" + key.pass(), value,
+                    AnalysisStatus.SUCCESS, null, Instant.now()), first.analysisLanguage()));
+        });
     }
 
     private static AnalysisJobView withLanguage(AnalysisJobView job, com.taxonomy.dto.AnalysisLanguage language) {

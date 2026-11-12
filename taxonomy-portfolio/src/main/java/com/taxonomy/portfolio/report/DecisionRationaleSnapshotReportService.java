@@ -102,7 +102,7 @@ public class DecisionRationaleSnapshotReportService {
                 snapshot.getCreatedBy(),
                 snapshot.getModelName(),
                 snapshot.getTaxonomyFingerprint(),
-                snapshot.getPromptFingerprint());
+                snapshot.getPromptFingerprint(), analysis.getModelBinding());
         DecisionAnalysisInput input = new DecisionAnalysisInput(
                 snapshot.getRequirementVersion().getText(),
                 analysis.getScores(),

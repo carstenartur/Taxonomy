@@ -11,7 +11,12 @@ public record AnalysisProvenance(
         Long projectId,
         Long requirementId,
         String snapshotId,
-        String analysisSessionId) {
+        String analysisSessionId,
+        Long requirementVersionId) {
+
+    public AnalysisProvenance(Long projectId, Long requirementId, String snapshotId, String analysisSessionId) {
+        this(projectId, requirementId, snapshotId, analysisSessionId, null);
+    }
 
     public AnalysisProvenance {
         if (analysisSessionId != null && analysisSessionId.isBlank()) {

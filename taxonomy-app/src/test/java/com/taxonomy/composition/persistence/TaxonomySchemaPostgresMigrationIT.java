@@ -1,5 +1,9 @@
 package com.taxonomy.composition.persistence;
 
+import com.taxonomy.dto.AnalysisMode;
+import com.taxonomy.dto.AnalysisModelBinding;
+import com.taxonomy.dto.AnalysisScope;
+import com.taxonomy.portfolio.service.PortfolioJsonCodec;
 import com.taxonomy.workspace.storage.JgitStorageSchemaMigrationConfig;
 
 import io.github.carstenartur.jgit.storage.hibernate.schema.CoreSchemaMigrations;
@@ -10,6 +14,7 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import tools.jackson.databind.json.JsonMapper;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -18,6 +23,8 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -158,7 +165,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48");
     }
 
     @Test
@@ -233,7 +240,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48");
         assertIntegrationSchema(dataSource);
         assertInventorySchema(dataSource);
         assertReformulationSchema(dataSource);
@@ -250,38 +257,7 @@ class TaxonomySchemaPostgresMigrationIT {
         migrateJgit(dataSource);
         installApplicationAtVersion(dataSource, "38");
         assertThat(columnExists(dataSource, "req_analysis_job", "analysis_reason_length")).isFalse();
-        execute(dataSource, """
-                insert into system_repository (
-                    repository_id, display_name, topology_mode, default_branch,
-                    primary_repo, created_at, storage_repository_name, slug,
-                    visibility, lifecycle_state, owner_type, owner_id,
-                    created_by, updated_at)
-                values (
-                    'primary-repository', 'Primary', 'INTERNAL_SHARED', 'main',
-                    true, current_timestamp, 'taxonomy-dsl', 'shared-architecture',
-                    'ORGANIZATION', 'ACTIVE', 'SYSTEM', 'system', 'system', current_timestamp)
-                """);
-        execute(dataSource, """
-                insert into arch_project (
-                    id, scope_key, owner_username, project_key, title, status,
-                    created_at, updated_at, row_version,
-                    repository_id, workspace_scope, branch_name)
-                values (
-                    3901, 'v2|r18:primary-repository|s7:CENTRAL|b4:main', 'architect',
-                    'LEGACY-REASON-PROJECT', 'Legacy reason project', 'ACTIVE',
-                    current_timestamp, current_timestamp, 0,
-                    'primary-repository', 'CENTRAL', 'main')
-                """);
-        execute(dataSource, """
-                insert into req_analysis_job (
-                    id, scope_key, project_id, status, idempotency_key, provider,
-                    max_architecture_nodes, requested_by, created_at, total_items,
-                    successful_items, partial_items, failed_items, row_version)
-                values (
-                    'job-before-reason-length', 'v2|r18:primary-repository|s7:CENTRAL|b4:main',
-                    3901, 'PENDING', 'legacy-reason-job', 'MOCK', 25, 'architect',
-                    current_timestamp, 2, 0, 0, 0, 7)
-                """);
+        insertLegacyAnalysisJob(dataSource);
         String legacyJob = singleString(dataSource, """
                 select to_jsonb(job)::text from req_analysis_job job
                 where id = 'job-before-reason-length'
@@ -302,7 +278,11 @@ class TaxonomySchemaPostgresMigrationIT {
                     .isInstanceOfSatisfying(SQLException.class, exception -> assertThat(exception.getSQLState()).isEqualTo("23514"))
                     .hasMessageContaining("ck_req_analysis_language");
         assertThat(singleString(dataSource, """
-                select (to_jsonb(job) - 'analysis_reason_length' - 'analysis_language')::text from req_analysis_job job
+                select admitted_model_json from req_analysis_job where id = 'job-before-reason-length'
+                """)).isNull();
+        assertThat(singleString(dataSource, """
+                select (to_jsonb(job) - 'analysis_reason_length' - 'analysis_language' - 'admitted_model_json')::text
+                from req_analysis_job job
                 where id = 'job-before-reason-length'
                 """)).isEqualTo(legacyJob);
         assertThat(singleString(dataSource, """
@@ -337,6 +317,55 @@ class TaxonomySchemaPostgresMigrationIT {
                 select analysis_reason_length from req_analysis_job
                 where id = 'job-before-reason-length'
                 """)).isNull();
+    }
+
+    @Test
+    void modelAdmissionMigrationPreservesLegacyJobsAndStoresNewBindings() throws Exception {
+        DataSource dataSource = isolatedDataSource("analysis_model_admission");
+        migrateJgit(dataSource);
+        installApplicationAtVersion(dataSource, "47");
+        assertThat(columnExists(dataSource, "req_analysis_job", "admitted_model_json")).isFalse();
+        insertLegacyAnalysisJob(dataSource);
+        String legacyJob = singleString(dataSource, """
+                select to_jsonb(job)::text from req_analysis_job job where id = 'job-before-reason-length'
+                """);
+
+        installApplicationAtVersion(dataSource, "48");
+
+        assertThat(columnExists(dataSource, "req_analysis_job", "admitted_model_json")).isTrue();
+        assertThat(singleString(dataSource, """
+                select admitted_model_json from req_analysis_job where id = 'job-before-reason-length'
+                """)).isNull();
+        assertThat(singleString(dataSource, """
+                select (to_jsonb(job) - 'admitted_model_json')::text from req_analysis_job job
+                where id = 'job-before-reason-length'
+                """)).isEqualTo(legacyJob);
+
+        var roots = Set.of("MC");
+        var binding = new AnalysisModelBinding(AnalysisModelBinding.State.RESOLVED, "primary-repository",
+                "CENTRAL", "main", "a".repeat(40), 12L, "PROJECT_DSL", "b".repeat(64), "catalogue-A",
+                "1", roots, new AnalysisScope(roots, AnalysisMode.TAXONOMIES_ONLY), "brief-1",
+                Map.of("objective", "Museum"), List.of(), Set.of(), null, "catalogue-A");
+        var codec = new PortfolioJsonCodec(JsonMapper.builder().build());
+        String json = codec.write(binding);
+        try (Connection connection = dataSource.getConnection();
+             var insert = connection.prepareStatement("""
+                     insert into req_analysis_job (
+                         id, scope_key, project_id, status, idempotency_key, provider, max_architecture_nodes,
+                         requested_by, created_at, total_items, successful_items, partial_items, failed_items,
+                         row_version, admitted_model_json)
+                     select 'job-with-admitted-model', scope_key, project_id, 'PENDING', 'admitted-model-job',
+                            provider, max_architecture_nodes, requested_by, current_timestamp, 1, 0, 0, 0, 0, ?
+                     from req_analysis_job where id = 'job-before-reason-length'
+                     """)) {
+            insert.setString(1, json);
+            assertThat(insert.executeUpdate()).isOne();
+        }
+        String stored = singleString(dataSource, """
+                select admitted_model_json from req_analysis_job where id = 'job-with-admitted-model'
+                """);
+        assertThat(stored).isEqualTo(json);
+        assertThat(codec.read(stored, AnalysisModelBinding.class)).isEqualTo(binding);
     }
 
     @Test
@@ -764,6 +793,41 @@ class TaxonomySchemaPostgresMigrationIT {
                 .hasMessageContaining("taxonomy_node");
         assertThat(tableExists(dataSource, TaxonomySchemaMigrationConfig.HISTORY_TABLE))
                 .isFalse();
+    }
+
+    private static void insertLegacyAnalysisJob(DataSource dataSource) throws SQLException {
+        execute(dataSource, """
+                insert into system_repository (
+                    repository_id, display_name, topology_mode, default_branch,
+                    primary_repo, created_at, storage_repository_name, slug,
+                    visibility, lifecycle_state, owner_type, owner_id,
+                    created_by, updated_at)
+                values (
+                    'primary-repository', 'Primary', 'INTERNAL_SHARED', 'main',
+                    true, current_timestamp, 'taxonomy-dsl', 'shared-architecture',
+                    'ORGANIZATION', 'ACTIVE', 'SYSTEM', 'system', 'system', current_timestamp)
+                """);
+        execute(dataSource, """
+                insert into arch_project (
+                    id, scope_key, owner_username, project_key, title, status,
+                    created_at, updated_at, row_version,
+                    repository_id, workspace_scope, branch_name)
+                values (
+                    3901, 'v2|r18:primary-repository|s7:CENTRAL|b4:main', 'architect',
+                    'LEGACY-REASON-PROJECT', 'Legacy reason project', 'ACTIVE',
+                    current_timestamp, current_timestamp, 0,
+                    'primary-repository', 'CENTRAL', 'main')
+                """);
+        execute(dataSource, """
+                insert into req_analysis_job (
+                    id, scope_key, project_id, status, idempotency_key, provider,
+                    max_architecture_nodes, requested_by, created_at, total_items,
+                    successful_items, partial_items, failed_items, row_version)
+                values (
+                    'job-before-reason-length', 'v2|r18:primary-repository|s7:CENTRAL|b4:main',
+                    3901, 'PENDING', 'legacy-reason-job', 'MOCK', 25, 'architect',
+                    current_timestamp, 2, 0, 0, 0, 7)
+                """);
     }
 
     private static void migrateJgit(DataSource dataSource) {

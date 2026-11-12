@@ -23,7 +23,7 @@ public final class AnalysisTaskIdentity {
     private static boolean compatibleSchema(AnalysisEnvelope expected, AnalysisEnvelope actual) {
         if (expected.schemaVersion() == actual.schemaVersion()) return true;
         return expected.schemaVersion() == 1
-                && actual.schemaVersion() == AnalysisEnvelope.SCHEMA_VERSION
+                && actual.schemaVersion() == AnalysisEnvelope.FRACTIONAL_SCORE_VERSION
                 && expected.messageType() == AnalysisMessageType.SUBTAXONOMY_ANALYSIS_TASK
                 && expected.taskType() == AnalysisTaskType.SUBTAXONOMY_ANALYSIS
                 && actual.messageType() == AnalysisMessageType.SUBTAXONOMY_ANALYSIS_COMPLETED

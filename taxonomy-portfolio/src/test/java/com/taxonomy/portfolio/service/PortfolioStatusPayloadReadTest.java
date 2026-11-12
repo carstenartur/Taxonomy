@@ -26,9 +26,15 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.*;
@@ -418,6 +424,183 @@ class PortfolioStatusPayloadReadTest {
     }
 
     @Test
+    void concurrentAdmissionsReturnTheSameHistoricalJobWithoutChangingTheProjectVersion() throws Exception {
+        try (var f = new Fixture(); var callers = Executors.newFixedThreadPool(2)) {
+            var projectVersion = f.shared.find(ArchitectureProject.class, f.projectId).getRowVersion();
+            var reachedAdmission = new CountDownLatch(2);
+            var arrived = ConcurrentHashMap.<Thread>newKeySet();
+            f.sqlHook = statement -> {
+                // Align the transactions before either can acquire the project lock or insert a job.
+                boolean locksProject = statement.contains(" from arch_project ") && statement.contains(" for update");
+                boolean insertsJob = statement.startsWith("insert into req_analysis_job ");
+                if ((locksProject || insertsJob) && arrived.add(Thread.currentThread())) {
+                    reachedAdmission.countDown();
+                    try {
+                        assertThat(reachedAdmission.await(30, TimeUnit.SECONDS)).isTrue();
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        throw new AssertionError(interrupted);
+                    }
+                }
+            };
+            Callable<AnalysisJobView> submit = () -> f.persistence.createOrReuseJob(f.projectId,
+                    List.of(f.requirementId), "CUSTOM_OPENAI", 25, "same-tabs", "owner", f.scope, null, f.oldVersionId);
+            var first = callers.submit(submit);
+            var second = callers.submit(submit);
+            var firstJob = first.get(45, TimeUnit.SECONDS);
+            var secondJob = second.get(45, TimeUnit.SECONDS);
+            assertThat(reachedAdmission.getCount()).isZero();
+            assertThat(secondJob.id()).isEqualTo(firstJob.id());
+            assertThat(secondJob.items()).singleElement().satisfies(item ->
+                    assertThat(item.requirementVersionId()).isEqualTo(f.oldVersionId));
+            assertThat(f.persistence.listJobs(f.projectId, "owner", f.scope))
+                    .filteredOn(job -> "same-tabs".equals(job.idempotencyKey())).extracting(AnalysisJobView::id)
+                    .containsExactly(firstJob.id());
+            assertThat(f.shared.find(ArchitectureProject.class, f.projectId).getRowVersion()).isEqualTo(projectVersion);
+        }
+    }
+
+    @Test
+    void historicalVersionIsAdmittedOnceAndScopedToItsRequirement() {
+        try (var f = new Fixture()) {
+            var ids = List.of(f.requirementId);
+            var first = f.persistence.createOrReuseJob(f.projectId, ids, "CUSTOM_OPENAI", 25,
+                    "selected-version", "owner", f.scope, null, f.oldVersionId);
+            assertThat(first.items()).singleElement().satisfies(item -> {
+                assertThat(item.requirementVersionId()).isEqualTo(f.oldVersionId);
+                assertThat(item.requirementVersionNumber()).isOne();
+            });
+            var replay = f.persistence.createOrReuseJob(f.projectId, ids, "CUSTOM_OPENAI", 25,
+                    "selected-version", "owner", f.scope, null, f.oldVersionId);
+            assertThat(replay.id()).isEqualTo(first.id());
+            var otherWorkspace = new WorkspaceContext("owner", "other-workspace", "draft", "repository");
+            assertThatThrownBy(() -> f.persistence.createOrReuseJob(f.projectId, ids, "CUSTOM_OPENAI", 25,
+                    "selected-version", "owner", otherWorkspace, null, f.oldVersionId))
+                    .isInstanceOf(PortfolioException.class).hasMessageContaining("Project not found");
+            assertThatThrownBy(() -> f.persistence.createOrReuseJob(f.projectId, ids, "CUSTOM_OPENAI", 25,
+                    "selected-version", "owner", f.scope, null, f.currentVersionId))
+                    .isInstanceOf(PortfolioException.class).hasMessageContaining("different analysis source");
+            assertThatThrownBy(() -> f.persistence.createOrReuseJob(f.projectId, ids, "CUSTOM_OPENAI", 25,
+                    "other-source", "owner", f.scope, null, Long.MAX_VALUE))
+                    .isInstanceOf(PortfolioException.class).hasMessageContaining("version not found");
+        }
+    }
+
+    @Test
+    void modelExpectationsNeedAProviderBeforeAnyJobIsSaved() {
+        try (var f = new Fixture()) {
+            var ids = List.of(f.requirementId);
+            var rootScope = new com.taxonomy.dto.AnalysisScope(java.util.Set.of("CP"),
+                    com.taxonomy.dto.AnalysisMode.TAXONOMIES_ONLY);
+            for (var selection : List.of(new com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisModelSelection("a".repeat(40), null, null),
+                    new com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisModelSelection(null, 2L, null),
+                    new com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisModelSelection(null, null, rootScope))) {
+                assertThatThrownBy(() -> f.persistence.createOrReuseJob(f.projectId, ids, "CUSTOM_OPENAI", 25,
+                        "model-not-available", "owner", f.scope, null, f.oldVersionId, selection))
+                        .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                        .hasMessageContaining("409");
+            }
+            var empty = new com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisModelSelection(null, null, null);
+            var job = f.persistence.createOrReuseJob(f.projectId, ids, "CUSTOM_OPENAI", 25,
+                    "model-not-available", "owner", f.scope, null, f.oldVersionId, empty);
+            assertThat(f.persistence.admittedModel(job.id(), f.projectId, "owner", f.scope)).isNull();
+            assertThat(f.persistence.createOrReuseJob(f.projectId, ids, "CUSTOM_OPENAI", 25,
+                    "model-not-available", "owner", f.scope, null, f.oldVersionId, empty).id()).isEqualTo(job.id());
+        }
+    }
+
+    @Test
+    void queuedModelAndRequirementVersionSurviveAChangeInTheOpenWorkspace() {
+        try (var f = new Fixture()) {
+            var selected = new com.taxonomy.dto.AnalysisScope(java.util.Set.of("CP"),
+                    com.taxonomy.dto.AnalysisMode.TAXONOMIES_ONLY);
+            var binding = new com.taxonomy.dto.AnalysisModelBinding(
+                    com.taxonomy.dto.AnalysisModelBinding.State.RESOLVED, "repository", "owned-workspace",
+                    "draft", "a".repeat(40), 2L, "PROJECT_DSL", "b".repeat(64), "catalogue-A",
+                    "1", java.util.Set.of("CP"), selected, "brief-1", java.util.Map.of("objective", "Museum"),
+                    List.of(), java.util.Set.of("REALIZES"), null);
+            var reads = new java.util.concurrent.atomic.AtomicInteger();
+            f.persistence.admissionModels((workspace, commit, revision, requested) -> {
+                assertThat(reads.incrementAndGet()).isOne();
+                assertThat(workspace).isEqualTo(f.scope);
+                assertThat(commit).isEqualTo(binding.commit());
+                assertThat(revision).isEqualTo(binding.semanticRevision());
+                assertThat(requested).isEqualTo(selected);
+                return binding;
+            });
+            var selection = new com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisModelSelection(binding.commit(), 2L, selected);
+            var ids = List.of(f.requirementId);
+            var job = f.persistence.createOrReuseJob(f.projectId, ids, "CUSTOM_OPENAI", 25, "model-queue-key",
+                    "owner", f.scope, null, f.oldVersionId, selection);
+            assertThat(f.persistence.admittedModel(job.id(), f.projectId, "owner", f.scope)).isEqualTo(binding);
+            assertThat(f.persistence.createOrReuseJob(f.projectId, ids, "CUSTOM_OPENAI", 25, "model-queue-key",
+                    "owner", f.scope, null, f.oldVersionId, selection).id()).isEqualTo(job.id());
+            var otherScope = new com.taxonomy.dto.AnalysisScope(java.util.Set.of("IP"), selected.mode());
+            for (var changed : List.of(
+                    new AnalysisModelSelection("c".repeat(40), null, selected),
+                    new AnalysisModelSelection(binding.commit(), 3L, selected),
+                    new AnalysisModelSelection(binding.commit(), binding.semanticRevision(), otherScope))) {
+                assertThatThrownBy(() -> f.persistence.createOrReuseJob(f.projectId, ids, "CUSTOM_OPENAI", 25,
+                        "model-queue-key", "owner", f.scope, null, f.oldVersionId, changed))
+                        .as("replay with %s", changed)
+                        .isInstanceOf(PortfolioException.class).hasMessageContaining("different analysis model");
+            }
+            assertThat(f.persistence.admittedModel(f.jobId, f.projectId, "owner", f.scope)).isNull();
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void verificationPassesRetainTheFirstScopedAdmission(boolean recordedModel) {
+        try (var f = new Fixture()) {
+            var key = new CopilotOperationKey(false, "d".repeat(64), 1, 3, AnalysisAutomationProfile.EXHAUSTIVE,
+                    true, true);
+            var scope = new com.taxonomy.dto.AnalysisScope(java.util.Set.of("CP"), com.taxonomy.dto.AnalysisMode.TAXONOMIES_ONLY);
+            var binding = new com.taxonomy.dto.AnalysisModelBinding(com.taxonomy.dto.AnalysisModelBinding.State.RESOLVED,
+                    "repository", "owned-workspace", "draft", "a".repeat(40), 2L, "PROJECT_DSL", "b".repeat(64),
+                    "catalogue-A", "1", java.util.Set.of("CP"), scope, "brief-1", java.util.Map.of("objective", "Museum"),
+                    List.of(), java.util.Set.of("REALIZES"), null);
+            var selection = new AnalysisModelSelection(binding.commit(), binding.semanticRevision(), scope);
+            if (recordedModel) f.persistence.admissionModels((workspace, commit, revision, selected) -> {
+                assertThat(selected).isEqualTo(scope);
+                return binding;
+            });
+            var plugin = new com.taxonomy.extension.api.plugin.PluginInvocation(
+                    new com.taxonomy.extension.api.plugin.PluginIdentity("status.provider", "1.2.3", "c".repeat(64)), "d".repeat(64));
+            var providers = mock(com.taxonomy.analysis.service.LlmProviderConfig.class);
+            when(providers.captureProviderBinding("CUSTOM_OPENAI")).thenReturn(plugin);
+            f.persistence.providerConfiguration(providers);
+            f.transaction(em -> em.find(ProjectRequirement.class, f.requirementId).pointToVersion(f.oldVersionId, Fixture.TIME));
+            var first = f.persistence.createOrReuseJob(f.projectId, List.of(f.requirementId), "CUSTOM_OPENAI", 25,
+                    key.value(), "owner", f.scope, com.taxonomy.dto.AnalysisLanguage.GERMAN, null, recordedModel ? selection : null);
+            assertThat(first.items().getFirst().requirementVersionId()).isEqualTo(f.oldVersionId);
+            f.transaction(em -> em.find(ProjectRequirement.class, f.requirementId).pointToVersion(f.currentVersionId, Fixture.TIME));
+            f.persistence.admissionModels((workspace, commit, revision, selected) -> {
+                throw new AssertionError("A coordinator cannot resolve a live request workspace");
+            });
+
+            for (int pass = 2; pass <= 3; pass++) {
+                var next = f.persistence.createOrReuseVerificationPass(f.projectId, f.requirementId, key.forPass(pass), "owner", f.scope);
+                assertThat(next.items()).singleElement().satisfies(item -> assertThat(item.requirementVersionId()).isEqualTo(f.oldVersionId));
+                assertThat(next.analysisLanguage()).isEqualTo(first.analysisLanguage());
+                assertThat(next.analysisReasonLength()).isEqualTo(first.analysisReasonLength());
+                assertThat(next.provider()).isEqualTo(first.provider());
+                assertThat(next.providerBinding()).isEqualTo(plugin);
+                assertThat(next.maxArchitectureNodes()).isEqualTo(first.maxArchitectureNodes());
+                assertThat(f.persistence.admittedModel(next.id(), f.projectId, "owner", f.scope)).isEqualTo(recordedModel ? binding : null);
+                assertThat(f.persistence.createOrReuseVerificationPass(f.projectId, f.requirementId,
+                        key.forPass(pass), "owner", f.scope).id()).isEqualTo(next.id());
+            }
+            verify(providers, times(1)).captureProviderBinding("CUSTOM_OPENAI");
+            var foreign = new WorkspaceContext("owner", "other-workspace", "draft", "repository");
+            assertThatThrownBy(() -> f.persistence.createOrReuseVerificationPass(f.projectId, f.requirementId,
+                    key.forPass(2), "owner", foreign)).isInstanceOf(PortfolioException.class).hasMessageContaining("Project not found");
+            assertThatThrownBy(() -> f.persistence.createOrReuseVerificationPass(f.projectId, Long.MAX_VALUE,
+                    key.forPass(2), "owner", f.scope)).isInstanceOf(PortfolioException.class).hasMessageContaining("does not admit");
+        }
+    }
+
+    @Test
     void completionResponseIncludesTheUncommittedAggregateUpdate() {
         try (var f = new Fixture()) {
             f.transaction(em -> em.createQuery("select i from RequirementAnalysisJobItem i where i.jobId = :id",
@@ -438,7 +621,7 @@ class PortfolioStatusPayloadReadTest {
     }
 
     @Test
-    void retryResponseIncludesTheNewAttemptAndVersionWithoutNormalizingStoredCounts() {
+    void retryKeepsTheAdmittedVersionAndIncrementsTheAttemptWithoutNormalizingStoredCounts() {
         try (var f = new Fixture()) {
             f.transaction(em -> {
                 var item = em.createQuery("select i from RequirementAnalysisJobItem i where i.jobId = :id",
@@ -454,8 +637,8 @@ class PortfolioStatusPayloadReadTest {
             assertThat(retried.items()).singleElement().satisfies(item -> {
                 assertThat(item.status()).isEqualTo(AnalysisStatus.PENDING);
                 assertThat(item.attempt()).isEqualTo(3);
-                assertThat(item.requirementVersionId()).isEqualTo(f.currentVersionId);
-                assertThat(item.requirementVersionNumber()).isEqualTo(2);
+                assertThat(item.requirementVersionId()).isEqualTo(f.oldVersionId);
+                assertThat(item.requirementVersionNumber()).isEqualTo(1);
                 assertThat(item.snapshotId()).isNull();
                 assertThat(item.errorMessage()).isNull();
             });
@@ -472,13 +655,20 @@ class PortfolioStatusPayloadReadTest {
                     .complete(AnalysisStatus.PARTIAL, f.oldSnapshotId, Fixture.TIME, "CALL_BUDGET"));
             var jobs = new JpaRepositoryFactory(f.shared).getRepository(RequirementAnalysisJobRepository.class);
             var control = f.proxy(new CopilotJobControlService(jobs, f.persistence, f.shared));
+            f.resetReads();
             var cancelled = control.cancel(f.jobId, f.projectId, "owner", f.scope);
+            assertThat(f.sql).anyMatch(statement -> statement.contains(" from req_analysis_job ")
+                    && statement.contains(" for update"));
             assertThat(cancelled.status()).isEqualTo(AnalysisStatus.CANCELLED);
             assertThat(cancelled.items()).singleElement().satisfies(item -> {
                 assertThat(item.status()).isEqualTo(AnalysisStatus.PARTIAL);
                 assertThat(item.snapshotId()).isEqualTo(f.oldSnapshotId);
                 assertThat(item.requirementVersionId()).isEqualTo(f.oldVersionId);
             });
+            String scopeKey = PortfolioScope.key("owner", f.scope);
+            f.persistence.markJobRunning(f.jobId, f.projectId, scopeKey);
+            assertThat(f.persistence.getJob(f.jobId, f.projectId, "owner", f.scope)).isEqualTo(cancelled);
+            assertThat(f.persistence.completeJob(f.jobId, f.projectId, scopeKey)).isEqualTo(cancelled);
             f.resetReads();
             assertThat(f.persistence.getJob(f.jobId, f.projectId, "owner", f.scope)).isEqualTo(cancelled);
             f.assertNoSnapshotPayloadRead();
@@ -489,7 +679,7 @@ class PortfolioStatusPayloadReadTest {
         static final Instant TIME = Instant.parse("2026-10-17T05:00:00Z");
         static final String OPERATION = "a".repeat(64);
         final WorkspaceContext scope = new WorkspaceContext("owner", "owned-workspace", "draft", "repository");
-        final List<String> sql = new ArrayList<>();
+        final List<String> sql = Collections.synchronizedList(new ArrayList<>());
         Consumer<String> sqlHook = statement -> { };
         final SessionFactory factory;
         final JpaTransactionManager transactions;

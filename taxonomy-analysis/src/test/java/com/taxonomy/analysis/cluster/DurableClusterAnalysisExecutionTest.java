@@ -44,6 +44,27 @@ class DurableClusterAnalysisExecutionTest {
     }
 
     @Test
+    void commitFreeDraftReadsItsOriginallyAdmittedWorkbookAfterAnotherImport() {
+        var draft = command(AnalysisMode.TAXONOMIES_ONLY, "MOCK");
+        var binding = new AnalysisModelBinding(AnalysisModelBinding.State.MODEL_UNCOMMITTED, "repository",
+                "workspace", "draft", null, 5L, "WORKSPACE_REVISION", "c".repeat(64), null,
+                "standard", Set.of("CP"), draft.analysisScope(), null, java.util.Map.of(), List.of(), Set.of(), null,
+                "catalogue-at-submission");
+        var submitted = draft.withModelBinding(binding);
+        var view = com.taxonomy.analysis.usecase.AnalysisOperationContexts.selectedView(submitted,
+                new ViewContext("b".repeat(40), "draft", null, false, false, false));
+        var operation = com.taxonomy.analysis.usecase.AnalysisOperationContexts.create("uncommitted-model", submitted, view);
+        var identity = new CatalogueSourceIdentity("repository", "workspace", "draft", null, binding.modelSha256());
+        when(catalogue.captureRevision(identity, "catalogue-at-submission", Set.of())).thenReturn(List.of(root(identity, "CP")));
+        when(store.snapshot(operation)).thenReturn(snapshot(operation, ClusterAnalysisState.COMPLETED));
+        assertThat(execution.execute(operation, submitted, view, ignored -> {}).getStatus()).isEqualTo("SUCCESS");
+        verify(catalogue, never()).captureRoots(any(), anySet());
+        verify(views, never()).getViewContext(anyString(), anyString(), any());
+        verify(store).admit(eq(operation), any(), eq(view), anyMap(), anyMap());
+        assertThat(binding.catalogueRevision()).isNull();
+    }
+
+    @Test
     void freezesDefaultProviderAndOnlySelectedScoringRootsBeforeAdmission() {
         ReflectionTestUtils.setField(providers, "llmProviderConfig", "OPENAI");
         var command = command(AnalysisMode.TAXONOMIES_ONLY, null);

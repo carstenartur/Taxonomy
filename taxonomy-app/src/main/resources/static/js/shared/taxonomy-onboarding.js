@@ -178,8 +178,8 @@
             document.querySelector('.help-back-to-top:not([hidden])')
         ];
         return Array.from(new Set(targets)).filter(function (element) {
-            return element instanceof HTMLElement && !lane.contains(element) &&
-                isVisibleElement(element);
+            return element instanceof HTMLElement && element !== document.body &&
+                element !== document.documentElement && !lane.contains(element) && isVisibleElement(element);
         });
     }
 
@@ -198,19 +198,32 @@
             }
             var targets = protectedOverlayTargets(lane);
             var positions = ['bottom-end', 'bottom-start', 'top-end', 'top-start'];
-            var selected = positions[positions.length - 1];
+            var copilotPlacement = window.TaxonomyOnboarding.overlayPlacement;
+            if (copilotPlacement) {
+                targets = Array.from(new Set(targets.concat(copilotPlacement.targets(lane))));
+                positions = copilotPlacement.positions;
+            }
+            var focused = document.activeElement;
+            var focusRect = targets.includes(focused) && focused.closest('#mainContent')
+                ? focused.getBoundingClientRect() : null;
+            var keepFocusInView = focusRect && focusRect.bottom > 0 && focusRect.top < window.innerHeight;
             for (var index = 0; index < positions.length; index++) {
                 lane.dataset.position = positions[index];
+                // At high zoom opening or closing the side rail reflows the entire task.
+                // Keep the current layout if a corner would move the visible focused control.
+                if (keepFocusInView) {
+                    var offset = focused.getBoundingClientRect().top - focusRect.top;
+                    if (Math.abs(offset) >= 1) {
+                        if (index < positions.length - 1) continue;
+                        window.scrollBy({ top: offset, behavior: 'instant' });
+                    }
+                }
                 var laneRect = lane.getBoundingClientRect();
                 var collides = targets.some(function (target) {
                     return rectanglesOverlap(laneRect, target.getBoundingClientRect(), 8);
                 });
-                if (!collides) {
-                    selected = positions[index];
-                    break;
-                }
+                if (!collides) break;
             }
-            lane.dataset.position = selected;
             lane.dataset.refreshVersion = String(
                 Number.parseInt(lane.dataset.refreshVersion || '0', 10) + 1);
         });

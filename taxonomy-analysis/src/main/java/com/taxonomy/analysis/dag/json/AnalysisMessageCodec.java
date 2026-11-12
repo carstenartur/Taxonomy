@@ -24,7 +24,7 @@ public final class AnalysisMessageCodec {
     /** Upper bound of one encoded message; messages carry identifiers, not prompts. */
     public static final int MAX_MESSAGE_BYTES = 64 * 1024;
 
-    private final JsonMapper mapper = JsonMapper.builder()
+    private final JsonMapper mapper = AnalysisContextJson.withSourceFields(JsonMapper.builder())
             .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
             .enable(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES)
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)

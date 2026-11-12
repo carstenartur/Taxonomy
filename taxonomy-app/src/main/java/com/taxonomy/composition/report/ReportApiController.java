@@ -167,6 +167,7 @@ public class ReportApiController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Saved analysis not found");
         }
         AnalysisResult result;
+        Long requirementVersionId = null;
         String businessText;
         AnalysisLanguage language;
         if (hasText(reference.continuationId())) {
@@ -188,6 +189,7 @@ public class ReportApiController {
             if (cluster == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Saved analysis not found");
             var input = cluster.request(reference.operationId(), username, scope);
             result = cluster.result(reference.operationId(), username, scope);
+            requirementVersionId = input.requirementVersionId();
             businessText = input.businessText();
             language = input.analysisLanguage();
         } else {
@@ -198,7 +200,9 @@ public class ReportApiController {
         if (result == null || result.getCopilot() == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The saved Copilot report is not available");
         }
-        return new PreparedReport(reportService.generateRetainedReport(result, businessText), result.getReasons(),
+        ArchitectureReport report = reportService.generateRetainedReport(result, businessText);
+        report.setRequirementVersionId(requirementVersionId);
+        return new PreparedReport(report, result.getReasons(),
                 result.getAnalysisLanguage() != null ? result.getAnalysisLanguage() : language);
     }
 

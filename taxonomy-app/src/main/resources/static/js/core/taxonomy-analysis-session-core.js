@@ -375,7 +375,7 @@
     // every persisted result field; manual edits and legacy unsaved checkpoints stay full.
     var evidenceFields = ['lastAnalyzedText', 'lastAnalysisProvider', 'analysisOperationId',
         'analysisProviderId', 'lastAnalysisStatus', 'analysisDurationMillis', 'analysisCoverage',
-        'analysisScope', 'analysisReasonLength', 'analysisLanguage', 'scores', 'rawScores',
+        'analysisScope', 'modelBinding', 'analysisReasonLength', 'analysisLanguage', 'scores', 'rawScores',
         'effectiveScores', 'scoreDetails', 'productSuitabilityScores', 'scoreSemanticsVersion',
         'scoreSemanticsWarnings', 'reasons', 'discrepancies', 'productCoverageGaps',
         'architectureView', 'relationSearchReport', 'provisionalRelations', 'evaluatedNodes', 'copilot'];
@@ -394,6 +394,7 @@
             lastAnalysisProvider: result.provider || request?.provider || null,
             analysisOperationId: operationId, analysisProviderId: result.analysisProviderId || request?.provider || null,
             lastAnalysisStatus: result.status || 'UNKNOWN', analysisDurationMillis: result.analysisDurationMillis ?? null,
+            modelBinding: result.modelBinding || null,
             analysisCoverage: result.analysisCoverage || null, analysisScope: result.analysisScope || request?.analysisScope || null,
             analysisReasonLength: result.analysisReasonLength || null, analysisLanguage: result.analysisLanguage || request?.analysisLanguage || null,
             scores: result.effectiveScores || result.scores || {}, rawScores: result.rawScores || result.scores || {},
@@ -432,12 +433,12 @@
         var current = [S.currentRawScores || {}, S.currentEffectiveScores || S.currentScores || {},
             S.currentScores || {}, S.currentReasons || {}, S.currentDiscrepancies || [],
             S.currentProductCoverageGaps || [], S.currentArchView || null,
-            S.currentRelationSearchReport || null, window._currentProvisionalRelations || [], S.currentCopilot || null];
+            S.currentRelationSearchReport || null, window._currentProvisionalRelations || [], S.currentCopilot || null, S.currentModelBinding || null];
         var canonical = [result.rawScores || result.scores || {}, result.effectiveScores || result.scores || {},
             result.effectiveScores || result.scores || {}, result.reasons || {}, result.discrepancies || [],
             result.productCoverageGaps || [], result.architectureView || null,
             result.relationSearchReport || result.architectureView?.relationSearchReport || null,
-            result.provisionalRelations || [], result.copilot || null];
+            result.provisionalRelations || [], result.copilot || null, result.modelBinding || null];
         return JSON.stringify(current) === JSON.stringify(canonical);
     }
     async function resolveAnalysisReference(payload) {
@@ -482,6 +483,7 @@
             analysisOperationId: result.analysisOperationId || ref.operationId || null,
             analysisProviderId: result.analysisProviderId || request.provider || null,
             lastAnalysisStatus: result.status || 'IN_PROGRESS', analysisDurationMillis: result.analysisDurationMillis ?? null,
+            modelBinding: result.modelBinding || null,
             analysisCoverage: result.analysisCoverage || null, analysisScope: result.analysisScope || request.analysisScope || null,
             analysisReasonLength: result.analysisReasonLength || null, analysisLanguage: result.analysisLanguage || request.analysisLanguage || null,
             analysisRecovery: result.recovery || null,
@@ -511,6 +513,7 @@
             analysisDurationMillis: S.lastAnalysisDurationMillis,
             analysisCoverage: S.analysisCoverage || null,
             analysisScope: S.lastAnalysisScope || null,
+            modelBinding: S.currentModelBinding || null,
             analysisReasonLength: S.lastAnalysisReasonLength || null,
             analysisLanguage: S.lastAnalysisLanguage || null,
             activeAnalysisLanguage: S.activeAnalysisLanguage || null,

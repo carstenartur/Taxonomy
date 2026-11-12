@@ -251,7 +251,7 @@ class ArchitectureContextDependencyRatchetTest {
                 "com.taxonomy.analysis.session.AnalysisDraftDtos$AnalysisDraftView.version()",
                 "com.taxonomy.analysis.session.AnalysisDraftDtos$AnalysisDraftView.workspaceId()",
                 "com.taxonomy.analysis.session.AnalysisWorkingDraftService.read(java.lang.String,java.lang.String)",
-                "com.taxonomy.composition.architecture.ArchitectureFocusSuggestionService.investigateModel(com.taxonomy.dsl.model.CanonicalArchitectureModel,java.lang.String,int,boolean,java.lang.String,java.lang.String,java.util.Map)",
+                "com.taxonomy.composition.architecture.ArchitectureFocusSuggestionService.investigateModel(com.taxonomy.dsl.model.CanonicalArchitectureModel,com.taxonomy.dsl.model.CatalogueDefinition,java.util.Set,java.lang.String,int,boolean,java.lang.String,java.lang.String,java.util.Map)",
                 "com.taxonomy.composition.architecture.ArchitectureFocusSuggestionService$EngineResult.candidateCount()",
                 "com.taxonomy.composition.architecture.ArchitectureFocusSuggestionService$EngineResult.method()",
                 "com.taxonomy.composition.architecture.ArchitectureFocusSuggestionService$EngineResult.modelCalls()",

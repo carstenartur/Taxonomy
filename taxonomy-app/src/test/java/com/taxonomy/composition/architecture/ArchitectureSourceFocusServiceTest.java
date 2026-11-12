@@ -215,6 +215,38 @@ class ArchitectureSourceFocusServiceTest {
     private ArchitectureSourceFocusDtos.Request request(ArchitectureSourceFocusDtos.Source source,String id,boolean ai) {
         return new ArchitectureSourceFocusDtos.Request(source,id,8,ai,"en");
     }
+
+    @Test void draftAndPortfolioFocusUseTheArchivedCatalogueDirectionsAndRetainedProfile() {
+        var archives = mock(com.taxonomy.catalog.definition.RetainedCatalogueDefinitions.class);
+        var generation = new com.taxonomy.dsl.model.CatalogueDefinition("registry-v1", false,
+                List.of(new com.taxonomy.dsl.model.CatalogueDefinition.Root("Registers", "PR", "PublicRegister"),
+                        new com.taxonomy.dsl.model.CatalogueDefinition.Root("Offices", "OF", "PublicOffice")),
+                List.of(new com.taxonomy.dsl.model.CatalogueDefinition.Direction("OF", "USES", "PR"),
+                        new com.taxonomy.dsl.model.CatalogueDefinition.Direction("PR", "DEPENDS_ON", "OF")));
+        when(archives.forRevision("generation-A")).thenReturn(generation);
+        service.useCatalogueDefinitions(archives);
+        var graph = retained.getArchitectureView();
+        graph.setIncludedElements(List.of(node("PR-1","PR","Register"),node("OF-1","OF","Office")));
+        graph.setIncludedRelationships(List.of());
+        for (var source : List.of(draftSource, snapshotSource)) {
+            retained.setModelBinding(new AnalysisModelBinding(AnalysisModelBinding.State.CATALOGUE_UNRESOLVED,
+                    source.repositoryId(),source.workspaceScopeKey(),source.branch(),null,4L,"WORKSPACE_REVISION",
+                    "1".repeat(64),null,"registry-v1",Set.of("PR","OF"),AnalysisScope.full(),"1",
+                    Map.of(),List.of(),Set.of("DEPENDS_ON"),null,"generation-A"));
+            var proposals = service.investigate(selected,request(source,"PR-1",false)).suggestions();
+            assertThat(proposals).singleElement().satisfies(s -> {
+                assertThat(s.sourceId()).isEqualTo("OF-1");
+                assertThat(s.targetId()).isEqualTo("PR-1");
+                assertThat(s.relationType()).isEqualTo("USES");
+            });
+            assertThat(retained.getModelBinding().catalogueRevision()).isNull();
+        }
+        when(archives.forRevision("generation-A")).thenThrow(new IllegalStateException("Archive unavailable"));
+        assertCode(() -> service.investigate(selected,request(snapshotSource,"PR-1",true)),"SOURCE_UNAVAILABLE");
+        verify(archives,times(3)).forRevision("generation-A");
+        verifyNoMoreInteractions(archives);
+        verifyNoInteractions(editor,llm,budget);
+    }
     private RequirementElementView node(String id,String root,String title) {
         var node = new RequirementElementView(); node.setNodeCode(id); node.setTaxonomySheet(root); node.setTitle(title); return node;
     }

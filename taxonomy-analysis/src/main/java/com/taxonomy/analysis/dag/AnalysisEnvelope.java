@@ -42,9 +42,15 @@ public record AnalysisEnvelope(
         Instant deadline) {
 
     /** Current contract version. Increment for any incompatible change. */
-    public static final int SCHEMA_VERSION = 3;
-    /** V1 integer scores stay readable; V2 is the separate partitioned-relation contract. */
-    public static boolean supportedVersion(int version) { return version == 1 || version == 2 || version == SCHEMA_VERSION; }
+    public static final int SCHEMA_VERSION = 4;
+    static final int FRACTIONAL_SCORE_VERSION = 3;
+    public static boolean supportedVersion(int version) { return version >= 1 && version <= SCHEMA_VERSION; }
+
+    /** Unversioned sources keep their established wire format, including partitioned relations. */
+    public static int versionFor(AnalysisOperationContext operation, int previousVersion) {
+        return operation.requirement().requirementVersionId() != null || operation.authority().semanticModelSha256() != null
+                ? SCHEMA_VERSION : previousVersion;
+    }
 
     private static final Pattern REFERENCE = Pattern.compile("[A-Za-z0-9._:+*-]{1,1280}");
 
@@ -58,6 +64,11 @@ public record AnalysisEnvelope(
         AnalysisTaskId.requireOperationId(operationId);
         Objects.requireNonNull(authority, "authority");
         Objects.requireNonNull(requirement, "requirement");
+        if (authority.semanticModelSha256() != null && schemaVersion < SCHEMA_VERSION)
+            throw new IllegalArgumentException("A semantic model digest needs the version 4 analysis envelope");
+        if (requirement.requirementVersionId() != null && schemaVersion < SCHEMA_VERSION) {
+            throw new IllegalArgumentException("A requirement version needs the version 4 analysis envelope");
+        }
         Objects.requireNonNull(createdAt, "createdAt");
         roots = roots == null ? List.of() : List.copyOf(roots);
         if (attempt < 1) throw new IllegalArgumentException("attempt must be >= 1");
@@ -123,7 +134,8 @@ public record AnalysisEnvelope(
     public AnalysisEnvelope derive(AnalysisMessageType type, Instant now) {
         // A legacy task may be completed by a new worker. Never tag its fractional
         // result with the old integer-score schema; legacy consumers must reject it.
-        int replyVersion = type == AnalysisMessageType.SUBTAXONOMY_ANALYSIS_COMPLETED ? SCHEMA_VERSION : schemaVersion;
+        int replyVersion = schemaVersion == 1 && type == AnalysisMessageType.SUBTAXONOMY_ANALYSIS_COMPLETED
+                ? FRACTIONAL_SCORE_VERSION : schemaVersion;
         return new AnalysisEnvelope(replyVersion, type, operationId, taskId, taskType, authority,
                 requirement, roots, 1, taskId == null ? correlationId : taskId.value(), correlationId,
                 now, deadline);

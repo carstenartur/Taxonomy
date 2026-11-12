@@ -35,7 +35,7 @@
             noJudgments: 'No obligations were evaluated; this is not a completeness claim.',
             SATISFIED: 'Satisfied', VIOLATED: 'Violated', INCONCLUSIVE: 'Inconclusive',
             observedRequired: 'Observed / required', evidenceScope: 'Recorded evidence scope',
-            detail: 'Requirement detail', analyze: 'Analyze current version',
+            detail: 'Requirement detail',
             newVersion: 'New version', open: 'Open decisions', textSource: 'Text & source',
             versions: 'Versions', analyses: 'Analyses', architecture: 'Taxonomy & architecture',
             decisions: 'Decisions', solutions: 'Solutions & products', currentText: 'Current requirement text',
@@ -72,6 +72,11 @@
             recommendation: 'Recommendation', proposedElements: 'Proposed elements',
             suggestedRelations: 'Suggested relationships', reasoning: 'Reasoning',
             technicalData: 'Technical snapshot data',
+            modelEvidence: 'Model and catalogue used for analysis', projectCatalogue: 'Catalogue assigned to the project',
+            executedCatalogue: 'Catalogue used for analysis', definitionVersion: 'Catalogue definition version',
+            modelRevision: 'Architecture model revision', briefVersion: 'Architecture brief version',
+            profileVersions: 'Profile references', requestedScope: 'Requested analysis scope', executedScope: 'Executed analysis scope',
+            allRoots: 'All catalogue roots', fullMode: 'Taxonomies and relations', taxonomiesOnly: 'Taxonomies only',
             technicalDataHint: 'Condensed provider-neutral diagnostics. Use the JSON report for the complete payload.',
             openWorkbench: 'Inspect diagram in architecture workbench', direct: 'Direct',
             sourceNode: 'Source node', expectedRelation: 'Expected relationship',
@@ -94,7 +99,7 @@
             noJudgments: 'Keine Pflichten wurden bewertet; dies ist keine Vollständigkeitsbehauptung.',
             SATISFIED: 'Erfüllt', VIOLATED: 'Verletzt', INCONCLUSIVE: 'Ungeklärt',
             observedRequired: 'Beobachtet / erforderlich', evidenceScope: 'Gespeicherter Evidenzbereich',
-            detail: 'Anforderungsdetails', analyze: 'Aktuelle Version analysieren',
+            detail: 'Anforderungsdetails',
             newVersion: 'Neue Version', open: 'Offene Entscheidungen', textSource: 'Text & Quelle',
             versions: 'Versionen', analyses: 'Analysen', architecture: 'Taxonomie & Architektur',
             decisions: 'Entscheidungen', solutions: 'Lösungen & Produkte', currentText: 'Aktueller Anforderungstext',
@@ -131,6 +136,11 @@
             recommendation: 'Empfehlung', proposedElements: 'Vorgeschlagene Elemente',
             suggestedRelations: 'Vorgeschlagene Beziehungen', reasoning: 'Begründung',
             technicalData: 'Technische Snapshot-Daten',
+            modelEvidence: 'Modell und Katalog der Analyse', projectCatalogue: 'Katalogzuordnung im Projekt',
+            executedCatalogue: 'Ausgeführte Kataloggeneration', definitionVersion: 'Version der Katalogdefinition',
+            modelRevision: 'Revision des Architekturmodells', briefVersion: 'Version des Architekturauftrags',
+            profileVersions: 'Profilreferenzen', requestedScope: 'Beauftragter Analyseumfang', executedScope: 'Ausgeführter Analyseumfang',
+            allRoots: 'Alle Katalogwurzeln', fullMode: 'Taxonomien und Beziehungen', taxonomiesOnly: 'Nur Taxonomien',
             technicalDataHint: 'Verdichtete anbieterneutrale Diagnosedaten. Der JSON-Bericht enthält die vollständigen Nutzdaten.',
             openWorkbench: 'Diagramm in der Architektur-Workbench untersuchen', direct: 'Direkt',
             sourceNode: 'Quellknoten', expectedRelation: 'Erwartete Beziehung',
@@ -208,7 +218,6 @@
         document.querySelector('.skip-link').textContent = locale === 'de'
             ? 'Zu den Anforderungsdetails springen' : 'Skip to requirement detail';
         document.getElementById('matrixLink').textContent = t('matrices');
-        document.getElementById('reanalyzeRequirement').textContent = t('analyze');
         document.getElementById('newVersionButton').textContent = t('newVersion');
         document.getElementById('tasksHeading').textContent = t('open');
         setTabText('text-tab', t('textSource'));
@@ -258,7 +267,7 @@
         });
     }
 
-    async function loadAll(preserveVersionForm = false) {
+    async function loadAll(preserveVersionForm = false, {preserveVersionSelection = false} = {}) {
         const generation = ++state.readGeneration;
         state.readError = null;
         setBusy(true);
@@ -273,7 +282,9 @@
             ]);
             if (generation !== state.readGeneration) return;
             Object.assign(state, { project, requirement, versions, snapshots, portfolio, account });
-            state.selectedVersion = requirement.currentVersion || versions[0] || null;
+            const retainedVersion = preserveVersionSelection
+                && versions.find(version => version.id === state.selectedVersion?.id);
+            state.selectedVersion = retainedVersion || requirement.currentVersion || versions[0] || null;
             // Check after the read: the user may have opened or edited the form
             // while the background request was in flight. Avoid even resetting
             // the value of an active textarea, which would also move its caret.
@@ -546,6 +557,27 @@
             format, api: api()});
     }
 
+    function renderModelEvidence(analysis) {
+        const model = analysis.modelBinding;
+        if (!model) return '';
+        const scope = selected => selected ? [t(selected.mode === 'TAXONOMIES_ONLY' ? 'taxonomiesOnly' : 'fullMode'),
+            asArray(selected.taxonomyRoots).join(', ') || t('allRoots')].join(' · ') : null;
+        const refs = asArray(model.references).map(ref =>
+            [ref.id, ref.sourceId, ref.sourceVersionId, ref.sourceFragmentId, ref.values?.edition, ref.values?.section]
+                .filter(Boolean).join(' / '));
+        const rows = [
+            [t('modelRevision'), [model.branch, model.commit, model.semanticRevision, model.modelSha256]
+                .filter(value => value != null).join(' · ')],
+            [t('projectCatalogue'), model.catalogueRevision], [t('executedCatalogue'), model.executionCatalogueRevision],
+            [t('definitionVersion'), model.catalogueDefinitionVersion], [t('briefVersion'), model.briefVersion],
+            [t('profileVersions'), refs.join('; ')], [t('requestedScope'), scope(model.scope)],
+            [t('executedScope'), scope(analysis.analysisScope)]
+        ];
+        return `<details class="portfolio-technical-data mt-3"><summary>${escapeHtml(t('modelEvidence'))}</summary>`
+            + `<dl class="portfolio-card-meta">${rows.map(([label, value]) =>
+                `<dt>${escapeHtml(label)}</dt><dd class="text-break">${escapeHtml(value || '—')}</dd>`).join('')}</dl></details>`;
+    }
+
     function renderAnalysisSummary(detail) {
         const analysis = detail.analysis || {};
         const copilot = analysis.copilot;
@@ -612,7 +644,7 @@
 
         const relationReport = Object.prototype.hasOwnProperty.call(analysis, 'relationSearchReport')
             ? analysis.relationSearchReport : analysis.architectureView?.relationSearchReport;
-        return overview + renderRelationSearchSummary(relationReport) + warningHtml
+        return overview + renderModelEvidence(analysis) + renderRelationSearchSummary(relationReport) + warningHtml
             + (skipped ? '' : `<div class="portfolio-result-grid mt-3">`
                 + renderGapResult(gap, judgments)
                 + renderPatternResult(patterns, matched, retained)
@@ -1032,9 +1064,12 @@
     async function analyzeRequirement() {
         setBusy(true);
         try {
+            const model = window.TaxonomyArchitectureLifecycle?.selectedAnalysisModel?.() ?? null;
             const response = await api().analyzeRequirement(projectId, requirementId, {
+                model,
                 provider: null,
                 maxArchitectureNodes: 25,
+                requirementVersionId: state.selectedVersion?.id ?? null,
                 idempotencyKey: `detail:${requirementId}:${Date.now()}`
             });
             showInfo(t('analysisQueued'));
@@ -1061,7 +1096,7 @@
                 const job = await api().getAnalysisJob(projectId, jobId);
                 document.getElementById('requirementLive').textContent = humanize(job.status);
                 if (['SUCCESS', 'PARTIAL', 'FAILED', 'CANCELLED'].includes(job.status)) {
-                    await loadAll();
+                    await loadAll(false, {preserveVersionSelection: true});
                     if (job.items && job.items[0] && job.items[0].snapshotId) {
                         await selectSnapshot(job.items[0].snapshotId);
                     }

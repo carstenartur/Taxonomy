@@ -149,8 +149,7 @@ public interface RequirementAnalysisJobItemRepository extends JpaRepository<Requ
     @Modifying
     @Query("""
             update RequirementAnalysisJobItem item
-               set item.requirementVersionId = :requirementVersionId,
-                   item.status = :pendingStatus,
+               set item.status = :pendingStatus,
                    item.snapshotId = null,
                    item.errorMessage = null,
                    item.startedAt = null,
@@ -161,6 +160,7 @@ public interface RequirementAnalysisJobItemRepository extends JpaRepository<Requ
                and item.jobId = :jobId
                and item.projectId = :projectId
                and item.scopeKey = :scopeKey
+               and item.requirementVersionId = :requirementVersionId
                and item.status = :failedStatus
             """)
     int resetFailed(@Param("itemId") Long itemId,
@@ -178,8 +178,7 @@ public interface RequirementAnalysisJobItemRepository extends JpaRepository<Requ
     @Modifying
     @Query("""
             update RequirementAnalysisJobItem item
-               set item.requirementVersionId = :requirementVersionId,
-                   item.status = :pendingStatus,
+               set item.status = :pendingStatus,
                    item.snapshotId = null,
                    item.errorMessage = null,
                    item.startedAt = null,
@@ -190,6 +189,7 @@ public interface RequirementAnalysisJobItemRepository extends JpaRepository<Requ
                and item.jobId = :jobId
                and item.projectId = :projectId
                and item.scopeKey = :scopeKey
+               and item.requirementVersionId = :requirementVersionId
                and item.status = :runningStatus
                and item.startedAt < :staleBefore
             """)

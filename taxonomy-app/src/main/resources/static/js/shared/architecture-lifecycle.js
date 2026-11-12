@@ -699,9 +699,21 @@
     window.TaxonomyArchitectureLifecycle = {state:function () { return clone(state.overview); },
         ready:ready,
         selectedContext:function () { return state.suspended ? null : clone(state.overview?.context || null); },
+        selectedAnalysisModel:function () {
+            var selected = state.suspended ? null : state.overview;
+            if (selected?.source === 'GIT_CHECKPOINT' && selected.context?.commit)
+                return {expectedCommit:selected.context.commit};
+            if (selected?.source === 'WORKSPACE_REVISION' && Number.isSafeInteger(selected.context?.revision))
+                return {expectedSemanticRevision:selected.context.revision};
+            return null;
+        },
         suspend:function(){state.suspended=true;state.sequence++;clearHistory();invalidateStand();if(root)root.hidden=true;},
         refresh:refresh, beginSelection:beginSelection, observe:observe,
         failedSelection:failedSelection, saveRequirement:saveRequirement,isCurrentRequirementPublication:isCurrentRequirementPublication,
         showPublicationRecovery:showPublicationRecovery, openNewArchitecture:openNewArchitecture};
+    window.TaxonomyArchitectureLifecycle.onStandChange = function (listener) {
+        listeners.add(listener);
+        return function () { listeners.delete(listener); };
+    };
     var initialized = window.TaxonomyI18n.ready().then(initialize);
 }());

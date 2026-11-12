@@ -2,6 +2,8 @@ package com.taxonomy.composition.demo;
 
 import com.taxonomy.analysis.demo.DemoScenarioCatalog;
 import com.taxonomy.analysis.service.LlmProviderConfig;
+import com.taxonomy.portfolio.PortfolioAnalysisWorkspace;
+import com.taxonomy.portfolio.RetainedPortfolioCatalogue;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateProjectRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementVersionRequest;
@@ -39,7 +41,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 
 /** Durable authority regressions; no analysis worker or external provider is executed. */
 @SpringBootTest(properties = "llm.mock=true")
-class ProductDemoAuthorityRegressionTest {
+class ProductDemoAuthorityRegressionTest extends RetainedPortfolioCatalogue {
     private static final String USER = "architect";
     @Autowired ProductDemoService demos;
     @Autowired ProductDemoRunRepository runs;
@@ -236,7 +238,7 @@ class ProductDemoAuthorityRegressionTest {
 
     private WorkspaceContext workspace() {
         var workspace = workspaces.createWorkspace(USER, "Authority " + UUID.randomUUID(), "Product demo authority");
-        workspace = workspaces.provisionWorkspaceRepository(USER, workspace.getWorkspaceId());
+        workspace = PortfolioAnalysisWorkspace.provisionSelected(workspaces, USER, workspace.getWorkspaceId());
         return new WorkspaceContext(USER, workspace.getWorkspaceId(), workspace.getCurrentBranch(), workspace.getSourceRepositoryId());
     }
 }

@@ -5,7 +5,6 @@ import com.taxonomy.analysis.recovery.AnalysisContinuationService;
 import com.taxonomy.analysis.session.AnalysisWorkingDraftService;
 import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
 import com.taxonomy.dsl.model.*;
-import com.taxonomy.dsl.validation.DslValidator;
 import com.taxonomy.dto.*;
 import com.taxonomy.identity.StableIdentityHash;
 import com.taxonomy.model.WorkspaceOverlayScope;
@@ -35,6 +34,9 @@ public class ArchitectureSourceFocusService {
     private final SystemRepositoryService repositories;
     private final RepositoryMembershipService membership;
     private final ObjectMapper json;
+    private CatalogueDefinitionResolver catalogues = CatalogueDefinitionResolver.standard();
+    @Autowired(required = false)
+    void useCatalogueDefinitions(CatalogueDefinitionResolver catalogues) { this.catalogues = catalogues; }
     private WorkspaceActorAccess actorAccess = WorkspaceActorAccess.unavailable();
 
     @Autowired(required = false)
@@ -55,7 +57,7 @@ public class ArchitectureSourceFocusService {
         this.engine=engine; this.drafts=drafts; this.operations=operations; this.continuations=continuations;
         this.snapshots=snapshots; this.workspaces=workspaces; this.repositories=repositories; this.membership=membership; this.json=json;
     }
-    private record Retained(RequirementArchitectureView graph, Map<String,String> provenance) { }
+    private record Retained(RequirementArchitectureView graph, AnalysisModelBinding binding, Map<String,String> provenance) { }
 
     public ArchitectureSourceFocusDtos.Response investigate(RepositoryContext selected, ArchitectureSourceFocusDtos.Request request) {
         var source = request.source();
@@ -74,14 +76,22 @@ public class ArchitectureSourceFocusService {
             if (!source.branch().equals(owned.getCurrentBranch())) throw problem("SOURCE_IDENTITY_MISMATCH","The source workspace branch changed");
             retained = draft(source,scope);
         } else retained = snapshot(source,scope);
-        var model = model(retained.graph());
+        var binding = retained.binding();
+        var catalogue = catalogue(binding);
+        var model = model(retained.graph(), catalogue);
         var provenance = new TreeMap<>(retained.provenance());
         provenance.put("x-focus-source-kind",source.kind()); provenance.put("x-analysis-repository-id",source.repositoryId());
         provenance.put("x-analysis-workspace-scope",source.workspaceScopeKey()); provenance.put("x-analysis-branch",source.branch());
-        String encoded = json.writeValueAsString(canonical(json.valueToTree(Map.of("source",source,"graph",retained.graph(),"provenance",provenance))));
+        var evidence = new TreeMap<String,Object>(Map.of("source",source,"graph",retained.graph(),"provenance",provenance));
+        if (binding != null) {
+            evidence.put("modelBinding", binding);
+            provenance.put("x-focus-execution-catalogue", binding.analysisCatalogueRevision());
+        }
+        String encoded = json.writeValueAsString(canonical(json.valueToTree(evidence)));
         if (encoded.length() > MAX_PAYLOAD) throw problem("ITEM_LIMIT","Source graph exceeds the bounded investigation payload");
         String hash = StableIdentityHash.sha256(encoded);
-        var result = engine.investigateModel(model,request.sourceId(),request.candidateLimit(),request.useAi(),request.language(),hash,provenance);
+        var result = engine.investigateModel(model, catalogue, binding == null ? Set.of() : binding.excludedRelationTypes(),
+                request.sourceId(),request.candidateLimit(),request.useAi(),request.language(),hash,provenance);
         return new ArchitectureSourceFocusDtos.Response(source,request.sourceId(),hash,result.method(),result.outcome(),result.modelCalls(),result.candidateCount(),result.suggestions());
     }
 
@@ -132,7 +142,7 @@ public class ArchitectureSourceFocusService {
             throw problem("SOURCE_UNAVAILABLE","Only retained successful or partial architecture evidence can be investigated");
         if (operationId != null) provenance.put("x-focus-operation-id",operationId);
         provenance.put("x-analysis-status",result.getStatus());
-        return new Retained(result.getArchitectureView(),provenance);
+        return new Retained(result.getArchitectureView(),result.getModelBinding(),provenance);
     }
 
     private Retained snapshot(ArchitectureSourceFocusDtos.Source source, WorkspaceContext scope) {
@@ -152,10 +162,24 @@ public class ArchitectureSourceFocusService {
         put(provenance,"x-analysis-commit",summary.commitSha()); put(provenance,"x-analysis-catalogue-fingerprint",summary.taxonomyFingerprint());
         put(provenance,"x-analysis-provider",summary.provider()); put(provenance,"x-analysis-model",summary.modelName());
         put(provenance,"x-analysis-created-at",Objects.toString(summary.createdAt(),null));
-        return new Retained(snapshot.analysis() == null ? null : snapshot.analysis().getArchitectureView(),provenance);
+        var analysis = snapshot.analysis();
+        if (analysis == null) throw problem("SOURCE_UNAVAILABLE","Snapshot contains no retained analysis");
+        return new Retained(analysis.getArchitectureView(),analysis.getModelBinding(),provenance);
     }
 
-    private CanonicalArchitectureModel model(RequirementArchitectureView graph) {
+    private CatalogueDefinition catalogue(AnalysisModelBinding binding) {
+        if (binding == null) return CatalogueDefinition.standard();
+        if (binding.analysisCatalogueRevision() == null || binding.catalogueDefinitionVersion() == null)
+            throw problem("SOURCE_UNAVAILABLE","No retained catalogue definition is available for the recorded analysis");
+        CatalogueDefinition definition;
+        try { definition = catalogues.forRevision(binding.analysisCatalogueRevision()); }
+        catch (IllegalStateException unavailable) { throw problem("SOURCE_UNAVAILABLE","The recorded catalogue definition is unavailable"); }
+        if (!binding.catalogueDefinitionVersion().equals(definition.version()))
+            throw problem("SOURCE_IDENTITY_MISMATCH","The archived catalogue definition differs from the recorded analysis");
+        return definition;
+    }
+
+    private CanonicalArchitectureModel model(RequirementArchitectureView graph, CatalogueDefinition catalogue) {
         if (graph == null || graph.getIncludedElements() == null || graph.getIncludedRelationships() == null || graph.getIncludedElements().isEmpty())
             throw problem("SOURCE_UNAVAILABLE","Source contains no retained full architecture graph");
         if (graph.getIncludedElements().size() > 2000 || graph.getIncludedRelationships().size() > 10000)
@@ -164,18 +188,18 @@ public class ArchitectureSourceFocusService {
         for (var element : graph.getIncludedElements()) {
             if (element == null) throw problem("SOURCE_IDENTITY_MISMATCH","Source element identity is incomplete");
             String id = element.getNodeCode(), root = element.getTaxonomySheet();
-            if (!bounded(id,200) || !TaxonomyRootTypes.ROOT_TO_TYPE.containsKey(Objects.toString(root,""))
-                    || !(root.equals(TaxonomyRootTypes.rootFromId(id)) || id.equals(root)) || !ids.add(id))
+            if (!bounded(id,200) || root == null || catalogue.typeFor(root) == null
+                    || !root.equals(catalogue.rootFromId(id)) || !ids.add(id))
                 throw problem("SOURCE_IDENTITY_MISMATCH","Recorded element identity and taxonomy type disagree or are duplicated");
             if (element.getTitle() == null || element.getTitle().isBlank())
                 throw problem("SOURCE_UNAVAILABLE","Source element has no retained title evidence");
-            model.getElements().add(new ArchitectureElement(id,TaxonomyRootTypes.typeFor(root),element.getTitle(),
+            model.getElements().add(new ArchitectureElement(id,catalogue.typeFor(root),element.getTitle(),
                     Objects.toString(element.getPresenceReason(),Objects.toString(element.getIncludedBecause(),"")),root));
         }
         var relationKeys = new HashSet<String>();
         for (var relation : graph.getIncludedRelationships()) {
             if (relation == null || !ids.contains(relation.getSourceCode()) || !ids.contains(relation.getTargetCode())
-                    || !bounded(relation.getRelationType(),40) || !DslValidator.relationTypes().contains(relation.getRelationType()))
+                    || !bounded(relation.getRelationType(),40) || !catalogue.relationDomains().containsKey(relation.getRelationType()))
                 throw problem("SOURCE_IDENTITY_MISMATCH","Source relation has unknown endpoints or type");
             String key = relation.getSourceCode()+" "+relation.getRelationType()+" "+relation.getTargetCode();
             if (!relationKeys.add(key)) throw problem("SOURCE_IDENTITY_MISMATCH","Source relation identity is duplicated");

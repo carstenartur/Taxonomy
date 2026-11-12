@@ -1,14 +1,21 @@
 package com.taxonomy.portfolio;
 
+import com.taxonomy.dto.AnalysisLanguage;
+import com.taxonomy.dto.AnalysisMode;
+import com.taxonomy.dto.AnalysisModelBinding;
+import com.taxonomy.dto.AnalysisScope;
 import com.taxonomy.portfolio.controller.ProjectAnalysisController;
 import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisModelSelection;
 import com.taxonomy.portfolio.dto.PortfolioDtos.AnalyzeProjectRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisContinuationView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.ContinueAnalysisRequest;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
 import com.taxonomy.portfolio.service.ProjectRequirementAnalysisService;
+import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,19 +28,26 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.filter.ForwardedHeaderFilter;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup;
@@ -43,23 +57,25 @@ class ProjectAnalysisControllerAsyncContractTest {
 
     @Mock private ProjectRequirementAnalysisService analysisService;
     @Mock private PortfolioAnalysisPersistenceService persistenceService;
-    @Mock private WorkspaceResolver workspaceResolver;
+    @Mock private WorkspaceContextResolver workspaceContexts;
 
     private ProjectAnalysisController controller;
-    private final WorkspaceContext context = new WorkspaceContext("architect", "ws-architect", "draft");
+    private final WorkspaceContext context = new WorkspaceContext("architect", "ws-architect", "draft", "architecture-repo");
 
     @BeforeEach
     void setUp() {
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(new MockHttpServletRequest()));
-        controller = new ProjectAnalysisController(
-                analysisService, persistenceService, workspaceResolver);
-        when(workspaceResolver.resolveCurrentUsername()).thenReturn(context.username());
-        when(workspaceResolver.resolveCurrentContext()).thenReturn(context);
+        SecurityContextHolder.getContext().setAuthentication(
+                new TestingAuthenticationToken(context.username(), null, "ROLE_ARCHITECT"));
+        when(workspaceContexts.resolveRepositoryContextForUser(context.username())).thenReturn(
+                RepositoryContext.workspace(context.repositoryId(), context.workspaceId(), context.currentBranch(), context.username()));
+        controller = new ProjectAnalysisController(analysisService, persistenceService, new WorkspaceResolver(workspaceContexts));
     }
 
     @AfterEach
     void clearRequest() {
         RequestContextHolder.resetRequestAttributes();
+        SecurityContextHolder.clearContext();
     }
 
     @ParameterizedTest
@@ -121,6 +137,67 @@ class ProjectAnalysisControllerAsyncContractTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         assertThat(response.getHeaders().getLocation())
                 .hasToString("/api/projects/41/analysis-jobs/job-1");
+    }
+
+    @Test
+    void readsTheRecordedModelInTheAuthenticatedProjectContext() throws Exception {
+        String commit = "b".repeat(40);
+        String generation = "10000000-0000-4000-8000-000000000001";
+        var model = new AnalysisModelBinding(AnalysisModelBinding.State.RESOLVED,
+                context.repositoryId(), context.workspaceId(), context.currentBranch(), commit, 4L,
+                "WORKSPACE_REVISION", "a".repeat(64), generation, "catalogue-v1", Set.of("CP"),
+                new AnalysisScope(Set.of("CP"), AnalysisMode.TAXONOMIES_ONLY), "brief-v1",
+                Map.of(), List.of(), Set.of(), null, generation);
+        when(persistenceService.admittedModel("job-1", 41L, context.username(), context)).thenReturn(model);
+
+        standaloneSetup(controller).build().perform(get("/api/projects/41/analysis-jobs/job-1/model"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.repositoryId").value(context.repositoryId()))
+                .andExpect(jsonPath("$.workspaceScopeKey").value(context.workspaceId()))
+                .andExpect(jsonPath("$.branch").value(context.currentBranch()))
+                .andExpect(jsonPath("$.commit").value(commit))
+                .andExpect(jsonPath("$.semanticRevision").value(4))
+                .andExpect(jsonPath("$.executionCatalogueRevision").value(generation))
+                .andExpect(jsonPath("$.scope.taxonomyRoots[0]").value("CP"))
+                .andExpect(jsonPath("$.scope.mode").value("TAXONOMIES_ONLY"));
+        verify(persistenceService).admittedModel("job-1", 41L, context.username(), context);
+    }
+
+    @Test
+    void historicalJobWithoutAnAdmittedModelReturnsNoContent() throws Exception {
+        when(persistenceService.admittedModel("legacy", 41L, context.username(), context)).thenReturn(null);
+
+        standaloneSetup(controller).build().perform(get("/api/projects/41/analysis-jobs/legacy/model"))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+        verify(persistenceService).admittedModel("legacy", 41L, context.username(), context);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"31,false", ",true", "31,true"})
+    void explicitSelectionQueuesOnlyTheRequirementInThePath(Long version, boolean selectModel) throws Exception {
+        String commit = "b".repeat(40);
+        var selection = selectModel ? new AnalysisModelSelection(commit, 4L,
+                new AnalysisScope(Set.of("CP"), AnalysisMode.TAXONOMIES_ONLY)) : null;
+        var expected = new AnalyzeProjectRequest(List.of(7L), false, "MOCK", 25, "pinned",
+                AnalysisLanguage.GERMAN, version, selection);
+        when(analysisService.enqueueProject(41L, expected, context.username(), context)).thenReturn(pendingJob());
+        String modelJson = selectModel ? """
+                {"expectedCommit":"%s","expectedSemanticRevision":4,
+                 "scope":{"taxonomyRoots":["CP"],"mode":"TAXONOMIES_ONLY"}}
+                """.formatted(commit) : "null";
+        var request = post("/api/projects/41/requirements/7/analyses").contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"requirementIds":[99],"all":true,"provider":"MOCK","maxArchitectureNodes":25,
+                         "idempotencyKey":"pinned","analysisLanguage":"de","requirementVersionId":%s,"model":%s}
+                        """.formatted(version, modelJson));
+
+        standaloneSetup(controller).build().perform(request)
+                .andExpect(status().isAccepted())
+                .andExpect(header().string("Location", "/api/projects/41/analysis-jobs/job-1"))
+                .andExpect(jsonPath("$.id").value("job-1"));
+        verify(analysisService).enqueueProject(41L, expected, context.username(), context);
+        verifyNoMoreInteractions(analysisService);
     }
 
     @Test

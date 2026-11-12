@@ -1,5 +1,12 @@
 package com.taxonomy.analysis.usecase;
 
+import com.taxonomy.catalog.snapshot.FrozenCatalogueContext;
+import com.taxonomy.catalog.snapshot.RootCatalogueSnapshot;
+import com.taxonomy.catalog.snapshot.CatalogueSourceIdentity;
+import com.taxonomy.dto.AnalysisModelBinding;
+import com.taxonomy.dto.AnalysisScope;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.catalog.snapshot.CatalogueSnapshotService;
 import com.taxonomy.analysis.service.AiPromptBudgetPolicy;
 import com.taxonomy.analysis.service.LlmService;
 import com.taxonomy.dto.LlmCallDetail;
@@ -35,6 +42,32 @@ class StreamRequirementAnalysisUseCaseTest {
 
     @InjectMocks
     private StreamRequirementAnalysisUseCase useCase;
+
+    @Test
+    void streamingReadsTheAdmittedCatalogueOnTheExecutingThreadAndClosesIt() {
+        var snapshots = org.mockito.Mockito.mock(CatalogueSnapshotService.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(useCase, "catalogueSnapshots", snapshots);
+        var workspace = new WorkspaceContext("alice", "work", "draft", "library");
+        var scope = AnalysisScope.full();
+        var generation = "e06e72f0-aa75-49a8-aa31-9bd632bdf377";
+        var model = new AnalysisModelBinding(AnalysisModelBinding.State.BRIEF_UNASSIGNED,
+                "library", "work", "draft", "a".repeat(40), 6L, "GIT_CHECKPOINT", "a".repeat(64),
+                generation, "library-v1", java.util.Set.of("CP"), scope, null, Map.of(), List.of(), java.util.Set.of(), null);
+        var identity = new CatalogueSourceIdentity("library", "work", "draft", model.commit());
+        var snapshot = org.mockito.Mockito.mock(RootCatalogueSnapshot.class);
+        org.mockito.Mockito.when(snapshot.rootCode()).thenReturn("CP");
+        org.mockito.Mockito.when(snapshots.captureRevision(identity, generation, java.util.Set.of())).thenReturn(List.of(snapshot));
+        var archived = org.mockito.Mockito.mock(FrozenCatalogueContext.Scope.class);
+        org.mockito.Mockito.when(snapshots.bind(identity, java.util.Set.of("CP"), List.of(snapshot))).thenReturn(archived);
+        var command = new StreamRequirementAnalysisCommand("Reading room", null, Locale.ENGLISH, scope,
+                null, null, model, workspace);
+        useCase.stream(command, event -> {});
+        var order = org.mockito.Mockito.inOrder(snapshots, llmService, archived);
+        order.verify(snapshots).captureRevision(identity, generation, java.util.Set.of());
+        order.verify(snapshots).bind(identity, java.util.Set.of("CP"), List.of(snapshot));
+        order.verify(llmService).analyzeStreaming(eq("Reading room"), any());
+        order.verify(archived).close();
+    }
 
     @Test
     void streamMapsCallbacksToTypedEventsAndClearsProviderOverride() {
@@ -151,7 +184,7 @@ class StreamRequirementAnalysisUseCaseTest {
     @Test
     void explicitLanguageWinsOverWorkerLocaleAndItsScopeIsRestoredAfterFailure() {
         var command = new StreamRequirementAnalysisCommand("original requirement", null, Locale.GERMAN,
-                com.taxonomy.dto.AnalysisScope.full(), com.taxonomy.dto.AnalysisReasonLength.STANDARD,
+                AnalysisScope.full(), com.taxonomy.dto.AnalysisReasonLength.STANDARD,
                 com.taxonomy.dto.AnalysisLanguage.ENGLISH);
         doAnswer(call -> {
             assertThat(com.taxonomy.analysis.service.AnalysisLanguageContext.current())

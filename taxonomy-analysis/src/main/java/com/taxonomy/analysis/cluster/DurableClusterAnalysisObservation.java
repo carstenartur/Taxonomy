@@ -108,7 +108,8 @@ public final class DurableClusterAnalysisObservation implements ClusterAnalysisO
         var authority = context.authority();
         return new RecoveryInput(operationId, command.businessText(), command.provider(), command.analysisScope(),
                 new ClusterAnalysisView.ObservationScope(authority.workspaceId(), authority.repositoryId(),
-                        authority.branch(), authority.sourceCommit()), command.analysisReasonLength(), command.analysisLanguage());
+                        authority.branch(), authority.sourceCommit()), command.analysisReasonLength(), command.analysisLanguage(),
+                context.requirement().requirementVersionId());
     }
 
     @Override public synchronized SseEmitter events(String operationId, String owner, WorkspaceContext scope,
@@ -260,7 +261,8 @@ public final class DurableClusterAnalysisObservation implements ClusterAnalysisO
         if (!terminal && durable.progress().phase() != null) phase = durable.progress().phase();
         var requirement = context.requirement();
         var provenance = requirement.projectId() == null && requirement.requirementId() == null && requirement.snapshotId() == null
-                ? null : new AnalysisProvenance(requirement.projectId(), requirement.requirementId(), requirement.snapshotId(), null);
+                ? null : new AnalysisProvenance(requirement.projectId(), requirement.requirementId(),
+                        requirement.snapshotId(), null, requirement.requirementVersionId());
         var reasons = com.taxonomy.analysis.service.AnalysisReasonPreview.from(scores.rawScores(),
                 durable.result() == null ? null : durable.result().getReasons());
         var snapshot = new AnalysisProgressRegistry.Snapshot(context.operationId(), status, phase, durable.progress().node(),

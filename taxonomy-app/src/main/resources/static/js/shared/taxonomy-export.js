@@ -270,6 +270,7 @@
             reasons: reasons || {},
             provider: provider || '',
             copilot: window.TaxonomyState?.currentCopilot || null,
+            modelBinding: window.TaxonomyState?.currentModelBinding || null,
             analysisStatus: window.TaxonomyState?.lastAnalysisStatus || 'UNKNOWN',
             analysisCoverage: window.TaxonomyState?.analysisCoverage || null,
             analysisScope: window.TaxonomyState?.lastAnalysisScope || null,

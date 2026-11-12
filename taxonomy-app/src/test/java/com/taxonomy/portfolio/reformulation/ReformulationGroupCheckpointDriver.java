@@ -6,6 +6,7 @@ import com.taxonomy.analysis.reformulation.NodeReformulationService;
 import com.taxonomy.composition.reformulation.ReformulationExecutionService;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.TaxonomyNodeDto;
+import com.taxonomy.portfolio.PortfolioAnalysisWorkspace;
 import com.taxonomy.portfolio.dto.PortfolioDtos.*;
 import com.taxonomy.portfolio.model.PortfolioTypes.*;
 import com.taxonomy.portfolio.service.*;
@@ -79,7 +80,7 @@ public final class ReformulationGroupCheckpointDriver {
             if (write) {
                 var manager = app.getBean(WorkspaceManager.class);
                 var workspace = manager.createWorkspace("architect", "Group checkpoint", "Authored large child formulations");
-                workspace = manager.provisionWorkspaceRepository("architect", workspace.getWorkspaceId());
+                workspace = PortfolioAnalysisWorkspace.provisionSelected(manager, "architect", workspace.getWorkspaceId());
                 scope = new WorkspaceContext("architect", workspace.getWorkspaceId(), workspace.getCurrentBranch(), workspace.getSourceRepositoryId());
                 var project = projects.createProject(new CreateProjectRequest("P", "Group checkpoint", "Stress fixture", ProjectStatus.ACTIVE, null, null, null, null), "architect", scope);
                 projectId = project.id();

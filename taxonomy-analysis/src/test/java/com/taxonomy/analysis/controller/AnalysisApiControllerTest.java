@@ -109,6 +109,40 @@ class AnalysisApiControllerTest {
                 "limits.max-architecture-nodes", 50)).thenReturn(50);
     }
 
+    @Test
+    void ordinaryAndStreamedAdmissionsCaptureOnlyTheAuthorizedExpectedVersion() throws Exception {
+        var models = org.mockito.Mockito.mock(com.taxonomy.analysis.usecase.AnalysisAdmissionModelPort.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(controller, "admissionModels", models);
+        var workspace = new WorkspaceContext("alice", "alice-ws", "draft", "library");
+        when(workspaceResolver.resolveCurrentContext()).thenReturn(workspace);
+        var scope = com.taxonomy.dto.AnalysisScope.full();
+        var model = new com.taxonomy.dto.AnalysisModelBinding(
+                com.taxonomy.dto.AnalysisModelBinding.State.CATALOGUE_UNRESOLVED, "library", "alice-ws", "draft",
+                "a".repeat(40), 6L, "GIT_CHECKPOINT", "c".repeat(64), null, "standard", java.util.Set.of("CP"),
+                scope, null, java.util.Map.of(), java.util.List.of(), java.util.Set.of(), null, "workbook-at-start");
+        when(models.capture(workspace, model.commit(), 6L, scope)).thenReturn(model);
+        when(analyzeRequirementUseCase.analyze(any())).thenReturn(new AnalyzeRequirementResult(new AnalysisResult()));
+        var mapper = new ObjectMapper();
+        var request = new com.taxonomy.dto.AnalysisRequest("Public library");
+        request.setExpectedCommit(model.commit());
+        request.setExpectedSemanticRevision(6L);
+        var altered = mapper.readValue(mapper.writeValueAsString(model).replace("c".repeat(64), "f".repeat(64)),
+                com.taxonomy.dto.AnalysisModelBinding.class);
+        request.setModelBinding(altered);
+        mockMvc.perform(post("/api/analyze").contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(request))).andExpect(status().isOk());
+        var command = org.mockito.ArgumentCaptor.forClass(com.taxonomy.analysis.usecase.AnalyzeRequirementCommand.class);
+        verify(analyzeRequirementUseCase).analyze(command.capture());
+        assertThat(command.getValue().modelBinding()).isEqualTo(model);
+
+        controller.analyzeStream("Public library", null, null, com.taxonomy.dto.AnalysisMode.FULL,
+                "en", model.commit(), 6L);
+        var stream = org.mockito.ArgumentCaptor.forClass(com.taxonomy.analysis.usecase.StreamRequirementAnalysisCommand.class);
+        verify(streamRequirementAnalysisUseCase).stream(stream.capture(), any());
+        assertThat(stream.getValue().modelBinding()).isEqualTo(model);
+        assertThat(stream.getValue().workspace()).isEqualTo(workspace);
+    }
+
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     void continuationReplayReturnsItsOriginalOperationWhenTheRequestHeaderIsOmittedOrDifferent(boolean conflictingHeader) throws Exception {

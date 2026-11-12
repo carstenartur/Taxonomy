@@ -19,6 +19,25 @@ import static com.taxonomy.reporting.api.decision.DecisionReportOptions.*;
 import static com.taxonomy.reporting.api.decision.DecisionRationaleReport.Disposition.*;
 
 class DecisionReportReviewRegressionTest {
+    @Test void compactSnapshotDownloadShowsTheModelAssignmentAndActualCatalogueGeneration() throws Exception {
+        var base = DecisionCompactReportTest.report(TreeLayout.AUTO, 4);
+        var binding = new com.taxonomy.dto.AnalysisModelBinding(com.taxonomy.dto.AnalysisModelBinding.State.CATALOGUE_UNRESOLVED,
+                "repo-a", "workspace-a", "draft", null, 9L, "WORKSPACE_REVISION", "c".repeat(64), null,
+                "definition-3", Set.of("CP"), com.taxonomy.dto.AnalysisScope.full(), "brief-3", Map.of(),
+                List.of(), Set.of(), null, "used-generation-3");
+        var report = base.withScope(base.scope().withModelBinding(binding));
+        var html = new DecisionRationaleHtmlRenderer(new DecisionChapterDiagramRenderer()).render(report);
+        var json = new tools.jackson.databind.ObjectMapper().valueToTree(report);
+        assertThat(json.path("scope").path("modelBinding").path("executionCatalogueRevision").asString())
+                .isEqualTo("used-generation-3");
+        try (var doc = open(report); var extractor = new XWPFWordExtractor(doc)) {
+            for (var text : List.of(html, extractor.getText())) {
+                assertThat(text).contains("Catalogue assigned to the project: Unknown", "Catalogue used for analysis: used-generation-3",
+                        "Architecture brief version: brief-3", "c".repeat(64), "Requirement version");
+            }
+        }
+    }
+
     @Test void compactRetainsFullReasonsAfterTheLandscapeTree() throws Exception {
         var base = DecisionCompactReportTest.report(TreeLayout.AUTO, 4);
         String reason = "Saved essential root evidence. ".repeat(30) + "FULL-REASON-END";

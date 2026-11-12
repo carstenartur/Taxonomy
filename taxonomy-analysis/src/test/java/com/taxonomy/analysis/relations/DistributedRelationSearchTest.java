@@ -22,6 +22,22 @@ class DistributedRelationSearchTest {
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     @Test
+    void acceptedProfileRestrictsRelationCandidatesBeforeWorkerDispatch() {
+        var model = new com.taxonomy.dto.AnalysisModelBinding(com.taxonomy.dto.AnalysisModelBinding.State.RESOLVED,
+                "repo", "workspace", "draft", "a".repeat(40), 1L, "GIT_CHECKPOINT", "b".repeat(64), "catalogue",
+                "1", Set.of("BP", "IP"), com.taxonomy.dto.AnalysisScope.full(), "brief", Map.of(), List.of(),
+                Set.of("PRODUCES"), null);
+        var engine = search(twoTargets(), record(new ArrayList<>()));
+        try (var profile = com.taxonomy.relations.service.AdmittedRelationRules.open(model)) {
+            var filtered = engine.prepare("filtered", WRITE, Map.of("process", 90d), List.of("root-result"), OPTIONS, true);
+            assertThat(filtered.items()).extracting(RelationSearchDistribution.Item::type)
+                    .contains("CONSUMES").doesNotContain("PRODUCES");
+        }
+        var independent = engine.prepare("independent", WRITE, Map.of("process", 90d), List.of("root-result"), OPTIONS, true);
+        assertThat(independent.items()).extracting(RelationSearchDistribution.Item::type).contains("CONSUMES", "PRODUCES");
+    }
+
+    @Test
     void savedMuseumPlanReplaysItsDeclaredDirectionAndLeavesTheDeepBranchOpen() {
         var definition = new CatalogueDefinition("museum-1", true,
                 List.of(new CatalogueDefinition.Root("Museum Collections", "MC", "MuseumCollection")),

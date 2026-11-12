@@ -47,6 +47,93 @@ class AnalysisContinuationAuthoritySecurityTest {
     }
 
     @ParameterizedTest @ValueSource(booleans = {false, true})
+    void ordinaryAdmissionPersistsServerEvidenceAndResumesItWithoutReadingTheNewModel(boolean distributed) {
+        var models = mock(com.taxonomy.analysis.usecase.AnalysisAdmissionModelPort.class);
+        ReflectionTestUtils.setField(service, "admissionModels", models);
+        var first = request();
+        var trusted = model("a");
+        var snapshots = mock(com.taxonomy.catalog.snapshot.CatalogueSnapshotService.class);
+        ReflectionTestUtils.setField(service, "catalogueSnapshots", snapshots);
+        var identity = new com.taxonomy.catalog.snapshot.CatalogueSourceIdentity("repo", "workspace", "draft", trusted.commit());
+        var root = mock(com.taxonomy.catalog.snapshot.RootCatalogueSnapshot.class);
+        when(root.rootCode()).thenReturn("CP");
+        when(snapshots.captureRevision(identity, trusted.executionCatalogueRevision(), java.util.Set.of())).thenReturn(List.of(root));
+        first.setExpectedCommit(trusted.commit());
+        first.setModelBinding(model("f"));
+        when(models.capture(scope, trusted.commit(), null, first.getAnalysisScope())).thenReturn(trusted);
+        try (var ignored = begin(first, distributed)) { }
+        var saved = org.mockito.ArgumentCaptor.forClass(AnalysisRequest.class);
+        verify(store).begin(saved.capture(), eq(scope), anyString(), anyList());
+        assertThat(saved.getValue().getModelBinding()).isEqualTo(trusted);
+
+        when(store.originalRequest(first.getContinuationId(), scope)).thenReturn(java.util.Optional.of(saved.getValue()));
+        var retry = request();
+        retry.setContinuationId(first.getContinuationId());
+        retry.setModelBinding(model("b"));
+        try (var execution = begin(retry, distributed)) {
+            var command = new com.taxonomy.analysis.usecase.AnalyzeRequirementCommand("library", false, 23,
+                    "MOCK", "alice", scope, null, retry.getAnalysisScope());
+            assertThat(execution.bind(command).modelBinding()).isEqualTo(trusted);
+        }
+        verify(models).capture(scope, trusted.commit(), null, first.getAnalysisScope());
+        verifyNoMoreInteractions(models);
+        retry.setExpectedCommit("b".repeat(40));
+        assertThatThrownBy(() -> begin(retry, distributed)).isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("409");
+    }
+
+    @org.junit.jupiter.api.Test
+    void relationsExtensionRetainsTheNodeAdmissionWhileExecutingItsAuthorizedWiderScope() {
+        var scoring = new AnalysisScope(java.util.Set.of("CP"), AnalysisMode.TAXONOMIES_ONLY);
+        var full = new AnalysisScope(java.util.Set.of("CP"), AnalysisMode.FULL);
+        var origin = model("a", scoring);
+        var frozen = request();
+        frozen.setAnalysisScope(full);
+        frozen.setModelBinding(origin);
+        frozen.setMaxArchitectureNodes(23);
+        var claim = new AnalysisContinuationStore.Claim(frozen.getContinuationId(), "claim", null);
+        try (var execution = service.new Execution(claim, null, frozen, null, scope)) {
+            var command = new com.taxonomy.analysis.usecase.AnalyzeRequirementCommand("library", true, 23,
+                    "MOCK", "alice", scope, null, full);
+            var bound = execution.bind(command);
+            assertThat(bound.analysisScope()).isEqualTo(full);
+            assertThat(bound.modelBinding()).isEqualTo(origin);
+            assertThat(bound.modelBinding().scope()).isEqualTo(scoring);
+        }
+    }
+
+    @org.junit.jupiter.api.Test
+    void claimedPortfolioWorkReadsItsSavedModelAndScopeWithoutAccessingTheCurrentBrowser() {
+        var browserAdmission = mock(com.taxonomy.analysis.usecase.AnalysisAdmissionModelPort.class);
+        ReflectionTestUtils.setField(service, "admissionModels", browserAdmission);
+        var searchScope = new AnalysisScope(java.util.Set.of("CP"), AnalysisMode.TAXONOMIES_ONLY);
+        var actual = model("a", searchScope);
+        var request = request();
+        request.setAnalysisScope(searchScope);
+        var snapshots = mock(com.taxonomy.catalog.snapshot.CatalogueSnapshotService.class);
+        ReflectionTestUtils.setField(service, "catalogueSnapshots", snapshots);
+        var archived = mock(com.taxonomy.catalog.snapshot.RootCatalogueSnapshot.class);
+        when(archived.rootCode()).thenReturn("CP");
+        when(snapshots.captureRevision(any(), eq(actual.analysisCatalogueRevision()), anySet())).thenReturn(List.of(archived));
+        try (var execution = service.beginPortfolio(request, "alice", scope, 23, actual)) {
+            var command = new com.taxonomy.analysis.usecase.AnalyzeRequirementCommand(request.getBusinessText(), true, 23,
+                    "MOCK", "alice", scope, null, searchScope);
+            assertThat(execution.bind(command).modelBinding()).isEqualTo(actual);
+        }
+        verifyNoInteractions(browserAdmission);
+    }
+
+    private static AnalysisModelBinding model(String hex) {
+        return model(hex, AnalysisScope.full());
+    }
+
+    private static AnalysisModelBinding model(String hex, AnalysisScope modelScope) {
+        return new AnalysisModelBinding(AnalysisModelBinding.State.CATALOGUE_UNRESOLVED, "repo", "workspace", "draft",
+                hex.repeat(40), 9L, "GIT_CHECKPOINT", hex.repeat(64), null, "standard", java.util.Set.of("CP"),
+                modelScope, null, java.util.Map.of(), java.util.List.of(), java.util.Set.of(), null, "workbook-at-start");
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
     void ordinaryAdmissionRejectsPolicyChangesBetweenCaptureAndExecution(boolean distributed) {
         when(llm.recoveryPolicyFingerprint("MOCK")).thenReturn("a".repeat(64), "b".repeat(64));
         assertThatThrownBy(() -> { try (var ignored = begin(request(), distributed)) { } })

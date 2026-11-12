@@ -18,6 +18,10 @@ public class AnalysisResult {
     public AnalysisReasonLength getAnalysisReasonLength() { return analysisReasonLength; }
     public void setAnalysisReasonLength(AnalysisReasonLength value) { analysisReasonLength = value; }
 
+    private AnalysisModelBinding modelBinding;
+    public AnalysisModelBinding getModelBinding() { return modelBinding; }
+    public void setModelBinding(AnalysisModelBinding value) { modelBinding = value; }
+
     private AnalysisScope analysisScope = AnalysisScope.full();
     public AnalysisScope getAnalysisScope() { return analysisScope; }
     public void setAnalysisScope(AnalysisScope value) { analysisScope = AnalysisScope.orDefault(value); }

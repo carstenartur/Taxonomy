@@ -20,7 +20,7 @@ import com.taxonomy.portfolio.service.PortfolioAnalysisWorkQueue;
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
-import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.WorkspaceResolver;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,10 +37,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** End-to-end evidence that a recovered claim invalidates every late worker result. */
 @SpringBootTest
 @Tag("ci-app-shard-domain-integration")
-class PortfolioAnalysisClaimPersistenceServiceTest {
+class PortfolioAnalysisClaimPersistenceServiceTest extends RetainedPortfolioCatalogue {
 
     @Autowired
-    private SystemRepositoryService systemRepositoryService;
+    private WorkspaceResolver workspaceResolver;
 
     @Autowired
     private ProjectPortfolioService projectService;
@@ -65,6 +65,7 @@ class PortfolioAnalysisClaimPersistenceServiceTest {
         WorkspaceContext context = context();
         var project = createProject(context);
         var requirement = createRequirement(project.id(), context);
+        Long admittedVersionId = requirement.currentVersionId();
         var job = persistenceService.createOrReuseJob(
                 project.id(),
                 List.of(requirement.id()),
@@ -81,18 +82,19 @@ class PortfolioAnalysisClaimPersistenceServiceTest {
         persistenceService.markJobRunning(job.id(), project.id(), scopeKey);
         assertThat(expiredClaim.attempt()).isEqualTo(1);
         assertThat(expiredClaim.requirementVersionId())
-                .isEqualTo(requirement.currentVersion().id());
+                .isEqualTo(admittedVersionId);
 
-        var retryVersion = projectService.addRequirementVersion(
+        var newerVersion = projectService.addRequirementVersion(
                 project.id(),
                 requirement.id(),
                 new CreateRequirementVersionRequest(
-                        "Updated requirement text for the retry generation",
-                        "Invalidate the expired worker claim",
+                        "Updated requirement while the original analysis is running",
+                        "Refine the current requirement",
                         null),
                 context.username(),
                 context);
 
+        assertThat(newerVersion.id()).isNotEqualTo(admittedVersionId);
         assertThat(recoveryService.prepareRetryableItems(
                 job.id(),
                 project.id(),
@@ -106,7 +108,7 @@ class PortfolioAnalysisClaimPersistenceServiceTest {
                 .getFirst();
         persistenceService.markJobRunning(job.id(), project.id(), scopeKey);
         assertThat(activeClaim.attempt()).isEqualTo(2);
-        assertThat(activeClaim.requirementVersionId()).isEqualTo(retryVersion.id());
+        assertThat(activeClaim.requirementVersionId()).isEqualTo(admittedVersionId);
 
         AnalysisResult analysis = successfulAnalysis();
         String staleSnapshotId = UUID.randomUUID().toString();
@@ -142,16 +144,16 @@ class PortfolioAnalysisClaimPersistenceServiceTest {
                 .satisfies(item -> {
                     assertThat(item.status()).isEqualTo(AnalysisStatus.RUNNING);
                     assertThat(item.attempt()).isEqualTo(2);
-                    assertThat(item.requirementVersionId()).isEqualTo(retryVersion.id());
+                    assertThat(item.requirementVersionId()).isEqualTo(admittedVersionId);
                     assertThat(item.snapshotId()).isNull();
                     assertThat(item.errorMessage()).isNull();
                 });
 
-        String currentSnapshotId = UUID.randomUUID().toString();
+        String archivedSnapshotId = UUID.randomUUID().toString();
         var accepted = claimPersistenceService.persistSnapshot(
                 activeClaim,
-                currentSnapshotId,
-                "portfolio:" + currentSnapshotId,
+                archivedSnapshotId,
+                "portfolio:" + archivedSnapshotId,
                 successfulAnalysis(),
                 null,
                 null,
@@ -166,14 +168,17 @@ class PortfolioAnalysisClaimPersistenceServiceTest {
         var completed = persistenceService.completeJob(
                 job.id(), project.id(), scopeKey);
 
-        assertThat(accepted.id()).isEqualTo(currentSnapshotId);
-        assertThat(accepted.requirementVersionId()).isEqualTo(retryVersion.id());
+        assertThat(accepted.id()).isEqualTo(archivedSnapshotId);
+        assertThat(accepted.requirementVersionId()).isEqualTo(admittedVersionId);
         assertThat(completed.status()).isEqualTo(AnalysisStatus.SUCCESS);
         assertThat(completed.items()).singleElement().satisfies(item -> {
             assertThat(item.status()).isEqualTo(AnalysisStatus.SUCCESS);
             assertThat(item.attempt()).isEqualTo(2);
-            assertThat(item.snapshotId()).isEqualTo(currentSnapshotId);
+            assertThat(item.snapshotId()).isEqualTo(archivedSnapshotId);
         });
+        var current = projectService.getRequirement(project.id(), requirement.id(), context.username(), context);
+        assertThat(current.currentVersionId()).isEqualTo(newerVersion.id());
+        assertThat(current.currentAnalysisSnapshotId()).isNull();
     }
 
     @Test
@@ -264,8 +269,7 @@ class PortfolioAnalysisClaimPersistenceServiceTest {
     private WorkspaceContext context() {
         String suffix = shortId().toLowerCase();
         String username = "claim-generation-" + suffix;
-        return new WorkspaceContext(username, "ws-" + suffix, "draft",
-                systemRepositoryService.getPrimaryRepository().getRepositoryId());
+        return PortfolioAnalysisWorkspace.select(workspaceResolver, username);
     }
 
     private static String shortId() {

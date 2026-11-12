@@ -62,7 +62,7 @@ public final class AnalysisMessageFactory {
 
     private AnalysisEnvelope envelope(AnalysisMessageType type, AnalysisTaskId taskId, AnalysisTaskType taskType,
                                       List<TaxonomyShardRoot> roots) {
-        return new AnalysisEnvelope(AnalysisEnvelope.SCHEMA_VERSION, type, operation.operationId(), taskId,
+        return new AnalysisEnvelope(AnalysisEnvelope.versionFor(operation, AnalysisEnvelope.FRACTIONAL_SCORE_VERSION), type, operation.operationId(), taskId,
                 taskType, operation.authority(), operation.requirement(), roots, 1,
                 null, operation.correlationId(), clock.instant(), null);
     }

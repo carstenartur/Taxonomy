@@ -50,6 +50,28 @@ class SavedScopeExchangeTest {
     }
 
     @Test
+    void modelBindingSurvivesScoreFileRoundTripAsPortableEvidence() throws Exception {
+        var scope = new AnalysisScope(Set.of("BP"), AnalysisMode.TAXONOMIES_ONLY);
+        var binding = new AnalysisModelBinding(AnalysisModelBinding.State.CATALOGUE_UNRESOLVED,
+                "source-repository", "source-workspace", "project-draft", null, 7L, "SEMANTIC",
+                "c".repeat(64), null, "edition-2", Set.of("BP"), scope, "brief-5", Map.of(),
+                List.of(new AnalysisModelBinding.Reference("reference", "architecture-standard",
+                        "standard-v3", "paragraph-4", Map.of())), Set.of(), null, "executed-generation");
+        var data = Map.<String, Object>of("requirement", "Museum opening hours", "scores", Map.of("BP", 70),
+                "provider", "MOCK", "modelBinding", mapper.valueToTree(binding));
+        var http = MockMvcBuilders.standaloneSetup(controller()).build();
+        var exported = http.perform(post("/api/scores/export").contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsBytes(data))).andExpect(status().isOk()).andReturn().getResponse();
+        var imported = http.perform(post("/api/scores/import").contentType(MediaType.APPLICATION_JSON)
+                .content(exported.getContentAsByteArray())).andExpect(status().isOk()).andReturn().getResponse();
+        for (var response : List.of(exported, imported)) {
+            var body = mapper.readTree(response.getContentAsByteArray());
+            assertThat(mapper.treeToValue(body.path("modelBinding"), AnalysisModelBinding.class)).isEqualTo(binding);
+            assertThat(body.path("analysisOperationId").isNull()).isTrue();
+        }
+    }
+
+    @Test
     void retainedCopilotSurvivesPortableExportImportAndReExportWithoutCreatingAuthority() throws Exception {
         var copilot = retainedCopilot();
         var retainedEnvelope = mapper.valueToTree(copilot);

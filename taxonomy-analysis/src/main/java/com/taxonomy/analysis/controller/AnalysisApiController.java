@@ -5,7 +5,10 @@ import com.taxonomy.analysis.cluster.ClusterAnalysisExecution;
 import com.taxonomy.analysis.cluster.ClusterAnalysisObservationDetachedException;
 import com.taxonomy.analysis.cluster.ClusterAnalysisStore;
 import com.taxonomy.analysis.usecase.AnalysisOperationContexts;
+import com.taxonomy.analysis.usecase.AnalysisAdmissionModelPort;
+import com.taxonomy.analysis.usecase.AnalysisRequestModelAdmission;
 import com.taxonomy.analysis.usecase.AnalysisStreamEvent;
+import com.taxonomy.dto.AnalysisModelBinding;
 import com.taxonomy.analysis.usecase.AnalyzeNodeChildrenCommand;
 import com.taxonomy.analysis.usecase.AnalyzeNodeChildrenResult;
 import com.taxonomy.analysis.usecase.AnalyzeNodeChildrenUseCase;
@@ -102,6 +105,8 @@ public class AnalysisApiController {
     @Autowired(required = false)
     private AnalysisRuntimeSettings analysisRuntimeSettings;
 
+    @Autowired(required = false)
+    private AnalysisAdmissionModelPort admissionModels;
     private final TaxonomyService taxonomyService;
     private final ExecutorService analysisExecutor;
     private final ObjectMapper objectMapper;
@@ -154,6 +159,7 @@ public class AnalysisApiController {
         ResponseEntity<AnalysisResult> guard = checkInitialized();
         if (guard != null) return guard;
         if (request == null) return ResponseEntity.badRequest().build();
+        request.setModelBinding(null);
         String resolvedUsername = null;
         WorkspaceContext resolvedContext = null;
         if (request.getRelationSourceContinuationId() != null) {
@@ -166,11 +172,13 @@ public class AnalysisApiController {
             return ResponseEntity.badRequest().build();
         }
         enforceBusinessTextLimit(request.getBusinessText());
-        AnalysisScope analysisScope = validateAnalysisScope(request.getAnalysisScope());
+        AnalysisScope analysisScope = admissionScope(request.getAnalysisScope());
         int maxArchitectureNodes = resolveMaxArchitectureNodes(request);
         String username = resolvedUsername == null ? workspaceResolver.resolveCurrentUsername() : resolvedUsername;
         WorkspaceContext context = resolvedContext == null ? resolveWorkspaceContext(username) : resolvedContext;
 
+        AnalysisModelBinding admittedModel = request.isResumable() ? null : AnalysisRequestModelAdmission.capture(
+                admissionModels, context, request.getExpectedCommit(), request.getExpectedSemanticRevision(), analysisScope);
         String operationId = newOperationId();
         try {
             if (clusterExecution != null) {
@@ -183,10 +191,10 @@ public class AnalysisApiController {
                     var command = new AnalyzeRequirementCommand(request.getBusinessText(), request.isIncludeArchitectureView(),
                             maxArchitectureNodes, request.getProvider(), username, context, null, analysisScope);
                     if (continuation != null) command = continuation.bind(command);
-                    else command = command.withAnalysisReasonLength(resolveReasonLength(request.getAnalysisReasonLength()))
+                    else command = command.withModelBinding(admittedModel).withAnalysisReasonLength(resolveReasonLength(request.getAnalysisReasonLength()))
                             .withAnalysisLanguage(resolveLanguage(request.getAnalysisLanguage()));
                     String branch = context.currentBranch();
-                    var view = repositoryStateService.getViewContext(context.username(), branch, context);
+                    var view = AnalysisOperationContexts.selectedView(command, repositoryStateService.getViewContext(context.username(), branch, context));
                     var operation = AnalysisOperationContexts.create(operationId, command, view);
                     var result = analyzeRequirementUseCase.analyze(command, operation, view);
                     return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
@@ -212,7 +220,7 @@ public class AnalysisApiController {
             var command = new AnalyzeRequirementCommand(request.getBusinessText(), request.isIncludeArchitectureView(),
                     maxArchitectureNodes, request.getProvider(), username, context, null, analysisScope)
                     .withAnalysisReasonLength(reasonLength).withAnalysisLanguage(language);
-            final var boundCommand = continuation == null ? command : continuation.bind(command);
+            final var boundCommand = continuation == null ? command.withModelBinding(admittedModel) : continuation.bind(command);
             AnalyzeRequirementResult result = followUpProviders == null ? analyzeRequirementUseCase.analyze(boundCommand)
                     : followUpProviders.execute(operationId, null, request.getBusinessText(), username, context,
                             () -> analyzeRequirementUseCase.analyze(boundCommand));
@@ -256,10 +264,12 @@ public class AnalysisApiController {
             @RequestParam(required = false) String provider,
             @RequestParam(required = false) java.util.Set<String> taxonomyRoots,
             @RequestParam(defaultValue = "FULL") AnalysisMode analysisMode,
-            @RequestParam(required = false) String analysisLanguage) {
+            @RequestParam(required = false) String analysisLanguage,
+            @RequestParam(required = false) String expectedCommit,
+            @RequestParam(required = false) Long expectedSemanticRevision) {
         AnalysisScope analysisScope;
         try {
-            analysisScope = validateAnalysisScope(new AnalysisScope(taxonomyRoots, analysisMode));
+            analysisScope = admissionScope(new AnalysisScope(taxonomyRoots, analysisMode));
         } catch (IllegalArgumentException invalid) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, invalid.getMessage(), invalid);
         }
@@ -273,7 +283,7 @@ public class AnalysisApiController {
         catch (IllegalArgumentException invalid) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, invalid.getMessage(), invalid);
         }
-        if (clusterExecution != null) return clusteredStream(businessText, provider, analysisScope, language);
+        if (clusterExecution != null) return clusteredStream(businessText, provider, analysisScope, language, expectedCommit, expectedSemanticRevision);
         // The reserved operation owns the configured deadline, including executor-queue time.
         // A second servlet deadline can expire first and discard the terminal partial result.
         // Keep transport open until the worker's terminal event or client disconnect; provider
@@ -338,11 +348,13 @@ public class AnalysisApiController {
                     "Full analysis requires an isolated workspace");
         }
 
+        var admittedModel = AnalysisRequestModelAdmission.capture(
+                admissionModels, streamContext, expectedCommit, expectedSemanticRevision, analysisScope);
         var reasonLength = resolveReasonLength(null);
         String followUpProvider = followUpProviders == null ? provider
                 : followUpProviders.remember(operationId, provider, businessText, username, streamContext, reasonLength, language);
         StreamRequirementAnalysisCommand command = new StreamRequirementAnalysisCommand(
-                businessText, provider, LocaleContextHolder.getLocale(), analysisScope, reasonLength, language);
+                businessText, provider, LocaleContextHolder.getLocale(), analysisScope, reasonLength, language, admittedModel, streamContext);
         // Conflicts and capacity failures must retain their HTTP status, before async response commitment.
         // Reservation does not install thread-local control; the executor's worker claims that ownership.
         var reservation = analysisProgressRegistry == null ? null
@@ -388,6 +400,7 @@ public class AnalysisApiController {
                     scopedPayload.put("analysisScope", analysisScope);
                     scopedPayload.put("analysisReasonLength", reasonLength);
                     scopedPayload.put("analysisLanguage", language);
+                    if (terminal && admittedModel != null) scopedPayload.put("modelBinding", admittedModel);
                     if (followUpProvider != null) scopedPayload.put("analysisProviderId", followUpProvider);
                     mapped = new AnalysisSseEventMapper.MappedEvent(mapped.name(), scopedPayload);
                     if (!sendEvent(emitter, operationId, eventSequence.incrementAndGet(), mapped.name(), mapped.payload())) {
@@ -442,6 +455,11 @@ public class AnalysisApiController {
     }
 
     public SseEmitter analyzeStream(String businessText, String provider, java.util.Set<String> taxonomyRoots,
+                                    AnalysisMode analysisMode, String analysisLanguage) {
+        return analyzeStream(businessText, provider, taxonomyRoots, analysisMode, analysisLanguage, null, null);
+    }
+
+    public SseEmitter analyzeStream(String businessText, String provider, java.util.Set<String> taxonomyRoots,
                                     AnalysisMode analysisMode) {
         return analyzeStream(businessText, provider, taxonomyRoots, analysisMode, null);
     }
@@ -450,7 +468,8 @@ public class AnalysisApiController {
         return analyzeStream(businessText, provider, null, AnalysisMode.FULL);
     }
 
-    private SseEmitter clusteredStream(String businessText, String provider, AnalysisScope scope, AnalysisLanguage language) {
+    private SseEmitter clusteredStream(String businessText, String provider, AnalysisScope scope, AnalysisLanguage language,
+            String expectedCommit, Long expectedSemanticRevision) {
         if (!taxonomyService.isInitialized()) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                 "Taxonomy data is still loading. Please wait.");
         if (businessText == null || businessText.isBlank()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -463,13 +482,14 @@ public class AnalysisApiController {
         }
         String operationId = newOperationId();
         var reasonLength = resolveReasonLength(null);
+        var admittedModel = AnalysisRequestModelAdmission.capture(admissionModels, workspace, expectedCommit, expectedSemanticRevision, scope);
         var command = new AnalyzeRequirementCommand(businessText, scope.includesRelations(),
                 resolveMaxArchitectureNodes(new AnalysisRequest(businessText)), provider, username, workspace, null, scope)
-                .withAnalysisReasonLength(reasonLength).withAnalysisLanguage(language);
+                .withAnalysisReasonLength(reasonLength).withAnalysisLanguage(language).withModelBinding(admittedModel);
         String branch = workspace.currentBranch();
-        var view = repositoryStateService.getViewContext(workspace.username(), branch, workspace);
+        var view = AnalysisOperationContexts.selectedView(command, repositoryStateService.getViewContext(workspace.username(), branch, workspace));
         var operation = AnalysisOperationContexts.create(operationId, command, view);
-        var stream = new StreamRequirementAnalysisCommand(businessText, provider, LocaleContextHolder.getLocale(), scope, reasonLength, language);
+        var stream = new StreamRequirementAnalysisCommand(businessText, provider, LocaleContextHolder.getLocale(), scope, reasonLength, language, admittedModel, workspace);
         var emitter = new SseEmitter(0L);
         var completed = new AtomicBoolean();
         var disconnected = new AtomicBoolean();
@@ -559,9 +579,9 @@ public class AnalysisApiController {
         return payload;
     }
 
-    private AnalysisScope validateAnalysisScope(AnalysisScope requested) {
+    private AnalysisScope admissionScope(AnalysisScope requested) {
         AnalysisScope scope = AnalysisScope.orDefault(requested);
-        if (!scope.taxonomyRoots().isEmpty()) {
+        if (admissionModels == null && !scope.taxonomyRoots().isEmpty()) {
             try {
                 scope.validateRoots(taxonomyService.getRootCodes());
             } catch (IllegalArgumentException invalid) {

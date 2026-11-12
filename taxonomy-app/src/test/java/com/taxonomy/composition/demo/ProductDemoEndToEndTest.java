@@ -18,7 +18,6 @@ import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.PortfolioReportService;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.portfolio.service.ProjectRequirementAnalysisService;
-import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceManager;
 import com.taxonomy.workspace.service.WorkspaceResolver;
@@ -29,7 +28,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.security.test.context.support.WithMockUser;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.client.ExpectedCount;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.test.web.client.match.MockRestRequestMatchers;
@@ -47,7 +45,6 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
-import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -73,7 +70,7 @@ class ProductDemoEndToEndTest {
     @Autowired PortfolioReportService reports;
     @Autowired WorkspaceManager workspaces;
     @Autowired RestTemplate transport;
-    @MockitoBean WorkspaceResolver resolver;
+    @Autowired WorkspaceResolver resolver;
 
     @Autowired DemoScenarioCatalog catalog;
     @Autowired ProductDemoProviderBinding binding;
@@ -395,13 +392,8 @@ class ProductDemoEndToEndTest {
 
     private WorkspaceContext workspace() {
         var workspace = workspaces.createWorkspace(USER, "Demo " + UUID.randomUUID(), "Product demo");
-        workspace = workspaces.provisionWorkspaceRepository(USER, workspace.getWorkspaceId());
-        var context = new WorkspaceContext(USER, workspace.getWorkspaceId(), workspace.getCurrentBranch(),
-                workspace.getSourceRepositoryId());
-        when(resolver.resolveCurrentUsername()).thenReturn(USER);
-        when(resolver.resolveCurrentContext()).thenReturn(context);
-        when(resolver.resolveCurrentRepositoryContext()).thenReturn(RepositoryContext.workspace(
-                context.repositoryId(), context.workspaceId(), context.currentBranch(), USER));
-        return context;
+        workspaces.provisionWorkspaceRepository(USER, workspace.getWorkspaceId());
+        workspaces.switchWorkspace(USER, workspace.getWorkspaceId());
+        return resolver.resolveCurrentContext();
     }
 }
