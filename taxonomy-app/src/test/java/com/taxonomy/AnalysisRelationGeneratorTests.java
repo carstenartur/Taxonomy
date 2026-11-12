@@ -1,5 +1,7 @@
 package com.taxonomy;
 
+import com.taxonomy.support.AnalysisCatalogueSourceFixture;
+
 import com.taxonomy.analysis.service.AnalysisMemoryGuard;
 import com.taxonomy.dto.RelationHypothesisDto;
 import com.taxonomy.dto.RequirementArchitectureView;
@@ -33,10 +35,11 @@ import org.springframework.security.test.context.support.WithMockUser;
 // These existing cases specify the legacy score/propagation contract. Keep
 // their assertions unchanged; DefaultArchitectureAnalysisTest covers the default.
 @SpringBootTest(properties = {
+        "spring.datasource.url=jdbc:hsqldb:mem:analysis-provisional-relations",
         "llm.mock=true", "taxonomy.analysis.relations.hierarchical.enabled=false"})
 @AutoConfigureMockMvc
 @WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
-class AnalysisRelationGeneratorTests {
+class AnalysisRelationGeneratorTests implements AnalysisCatalogueSourceFixture {
 
     @Autowired
     private MockMvc mockMvc;
