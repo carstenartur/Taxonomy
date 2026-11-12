@@ -77,11 +77,11 @@ class ArchitecturePdfRendererTest {
         DiagramScene scene = scene();
         SnapshotMetadata metadata = metadata();
         byte[] rendered = {1, 2, 3};
-        when(delegate.render(scene, metadata, Map.of(), Map.of())).thenReturn(rendered);
+        when(delegate.render(scene, metadata, Map.of(), Map.of(), java.util.Locale.ENGLISH)).thenReturn(rendered);
 
         assertThat(renderer.render(projection(scene))).isSameAs(rendered);
 
-        verify(delegate).render(scene, metadata, Map.of(), Map.of());
+        verify(delegate).render(scene, metadata, Map.of(), Map.of(), java.util.Locale.ENGLISH);
         verifyNoMoreInteractions(delegate);
     }
 
@@ -89,7 +89,7 @@ class ArchitecturePdfRendererTest {
     void propagatesRendererFailureWithoutReturningAPartialDocument() {
         DiagramScene scene = scene();
         IllegalStateException failure = new IllegalStateException("Unable to render architecture PDF");
-        when(delegate.render(scene, metadata(), Map.of(), Map.of())).thenThrow(failure);
+        when(delegate.render(scene, metadata(), Map.of(), Map.of(), java.util.Locale.ENGLISH)).thenThrow(failure);
 
         assertThatThrownBy(() -> renderer.render(projection(scene))).isSameAs(failure);
     }

@@ -1,6 +1,7 @@
 package com.taxonomy.portfolio.workbench;
 
 import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
+import com.taxonomy.reporting.render.decision.DecisionReportLanguage;
 import com.taxonomy.editor.ArchitectureWorkspaceRedirect;
 import com.taxonomy.model.WorkspaceOverlayScope;
 import com.taxonomy.portfolio.service.PortfolioException;
@@ -146,10 +147,11 @@ public class ArchitectureWorkbenchController {
             description = "Renders the authorized immutable analysis snapshot as a deterministic standalone SVG attachment. No viewport crop, live editor mutation or new model invocation is performed.")
     public ResponseEntity<String> svg(
             @PathVariable Long projectId,
-            @PathVariable String snapshotId) {
+            @PathVariable String snapshotId,
+            @RequestParam(required = false) String language) {
         RequestScope scope = scope();
         var projection = service.load(projectId, snapshotId, scope.username(), scope.context());
-        String content = service.renderSvg(projection);
+        String content = service.renderSvg(projection, DecisionReportLanguage.optionalOverride(language));
         return ResponseEntity.ok()
                 .contentType(SVG)
                 .header(
@@ -167,10 +169,11 @@ public class ArchitectureWorkbenchController {
             description = "Renders the authorized immutable analysis snapshot as a downloadable PDF diagram. Uses the saved snapshot and does not rerun its requirement analysis.")
     public ResponseEntity<byte[]> pdf(
             @PathVariable Long projectId,
-            @PathVariable String snapshotId) {
+            @PathVariable String snapshotId,
+            @RequestParam(required = false) String language) {
         RequestScope scope = scope();
         var projection = service.load(projectId, snapshotId, scope.username(), scope.context());
-        byte[] content = service.renderPdf(projection);
+        byte[] content = service.renderPdf(projection, DecisionReportLanguage.optionalOverride(language));
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_PDF)
                 .contentLength(content.length)

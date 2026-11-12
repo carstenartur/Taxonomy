@@ -162,16 +162,16 @@ class ArchitectureWorkbenchControllerTest {
         var projection = mock(Projection.class);
         when(service.load(42L, "snapshot-1", "alice", context)).thenReturn(projection);
         when(projection.exportLabel()).thenReturn(com.taxonomy.portfolio.service.SnapshotExportLabel.STANDARD);
-        when(service.renderSvg(projection))
+        when(service.renderSvg(projection, java.util.Locale.GERMAN))
                 .thenReturn(
                         "<svg><title>Architecture</title></svg>");
-        when(service.renderPdf(projection))
+        when(service.renderPdf(projection, java.util.Locale.GERMAN))
                 .thenReturn(
                         "%PDF-test".getBytes(
                                 StandardCharsets.ISO_8859_1));
 
-        var svg = controller.svg(42L, "snapshot-1");
-        var pdf = controller.pdf(42L, "snapshot-1");
+        var svg = controller.svg(42L, "snapshot-1", "de");
+        var pdf = controller.pdf(42L, "snapshot-1", "de");
 
         assertThat(svg.getHeaders().getContentType().toString())
                 .isEqualTo("image/svg+xml");
@@ -185,8 +185,8 @@ class ArchitectureWorkbenchControllerTest {
         assertThat(pdf.getHeaders().getFirst(
                 "Content-Disposition"))
                 .contains("architecture.pdf");
-        verify(service).renderSvg(projection);
-        verify(service).renderPdf(projection);
+        verify(service).renderSvg(projection, java.util.Locale.GERMAN);
+        verify(service).renderPdf(projection, java.util.Locale.GERMAN);
     }
 
     @Test

@@ -23,6 +23,7 @@ import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.Projection;
 import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.RelationMetadata;
 import com.taxonomy.portfolio.service.SnapshotExportLabel;
 import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.reporting.render.decision.DecisionReportLanguage;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,6 +31,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -191,7 +193,8 @@ public class ArchitectureWorkbenchService {
                 snapshot.summary().commitSha(), diagram, scene, elements, relations,
                 new ArrayList<>(warnings), new ArchitectureWorkbenchDtos.SnapshotProvenance(
                         snapshot.summary().requirementVersionId(), snapshot.summary().taxonomyFingerprint(),
-                        context.repositoryId(), version.createdBy(), version.createdAt(), recordedReplay), policyTitleKey, persistedTitle, nodeReasons);
+                        context.repositoryId(), version.createdBy(), version.createdAt(), recordedReplay,
+                        analysis.getAnalysisLanguage()), policyTitleKey, persistedTitle, nodeReasons);
     }
 
     @Transactional(readOnly = true)
@@ -199,11 +202,12 @@ public class ArchitectureWorkbenchService {
                             String snapshotId,
                             String username,
                             WorkspaceContext context) {
-        return renderSvg(load(projectId, snapshotId, username, context));
+        return renderSvg(load(projectId, snapshotId, username, context), null);
     }
 
-    String renderSvg(Projection projection) {
-        return svgRenderer.render(projection.scene(), projection.nodeReasons(), projection.relationReasons());
+    String renderSvg(Projection projection, Locale override) {
+        return svgRenderer.render(projection.scene(), projection.nodeReasons(), projection.relationReasons(),
+                diagramLocale(projection, override));
     }
 
     @Transactional(readOnly = true)
@@ -211,11 +215,16 @@ public class ArchitectureWorkbenchService {
                             String snapshotId,
                             String username,
                             WorkspaceContext context) {
-        return renderPdf(load(projectId, snapshotId, username, context));
+        return renderPdf(load(projectId, snapshotId, username, context), null);
     }
 
-    byte[] renderPdf(Projection projection) {
-        return pdfRenderer.render(projection);
+    byte[] renderPdf(Projection projection, Locale override) {
+        return pdfRenderer.render(projection, diagramLocale(projection, override));
+    }
+
+    private static Locale diagramLocale(Projection projection, Locale override) {
+        var source = projection.exportProvenance();
+        return DecisionReportLanguage.resolve(override, source == null ? null : source.analysisLanguage());
     }
 
     private static <T> List<T> safe(List<T> values) {

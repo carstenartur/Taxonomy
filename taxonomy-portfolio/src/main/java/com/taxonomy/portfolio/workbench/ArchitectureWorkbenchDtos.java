@@ -2,6 +2,7 @@ package com.taxonomy.portfolio.workbench;
 
 import com.taxonomy.portfolio.service.SnapshotExportLabel;
 import com.taxonomy.diagram.DiagramModel;
+import com.taxonomy.dto.AnalysisLanguage;
 import com.taxonomy.diagram.DiagramScene;
 import com.taxonomy.portfolio.model.PortfolioTypes.ActionStatus;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
@@ -182,7 +183,13 @@ public final class ArchitectureWorkbenchDtos {
 
     public record SnapshotProvenance(Long requirementVersionId, String taxonomyFingerprint,
                                      String repositoryId, String requirementVersionCreatedBy, Instant requirementVersionCreatedAt,
-                                     boolean recordedReplay) {
+                                     boolean recordedReplay, AnalysisLanguage analysisLanguage) {
+        public SnapshotProvenance(Long requirementVersionId, String taxonomyFingerprint, String repositoryId,
+                                  String requirementVersionCreatedBy, Instant requirementVersionCreatedAt, boolean recordedReplay) {
+            this(requirementVersionId, taxonomyFingerprint, repositoryId, requirementVersionCreatedBy,
+                    requirementVersionCreatedAt, recordedReplay, null);
+        }
+
         public SnapshotProvenance(Long requirementVersionId, String taxonomyFingerprint, String repositoryId,
                                   String requirementVersionCreatedBy, Instant requirementVersionCreatedAt) {
             this(requirementVersionId, taxonomyFingerprint, repositoryId, requirementVersionCreatedBy,

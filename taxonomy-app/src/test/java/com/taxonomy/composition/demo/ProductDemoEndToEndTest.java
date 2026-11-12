@@ -387,9 +387,11 @@ class ProductDemoEndToEndTest {
             assertThat(document.getParagraphs().getFirst().getText()).startsWith("DEMO · ");
         }
         assertThat(architectureDownload(graph + ".svg").getContentAsString(StandardCharsets.UTF_8))
-                .contains("<title>DEMO · ");
+                .contains("<title>DEMO · ", "xml:lang=\"de\"", "Bewertungen und vollständige Begründungen");
         try (var pdf = org.apache.pdfbox.Loader.loadPDF(architectureDownload(graph + ".pdf").getContentAsByteArray())) {
             assertThat(pdf.getDocumentInformation().getTitle()).startsWith("DEMO · ");
+            assertThat(pdf.getDocumentCatalog().getLanguage()).isEqualTo("de");
+            assertThat(new org.apache.pdfbox.text.PDFTextStripper().getText(pdf)).contains("Exportinventar", "Beziehungsinventar");
         }
         for (String format : List.of("archimate", "visio")) {
             var download = architectureDownload(graph + "." + format + ".zip");

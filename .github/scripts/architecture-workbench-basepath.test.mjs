@@ -18,7 +18,7 @@ test('the workbench page loads the shared URL bootstrap before its API and downl
     }
 });
 
-async function boot(prefix, withI18n = true) {
+async function boot(prefix, withI18n = true, documentLanguage = null) {
     const clicks = new Map();
     const downloads = [];
     const requests = [];
@@ -44,6 +44,7 @@ async function boot(prefix, withI18n = true) {
         }
     });
     context.window = context;
+    context.TaxonomyContentLanguage = { documentLanguage: () => documentLanguage };
     if (withI18n) {
         vm.runInContext(i18nSource, context);
         await context.TaxonomyI18n.ready();
@@ -97,5 +98,20 @@ for (const workspace of ['private-A','__shared__']) test(`workbench exact snapsh
         assert.equal(download.searchParams.get('workspaceScopeKey'),workspace);
         assert.equal(download.searchParams.get('repositoryId'),'repository-A');
         assert.equal(download.searchParams.get('branch'),'review/A');
+    }
+});
+
+test('document language follows both diagram and Word downloads while exchange files keep their source scope', async () => {
+    const app = await boot('/teams/blue/taxonomy', true, 'de-CH');
+    const scope = {repositoryId: 'repo / A', workspaceScopeKey: 'workspace-1', branch: 'analysis/a'};
+    for (const [method, expected] of [
+        ['svgUrl', 'de-CH'], ['pdfUrl', 'de-CH'], ['architectureWordUrl', 'de-CH'],
+        ['decisionWordUrl', 'de-CH'], ['archiMateBundleUrl', null], ['visioBundleUrl', null]
+    ]) {
+        const url = new URL(app.api[method](5, 'frozen-A0', scope), 'https://example.test');
+        assert.ok(url.pathname.startsWith('/teams/blue/taxonomy/api/projects/5/'), method);
+        assert.equal(url.searchParams.get('language'), expected, method);
+        assert.equal(url.searchParams.get('repositoryId'), scope.repositoryId, method);
+        assert.equal(url.searchParams.get('branch'), scope.branch, method);
     }
 });
