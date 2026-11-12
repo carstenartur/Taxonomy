@@ -16,6 +16,7 @@ import com.taxonomy.portfolio.reformulation.ReformulationAdoptionDtos;
 import com.taxonomy.portfolio.reformulation.ReformulationAdoptionService;
 import com.taxonomy.portfolio.reformulation.ReformulationDtos;
 import com.taxonomy.portfolio.reformulation.ReformulationService;
+import com.taxonomy.portfolio.reformulation.ReformulationProgressService;
 import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.PortfolioReportService;
@@ -52,6 +53,7 @@ import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -79,6 +81,7 @@ class ProductDemoEndToEndTest {
     @Autowired ProjectRequirementAnalysisService analysis;
     @Autowired PortfolioAnalysisPersistenceService analyses;
     @Autowired ReformulationService reformulations;
+    @Autowired ReformulationProgressService progress;
     @Autowired ReformulationExecutionService execution;
     @Autowired ReformulationAdoptionService adoptions;
     @Autowired PortfolioReportService reports;
@@ -528,9 +531,23 @@ class ProductDemoEndToEndTest {
         var started = execution.start(run.projectId(), run.requirementId(), proposal.id(),
                 proposal.currentRevision().number(), USER, context);
         assertThat(started.provider()).startsWith("DEMO.TIME-TRACKING-V1.R");
-        await().atMost(Duration.ofSeconds(60)).until(() -> reformulations.runs(run.projectId(), run.requirementId(),
-                proposal.id(), USER, context).stream().filter(r -> r.id().equals(started.id()))
-                .anyMatch(r -> List.of("COMPLETED", "PARTIAL", "FAILED", "CANCELLED").contains(r.status())));
+        // A busy worker must commit another checkpoint within a minute. A queued or stalled worker cannot extend its wait.
+        long deadline = System.nanoTime() + Duration.ofMinutes(10).toNanos();
+        var terminal = Set.of("COMPLETED", "PARTIAL", "FAILED", "CANCELLED");
+        long checkpoints = 0;
+        while (true) {
+            long remaining = deadline - System.nanoTime();
+            assertThat(remaining).as("overall limit for run %s after %s checkpoints", started.id(), checkpoints).isPositive();
+            long previous = checkpoints;
+            Duration window = Duration.ofNanos(Math.min(remaining, Duration.ofMinutes(1).toNanos()));
+            var observed = await("completion or a new committed checkpoint for " + started.id())
+                    .pollDelay(Duration.ZERO).pollInterval(Duration.ofSeconds(1)).atMost(window)
+                    .until(() -> progress.progress(run.projectId(), run.requirementId(), proposal.id(), started.id(),
+                                    1, null, USER, context),
+                            point -> terminal.contains(point.status()) || point.runCheckpointCount() > previous);
+            if (terminal.contains(observed.status())) break;
+            checkpoints = observed.runCheckpointCount();
+        }
         var finished = reformulations.runs(run.projectId(), run.requirementId(), proposal.id(), USER, context).stream()
                 .filter(r -> r.id().equals(started.id())).findFirst().orElseThrow();
         assertThat(finished.status()).as("run %s", finished).isEqualTo(expectedStatus);

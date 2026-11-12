@@ -6,11 +6,13 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.transaction.TransactionException;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
@@ -127,8 +129,15 @@ public final class WebDavApplicationCredentialFilter extends OncePerRequestFilte
             return;
         }
 
-        Optional<WebDavApplicationCredentialService.CredentialPrincipal> authenticated =
-                credentials.authenticate(supplied.username(), supplied.password());
+        Optional<WebDavApplicationCredentialService.CredentialPrincipal> authenticated;
+        try {
+            authenticated = credentials.authenticate(supplied.username(), supplied.password());
+        } catch (DataAccessException | TransactionException unavailable) {
+            // Storage could not establish an authentication outcome. Leave the peer's failure budget intact.
+            response.setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
+            response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
+            return;
+        }
         if (authenticated.isEmpty()) {
             int failureCount =
                     recordFailure(failureKey, monotonicNanos.getAsLong());

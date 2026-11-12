@@ -39,7 +39,7 @@ public final class ClusterAnalysisBackupExport {
                 + (scope.installation() ? "" : " where r.username=?") + " order by r.id", scope.installation() ? List.of() : List.of(owner));
         rows.visit(query, r -> metadata(r, scope), run -> {
             if (run == null) return;
-            if (!scope.history()) {
+            if (!scope.history() && run.state != ClusterAnalysisState.EXPIRED) {
                 Metadata previous = latest.get(run.key());
                 if (previous != null) {
                     if (run.createdAt < previous.createdAt || (run.createdAt == previous.createdAt && run.id.compareTo(previous.id) <= 0)) return;
@@ -55,6 +55,14 @@ public final class ClusterAnalysisBackupExport {
                 batches("select " + META + ",r.command_json,r.view_json,r.result_json,r.relation_plan_json from analysis_cluster_run r where r.id in (", " order by r.id", selected.keySet()), r -> {
                     var run = metadata(r, scope);
                     if (run == null || !run.equals(selected.remove(run.id))) throw new IOException("Cluster analysis changed during capture");
+                    if (run.state == ClusterAnalysisState.EXPIRED) {
+                        if (!"{}".equals(text(r, "command_json")) || text(r, "view_json") != null || text(r, "result_json") != null
+                                || text(r, "relation_plan_json") != null || run.total != 0 || run.completed != 0)
+                            throw new IOException("Expired analysis contains unexpected payloads");
+                        return new ClusterAnalysisBackupRecords.Run(reference(run.id), run.owner, run.context, null,
+                                null, null, null, run.state.name(), ResumePolicy.REVIEW_REQUIRED, 0, 0, run.revision,
+                                run.createdAt, run.updatedAt);
+                    }
                     String commandJson = text(r, "command_json");
                     var command = read(commandJson, AnalyzeRequirementCommand.class);
                     validateCommand(run.context, run.owner, command);
@@ -107,7 +115,7 @@ public final class ClusterAnalysisBackupExport {
                     var run = parent(r, scope, included); String eventJson = text(r, "event_json");
                     long revision = r.getLong("child_revision"); var message = decode(eventJson);
                     if (!(message instanceof AnalysisProgressEvent event) || !sameContext(event.envelope(), run.context)
-                            || event.sequence() != revision || revision != revisions.getOrDefault(run.id, 0L) + 1 || revision > run.revision)
+                            || event.sequence() != revision || !ClusterAnalysisEvent.follows(revisions.getOrDefault(run.id, 0L), revision, run.revision) || revision > run.revision)
                         throw new IOException("Cluster analysis event reference is inconsistent");
                     revisions.put(run.id, revision);
                     return new ClusterAnalysisBackupRecords.Event(PortableRows.reference(r, "analysis.cluster-event", "id"), reference(run.id), revision, eventJson);
@@ -183,7 +191,9 @@ public final class ClusterAnalysisBackupExport {
                 || !Objects.equals(context.requirement().requirementId(), number(row, "requirement_id")))
             throw new IOException("Cluster analysis indexed authority is inconsistent");
         try {
-            return new Metadata(id, principal, context, contextJson, ClusterAnalysisState.valueOf(text(row, "run_state")),
+            var state = ClusterAnalysisState.valueOf(text(row, "run_state"));
+            if (state == ClusterAnalysisState.CANCELLED && row.getInt("total_roots") == 0) state = ClusterAnalysisState.EXPIRED;
+            return new Metadata(id, principal, context, contextJson, state,
                     row.getInt("total_roots"), row.getInt("completed_roots"), row.getLong("event_revision"),
                     row.getLong("created_at"), row.getLong("updated_at"), row.getLong("row_version"));
         } catch (IllegalArgumentException invalid) { throw new IOException("Cluster analysis state is invalid"); }

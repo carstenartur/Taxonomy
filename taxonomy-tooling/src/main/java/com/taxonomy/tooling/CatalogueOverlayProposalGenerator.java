@@ -73,6 +73,15 @@ public final class CatalogueOverlayProposalGenerator {
             Path root = resolve(workingDirectory, options.getOrDefault("root", "."));
             Path catalogue = resolve(root, options.getOrDefault("catalogue", DEFAULT_CATALOGUE));
             Path overlay = resolve(root, options.getOrDefault("overlay", DEFAULT_OVERLAY));
+            if (options.containsKey("verify-review") || options.containsKey("candidate")) {
+                if (!options.containsKey("verify-review") || !options.containsKey("candidate")
+                        || options.containsKey("output") || options.containsKey("report"))
+                    throw new IllegalArgumentException("Verify a saved review with --verify-review and --candidate");
+                String commit = CatalogueReviewedOverlay.verify(catalogue, overlay,
+                        resolve(root, options.get("verify-review")), resolve(root, options.get("candidate")));
+                output.println("Validated Git review candidate from administrative commit " + commit);
+                return 0;
+            }
             Path proposal = resolve(root, options.getOrDefault("output", DEFAULT_OUTPUT));
             Path report = resolve(root, options.getOrDefault("report", DEFAULT_REPORT));
 
@@ -268,7 +277,7 @@ public final class CatalogueOverlayProposalGenerator {
         }
     }
 
-    private static String sha256(Path path) throws IOException {
+    static String sha256(Path path) throws IOException {
         MessageDigest digest = sha256Digest();
         try (InputStream input = Files.newInputStream(path)) {
             byte[] buffer = new byte[16 * 1024];
@@ -293,7 +302,7 @@ public final class CatalogueOverlayProposalGenerator {
     }
 
     private static Map<String, String> parseOptions(String[] arguments) {
-        Set<String> allowed = Set.of("root", "catalogue", "overlay", "output", "report");
+        Set<String> allowed = Set.of("root", "catalogue", "overlay", "output", "report", "verify-review", "candidate");
         LinkedHashMap<String, String> options = new LinkedHashMap<>();
         for (int index = 0; index < arguments.length; index++) {
             String token = arguments[index];
@@ -321,6 +330,7 @@ public final class CatalogueOverlayProposalGenerator {
         output.println("  --overlay <reviewed-json>");
         output.println("  --output <proposal-json>");
         output.println("  --report <review-markdown>");
+        output.println("  --verify-review <review-entry.json> --candidate <downloaded-overlay.json>");
     }
 
     private static Path resolve(Path base, String value) {

@@ -256,7 +256,7 @@ public final class DurableClusterAnalysisObservation implements ClusterAnalysisO
             case RUNNING -> "SCORING";
             case RELATIONS -> "RELATIONS";
             case FINALIZING -> "FINALIZING";
-            case COMPLETED, PARTIAL, CANCELLED -> "FINISHED";
+            case COMPLETED, PARTIAL, CANCELLED, EXPIRED -> "FINISHED";
         };
         if (!terminal && durable.progress().phase() != null) phase = durable.progress().phase();
         var requirement = context.requirement();

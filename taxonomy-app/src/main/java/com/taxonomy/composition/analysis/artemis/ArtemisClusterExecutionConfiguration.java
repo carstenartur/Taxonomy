@@ -30,6 +30,7 @@ import java.util.function.Supplier;
 /** Complete production composition; local mode never creates distributed execution beans. */
 @com.taxonomy.shared.features.ConditionalOnFeature({"analysis"})
 @Configuration(proxyBeanMethods = false)
+@org.springframework.scheduling.annotation.EnableScheduling
 @ConditionalOnProperty(name = "taxonomy.analysis.transport.mode", havingValue = "artemis")
 public class ArtemisClusterExecutionConfiguration {
     @Bean ArtemisAnalysisMetrics artemisAnalysisMetrics(ObjectProvider<MeterRegistry> registries) {
@@ -51,6 +52,13 @@ public class ArtemisClusterExecutionConfiguration {
             signals.progress(event); metrics.progress(event); publisher.progress(event);
         });
         return store;
+    }
+
+    @Bean
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnExpression(
+            "!'worker'.equalsIgnoreCase(@environment.getProperty('taxonomy.analysis.runtime-role'))")
+    ClusterAnalysisRetention clusterAnalysisRetention(ClusterAnalysisStore store) {
+        return store.retention();
     }
 
     @Bean Supplier<AnalysisMemoryGuard> clusterAnalysisGuards(Environment environment) {

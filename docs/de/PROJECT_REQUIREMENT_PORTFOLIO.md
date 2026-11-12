@@ -406,6 +406,8 @@ Benutzer mit Leserechten können Portfolioinformationen einsehen, aber keine Arc
 
 Die Hauptabläufe verwenden native Bedienelemente, tastaturbedienbare Dialoge, fokussierbare Fehlermeldungen, responsive Alternativen für Matrizen sowie Layouts für schmale Ansichten und vergrößerte Schrift.
 
+Auf der Anforderungsseite führt **Text & Quelle** unter dem Titel aus jedem Reiter zurück zur aktuellen Version. Absätze und Einrückungen bleiben im Text sichtbar. **Neuformulierungsangebote** führt auch auf dem Smartphone direkt zu den gespeicherten Varianten.
+
 ## Weiterführende Dokumentation
 
 - [PROJECT_PORTFOLIO_FEATURE_MATRIX.md](PROJECT_PORTFOLIO_FEATURE_MATRIX.md) — nachgewiesene GUI-, API- und Betriebsabdeckung

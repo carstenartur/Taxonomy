@@ -391,6 +391,8 @@ Read-only users can inspect portfolio information but cannot perform architectur
 
 The main workflows use native controls, keyboard-accessible dialogs, focusable error messages, responsive alternatives for matrices and layouts designed for narrow viewports and increased text size.
 
+On a requirement page, use **Text & source** below the title to return to the current version from any tab. Its text retains the saved paragraphs and indentation. **Reformulation offers** jumps directly to the saved alternatives, including on a phone.
+
 ## Related documentation
 
 - [PROJECT_PORTFOLIO_FEATURE_MATRIX.md](PROJECT_PORTFOLIO_FEATURE_MATRIX.md) — verified GUI, API and operational coverage

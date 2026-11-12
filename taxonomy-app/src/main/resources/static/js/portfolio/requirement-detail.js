@@ -244,6 +244,9 @@
     }
 
     function wireEvents() {
+        document.getElementById('jumpToRequirementText').addEventListener('click', () => {
+            document.getElementById('text-tab').click();
+        });
         document.getElementById('newVersionForm').addEventListener('submit', createVersion);
         document.getElementById('newVersionForm').addEventListener('input', () => { state.versionFormDirty = true; });
         document.getElementById('newVersionModal').addEventListener('show.bs.modal', () => {

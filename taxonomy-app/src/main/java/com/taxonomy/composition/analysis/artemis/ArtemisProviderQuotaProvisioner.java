@@ -4,8 +4,6 @@ import jakarta.jms.DeliveryMode;
 import jakarta.jms.Message;
 import jakarta.jms.Session;
 import org.apache.activemq.artemis.api.core.ActiveMQQueueExistsException;
-import org.apache.activemq.artemis.api.core.QueueConfiguration;
-import org.apache.activemq.artemis.api.core.RoutingType;
 import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
 import org.apache.activemq.artemis.jms.client.ActiveMQSession;
 import tools.jackson.databind.json.JsonMapper;
@@ -23,9 +21,7 @@ public final class ArtemisProviderQuotaProvisioner {
         Objects.requireNonNull(policy,"policy");
         String queue=new ArtemisProviderPermitSettings(prefix,Map.of(),1).queueName(group);
         try(var connection=factory.createConnection();var session=connection.createSession(true,Session.SESSION_TRANSACTED)) {
-            ((ActiveMQSession)session).getCoreSession().createQueue(QueueConfiguration.of(queue)
-                    .setAddress(queue).setRoutingType(RoutingType.ANYCAST).setDurable(true)
-                    .setExclusive(true).setAutoCreated(false).setAutoDelete(false).setPurgeOnNoConsumers(false));
+            ArtemisProviderCapacityQueue.create(((ActiveMQSession) session).getCoreSession(), queue, true);
             var state=session.createTextMessage(JsonMapper.builder().build().writeValueAsString(ProviderQuotaLedger.empty(policy.ledgerPolicy())));
             state.setIntProperty("schemaVersion",1);state.setStringProperty("quotaGroup",group);
             state.setStringProperty("policyFingerprint",policy.ledgerPolicy().fingerprint());
