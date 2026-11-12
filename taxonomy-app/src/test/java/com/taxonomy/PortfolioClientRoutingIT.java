@@ -379,6 +379,7 @@ class PortfolioClientRoutingIT {
             return PortfolioClientTestPage.json(200, revised);
         });
         page.open("portfolio-reports", prefix, "/projects/42/reports", language, "localStorage.clear();");
+        wait.until(ignored -> text("reportsProject").contains("P-42") && hidden("reportsBusy"));
         element("projectProductGaps").findElement(By.tagName("summary")).sendKeys(org.openqa.selenium.Keys.ENTER);
         wait.until(ignored -> text("productGapFamilies").contains("IP-F"));
         var group = element("productGapFamilies").findElement(By.tagName("details"));
@@ -387,7 +388,7 @@ class PortfolioClientRoutingIT {
         assertThat(text("productGapFamilies")).contains("IP-P", "saved-1", "archived", "Frozen reason");
         new Select(element("class-" + key)).selectByValue("PROCURE");
         element("reason-" + key).sendKeys("Supplier evidence");
-        group.findElement(By.cssSelector("button[type=submit]")).click();
+        click(By.cssSelector("#productGapFamilies form button[type=submit]"));
         wait.until(ignored -> text("productGapFamilies").contains("Supplier evidence"));
         assertThat(command.get()).contains("\"expectedRevision\":0", fingerprint, "PROCURE");
         assertThat(text("productGapStatus")).contains("1");
