@@ -115,6 +115,27 @@ public class WorkspaceFetchJournal {
                 .setMaxResults(8).getResultList());
     }
 
+    /** Joins owner deletion, so failed Git storage cleanup rolls back receipt changes as well. */
+    @org.springframework.transaction.annotation.Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void archiveForWorkspaceRemoval(String workspace,String repository,String owner,java.util.function.Supplier<String> deletingActor) {
+        var active = entities.createQuery("""
+                select f.id from WorkspaceFetchOperation f where f.workspaceId=:workspace and f.repositoryId=:repository
+                and f.username=:owner and f.archivedAt is null""",String.class)
+                .setParameter("workspace",workspace).setParameter("repository",repository).setParameter("owner",owner)
+                .setMaxResults(1).getResultList();
+        if (active.isEmpty()) return;
+        String actor=Objects.requireNonNull(deletingActor.get(),"Deleting workspace actor");
+        entities.createQuery("""
+                update WorkspaceFetchOperation f set
+                    f.phase=case when f.completedAt is null then 'DENIED' else f.phase end,
+                    f.decision=case when f.completedAt is null then 'WORKSPACE_DELETED' else f.decision end,
+                    f.completedAt=coalesce(f.completedAt,:now), f.archivedAt=:now, f.archivedBy=:actor,
+                    f.nextAttemptAt=null, f.lease=null, f.observed=null, f.result=null
+                where f.workspaceId=:workspace and f.repositoryId=:repository and f.username=:owner and f.archivedAt is null""")
+                .setParameter("workspace",workspace).setParameter("repository",repository).setParameter("owner",owner)
+                .setParameter("actor",actor).setParameter("now",clock.millis()).executeUpdate();
+    }
+
     public View archive(RepositoryContext scope, String principal, String id) {
         return transaction.execute(status -> {
             var row = entities.find(WorkspaceFetchOperation.class, id);

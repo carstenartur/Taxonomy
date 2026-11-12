@@ -139,6 +139,8 @@ class WorkspaceEditorRestoreRuntimeTest {
                 var grant = new WorkspaceFetchAuthority.Grant(actor.value().toString(),"LOCAL","b".repeat(64));
                 var authority = mock(WorkspaceFetchAuthority.class);
                 when(authority.authorize(SOURCE_SCOPE)).thenReturn(grant);
+                String deletingActor=UUID.randomUUID().toString();
+                when(authority.currentActor(SOURCE_SCOPE)).thenReturn(deletingActor);
                 var journal = new WorkspaceFetchJournal(em,txManager);
                 var upstream = new WorkspaceUpstreamService(rows,catalog,memberships,routed);
                 var fetches = new WorkspaceFetchRecovery(journal,upstream,authority);
@@ -152,12 +154,12 @@ class WorkspaceEditorRestoreRuntimeTest {
                 var tx = new TransactionTemplate(txManager);
                 var failingStorage = mock(DslGitRepositoryFactory.class);
                 doThrow(new IllegalStateException("repository still open")).when(failingStorage).deleteWorkspaceRepository(selected.workspaceId());
-                var failedDelete = new WorkspaceManager(rows,10,catalog,failingStorage);
+                var failedDelete = new WorkspaceManager(rows,10,catalog,failingStorage,journal,authority);
                 assertThatThrownBy(() -> tx.executeWithoutResult(status -> failedDelete.deleteWorkspace(selected.workspaceId(), SOURCE_SCOPE)))
                         .hasMessageContaining("repository still open");
                 assertThat(journal.status(selected,grant.principalId(),retained.operationId()).phase()).isEqualTo("ADMITTED");
                 assertThat(progress.readScope(deletedScope).getLastSyncedCommitId()).isEqualTo(sourceHead);
-                var manager = new WorkspaceManager(rows,10,catalog,routed);
+                var manager = new WorkspaceManager(rows,10,catalog,routed,journal,authority);
                 tx.executeWithoutResult(status -> manager.deleteWorkspace(selected.workspaceId(), SOURCE_SCOPE));
                 assertThat(rows.findByWorkspaceId(selected.workspaceId())).isEmpty();
                 assertThat(progress.readScope(deletedScope).getLastSyncedCommitId()).isNull();
@@ -166,7 +168,7 @@ class WorkspaceEditorRestoreRuntimeTest {
                 assertThat(denied.outcome()).isEqualTo("DENIED");
                 assertThat(denied.decisionCode()).isEqualTo("WORKSPACE_DELETED");
                 assertThat(denied.originalActor()).isEqualTo(grant.principalId());
-                assertThat(denied.archivedBy()).isEqualTo("system:workspace-delete");
+                assertThat(denied.archivedBy()).isEqualTo(deletingActor);
                 try (var after = export(f.source, f.sourceFactory, actor, false)) {
                     f.restore(after);
                     var target = new JdbcTemplate(f.target);

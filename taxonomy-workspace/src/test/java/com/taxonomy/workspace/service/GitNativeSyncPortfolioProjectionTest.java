@@ -2,6 +2,15 @@ package com.taxonomy.workspace.service;
 
 import com.taxonomy.versioning.service.SemanticGitMergeService;
 import com.taxonomy.workspace.model.SyncState;
+import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.model.WorkspaceBranchSyncState;
+import com.taxonomy.workspace.model.WorkspaceSyncScope;
+import com.taxonomy.workspace.repository.WorkspaceSyncStateUpdatesImpl;
+import org.hibernate.cfg.Configuration;
+import org.springframework.data.jpa.repository.support.JpaRepositoryFactory;
+import org.springframework.data.repository.core.support.RepositoryComposition.RepositoryFragments;
+import org.springframework.orm.jpa.JpaTransactionManager;
+import org.springframework.orm.jpa.SharedEntityManagerCreator;
 import com.taxonomy.workspace.repository.SyncStateRepository;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.storage.DslGitRepository;
@@ -12,10 +21,10 @@ import org.junit.jupiter.params.provider.CsvSource;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
+import java.util.UUID;
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -25,7 +34,12 @@ class GitNativeSyncPortfolioProjectionTest {
     void availablePortfolioParticipatesInPullAndPublishWithoutOverridingAvailability(
             boolean pull, boolean legacyValidation)
             throws Exception {
-        try (var repository = new DslGitRepository()) {
+        var database = new Configuration().addAnnotatedClass(SyncState.class).addAnnotatedClass(UserWorkspace.class)
+                .addAnnotatedClass(WorkspaceBranchSyncState.class).setProperty("hibernate.connection.username","SA")
+                .setProperty("hibernate.connection.password","").setProperty("hibernate.hbm2ddl.auto","create-drop")
+                .setProperty("hibernate.search.enabled","false")
+                .setProperty("hibernate.connection.url","jdbc:hsqldb:mem:portfolio-progress-" + UUID.randomUUID());
+        try (var repository = new DslGitRepository(); var factory=database.buildSessionFactory()) {
             repository.commitDsl("draft", document("Original", "Original"), "alice", "Initial version");
             repository.createBranch("review", "draft");
             String sharedHead = repository.commitDsl("draft", document("Shared title", "Original"),
@@ -43,13 +57,12 @@ class GitNativeSyncPortfolioProjectionTest {
             var sourceMetadata = new com.taxonomy.workspace.model.SystemRepository();
             sourceMetadata.setRepositoryId("repository-a");
             when(system.getRepository("repository-a")).thenReturn(sourceMetadata);
-            var state = new SyncState();
-            state.setUsername("alice");
-            state.setSyncStatus("DIVERGED");
-            state.setUnpublishedCommitCount(1);
-            var states = mock(SyncStateRepository.class);
-            when(states.findByUsername("alice")).thenReturn(Optional.of(state));
-            when(states.save(any(SyncState.class))).thenAnswer(call -> call.getArgument(0));
+            var entities=SharedEntityManagerCreator.createSharedEntityManager(factory);
+            var scoped=new WorkspaceSyncStateUpdatesImpl(entities,new JpaTransactionManager(factory));
+            var states=new JpaRepositoryFactory(entities).getRepository(SyncStateRepository.class,RepositoryFragments.just(scoped));
+            var scope=new WorkspaceSyncScope("alice","repository-a",null,"review");
+            states.recordLocalChanges(scope,1,1,Instant.EPOCH);
+            assertThat(states.readScope(scope).getSyncStatus()).isEqualTo("DIVERGED");
             InMemoryPortfolio portfolio = legacyValidation
                     ? new LegacyPortfolio(repository, document("Original", "Local requirement"))
                     : new ContextAwarePortfolio(repository, document("Original", "Local requirement"));
@@ -84,7 +97,10 @@ class GitNativeSyncPortfolioProjectionTest {
                 assertThat(validation.localDsl()).isNull();
                 assertThat(validation.candidateDsl()).isEqualTo(mergedDsl);
             });
+            var state=states.readScope(scope);
             assertThat(state.getSyncStatus()).isEqualTo("UP_TO_DATE");
+            assertThat(states.readScope(new WorkspaceSyncScope("alice","repository-a",null,"unselected"))
+                    .getLastSyncedCommitId()).isNull();
             if (pull) {
                 assertThat(state.getLastSyncedCommitId()).isEqualTo(sharedHead);
                 assertThat(state.getLastPublishedCommitId()).isNull();
