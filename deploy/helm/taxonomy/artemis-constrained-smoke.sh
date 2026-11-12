@@ -130,6 +130,7 @@ trap cleanup EXIT
 # A failed or render-only rerun must not leave a previous live success marker.
 mkdir -p "${EVIDENCE_DIR}"
 rm -f -- "${EVIDENCE_DIR}/evidence.json" \
+  "${EVIDENCE_DIR}/database-replacement.json" \
   "${EVIDENCE_DIR}/worker-loss-broker.json" "${EVIDENCE_DIR}/worker-loss-database.json" \
   "${EVIDENCE_DIR}"/{before-dispatch,after-dispatch}-coordinator-{pods,broker,database}.json \
   "${EVIDENCE_DIR}"/coordinator-{before-dispatch,after-dispatch}.json \
@@ -516,6 +517,35 @@ curl --fail --silent --show-error --config "${PRIVATE_DIR}/web.curl" \
   "http://127.0.0.1:18081/api/analysis-runs/${OPERATION}?workspaceId=${WORKSPACE}" >"${EVIDENCE_DIR}/observation.json"
 jq -e '.transport == "artemis" and .status == "COMPLETED" and .cluster.completedRoots == 2' "${EVIDENCE_DIR}/observation.json" >/dev/null
 sql "select root_code,state,settled,delivery_attempts from analysis_cluster_work where operation_id='${OPERATION}' order by ordinal_number" >"${EVIDENCE_DIR}/durable-work.txt"
+# Replace PostgreSQL only after durable settlement. Keep its existing namespace-local PVC.
+pg_uid=$(kubectl get pod "${PG_POD}" --namespace "${NAMESPACE}" -o jsonpath='{.metadata.uid}')
+claim_uid=$(kubectl get pvc smoke-postgres-data --namespace "${NAMESPACE}" -o jsonpath='{.metadata.uid}')
+[[ -n "${pg_uid}" && -n "${claim_uid}" ]] || fail "Missing database or volume claim identity"
+serial_snapshot | jq -eSc . >"${PRIVATE_DIR}/database-before.json"
+kubectl rollout restart deployment/smoke-postgres --namespace "${NAMESPACE}"
+kubectl rollout status deployment/smoke-postgres --namespace "${NAMESPACE}" --timeout=5m
+kubectl get pods --namespace "${NAMESPACE}" --selector app.kubernetes.io/name=taxonomy-smoke-postgres -o json |
+  jq -e --arg old "${pg_uid}" '[.items[] | select(.metadata.deletionTimestamp == null)] | select(length == 1) |
+    .[0] | select(.metadata.uid != $old and any(.spec.volumes[]; .persistentVolumeClaim.claimName == "smoke-postgres-data"))
+    | {name:.metadata.name, uid:.metadata.uid}' >"${PRIVATE_DIR}/replacement-postgres.json"
+PG_POD=$(jq -er .name "${PRIVATE_DIR}/replacement-postgres.json")
+[[ $(kubectl get pvc smoke-postgres-data --namespace "${NAMESPACE}" -o jsonpath='{.metadata.uid}') == "${claim_uid}" ]] ||
+  fail "Database replacement used another claim"
+await_until 90 "completed durable operation readable on the replacement PostgreSQL pod" durable_completed
+serial_snapshot | jq -eSc . >"${PRIVATE_DIR}/database-after.json"
+cmp "${PRIVATE_DIR}/database-before.json" "${PRIVATE_DIR}/database-after.json"
+read_recovered_result() {
+  curl --fail --silent --max-time 10 --config "${PRIVATE_DIR}/web.curl" \
+    "http://127.0.0.1:18081/api/analysis-runs/${OPERATION}/result?workspaceId=${WORKSPACE}" |
+    jq -eS . >"${PRIVATE_DIR}/recovered-result.json" &&
+    cmp -s "${PRIVATE_DIR}/original-result.json" "${PRIVATE_DIR}/recovered-result.json"
+}
+jq -eS . "${EVIDENCE_DIR}/result.json" >"${PRIVATE_DIR}/original-result.json"
+await_until 90 "same scoped HTTP result after database replacement" read_recovered_result
+jq -en --arg op "${OPERATION}" --arg old "${pg_uid}" --arg new "$(jq -er .uid "${PRIVATE_DIR}/replacement-postgres.json")" \
+  --arg claim "${claim_uid}" --arg digest "$(sha256sum "${PRIVATE_DIR}/database-after.json" | cut -d' ' -f1)" \
+  '{operationId:$op, previousPodUid:$old, replacementPodUid:$new, retainedClaimUid:$claim, ledgerSha256:$digest,
+    identicalDurableState:true, identicalScopedHttpResult:true}' >"${EVIDENCE_DIR}/database-replacement.json"
 kubectl get pod,deployment,service,networkpolicy,resourcequota,limitrange --namespace "${NAMESPACE}" -o json >"${EVIDENCE_DIR}/cluster-resources.json"
 REPLACEMENT_UIDS=$(kubectl get pod --namespace "${NAMESPACE}" --selector "${WORKER_SELECTOR},taxonomy.io/worker-set=cp" -o json | jq '[.items[].metadata.uid]')
 jq -e --arg lost "${LOST_UID}" 'index($lost) == null and length == 2' <<<"${REPLACEMENT_UIDS}" >/dev/null
@@ -525,7 +555,7 @@ jq -n --arg source "${SOURCE_SHA}" --arg tree "$(git -C "${ROOT_DIR}" rev-parse 
   '{schemaVersion:1,result:"passed",source:{commit:$source,tree:$tree},image:{reference:$image,localImageId:$imageId},startedAt:$started,completedAt:$completed,
     scenario:"coordinator loss before and after dispatch, then delivered worker loss before provider computation",provider:"MOCK",operationId:$operation,
     topology:{coordinator:1,cpWorkers:2,ipWorkers:1,sharedDatabase:"PostgreSQL",externalBroker:"Artemis TLS"},
-    assertions:{quota:true,brokerTls:true,allowedDatabaseAndBrokerEgress:true,deniedBrokerManagementEgress:true,coordinatorLossBeforeDispatch:true,coordinatorLossAfterDispatch:true,unchangedFrozenAdmissionAndRevision:true,scopedResultRecovery:true,workerLossRedelivery:true,serialRootDispatch:true,twoFinalDispatchIntents:true,oneBrokerMessagePerRoot:true,oneCommittedEffectPerRoot:true,contiguousProgress:true,independentWorkerScaling:true},
+    assertions:{quota:true,brokerTls:true,allowedDatabaseAndBrokerEgress:true,deniedBrokerManagementEgress:true,coordinatorLossBeforeDispatch:true,coordinatorLossAfterDispatch:true,unchangedFrozenAdmissionAndRevision:true,scopedResultRecovery:true,workerLossRedelivery:true,serialRootDispatch:true,twoFinalDispatchIntents:true,oneBrokerMessagePerRoot:true,oneCommittedEffectPerRoot:true,contiguousProgress:true,independentWorkerScaling:true,retainedPostgresVolumeAcrossPodReplacement:true},
     loss:{pod:$lostPod,uid:$lostUid,replacementUids:$replacementUids},startupEvidence:"startup/ (heap/RSS/config; local-heap indexes, fixture only)",
-    limits:["No broker durability/HA or DB pod replacement claim; disposable broker replaced only before first dispatch","No external provider or throughput claim","No during-provider-call failure claim"]}' >"${EVIDENCE_DIR}/evidence.json"
+    limits:["Disposable broker replaced only before first dispatch; no broker HA or database HA claim","No external provider or throughput claim","No during-provider-call failure claim"]}' >"${EVIDENCE_DIR}/evidence.json"
 echo "Artemis constrained smoke passed; evidence: ${EVIDENCE_DIR}/evidence.json"

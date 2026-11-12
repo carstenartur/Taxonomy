@@ -195,7 +195,17 @@ class HelmArtemisContractTest {
         List<Map<String, Object>> fixtures = yaml(Files.readString(evidence.resolve("fixtures.yaml")));
         assertThat(kind(fixtures, "Secret")).isEmpty();
         assertThat(kind(fixtures, "Ingress")).isEmpty();
-        assertThat(kind(fixtures, "PersistentVolumeClaim")).isEmpty();
+        var claims = kind(fixtures, "PersistentVolumeClaim");
+        assertThat(claims).hasSize(1);
+        var claim = named(claims, "smoke-postgres-data");
+        assertThat(map(claim, "metadata")).containsEntry("namespace", "taxonomy-artemis-smoke");
+        assertThat(map(claim, "spec")).containsEntry("accessModes", List.of("ReadWriteOnce"));
+        assertThat(map(claim, "spec", "resources", "requests")).containsEntry("storage", "512Mi");
+        var postgres = named(kind(fixtures, "Deployment"), "smoke-postgres");
+        var volumes = list(map(postgres, "spec", "template", "spec").get("volumes"));
+        assertThat(volumes).filteredOn(volume -> volume.containsKey("persistentVolumeClaim"))
+                .singleElement().satisfies(volume -> assertThat(map(volume, "persistentVolumeClaim"))
+                        .containsEntry("claimName", "smoke-postgres-data"));
         assertThat(kind(fixtures, "Service")).hasSize(2).allSatisfy(service ->
                 assertThat(map(service, "spec")).containsEntry("type", "ClusterIP"));
         assertThat(kind(fixtures, "Deployment")).hasSize(2).allSatisfy(deployment ->
