@@ -469,7 +469,32 @@ test('Preferences session application verifies the persisted identity without wa
     status: 200,
     json: [{ id: 42, appliedInCurrentAnalysis: true }]
   });
-  assert.deepEqual(calls, ['click', ['/api/dsl/hypotheses', 'GET']]);
+  assert.deepEqual(calls, ['click', ['/api/dsl/hypotheses?view=working', 'GET']]);
+});
+
+test('Undo reads the returned Git revision and the scoped provisional working row', async () => {
+  const commit = 'a'.repeat(40);
+  const currentPath = `/api/dsl/hypotheses?commitId=${commit}`;
+  const workingPath = '/api/dsl/hypotheses?view=working';
+  const current = {status: 200, json: [{id: 73, status: 'ACCEPTED'}]};
+  const working = {status: 200, json: [{id: 42, status: 'PROVISIONAL'}]};
+  const responses = new Map([[currentPath, current], [workingPath, working]]);
+  const calls = [];
+  const context = vm.createContext({csrfJson: async (_page, path, options) => {
+    calls.push([path, options.method]);
+    return responses.get(path);
+  }});
+  vm.runInContext(preferencesSource.replace(/^import .*;\n/m, '').replace(/^export /mg, ''), context);
+  const verify = () => vm.runInContext('assertRevertedHypothesis', context)({}, 42, commit, assert);
+  await verify();
+  assert.deepEqual(calls, [[currentPath, 'GET'], [workingPath, 'GET']]);
+  responses.set(currentPath, {status: 200, json: [{id: 42, status: 'REJECTED'}]});
+  await assert.rejects(verify, /still exposes the reverted decision/);
+  responses.set(currentPath, {status: 409, json: []});
+  await assert.rejects(verify, /returned revision/);
+  responses.set(currentPath, current);
+  responses.set(workingPath, {status: 200, json: [{id: 73, status: 'PROVISIONAL'}]});
+  await assert.rejects(verify, /persisted working hypothesis/);
 });
 
 for (const [label, authority] of [
