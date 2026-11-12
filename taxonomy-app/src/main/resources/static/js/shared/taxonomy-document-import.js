@@ -57,6 +57,22 @@
 
     if (!uploadBtn) return; // Guard: elements not present
 
+    async function restoreDocument() {
+        var loader = document.querySelector('script[data-taxonomy-analysis-session]');
+        if (loader && !window.TaxonomyAnalysisSessionReady && !window.TaxonomyAnalysisSession) {
+            await new Promise(resolve => {
+                loader.addEventListener('load',resolve,{once:true});
+                loader.addEventListener('error',resolve,{once:true});
+            });
+        }
+        await (window.TaxonomyAnalysisSession?.whenInitialized?.() || window.TaxonomyAnalysisSessionReady);
+        if (uploadSequence) return;
+        var saved = window.AnalysisAdapterApi?.savedDocument?.();
+        if (saved?.action === 'extract-ai') uploadAndExtractAi(null,saved);
+        if (saved?.action === 'map-regulation') uploadAndMapRegulation(null,saved);
+    }
+    restoreDocument().catch(() => {});
+
     // ── Upload handler ─────────────────────────────────────────────────────────
 
     uploadBtn.addEventListener('click', async function () {
@@ -124,10 +140,10 @@
 
     // ── AI-assisted extraction ─────────────────────────────────────────────────
 
-    async function uploadAndExtractAi(file) {
+    async function uploadAndExtractAi(file, saved) {
         const operation = beginUpload();
         var formData = new FormData();
-        formData.append('file', file);
+        if (file) formData.append('file', file);
         formData.append('sourceType', typeSelect.value || 'REGULATION');
 
         spinner.classList.remove('d-none');
@@ -136,7 +152,9 @@
         statusArea.innerHTML = '<span class="text-muted">⏳ ' + i18n('docimport.ai.extracting', 'AI is analyzing the document…') + '</span>';
 
         try {
-            var result = await window.ImportApi.extractDocumentWithAi(formData);
+            var pending = window.AnalysisAdapterApi.pendingButton(statusArea);
+            var result = saved ? await window.AnalysisAdapterApi.resumeDocument(saved,{isCurrent:operation.isCurrent,onPending:pending})
+                : await window.ImportApi.extractDocumentWithAi(formData, operation.isCurrent, pending);
             if (!operation.isCurrent()) return;
             currentAiCandidates = result.aiCandidates || [];
 
@@ -159,10 +177,10 @@
 
     // ── Regulation-to-architecture mapping ─────────────────────────────────────
 
-    async function uploadAndMapRegulation(file) {
+    async function uploadAndMapRegulation(file, saved) {
         const operation = beginUpload();
         var formData = new FormData();
-        formData.append('file', file);
+        if (file) formData.append('file', file);
 
         spinner.classList.remove('d-none');
         uploadBtn.disabled = true;
@@ -170,7 +188,9 @@
         statusArea.innerHTML = '<span class="text-muted">⏳ ' + i18n('docimport.regmap.mapping', 'Mapping regulation to architecture…') + '</span>';
 
         try {
-            var result = await window.ImportApi.mapRegulation(formData);
+            var pending = window.AnalysisAdapterApi.pendingButton(statusArea);
+            var result = saved ? await window.AnalysisAdapterApi.resumeDocument(saved,{isCurrent:operation.isCurrent,onPending:pending})
+                : await window.ImportApi.mapRegulation(formData, operation.isCurrent, pending);
             if (!operation.isCurrent()) return;
             var matches = result.matches || [];
 
@@ -429,6 +449,8 @@
     }
 
     function i18n(key, fallback) {
+        var translated = window.TaxonomyI18n?.t?.(key);
+        if (translated && translated !== key) return translated;
         if (typeof window.TaxonomyI18n !== 'undefined' && window.TaxonomyI18n[key]) {
             return window.TaxonomyI18n[key];
         }

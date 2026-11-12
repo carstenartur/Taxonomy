@@ -63,8 +63,9 @@ class WorkspaceConcurrentDefaultInitializationTest {
             saved.set(result);
             return snapshot(result);
         });
+        WorkspaceProvisioningTestClaims.enable(rows);
         when(rows.claimProvisioning(eq(ID), eq(USER),
-                eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection())).thenAnswer(call -> {
+                eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection(), anyString(), any(), any())).thenAnswer(call -> {
             var claimed = snapshot(saved.get());
             if (claimed.getProvisioningStatus() != WorkspaceProvisioningStatus.NOT_PROVISIONED) return 0;
             claimed.setProvisioningStatus(WorkspaceProvisioningStatus.PROVISIONING);
@@ -121,7 +122,7 @@ class WorkspaceConcurrentDefaultInitializationTest {
                                 failure.getCause()).getStatusCode().value());
                         assertEquals(WorkspaceProvisioningStatus.FAILED, saved.get().getProvisioningStatus());
                         verify(rows, times(1)).claimProvisioning(eq(ID), eq(USER),
-                                eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection());
+                                eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection(), anyString(), any(), any());
                         verify(factory, times(1)).openWorkspaceRepository(ID);
                         return;
                     }
@@ -140,7 +141,7 @@ class WorkspaceConcurrentDefaultInitializationTest {
                     assertEquals(WorkspaceProvisioningStatus.READY, saved.get().getProvisioningStatus());
                     assertEquals(1, factory.openWorkspaceRepository(ID).getDslHistory("draft").size());
                     verify(rows, times(1)).claimProvisioning(eq(ID), eq(USER),
-                            eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection());
+                            eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection(), anyString(), any(), any());
                 } finally { release.countDown(); }
             } finally {
                 release.countDown();

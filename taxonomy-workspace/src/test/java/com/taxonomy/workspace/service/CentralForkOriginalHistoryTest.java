@@ -275,7 +275,7 @@ class CentralForkOriginalHistoryTest {
         }
     }
 
-    private static final class Fixture implements AutoCloseable {
+    static final class Fixture implements AutoCloseable {
         final EditorPersistenceFixture persistence;
         final SystemRepositoryRepository rows;
         final SystemRepositoryService catalog;

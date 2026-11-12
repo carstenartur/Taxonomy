@@ -1,6 +1,7 @@
 import { csrfJson, navigateArchitectureSubtab, navigateToPage } from './ui-role-fixtures.mjs';
 
 const preferencesEndpoint = url => url.pathname.endsWith('/api/preferences');
+const workingHypotheses = '/api/dsl/hypotheses?view=working';
 
 async function provisionAnalysisWorkspace(page, workspaceId, assert) {
   // A new explicit workspace cannot load its draft until its repository is
@@ -66,7 +67,7 @@ async function createPersistedHypotheses(page, assert) {
     return [...processes.map(node => ({code: node.code, type: 'Process', title: node.nameEn || node.code})),
       {code: capability.code, type: 'Capability', title: capability.nameEn || capability.code}];
   });
-  const before = await csrfJson(page, '/api/dsl/hypotheses', { method: 'GET' });
+  const before = await csrfJson(page, workingHypotheses, { method: 'GET' });
   assert(before.status === 200 && Array.isArray(before.json), 'Unable to inspect existing hypothesis identities');
   const dsl = identities.map(node =>
     `element ${node.code} type ${node.type} {\n  title: ${JSON.stringify(node.title)};\n}`).join('\n')
@@ -85,7 +86,7 @@ async function createPersistedHypotheses(page, assert) {
   assert(materialized.status === 200 && materialized.body.valid === true
       && materialized.body.hypothesesCreated === 2,
   `Unable to materialize two persisted QA hypotheses: ${JSON.stringify(materialized)}`);
-  const after = await csrfJson(page, '/api/dsl/hypotheses', { method: 'GET' });
+  const after = await csrfJson(page, workingHypotheses, { method: 'GET' });
   assert(after.status === 200 && Array.isArray(after.json), 'Unable to read materialized hypotheses');
   const previousIds = new Set(before.json.map(hypothesis => hypothesis.id));
   const workspaceId = await page.evaluate(() => window.TaxonomyAnalysisSession.state().workspaceId);
@@ -115,7 +116,7 @@ async function hypothesisCommand(page, id, action, click, assert) {
     // response body. Chromium can therefore leave Playwright's response.json()
     // waiting for body completion. Verify the actual persisted decision in a
     // fresh workspace-pinned read instead of depending on that browser detail.
-    const current = await csrfJson(page, '/api/dsl/hypotheses', { method: 'GET' });
+    const current = await csrfJson(page, workingHypotheses, { method: 'GET' });
     assert(current.status === 200 && Array.isArray(current.json)
         && current.json.some(hypothesis => hypothesis.id === id
           && hypothesis.appliedInCurrentAnalysis === true),
@@ -132,6 +133,17 @@ async function hypothesisCommand(page, id, action, click, assert) {
       && /^[0-9a-f]{40}$/.test(body.authoritativeCommitId)
       && result.headers().etag === `"${body.authoritativeCommitId}"`,
   `Hypothesis ${action} did not create the expected authoritative Git revision`);
+  return body.authoritativeCommitId;
+}
+
+async function assertRevertedHypothesis(page, id, commit, assert) {
+  const current = await csrfJson(page, `/api/dsl/hypotheses?commitId=${commit}`, { method: 'GET' });
+  assert(current.status === 200 && Array.isArray(current.json) && current.json.every(row => row.id !== id),
+    'Git Undo still exposes the reverted decision at its returned revision');
+  const working = await csrfJson(page, workingHypotheses, { method: 'GET' });
+  assert(working.status === 200 && Array.isArray(working.json)
+      && working.json.some(row => row.id === id && row.status === 'PROVISIONAL'),
+    'Git Undo did not return the persisted working hypothesis to provisional status');
 }
 
 async function assertHypothesisDecisions(page, hypotheses, assert) {
@@ -149,9 +161,11 @@ async function assertHypothesisDecisions(page, hypotheses, assert) {
   assert(await page.locator('#suggestedRelationsContent button[onclick]').count() === 0,
     'Restored completed hypotheses offer repeat application/review controls');
   const current = await csrfJson(page, '/api/dsl/hypotheses', { method: 'GET' });
-  assert(current.status === 200 && current.json.some(h => h.id === hypotheses[0].hypothesisId
-      && h.status === 'REJECTED') && current.json.some(h => h.id === hypotheses[1].hypothesisId
-      && h.appliedInCurrentAnalysis === true), 'Visible decisions differ from persisted hypothesis authority');
+  assert(current.status === 200 && Array.isArray(current.json) && current.json.some(h => h.id === hypotheses[0].hypothesisId
+      && h.status === 'REJECTED'), 'Visible rejection differs from the selected Git decision');
+  const working = await csrfJson(page, workingHypotheses, { method: 'GET' });
+  assert(working.status === 200 && Array.isArray(working.json) && working.json.some(h => h.id === hypotheses[1].hypothesisId
+      && h.appliedInCurrentAnalysis === true), 'Visible session decision differs from the persisted working hypothesis');
 }
 
 function workingStateExpression() {
@@ -780,12 +794,10 @@ async function runPreferencesPreservationWorkflow({ page, baseUrl, evidence }, h
       page.off('request', observeRepeat);
     }
     await saveState('preferences-hypothesis-decisions-restored', '#suggestedRelationsPanel');
-    await hypothesisCommand(page, hypotheses[0].hypothesisId, 'revert',
+    const revertedCommit = await hypothesisCommand(page, hypotheses[0].hypothesisId, 'revert',
       () => page.locator('#suggested-row-0 .hypothesis-undo').click(), assert);
     await page.waitForFunction(() => window._currentProvisionalRelations?.[0]?.status === 'PROVISIONAL');
-    const afterUndo = await csrfJson(page, '/api/dsl/hypotheses', { method: 'GET' });
-    assert(afterUndo.status === 200 && afterUndo.json.some(h => h.id === hypotheses[0].hypothesisId
-        && h.status === 'PROVISIONAL'), 'Restored Undo did not revert actual Git hypothesis authority');
+    await assertRevertedHypothesis(page, hypotheses[0].hypothesisId, revertedCommit, assert);
     assert(await saveDraftNow(page) === true, 'Unable to persist restored Git Undo');
     const undoDraft = await authoritativeDraft(page);
     assert(undoDraft.payload.provisionalRelations[0].status === 'PROVISIONAL'

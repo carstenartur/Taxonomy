@@ -36,7 +36,11 @@ window.ArchitectureFocusSession = function (options) {
             var body = { sourceId: request.id, candidateLimit: 8, useAi: useAi,
                 language: options.language ? options.language() : 'en' };
             body[sourceMode ? 'source' : 'context'] = request.context;
-            return options.request(body, request.controller ? { signal: request.controller.signal } : {});
+            return options.request(body, {
+                signal: request.controller?.signal,
+                isCurrent: function () { return request.epoch === epoch && active === request; },
+                onPending: options.onPending
+            });
         }).then(function (result) {
             // A request may finish after navigation or a semantic edit; its evidence belongs only to its captured revision.
             if (request.epoch !== epoch) return;
@@ -232,7 +236,8 @@ window.ArchitectureFocusPanel = function (options) {
             reviewed: state.reviewed, label: function (status) { return t('editor.lens.state.' + status); } });
     }
     session = window.ArchitectureFocusSession({ request: options.request, language: options.language, changed: render,
-        sourceMode: readOnly, errorMessage: options.errorMessage });
+        sourceMode: readOnly, errorMessage: options.errorMessage,
+        onPending: window.AnalysisAdapterApi?.pendingButton(el('editorLensInspect')) });
     el('editorLensEnabled').onchange = function () { session.setEnabled(this.checked); };
     el('editorLensPause').onclick = function () { session.setPaused(!session.snapshot().paused); };
     el('editorLensBudget').onchange = function () { session.setBudget(this.value); this.value = session.snapshot().budget; };
