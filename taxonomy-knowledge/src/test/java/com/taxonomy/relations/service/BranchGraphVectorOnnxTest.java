@@ -3,12 +3,16 @@ package com.taxonomy.relations.service;
 import com.taxonomy.catalog.service.LocalEmbeddingService;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import com.taxonomy.workspace.service.RepositoryContext;
+import tools.jackson.databind.json.JsonMapper;
 import org.springframework.test.util.ReflectionTestUtils;
 import java.nio.file.Path;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @Tag("onnx")
 class BranchGraphVectorOnnxTest {
+    @TempDir Path databaseDirectory;
     @Test void authenticModelAndTokenizerIdentifyBothNativeVectorFieldsAcrossIndependentInstances() throws Exception {
         var first = localModel();
         var second = localModel();
@@ -18,7 +22,8 @@ class BranchGraphVectorOnnxTest {
             var model = first.embeddingIdentity();
             assertThat(model.modelSha256()).matches("[a-f0-9]{64}");
             assertThat(model.tokenizerSha256()).matches("[a-f0-9]{64}");
-            var source = new BranchGraphVectorSource("repository", "copy", "draft", "4".repeat(40),
+            var context = RepositoryContext.workspace("repository", "copy", "draft", "builder");
+            var source = new BranchGraphVectorSource(context.repositoryId(), context.workspaceId(), context.branch(), BranchGraphVectorPersistenceTest.HEAD,
                     "retained-workbook", "a".repeat(64), model.indexKey(), "b".repeat(64), 2);
             BranchGraphVectorIndex.Archive durable;
             try (var index = new BranchGraphVectorIndex.Builder(source.key())) {
@@ -30,11 +35,19 @@ class BranchGraphVectorOnnxTest {
                 index.relation("food", "storage", "IP", "SUPPLIES", supplies, first.embedDocument(supplies));
                 durable = index.finish();
             }
+            try (var database = BranchGraphVectorPersistenceTest.open(databaseDirectory, "create")) {
+                database.checkpoint(context, 2);
+                var token = database.store.begin(context, source, JsonMapper.builder().build().writeValueAsString(model));
+                database.store.publish(context, source, token, durable, () -> {});
+            }
             ReflectionTestUtils.invokeMethod(first, "closeModel");
             assertThat(second.embeddingIdentity()).isEqualTo(model);
-            var hits = BranchGraphVectorIndex.search(durable, second.embedQuery(communications), 1, 1);
-            assertThat(hits.nodes()).containsExactly("secure-comms");
-            assertThat(hits.relations()).containsExactly(new BranchGraphVectorIndex.RelationHit("CP", "SUPPORTS"));
+            try (var restored = BranchGraphVectorPersistenceTest.open(databaseDirectory, "validate")) {
+                var stored = restored.store.read(context, source);
+                var hits = BranchGraphVectorIndex.search(stored.index(), second.embedQuery(communications), 1, 1);
+                assertThat(hits.nodes()).containsExactly("secure-comms");
+                assertThat(hits.relations()).containsExactly(new BranchGraphVectorIndex.RelationHit("CP", "SUPPORTS"));
+            }
         } finally {
             ReflectionTestUtils.invokeMethod(first, "closeModel");
             ReflectionTestUtils.invokeMethod(second, "closeModel");

@@ -13,7 +13,9 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.data.jpa.repository.support.JpaRepositoryFactory;
 import org.springframework.orm.jpa.JpaTransactionManager;
 import org.springframework.orm.jpa.SharedEntityManagerCreator;
-import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.support.TransactionTemplate;
 import java.nio.file.Path;
 import java.util.List;
@@ -97,7 +99,9 @@ class BranchGraphVectorPersistenceTest {
         }
     }
 
-    private Database open(String ddl) {
+    private Database open(String ddl) { return open(directory, ddl); }
+
+    static Database open(Path directory, String ddl) {
         var config = new Configuration().addAnnotatedClass(RelationDecisionProjectionCheckpoint.class)
                 .addAnnotatedClass(BranchGraphVectorGeneration.class)
                 .setProperty("hibernate.connection.driver_class", "org.hsqldb.jdbc.JDBCDriver")
@@ -107,7 +111,12 @@ class BranchGraphVectorPersistenceTest {
         return new Database(config.buildSessionFactory());
     }
 
+    @org.springframework.context.annotation.Configuration(proxyBeanMethods = false)
+    @EnableTransactionManagement(proxyTargetClass = true)
+    static class Transactions { }
+
     static class Database implements AutoCloseable {
+        final AnnotationConfigApplicationContext application = new AnnotationConfigApplicationContext();
         final EntityManagerFactory factory;
         final EntityManager em;
         final TransactionTemplate transactions;
@@ -116,17 +125,24 @@ class BranchGraphVectorPersistenceTest {
             this.factory = factory;
             this.em = SharedEntityManagerCreator.createSharedEntityManager(factory);
             this.transactions = new TransactionTemplate(new JpaTransactionManager(factory));
-            this.store = new BranchGraphVectorStore(new JpaRepositoryFactory(em).getRepository(RelationDecisionProjectionCheckpointRepository.class));
-            ReflectionTestUtils.setField(store,"em",em);
+            application.register(Transactions.class);
+            application.registerBean(EntityManagerFactory.class, () -> factory);
+            application.registerBean(PlatformTransactionManager.class, () -> transactions.getTransactionManager());
+            application.registerBean(RelationDecisionProjectionCheckpointRepository.class,
+                    () -> new JpaRepositoryFactory(em).getRepository(RelationDecisionProjectionCheckpointRepository.class));
+            application.registerBean(BranchGraphVectorStore.class);
+            application.refresh();
+            this.store = application.getBean(BranchGraphVectorStore.class);
         }
         <T> T transaction(Supplier<T> work) { return transactions.execute(status -> work.get()); }
-        void checkpoint(RepositoryContext context) {
+        void checkpoint(RepositoryContext context) { checkpoint(context, 1); }
+        void checkpoint(RepositoryContext context, int relationCount) {
             transaction(() -> {
                 var row = new RelationDecisionProjectionCheckpoint();
                 row.setRepositoryId(context.repositoryId()); row.setWorkspaceId(context.workspaceId()); row.setBranch(context.branch());
-                row.setAuthoritativeCommitId(HEAD); row.setRelationCount(1); em.persist(row); return null;
+                row.setAuthoritativeCommitId(HEAD); row.setRelationCount(relationCount); em.persist(row); return null;
             });
         }
-        @Override public void close() { factory.close(); }
+        @Override public void close() { application.close(); if (factory.isOpen()) factory.close(); }
     }
 }
