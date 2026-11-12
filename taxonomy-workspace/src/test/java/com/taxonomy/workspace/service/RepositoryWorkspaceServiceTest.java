@@ -73,6 +73,7 @@ class RepositoryWorkspaceServiceTest {
     @BeforeEach
     void setUp() {
         transfer = org.mockito.Mockito.mockStatic(GitHistoryTransfer.class);
+        WorkspaceProvisioningTestClaims.enable(workspaceRepository);
         service = new RepositoryWorkspaceService(
                 workspaceRepository, systemRepositoryService, repositoryFactory, memberships);
         source = new SystemRepository();

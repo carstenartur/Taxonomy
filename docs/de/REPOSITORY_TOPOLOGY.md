@@ -103,6 +103,8 @@ Erste Nutzung des Standards oder ausdrückliches "Arbeitsbereich vorbereiten"
 | `READY` | Arbeitsbereich ist vollständig bereitgestellt und einsatzbereit |
 | `FAILED` | Bereitstellung fehlgeschlagen; siehe Fehlermeldung für Details |
 
+Während der Bereitstellung liefert `GET /api/workspace/provisioning-status` die Felder `attemptCount`, `attemptStartedAt` und `leaseExpiresAt`. Ein Bereitstellungsversuch reserviert den Arbeitsbereich für 15 Minuten. Nach einem Prozessabbruch kann der Eigentümer `POST /api/workspace/provision` nach Ablauf dieser Frist für denselben Arbeitsbereich wiederholen. Die Wiederaufnahme verwendet den gespeicherten Quell-Commit und prüft die aktuellen Quellrechte. Bei einem noch laufenden Versuch antwortet die API mit HTTP 409. Beim Schema-Upgrade erhalten bereits laufende Bereitstellungen dieselbe Frist.
+
 ## System-Repository
 
 Das System erstellt beim Start automatisch einen primären Repository-Datensatz mit:

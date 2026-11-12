@@ -186,8 +186,9 @@ class WorkspaceProvisioningProvenanceTest {
     private static UserWorkspaceRepository rows(UserWorkspace row) {
         var rows = mock(UserWorkspaceRepository.class);
         when(rows.findByWorkspaceId(row.getWorkspaceId())).thenReturn(Optional.of(row));
+        WorkspaceProvisioningTestClaims.enable(rows);
         when(rows.claimProvisioning(anyString(), anyString(),
-                eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection())).thenReturn(1);
+                eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection(), anyString(), any(), any())).thenReturn(1);
         when(rows.save(any(UserWorkspace.class))).thenAnswer(call -> call.getArgument(0));
         return rows;
     }

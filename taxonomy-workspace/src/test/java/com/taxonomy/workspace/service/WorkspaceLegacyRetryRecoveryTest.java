@@ -22,7 +22,8 @@ class WorkspaceLegacyRetryRecoveryTest {
             row.setCurrentBranch("draft"); row.setProvisioningStatus(WorkspaceProvisioningStatus.NOT_PROVISIONED);
             var rows = mock(UserWorkspaceRepository.class);
             when(rows.findByWorkspaceId("retry")).thenReturn(Optional.of(row));
-            when(rows.claimProvisioning(eq("retry"), eq("owner"), any(), anyCollection())).thenReturn(1);
+            WorkspaceProvisioningTestClaims.enable(rows);
+            when(rows.claimProvisioning(eq("retry"), eq("owner"), any(), anyCollection(), anyString(), any(), any())).thenReturn(1);
             var failOnce = new AtomicBoolean(true);
             when(rows.save(any(UserWorkspace.class))).thenAnswer(call -> {
                 if (row.getProvisioningStatus() == WorkspaceProvisioningStatus.READY && failOnce.getAndSet(false))

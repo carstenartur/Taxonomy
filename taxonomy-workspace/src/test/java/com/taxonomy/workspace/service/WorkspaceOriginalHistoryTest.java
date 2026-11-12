@@ -10,6 +10,8 @@ import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import com.taxonomy.workspace.repository.RepositoryMembershipRepository;
 import com.taxonomy.workspace.repository.SystemRepositoryRepository;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.repository.WorkspaceProvisioningFenceImpl;
+import org.springframework.data.repository.core.support.RepositoryComposition.RepositoryFragments;
 import com.taxonomy.workspace.signing.GitCommitSignatureService;
 import com.taxonomy.workspace.signing.SignatureStatus;
 import com.taxonomy.workspace.signing.SigningTestKeys;
@@ -151,6 +153,175 @@ class WorkspaceOriginalHistoryTest {
     }
 
     @Test
+    void anExpiredCrashLeaseResumesTheSameCapturedCommitAndFencesTheOldWorker() throws Exception {
+        String database = "jdbc:hsqldb:file:" + directory.resolve("orphan") + ";shutdown=true";
+        String workspaceId;
+        String captured;
+        String oldWorker;
+        try (var fixture = new Fixture(database, GitCommitSignatureService.disabled())) {
+            var source = fixture.createSource();
+            var git = fixture.git.getCentralRepository(source.getRepositoryId());
+            captured = git.commitDsl(BRANCH, "captured architecture", OWNER, "Captured checkpoint");
+            var row = fixture.manager(fixture.git).createWorkspace(OWNER, "Crash recovery", null);
+            row.setSourceRepositoryId(source.getRepositoryId());
+            workspaceId = row.getWorkspaceId();
+            fixture.rows.save(row);
+            var interrupted = spy(fixture.git);
+            doThrow(new AssertionError("Process stopped")).when(interrupted).openWorkspaceRepository(workspaceId);
+            assertThrows(AssertionError.class,
+                    () -> fixture.manager(interrupted).provisionWorkspaceRepository(OWNER, workspaceId));
+            var abandoned = fixture.rows.findByWorkspaceId(workspaceId).orElseThrow();
+            oldWorker = abandoned.getProvisioningLeaseOwner();
+            assertNotNull(oldWorker);
+            assertEquals(WorkspaceProvisioningStatus.PROVISIONING, abandoned.getProvisioningStatus());
+            assertEquals(captured, abandoned.getBaseCommit());
+            assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                    () -> fixture.manager(fixture.git).provisionWorkspaceRepository(OWNER, workspaceId));
+            git.commitDsl(BRANCH, "later architecture", OWNER, "Source advanced");
+            fixture.transactions.executeWithoutResult(status -> {
+                var em = SharedEntityManagerCreator.createSharedEntityManager(fixture.persistence.factory);
+                em.createQuery("update UserWorkspace w set w.provisioningLeaseUntil = :expired where w.workspaceId = :id")
+                        .setParameter("expired", java.time.Instant.EPOCH).setParameter("id", workspaceId).executeUpdate();
+            });
+        }
+        try (var fixture = new Fixture(database, GitCommitSignatureService.disabled())) {
+            var manager = fixture.manager(fixture.git);
+            assertEquals(captured, manager.provisionWorkspaceRepository(OWNER, workspaceId).getCurrentCommit());
+            var ready = fixture.rows.findByWorkspaceId(workspaceId).orElseThrow();
+            assertEquals(WorkspaceProvisioningStatus.READY, ready.getProvisioningStatus());
+            assertEquals(captured, fixture.git.openWorkspaceRepository(workspaceId).getHeadCommit(BRANCH));
+            assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                    () -> fixture.rows.withProvisioningLease(ready, oldWorker,
+                            current -> { fail("The retired worker must not publish or clean up"); }));
+        }
+    }
+
+    @Test
+    void legacyInProgressRowsGetOnePersistedRecoveryWindowOnFirstObservation() throws Exception {
+        String database = "jdbc:hsqldb:mem:legacy-claim-" + java.util.UUID.randomUUID();
+        try (var fixture = new Fixture(database, GitCommitSignatureService.disabled())) {
+            var manager = fixture.manager(fixture.git);
+            var row = manager.createWorkspace(OWNER, "Legacy worker", null);
+            row.setProvisioningStatus(WorkspaceProvisioningStatus.PROVISIONING);
+            fixture.rows.save(row);
+            String legacyId = row.getWorkspaceId();
+            for (int attempt = 0; attempt < 2; attempt++) {
+                assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                        () -> manager.provisionWorkspaceRepository(OWNER, legacyId));
+                var after = fixture.rows.findByWorkspaceId(row.getWorkspaceId()).orElseThrow();
+                assertNotNull(after.getProvisioningLeaseUntil());
+                if (attempt == 0) {
+                    assertTrue(after.getProvisioningLeaseUntil().isAfter(java.time.Instant.now().plusSeconds(840)));
+                    row = after;
+                } else {
+                    assertEquals(row.getProvisioningLeaseUntil(), after.getProvisioningLeaseUntil());
+                }
+                assertEquals(0, after.getProvisioningAttempt());
+            }
+        }
+    }
+
+    @Test
+    void aResumedWorkerCannotDeleteTheWorkingCopyCompletedByItsSuccessor() throws Exception {
+        String database = "jdbc:hsqldb:mem:paused-allocation-" + java.util.UUID.randomUUID();
+        try (var fixture = new Fixture(database, GitCommitSignatureService.disabled());
+             var pool = java.util.concurrent.Executors.newSingleThreadExecutor()) {
+            var source = fixture.createSource();
+            String sourceId = source.getRepositoryId();
+            var git = fixture.git.getCentralRepository(sourceId);
+            String captured = git.commitDsl(BRANCH, "original", OWNER, "Selected checkpoint");
+            var entered = new java.util.concurrent.CompletableFuture<String>();
+            var resume = new java.util.concurrent.CountDownLatch(1);
+            var paused = spy(fixture.git);
+            doAnswer(call -> {
+                entered.complete(call.getArgument(0));
+                if (!resume.await(30, java.util.concurrent.TimeUnit.SECONDS)) throw new AssertionError("Lost successor");
+                return call.callRealMethod();
+            }).when(paused).openWorkspaceRepository(anyString());
+            var copies = new RepositoryWorkspaceService(fixture.rows, fixture.catalog, paused, fixture.memberships);
+            var original = pool.submit(() -> copies.createWorkingCopy(OWNER, sourceId, BRANCH, "Concurrent copy", null));
+            String id = entered.get(30, java.util.concurrent.TimeUnit.SECONDS);
+            try {
+                fixture.transactions.executeWithoutResult(status -> {
+                    var em = SharedEntityManagerCreator.createSharedEntityManager(fixture.persistence.factory);
+                    em.createQuery("update UserWorkspace w set w.provisioningLeaseUntil = :expired where w.workspaceId = :id")
+                            .setParameter("expired", java.time.Instant.EPOCH).setParameter("id", id).executeUpdate();
+                });
+                git.commitDsl(BRANCH, "newer", OWNER, "Source advanced after capture");
+                var ready = fixture.manager(fixture.git).provisionWorkspaceRepository(OWNER, id);
+                assertEquals(captured, ready.getCurrentCommit());
+                assertEquals(2, ready.getProvisioningAttempt());
+            } finally {
+                resume.countDown();
+            }
+            var lost = assertThrows(java.util.concurrent.ExecutionException.class,
+                    () -> original.get(30, java.util.concurrent.TimeUnit.SECONDS));
+            assertInstanceOf(org.springframework.web.server.ResponseStatusException.class, lost.getCause());
+            verify(paused, never()).deleteWorkspaceRepository(anyString());
+            var target = fixture.git.openWorkspaceRepository(id);
+            assertEquals(captured, target.getHeadCommit("draft"));
+            assertEquals(captured, target.getHeadCommit("sync-base"));
+            assertEquals(captured, new GitUpstreamRef(sourceId, BRANCH).head(target));
+            assertEquals(WorkspaceProvisioningStatus.READY,
+                    fixture.rows.findByWorkspaceId(id).orElseThrow().getProvisioningStatus());
+        }
+    }
+
+    @Test
+    void aLostInitialSaveAcknowledgementCannotReplaceACommittedSuccessor() throws Exception {
+        String database = "jdbc:hsqldb:mem:lost-ack-" + java.util.UUID.randomUUID();
+        try (var fixture = new Fixture(database, GitCommitSignatureService.disabled())) {
+            var source = fixture.createSource();
+            String sourceId = source.getRepositoryId();
+            String captured = fixture.git.getCentralRepository(sourceId).commitDsl(BRANCH, "original", OWNER, "Checkpoint");
+            var id = new java.util.concurrent.atomic.AtomicReference<String>();
+            var interrupted = mock(UserWorkspaceRepository.class, org.mockito.AdditionalAnswers.delegatesTo(fixture.rows));
+            doAnswer(call -> {
+                var saved = fixture.rows.save(call.<UserWorkspace>getArgument(0));
+                if (id.compareAndSet(null, saved.getWorkspaceId())) {
+                    fixture.transactions.executeWithoutResult(status -> {
+                        var em = SharedEntityManagerCreator.createSharedEntityManager(fixture.persistence.factory);
+                        em.createQuery("update UserWorkspace w set w.provisioningLeaseUntil = :expired where w.workspaceId = :id")
+                                .setParameter("expired", java.time.Instant.EPOCH).setParameter("id", saved.getWorkspaceId()).executeUpdate();
+                    });
+                    fixture.manager(fixture.git).provisionWorkspaceRepository(OWNER, saved.getWorkspaceId());
+                    throw new IllegalStateException("Initial persistence acknowledgement lost");
+                }
+                return saved;
+            }).when(interrupted).save(any(UserWorkspace.class));
+            var creator = new RepositoryWorkspaceService(interrupted, fixture.catalog, fixture.git, fixture.memberships);
+            assertThrows(IllegalStateException.class,
+                    () -> creator.createWorkingCopy(OWNER, sourceId, BRANCH, "Lost acknowledgment", null));
+            var retained = fixture.rows.findByWorkspaceId(id.get()).orElseThrow();
+            assertEquals(WorkspaceProvisioningStatus.READY, retained.getProvisioningStatus());
+            assertEquals(2, retained.getProvisioningAttempt());
+            assertEquals(captured, retained.getCurrentCommit());
+            assertEquals(captured, fixture.git.openWorkspaceRepository(id.get()).getHeadCommit("draft"));
+        }
+    }
+
+    @Test
+    void aJoinedCallerGetsTheCurrentAttemptEvenWhenItsEntityWasLoadedBeforeTheBulkClaim() throws Exception {
+        String database = "jdbc:hsqldb:mem:outer-claim-" + java.util.UUID.randomUUID();
+        try (var fixture = new Fixture(database, GitCommitSignatureService.disabled())) {
+            var source = fixture.createSource();
+            fixture.git.getCentralRepository(source.getRepositoryId()).commitDsl(BRANCH, "original", OWNER, "Checkpoint");
+            var manager = fixture.manager(fixture.git);
+            var row = manager.createWorkspace(OWNER, "Outer transaction", null);
+            row.setSourceRepositoryId(source.getRepositoryId());
+            fixture.rows.save(row);
+            fixture.transactions.executeWithoutResult(status -> {
+                assertEquals(0, fixture.rows.findByWorkspaceId(row.getWorkspaceId()).orElseThrow().getProvisioningAttempt());
+                var ready = manager.provisionWorkspaceRepository(OWNER, row.getWorkspaceId());
+                assertEquals(1, ready.getProvisioningAttempt());
+                assertNotNull(ready.getProvisioningLeaseOwner());
+                assertEquals(WorkspaceProvisioningStatus.READY, ready.getProvisioningStatus());
+            });
+            assertEquals(1, fixture.rows.findByWorkspaceId(row.getWorkspaceId()).orElseThrow().getProvisioningAttempt());
+        }
+    }
+
+    @Test
     void revokedSourceContributionDoesNotPublishTheImportedCommit() throws Exception {
         String database = "jdbc:hsqldb:file:" + directory.resolve("revocation") + ";shutdown=true";
         try (var fixture = new Fixture(database, GitCommitSignatureService.disabled())) {
@@ -199,7 +370,8 @@ class WorkspaceOriginalHistoryTest {
             catalog = new SystemRepositoryService(repositories.getRepository(SystemRepositoryRepository.class));
             memberships = new RepositoryMembershipService(repositories.getRepository(RepositoryMembershipRepository.class));
             git = new DslGitRepositoryFactory(new DefaultHibernateRepositoryFactory(persistence.factory), catalog, signatures);
-            var proxy = new ProxyFactory(repositories.getRepository(UserWorkspaceRepository.class));
+            var proxy = new ProxyFactory(repositories.getRepository(UserWorkspaceRepository.class,
+                    RepositoryFragments.just(new WorkspaceProvisioningFenceImpl(entities))));
             proxy.addAdvice(new TransactionInterceptor(transactionManager, new MatchAlwaysTransactionAttributeSource()));
             rows = (UserWorkspaceRepository) proxy.getProxy();
         }

@@ -43,8 +43,9 @@ class WorkspaceProvisioningSourceTest {
         workspace.setProvisioningStatus(WorkspaceProvisioningStatus.NOT_PROVISIONED);
         workspace.setCreatedAt(Instant.now());
         when(repository.findByWorkspaceId(workspace.getWorkspaceId())).thenReturn(Optional.of(workspace));
+        WorkspaceProvisioningTestClaims.enable(repository);
         when(repository.claimProvisioning(anyString(), anyString(),
-                eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection())).thenReturn(1);
+                eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection(), anyString(), any(), any())).thenReturn(1);
         when(repository.save(any(UserWorkspace.class))).thenAnswer(call -> call.getArgument(0));
         var manager = isolated ? new WorkspaceManager(repository, 50, system, factory)
                 : new WorkspaceManager(repository, 50, system, source);
