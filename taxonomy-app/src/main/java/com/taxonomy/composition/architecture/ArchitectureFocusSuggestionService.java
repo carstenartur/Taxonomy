@@ -186,7 +186,9 @@ public class ArchitectureFocusSuggestionService {
             }
             var admittedProvider = llm.captureInteractiveProvider(providerId);
             return new Execution(true, () -> {
-                try (var lease = llm.withProviderBinding(providerId, admittedProvider)) {
+                // Re-acquisition can fail before a single provider call. The receipt records that failure.
+                var pinned = llm.withProviderBinding(providerId, admittedProvider);
+                try (pinned) {
                     String raw = AnalysisRunControl.call(provider, "ARCHITECTURE_FOCUS", () -> {
                         var detail = new LlmCallDetail();
                         detail.setProvider(provider);

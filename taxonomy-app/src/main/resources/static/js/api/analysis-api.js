@@ -61,7 +61,13 @@ window.AnalysisApi = (function () {
         Object.keys(params || {}).forEach(function (key) {
             if (params[key] !== undefined && params[key] !== null) query.set(key, params[key]);
         });
-        return client.request('/api/analyze-node?' + query, {}, options);
+        return client.request('/api/analyze-node?' + query, {}, Object.assign({}, options, {observeResponse: observeChild, operationError: describeChild}));
+    }
+    function observeChild(response, url, init, options, current) {
+        return response.status === 202 ? window.AnalysisAdapterApi.follow(response, url, init, options, current) : response;
+    }
+    function describeChild(error) {
+        return window.AnalysisAdapterApi?.describe(error) || error;
     }
     return Object.freeze({
         // The reserved main operation owns its server deadline; keep explicit caller deadlines.
@@ -71,7 +77,7 @@ window.AnalysisApi = (function () {
             }));
         },
         analyzeNode: analyzeNode,
-        justifyLeaf: function (payload, options) { return rawJson('/api/justify-leaf', payload, options); },
+        justifyLeaf: function (payload, options) { return rawJson('/api/justify-leaf', payload, Object.assign({}, options, {observeResponse: observeChild, operationError: describeChild})); },
         importScores: function (jsonText, options) {
             return client.request('/api/scores/import', {method: 'POST',
                 headers: {'Content-Type': 'application/json'}, body: jsonText}, options);

@@ -60,6 +60,8 @@ class ChildAnalysisOperationHttpTest {
             verify(f.leaves).justify(any(),anyList());
             verify(f.nodes).analyze(any(),anyList());
             replica.perform(get(leaf.getHeader("Content-Location"))).andExpect(status().isOk()).andExpect(content().json(leaf.getContentAsString()));
+            when(f.llm.interactiveSource(anyList(),anyBoolean())).thenReturn("c".repeat(64));
+            replica.perform(get(leaf.getHeader("Content-Location"))).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("STALE_SOURCE"));
             f.actor.set(PrincipalId.create());
             replica.perform(post("/api/justify-leaf").contentType("application/json").content(body)).andExpect(status().isNotFound());
             replica.perform(get("/api/analysis-adapters/"+UUID.randomUUID())).andExpect(status().isNotFound());
@@ -136,6 +138,13 @@ class ChildAnalysisOperationHttpTest {
             ReflectionTestUtils.setField(pins,"nodeReceipts",operations);
             var child = new AnalysisChildAssessment(taxonomy,llm,pins,nodes,leaves);
             ReflectionTestUtils.setField(child,"receipts",operations);
+            var beans = new org.springframework.beans.factory.support.StaticListableBeanFactory();
+            beans.addBean("assessments",child);
+            var sourceAuthority = new ChildAnalysisSourceAuthority(workspace,beans.getBeanProvider(AnalysisChildAssessment.class),
+                    beans.getBeanProvider(com.taxonomy.composition.architecture.ArchitectureFocusSuggestionService.class),
+                    beans.getBeanProvider(com.taxonomy.composition.architecture.ArchitectureSourceFocusService.class),json);
+            beans.addBean("sourceAuthority",sourceAuthority);
+            ReflectionTestUtils.invokeMethod(gateway,"childSources",beans.getBeanProvider(com.taxonomy.analysis.operation.AnalysisChildSourceAuthority.class));
             var controller = new AnalysisApiController(taxonomy,null,json,null,null,nodes,leaves,null,
                     mock(RepositoryStateService.class),workspace,null);
             ReflectionTestUtils.setField(controller,"childAssessments",child);

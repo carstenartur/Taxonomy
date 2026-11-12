@@ -19,6 +19,17 @@ public final class ChildAnalysisReceipt {
         };
     }
 
+    /** Returns null when an independent parent or retained architecture source needs a separate authorized remapping. */
+    public static JsonNode restoreResult(String kind, String sourceId, String targetId, JsonNode stored) {
+        validate(kind, sourceId, stored);
+        if ("FOCUS_INVESTIGATION".equals(kind) || stored.path("source").hasNonNull("parentId")) return null;
+        if ("LEAF_JUSTIFICATION".equals(kind)) return stored;
+        var restored = (tools.jackson.databind.node.ObjectNode) stored.deepCopy();
+        ((tools.jackson.databind.node.ObjectNode) restored.get("result")).put("analysisOperationId", targetId);
+        validate(kind, targetId, restored);
+        return restored;
+    }
+
     public static void validate(String kind, String operationId, JsonNode stored) {
         if (stored == null || !stored.isObject()) throw invalid();
         switch (kind) {
@@ -46,6 +57,9 @@ public final class ChildAnalysisReceipt {
                         allowed(pin.path("binding").path("plugin"), Set.of("id", "version", "artifactSha256"));
                     }
                     Binding parent = JSON.treeToValue(pin, Binding.class);
+                    if (parent.requirement().projectId() != null || parent.requirement().requirementId() != null
+                            || parent.requirement().snapshotId() != null || parent.requirement().requirementVersionId() != null)
+                        throw invalid();
                     if (source.parentId() != null || !operationId.equals(node.analysisOperationId()) || !parent.provider().equals(node.analysisProviderId())
                             || parent.analysisLanguage() != node.analysisLanguage() || parent.reasonLength() != node.analysisReasonLength())
                         throw invalid();

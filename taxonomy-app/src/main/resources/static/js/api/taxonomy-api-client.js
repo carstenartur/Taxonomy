@@ -592,7 +592,11 @@ window.TaxonomyApiClient = (function () {
     }
 
     function request(url, init, options) {
-        return performRequest(url, init, options);
+        if (!options?.observeResponse) return performRequest(url, init, options);
+        var current = captureContext(options, init);
+        return performRequest(url, init, options).then(function (response) {
+            return options.observeResponse(response, url, init || {}, options, current);
+        }).catch(function (error) { throw options.operationError ? options.operationError(error) : error; });
     }
 
     function requestJson(url, init, options) {
