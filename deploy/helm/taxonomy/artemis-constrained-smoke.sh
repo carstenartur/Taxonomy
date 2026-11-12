@@ -206,6 +206,7 @@ kubectl create secret generic taxonomy-artemis-smoke --namespace "${NAMESPACE}" 
   --from-literal=ARTEMIS_USER=taxonomy-smoke --from-literal="ARTEMIS_PASSWORD=${broker_password}" \
   --from-literal="ARTEMIS_BROKER_URL=tcp://smoke-broker:61617?sslEnabled=true&verifyHost=true&forceSSLParameters=true&trustStoreType=PKCS12&trustStorePath=/var/run/taxonomy-artemis/client.p12&trustStorePassword=${tls_password}" \
   --dry-run=client -o yaml | kubectl apply -f -
+printf '%s' "${admin_password}" >"${PRIVATE_DIR}/browser-password"
 printf 'user = "admin:%s"\n' "${admin_password}" >"${PRIVATE_DIR}/web.curl"
 printf 'user = "taxonomy-smoke:%s"\n' "${broker_password}" >"${PRIVATE_DIR}/broker.curl"
 unset admin_password admin_token db_password broker_password tls_password
@@ -547,6 +548,9 @@ jq -en --arg op "${OPERATION}" --arg old "${pg_uid}" --arg new "$(jq -er .uid "$
   --arg claim "${claim_uid}" --arg digest "$(sha256sum "${PRIVATE_DIR}/database-after.json" | cut -d' ' -f1)" \
   '{operationId:$op, previousPodUid:$old, replacementPodUid:$new, retainedClaimUid:$claim, ledgerSha256:$digest,
     identicalDurableState:true, identicalScopedHttpResult:true}' >"${EVIDENCE_DIR}/database-replacement.json"
+"${ROOT_DIR}/target/test-runtime/frontend/node/node" "${ROOT_DIR}/.github/scripts/cluster-saved-run-browser.mjs" \
+  http://127.0.0.1:18081 "${EVIDENCE_DIR}/observation.json" "${EVIDENCE_DIR}/browser-saved-run.json" <"${PRIVATE_DIR}/browser-password"
+
 kubectl get pod,deployment,service,networkpolicy,resourcequota,limitrange --namespace "${NAMESPACE}" -o json >"${EVIDENCE_DIR}/cluster-resources.json"
 REPLACEMENT_UIDS=$(kubectl get pod --namespace "${NAMESPACE}" --selector "${WORKER_SELECTOR},taxonomy.io/worker-set=cp" -o json | jq '[.items[].metadata.uid]')
 jq -e --arg lost "${LOST_UID}" 'index($lost) == null and length == 2' <<<"${REPLACEMENT_UIDS}" >/dev/null
