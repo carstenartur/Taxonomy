@@ -103,6 +103,8 @@ async function registeredJobUsesValidatedProjectIdentity() {
     for(const url of invalidJobUrls()) {
         assert.equal(f.window.taxonomyPortfolioRegisterJob(url,job),false);
     }
+    assert.equal(f.window.taxonomyPortfolioRegisterJob(jobUrl,{...job,projectId:2}),false);
+    assert.equal(f.window.taxonomyPortfolioRegisterJob(jobUrl,{...job,id:'different-job'}),false);
     assert.equal(f.timers.size,0);
     assert.deepEqual(f.saved(),[]);
     assert.equal(f.window.taxonomyPortfolioRegisterJob('/api/projects/1/analysis-jobs/retained-job',job),true);
@@ -308,6 +310,23 @@ async function backForwardCacheResumesDiscoveryOnce() {
     assert.equal(f.saved()[0].job.id,'restored-job');
 }
 
+async function actionableJobsSurviveHistoryLimitAndReload() {
+    const completed = Array.from({length: 25}, (_, i) => ({id: 'done-' + i, status: 'SUCCESS', projectId: 1}));
+    const actionable = ['RUNNING', 'PENDING', 'PARTIAL', 'FAILED'].map(status => ({
+        id: 'older-' + status, projectId: 1, status
+    }));
+    const f = fixture(async () => ({ok: true, json: async () => [...completed, ...actionable]}), true);
+    f.select(1);
+    await f.runNext();
+    const history = f.saved();
+    assert.deepEqual(history.filter(e => e.job.status !== 'SUCCESS').map(e => e.job.id).sort(),
+        actionable.map(job => job.id).sort());
+    assert.equal(history.filter(e => e.job.status === 'SUCCESS').length, 20);
+    const restored = fixture(async () => ({ok: true}), false, history);
+    restored.event('pageshow', {persisted: true});
+    assert.equal(restored.timers.size, 2, 'Both active jobs must resume polling after reload');
+}
+
 async function activeDiscoveryFailureRetainsBoundedRetries() {
     const f=fixture(async()=>({ok:false,status:503,json:async()=>({detail:'Unavailable'})}),true);
     f.select(1);
@@ -317,6 +336,7 @@ async function activeDiscoveryFailureRetainsBoundedRetries() {
 }
 
 const cases = {
+    actionableJobsSurviveHistoryLimitAndReload,
     registeredJobUsesValidatedProjectIdentity,
     restoredJobUsesValidatedProjectIdentity,
     departureCancelsScheduledPoll,

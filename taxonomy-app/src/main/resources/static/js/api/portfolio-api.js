@@ -118,7 +118,7 @@ window.TaxonomyPortfolioApi = (function () {
     }
 
     /** Resolve server Location headers and reject resources outside this application. */
-    function analysisJobUrl(location, expectedProjectId) {
+    function analysisJobUrl(location, expectedProjectId, expectedJobId) {
         if (typeof location !== 'string' || !location) return null;
         try {
             const resolved = new URL(applicationUrl(location), window.location.href);
@@ -131,6 +131,7 @@ window.TaxonomyPortfolioApi = (function () {
             if (!match || !Number.isSafeInteger(Number(match[1]))
                     || (expectedProjectId != null && Number(match[1]) !== Number(expectedProjectId))) return null;
             const jobId = decodeURIComponent(match[2]);
+            if (expectedJobId != null && jobId !== expectedJobId) return null;
             if (/[\\/]/.test(jobId) || jobId === '.' || jobId === '..') return null;
             return resolved.href;
         } catch (error) {
@@ -323,6 +324,15 @@ window.TaxonomyPortfolioApi = (function () {
 
         // ── Analysis jobs ─────────────────────────────────────────────────────
         analysisJobUrl: analysisJobUrl,
+        // Callers supply newest-first jobs or stored entries. Only finished history is bounded.
+        retainedAnalysisJobs: function (entries, jobOf) {
+            let finished = 0;
+            return entries.filter(function (entry) {
+                const job = jobOf(entry);
+                if (!job || !job.id) return false;
+                return (job.status !== 'SUCCESS' && job.status !== 'CANCELLED') || ++finished <= 20;
+            });
+        },
         listAnalysisJobs: function (projectId, options) {
             return getJson(projectPath(projectId) + '/analysis-jobs', options);
         },

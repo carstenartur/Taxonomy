@@ -42,7 +42,9 @@
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = 'taxonomy-decision-report' + (snapshotId ? '-' + snapshotId.replace(/[^A-Za-z0-9_-]/g, '_') : '') + '.' + (descriptor?.fileExtension || format);
+        const demo = snapshotId && /^attachment;\s*filename="DEMO-/i.test(response.headers.get('Content-Disposition') || '');
+        link.download = (demo ? 'DEMO-' : '') + 'taxonomy-decision-report'
+            + (snapshotId ? '-' + snapshotId.replace(/[^A-Za-z0-9_-]/g, '_') : '') + '.' + (descriptor?.fileExtension || format);
         document.body.appendChild(link); link.click(); link.remove();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
