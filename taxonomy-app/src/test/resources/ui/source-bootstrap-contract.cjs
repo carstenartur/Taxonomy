@@ -698,7 +698,8 @@ async function snapshot(mode) {
 }
 
 (async () => {
-    if (scenario.startsWith('versioning-')) await standaloneVersioning(scenario.slice('versioning-'.length));
+    if (scenario === 'provisional-products') await provisionalProducts();
+    else if (scenario.startsWith('versioning-')) await standaloneVersioning(scenario.slice('versioning-'.length));
     else if (scenario === 'portfolio-early-submit') await portfolio(true);
     else if (scenario === 'portfolio-ready-submit') await portfolio(false);
     else if (scenario === 'portfolio-selection-pending-submit') await portfolio(true, false, true);
@@ -717,3 +718,45 @@ async function snapshot(mode) {
     else throw new Error('Unknown JUnit scenario ' + scenario);
 })().then(() => console.log('SOURCE_BOOTSTRAP_COMPLETE '+scenario))
     .catch(error => {console.error(error); process.exitCode = 1;});
+
+async function provisionalProducts() {
+    const delayed = deferred();
+    const applied = {
+        catalogueRevision: 'generation-a', workbookSha256: 'frozen workbook', overlaySha256: 'frozen overlay', mappingVersion: 'v1',
+        mappings: [{productCode: 'IP-1', productTitle: 'Fixture product', sourceParentReference: 'Source parent',
+            proposedParentCode: 'IP-F', secondaryClassificationCodes: ['IP-S'], confidence: 0.7,
+            state: 'PROVISIONAL', sourceState: 'draft', justification: 'Fixture rationale'}]
+    };
+    const filters = [];
+    const app = fixture('analysis', request => {
+        assert.equal(request.url.pathname, '/taxonomy/api/admin/catalogue/provisional-information-products');
+        const query = request.url.searchParams.get('q'); filters.push(query);
+        if (query === '') return delayed.promise;
+        if (query === 'denied') return Response.json({}, {status: 403});
+        return Response.json(applied);
+    });
+    app.load('api/reference-api.js');
+    app.load('core/provisional-product-review.js');
+    const panel = app.nodes.get('provisionalProductPanel'), form = app.nodes.get('provisionalProductFilter');
+    const filter = app.nodes.get('provisionalProductQuery'), results = app.nodes.get('provisionalProductResults');
+    const status = app.nodes.get('provisionalProductStatus');
+    const content = node => [node.textContent, ...node.children.flatMap(content)];
+    assert.deepEqual(filters, []);
+    panel.open = true; panel.dispatchEvent({type: 'toggle'}); await settle();
+    filter.value = '  IP & C  '; form.dispatchEvent({type: 'submit'}); await settle();
+    assert.deepEqual(filters, ['', 'IP & C']);
+    assert.equal(status.textContent, 'admin.productReview.count:1');
+    assert.equal(results.children[1].tagName, 'DETAILS');
+    assert.equal(results.children[1].children[0].tagName, 'SUMMARY');
+    const visible = content(results);
+    for (const text of ['frozen workbook','frozen overlay','v1','IP-1 — Fixture product','Source parent','IP-F','IP-S','draft','Fixture rationale']) {
+        assert.ok(visible.includes(text), text);
+    }
+    delayed.resolve(Response.json({...applied, mappingVersion: 'late-v0'})); await settle();
+    assert.ok(!content(results).includes('late-v0'));
+    filter.value = 'denied'; form.dispatchEvent({type: 'submit'}); await settle();
+    assert.equal(results.children.length, 0);
+    assert.equal(status.textContent, 'admin.productReview.unavailable');
+    panel.open = false; panel.dispatchEvent({type: 'toggle'});
+    assert.equal(status.textContent, '');
+}

@@ -8,6 +8,10 @@ window.TaxonomyReferenceApi = (function () {
     }
     function prompt(code) { return '/api/prompts/' + encodeURIComponent(code); }
     return {
+        provisionalInformationProducts: function (query, signal) {
+            return read('/api/admin/catalogue/provisional-information-products?q=' + encodeURIComponent(query),
+                null, {signal: signal});
+        },
         about: function () { return read('/api/about'); },
         aiStatus: function (provider) { return read('/api/ai-status' + (provider === 'CUSTOM_OPENAI' ? '?provider=CUSTOM_OPENAI' : '')); },
         diagnostics: function (headers) { return read('/api/diagnostics', headers); },
