@@ -12,11 +12,27 @@ public final class GitHistoryTransfer {
     public static final int MAX_OBJECT_BYTES = 64 * 1024 * 1024;
     private static final int MAX_OBJECTS = 1_000_000;
     private static final long MAX_BYTES = 1024L * 1024 * 1024;
+    private static final Limits DEFAULT_LIMITS = new Limits(MAX_OBJECTS, MAX_OBJECT_BYTES, MAX_BYTES);
+    /** Callers may impose smaller budgets while the public transfer always uses the production limits. */
+    record Limits(int maxObjects, long maxObjectBytes, long maxBytes) {
+        Limits {
+            if (maxObjects < 1 || maxObjects > MAX_OBJECTS || maxObjectBytes < 1 || maxObjectBytes > MAX_OBJECT_BYTES
+                    || maxBytes < 1 || maxBytes > MAX_BYTES) {
+                throw new IllegalArgumentException("Transfer limits must fit within the production budget");
+            }
+        }
+    }
+
     private GitHistoryTransfer() {}
 
     /** Accepted heads must be captured from the destination before import; staging refs are never trust boundaries. */
     public static long copyCommitClosure(DslGitRepository source, DslGitRepository destination,
                                          String commit, List<String> acceptedHeads) throws IOException {
+        return copyCommitClosure(source, destination, commit, acceptedHeads, DEFAULT_LIMITS);
+    }
+
+    static long copyCommitClosure(DslGitRepository source, DslGitRepository destination, String commit,
+                                  List<String> acceptedHeads, Limits limits) throws IOException {
         ObjectId selected = ObjectId.fromString(commit);
         List<String> accepted = List.copyOf(acceptedHeads);
         Repository from = source.getGitRepository(), to = destination.getGitRepository();
@@ -31,8 +47,8 @@ public final class GitHistoryTransfer {
                     if (from.getObjectDatabase().has(id)) walk.markUninteresting(walk.parseCommit(id));
                 }
                 RevObject object;
-                while ((object = walk.next()) != null) copy(reader, writer, to, object, budget);
-                while ((object = walk.nextObject()) != null) copy(reader, writer, to, object, budget);
+                while ((object = walk.next()) != null) copy(reader, writer, to, object, budget, limits);
+                while ((object = walk.nextObject()) != null) copy(reader, writer, to, object, budget, limits);
                 writer.flush();
             }
             try (ObjectWalk verification = new ObjectWalk(to)) {
@@ -48,11 +64,12 @@ public final class GitHistoryTransfer {
         return budget[1];
     }
 
-    private static void copy(ObjectReader reader, ObjectInserter writer, Repository destination, RevObject object, long[] budget) throws IOException {
-        if (++budget[0] > MAX_OBJECTS) throw new IOException("History transfer exceeds the object budget");
+    private static void copy(ObjectReader reader, ObjectInserter writer, Repository destination, RevObject object,
+                             long[] budget, Limits limits) throws IOException {
+        if (++budget[0] > limits.maxObjects()) throw new IOException("History transfer exceeds the object budget");
         if (destination.getObjectDatabase().has(object)) return;
         ObjectLoader loader = reader.open(object);
-        if (loader.getSize() > MAX_OBJECT_BYTES || budget[1] + loader.getSize() > MAX_BYTES)
+        if (loader.getSize() > limits.maxObjectBytes() || loader.getSize() > limits.maxBytes() - budget[1])
             throw new IOException("History transfer exceeds the byte budget");
         try (ObjectStream stream = loader.openStream()) {
             ObjectId copied = writer.insert(loader.getType(), loader.getSize(), stream);

@@ -4,18 +4,104 @@ import com.taxonomy.workspace.service.BranchHeadConflictException;
 import com.taxonomy.workspace.signing.SignatureStatus;
 import com.taxonomy.workspace.signing.SigningTestKeys;
 import org.eclipse.jgit.lib.*;
+import org.eclipse.jgit.revwalk.ObjectWalk;
+import org.eclipse.jgit.revwalk.RevObject;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.*;
 
 class GitHistoryTransferTest {
     @TempDir Path keys;
+
+    @Test
+    void aRealClosureFitsItsExactLimitsAndCannotPublishWhenOneObjectOrByteIsMissing() throws Exception {
+        try (var source = new DslGitRepository()) {
+            source.commitDsl("main", "first version", "alice", "First");
+            String tip = source.commitDsl("main", "updated version", "alice", "Second");
+            var sizes = new ArrayList<Long>();
+            try (var walk = new ObjectWalk(source.getGitRepository()); var reader = source.getGitRepository().newObjectReader()) {
+                walk.markStart(walk.parseCommit(ObjectId.fromString(tip)));
+                RevObject object;
+                while ((object = walk.next()) != null) sizes.add(reader.getObjectSize(object, ObjectReader.OBJ_ANY));
+                while ((object = walk.nextObject()) != null) sizes.add(reader.getObjectSize(object, ObjectReader.OBJ_ANY));
+            }
+            long bytes = sizes.stream().mapToLong(Long::longValue).sum();
+            long largest = sizes.stream().mapToLong(Long::longValue).max().orElseThrow();
+            var upstream = new GitUpstreamRef("source", "main");
+            record Rejected(GitHistoryTransfer.Limits limits, String reason) {}
+            for (var rejected : List.of(
+                    new Rejected(new GitHistoryTransfer.Limits(sizes.size() - 1, largest, bytes), "object budget"),
+                    new Rejected(new GitHistoryTransfer.Limits(sizes.size(), largest - 1, bytes), "byte budget"),
+                    new Rejected(new GitHistoryTransfer.Limits(sizes.size(), largest, bytes - 1), "byte budget"))) {
+                try (var target = new DslGitRepository()) {
+                    String local = target.commitDsl("draft", "private work", "bob", "Keep this");
+                    assertThatThrownBy(() -> GitHistoryTransfer.copyCommitClosure(source, target, tip, List.of(), rejected.limits()))
+                            .isInstanceOf(IOException.class).hasMessageContaining(rejected.reason());
+                    assertThat(upstream.head(target)).isNull();
+                    assertThat(target.getHeadCommit("draft")).isEqualTo(local);
+                    GitHistoryTransfer.copyCommitClosure(source, target, tip, List.of());
+                    upstream.advance(target, null, tip, "bob");
+                    assertThat(upstream.head(target)).isEqualTo(tip);
+                    assertThat(target.getHeadCommit("draft")).isEqualTo(local);
+                }
+            }
+            try (var target = new DslGitRepository()) {
+                assertThat(GitHistoryTransfer.copyCommitClosure(source, target, tip, List.of(),
+                        new GitHistoryTransfer.Limits(sizes.size(), largest, bytes))).isEqualTo(bytes);
+                assertThat(upstream.head(target)).isNull();
+                upstream.advance(target, null, tip, "bob");
+                assertThat(target.getDslAtCommit(tip)).isEqualTo("updated version");
+            }
+        }
+    }
+
+    @Test
+    void aRestrictedTransferCannotOverrideTheProductionBudgets() {
+        assertThatIllegalArgumentException().isThrownBy(() -> new GitHistoryTransfer.Limits(1_000_001, 1, 1));
+        assertThatIllegalArgumentException().isThrownBy(() -> new GitHistoryTransfer.Limits(1, 64L * 1024 * 1024 + 1, 1));
+        assertThatIllegalArgumentException().isThrownBy(() -> new GitHistoryTransfer.Limits(1, 1, 1024L * 1024 * 1024 + 1));
+    }
+
+    @Test
+    void thePublicTransferRejectsAnActualObjectOneByteAboveTheProductionLimit() throws Exception {
+        Path content = keys.resolve("oversized.dsl");
+        long size = GitHistoryTransfer.MAX_OBJECT_BYTES + 1L;
+        try (var file = new RandomAccessFile(content.toFile(), "rw")) {
+            file.setLength(size);
+        }
+        try (var git = org.eclipse.jgit.api.Git.init().setBare(true).setDirectory(keys.resolve("source.git").toFile()).call();
+             var source = new DslGitRepository(git.getRepository(), false); var target = new DslGitRepository()) {
+            String tip;
+            try (var writer = git.getRepository().newObjectInserter(); var input = Files.newInputStream(content)) {
+                ObjectId blob = writer.insert(Constants.OBJ_BLOB, size, input);
+                var tree = new TreeFormatter();
+                tree.append("large.dsl", FileMode.REGULAR_FILE, blob);
+                var commit = new CommitBuilder();
+                commit.setTreeId(writer.insert(tree));
+                commit.setAuthor(new PersonIdent("tester", "tester@example.test"));
+                commit.setCommitter(commit.getAuthor());
+                commit.setMessage("One byte over limit");
+                tip = writer.insert(commit).name();
+                writer.flush();
+                assertThat(git.getRepository().open(blob).getSize()).isEqualTo(size);
+            }
+            String independent = target.commitDsl("draft", "private", "bob", "Keep");
+            assertThatThrownBy(() -> GitHistoryTransfer.copyCommitClosure(source, target, tip, List.of()))
+                    .isInstanceOf(IOException.class).hasMessageContaining("byte budget");
+            assertThat(new GitUpstreamRef("source", "main").head(target)).isNull();
+            assertThat(target.getHeadCommit("draft")).isEqualTo(independent);
+        }
+    }
 
     @Test void incrementalFetchAdvancesOnlyTheSelectedUpstreamAndRejectsStaleOrRewoundHeads() throws Exception {
         try (var upstream = new DslGitRepository(); var target = new DslGitRepository()) {
