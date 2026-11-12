@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.cluster;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.taxonomy.analysis.dag.json.AnalysisContextJson;
 import com.taxonomy.analysis.backup.AnalysisBackupContributor.ResumePolicy;
 import com.taxonomy.analysis.dag.AnalysisOperationContext;
@@ -11,7 +12,8 @@ import java.util.List;
 public final class ClusterAnalysisBackupRecords {
     private ClusterAnalysisBackupRecords() { }
     public record Run(SourceRecordId sourceId, String principalScope,
-                      @JsonSerialize(converter = AnalysisContextJson.class) AnalysisOperationContext context,
+                      @JsonSerialize(converter = AnalysisContextJson.class)
+                      @JsonDeserialize(using = AnalysisContextJson.Reader.class) AnalysisOperationContext context,
                       String commandJson, String viewJson, String resultJson, String relationPlanJson,
                       String sourceState, ResumePolicy resumePolicy, int totalRoots, int completedRoots,
                       long revision, long createdAt, long updatedAt) { }
