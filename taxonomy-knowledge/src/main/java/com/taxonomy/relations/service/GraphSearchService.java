@@ -38,6 +38,7 @@ public class GraphSearchService {
 
     private final LocalEmbeddingService embeddingService;
     private final GraphSearchAuthorityService authority;
+    private final BranchGraphVectors branchVectors;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -47,14 +48,42 @@ public class GraphSearchService {
 
     public GraphSearchService(LocalEmbeddingService embeddingService,
                               GraphSearchAuthorityService authority) {
+        this(embeddingService, authority, null);
+    }
+
+    @Autowired
+    public GraphSearchService(LocalEmbeddingService embeddingService, GraphSearchAuthorityService authority, BranchGraphVectors branchVectors) {
+        this.branchVectors = branchVectors;
         this.embeddingService = embeddingService;
         this.authority = authority;
+    }
+
+    /** Branch reads have their own complete node and relation index, independent of the global index lifecycle. */
+    public Optional<GraphSearchResult> searchBranchIfPresent(String query, int maxResults, RepositoryContext context) {
+        if (branchVectors == null || maxResults <= 0) return Optional.empty();
+        catalogueRuntimePolicy.requireGlobalIndexAllowed();
+        try {
+            var source = authority.inspectForBranchSelection(context);
+            if (source.readModel() != ReadModel.PROJECTION || source.count() == 0) return Optional.empty();
+            int nodeLimit = Math.min(maxResults, MAX_NODE_RESULTS);
+            return Optional.of(branchVectors.search(context, source.authoritativeCommitId(), query, nodeLimit, safeRelationLimit(nodeLimit)));
+        } catch (Exception | LinkageError error) {
+            if (error instanceof InterruptedException) Thread.currentThread().interrupt();
+            throw new SearchUnavailableException();
+        }
     }
 
     @Transactional(readOnly = true)
     public GraphSearchResult graphSearch(String queryText,
                                          int maxResults,
                                          RepositoryContext context) {
+        var branch = searchBranchIfPresent(queryText, maxResults, context);
+        return branch.orElseGet(() -> searchGlobalSource(queryText, maxResults, context));
+    }
+
+    /** This path independently rejects every nonempty projected branch, even if the selection moves. */
+    @Transactional(readOnly = true)
+    public GraphSearchResult searchGlobalSource(String queryText, int maxResults, RepositoryContext context) {
         catalogueRuntimePolicy.requireGlobalIndexAllowed();
         if (maxResults <= 0) {
             return new GraphSearchResult(Collections.emptyList(), Collections.emptyMap(),
@@ -77,7 +106,7 @@ public class GraphSearchService {
                             .filter(f.match().field("embeddingModel").matching(indexKey)))
                     .fetchHits(nodeLimit);
             List<TaxonomyNodeDto> matchedNodes = nodeHits.stream()
-                    .map(this::toFlatDto)
+                    .map(GraphSearchService::toFlatDto)
                     .collect(Collectors.toList());
 
             List<TaxonomyRelation> relationHits = source.readModel() == ReadModel.PROJECTION
@@ -118,7 +147,7 @@ public class GraphSearchService {
         return (int) Math.min(requested, MAX_RELATION_RESULTS);
     }
 
-    private String buildSummary(Map<String, Long> byRoot, Map<String, Long> byType, String query) {
+    static String buildSummary(Map<String, Long> byRoot, Map<String, Long> byType, String query) {
         if (byRoot.isEmpty() && byType.isEmpty()) {
             return "No graph relationships matched for: " + query;
         }
@@ -137,7 +166,7 @@ public class GraphSearchService {
         return summary.toString();
     }
 
-    private TaxonomyNodeDto toFlatDto(TaxonomyNode node) {
+    static TaxonomyNodeDto toFlatDto(TaxonomyNode node) {
         TaxonomyNodeDto dto = new TaxonomyNodeDto();
         dto.setId(node.getId());
         dto.setCode(node.getCode());
