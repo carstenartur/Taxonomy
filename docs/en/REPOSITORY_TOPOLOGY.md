@@ -171,6 +171,8 @@ The selected personal workspace must be ready, and its owner must still have con
 
 To retain a specific tag, read `GET /api/workspace/upstream/tag?name=release-1` after fetching its commit. Send the returned `name`, `sourceTagObject`, and `trackedCommit` to `POST /api/workspace/upstream/fetch-tag`. Lightweight tags and annotated commit tags keep their original object identities. Importing an existing tag at the same identity is safe to repeat. A stale capture or a conflicting local tag returns HTTP 409. Read the status again before deciding whether to retry.
 
+A central fork uses the same request and response fields under `/api/repositories/{forkId}/upstream` when the multi-repository API is enabled. Use `GET` on the base route or `/tag`, and `POST` on `/fetch` or `/fetch-tag`. The fork catalogue fixes the upstream repository and branch. Reading requires current contributor access to both repositories. Publication additionally requires architecture write permission. A fork of a restricted source must still be private at publication. Fetch advances the fork's upstream tracking ref. Its default branch, independently created branches and original fork point retain their values.
+
 ## User-Facing Terminology
 
 The following terminology is used in the user interface to avoid exposing

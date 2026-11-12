@@ -1,6 +1,7 @@
 package com.taxonomy.search;
 
 import com.taxonomy.catalog.model.TaxonomyRelation;
+import com.taxonomy.catalog.service.RelationEmbeddingText;
 import org.hibernate.search.engine.backend.document.DocumentElement;
 import org.hibernate.search.engine.backend.document.IndexFieldReference;
 import org.hibernate.search.mapper.pojo.bridge.TypeBridge;
@@ -51,20 +52,11 @@ public class RelationEmbeddingBinder implements TypeBinder {
         }
 
         public static String buildEnrichedText(TaxonomyRelation relation) {
-            String sourceName = (relation.getSourceNode() != null
-                    && relation.getSourceNode().getNameEn() != null)
-                    ? relation.getSourceNode().getNameEn() : "";
-            String targetName = (relation.getTargetNode() != null
-                    && relation.getTargetNode().getNameEn() != null)
-                    ? relation.getTargetNode().getNameEn() : "";
-            String relType = relation.getRelationType() != null
-                    ? relation.getRelationType().name().toLowerCase().replace('_', ' ') : "";
-            StringBuilder sb = new StringBuilder();
-            sb.append(sourceName).append(" ").append(relType).append(" ").append(targetName);
-            if (relation.getDescription() != null && !relation.getDescription().isBlank()) {
-                sb.append(". ").append(relation.getDescription());
-            }
-            return sb.toString().trim();
+            return RelationEmbeddingText.build(
+                    relation.getSourceNode() == null ? null : relation.getSourceNode().getNameEn(),
+                    relation.getRelationType(),
+                    relation.getTargetNode() == null ? null : relation.getTargetNode().getNameEn(),
+                    relation.getDescription(), java.util.Locale.getDefault());
         }
     }
 }
