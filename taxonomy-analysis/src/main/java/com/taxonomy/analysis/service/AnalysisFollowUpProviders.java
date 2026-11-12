@@ -21,6 +21,18 @@ public class AnalysisFollowUpProviders {
     private record Pin(String provider, PluginInvocation binding, AnalysisReasonLength reasonLength,
                        com.taxonomy.dto.AnalysisLanguage analysisLanguage, RequirementReference requirement,
                        String owner, WorkspaceContext workspace, Instant expires) { }
+    /** Stored with a node result only inside its actor-scoped receipt. */
+    public record Binding(String provider, PluginInvocation binding, AnalysisReasonLength reasonLength,
+                          com.taxonomy.dto.AnalysisLanguage analysisLanguage, RequirementReference requirement) {
+        public Binding {
+            if (provider == null || provider.isBlank() || provider.length() > 200 || provider.chars().anyMatch(Character::isISOControl))
+                throw new IllegalArgumentException("Invalid provider identity");
+            Objects.requireNonNull(requirement);
+            Objects.requireNonNull(reasonLength);
+            Objects.requireNonNull(analysisLanguage);
+        }
+    }
+    @Autowired(required = false) private com.taxonomy.analysis.operation.AnalysisNodeReceipts nodeReceipts;
     private final LlmProviderConfig providers;
     private final LinkedHashMap<String, Pin> local = new LinkedHashMap<>();
     @Autowired(required = false) private ClusterAnalysisStore cluster;
@@ -47,33 +59,41 @@ public class AnalysisFollowUpProviders {
         String provider = effectiveProvider(requested);
         if (providers.isScenarioReplay(provider)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                 "Replay requires an authorized persisted analysis operation");
-        local.entrySet().removeIf(entry -> entry.getValue().expires().isBefore(Instant.now()));
-        if (local.containsKey(operationId)) throw unavailable();
-        while (local.size() >= 512) local.remove(local.keySet().iterator().next());
-        local.put(operationId, new Pin(provider, providers.captureProviderBinding(provider), AnalysisReasonContext.effective(reasonLength), language,
-                RequirementReference.adHoc(text), owner, workspace, Instant.now().plusSeconds(86400)));
+        rememberBinding(operationId, new Binding(provider, providers.captureProviderBinding(provider),
+                AnalysisReasonContext.effective(reasonLength), language, RequirementReference.adHoc(text)), owner, workspace);
         return provider;
+    }
+
+    public synchronized void rememberBinding(String id, Binding binding, String owner, WorkspaceContext workspace) {
+        local.entrySet().removeIf(entry -> entry.getValue().expires().isBefore(Instant.now()));
+        if (local.containsKey(id)) throw unavailable();
+        while (local.size() >= 512) local.remove(local.keySet().iterator().next());
+        local.put(id, new Pin(binding.provider(), binding.binding(), binding.reasonLength(), binding.analysisLanguage(),
+                binding.requirement(), owner, workspace, Instant.now().plusSeconds(86400)));
+    }
+
+    public Binding bind(String operationId, String requestedProvider, String text, String owner, WorkspaceContext workspace,
+                        AnalysisReasonLength length, com.taxonomy.dto.AnalysisLanguage language) {
+        if (operationId == null || operationId.isBlank()) {
+            String provider = effectiveProvider(requestedProvider);
+            if (providers.isScenarioReplay(provider)) throw unavailable();
+            return new Binding(provider, providers.captureProviderBinding(provider),
+                    AnalysisReasonContext.effective(length), language, RequirementReference.adHoc(text));
+        }
+        var pin = resolve(operationId, owner, workspace);
+        if (!pin.requirement().matches(text)) throw new IllegalArgumentException("Follow-up requirement does not match analysis");
+        if (requestedProvider != null && !requestedProvider.isBlank() && !pin.provider().equalsIgnoreCase(requestedProvider.strip()))
+            throw new IllegalArgumentException("Follow-up provider does not match analysis");
+        return new Binding(pin.provider(), pin.binding(), pin.reasonLength(), pin.analysisLanguage(), pin.requirement());
     }
 
     public <T> T execute(String operationId, String requestedProvider, String text,
                          String owner, WorkspaceContext workspace, Supplier<T> work) {
-        Pin pin;
-        if (operationId != null && !operationId.isBlank()) {
-            pin = resolve(operationId, owner, workspace);
-            if (!pin.requirement().matches(text)) throw new IllegalArgumentException("Follow-up requirement does not match analysis");
-            if (requestedProvider != null && !requestedProvider.isBlank()
-                    && !pin.provider().equalsIgnoreCase(requestedProvider.strip()))
-                throw new IllegalArgumentException("Follow-up provider does not match analysis");
-        } else {
-            String provider = effectiveProvider(requestedProvider);
-            // Replay identities are usable only through a persisted and authorized operation.
-            if (providers.isScenarioReplay(provider)) throw unavailable();
-            pin = new Pin(provider, providers.captureProviderBinding(provider),
-                    AnalysisReasonContext.resolve(null, analysisRuntimeSettings),
-                    AnalysisLanguageContext.resolveCurrentRequest(null),
-                    RequirementReference.adHoc(text),
-                    owner, workspace, Instant.now());
-        }
+        return execute(bind(operationId, requestedProvider, text, owner, workspace,
+                AnalysisReasonContext.resolve(null, analysisRuntimeSettings), AnalysisLanguageContext.resolveCurrentRequest(null)), work);
+    }
+
+    public <T> T execute(Binding pin, Supplier<T> work) {
         try (var ignored = providers.withRequestProvider(pin.provider(), pin.binding());
              var reasons = AnalysisReasonContext.open(pin.reasonLength());
              var language = AnalysisLanguageContext.open(pin.analysisLanguage())) { return work.get(); }
@@ -98,10 +118,13 @@ public class AnalysisFollowUpProviders {
         }
         synchronized (this) {
             var pin = local.get(operationId);
-            if (pin == null || pin.expires().isBefore(Instant.now()) || !Objects.equals(pin.owner(), owner)
-                    || !Objects.equals(pin.workspace(), workspace)) throw unavailable();
-            return pin;
+            if (pin != null && !pin.expires().isBefore(Instant.now()) && Objects.equals(pin.owner(), owner)
+                    && Objects.equals(pin.workspace(), workspace)) return pin;
         }
+        if (nodeReceipts == null) throw unavailable();
+        var binding = nodeReceipts.readParent(operationId);
+        return new Pin(binding.provider(), binding.binding(), binding.reasonLength(), binding.analysisLanguage(),
+                binding.requirement(), owner, workspace, Instant.MAX);
     }
 
     private String effectiveProvider(String requested) {

@@ -1620,6 +1620,27 @@ public class LlmService {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    /** Interactive operations reserve durable work only when the selected provider can perform inference. */
+    public boolean interactiveDispatchAvailable(boolean scoring) {
+        if (providerConfig.isMockMode() || isReplayActive()) return false;
+        var provider = getActiveProviderId();
+        if (providerConfig.isScenarioReplay(provider)) return false;
+        if (provider.equals(LlmProvider.LOCAL_ONNX.id())) return scoring && localEmbeddingService.isAvailable();
+        return !missingCredential(provider, getApiKey(provider));
+    }
+
+    /** Captures the exact catalogue evidence used by interactive assessment, including root context and product roles. */
+    public String interactiveSource(List<TaxonomyNode> nodes, boolean scoring) {
+        var evidence = new java.util.ArrayList<String>();
+        var contexts = scoring ? taxonomyService.getAssessmentContexts(nodes) : Map.<String,String>of();
+        for (var node : nodes) {
+            evidence.add(com.taxonomy.analysis.operation.AnalysisAdapterStore.digest(node.getCode(), node.getParentCode(),
+                    node.getNameEn(), node.getNameDe(), node.getDescriptionEn(), node.getDescriptionDe(),
+                    contexts.get(node.getCode()), scoring ? Boolean.toString(isProduct(node)) : null));
+        }
+        return com.taxonomy.analysis.operation.AnalysisAdapterStore.digest(evidence.toArray(String[]::new));
+    }
+
     private boolean missingCredential(ProviderId provider, String key) {
         if (key != null && !key.isBlank()) return false;
         // Existing built-ins retain their credential/no-auth-marker behavior.
