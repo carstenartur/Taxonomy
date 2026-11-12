@@ -12,6 +12,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 
 import java.lang.reflect.Method;
@@ -273,6 +275,64 @@ class RepositoryMembershipServiceTest {
         service.removeMembership(repository, "reader", "owner");
 
         verify(membershipRepository).delete(reader);
+    }
+
+
+    @Test
+    void versionedMembershipCreationOnlyAcceptsAbsentVersion() {
+        SystemRepository repository = repository(RepositoryVisibility.PRIVATE, RepositoryLifecycleState.ACTIVE, false);
+        when(membershipRepository.findByRepositoryIdForUpdate("repo-a")).thenReturn(List.of());
+
+        assertThrows(OptimisticLockingFailureException.class, () ->
+                service.assignRole(repository, "new-reader", RepositoryRole.READER, "owner", 0L));
+        RepositoryMembership created = service.assignRole(
+                repository, "new-reader", RepositoryRole.READER, "owner", -1L);
+
+        assertEquals(RepositoryRole.READER, created.getRole());
+        verify(membershipRepository).save(created);
+    }
+
+    @Test
+    void versionedMembershipUpdateRejectsStaleGrantWithoutSaving() {
+        SystemRepository repository = repository(RepositoryVisibility.PRIVATE, RepositoryLifecycleState.ACTIVE, false);
+        RepositoryMembership current = membership("repo-a", "reader", RepositoryRole.READER);
+        ReflectionTestUtils.setField(current, "version", 7L);
+        when(membershipRepository.findByRepositoryIdForUpdate("repo-a")).thenReturn(List.of(current));
+
+        assertThrows(OptimisticLockingFailureException.class, () ->
+                service.assignRole(repository, "reader", RepositoryRole.OWNER, "owner", 6L));
+        assertThrows(OptimisticLockingFailureException.class, () ->
+                service.assignRole(repository, "reader", RepositoryRole.OWNER, "owner", -1L));
+        assertEquals(RepositoryRole.READER, current.getRole());
+        verify(membershipRepository, never()).save(any());
+    }
+
+    @Test
+    void versionedMembershipUpdateUsesLockedCurrentVersion() {
+        SystemRepository repository = repository(RepositoryVisibility.PRIVATE, RepositoryLifecycleState.ACTIVE, false);
+        RepositoryMembership current = membership("repo-a", "reader", RepositoryRole.READER);
+        ReflectionTestUtils.setField(current, "version", 7L);
+        when(membershipRepository.findByRepositoryIdForUpdate("repo-a")).thenReturn(List.of(current));
+
+        RepositoryMembership result = service.assignRole(
+                repository, "reader", RepositoryRole.CONTRIBUTOR, "owner", 7L);
+
+        assertEquals(RepositoryRole.CONTRIBUTOR, result.getRole());
+        verify(membershipRepository).save(current);
+    }
+
+    @Test
+    void versionedMembershipDeletionRejectsStaleGrantWithoutDeleting() {
+        SystemRepository repository = repository(RepositoryVisibility.PRIVATE, RepositoryLifecycleState.ACTIVE, false);
+        RepositoryMembership current = membership("repo-a", "reader", RepositoryRole.READER);
+        ReflectionTestUtils.setField(current, "version", 4L);
+        when(membershipRepository.findByRepositoryIdForUpdate("repo-a")).thenReturn(List.of(current));
+
+        assertThrows(OptimisticLockingFailureException.class, () ->
+                service.removeMembership(repository, "reader", "owner", 3L));
+        verify(membershipRepository, never()).delete(any());
+        service.removeMembership(repository, "reader", "owner", 4L);
+        verify(membershipRepository).delete(current);
     }
 
     @Test
