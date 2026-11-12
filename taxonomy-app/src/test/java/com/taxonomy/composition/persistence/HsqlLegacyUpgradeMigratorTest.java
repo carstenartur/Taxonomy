@@ -1,8 +1,16 @@
 package com.taxonomy.composition.persistence;
 
+import com.taxonomy.security.persistence.PrincipalSchemaMigration;
 import com.taxonomy.workspace.model.RepositoryTenantIdentity;
+import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
+import org.flywaydb.core.Flyway;
+import org.hibernate.cfg.Configuration;
+import org.junit.jupiter.api.io.TempDir;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -12,10 +20,55 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HsqlLegacyUpgradeMigratorTest {
+
+    @Test
+    void ordinaryHibernateUpdateUpgradesAnExistingWorkspaceWithoutChangingItsCapturedSource(@TempDir Path directory)
+            throws Exception {
+        String database = "jdbc:hsqldb:file:" + directory.resolve("old-workspace") + ";shutdown=true";
+        var existing = new DriverManagerDataSource(database, "SA", "");
+        var business = Flyway.configure().dataSource(existing).locations("classpath:db/restore/hsqldb");
+        business.target("1").load().migrate();
+        PrincipalSchemaMigration.migrate(existing);
+        business.target("19").load().migrate();
+        String commit = "a".repeat(40);
+        try (var connection = DriverManager.getConnection(database, "SA", "");
+             var insert = connection.prepareStatement("""
+                     insert into user_workspace (workspace_id, username, current_branch, created_at,
+                         provisioning_status, topology_mode, archived, is_default, shared,
+                         source_repository_id, source_branch, base_commit)
+                     values ('existing-copy','owner','draft',CURRENT_TIMESTAMP,
+                         'PROVISIONING','INTERNAL_SHARED',false,false,false,'original-source','main',?)
+                     """)) {
+            insert.setString(1, commit);
+            assertEquals(1, insert.executeUpdate());
+        }
+
+        // This is the regular Hibernate update path on an existing HSQL installation.
+        try (var factory = new Configuration().addAnnotatedClass(UserWorkspace.class)
+                .setProperty("hibernate.connection.url", database)
+                .setProperty("hibernate.connection.username", "SA")
+                .setProperty("hibernate.connection.password", "")
+                .setProperty("hibernate.hbm2ddl.auto", "update")
+                .setProperty("hibernate.search.enabled", "false")
+                .buildSessionFactory()) {
+            var retained = factory.fromTransaction(session -> session.createSelectionQuery(
+                            "from UserWorkspace where workspaceId = :id", UserWorkspace.class)
+                    .setParameter("id", "existing-copy").getSingleResult());
+            assertEquals(0, retained.getProvisioningAttempt());
+            assertEquals(WorkspaceProvisioningStatus.PROVISIONING, retained.getProvisioningStatus());
+            assertEquals("original-source", retained.getSourceRepositoryId());
+            assertEquals("main", retained.getSourceBranch());
+            assertEquals(commit, retained.getBaseCommit());
+            assertNull(retained.getProvisioningLeaseOwner());
+            assertNull(retained.getProvisioningLeaseUntil());
+            assertNull(retained.getProvisioningAttemptAt());
+        }
+    }
 
     @Test
     void preHibernateHookUsesRecordedHypothesisProjectAndPreservesItAfterWorkspaceChanges() throws Exception {
