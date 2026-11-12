@@ -434,14 +434,14 @@
     }
 
     function registerAnalysisJob(location, job) {
-        if (!location || !job) return;
-        const url = api().analysisJobUrl(location, projectId);
+        if (!location || !job || (job.projectId != null && Number(job.projectId) !== projectId)) return;
+        const url = api().analysisJobUrl(location, projectId, job.id);
         if (!url) return;
         let entries = [];
         try { entries = JSON.parse(localStorage.getItem(jobStorageKey) || '[]'); } catch (error) { entries = []; }
         entries = entries.filter(entry => entry && entry.url !== url);
         entries.unshift({ url, projectId, createdAt: Date.now(), updatedAt: Date.now(), expanded: false, job });
-        localStorage.setItem(jobStorageKey, JSON.stringify(entries.slice(0, 20)));
+        localStorage.setItem(jobStorageKey, JSON.stringify(api().retainedAnalysisJobs(entries, entry => entry.job)));
     }
 
     function saveDraft() { localStorage.setItem(draftKey, JSON.stringify(serializableState())); showInfo(l('saved')); document.getElementById('restoreDraft').classList.remove('d-none'); }

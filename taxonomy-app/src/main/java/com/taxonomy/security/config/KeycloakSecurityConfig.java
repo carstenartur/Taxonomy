@@ -153,9 +153,7 @@ public class KeycloakSecurityConfig {
                 && !uri.startsWith("/dav/templates/")) {
             return false;
         }
-        String authorization = request.getHeader("Authorization");
-        return authorization != null
-                && authorization.regionMatches(true, 0, "Bearer ", 0, 7);
+        return CredentialSafeBearerTokenAuthenticationConverter.declaresBearer(request.getHeader("Authorization"));
     }
 
     private static boolean isStatelessWebDavApplicationClient(

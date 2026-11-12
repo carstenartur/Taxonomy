@@ -16,6 +16,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -63,13 +64,20 @@ public final class ArchitecturePdfRenderer {
 
     public byte[] render(DiagramScene scene, SnapshotMetadata metadata, Map<String, String> nodeReasons,
                          Map<String, Map<String, String>> relationReasons) {
+        return render(scene, metadata, nodeReasons, relationReasons, Locale.ENGLISH);
+    }
+
+    public byte[] render(DiagramScene scene, SnapshotMetadata metadata, Map<String, String> nodeReasons,
+                         Map<String, Map<String, String>> relationReasons, Locale locale) {
         requireScene(scene);
+        var language = DiagramLanguage.from(locale);
         if (metadata == null) {
             throw new IllegalArgumentException("Architecture snapshot metadata is required");
         }
-        return renderScene(scene, document -> configureMetadata(document, scene, metadata),
-                (stream, height, theme) -> drawHeader(stream, scene, metadata, height, theme),
-                (stream, theme) -> drawFooter(stream, metadata, theme), nodeReasons, relationReasons);
+        return renderScene(scene, document -> configureMetadata(document, scene, metadata, language),
+                (stream, height, theme) -> drawHeader(stream, scene, metadata, height, theme, language),
+                (stream, width, theme) -> drawFooter(stream, metadata, width, theme, language),
+                nodeReasons, relationReasons, language, metadata.warnings());
     }
 
     /** Live editor export uses the same vector geometry without masquerading as an analysis snapshot. */
@@ -88,8 +96,8 @@ public final class ArchitecturePdfRenderer {
             for (int i = 0; i < Math.min(2, lines.size()); i++) {
                 text(stream, theme, REGULAR, 8, PAGE_MARGIN, height - PAGE_MARGIN - 33 - i * 12, lines.get(i));
             }
-        }, (stream, theme) -> text(stream, theme, REGULAR, 8, PAGE_MARGIN, 16,
-                "Derived server layout · Git-authoritative architecture"), Map.of(), Map.of());
+        }, (stream, width, theme) -> text(stream, theme, REGULAR, 8, PAGE_MARGIN, 16,
+                "Derived server layout · Git-authoritative architecture"), Map.of(), Map.of(), DiagramLanguage.ENGLISH, List.of());
     }
 
     /** Supplied working data has no verified Git or persisted-snapshot authority. */
@@ -118,8 +126,8 @@ public final class ArchitecturePdfRenderer {
             text(stream, theme, REGULAR, 8, PAGE_MARGIN, height - PAGE_MARGIN - 45,
                     PdfDiagramText.wrap(scene.title(), REGULAR, 8,
                             PDRectangle.A3.getHeight() - 2 * PAGE_MARGIN, 1).getFirst());
-        }, (stream, theme) -> text(stream, theme, REGULAR, 8, PAGE_MARGIN, 16,
-                "Generated server layout | Client-provided working view | No re-analysis or persistence"), nodeReasons, relationReasons);
+        }, (stream, width, theme) -> text(stream, theme, REGULAR, 8, PAGE_MARGIN, 16,
+                "Generated server layout | Client-provided working view | No re-analysis or persistence"), nodeReasons, relationReasons, DiagramLanguage.ENGLISH, List.of());
     }
 
     private static void requireScene(DiagramScene scene) {
@@ -135,17 +143,18 @@ public final class ArchitecturePdfRenderer {
 
     @FunctionalInterface
     private interface FooterWriter {
-        void write(PDPageContentStream stream, ExportTheme theme) throws IOException;
+        void write(PDPageContentStream stream, float pageWidth, ExportTheme theme) throws IOException;
     }
 
     private byte[] renderScene(DiagramScene scene, Consumer<PDDocument> metadata,
                                HeaderWriter header, FooterWriter footer, Map<String, String> nodeReasons,
-                               Map<String, Map<String, String>> relationReasons) {
+                               Map<String, Map<String, String>> relationReasons, DiagramLanguage language, List<String> warnings) {
         ExportTheme theme = java.util.Objects.requireNonNull(themes.current(), "export theme");
         try (PDDocument document = new PDDocument();
              ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             PdfDiagramPages.Plan plan = PdfDiagramPages.plan(scene);
             metadata.accept(document);
+            document.getDocumentCatalog().setLanguage(language.tag());
             for (int index = 0; index < plan.panels().size(); index++) {
                 var panel = plan.panels().get(index);
                 DiagramScene part = panel.scene();
@@ -165,19 +174,19 @@ public final class ArchitecturePdfRenderer {
                     stream.addRect(0, 0, pageWidth, pageHeight);
                     stream.fill();
                     header.write(stream, pageHeight, theme);
-                    drawEdges(stream, part, PAGE_MARGIN, diagramTop, scale, theme);
-                    drawNodes(stream, part, PAGE_MARGIN, diagramTop, scale, theme);
-                    footer.write(stream, theme);
+                    drawEdges(stream, part, PAGE_MARGIN, diagramTop, scale, theme, language);
+                    drawNodes(stream, part, PAGE_MARGIN, diagramTop, scale, theme, language);
+                    footer.write(stream, pageWidth, theme);
                     if (plan.panels().size() > 1) {
                         text(stream, theme, REGULAR, 8, PAGE_MARGIN, 30,
-                                "Diagram D" + (index + 1) + "/" + plan.panels().size()
-                                        + " | Cross-page relationships: " + panel.crossPageRelationships()
-                                        + " | Complete endpoints and diagram references: see export inventory.");
+                                language.text("Diagram D", "Diagramm D") + (index + 1) + "/" + plan.panels().size()
+                                        + language.text(" | Cross-page relationships: ", " | Seitenübergreifende Beziehungen: ") + panel.crossPageRelationships()
+                                        + language.text(" | Complete endpoints and diagram references: see export inventory.", " | Endpunkte und Diagrammverweise siehe Exportinventar."));
                     }
                 }
             }
             drawInventory(document, scene, plan.nodePages(), nodeReasons == null ? Map.of() : nodeReasons,
-                    relationReasons == null ? Map.of() : relationReasons, theme);
+                    relationReasons == null ? Map.of() : relationReasons, theme, language, warnings);
             document.save(output);
             return output.toByteArray();
         } catch (IOException error) {
@@ -185,10 +194,10 @@ public final class ArchitecturePdfRenderer {
         }
     }
 
-    private static void configureMetadata(PDDocument document, DiagramScene scene, SnapshotMetadata metadata) {
+    private static void configureMetadata(PDDocument document, DiagramScene scene, SnapshotMetadata metadata, DiagramLanguage language) {
         PDDocumentInformation information = new PDDocumentInformation();
         information.setTitle(scene.title());
-        information.setSubject("Requirement-derived architecture snapshot " + metadata.snapshotId());
+        information.setSubject(language.text("Requirement-derived architecture snapshot ", "Anforderungsbezogener Architektursnapshot ") + metadata.snapshotId());
         information.setAuthor("Taxonomy Architecture Analyzer");
         information.setCreator("Taxonomy server-side vector renderer");
         information.setKeywords("architecture, taxonomy, requirement, snapshot, " + metadata.snapshotId());
@@ -198,15 +207,15 @@ public final class ArchitecturePdfRenderer {
     private static void drawHeader(PDPageContentStream stream,
                                    DiagramScene scene,
                                    SnapshotMetadata metadata,
-                                   float pageHeight, ExportTheme theme) throws IOException {
+                                   float pageHeight, ExportTheme theme, DiagramLanguage language) throws IOException {
         float y = pageHeight - PAGE_MARGIN - 16;
         text(stream, theme, BOLD, 16, PAGE_MARGIN, y, scene.title());
         text(stream, theme, REGULAR, 9, PAGE_MARGIN, y - 19,
-                "Project " + metadata.projectKey()
-                        + " · Requirement " + metadata.requirementKey()
+                language.text("Project ", "Projekt ") + metadata.projectKey()
+                        + language.text(" · Requirement ", " · Anforderung ") + metadata.requirementKey()
                         + " · Snapshot " + metadata.snapshotId());
         text(stream, theme, REGULAR, 8, PAGE_MARGIN, y - 33,
-                "Provider " + safe(metadata.provider())
+                language.text("Provider ", "Anbieter ") + safe(metadata.provider())
                         + " · Branch " + safe(metadata.branchName())
                         + " · Commit " + abbreviated(metadata.commitSha()));
     }
@@ -215,7 +224,7 @@ public final class ArchitecturePdfRenderer {
                                   DiagramScene scene,
                                   float diagramX,
                                   float diagramTop,
-                                  float scale, ExportTheme theme) throws IOException {
+                                  float scale, ExportTheme theme, DiagramLanguage language) throws IOException {
         stream.setStrokingColor(new Color(88, 97, 116));
         for (DiagramSceneEdge edge : scene.edges()) {
             float x1 = diagramX + (float) edge.sourceX() * scale;
@@ -234,7 +243,7 @@ public final class ArchitecturePdfRenderer {
                 float size = Math.max(5.5f, 7.5f * scale);
                 float captionWidth = Math.max(12, Math.min(210 * scale, Math.abs(x2 - x1) - 12 * scale));
                 String relation = PdfDiagramText.wrap(edge.relationType(), REGULAR, size, captionWidth, 1).getFirst();
-                String status = PdfDiagramText.wrap(DiagramPresentation.relationshipStatus(edge.metadata()), REGULAR, size, captionWidth, 1).getFirst();
+                String status = PdfDiagramText.wrap(DiagramPresentation.relationshipStatus(edge.metadata(), language.german()), REGULAR, size, captionWidth, 1).getFirst();
                 text(stream, theme, REGULAR, size, (x1 + x2 - PdfDiagramText.width(REGULAR, size, relation)) / 2,
                         (y1 + y2) / 2 + 6, relation);
                 text(stream, theme, REGULAR, size, (x1 + x2 - PdfDiagramText.width(REGULAR, size, status)) / 2,
@@ -248,7 +257,7 @@ public final class ArchitecturePdfRenderer {
                                   DiagramScene scene,
                                   float diagramX,
                                   float diagramTop,
-                                  float scale, ExportTheme theme) throws IOException {
+                                  float scale, ExportTheme theme, DiagramLanguage language) throws IOException {
         for (DiagramSceneNode node : scene.nodes()) {
             float x = diagramX + (float) node.x() * scale;
             float top = diagramTop - (float) node.y() * scale;
@@ -265,7 +274,7 @@ public final class ArchitecturePdfRenderer {
             stream.stroke();
 
             float inset = 8 * scale, small = 8 * scale;
-            String score = DiagramPresentation.percent(node.relevance());
+            String score = language.percent(node.relevance());
             float scoreWidth = PdfDiagramText.width(REGULAR, small, score);
             String id = PdfDiagramText.wrap(node.id(), BOLD, small,
                     width - 3 * inset - scoreWidth, 1).getFirst();
@@ -280,18 +289,23 @@ public final class ArchitecturePdfRenderer {
             // Two separate footer lines leave the complete taxonomy name room to wrap safely.
             String type = PdfDiagramText.wrap(node.type(), REGULAR, small, width - 2 * inset, 1).getFirst();
             text(stream, theme.nodeText(node.type(), "#0f172a"), REGULAR, small, x + inset, y + 21 * scale, type);
-            String depth = "Depth " + node.depth() + (node.container() ? " | Container" : "");
+            String depth = language.text("Depth ", "Tiefe ") + node.depth() + (node.container() ? " | Container" : "");
             text(stream, theme.nodeText(node.type(), "#0f172a"), REGULAR, small, x + inset, y + 9 * scale,
                     PdfDiagramText.wrap(depth, REGULAR, small, width - 2 * inset, 1).getFirst());
         }
     }
 
-    private static void drawFooter(PDPageContentStream stream, SnapshotMetadata metadata, ExportTheme theme) throws IOException {
+    private static void drawFooter(PDPageContentStream stream, SnapshotMetadata metadata, float pageWidth,
+                                   ExportTheme theme, DiagramLanguage language) throws IOException {
         text(stream, theme, REGULAR, 7, PAGE_MARGIN, 17,
-                "Generated from persisted architecture snapshot; no page screenshot and no LLM re-analysis.");
+                language.text("Generated from persisted architecture snapshot; no page screenshot and no LLM re-analysis.", "Aus dem gespeicherten Architektursnapshot erzeugt. Keine Bildschirmaufnahme und keine erneute KI-Analyse."));
         if (!metadata.warnings().isEmpty()) {
-            text(stream, theme, REGULAR, 7, PAGE_MARGIN, 8,
-                    "Warnings: " + String.join(" | ", metadata.warnings()));
+            String caption = language.text("Warnings: ", "Hinweise: ") + String.join(" | ", metadata.warnings());
+            if (PdfDiagramText.width(REGULAR, 7, PdfDiagramText.printable(caption)) > pageWidth - 2 * PAGE_MARGIN) {
+                caption = language.text("Warnings: ", "Hinweise: ") + metadata.warnings().size()
+                        + language.text(" | See export inventory.", " | Siehe Exportinventar.");
+            }
+            text(stream, theme, REGULAR, 7, PAGE_MARGIN, 8, caption);
         }
     }
 
@@ -337,27 +351,32 @@ public final class ArchitecturePdfRenderer {
     /** A complete, paginated inventory is the accessible counterpart of bounded diagram labels. */
     private static void drawInventory(PDDocument document, DiagramScene scene, Map<String, Integer> nodePages,
                                       Map<String, String> nodeReasons,
-                                      Map<String, Map<String, String>> relationReasons, ExportTheme theme) throws IOException {
-        var lines = new java.util.ArrayList<String>(DiagramPresentation.inventorySummary(scene));
-        lines.add("Element inventory | diagram ellipses do not remove saved labels below");
+                                      Map<String, Map<String, String>> relationReasons, ExportTheme theme,
+                                      DiagramLanguage language, List<String> warnings) throws IOException {
+        var lines = new java.util.ArrayList<String>(DiagramPresentation.inventorySummary(scene, language));
+        if (!warnings.isEmpty()) {
+            lines.add(language.text("Recorded warnings", "Gespeicherte Hinweise"));
+            lines.addAll(warnings);
+        }
+        lines.add(language.text("Element inventory | diagram ellipses do not remove saved labels below", "Elementinventar | hier stehen die vollständigen gespeicherten Bezeichnungen"));
         var seenNodes = new java.util.HashSet<String>();
         for (var node : scene.nodes()) if (seenNodes.add(node.id())) {
-            lines.add(node.id() + " | D" + nodePages.get(node.id()) + " | Depth " + node.depth() + " | " + DiagramPresentation.percent(node.relevance())
+            lines.add(node.id() + " | D" + nodePages.get(node.id()) + language.text(" | Depth ", " | Tiefe ") + node.depth() + " | " + language.percent(node.relevance())
                     + (node.container() ? " | Container" : ""));
             lines.add(node.label());
-            lines.add(node.type() + " | Parent: " + (node.parentId() == null ? "not included" : node.parentId()));
+            lines.add(node.type() + language.text(" | Parent: ", " | Übergeordnet: ") + (node.parentId() == null ? language.text("not included", "nicht enthalten") : node.parentId()));
             String reason = nodeReasons.get(node.id());
-            if (reason != null && !reason.isBlank()) lines.add("Explanation: " + reason);
+            if (reason != null && !reason.isBlank()) lines.add(language.text("Explanation: ", "Begründung: ") + reason);
         }
-        lines.add("Relationship inventory | presence does not establish human confirmation");
+        lines.add(language.text("Relationship inventory | presence does not establish human confirmation", "Beziehungsinventar | enthaltene Beziehungen belegen keine menschliche Bestätigung"));
         var seenEdges = new java.util.HashSet<String>();
         for (var edge : scene.edges()) if (seenEdges.add(edge.id())) {
             lines.add(edge.id() + " | " + edge.sourceId() + " -> " + edge.targetId()
                     + " | " + edge.relationType() + " | " + edge.relationCategory()
-                    + " | " + DiagramPresentation.percent(edge.relevance())
+                    + " | " + language.percent(edge.relevance())
                     + " | D" + nodePages.get(edge.sourceId()) + " -> D" + nodePages.get(edge.targetId()));
-            lines.addAll(DiagramPresentation.relationshipDetails(edge.metadata()));
-            lines.addAll(DiagramPresentation.relationshipEvidenceDetails(relationReasons.get(edge.id()), false));
+            lines.addAll(DiagramPresentation.relationshipDetails(edge.metadata(), language.german()));
+            lines.addAll(DiagramPresentation.relationshipEvidenceDetails(relationReasons.get(edge.id()), language.german()));
         }
         var wrapped = new java.util.ArrayList<String>();
         float width = PDRectangle.A4.getWidth() - 2 * PAGE_MARGIN;
@@ -370,7 +389,7 @@ public final class ArchitecturePdfRenderer {
                 stream.addRect(0, 0, page.getMediaBox().getWidth(), page.getMediaBox().getHeight());
                 stream.fill();
                 float top = PDRectangle.A4.getHeight() - PAGE_MARGIN;
-                text(stream, theme, BOLD, 13, PAGE_MARGIN, top - 13, "Export inventory - " + (start / perPage + 1));
+                text(stream, theme, BOLD, 13, PAGE_MARGIN, top - 13, language.text("Export inventory - ", "Exportinventar - ") + (start / perPage + 1));
                 for (int i = start; i < Math.min(start + perPage, wrapped.size()); i++)
                     text(stream, theme, REGULAR, 9, PAGE_MARGIN, top - 36 - (i - start) * 13, wrapped.get(i));
             }

@@ -1,8 +1,11 @@
 package com.taxonomy.composition.demo;
 
+import com.sun.net.httpserver.HttpServer;
 import com.taxonomy.analysis.demo.DemoScenario;
 import com.taxonomy.analysis.demo.DemoScenarioCatalog;
 import com.taxonomy.analysis.demo.evaluation.DemoReferenceEvaluator;
+import com.taxonomy.analysis.service.LlmGatewayRegistry;
+import com.taxonomy.analysis.service.LlmProvider;
 import com.taxonomy.composition.reformulation.ReformulationExecutionService;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateProjectRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementRequest;
@@ -13,6 +16,7 @@ import com.taxonomy.portfolio.reformulation.ReformulationAdoptionDtos;
 import com.taxonomy.portfolio.reformulation.ReformulationAdoptionService;
 import com.taxonomy.portfolio.reformulation.ReformulationDtos;
 import com.taxonomy.portfolio.reformulation.ReformulationService;
+import com.taxonomy.portfolio.reformulation.ReformulationProgressService;
 import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.PortfolioReportService;
@@ -23,11 +27,17 @@ import com.taxonomy.workspace.service.WorkspaceManager;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.client.ClientHttpRequestFactory;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.client.ExpectedCount;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.test.web.client.match.MockRestRequestMatchers;
@@ -36,11 +46,16 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -54,7 +69,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * explicit adoption, R1, analysis A1 and the independent reference evaluation. Only the
  * external AI reply is replaced by the scenario replay; any outbound provider HTTP fails.
  */
-@SpringBootTest(properties = {"llm.mock=true"})
+@SpringBootTest(properties = {"llm.mock=false", "llm.provider=CUSTOM_OPENAI", "custom.llm.model=demo-isolation",
+        "custom.llm.api.key=demo-test-credential"})
 @AutoConfigureMockMvc
 @WithMockUser(username = "architect", roles = "ARCHITECT")
 class ProductDemoEndToEndTest {
@@ -65,13 +81,14 @@ class ProductDemoEndToEndTest {
     @Autowired ProjectRequirementAnalysisService analysis;
     @Autowired PortfolioAnalysisPersistenceService analyses;
     @Autowired ReformulationService reformulations;
+    @Autowired ReformulationProgressService progress;
     @Autowired ReformulationExecutionService execution;
     @Autowired ReformulationAdoptionService adoptions;
     @Autowired PortfolioReportService reports;
     @Autowired WorkspaceManager workspaces;
     @Autowired RestTemplate transport;
+    @Autowired LlmGatewayRegistry gateways;
     @Autowired WorkspaceResolver resolver;
-
     @Autowired DemoScenarioCatalog catalog;
     @Autowired ProductDemoProviderBinding binding;
     @Autowired ObjectMapper json;
@@ -80,6 +97,45 @@ class ProductDemoEndToEndTest {
 
     private DemoScenario scenario;
 
+    private ClientHttpRequestFactory originalFactory;
+    private static HttpServer loopback;
+    private static final AtomicInteger WIRE_REQUESTS = new AtomicInteger();
+
+    @DynamicPropertySource
+    static void configureProvider(DynamicPropertyRegistry properties) throws IOException {
+        loopback = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        loopback.createContext("/", exchange -> {
+            try (exchange) {
+                WIRE_REQUESTS.incrementAndGet();
+                if (!"POST".equals(exchange.getRequestMethod())
+                        || !"/v1/chat/completions".equals(exchange.getRequestURI().getPath())
+                        || !"Bearer demo-test-credential".equals(exchange.getRequestHeaders().getFirst("Authorization"))) {
+                    exchange.sendResponseHeaders(400, -1);
+                    return;
+                }
+                byte[] reply = """
+                        {"choices":[{"message":{"content":"local transport control"}}]}
+                        """.getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, reply.length);
+                exchange.getResponseBody().write(reply);
+            }
+        });
+        loopback.start();
+        properties.add("custom.llm.url", () -> "http://127.0.0.1:" + loopback.getAddress().getPort() + "/v1/chat/completions");
+    }
+
+    @AfterEach
+    void restoreTransport() {
+        if (originalFactory != null) {
+            transport.setRequestFactory(originalFactory);
+        }
+    }
+
+    @AfterAll
+    static void stopProvider() {
+        if (loopback != null) loopback.stop(0);
+    }
     @org.junit.jupiter.api.BeforeEach
     void scenario() {
         scenario = catalog.defaultScenario();
@@ -87,6 +143,13 @@ class ProductDemoEndToEndTest {
 
     @Test
     void completeDemoRunsWithoutExternalAiAndPassesTheIndependentReference() throws Exception {
+        int beforeControl = WIRE_REQUESTS.get();
+        String reply = gateways.getGateway(LlmProvider.CUSTOM_OPENAI)
+                .sendHttpRequest("Verify the controlled provider connection", "demo-test-credential");
+        assertThat(reply).contains("local transport control");
+        int afterControl = WIRE_REQUESTS.get();
+        assertThat(afterControl).isEqualTo(beforeControl + 1);
+        originalFactory = transport.getRequestFactory();
         var server = MockRestServiceServer.bindTo(transport).build();
         server.expect(ExpectedCount.never(), MockRestRequestMatchers.anything());
         WorkspaceContext context = workspace();
@@ -252,11 +315,16 @@ class ProductDemoEndToEndTest {
         assertThat(second.json().at("/proposal/revision").asLong()).isEqualTo(nextRevision.number());
         assertThat(second.json().at("/revision/questions")).isEmpty();
         assertThat(second.word()).contains("DEMO · Neuformulierungsangebot — gespeicherte Revision", adoptedText);
-        assertThat(analyses.listJobs(run.projectId(), USER, context)).isEqualTo(jobsBeforeExport);
         assertThat(reformulations.runs(run.projectId(), run.requirementId(), proposal.id(), USER, context))
                 .isEqualTo(r0RunsBeforeExport);
         assertThat(reformulations.runs(run.projectId(), run.requirementId(), next.id(), USER, context))
                 .isEqualTo(r1RunsBeforeExport);
+
+        assertFrozenDecisionReports(run.projectId(), a0Snapshot, 1, "DEMO.TIME-TRACKING-V1.R0");
+        assertFrozenDecisionReports(run.projectId(), a1Snapshot, 2, "DEMO.TIME-TRACKING-V1.R1");
+        assertArchitectureDownloads(run.projectId(), a0Snapshot, "DEMO.TIME-TRACKING-V1.R0");
+        assertArchitectureDownloads(run.projectId(), a1Snapshot, "DEMO.TIME-TRACKING-V1.R1");
+        assertThat(analyses.listJobs(run.projectId(), USER, context)).isEqualTo(jobsBeforeExport);
 
         // Exports of the demo project stay labelled as demo output.
         var export = reports.render(run.projectId(), run.requirementId(), PortfolioReportService.Format.MARKDOWN,
@@ -270,23 +338,111 @@ class ProductDemoEndToEndTest {
                 UUID.randomUUID().toString(), USER, context)).isInstanceOf(PortfolioException.class)
                 .extracting(e -> ((PortfolioException) e).getCode()).isEqualTo(ProductDemoProblems.RUN_CLOSED);
         server.verify();
+        assertThat(WIRE_REQUESTS.get()).as("demo work and downloads must not reach the configured provider by any HTTP client")
+                .isEqualTo(afterControl);
     }
 
-    private record DemoReports(JsonNode json, List<String> word) { }
+    private void assertFrozenDecisionReports(Long projectId, String snapshotId, int version,
+                                             String provider) throws Exception {
+        String path = "/api/projects/" + projectId + "/snapshots/" + snapshotId + "/decision-report/";
+        var formats = json.readTree(mvc.perform(get(path + "formats")).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsByteArray());
+        assertThat(formats).anySatisfy(format -> assertThat(format.path("id").asString()).isEqualTo("docx"));
+        String fingerprint = null;
+        for (JsonNode format : formats) {
+            String id = format.path("id").asString();
+            var response = mvc.perform(get(path + id).param("language", "de").param("profile", "COMPACT")
+                            .param("taxonomyRoots", "CP").param("sections", "SUMMARY", "EVIDENCE"))
+                    .andExpect(status().isOk()).andReturn().getResponse();
+            assertThat(response.getHeader("X-Taxonomy-Snapshot-Id")).isEqualTo(snapshotId);
+            String digest = response.getHeader("X-Taxonomy-Analysis-SHA256");
+            assertThat(digest).matches("[0-9a-f]{64}");
+            if (fingerprint == null) fingerprint = digest;
+            assertThat(digest).isEqualTo(fingerprint);
+            assertThat(response.getHeader("Content-Disposition")).isEqualTo("attachment; filename=\"DEMO-taxonomy-decision-rationale-report-v"
+                    + version + "." + format.path("fileExtension").asString() + "\"");
+            byte[] payload = response.getContentAsByteArray();
+            assertThat(payload).isNotEmpty();
+            if (id.equals("json")) {
+                var parsed = json.readTree(payload);
+                assertThat(parsed.path("title").asString()).startsWith("DEMO · ");
+                assertThat(parsed.at("/metadata/analysisSnapshotId").asString()).isEqualTo(snapshotId);
+                assertThat(parsed.at("/metadata/analysisProvider").asString()).isEqualTo(provider);
+                assertThat(parsed.path("languageTag").asString()).isEqualTo("de");
+            } else if (id.equals("html")) {
+                assertThat(new String(payload, StandardCharsets.UTF_8)).contains("<h1>DEMO · ", provider, snapshotId);
+            } else if (id.equals("docx")) {
+                try (var document = new XWPFDocument(new ByteArrayInputStream(payload));
+                     var text = new org.apache.poi.xwpf.extractor.XWPFWordExtractor(document)) {
+                    assertThat(document.getParagraphs().getFirst().getText()).startsWith("DEMO · ");
+                    assertThat(text.getText()).contains(provider, snapshotId);
+                }
+            }
+        }
+    }
+
+    private void assertArchitectureDownloads(Long projectId, String snapshotId, String provider) throws Exception {
+        String base = "/api/projects/" + projectId;
+        String graph = base + "/architecture-workbench/" + snapshotId;
+        var word = architectureDownload(base + "/snapshots/" + snapshotId + "/architecture-report/docx");
+        assertThat(word.getHeader("X-Taxonomy-Snapshot-Id")).isEqualTo(snapshotId);
+        try (var document = new XWPFDocument(new ByteArrayInputStream(word.getContentAsByteArray()))) {
+            assertThat(document.getParagraphs().getFirst().getText()).startsWith("DEMO · ");
+        }
+        assertThat(architectureDownload(graph + ".svg").getContentAsString(StandardCharsets.UTF_8))
+                .contains("<title>DEMO · ", "xml:lang=\"de\"", "Bewertungen und vollständige Begründungen");
+        try (var pdf = org.apache.pdfbox.Loader.loadPDF(architectureDownload(graph + ".pdf").getContentAsByteArray())) {
+            assertThat(pdf.getDocumentInformation().getTitle()).startsWith("DEMO · ");
+            assertThat(pdf.getDocumentCatalog().getLanguage()).isEqualTo("de");
+            assertThat(new org.apache.pdfbox.text.PDFTextStripper().getText(pdf)).contains("Exportinventar", "Beziehungsinventar");
+        }
+        for (String format : List.of("archimate", "visio")) {
+            var download = architectureDownload(graph + "." + format + ".zip");
+            assertThat(download.getHeader("X-Taxonomy-Snapshot-Id")).isEqualTo(snapshotId);
+            try (var archive = new java.util.zip.ZipInputStream(new ByteArrayInputStream(download.getContentAsByteArray()))) {
+                java.util.zip.ZipEntry entry;
+                do {
+                    entry = archive.getNextEntry();
+                    assertThat(entry).as("offline manifest for %s", format).isNotNull();
+                } while (!entry.getName().equals("manifest.json"));
+                var manifest = json.readTree(archive.readAllBytes());
+                var source = format.equals("archimate") ? manifest.path("provenance") : manifest.at("/handoff/authority");
+                assertThat(source.at("/taxonomy.analysisProvider/value").asString()).isEqualTo(provider);
+                assertThat(source.at("/taxonomy.snapshotId/value").asString()).isEqualTo(snapshotId);
+            }
+        }
+    }
+
+    private MockHttpServletResponse architectureDownload(String path) throws Exception {
+        var response = mvc.perform(get(path).param("language", "de")).andExpect(status().isOk())
+                .andReturn().getResponse();
+        var disposition = org.springframework.http.ContentDisposition.parse(response.getHeader("Content-Disposition"));
+        assertThat(disposition.getFilename()).startsWith("DEMO-");
+        return response;
+    }
+
+    private record DemoReports(JsonNode json, List<String> word, String markdown, String html) { }
+
+    private MockHttpServletResponse attachment(String path, String identity, String format, String mediaType) throws Exception {
+        var response = mvc.perform(get(path + "/export").param("format", format))
+                .andExpect(status().isOk()).andReturn().getResponse();
+        assertThat(response.getHeader("Content-Disposition"))
+                .isEqualTo("attachment; filename=\"DEMO-reformulation-" + identity + "." + format + "\"");
+        assertThat(response.getContentType()).startsWith(mediaType);
+        assertThat(response.getHeader("X-Content-SHA256")).isEqualTo(HexFormat.of().formatHex(
+                MessageDigest.getInstance("SHA-256").digest(response.getContentAsByteArray())));
+        return response;
+    }
 
     private DemoReports downloadReports(String path, String identity) throws Exception {
-        var jsonResponse = mvc.perform(get(path + "/export").param("format", "json"))
-                .andExpect(status().isOk()).andReturn().getResponse();
-        var wordResponse = mvc.perform(get(path + "/export").param("format", "docx"))
-                .andExpect(status().isOk()).andReturn().getResponse();
-        String filename = "attachment; filename=\"DEMO-reformulation-" + identity;
-        assertThat(jsonResponse.getHeader("Content-Disposition")).isEqualTo(filename + ".json\"");
-        assertThat(wordResponse.getHeader("Content-Disposition")).isEqualTo(filename + ".docx\"");
-        assertThat(wordResponse.getContentType())
-                .isEqualTo("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        var jsonResponse = attachment(path, identity, "json", "application/json");
+        var wordResponse = attachment(path, identity, "docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        var markdown = attachment(path, identity, "md", "text/markdown").getContentAsString(StandardCharsets.UTF_8);
+        var html = attachment(path, identity, "html", "text/html").getContentAsString(StandardCharsets.UTF_8);
         try (var word = new XWPFDocument(new ByteArrayInputStream(wordResponse.getContentAsByteArray()))) {
             return new DemoReports(json.readTree(jsonResponse.getContentAsByteArray()),
-                    word.getParagraphs().stream().map(XWPFParagraph::getText).toList());
+                    word.getParagraphs().stream().map(XWPFParagraph::getText).toList(), markdown, html);
         }
     }
 
@@ -302,6 +458,8 @@ class ProductDemoEndToEndTest {
         assertThat(source.path("language").asString()).isEqualTo("de");
         String provider = "DEMO.TIME-TRACKING-V1." + iteration;
         assertThat(source.path("analysisProvider").asString()).isEqualTo(provider);
+        assertThat(downloads.markdown()).contains("DEMO", originalText, hash, snapshotId, provider);
+        assertThat(downloads.html()).contains("<html lang=\"de\">", "<h1>DEMO", hash, snapshotId, provider);
         assertThat(downloads.word()).contains("Originalanforderung", "Quellversion: " + versionId,
                 "Quell-SHA-256: " + hash, "Analyse-Snapshot: " + snapshotId);
         assertThat(downloads.word()).anySatisfy(paragraph -> assertThat(paragraph).contains(provider));
@@ -373,9 +531,23 @@ class ProductDemoEndToEndTest {
         var started = execution.start(run.projectId(), run.requirementId(), proposal.id(),
                 proposal.currentRevision().number(), USER, context);
         assertThat(started.provider()).startsWith("DEMO.TIME-TRACKING-V1.R");
-        await().atMost(Duration.ofSeconds(60)).until(() -> reformulations.runs(run.projectId(), run.requirementId(),
-                proposal.id(), USER, context).stream().filter(r -> r.id().equals(started.id()))
-                .anyMatch(r -> List.of("COMPLETED", "PARTIAL", "FAILED", "CANCELLED").contains(r.status())));
+        // A busy worker must commit another checkpoint within a minute. A queued or stalled worker cannot extend its wait.
+        long deadline = System.nanoTime() + Duration.ofMinutes(10).toNanos();
+        var terminal = Set.of("COMPLETED", "PARTIAL", "FAILED", "CANCELLED");
+        long checkpoints = 0;
+        while (true) {
+            long remaining = deadline - System.nanoTime();
+            assertThat(remaining).as("overall limit for run %s after %s checkpoints", started.id(), checkpoints).isPositive();
+            long previous = checkpoints;
+            Duration window = Duration.ofNanos(Math.min(remaining, Duration.ofMinutes(1).toNanos()));
+            var observed = await("completion or a new committed checkpoint for " + started.id())
+                    .pollDelay(Duration.ZERO).pollInterval(Duration.ofSeconds(1)).atMost(window)
+                    .until(() -> progress.progress(run.projectId(), run.requirementId(), proposal.id(), started.id(),
+                                    1, null, USER, context),
+                            point -> terminal.contains(point.status()) || point.runCheckpointCount() > previous);
+            if (terminal.contains(observed.status())) break;
+            checkpoints = observed.runCheckpointCount();
+        }
         var finished = reformulations.runs(run.projectId(), run.requirementId(), proposal.id(), USER, context).stream()
                 .filter(r -> r.id().equals(started.id())).findFirst().orElseThrow();
         assertThat(finished.status()).as("run %s", finished).isEqualTo(expectedStatus);

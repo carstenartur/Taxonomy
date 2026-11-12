@@ -53,6 +53,8 @@ final class AnalysisArchiveRoundTrip {
             """;
     private final String observer = UUID.randomUUID().toString();
     private final String sourceRun = UUID.randomUUID().toString();
+    private final String expiredClusterId = UUID.randomUUID().toString();
+    private long clusterExpiredAt;
     private AnalysisAdapterStore sourceStore;
     private AnalysisAdapterStore.Scope sourceScope;
     private String sourceCommit, completedId, pendingId, expiredId, sourceOwner;
@@ -77,9 +79,18 @@ final class AnalysisArchiveRoundTrip {
         var publications = new AtomicInteger();
         var clusters = clusterStore(em,transactions,publications);
         var workspace = new WorkspaceContext(sourceOwner,repository.workspaceId(),repository.branch(),repository.repositoryId());
+        var old = context(expiredClusterId,workspace,commit);
+        clusters.admit(old,command(workspace),null,Map.of(TaxonomyShardRoot.of("CP"),JSON.writeValueAsString(root(old))));
+        clusters.cancel(old);
+        clusterExpiredAt = System.currentTimeMillis() - Duration.ofDays(2).toMillis();
+        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status ->
+                em.createQuery("update ClusterAnalysisRun r set r.createdAt=:old, r.updatedAt=:old where r.id=:id")
+                        .setParameter("old",clusterExpiredAt - Duration.ofDays(31).toMillis())
+                        .setParameter("id",expiredClusterId).executeUpdate());
+        assertThat(clusters.retention().sweepScope(workspace,clusterExpiredAt)).isOne();
         var context = context(sourceRun,workspace,commit);
         clusters.admit(context,command(workspace),null,Map.of(TaxonomyShardRoot.of("CP"),JSON.writeValueAsString(root(context))));
-        assertThat(publications.get()).isOne();
+        assertThat(publications.get()).isEqualTo(2);
     }
 
     void verify(VerifiedBackup archive, RestoreTargetGeneration generation, RestoreIdentityImporter.Result identity,
@@ -135,8 +146,14 @@ final class AnalysisArchiveRoundTrip {
         assertThat(sourceStore.read(sourceScope,completedId).resultJson()).isEqualTo(NATIVE);
 
         var runs = records(archive,"cluster-runs",Run.class);
-        assertThat(runs).hasSize(1);
-        var archived = new Archive(runs.getFirst(),records(archive,"cluster-work",Work.class),
+        assertThat(runs).extracting(run -> run.sourceId().value()).containsExactlyInAnyOrder(sourceRun,expiredClusterId);
+        var active = runs.stream().filter(row -> row.sourceId().value().equals(sourceRun)).findFirst().orElseThrow();
+        var marker = runs.stream().filter(row -> row.sourceId().value().equals(expiredClusterId)).findFirst().orElseThrow();
+        assertThat(marker.sourceState()).isEqualTo("EXPIRED");
+        assertThat(marker.updatedAt()).isEqualTo(clusterExpiredAt);
+        assertThat(marker.commandJson()).isNull();
+        assertThat(marker.resultJson()).isNull();
+        var archived = new Archive(active,records(archive,"cluster-work",Work.class),
                 records(archive,"cluster-inputs",Input.class),records(archive,"cluster-events",Event.class),
                 records(archive,"cluster-calls",Call.class),records(archive,"cluster-attempts",Attempt.class));
         assertThat(archived.run().context().operationId()).isEqualTo(sourceRun);
@@ -145,11 +162,31 @@ final class AnalysisArchiveRoundTrip {
         var targetContext = context(UUID.randomUUID().toString(),workspace,proof.commitMappings().get(sourceCommit));
         var targetPublications = new AtomicInteger();
         var targetCluster = clusterStore(em,transactions,targetPublications);
-        new ClusterAnalysisBackupRestorer(em,transactions,JSON).restore(archived,targetContext,command(workspace));
+        var restorer = new ClusterAnalysisBackupRestorer(em,transactions,JSON);
+        restorer.restore(archived,targetContext,command(workspace));
+        var expiredContext = context(UUID.randomUUID().toString(),workspace,proof.commitMappings().get(sourceCommit));
+        restorer.restoreExpired(new Archive(marker,List.of(),List.of(),List.of(),List.of(),List.of()),
+                expiredContext,workspace,Map.of());
+        var sql = new org.springframework.jdbc.core.JdbcTemplate(generation.dataSource());
+        assertThat(sql.queryForObject("select updated_at from analysis_cluster_run where id=?",Long.class,expiredContext.operationId()))
+                .isEqualTo(clusterExpiredAt);
+        assertThatExceptionOfType(ResponseStatusException.class).isThrownBy(() ->
+                targetCluster.admit(expiredContext,command(workspace),null,
+                        Map.of(TaxonomyShardRoot.of("CP"),JSON.writeValueAsString(root(expiredContext)))))
+                .satisfies(error -> assertThat(error.getStatusCode().value()).isEqualTo(410));
         var reread = targetCluster.snapshot(targetContext);
         assertThat(reread.state()).isEqualTo(ClusterAnalysisState.CANCELLED);
         try (var observation = new DurableClusterAnalysisObservation(targetCluster,new ClusterAnalysisSignals(),AnalysisEventPublisher.NONE)) {
             assertThat(observation.snapshot(targetContext.operationId(),restoredOwner,workspace)).isPresent();
+            assertThatExceptionOfType(ResponseStatusException.class)
+                    .isThrownBy(() -> observation.snapshot(expiredContext.operationId(),restoredOwner,workspace))
+                    .satisfies(error -> {
+                        assertThat(error.getStatusCode().value()).isEqualTo(410);
+                        assertThat(error.getBody().getProperties()).containsEntry("code","ANALYSIS_EXPIRED");
+                    });
+            assertThatExceptionOfType(ResponseStatusException.class)
+                    .isThrownBy(() -> observation.snapshot(expiredContext.operationId(),sourceOwner,workspace))
+                    .satisfies(error -> assertThat(error.getStatusCode().value()).isEqualTo(404));
             assertThatExceptionOfType(ResponseStatusException.class)
                     .isThrownBy(() -> observation.snapshot(targetContext.operationId(),sourceOwner,workspace))
                     .satisfies(error -> assertThat(error.getStatusCode().value()).isEqualTo(404));

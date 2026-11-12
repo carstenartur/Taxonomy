@@ -16,6 +16,7 @@ import com.taxonomy.diagram.*;
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.Projection;
 import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchService;
+import com.taxonomy.portfolio.service.SnapshotExportLabel;
 import com.taxonomy.workspace.service.WorkspaceContext;
 
 import org.springframework.stereotype.Service;
@@ -27,7 +28,11 @@ import java.util.*;
 @Service
 public class SnapshotWordReportService {
     public record Source(
-            DecisionRationaleReport decision, ArchitectureReportDocument architecture) {}
+            DecisionRationaleReport decision, ArchitectureReportDocument architecture, SnapshotExportLabel label) {
+        public Source(DecisionRationaleReport decision, ArchitectureReportDocument architecture) {
+            this(decision, architecture, SnapshotExportLabel.STANDARD);
+        }
+    }
 
     private final DecisionRationaleSnapshotReportService decisions;
     private final ArchitectureWorkbenchService workbench;
@@ -79,7 +84,7 @@ public class SnapshotWordReportService {
         if (projection == null && options != null) return new Source(decision, null);
         try {
             var architecture = frozenDocument(projectId, id, decision, projection, language, wordLayout);
-            return new Source(decision.withArchitecture(architecture), architecture);
+            return new Source(decision.withArchitecture(architecture), architecture, projection.exportLabel());
         } catch (IllegalArgumentException exception) {
             throw PortfolioException.conflict(exception.getMessage());
         }
@@ -127,7 +132,7 @@ public class SnapshotWordReportService {
         var labels = new DecisionReportLabels(locale.toLanguageTag());
         // Explicit saved titles are evidence, including values that collide with a live fallback.
         // Policy keys and missing titles use a stable localized snapshot title.
-        String title = labels.architectureTitle();
+        String title = p.exportLabel().title(labels.architectureTitle());
         String graphTitle =
                 p.persistedViewTitle() != null
                                 && !p.persistedViewTitle().isBlank()

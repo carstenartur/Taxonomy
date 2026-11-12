@@ -85,6 +85,14 @@ allgemeinen OOXML-Sicherheitscheck gegen diesen Vertrag validiert. Der
 Actuator-Health-Check `decisionRationaleTemplate` meldet `DOWN`, wenn die Pflichtvorlage
 fehlt oder strukturell ungültig ist.
 
+## Einen konkreten Vorlagenkandidaten prüfen
+
+Im Vorlagenverlauf **Kandidaten prüfen** auswählen, eine DOTX einreichen und den repräsentativen DOCX-Musterbericht öffnen. Auf der Kandidatenseite stehen das eingereichte Original und der begrenzte JSON-Prüfbericht bereit. Die Eigenschaft `Taxonomy.Template.Commit` des Musters bezeichnet die unveränderliche Kandidatenquelle. Administratoren können diese Fassung aktivieren, solange die angezeigte aktive Revision übereinstimmt. Nach einer fehlgeschlagenen Probe lässt sich der Kandidat zur Reparatur einsehen. Nach einer zwischenzeitlichen Änderung der aktiven Vorlage ist eine neue Einreichung nötig. Original und Probe liegen im separaten Git-Repository der Installation `taxonomy-document-template-candidates`. Die bisherige Git-Historie und kanonischen DOTX-Downloads stehen im Vorlagenverlauf bereit.
+
+Die Vorlage für Bewertungsberichte unterstützt zwei versionierte Block-Inhaltssteuerelemente im Haupttext von Word. Das Feld **Tag** erhält `taxonomy.repeat.chapters.v1` oder `taxonomy.repeat.appendix.v1`. Im Block werden formatierte Absätze oder Tabellen angelegt. Deren Absätze enthalten Inline-Steuerelemente mit dem Tag `taxonomy.field.<Name>`. Pro Art ist ein Block zulässig. Kapitelfelder sind `number`, `code`, `title`, `score`, `summary` und `comparison`. Anhangsfelder sind `code`, `title`, `score`, `path` und `reason`. Die Formatierung des Mustertexts wird für den Feldwert übernommen. Unter der erzeugten Abschnittsüberschrift steht je eine formatierte Kopie pro eingefrorenem Kapitel bzw. führendem Blatt. Der Generator entfernt die Autorensteuerelemente und erhält die regulären Nachweise. Für ausgeblendete Abschnitte und leere Sammlungen entstehen keine Kopien.
+
+Normale Kopf- und Fußzeilen unterstützen statisches Branding und zulässige Textmarken. Wiederholungsblöcke unterstützen ungebundenen Text sowie Tabellen im Haupttext. Marken in Zeichnungen/Textfeldern, verschachtelte Wiederholungen, Datenbindungen, Abschnittswechsel, Lesezeichen, Felder, verknüpfte Inhalte und Überarbeitungen im Block werden abgelehnt. Die Kopien sind auf 120.000 XML-Elemente und acht Millionen Textzeichen einschließlich Feldwerten begrenzt. Der Prüfbericht enthält Kennungen, Prüfsummen und Prüfergebnisse. Private Texte eines fehlgeschlagenen Renderings werden ausgespart.
+
 ## Audit-Nachweis
 
 Jeder vorlagenbasierte DOCX-Bericht speichert die genaue Identität seiner Word-Vorlage
@@ -160,6 +168,12 @@ Repository-Zugriff oder BCrypt zurück. Normale Kontopasswörter, die nicht mit
 `taxdav_` beginnen, laufen weiterhin durch den gewöhnlichen HTTP-Basic-Pfad von
 Spring Security.
 
+Kann der Zugangsdaten-Speicher die Prüfung nicht abschließen, erhält der WebDAV-Client
+HTTP 503 mit leerem Antworttext und `Cache-Control: no-store`. Nach der Wiederherstellung
+kann der Client dieselben Zugangsdaten erneut verwenden. Für die Sperre zählen nur
+fehlgeschlagene Anmeldungen. Taxonomy protokolliert einen Widerruf, sobald die Datenbank
+die Transaktion bestätigt hat.
+
 Fehlgeschlagene App-Anmeldungen werden über einen SHA-256-Digest fester Länge aus dem
 vom Framework aufgelösten Peer und dem normalisierten übermittelten Benutzernamen
 gezählt; rohe Identitäten bleiben nicht in der Sperrtabelle. Zehn Fehlversuche innerhalb
@@ -183,3 +197,9 @@ Taxonomy-Manifest vorbehalten.
 ## Eingefrorene Architekturinhalte
 
 Snapshot-Entscheidungsberichte behalten diesen Vorlagenpfad bei und ergänzen die gemeinsamen eingefrorenen Architekturabschnitte sowie den vollständig verlinkten Entscheidungsbaum. Vorhandene Formatvorlagen `Title`, `Heading1`–`Heading3` und `Caption` bleiben erhalten; fehlende erhalten Ersatzdefinitionen. Statischer eigener Titeltext wird nicht übersetzt oder überschrieben. Die datenfreie Vorschau bleibt auch ohne Architekturgraph gültig. Siehe [Snapshot-Word-Routen und Grenzen](DECISION_RATIONALE_REPORT.md#word-berichte-aus-unveränderlichen-snapshots).
+
+## Lesebudgets für Vorlagen reproduzieren
+
+Mit Java 25 startet `./mvnw -pl taxonomy-templates -am -Dtest=DocumentTemplateScaleBudgetTest -Dsurefire.failIfNoSpecifiedTests=false test` vier Messreihen. 10 oder 100 Vorlagen teilen sich gleichmäßig 100 oder 1.000 Git-Revisionen auf dem ersten Elternpfad. Eine Vorlage erhält alle ihre Revisionen, bevor die nächste geändert wird. Alle Revisionen verwenden die kanonischen Bestandteile von `template-fixtures/report.dotx`. Jede Operation startet mit einem neuen Dienst und leerem Cache auf demselben JGit-Repository im Speicher. Der zweite Aufruf misst den warmen Zustand. Erfasst werden Liste, Historie und Download der ältesten Vorlage sowie PROPFIND mit Tiefe 1 für die Sammlung. Unter `taxonomy-templates/target/template-scale-evidence/` stehen Quell-Commit in GitHub Actions, Paket-Prüfsumme, JVM-Version, maximaler Heap, Laufzeit, Allokationen des Anfragethreads, geöffnete Git-Commits und -Trees sowie Anzahl und Größe gehaltener Cacheeinträge.
+
+Die Grenzen pro Lesevorgang sind 30 Sekunden, 768 MiB Allokation bei kaltem bzw. 64 MiB bei warmem Cache sowie höchstens Revisionszahl plus doppelte Vorlagenzahl plus vier Commit-Öffnungen. Der normale Archivcache hält maximal 64 Archive oder 100 MiB. Für Sammlungsabfragen speichert der Dienst zusätzlich die Länge von bis zu 1.024 validierten ZIP-Repräsentationen nach Vorlage, Revision und Codec-Version. Bei 100 Vorlagen und 1.000 Revisionen benötigte PROPFIND unter Java 25.0.5 mit 512 MiB Heap 556,9 MB Allokation kalt und 2,15 MB warm. Die Git-Arbeit sank dabei von 1.193 Commits und 33.086 Trees auf einen Commit und 602 Trees. Die Messung erfasst Anfragethread und gebundene Cacheinhalte. Antwortzeiten im Betrieb, maximaler Prozessspeicher und Datenübertragung hängen von der Installation ab.

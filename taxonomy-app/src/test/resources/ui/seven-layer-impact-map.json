@@ -1,0 +1,228 @@
+{
+  "sourceCommit": "0fb234c521dc6b96da9ba028a63a98f0d12543e4",
+  "description": "Catalogue objects and MOCK scores from the historical source. Uses the seven positively scored sheet roots, the two highest positively scored nodes per sheet (one for User Applications), and the first 16 applicable catalogue seed relations. Reconstructs the reported 20-element, 16-relationship, seven-layer geometry.",
+  "nodes": [
+    {
+      "nodeCode": "CO",
+      "title": "Communications Services",
+      "taxonomySheet": "Communications Services",
+      "relevance": 0.9,
+      "anchor": true
+    },
+    {
+      "nodeCode": "CO-1000",
+      "title": "Communications Services",
+      "taxonomySheet": "Communications Services",
+      "relevance": 0.9,
+      "anchor": false
+    },
+    {
+      "nodeCode": "CO-1063",
+      "title": "Transport Services",
+      "taxonomySheet": "Communications Services",
+      "relevance": 0.51,
+      "anchor": false
+    },
+    {
+      "nodeCode": "CR",
+      "title": "Core Services",
+      "taxonomySheet": "Core Services",
+      "relevance": 0.7,
+      "anchor": true
+    },
+    {
+      "nodeCode": "CR-1000",
+      "title": "Core Services",
+      "taxonomySheet": "Core Services",
+      "relevance": 0.7,
+      "anchor": false
+    },
+    {
+      "nodeCode": "CR-1011",
+      "title": "Business Support Services",
+      "taxonomySheet": "Core Services",
+      "relevance": 0.29,
+      "anchor": false
+    },
+    {
+      "nodeCode": "CP",
+      "title": "Capabilities",
+      "taxonomySheet": "Capabilities",
+      "relevance": 0.55,
+      "anchor": true
+    },
+    {
+      "nodeCode": "CP-1000",
+      "title": "Capabilities",
+      "taxonomySheet": "Capabilities",
+      "relevance": 0.55,
+      "anchor": false
+    },
+    {
+      "nodeCode": "CP-1022",
+      "title": "Command and Control Capabilities",
+      "taxonomySheet": "Capabilities",
+      "relevance": 0.15,
+      "anchor": false
+    },
+    {
+      "nodeCode": "IP",
+      "title": "Information Products",
+      "taxonomySheet": "Information Products",
+      "relevance": 0.3,
+      "anchor": true
+    },
+    {
+      "nodeCode": "IP-1608",
+      "title": "Initial Electronic Orders of Battle",
+      "taxonomySheet": "Information Products",
+      "relevance": 1.0,
+      "anchor": false
+    },
+    {
+      "nodeCode": "IP-1897",
+      "title": "Helicopter Operational Summaries",
+      "taxonomySheet": "Information Products",
+      "relevance": 1.0,
+      "anchor": false
+    },
+    {
+      "nodeCode": "BP",
+      "title": "Business Processes",
+      "taxonomySheet": "Business Processes",
+      "relevance": 0.25,
+      "anchor": true
+    },
+    {
+      "nodeCode": "BP-1000",
+      "title": "Business Processes",
+      "taxonomySheet": "Business Processes",
+      "relevance": 0.25,
+      "anchor": false
+    },
+    {
+      "nodeCode": "BP-1486",
+      "title": "Govern",
+      "taxonomySheet": "Business Processes",
+      "relevance": 0.12,
+      "anchor": false
+    },
+    {
+      "nodeCode": "CI",
+      "title": "COI Services",
+      "taxonomySheet": "COI Services",
+      "relevance": 0.15,
+      "anchor": true
+    },
+    {
+      "nodeCode": "CI-1000",
+      "title": "Community of Interest Services",
+      "taxonomySheet": "COI Services",
+      "relevance": 0.15,
+      "anchor": false
+    },
+    {
+      "nodeCode": "CI-1023",
+      "title": "COI-Specific Services",
+      "taxonomySheet": "COI Services",
+      "relevance": 0.08,
+      "anchor": false
+    },
+    {
+      "nodeCode": "UA",
+      "title": "User Applications",
+      "taxonomySheet": "User Applications",
+      "relevance": 0.1,
+      "anchor": true
+    },
+    {
+      "nodeCode": "UA-1000",
+      "title": "User Applications",
+      "taxonomySheet": "User Applications",
+      "relevance": 0.1,
+      "anchor": false
+    }
+  ],
+  "edges": [
+    {
+      "sourceCode": "CP",
+      "targetCode": "CR",
+      "relationType": "REALIZES"
+    },
+    {
+      "sourceCode": "CP",
+      "targetCode": "CI",
+      "relationType": "REALIZES"
+    },
+    {
+      "sourceCode": "CP",
+      "targetCode": "CO",
+      "relationType": "REALIZES"
+    },
+    {
+      "sourceCode": "CR",
+      "targetCode": "BP",
+      "relationType": "SUPPORTS"
+    },
+    {
+      "sourceCode": "CI",
+      "targetCode": "BP",
+      "relationType": "SUPPORTS"
+    },
+    {
+      "sourceCode": "CO",
+      "targetCode": "BP",
+      "relationType": "SUPPORTS"
+    },
+    {
+      "sourceCode": "CO",
+      "targetCode": "CR",
+      "relationType": "SUPPORTS"
+    },
+    {
+      "sourceCode": "BP",
+      "targetCode": "IP",
+      "relationType": "PRODUCES"
+    },
+    {
+      "sourceCode": "BP",
+      "targetCode": "IP",
+      "relationType": "CONSUMES"
+    },
+    {
+      "sourceCode": "UA",
+      "targetCode": "CR",
+      "relationType": "USES"
+    },
+    {
+      "sourceCode": "UA",
+      "targetCode": "CI",
+      "relationType": "USES"
+    },
+    {
+      "sourceCode": "UA",
+      "targetCode": "CO",
+      "relationType": "USES"
+    },
+    {
+      "sourceCode": "CR",
+      "targetCode": "UA",
+      "relationType": "SUPPORTS"
+    },
+    {
+      "sourceCode": "CI",
+      "targetCode": "CP",
+      "relationType": "FULFILLS"
+    },
+    {
+      "sourceCode": "CR",
+      "targetCode": "CP",
+      "relationType": "FULFILLS"
+    },
+    {
+      "sourceCode": "CR",
+      "targetCode": "CI",
+      "relationType": "DEPENDS_ON"
+    }
+  ]
+}

@@ -38,6 +38,10 @@
                     </div>
                     <h1 id="requirementHeading" class="h2 mt-2 mb-1" th:text="#{portfolio.requirement.loading}">Loading requirement…</h1>
                     <p id="requirementMeta" class="text-body-secondary mb-0"></p>
+                    <nav class="d-flex flex-wrap gap-3 mt-2" th:aria-label="#{portfolio.requirement.navigation}">
+                        <a id="jumpToRequirementText" href="#textPane" th:text="#{portfolio.requirement.textSource}">Text &amp; source</a>
+                        <a href="#reformulationOffers" th:text="#{portfolio.requirement.reformulationOffers}">Reformulation offers</a>
+                    </nav>
                 </div>
                 <div class="d-flex flex-wrap gap-2 align-items-start">
                     <a id="architectureWorkbenchLink" class="btn btn-outline-success" href="#" th:text="#{portfolio.requirement.openWorkbench}">
@@ -55,14 +59,7 @@
 
     <div class="card card-body mb-3"><div th:replace="~{fragments/content-language-controls :: controls}"></div></div>
 
-    <section th:replace="~{fragments/requirement-reformulation :: workspace}"></section>
-
-    <section id="openTasks" class="card shadow-sm mb-3" aria-labelledby="tasksHeading">
-        <div class="card-header"><h2 id="tasksHeading" class="h5 mb-0">Open decisions</h2></div>
-        <div id="taskList" class="list-group list-group-flush"></div>
-    </section>
-
-    <section class="card shadow-sm">
+    <section class="card shadow-sm mb-3">
         <div class="card-header p-0 border-bottom-0">
             <ul class="nav nav-tabs px-2 pt-2 flex-nowrap overflow-x-auto" id="detailTabs" role="tablist">
                 <li class="nav-item"><button class="nav-link active" id="text-tab" data-bs-toggle="tab"
@@ -80,16 +77,16 @@
             </ul>
         </div>
         <div class="card-body tab-content">
-            <div class="tab-pane fade show active" id="textPane" role="tabpanel" aria-labelledby="text-tab" tabindex="0">
+            <div class="tab-pane show active" id="textPane" role="tabpanel" aria-labelledby="text-tab" tabindex="0">
                 <div class="row g-3">
                     <div class="col-12 col-xl-6">
                         <h2 class="h5">Current requirement text</h2>
-                        <pre id="currentText" class="border rounded p-3 bg-body-tertiary text-wrap"></pre>
+                        <pre id="currentText" class="border rounded p-3 bg-body-tertiary portfolio-requirement-text"></pre>
                     </div>
                     <div class="col-12 col-xl-6">
                         <h2 class="h5">Original source fragment</h2>
                         <dl id="sourceMetadata" class="portfolio-card-meta mb-3"></dl>
-                        <pre id="sourceText" class="border rounded p-3 bg-body-tertiary text-wrap"></pre>
+                        <pre id="sourceText" class="border rounded p-3 bg-body-tertiary portfolio-requirement-text"></pre>
                     </div>
                 </div>
             </div>
@@ -123,6 +120,13 @@
             </div>
         </div>
     </section>
+
+    <section id="openTasks" class="card shadow-sm mb-3" aria-labelledby="tasksHeading">
+        <div class="card-header"><h2 id="tasksHeading" class="h5 mb-0">Open decisions</h2></div>
+        <div id="taskList" class="list-group list-group-flush"></div>
+    </section>
+
+    <section th:replace="~{fragments/requirement-reformulation :: workspace}"></section>
 </main>
 
 <div class="modal fade" id="newVersionModal" tabindex="-1" aria-labelledby="newVersionTitle" aria-hidden="true">

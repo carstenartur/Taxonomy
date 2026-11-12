@@ -113,6 +113,12 @@ public final class ApiAccessPolicy {
         for (String path : List.of("/api/workspace/upstream", "/api/workspace/upstream/tag")) {
             rules.add(rule("GET", path, Access.PERMISSION, ARCHITECTURE_READ, CONTRIBUTOR));
         }
+        for (String path : List.of("/api/repositories/*/upstream", "/api/repositories/*/upstream/tag")) {
+            rules.add(rule("GET", path, Access.PERMISSION, ARCHITECTURE_READ, CONTRIBUTOR));
+        }
+        for (String path : List.of("/api/repositories/*/upstream/fetch", "/api/repositories/*/upstream/fetch-tag")) {
+            rules.add(rule("POST", path, Access.PERMISSION, ARCHITECTURE_WRITE, CONTRIBUTOR));
+        }
         add(rules, "POST", ARCHITECTURE_WRITE, "/api/repositories/*/forks");
         add(rules, "POST", ADMIN_CONFIGURATION, "/api/workspace/external/fetch");
         for (String path : List.of("/api/workspace/external/push", "/api/workspace/external/full-sync")) {

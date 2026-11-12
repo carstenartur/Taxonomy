@@ -538,7 +538,38 @@ class DecisionRationaleSnapshotReportTest {
         return analysis;
     }
 
+    @Test
+    void downloadedDecisionReportLabelsTheFrozenDemoProvider() {
+        var workspaceResolver = mock(WorkspaceResolver.class);
+        var service = mock(DecisionRationaleSnapshotReportService.class);
+        when(workspaceResolver.resolveCurrentContext()).thenReturn(CONTEXT);
+        when(workspaceResolver.resolveCurrentUsername()).thenReturn("auditor");
+        when(service.generate(41L, "snapshot-1", "auditor", CONTEXT, null))
+                .thenReturn(report(2, "DEMO.TIME-TRACKING-V1.R1"));
+        var json = new tools.jackson.databind.ObjectMapper();
+        var registry = new ReportRendererRegistry(List.of(
+                new com.taxonomy.reporting.render.decision.DecisionRationaleJsonRenderer(json)));
+        var controller = new DecisionRationaleSnapshotReportController(service, registry, workspaceResolver);
+        var binding = mock(com.taxonomy.portfolio.service.ProjectProviderBinding.class);
+        when(binding.isRecordedReplay("DEMO.TIME-TRACKING-V1.R1")).thenReturn(true);
+        controller.setProviderBinding(binding);
+        var demo = controller.export(41L, "snapshot-1", "json", null);
+        assertThat(demo.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION))
+                .isEqualTo("attachment; filename=\"DEMO-taxonomy-decision-rationale-report-v2.json\"");
+        assertThat(json.readTree(demo.getBody()).path("title").asString()).isEqualTo("DEMO · Decision report");
+
+        when(service.generate(41L, "snapshot-1", "auditor", CONTEXT, null)).thenReturn(report(2, "CUSTOM_OPENAI"));
+        var normal = controller.export(41L, "snapshot-1", "json", null);
+        assertThat(normal.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION))
+                .isEqualTo("attachment; filename=\"taxonomy-decision-rationale-report-v2.json\"");
+        assertThat(json.readTree(normal.getBody()).path("title").asString()).isEqualTo("Decision report");
+    }
+
     private DecisionRationaleReport report(Integer requirementVersion) {
+        return report(requirementVersion, "MOCK");
+    }
+
+    private DecisionRationaleReport report(Integer requirementVersion, String provider) {
         ReportMetadata metadata = new ReportMetadata(
                 Instant.parse("2026-08-21T10:00:00Z"),
                 "auditor",
@@ -559,7 +590,7 @@ class DecisionRationaleSnapshotReportTest {
                 COMMIT_TIME,
                 false,
                 false,
-                "MOCK",
+                provider,
                 "SUCCESS",
                 "model-a",
                 "snapshot-1",

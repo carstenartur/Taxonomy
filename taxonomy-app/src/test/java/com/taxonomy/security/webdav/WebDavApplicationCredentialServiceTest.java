@@ -4,11 +4,15 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import org.hibernate.cfg.Configuration;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.jpa.repository.support.JpaRepositoryFactory;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.orm.jpa.JpaTransactionManager;
+import org.springframework.orm.jpa.SharedEntityManagerCreator;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -24,6 +28,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -197,6 +202,62 @@ class WebDavApplicationCredentialServiceTest {
 
         assertThat(credential.getRevokedAt()).isEqualTo(NOW);
         verify(repository).save(credential);
+    }
+
+    @Test
+    void rollbackKeepsTheCredentialUsableAndOnlyCommittedRevocationIsAudited() {
+        var config = new Configuration()
+                .addAnnotatedClass(WebDavApplicationCredential.class)
+                .setProperty("hibernate.connection.url", "jdbc:hsqldb:mem:webdav-revoke-" + UUID.randomUUID())
+                .setProperty("hibernate.connection.username", "SA")
+                .setProperty("hibernate.hbm2ddl.auto", "create-drop")
+                .setProperty("hibernate.search.enabled", "false");
+        try (var database = config.buildSessionFactory()) {
+            var entityManager = SharedEntityManagerCreator.createSharedEntityManager(database);
+            var repository = new JpaRepositoryFactory(entityManager).getRepository(WebDavApplicationCredentialRepository.class);
+            var service = service(repository, new BCryptPasswordEncoder(4));
+            var transaction = new TransactionTemplate(new JpaTransactionManager(database));
+            var owner = owner("admin", "ROLE_ADMIN");
+            var created = transaction.execute(status -> service.create(owner, "Word", true, false, 7));
+            String id = created.credential().id();
+
+            transaction.executeWithoutResult(status -> {
+                service.revoke(owner, id);
+                entityManager.flush();
+                status.setRollbackOnly();
+            });
+            assertThat(revokedAudits()).isEmpty();
+            var stillActive = transaction.execute(status -> service.authenticate("admin", created.secret()));
+            assertThat(stillActive).isPresent();
+
+            transaction.executeWithoutResult(status -> {
+                service.revoke(owner, id);
+                assertThat(revokedAudits()).isEmpty();
+            });
+            transaction.executeWithoutResult(status -> service.revoke(owner, id));
+            var revoked = transaction.execute(status -> service.authenticate("admin", created.secret()));
+            assertThat(revoked).isEmpty();
+            assertThat(revokedAudits()).containsExactly("audit.webdav_credential.revoked id=" + id + " user=admin");
+        }
+    }
+
+    @Test
+    void failedRevocationCommitDoesNotProduceASuccessEvent() throws SQLException {
+        var fixture = new CreationTransaction();
+        var credential = fixture.create().credential();
+        when(fixture.repository.findByCredentialIdAndUsername(credential.id(), "admin"))
+                .thenReturn(Optional.of(fixture.stored.get()));
+        doThrow(new SQLException("credential store unavailable")).when(fixture.connection).commit();
+        assertThatThrownBy(() -> fixture.transaction.executeWithoutResult(status ->
+                fixture.service.revoke(owner("admin", "ROLE_ADMIN"), credential.id())))
+                .isInstanceOf(TransactionSystemException.class);
+        verify(fixture.connection).commit();
+        assertThat(revokedAudits()).isEmpty();
+    }
+
+    private List<String> revokedAudits() {
+        return audit.list.stream().map(ILoggingEvent::getFormattedMessage)
+                .filter(message -> message.startsWith("audit.webdav_credential.revoked ")).toList();
     }
 
     private List<ILoggingEvent> createdAudits() {

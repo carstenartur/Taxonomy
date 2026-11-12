@@ -1,6 +1,7 @@
 package com.taxonomy.reporting.render.decision;
 
 import com.taxonomy.dto.AnalysisLanguage;
+import com.taxonomy.dto.DocumentLanguage;
 import com.taxonomy.extension.api.report.ReportRenderContext;
 import org.springframework.context.i18n.LocaleContextHolder;
 
@@ -14,14 +15,11 @@ public final class DecisionReportLanguage {
 
     /** Null means no explicit override, allowing the frozen analysis language to win. */
     public static Locale optionalOverride(String language) {
-        if (language == null || language.isBlank()) return null;
-        Locale locale = Locale.forLanguageTag(language.strip());
-        return locale.getLanguage().isBlank() ? null : locale;
+        return DocumentLanguage.optionalOverride(language);
     }
 
     public static Locale resolve(Locale override, AnalysisLanguage recorded) {
-        if (override != null) return override;
-        return recorded == null ? LocaleContextHolder.getLocale() : Locale.forLanguageTag(recorded.value());
+        return DocumentLanguage.resolve(override, recorded, LocaleContextHolder.getLocale());
     }
 
     public static String rendererLanguage(ReportRenderContext context) {

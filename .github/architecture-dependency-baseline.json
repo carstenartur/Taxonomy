@@ -62,7 +62,7 @@
       "fromPackage": "com.taxonomy.analysis.cluster",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 8
+      "classDependencyCount": 10
     },
     {
       "fromContext": "analysis",
@@ -333,6 +333,13 @@
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.analysis",
+      "toContext": "provenance",
+      "toPackage": "com.taxonomy.provenance.service",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.analysis",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.editor",
       "classDependencyCount": 7
@@ -349,7 +356,7 @@
       "fromPackage": "com.taxonomy.composition.analysis.artemis",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.cluster",
-      "classDependencyCount": 11
+      "classDependencyCount": 12
     },
     {
       "fromContext": "app-composition",
@@ -1487,6 +1494,13 @@
     },
     {
       "fromContext": "knowledge",
+      "fromPackage": "com.taxonomy.catalog.service",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.storage",
+      "classDependencyCount": 2
+    },
+    {
+      "fromContext": "knowledge",
       "fromPackage": "com.taxonomy.catalog.snapshot",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
@@ -1763,13 +1777,6 @@
       "fromPackage": "com.taxonomy.provenance.controller",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.operation",
-      "classDependencyCount": 1
-    },
-    {
-      "fromContext": "provenance",
-      "fromPackage": "com.taxonomy.provenance.controller",
-      "toContext": "app-composition",
-      "toPackage": "com.taxonomy.composition.analysis",
       "classDependencyCount": 1
     },
     {

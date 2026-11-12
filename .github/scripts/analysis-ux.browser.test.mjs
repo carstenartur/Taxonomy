@@ -1246,6 +1246,19 @@ test('component template parsing removes mixed-case scripts and links before mou
     } finally { await finish(page); }
 });
 
+async function applicationMessages(locale) {
+    const messages = {};
+    const files = locale === 'de' ? ['messages.properties','messages_de.properties'] : ['messages.properties'];
+    for (const file of files) {
+        const source = await readFile(path.join(resources,'i18n',file),'utf8');
+        for (const line of source.split('\n')) {
+            const entry = line.match(/^([^#!\s][^=]*)=(.*)$/);
+            if (entry) messages[entry[1]] = entry[2];
+        }
+    }
+    return messages;
+}
+
 async function guidanceFixture(locale='de', search='') {
     const page=await fixture(locale);
     page.setDefaultTimeout(5000);
@@ -1254,12 +1267,7 @@ async function guidanceFixture(locale='de', search='') {
         contentType:'text/html',body:'<!doctype html><html><head></head><body></body></html>'}));
     await page.goto('http://taxonomy.test/taxonomy/'+search);
     await mountComponentTemplate(page, template);
-    const dict={};
-    for(const name of ['messages.properties',...(locale==='de'?['messages_de.properties']:[])]){
-        for(const line of (await readFile(path.join(resources,'i18n',name),'utf8')).split('\n')){
-            const match=line.match(/^([^#!\s][^=]*)=(.*)$/);if(match)dict[match[1]]=match[2];
-        }
-    }
+    const dict=await applicationMessages(locale);
     await page.evaluate(({locale,dict})=>{
         document.documentElement.lang=locale;
         window.TaxonomyI18n={getLocale:()=>locale,ready:()=>Promise.resolve(),resolveUrl:p=>'/taxonomy'+p,
@@ -1328,25 +1336,24 @@ test('running analysis leaves tools visible with an explanation and does not sta
     }finally{await finish(page);}
 });
 
-async function mountDocumentImport(page, locale, cancelLabel, cancelledLabel, deferWorkspace = false) {
+async function mountDocumentImport(page, locale, deferWorkspace = false) {
     const template = await readFile(path.join(resources,'templates/index.html'),'utf8');
-    await page.evaluate(({template,locale,cancelLabel,cancelledLabel,deferWorkspace}) => {
+    const messages = await applicationMessages(locale);
+    await page.evaluate(({template,locale,messages,deferWorkspace}) => {
         const source = new DOMParser().parseFromString(template,'text/html');
-        for (const name of ['documentImportPanel','docCandidateReviewPanel','docAiComparisonPanel','docRegMapResultPanel']) {
+        for (const name of ['documentImportPanel','docCandidateReviewPanel','docAiResultPanel','docRegMapResultPanel']) {
             const element = source.getElementById(name);
             if (element) document.body.append(element);
         }
         document.documentElement.lang = locale;
         document.getElementById('documentImportPanel').open = true;
-        const messages = {'analysis.adapter.cancel':cancelLabel,'analysis.adapter.cancelled':cancelledLabel,
-            'docimport.regmap.mapping':locale === 'de' ? 'Regulation wird auf Architektur abgebildet…' : 'Mapping regulation to architecture…'};
         window.TaxonomyI18n = {t:key=>messages[key] || key,resolveUrl:path=>path};
         window.__TaxonomyAnalysisSessionContext = {runtime:{workspaceId:deferWorkspace ? null : 'document-workspace'}};
         if (deferWorkspace) window.TaxonomyAnalysisSessionReady = new Promise(resolve => setTimeout(() => {
             window.__TaxonomyAnalysisSessionContext.runtime.workspaceId = 'document-workspace';
             resolve(true);
         },200));
-    }, {template,locale,cancelLabel,cancelledLabel,deferWorkspace});
+    }, {template,locale,messages,deferWorkspace});
     await installBrowserApiFixture(page, resources);
     for (const script of ['api/analysis-adapter-api.js','api/import-api.js','shared/taxonomy-document-import.js'])
         await page.addScriptTag({path:path.join(resources,'static/js',script)});
@@ -1358,7 +1365,7 @@ for (const locale of ['en', 'de']) {
         const origin = 'http://taxonomy.fixture';
         const id = '9a93df57-2938-4c75-8056-940ac7cdaaaa', commit = 'a'.repeat(40);
         const cancelLabel = locale === 'de' ? 'Analyse abbrechen' : 'Cancel analysis';
-        const cancelledLabel = locale === 'de' ? 'Analyse abgebrochen.' : 'Analysis cancelled.';
+        const cancelledLabel = locale === 'de' ? 'Die Analyse wurde abgebrochen.' : 'Analysis was cancelled.';
         const calls = [];
         let state = 'RUNNING';
         try {
@@ -1375,7 +1382,7 @@ for (const locale of ['en', 'de']) {
                 await route.fulfill({status,headers,body:JSON.stringify(body)});
             });
             await page.goto(origin);
-            await mountDocumentImport(page,locale,cancelLabel,cancelledLabel);
+            await mountDocumentImport(page,locale);
             await page.locator('#docImportFile').setInputFiles({name:'notice.pdf',mimeType:'application/pdf',buffer:Buffer.from('controlled input')});
             await page.locator('input[name="importMode"][value="reg-map"]').check();
             const button = page.locator('#docImportUploadBtn');
@@ -1394,6 +1401,47 @@ for (const locale of ['en', 'de']) {
             assert.equal(calls.filter(call => call === 'POST /api/documents/map-regulation').length,2);
             assert.equal(calls.filter(call => call.endsWith('/cancel')).length,1);
             assert.ok(calls.includes('GET /api/analysis-adapters/' + id));
+        } finally { await page.close(); }
+    });
+}
+
+for (const locale of ['de','en']) {
+    test(locale + ': native document failures and expiry are announced in forced colors', async () => {
+        const page = await browser.newPage({locale, viewport:{width:320,height:680}, forcedColors:'active', reducedMotion:'reduce'});
+        const messages = await applicationMessages(locale);
+        const origin = 'https://taxonomy.fixture';
+        const cases = [
+            {mode:'ai-extract', path:'extract-ai', status:422, body:{error:'AI_EXTRACTION_FAILED',message:'AI-assisted extraction could not be completed'}, key:'failed'},
+            {mode:'reg-map', path:'map-regulation', status:422, body:{error:'REGULATION_MAPPING_FAILED',message:'Regulation mapping could not be completed'}, key:'failed'},
+            {mode:'reg-map', path:'map-regulation', status:410, body:{code:'ANALYSIS_EXPIRED'}, key:'expired'}
+        ];
+        const requests = [];
+        try {
+            await page.route(origin + '/**', async route => {
+                const path = new URL(route.request().url()).pathname;
+                if (path === '/') return route.fulfill({contentType:'text/html',body:'<!doctype html><html><body></body></html>'});
+                const current = cases[requests.length];
+                requests.push([route.request().method(),path]);
+                await route.fulfill({status:current.status,contentType:'application/json',body:JSON.stringify(current.body)});
+            });
+            await page.goto(origin);
+            await mountDocumentImport(page,locale);
+            assert.equal(await page.evaluate(() => matchMedia('(forced-colors: active)').matches),true);
+            await page.locator('#docImportFile').setInputFiles({name:'notice.pdf',mimeType:'application/pdf',buffer:Buffer.from('controlled archive')});
+            const button = page.locator('#docImportUploadBtn');
+            const status = page.locator('#docImportStatus');
+            assert.equal(await status.getAttribute('aria-live'),'polite');
+            for (const current of cases) {
+                await page.locator('input[name="importMode"][value="' + current.mode + '"]').check();
+                await button.focus();
+                await page.keyboard.press('Enter');
+                await page.waitForFunction(() => !document.getElementById('docImportUploadBtn').disabled);
+                assert.equal((await status.textContent()).trim(),'❌ ' + messages['analysis.adapter.' + current.key]);
+                assert.deepEqual(requests.at(-1),['POST','/api/documents/' + current.path]);
+                assert.equal(await page.locator('#docAiResultPanel').isVisible(),false);
+                assert.equal(await page.locator('#docRegMapResultPanel').isVisible(),false);
+            }
+            assert.equal(requests.length,cases.length);
         } finally { await page.close(); }
     });
 }
@@ -1426,7 +1474,7 @@ test('reload during the first physical document request discovers the admitted o
                 'X-Analysis-Operation-Id':id,'X-Analysis-Source-Commit':source},body:JSON.stringify(body)});
         });
         await page.goto(origin);
-        await mountDocumentImport(page,'en','Cancel analysis','Analysis cancelled.');
+        await mountDocumentImport(page,'en');
         await page.locator('#docImportFile').setInputFiles({name:'notice.pdf',mimeType:'application/pdf',buffer:Buffer.from('private source text')});
         await page.locator('input[name="importMode"][value="reg-map"]').check();
         await page.locator('#docImportUploadBtn').click();
@@ -1437,7 +1485,7 @@ test('reload during the first physical document request discovers the admitted o
         assert.equal(saved.token,token);
         const beforeReload = calls.length;
         await page.reload();
-        await mountDocumentImport(page,'en','Cancel analysis','Analysis cancelled.',true);
+        await mountDocumentImport(page,'en',true);
         await cancel.waitFor();
         assert.equal(await page.evaluate(() => window.AnalysisAdapterApi.savedDocument().id),id);
         completed = true;
@@ -1455,6 +1503,7 @@ for (const surface of ['node','leaf','editor-focus','source-focus']) {
     test('reopening the same ' + surface + ' action after reload uses only its original scoped observation', async () => {
         const page = await browser.newPage(), origin = 'https://taxonomy.fixture';
         const id = '04474a8c-3188-4191-871e-c409ee4f0ff7', source = 'b'.repeat(40);
+        const messages = await applicationMessages('de');
         let token, release, submitted, wrongSource = false;
         const original = new Promise(resolve => { release = resolve; });
         const admission = new Promise(resolve => { submitted = resolve; });
@@ -1475,6 +1524,10 @@ for (const surface of ['node','leaf','editor-focus','source-focus']) {
                     'X-Analysis-Operation-Id':id,'X-Analysis-Source-Commit':wrongSource ? 'c'.repeat(40) : source},body:JSON.stringify({native:'original result'})});
             });
             async function reopen() {
+                await page.evaluate(messages => {
+                    document.documentElement.lang = 'de';
+                    window.TaxonomyI18n = {t:key=>messages[key] || key,resolveUrl:path=>path};
+                },messages);
                 await installBrowserApiFixture(page,resources);
                 for (const file of ['analysis-adapter-api.js','architecture-editor-api.js','architecture-source-focus-api.js'])
                     await page.addScriptTag({path:path.join(resources,'static/js/api',file)});
@@ -1503,7 +1556,8 @@ for (const surface of ['node','leaf','editor-focus','source-focus']) {
                 wrongSource = true;
                 await page.reload();
                 await reopen();
-                await page.waitForFunction(() => window.nativeError === 'Analysis source changed',null,{timeout:5000});
+                await page.waitForFunction(() => typeof window.nativeError === 'string',null,{timeout:5000});
+                assert.equal(await page.evaluate(() => window.nativeError),messages['analysis.adapter.stale']);
                 assert.equal(await page.evaluate(() => window.retainedNativeResult),undefined);
                 assert.deepEqual(calls.at(-1),['GET','/api/analysis-adapters/' + id]);
             }

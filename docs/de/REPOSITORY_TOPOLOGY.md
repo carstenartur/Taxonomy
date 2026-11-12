@@ -172,6 +172,8 @@ Der ausgewählte persönliche Arbeitsbereich muss bereit sein. Sein Eigentümer 
 
 Um ein bestimmtes Tag zu übernehmen, rufen Sie nach dem zugehörigen Commit `GET /api/workspace/upstream/tag?name=release-1` ab. Übergeben Sie die zurückgegebenen Felder `name`, `sourceTagObject` und `trackedCommit` an `POST /api/workspace/upstream/fetch-tag`. Leichtgewichtige und annotierte Commit-Tags behalten ihre ursprünglichen Objekt-IDs. Ein bereits vorhandenes identisches Tag kann erneut abgerufen werden. Ein veralteter Stand oder ein abweichendes lokales Tag führt zu HTTP 409. Lesen Sie in diesem Fall den Status erneut, bevor Sie den Abruf wiederholen.
 
+Bei aktivierter Multi-Repository-API verwendet ein zentraler Fork dieselben Anfrage- und Antwortfelder unter `/api/repositories/{forkId}/upstream`. Für den Basis-Endpunkt und `/tag` gilt `GET`, für `/fetch` und `/fetch-tag` gilt `POST`. Der Fork-Katalog legt Quell-Repository und Quell-Branch fest. Das Lesen erfordert aktuelle Contributor-Rechte in beiden Repositories. Für die Veröffentlichung ist zusätzlich die Berechtigung zum Schreiben von Architekturdaten erforderlich. Ein Fork aus einer eingeschränkten Quelle muss auch bei der Veröffentlichung privat sein. Der Abruf aktualisiert die Tracking-Ref des Forks. Sein Standardbranch, unabhängig angelegte Branches und der ursprüngliche Forkpunkt behalten ihre Werte.
+
 ## Benutzerfreundliche Terminologie
 
 Die folgende Terminologie wird in der Benutzeroberfläche verwendet, um

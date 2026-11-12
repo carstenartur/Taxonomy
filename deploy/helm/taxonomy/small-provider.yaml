@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: small-provider
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: small-provider}}
+  template:
+    metadata: {labels: {app: small-provider}}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 1
+      securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: provider
+          image: fixture-image-placeholder
+          imagePullPolicy: Never
+          command: [java, -XX:+UseSerialGC, -XX:ActiveProcessorCount=1, -Xmx32m, -cp, /fixture, SmallProfileProvider, /keys, "8443"]
+          ports: [{containerPort: 8443, name: https}]
+          readinessProbe:
+            httpGet: {path: /v1/models, port: https, scheme: HTTPS}
+            periodSeconds: 2
+          resources:
+            requests: {cpu: 25m, memory: 64Mi}
+            limits: {cpu: 250m, memory: 192Mi}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: class, mountPath: /fixture, readOnly: true}
+            - {name: keys, mountPath: /keys, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: class, configMap: {name: small-provider-class}}
+        - {name: keys, secret: {secretName: small-provider-keys}}
+        - {name: tmp, emptyDir: {sizeLimit: 16Mi}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: small-provider}
+spec:
+  selector: {app: small-provider}
+  ports: [{name: https, port: 8443, targetPort: https}]

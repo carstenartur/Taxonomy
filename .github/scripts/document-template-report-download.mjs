@@ -14,6 +14,7 @@ import process from 'node:process';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 
+import { measureImpactMapReading } from './ui-impact-map-reading.mjs';
 import { chromium } from '@playwright/test';
 import { navigateArchitectureSubtab, navigateToPage } from './ui-role-fixtures.mjs';
 
@@ -370,6 +371,7 @@ async function evaluateHospitalRequirement(target) {
   await graph.waitFor({ state: 'visible', timeout: 60_000 });
   await target.waitForTimeout(1_200);
   await target.locator('#impactGraphView').screenshot({ path: files.graph });
+  const graphReading = await measureImpactMapReading(target, outputDir);
 
   await navigateToPage(target, 'analyze');
   await target.locator('#exportDecisionReportDocx').waitFor({
@@ -389,7 +391,8 @@ async function evaluateHospitalRequirement(target) {
     architectureRelationshipCount: relationships.length,
     architectureAnchorCount: (architecture.anchors || []).length,
     summaryRendered: true,
-    impactGraphRendered: true
+    impactGraphRendered: true,
+    graphReading
   };
 }
 

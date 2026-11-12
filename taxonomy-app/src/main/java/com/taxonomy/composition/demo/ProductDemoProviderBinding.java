@@ -45,6 +45,9 @@ public class ProductDemoProviderBinding implements ProjectProviderBinding {
     }
 
     @Override
+    public boolean isRecordedReplay(String provider) { return isReplayProvider(provider); }
+
+    @Override
     @Transactional
     public Optional<String> admittedProvider(Long projectId, List<Target> targets, String requestedProvider,
                                              String username, WorkspaceContext context) {

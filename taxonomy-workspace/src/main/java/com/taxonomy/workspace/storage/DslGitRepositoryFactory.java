@@ -73,6 +73,11 @@ public class DslGitRepositoryFactory implements AutoCloseable {
         return cache.computeIfAbsent(SYSTEM_REPO_NAME, this::createRepository);
     }
 
+    /** Isolated administrative evidence, outside selectable model and workspace repositories. */
+    public DslGitRepository getCatalogueReviewRepository() {
+        return cache.computeIfAbsent("administrative-catalogue-reviews", this::createRepository);
+    }
+
     /** Return one explicitly selected central architecture repository. */
     public DslGitRepository getCentralRepository(String repositoryId) {
         return cache.computeIfAbsent(storageNameFor(repositoryId), this::createRepository);

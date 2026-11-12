@@ -3,6 +3,7 @@ package com.taxonomy.portfolio.workbench;
 import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.Projection;
 import org.springframework.stereotype.Component;
 
+import java.util.Locale;
 import java.util.Objects;
 
 /** Adapts portfolio snapshot metadata to the framework-neutral PDF export renderer. */
@@ -16,6 +17,10 @@ public class ArchitecturePdfRenderer {
     }
 
     public byte[] render(Projection projection) {
+        return render(projection, Locale.ENGLISH);
+    }
+
+    public byte[] render(Projection projection, Locale locale) {
         if (projection == null || projection.scene() == null || projection.scene().isEmpty()) {
             throw new IllegalArgumentException("Architecture projection must contain a renderable scene");
         }
@@ -27,6 +32,6 @@ public class ArchitecturePdfRenderer {
                 projection.branchName(),
                 projection.commitSha(),
                 projection.warnings());
-        return delegate.render(projection.scene(), metadata, projection.nodeReasons(), projection.relationReasons());
+        return delegate.render(projection.scene(), metadata, projection.nodeReasons(), projection.relationReasons(), locale);
     }
 }
