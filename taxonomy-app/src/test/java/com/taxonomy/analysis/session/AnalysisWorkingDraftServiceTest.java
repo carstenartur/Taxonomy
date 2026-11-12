@@ -132,6 +132,26 @@ class AnalysisWorkingDraftServiceTest {
         org.mockito.Mockito.verifyNoInteractions(repository);
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"read", "status", "save", "reset", "delete"})
+    void privateOwnersCannotUseDraftsWhenSourceRepositoryIsMissing(String operation) {
+        when(systemRepositoryService.getRepository("repo-1")).thenReturn(null);
+        assertThatThrownBy(() -> invokeDraftOperation(operation))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Workspace source repository is unavailable");
+        org.mockito.Mockito.verifyNoInteractions(repository);
+    }
+
+    @Test
+    void privateOwnerCannotReadDraftWhenSourceLookupIsRejected() {
+        when(systemRepositoryService.getRepository("repo-1"))
+                .thenThrow(new IllegalArgumentException("internal repository lookup detail"));
+        assertThatThrownBy(() -> service.read("Alice", "ws-1"))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Workspace source repository is unavailable");
+        org.mockito.Mockito.verifyNoInteractions(repository);
+    }
+
     @Test
     void missingRepositoryAuthorizationServiceFailsClosed() {
         service = new AnalysisWorkingDraftService(
