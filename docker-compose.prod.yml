@@ -28,6 +28,8 @@ services:
       - .env
     environment:
       - SPRING_PROFILES_ACTIVE=production,hsqldb
+      # Caddy terminates TLS and is the only published service in this stack.
+      - SERVER_FORWARD_HEADERS_STRATEGY=native
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
@@ -68,18 +70,13 @@ services:
     volumes:
       - taxonomy-data:/app/data
       - djl-cache:/root/.djl.ai
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/actuator/health/readiness"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 90s
+    # Inherit the image's curl readiness probe for Caddy's service_healthy dependency.
     restart: unless-stopped
 
   # ─── Caddy Reverse Proxy (automatic HTTPS) ──────────────────
   caddy:
     # Tag is retained for readability; digest is authoritative and immutable.
-    image: caddy:2-alpine@sha256:b9e25ad35f1dc8b11a91d531628f5a3537ab9769c6e4218ea2795bba37ef7b11
+    image: caddy:2-alpine@sha256:78bd35025c7ba85961dd149ae670315129954e77abe2383ac47c89106b35ade9
     ports:
       - "80:80"                   # HTTP → HTTPS redirect + ACME challenge
       - "443:443"                 # HTTPS
