@@ -62,7 +62,7 @@
       "fromPackage": "com.taxonomy.analysis.cluster",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 8
+      "classDependencyCount": 10
     },
     {
       "fromContext": "analysis",
@@ -328,7 +328,7 @@
       "fromPackage": "com.taxonomy.composition.analysis.artemis",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.cluster",
-      "classDependencyCount": 11
+      "classDependencyCount": 12
     },
     {
       "fromContext": "app-composition",
@@ -1456,6 +1456,13 @@
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
       "classDependencyCount": 5
+    },
+    {
+      "fromContext": "knowledge",
+      "fromPackage": "com.taxonomy.catalog.service",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.storage",
+      "classDependencyCount": 2
     },
     {
       "fromContext": "knowledge",

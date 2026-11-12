@@ -3,12 +3,14 @@ package com.taxonomy.security.webdav;
 import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.transaction.TransactionSystemException;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -77,6 +79,32 @@ class WebDavApplicationCredentialFilterTest {
         assertThat(SecurityContextHolder.getContext().getAuthentication())
                 .isNull();
         verify(service).authenticate("admin", TOKEN);
+    }
+
+    @Test
+    void credentialStoreOutagesReturnAnEmptyUnavailableResponseUntilStorageRecovers() throws Exception {
+        var service = mock(WebDavApplicationCredentialService.class);
+        when(service.authenticate("admin", TOKEN))
+                .thenThrow(new DataAccessResourceFailureException("lookup unavailable"))
+                .thenThrow(new TransactionSystemException("commit unavailable"))
+                .thenReturn(Optional.of(principal("admin", false)));
+        var filter = filter(service);
+        var chain = mock(FilterChain.class);
+        for (int attempt = 0; attempt < 2; attempt++) {
+            var response = new MockHttpServletResponse();
+            filter.doFilter(request("GET", "203.0.113.10", "admin", TOKEN), response, chain);
+            assertThat(response.getStatus()).isEqualTo(503);
+            assertThat(response.getHeader(HttpHeaders.CACHE_CONTROL)).isEqualTo("no-store");
+            assertThat(response.getHeader(HttpHeaders.WWW_AUTHENTICATE)).isNull();
+            assertThat(response.getContentAsString()).isEmpty();
+            assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+        }
+        verifyNoInteractions(chain);
+        assertThat(filter.trackedFailureKeyCount()).isZero();
+        var observed = new AtomicReference<Authentication>();
+        filter.doFilter(request("GET", "203.0.113.10", "admin", TOKEN), new MockHttpServletResponse(),
+                (req, res) -> observed.set(SecurityContextHolder.getContext().getAuthentication()));
+        assertThat(observed.get().getName()).isEqualTo("admin");
     }
 
     @Test

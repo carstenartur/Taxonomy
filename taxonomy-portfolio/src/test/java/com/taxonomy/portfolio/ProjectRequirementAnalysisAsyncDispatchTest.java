@@ -177,7 +177,9 @@ class ProjectRequirementAnalysisAsyncDispatchTest {
         var item = new PortfolioAnalysisWorkQueue.WorkItem(1L, "job-1", 41L, "tenant-scope",
                 7L, "REQ-001", 8L, 1, "Resilient communications");
         var claimed = new java.util.concurrent.CountDownLatch(1);
-        when(workQueue.pending(anyString(), anyLong(), anyString())).thenAnswer(invocation -> {
+        when(workQueue.pending(anyString(), anyLong(), anyString()))
+                .thenThrow(new org.springframework.dao.CannotAcquireLockException("claim transaction rolled back"))
+                .thenAnswer(invocation -> {
             claimed.countDown();
             return List.of(item);
         });

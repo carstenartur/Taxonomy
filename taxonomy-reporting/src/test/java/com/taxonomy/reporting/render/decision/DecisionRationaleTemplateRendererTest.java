@@ -49,6 +49,44 @@ class DecisionRationaleTemplateRendererTest {
     private DecisionChapterDiagramRenderer diagrams;
 
     @Test
+    void emitsAuthoredRepeatBlocksAlongsideFrozenChapterAndAppendixEvidence() throws Exception {
+        var codec = new OoxmlTemplatePackageCodec();
+        Map<String, byte[]> parts;
+        try (var input = getClass().getResourceAsStream("/" + DecisionRationaleTemplateContract.DEFAULT_RESOURCE)) {
+            parts = new LinkedHashMap<>(codec.unpack(input).parts());
+        }
+        String xml = new String(parts.get("word/document.xml"), StandardCharsets.UTF_8);
+        String body = "<w:body>";
+        assertThat(xml).contains(body);
+        xml = xml.replace(body, body + RepeatableWordLayoutTest.repeat("chapters", "code")
+                + RepeatableWordLayoutTest.repeat("appendix", "code"));
+        parts.put("word/document.xml", xml.getBytes(StandardCharsets.UTF_8));
+        var contract = new DecisionRationaleTemplateContract();
+        contract.validate(parts);
+        byte[] original = codec.pack(parts);
+        var manifest = new TemplateManifest(1, contract.templateId(), "Controlled", "controlled.dotx",
+                com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE, Instant.EPOCH.toString(),
+                "admin", original.length, parts.size(), TEMPLATE_SHA256);
+        var source = new TemplateFile(manifest, TEMPLATE_COMMIT, original, Instant.EPOCH);
+        var renderer = new DecisionRationaleTemplateRenderer(templates, contract);
+        byte[] generated = renderer.renderArtifact(new DecisionRationaleDocxRenderer(new DecisionChapterDiagramRenderer()),
+                RepeatableWordLayoutTest.populatedReport(), source).bytes();
+        try (var doc = new org.apache.poi.xwpf.usermodel.XWPFDocument(new ByteArrayInputStream(generated))) {
+            var copies = doc.getParagraphs().stream().filter(p -> p.getText().startsWith("Custom prefix")).toList();
+            assertThat(copies).extracting(org.apache.poi.xwpf.usermodel.XWPFParagraph::getText)
+                    .containsExactly("Custom prefixBP", "Custom prefixCR", "Custom prefixCR-10");
+            assertThat(copies).allSatisfy(p -> {
+                assertThat(p.getRuns().get(0).isBold()).isTrue();
+                assertThat(p.getRuns().get(1).isItalic()).isTrue();
+            });
+            assertThat(doc.getDocument().xmlText()).contains("Frozen rationale", "First decision", "73.0")
+                    .doesNotContain("taxonomy.repeat.", "taxonomy.field.", "Sample field", "{{taxonomy.");
+            assertThat(doc.getPackagePart().getContentType()).endsWith("wordprocessingml.document.main+xml");
+        }
+        assertThat(source.content()).isEqualTo(original);
+    }
+
+    @Test
     void materializesTheReportIntoTheVersionedTemplateAndEmitsAGenuineDocx()
             throws Exception {
         OoxmlTemplatePackageCodec codec = new OoxmlTemplatePackageCodec();

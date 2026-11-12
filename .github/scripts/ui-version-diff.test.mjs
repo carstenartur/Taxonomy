@@ -6,8 +6,9 @@ import { readFileSync } from 'node:fs';
 const source = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/versioning/taxonomy-context-compare.js', import.meta.url), 'utf8');
 function harness() {
   const elements = new Map();
-  const context = { window: {}, document: {
-    readyState: 'loading', addEventListener() {}, getElementById: id => elements.get(id) || null
+  const events = new EventTarget();
+  const context = { window: new EventTarget(), document: {
+    readyState: 'loading', addEventListener: events.addEventListener.bind(events), dispatchEvent: events.dispatchEvent.bind(events), getElementById: id => elements.get(id) || null
   }, TaxonomyI18n: { t: (key, ...args) => key + (args.length ? ': ' + args.join(', ') : ''), formatBranch: name => name } };
   vm.runInNewContext(readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/shared/taxonomy-utils.js', import.meta.url), 'utf8'), context);
   context.TaxonomyUtils = context.window.TaxonomyUtils;
@@ -98,7 +99,7 @@ function dialogHarness() {
       replaceChildren() {}, appendChild() {}, addEventListener: (name, fn) => { events[name] = fn; }, events });
   }
   h.context.document.createElement = () => ({});
-  h.context.bootstrap = { Modal: { getOrCreateInstance: () => ({ show() {} }) } };
+  h.context.bootstrap = { Modal: { getOrCreateInstance: () => ({ show() {} }), getInstance: () => ({ hide() {} }) } };
   const request = () => new Promise((resolve, reject) => pending.push({ resolve, reject }));
   h.context.window.TaxonomyContextApi = { listBranches: request, compare: request };
   return { ...h, pending, listeners, button };
@@ -112,9 +113,33 @@ async function open(h, context = { branch: 'draft' }) {
 test('closing a comparison invalidates its outstanding response', async () => {
   const h = dialogHarness(); await open(h);
   h.api.doCompare(); const pending = h.pending.shift();
-  const container = h.elements.get('contextCompareResults'); const loading = container.innerHTML;
+  const container = h.elements.get('contextCompareResults');
   h.listeners.get('hide.bs.modal')(); pending.resolve(convert(fixture())); await flush();
-  assert.equal(container.innerHTML, loading);
+  assert.equal(container.innerHTML, '');
+});
+test('a repository switch retires both compare sides and any delayed result across A–B–A', async () => {
+  const h = dialogHarness();
+  await open(h, {branch: 'review', commitId: 'old-head'});
+  const changed = selectionChanged => {
+    const event = new Event('taxonomy:repository-context-changed');
+    event.detail = {selectionChanged};
+    h.context.document.dispatchEvent(event);
+  };
+  changed(false);
+  h.api.doCompare();
+  const active = h.pending.shift();
+  changed(true);
+  changed(true);
+  active.resolve(convert(fixture()));
+  await flush();
+  h.api.doCompare();
+  assert.equal(h.pending.length, 0);
+  assert.equal(h.button.disabled, true);
+  assert.equal(h.elements.get('contextCompareResults').innerHTML, '');
+  assert.equal(h.elements.get('compareLeftCommit').value, '');
+  await open(h, {branch: 'draft', commitId: 'fresh-head'});
+  assert.equal(h.elements.get('compareLeftCommit').value, 'fresh-head');
+  assert.equal(h.button.disabled, false);
 });
 test('changing a side invalidates the outstanding comparison', async () => {
   const h = dialogHarness(); await open(h); h.api.doCompare();

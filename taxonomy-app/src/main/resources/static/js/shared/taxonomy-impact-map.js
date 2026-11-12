@@ -24,6 +24,7 @@
             'impactmap.description': 'Stable layer layout. Select an element to inspect its evidence and relationships.',
             'impactmap.search.placeholder': 'Find code or title…',
             'impactmap.search.label': 'Search impact-map elements',
+            'impactmap.inspect': 'Inspect an element',
             'impactmap.search.clear': 'Clear search',
             'impactmap.context': 'Context nodes',
             'impactmap.overview': 'Overview',
@@ -403,6 +404,18 @@
         toolbar.appendChild(status);
         root.appendChild(toolbar);
 
+        var inspectLabel = createElement('label', 'impact-map-inspect');
+        inspectLabel.appendChild(createElement('span', '', t('impactmap.inspect')));
+        var inspect = createElement('select', 'form-select impact-map-inspect-select');
+        inspectLabel.appendChild(inspect);
+        root.appendChild(inspectLabel);
+        var listedIds = null;
+        var inspectedId = null;
+        inspect.addEventListener('change', function () {
+            inspectedId = inspect.value || null;
+            diagram.select(inspectedId, null, {center: false, reveal: true});
+        });
+
         var canvas = createElement('div', 'impact-map-canvas');
         var svg = diagramApi.element('svg', {
             'role': 'img',
@@ -410,11 +423,11 @@
             'tabindex': '0'
         });
         canvas.appendChild(svg);
-        root.appendChild(canvas);
 
         var details = createElement('div', 'impact-map-details is-empty');
         details.setAttribute('aria-live', 'polite');
         root.appendChild(details);
+        root.appendChild(canvas);
         container.appendChild(root);
 
         function updateStatus() {
@@ -463,7 +476,10 @@
         }
 
         function selectRelatedNode(nodeId) {
-            diagram.select(nodeId, null, { center: true, reveal: true });
+            var reading = inspectedId !== null;
+            if (reading) inspectedId = nodeId;
+            diagram.select(nodeId, null, { center: !reading, reveal: true });
+            if (reading) inspect.focus({preventScroll: true});
         }
 
         function renderNodeDetails(node) {
@@ -597,6 +613,23 @@
 
         function onDiagramChange(view) {
             currentView = view;
+            var visible = view.model.nodes.slice().sort(rankNodes);
+            var ids = JSON.stringify(visible.map(function (node) { return node.id; }));
+            if (ids !== listedIds) {
+                listedIds = ids;
+                inspect.replaceChildren();
+                var placeholder = createElement('option', '', '—');
+                placeholder.value = '';
+                inspect.appendChild(placeholder);
+                visible.forEach(function (node) {
+                    var label = Math.round(node.relevance * 100) + '% · ' + node.id + ' · ' + node.title;
+                    var option = createElement('option', '', label);
+                    option.value = node.id;
+                    inspect.appendChild(option);
+                });
+            }
+            inspect.value = view.state.selectedNodeId || '';
+            if (inspectedId !== view.state.selectedNodeId) inspectedId = null;
             contextCheckbox.checked = view.state.showContext;
             if (searchInput.value !== view.state.searchQuery) searchInput.value = view.state.searchQuery;
             clearSearch.hidden = !view.state.searchQuery;

@@ -19,12 +19,15 @@ test('selection uses actual available roots and cannot include excluded analysis
 });
 test('downloads require report content type and provenance; error pages never become reports',async()=>{
     const {api,downloads}=boot();
-    const response=(type,ok=true)=>({ok,status:ok?200:422,redirected:false,
-        headers:{get:key=>({'content-type':type,'x-taxonomy-analysis-sha256':'a'.repeat(64),'x-taxonomy-snapshot-id':'saved-1'}[key.toLowerCase()]||null)},
+    const response=(type,ok=true,disposition=null)=>({ok,status:ok?200:422,redirected:false,
+        headers:{get:key=>({'content-type':type,'content-disposition':disposition,'x-taxonomy-analysis-sha256':'a'.repeat(64),'x-taxonomy-snapshot-id':'saved-1'}[key.toLowerCase()]||null)},
         json:async()=>({detail:'Choose Auto or A3'}),blob:async()=>new Blob(['report'],{type})});
     await assert.rejects(api.download(response('text/html'),'docx','saved-1'));
     await assert.rejects(api.download(response('application/json',false),'json','saved-1'),/Auto/);
     await assert.rejects(api.download(response('application/json'),'json','different-snapshot'));
     assert.equal(downloads.length,0);
-    await api.download(response('application/json'),'json','saved-1');assert.equal(downloads.length,1);
+    await api.download(response('application/json'),'json','saved-1');
+    await api.download(response('application/json',true,'attachment; filename="DEMO-taxonomy-decision-rationale-report-v1.json"'),
+        'json','saved-1');
+    assert.deepEqual(downloads,['taxonomy-decision-report-saved-1.json','DEMO-taxonomy-decision-report-saved-1.json']);
 });

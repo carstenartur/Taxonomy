@@ -1,0 +1,24 @@
+# Applied to the existing disposable Artemis topology after its recovered MOCK run.
+config:
+  LLM_MOCK: "false"
+  CUSTOM_LLM_URL: https://small-provider:8443/v1/chat/completions
+  CUSTOM_LLM_MODEL: small-fixture
+  JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/run/small-provider/trust.jks -Djavax.net.ssl.trustStoreType=JKS
+  SPRING_APPLICATION_JSON: >-
+    {"taxonomy":{"analysis":{
+      "provider-permits":{"enabled":true,"provider-groups":{"custom-openai":"smoke-fault"},"maximum-wait-ms":10000},
+      "provider-quotas":{"enabled":true,"provider-groups":{"custom-openai":"smoke-fault"},
+        "groups":{"smoke-fault":{"rpm":10,"tpm":0,"rpd":10}}}
+    }}}
+extraVolumes:
+  - {name: provider-trust, configMap: {name: small-provider-trust}}
+extraVolumeMounts:
+  - {name: provider-trust, mountPath: /run/small-provider, readOnly: true}
+networkPolicy:
+  egress:
+    - to:
+        - podSelector: {matchLabels: {app.kubernetes.io/name: taxonomy-smoke-postgres}}
+      ports: [{port: 5432, protocol: TCP}]
+    - to:
+        - podSelector: {matchLabels: {app: small-provider}}
+      ports: [{port: 8443, protocol: TCP}]

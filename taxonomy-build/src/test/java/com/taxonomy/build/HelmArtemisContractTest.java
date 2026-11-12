@@ -195,7 +195,20 @@ class HelmArtemisContractTest {
         List<Map<String, Object>> fixtures = yaml(Files.readString(evidence.resolve("fixtures.yaml")));
         assertThat(kind(fixtures, "Secret")).isEmpty();
         assertThat(kind(fixtures, "Ingress")).isEmpty();
-        assertThat(kind(fixtures, "PersistentVolumeClaim")).isEmpty();
+        var claims = kind(fixtures, "PersistentVolumeClaim");
+        assertThat(claims).hasSize(2);
+        for (String deployment : List.of("smoke-postgres", "smoke-broker")) {
+            String name = deployment + "-data";
+            var claim = named(claims, name);
+            assertThat(map(claim, "metadata")).containsEntry("namespace", "taxonomy-artemis-smoke");
+            assertThat(map(claim, "spec")).containsEntry("accessModes", List.of("ReadWriteOnce"));
+            assertThat(map(claim, "spec", "resources", "requests")).containsEntry("storage", "512Mi");
+            var service = named(kind(fixtures, "Deployment"), deployment);
+            var volumes = list(map(service, "spec", "template", "spec").get("volumes"));
+            assertThat(volumes).filteredOn(volume -> volume.containsKey("persistentVolumeClaim"))
+                    .singleElement().satisfies(volume -> assertThat(map(volume, "persistentVolumeClaim"))
+                            .containsEntry("claimName", name));
+        }
         assertThat(kind(fixtures, "Service")).hasSize(2).allSatisfy(service ->
                 assertThat(map(service, "spec")).containsEntry("type", "ClusterIP"));
         assertThat(kind(fixtures, "Deployment")).hasSize(2).allSatisfy(deployment ->
@@ -212,6 +225,34 @@ class HelmArtemisContractTest {
             }
         }
         assertThat(finalPods.size()).isLessThanOrEqualTo(Integer.parseInt(quota.get("pods").toString()));
+    }
+
+    @Test
+    void distributedProviderFaultUsesTheSharedPermitGroupAndOnlyItsScopedTlsPort() throws Exception {
+        Path chart = root.resolve("deploy/helm/taxonomy");
+        var docs = render(false, "--values", chart.resolve("values-artemis-smoke.yaml").toString(),
+                "--values", chart.resolve("values-artemis-provider-fault.yaml").toString());
+        var config = environment(named(kind(docs, "Deployment"), "taxonomy-artemis"));
+        assertThat(config).containsEntry("LLM_MOCK", "false")
+                .containsEntry("CUSTOM_LLM_URL", "https://small-provider:8443/v1/chat/completions");
+        var settings = map(yaml((String) config.get("SPRING_APPLICATION_JSON")).getFirst(), "taxonomy", "analysis");
+        for (String resource : List.of("provider-permits", "provider-quotas")) {
+            assertThat(map(settings, resource)).containsEntry("enabled", true);
+            assertThat(map(settings, resource, "provider-groups")).containsEntry("custom-openai", "smoke-fault");
+        }
+        assertThat(map(settings, "provider-quotas", "groups", "smoke-fault"))
+                .containsEntry("rpm", 10).containsEntry("tpm", 0).containsEntry("rpd", 10);
+        assertThat(kind(docs, "Deployment")).hasSize(3).allSatisfy(deployment ->
+                assertThat(list(container(deployment).get("volumeMounts")))
+                        .anySatisfy(mount -> assertThat(mount).containsEntry("name", "provider-trust")
+                                .containsEntry("mountPath", "/run/small-provider").containsEntry("readOnly", true)));
+        assertThat(kind(docs, "NetworkPolicy")).hasSize(3).allSatisfy(policy ->
+                assertThat(list(map(policy, "spec").get("egress"))).anySatisfy(rule -> {
+                    assertThat(list(rule.get("ports"))).singleElement().satisfies(port ->
+                            assertThat(port).containsEntry("port", 8443).containsEntry("protocol", "TCP"));
+                    assertThat(list(rule.get("to"))).singleElement().satisfies(peer ->
+                            assertThat(map(peer, "podSelector", "matchLabels")).containsEntry("app", "small-provider"));
+                }));
     }
 
     @Test

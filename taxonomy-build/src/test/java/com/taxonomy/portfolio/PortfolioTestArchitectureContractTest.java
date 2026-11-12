@@ -60,7 +60,7 @@ class PortfolioTestArchitectureContractTest {
                 .contains("synchronizeCurrentProjectJobs")
                 .contains("window.taxonomyPortfolioRegisterJob(location, job)")
                 .contains("retryDelaysMs")
-                .contains("maximumJobs");
+                .contains("api.retainedAnalysisJobs(jobs, job => job)");
 
         assertThat(scriptOrder(projectTemplate))
                 .as("projects.html must load portfolio scripts as plain, ordered static assets")

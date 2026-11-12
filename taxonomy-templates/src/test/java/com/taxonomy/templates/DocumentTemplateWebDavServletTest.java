@@ -61,9 +61,9 @@ class DocumentTemplateWebDavServletTest {
             throws Exception {
         DocumentTemplateWebDavLockManager locks =
                 new DocumentTemplateWebDavLockManager();
-        TemplateFile file = templateFile(COMMIT_A, new byte[]{1, 2, 3, 4});
-        when(templates.list()).thenReturn(List.of(descriptor(COMMIT_A)));
-        when(templates.downloadCurrent("decision-report")).thenReturn(file);
+        var descriptor = descriptor(COMMIT_A);
+        when(templates.list()).thenReturn(List.of(descriptor));
+        when(templates.packedLength(descriptor)).thenReturn(4);
 
         MockHttpServletRequest request = request(
                 "PROPFIND", "/dav/templates/", "/");
