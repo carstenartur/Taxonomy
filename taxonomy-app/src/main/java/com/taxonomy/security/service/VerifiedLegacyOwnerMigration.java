@@ -167,6 +167,12 @@ public final class VerifiedLegacyOwnerMigration {
             lockRegistry();
             PrincipalId actor = requireAdministrator(administrator);
             String id = historicalPrincipal.value().toString();
+            // Do not accidentally turn this migration-specific operation into a generic
+            // OIDC principal deletion API. Only principals linked by this workflow qualify.
+            if (jdbc.queryForObject("select count(*) from principal_access_audit where target_principal=? and decision_kind='LINK_LEGACY_OIDC'",
+                    Integer.class, id) < 1) {
+                throw new AccessDeniedException("Previously verified legacy link required");
+            }
             var binding = new IdentityBinding(IdentityBinding.Kind.OIDC, issuer, subject);
             var bindings = jdbc.query("select binding_key, binding_kind, issuer, subject_id, enabled from principal_binding where principal_id=?",
                     (rs, index) -> new BindingRow(rs.getString(1), rs.getString(2), rs.getString(3),
