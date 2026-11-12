@@ -23,7 +23,7 @@ RESOURCE_SELECTOR="app.kubernetes.io/instance=${RELEASE},app.kubernetes.io/name=
 PORT_FORWARD_PID=""
 NAMESPACE_UID=""
 FIXTURE_KUBECONFIG=""
-BUILD_METADATA=""
+IMAGE_ARCHIVE=""
 
 fail() {
   echo "::error::$*" >&2
@@ -41,7 +41,7 @@ cleanup() {
     printf '{"apiVersion":"v1","kind":"DeleteOptions","preconditions":{"uid":"%s"}}\n' "${NAMESPACE_UID}" \
       | kubectl delete --request-timeout=10s --raw "/api/v1/namespaces/${NAMESPACE}" -f - >/dev/null 2>&1 || true
   fi
-  if [[ -n "${BUILD_METADATA}" ]]; then rm -f -- "${BUILD_METADATA}"; fi
+  if [[ -n "${IMAGE_ARCHIVE}" ]]; then rm -f -- "${IMAGE_ARCHIVE}"; fi
   if [[ -n "${FIXTURE_KUBECONFIG}" ]]; then
     rm -f -- "${FIXTURE_KUBECONFIG}"
   fi
@@ -92,12 +92,7 @@ VERSION=$("${ROOT_DIR}/mvnw" -q -f "${ROOT_DIR}/pom.xml" -DforceStdout help:eval
 
 printf 'Building constrained-smoke image %s from %s\n' \
   "${IMAGE_REFERENCE}" "${SOURCE_SHA}"
-build_options=()
-if [[ "${MEASURE_SMALL_SEARCH:-false}" == true ]]; then
-  BUILD_METADATA=$(mktemp)
-  build_options=(--metadata-file "${BUILD_METADATA}")
-fi
-docker build "${build_options[@]}" \
+docker build \
   --build-arg "BUILD_DATE=${BUILD_DATE}" \
   --build-arg "VCS_REF=${SOURCE_SHA}" \
   --build-arg "VERSION=${VERSION}" \
@@ -108,17 +103,32 @@ if ! [[ "${IMAGE_ID}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
   fail "Docker did not return an immutable local image ID"
 fi
 
-if [[ -n "${BUILD_METADATA}" ]]; then
-  # Buildx records both the native platform config and the index/manifest that owns it.
-  # Store only digests. Other BuildKit metadata is outside this fixture's evidence.
-  jq -e --arg inspected "${IMAGE_ID}" '
-    {configDigest:."containerimage.config.digest", outputDigest:."containerimage.digest"}
-    | select(all(.[]; type == "string" and test("^sha256:[0-9a-f]{64}$")))
-    | select(.outputDigest == $inspected or .configDigest == $inspected)' \
-    "${BUILD_METADATA}" >"${EVIDENCE_DIR}/built-image-digests.json" || fail "Missing matching BuildKit output digests"
+if [[ "${MEASURE_SMALL_SEARCH:-false}" == true ]]; then
+  # Load this exact archive into kind. Its manifest identifies the native OCI
+  # configuration independently of Docker's index ID and containerd's image ID.
+  IMAGE_ARCHIVE=$(mktemp)
+  docker image save --output "${IMAGE_ARCHIVE}" "${IMAGE_REFERENCE}"
+  native_platform=$(docker image inspect "${IMAGE_REFERENCE}" --format '{{.Os}}/{{.Architecture}}')
+  mapfile -t config_paths < <(tar -xOf "${IMAGE_ARCHIVE}" manifest.json | jq -r --arg ref "${IMAGE_REFERENCE}" '
+    [.[] | select(any(.RepoTags[]?; . == $ref or endswith("/" + $ref))) | .Config] | unique[]')
+  native_digests=()
+  for config_path in "${config_paths[@]}"; do
+    [[ "${config_path}" =~ ^(blobs/sha256/[0-9a-f]{64}|[0-9a-f]{64}\.json)$ ]] || fail "Invalid Docker configuration path"
+    if tar -xOf "${IMAGE_ARCHIVE}" "${config_path}" | jq -e --arg platform "${native_platform}" '
+      (.os + "/" + .architecture) == $platform' >/dev/null; then
+      config_hash=$(tar -xOf "${IMAGE_ARCHIVE}" "${config_path}" | sha256sum | cut -d ' ' -f1)
+      native_digests+=("sha256:${config_hash}")
+    fi
+  done
+  [[ "${#native_digests[@]}" == 1 ]] || fail "Expected exactly one configuration for ${IMAGE_REFERENCE} on ${native_platform}"
+  jq -n --arg config "${native_digests[0]}" --arg output "${IMAGE_ID}" --arg platform "${native_platform}" '
+    {configDigest:$config, outputDigest:$output, platform:$platform}' >"${EVIDENCE_DIR}/built-image-digests.json"
+  kind load image-archive "${IMAGE_ARCHIVE}" --name "${KIND_CLUSTER_NAME}"
+  rm -f -- "${IMAGE_ARCHIVE}"
+  IMAGE_ARCHIVE=""
+else
+  kind load docker-image "${IMAGE_REFERENCE}" --name "${KIND_CLUSTER_NAME}"
 fi
-
-kind load docker-image "${IMAGE_REFERENCE}" --name "${KIND_CLUSTER_NAME}"
 
 kubectl apply -f "${CHART_DIR}/constrained-smoke-prerequisites.yaml"
 kubectl wait --for=jsonpath='{.status.phase}'=Active \

@@ -32,12 +32,12 @@ measure_small_search() {
   node=$(jq -er .node "${directory}/pod.json")
   runtime_id=$(jq -er '.image | split("://") | last' "${directory}/pod.json")
   # The Pod may report the configuration digest while Docker reports the OCI index.
-  # Match CRI to the configuration recorded independently by the build.
+  # Match CRI to the hashed configuration in the immutable archive loaded into kind.
   docker exec "${node}" crictl inspecti "${runtime_id}" |
     jq -e --slurpfile build "${EVIDENCE_DIR}/built-image-digests.json" '
       .status | select(.id == $build[0].configDigest) |
       {configDigest:.id, repositoryDigests:.repoDigests, builtOutputDigest:$build[0].outputDigest}' \
-    >"${directory}/runtime-image.json" || fail "Running image differs from the native platform configuration recorded by BuildKit"
+    >"${directory}/runtime-image.json" || fail "Running image differs from the native platform configuration in the loaded Docker archive"
   jq -e '.resources.requests.cpu == "100m" and .resources.requests.memory == "768Mi" and
     .resources.limits.cpu == "500m" and .resources.limits.memory == "1536Mi" and
     .resources.limits["ephemeral-storage"] == "512Mi"' "${directory}/pod.json" >/dev/null
