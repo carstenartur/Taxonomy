@@ -75,7 +75,7 @@ class GraphSearchTests {
     @Test
     void zeroRequestedResultsRetainAllRequiredGraphFields() {
         GraphSearchResult result = graphSearchService.graphSearch(
-                "business process management", 0, RepositoryContext.centralRead("fixture-repository", "draft", "system"));
+                "business process management", 0, primaryReadContext());
         assertThat(result.getMatchedNodes()).isNotNull();
         assertThat(result.getRelationCountByRoot()).isNotNull();
         assertThat(result.getTopRelationTypes()).isNotNull();
@@ -84,14 +84,14 @@ class GraphSearchTests {
 
     @Test
     void zeroRequestedResultsExplainThatNoSearchWasRequested() {
-        GraphSearchResult result = graphSearchService.graphSearch("anything", 0, RepositoryContext.centralRead("fixture-repository", "draft", "system"));
+        GraphSearchResult result = graphSearchService.graphSearch("anything", 0, primaryReadContext());
         assertThat(result.getSummary()).isEqualTo("No graph search results were requested.");
         assertThat(result.getMatchedNodes()).isEmpty();
     }
 
     @Test
     void negativeRequestedResultsRemainEmptyWithoutInference() {
-        GraphSearchResult result = graphSearchService.graphSearch("network services", -1, RepositoryContext.centralRead("fixture-repository", "draft", "system"));
+        GraphSearchResult result = graphSearchService.graphSearch("network services", -1, primaryReadContext());
         assertThat(result.getMatchedNodes()).isEmpty();
         assertThat(result.getRelationCountByRoot()).isEmpty();
     }
@@ -232,6 +232,11 @@ class GraphSearchTests {
                 .isEqualTo(workspace.getWorkspaceId());
         assertThat(workspace.getProvisioningStatus()).isEqualTo(WorkspaceProvisioningStatus.READY);
         assertThat(workspace.getCurrentCommit()).isNull();
+    }
+
+    private RepositoryContext primaryReadContext() {
+        var primary = repositories.getPrimaryRepository();
+        return RepositoryContext.centralRead(primary.getRepositoryId(), primary.getDefaultBranch(), "system");
     }
 
     private void assertNoWorkspaceAllocation(String username) {
