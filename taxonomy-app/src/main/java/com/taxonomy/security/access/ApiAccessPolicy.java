@@ -106,8 +106,12 @@ public final class ApiAccessPolicy {
             rules.add(rule(method, "/api/repositories/*/members/**", Access.PERMISSION, REPOSITORY_MANAGE, OWNER));
         }
         add(rules, "POST", ADMIN_CONFIGURATION, "/api/repositories");
-        for (String path : List.of("/api/repositories/*/workspaces", "/api/architecture/editor/workspaces", "/api/workspace/provision")) {
+        for (String path : List.of("/api/repositories/*/workspaces", "/api/architecture/editor/workspaces",
+                "/api/workspace/provision", "/api/workspace/upstream/fetch", "/api/workspace/upstream/fetch-tag")) {
             rules.add(rule("POST", path, Access.PERMISSION, ANALYSIS_RUN, CONTRIBUTOR));
+        }
+        for (String path : List.of("/api/workspace/upstream", "/api/workspace/upstream/tag")) {
+            rules.add(rule("GET", path, Access.PERMISSION, ARCHITECTURE_READ, CONTRIBUTOR));
         }
         add(rules, "POST", ARCHITECTURE_WRITE, "/api/repositories/*/forks");
         add(rules, "POST", ADMIN_CONFIGURATION, "/api/workspace/external/fetch");

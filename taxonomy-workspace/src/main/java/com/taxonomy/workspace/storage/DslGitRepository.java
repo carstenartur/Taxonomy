@@ -5,6 +5,7 @@ import com.taxonomy.dsl.diff.ModelDiffer;
 import com.taxonomy.dsl.mapper.AstToModelMapper;
 import com.taxonomy.dsl.model.CanonicalArchitectureModel;
 import com.taxonomy.dsl.parser.TaxDslParser;
+import com.taxonomy.workspace.service.BranchHeadConflictException;
 import com.taxonomy.workspace.signing.CommitSignature;
 import com.taxonomy.workspace.signing.GitCommitSignatureService;
 import io.github.carstenartur.jgit.storage.hibernate.HibernateGitStorage;
@@ -321,8 +322,57 @@ public class DslGitRepository implements AutoCloseable {
             RefUpdate.Result result = update.update();
             if (result == RefUpdate.Result.NEW || result == RefUpdate.Result.FAST_FORWARD || result == RefUpdate.Result.NO_CHANGE) return incomingHead;
             if (result == RefUpdate.Result.LOCK_FAILURE || result == RefUpdate.Result.REJECTED || result == RefUpdate.Result.REJECTED_CURRENT_BRANCH)
-                throw new com.taxonomy.workspace.service.BranchHeadConflictException(branch, expectedHead, getHeadCommit(branch), "Branch changed during history integration");
+                throw new BranchHeadConflictException(branch, expectedHead, getHeadCommit(branch), "Branch changed during history integration");
             throw new IOException("History integration failed: " + result);
+        }
+    }
+
+    /** Refresh independent storage handles before reading a remote observation or enforcing a Git precondition. */
+    public Ref readFreshRef(String qualifiedName) throws IOException {
+        synchronized (gitRepo) {
+            gitRepo.scanForRepoChanges();
+            return gitRepo.exactRef(qualifiedName);
+        }
+    }
+
+    /** Reject rewrites of an already fetched source before a pull or publish can modify either repository. */
+    public void verifyUpstreamLineage(DslGitRepository source, String sourceRepositoryId, String branch, String observed)
+            throws IOException {
+        var upstream = new GitUpstreamRef(sourceRepositoryId, branch);
+        String tracked = upstream.head(this);
+        if (tracked == null) return;
+        try {
+            if (source.isAncestor(tracked, observed)) return;
+        } catch (org.eclipse.jgit.errors.MissingObjectException
+                 | org.eclipse.jgit.errors.IncorrectObjectTypeException missingHistory) {
+            // A replaced source repository may no longer have the recorded commit.
+        }
+        throw new BranchHeadConflictException(branch, tracked, observed, "Source branch diverged from its last fetched commit");
+    }
+
+    /** Bind a newly provisioned target to its verified fork point, including an interrupted retry. */
+    public void recordUpstreamForkPoint(String sourceRepositoryId, String sourceBranch, String commit, String actor) throws IOException {
+        var upstream = new GitUpstreamRef(sourceRepositoryId, sourceBranch);
+        String tracked = upstream.head(this);
+        if (tracked != null && !tracked.equals(commit)) {
+            throw new BranchHeadConflictException(
+                    upstream.name(), commit, tracked, "Existing upstream ref differs from the recorded fork point");
+        }
+        upstream.advance(this, tracked, commit, actor);
+    }
+
+    /** A concurrent fetch may already have observed a descendant of this completed integration. */
+    public String recordIntegratedUpstream(String sourceRepositoryId, String sourceBranch, String commit, String actor) throws IOException {
+        var upstream = new GitUpstreamRef(sourceRepositoryId, sourceBranch);
+        String tracked = upstream.head(this);
+        if (tracked != null && isAncestor(commit, tracked)) return tracked;
+        try {
+            upstream.advance(this, tracked, commit, actor);
+            return commit;
+        } catch (BranchHeadConflictException changed) {
+            String current = upstream.head(this);
+            if (current != null && isAncestor(commit, current)) return current;
+            throw changed;
         }
     }
 

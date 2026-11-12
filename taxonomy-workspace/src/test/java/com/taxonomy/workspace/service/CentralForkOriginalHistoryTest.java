@@ -12,6 +12,7 @@ import com.taxonomy.workspace.signing.GitCommitSignatureService;
 import com.taxonomy.workspace.signing.SignatureStatus;
 import com.taxonomy.workspace.signing.SigningTestKeys;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.GitUpstreamRef;
 import com.taxonomy.workspace.storage.DslWorkspaceReadAdapter;
 import io.github.carstenartur.jgit.storage.hibernate.DefaultHibernateRepositoryFactory;
 import org.junit.jupiter.api.Test;
@@ -77,6 +78,8 @@ class CentralForkOriginalHistoryTest {
         try (var fixture = new Fixture(database, verifier)) {
             var fork = fixture.catalog.getRepository(forkId);
             assertEquals(tip, fork.getForkPointCommit());
+            assertEquals(tip, new GitUpstreamRef(sourceId, BRANCH)
+                    .head(fixture.git.getCentralRepository(forkId)));
             var reads = new DslWorkspaceReadAdapter(fixture.git);
             var forkRead = reads.openRead(RepositoryContext.centralRead(forkId, BRANCH, OWNER));
             var sourceRead = reads.openRead(RepositoryContext.centralRead(sourceId, BRANCH, OWNER));

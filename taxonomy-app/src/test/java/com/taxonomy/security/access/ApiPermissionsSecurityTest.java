@@ -60,6 +60,17 @@ class ApiPermissionsSecurityTest {
                 .andExpect(status().isForbidden());
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/workspace/upstream/fetch", "/api/workspace/upstream/fetch-tag"})
+    void upstreamPublicationRequiresAnExecutionRoleAndSessionCsrf(String path) throws Exception {
+        mvc.perform(post(path).with(csrf()).with(user("reader").roles("READER")))
+                .andExpect(status().isForbidden());
+        mvc.perform(post(path).with(user("analyst").roles("USER")))
+                .andExpect(status().isForbidden());
+        mvc.perform(post(path).with(csrf()).with(user("analyst").roles("USER")))
+                .andExpect(status().isOk());
+    }
+
     @Test
     void provisionalCatalogueQueueRequiresTechnicalAdministrationBeforeReadingEvidence() throws Exception {
         String path = "/api/admin/catalogue/provisional-information-products";
@@ -403,6 +414,7 @@ class ApiPermissionsSecurityTest {
         @RequestMapping({"/api/admin/catalogue/provisional-information-products/IP-1/reviews",
                 "/api/admin/catalogue/provisional-information-products/IP-1/reviews/0000000000000000000000000000000000000001/overlay",
                 "/api/projects/p", "/api/analyze", "/api/analysis-drafts", "/api/workspace/provision",
+                "/api/workspace/upstream/fetch", "/api/workspace/upstream/fetch-tag",
                 "/api/export/mermaid", "/api/dsl/validate", "/api/admin/users", "/api/unclassified-write", "/api/account/me",
                 "/api/analyze-stream", "/api/analyze-node", "/api/workspace/external/push", "/api/workspace/external/full-sync",
                 "/api/workspace/create", "/api/workspace/copy", "/api/workspace/compare", "/api/workspace/unclassified",

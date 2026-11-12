@@ -160,6 +160,16 @@ Gibt den Repository-Topologiemodus und Informationen zur gemeinsamen Quelle zur�
 }
 ```
 
+### Quellhistorie in eine persönliche Arbeitskopie abrufen
+
+Der ausgewählte persönliche Arbeitsbereich muss bereit sein. Sein Eigentümer benötigt weiterhin Mitwirkungsrechte am Quell-Repository. Alle Anfragen beziehen sich auf denselben Arbeitsbereich und dasselbe Repository.
+
+1. `GET /api/workspace/upstream` liefert den Quell-Branch, dessen aktuellen `sourceCommit` und den lokal gespeicherten `trackedCommit`.
+2. `POST /api/workspace/upstream/fetch` erwartet den ermittelten `sourceCommit` und den Wert von `trackedCommit` im Feld `expectedTrackedCommit`. Bei älteren Arbeitskopien kann der erste `trackedCommit` den Wert `null` haben.
+3. Die Antwort nennt den lokal verfügbaren Commit. Seine Eltern, Verzeichnisbäume und Dateien sind jetzt in der Arbeitskopie gespeichert. Der Arbeits-Branch behält seine geprüfte Version bis zu einer gesonderten Integration.
+
+Um ein bestimmtes Tag zu übernehmen, rufen Sie nach dem zugehörigen Commit `GET /api/workspace/upstream/tag?name=release-1` ab. Übergeben Sie die zurückgegebenen Felder `name`, `sourceTagObject` und `trackedCommit` an `POST /api/workspace/upstream/fetch-tag`. Leichtgewichtige und annotierte Commit-Tags behalten ihre ursprünglichen Objekt-IDs. Ein bereits vorhandenes identisches Tag kann erneut abgerufen werden. Ein veralteter Stand oder ein abweichendes lokales Tag führt zu HTTP 409. Lesen Sie in diesem Fall den Status erneut, bevor Sie den Abruf wiederholen.
+
 ## Benutzerfreundliche Terminologie
 
 Die folgende Terminologie wird in der Benutzeroberfläche verwendet, um

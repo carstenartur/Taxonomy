@@ -644,6 +644,7 @@ public class WorkspaceManager {
                 if (existingHead == null || existingHead.equals(baseCommit)) {
                     GitHistoryTransfer.copyCommitClosure(systemGit, workspaceGit, baseCommit, List.of());
                     requireProvisioningAuthority(systemRepository.getRepositoryId(), username);
+                    workspaceGit.recordUpstreamForkPoint(systemRepository.getRepositoryId(), baseBranch, baseCommit, username);
                     if (existingHead == null) {
                         workspaceGit.fastForwardIfHeadMatches(targetBranch, null, baseCommit, username,
                                 "Provision workspace from " + baseBranch);

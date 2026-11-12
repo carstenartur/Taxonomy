@@ -11,6 +11,7 @@ import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.storage.DslCommit;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.GitUpstreamRef;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.junit.jupiter.api.Test;
@@ -83,6 +84,26 @@ class GitNativeSyncAncestryTest {
         }
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void rewrittenSourceRefIsRejectedBeforePullOrPublication(boolean publish) throws Exception {
+        try (var fixture = new Fixture()) {
+            String local = fixture.local.getHeadCommit("main");
+            String source = fixture.source.getHeadCommit("main");
+            fixture.local.recordUpstreamForkPoint("architecture", "main", local, "alice");
+
+            assertThatThrownBy(() -> {
+                if (publish) fixture.service.publishFromWorkspaceToShared("alice", "workspace");
+                else fixture.service.syncFromSharedToWorkspace("alice", "workspace");
+            }).isInstanceOf(BranchHeadConflictException.class);
+
+            assertThat(fixture.source.getHeadCommit("main")).isEqualTo(source);
+            assertThat(fixture.local.getHeadCommit("main")).isEqualTo(local);
+            assertThat(fixture.workspace.getLastIntegratedCommit()).isNull();
+            verify(fixture.portfolio, never()).commitPortfolio(anyString(), anyString(), anyString(), any());
+        }
+    }
+
     @Test void publicationPreservesOriginalContributionsAndAdoptsTheSameMergeWithoutAnEchoCommit() throws Exception {
         try (var fixture = new Fixture()) {
             String central = fixture.source.getHeadCommit("main");
@@ -107,6 +128,8 @@ class GitNativeSyncAncestryTest {
             assertThat(fixture.source.getProvenance(published).sources().getFirst().commitId()).isEqualTo(second);
             assertThat(fixture.workspace.getCurrentCommit()).isEqualTo(published);
             assertThat(fixture.workspace.getLastIntegratedCommit()).isEqualTo(published);
+            assertThat(new GitUpstreamRef("architecture", "main").head(fixture.local))
+                    .isEqualTo(published);
 
             int count = fixture.source.getCommitCount("main");
             assertThat(fixture.service.publishFromWorkspaceToShared("alice", "workspace")).isEqualTo(published);
@@ -130,6 +153,8 @@ class GitNativeSyncAncestryTest {
             assertThat(fixture.local.isAncestor(original, later)).isTrue();
             assertThat(fixture.local.isAncestor(published, later)).isTrue();
             assertThat(fixture.workspace.getLastIntegratedCommit()).isEqualTo(later);
+            assertThat(new GitUpstreamRef("architecture", "main").head(fixture.local))
+                    .isEqualTo(later);
         }
     }
 

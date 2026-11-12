@@ -110,6 +110,7 @@ public class RepositoryWorkspaceService {
             GitHistoryTransfer.copyCommitClosure(sourceGit, workspaceGit, sourceCommit, List.of());
             systemRepositoryService.readCurrentAuthorization(source.getRepositoryId(),
                     current -> requireContribution(current, user));
+            workspaceGit.recordUpstreamForkPoint(source.getRepositoryId(), sourceBranch, sourceCommit, user);
             workspaceGit.fastForwardIfHeadMatches(WORKSPACE_BRANCH, null, sourceCommit, user,
                     "Create working copy from " + sourceBranch);
             workspaceGit.createBranchAtCommit(TRACKING_BRANCH, sourceCommit);
