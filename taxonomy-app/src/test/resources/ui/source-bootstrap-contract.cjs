@@ -729,6 +729,7 @@ async function provisionalProducts() {
             state: 'PROVISIONAL', sourceState: 'draft', justification: 'Fixture rationale'}]
     };
     const filters = [], writes = [];
+    let denyHistory = false;
     const app = fixture('analysis', request => {
         if (request.url.pathname.endsWith('/IP-1/reviews')) {
             if (request.options.method === 'POST') {
@@ -739,6 +740,7 @@ async function provisionalProducts() {
                     proposedParent: 'IP-NEW', secondary: [], rationale: 'Controlled review',
                     proposedVersion: 'candidate-1', proposedSha256: 'candidate digest'}});
             }
+            if (denyHistory) return Response.json({}, {status: 403});
             return Response.json({head: '0'.repeat(40), decisions: [], next: null});
         }
         assert.equal(request.url.pathname, '/taxonomy/api/admin/catalogue/provisional-information-products');
@@ -784,6 +786,12 @@ async function provisionalProducts() {
     assert.equal(review.children.find(item => item.tagName === 'BUTTON').disabled, true);
     delayed.resolve(Response.json({...applied, mappingVersion: 'late-v0'})); await settle();
     assert.ok(!content(results).includes('late-v0'));
+    denyHistory = true;
+    form.dispatchEvent({type: 'submit'}); await settle();
+    const deniedProduct = results.children[1];
+    deniedProduct.open = true; deniedProduct.dispatchEvent({type: 'toggle'}); await settle();
+    assert.equal(results.children.length, 0);
+    assert.equal(status.textContent, 'admin.productReview.unavailable');
     filter.value = 'denied'; form.dispatchEvent({type: 'submit'}); await settle();
     assert.equal(results.children.length, 0);
     assert.equal(status.textContent, 'admin.productReview.unavailable');

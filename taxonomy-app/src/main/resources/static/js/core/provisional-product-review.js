@@ -100,6 +100,9 @@
                 feedback.textContent = '';
             } catch (error) {
                 if (!signal.aborted) {
+                    if (error.status === 401 || error.status === 403) {
+                        reset(); status.textContent = label('unavailable'); return;
+                    }
                     head = null; area.replaceChildren(); initialized = false;
                     feedback.textContent = label('unavailable');
                 }
