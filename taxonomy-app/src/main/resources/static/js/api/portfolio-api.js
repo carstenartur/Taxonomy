@@ -375,6 +375,12 @@ window.TaxonomyPortfolioApi = (function () {
         },
 
         // ── Reports ───────────────────────────────────────────────────────────
+        productGaps: function (projectId, options) {
+            return getJson(projectPath(projectId) + '/product-gaps', options);
+        },
+        reviewProductGap: function (projectId, key, review) {
+            return sendJson(projectPath(projectId) + '/product-gaps/' + encodeURIComponent(key) + '/reviews', 'POST', review);
+        },
         reportUrl: reportUrl,
         fetchReport: function (projectId, format, parameters, accept, requestOptions) {
             return getResponse(reportUrl(projectId, format, parameters), accept, requestOptions);

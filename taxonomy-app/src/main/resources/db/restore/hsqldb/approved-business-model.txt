@@ -30,6 +30,7 @@ com.taxonomy.interop.persistence.IntegrationPublishAttemptEntity
 com.taxonomy.interop.persistence.IntegrationPublishItemEntity
 com.taxonomy.portfolio.model.ArchitectureProject
 com.taxonomy.portfolio.model.ProductCatalogEntry
+com.taxonomy.portfolio.model.ProductGapReview
 com.taxonomy.portfolio.model.ProductTaxonomyCoverage
 com.taxonomy.portfolio.model.ProjectConflict
 com.taxonomy.portfolio.model.ProjectRequirement

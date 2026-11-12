@@ -10,6 +10,7 @@ public class LlmCallDetail {
 
     private Map<String, Double> scores;
     private Map<String, String> reasons;
+    private Map<String, Double> assessedProductScores = Map.of();
     private String prompt;
     private String rawResponse;
     private String provider;
@@ -22,6 +23,13 @@ public class LlmCallDetail {
 
     public Map<String, Double> getScores() { return scores; }
     public void setScores(Map<String, ? extends Number> scores) { this.scores = scores == null ? null : new java.util.LinkedHashMap<>(AnalysisScoreSemantics.normalizeScores(scores)); }
+
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY)
+    public Map<String, Double> getAssessedProductScores() { return assessedProductScores; }
+
+    public void setAssessedProductScores(Map<String, Double> scores) {
+        assessedProductScores = Map.copyOf(AnalysisScoreSemantics.normalizeScores(scores));
+    }
 
     public Map<String, String> getReasons() { return reasons; }
     public void setReasons(Map<String, String> reasons) { this.reasons = reasons; }

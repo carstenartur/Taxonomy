@@ -276,6 +276,7 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
         copy.setScores(value.getScores() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(value.getScores()));
         copy.setReasons(value.getReasons() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(value.getReasons()));
         copy.setRootAssessments(value.getRootAssessments());
+        copy.setAssessedProductScores(value.getAssessedProductScores());
         copy.setProvider(value.getProvider()); copy.setPrompt(value.getPrompt()); copy.setRawResponse(value.getRawResponse());
         copy.setError(value.getError()); copy.setDurationMs(value.getDurationMs()); copy.setDiscrepancy(value.getDiscrepancy());
         return copy;

@@ -39,6 +39,7 @@ com.taxonomy.relations.model.RelationProposal	knowledge	PORTABLE_PRIMARY	Explici
 com.taxonomy.relations.model.RequirementCoverage	knowledge	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.portfolio.model.ArchitectureProject	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.portfolio.model.ProductCatalogEntry	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.portfolio.model.ProductGapReview	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.portfolio.model.ProductTaxonomyCoverage	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.portfolio.model.ProjectConflict	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.portfolio.model.ProjectRequirement	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys

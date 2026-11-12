@@ -9,6 +9,13 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Stream;
+
+import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import jakarta.persistence.QueryHint;
+import org.hibernate.jpa.HibernateHints;
+import org.springframework.data.jpa.repository.QueryHints;
 
 public interface RequirementAnalysisSnapshotRepository
         extends JpaRepository<RequirementAnalysisSnapshot, String> {
@@ -102,6 +109,20 @@ public interface RequirementAnalysisSnapshotRepository
 
     List<RequirementAnalysisSnapshot> findByProjectIdAndScopeKeyOrderByCreatedAtDesc(
             Long projectId, String scopeKey);
+
+    @Query("""
+            select new com.taxonomy.portfolio.repository.ProductGapSnapshotRow(s.id, s.requirementId,
+                   r.requirementKey, s.requirementVersionId, v.versionNumber, s.taxonomyFingerprint, s.analysisPayload)
+              from RequirementAnalysisSnapshot s join s.requirement r join s.requirementVersion v
+             where s.projectId=:projectId and s.scopeKey=:scopeKey
+               and s.requirementId=coalesce(:requirementId,s.requirementId) and s.status in :statuses
+             order by r.requirementKey, v.versionNumber, s.createdAt, s.id
+            """)
+    @QueryHints(@QueryHint(name = HibernateHints.HINT_FETCH_SIZE, value = "16"))
+    Stream<ProductGapSnapshotRow> streamProductGapEvidence(
+            @Param("projectId") Long projectId, @Param("scopeKey") String scopeKey,
+            @Param("requirementId") Long requirementId,
+            @Param("statuses") Set<AnalysisStatus> statuses);
 
     /** Compatibility signatures retained while all callers migrate. */
     @Deprecated(forRemoval = false)

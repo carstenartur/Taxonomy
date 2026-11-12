@@ -60,6 +60,7 @@ EXTERNAL_DEPENDENCY must appear in the manifest if required and not captured.
 | `com.taxonomy.relations.model.RequirementCoverage` | knowledge | PORTABLE_PRIMARY | `requirement_coverage` | Explicit versioned records; preserve business IDs and map technical foreign keys |
 | `com.taxonomy.portfolio.model.ArchitectureProject` | portfolio | PORTABLE_PRIMARY | `arch_project` | Explicit versioned records; preserve business IDs and map technical foreign keys |
 | `com.taxonomy.portfolio.model.ProductCatalogEntry` | portfolio | PORTABLE_PRIMARY | `product_catalog` | Explicit versioned records; preserve business IDs and map technical foreign keys |
+| `com.taxonomy.portfolio.model.ProductGapReview` | portfolio | PORTABLE_PRIMARY | `project_product_gap_review` | Explicit versioned records; preserve business IDs and map technical foreign keys |
 | `com.taxonomy.portfolio.model.ProductTaxonomyCoverage` | portfolio | PORTABLE_PRIMARY | `product_taxonomy` | Explicit versioned records; preserve business IDs and map technical foreign keys |
 | `com.taxonomy.portfolio.model.ProjectConflict` | portfolio | PORTABLE_PRIMARY | `project_conflict` | Explicit versioned records; preserve business IDs and map technical foreign keys |
 | `com.taxonomy.portfolio.model.ProjectRequirement` | portfolio | PORTABLE_PRIMARY | `project_requirement` | Explicit versioned records; preserve business IDs and map technical foreign keys |

@@ -1574,7 +1574,7 @@
       "fromPackage": "com.taxonomy.portfolio.controller",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 26
+      "classDependencyCount": 27
     },
     {
       "fromContext": "portfolio",
@@ -1714,7 +1714,7 @@
       "fromPackage": "com.taxonomy.portfolio.service",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 44
+      "classDependencyCount": 45
     },
     {
       "fromContext": "portfolio",
