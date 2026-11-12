@@ -131,6 +131,16 @@ class VerifiedLegacyOwnerMigrationTest {
                 Integer.class, target.value().toString())).isEqualTo(1);
     }
 
+    @Test void genericOidcPrincipalIsNotAnEligibleHistoricalUnlinkTarget() {
+        var newlyRegistered = identities.oidc("https://idp.example", "unrelated");
+        assertThatThrownBy(() -> migration.unlinkVerified(admin, newlyRegistered.id(),
+                "https://idp.example", "unrelated", "approved:revoke"))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThat(identities.isEnabled(newlyRegistered.id())).isTrue();
+        assertThat(jdbc.queryForObject("select count(*) from principal_access_audit",
+                Integer.class)).isZero();
+    }
+
     @Test void removedAdminRoleOrUnknownActorCannotPreviewOrLink() {
         var preview = migration.preview(admin, 256);
         jdbc.update("delete from user_roles where user_id=1");
