@@ -15,7 +15,7 @@ public record RootEmbeddingSnapshot(int schemaVersion, CatalogueSourceIdentity s
     public RootEmbeddingSnapshot {
         if (schemaVersion != SCHEMA_VERSION) throw new IllegalArgumentException("Unsupported embedding snapshot schema");
         Objects.requireNonNull(source, "source");
-        CatalogueRoot.require(rootCode);
+        CatalogueRoot.validateIdentifier(rootCode);
         if (relationCommit == null || !relationCommit.equals(source.sourceCommit())) {
             throw new IllegalArgumentException("Embedding relations do not match the exact source commit");
         }

@@ -35,6 +35,7 @@ public final class DurableClusterAnalysisExecution implements ClusterAnalysisExe
     private final ObjectMapper mapper;
     private final WorkspaceViewContextReadPort workspaceViews;
     private final FrozenCatalogueEmbeddingService embeddingSnapshots;
+    private final java.util.function.Supplier<com.taxonomy.dsl.model.CatalogueDefinition> definitions;
 
     public DurableClusterAnalysisExecution(ClusterAnalysisStore store, CatalogueSnapshotService catalogue,
             ClusterAnalysisSignals signals, LlmProviderConfig providers, ObjectMapper mapper,
@@ -45,6 +46,15 @@ public final class DurableClusterAnalysisExecution implements ClusterAnalysisExe
     public DurableClusterAnalysisExecution(ClusterAnalysisStore store, CatalogueSnapshotService catalogue,
             ClusterAnalysisSignals signals, LlmProviderConfig providers, ObjectMapper mapper,
             WorkspaceViewContextReadPort workspaceViews, FrozenCatalogueEmbeddingService embeddingSnapshots) {
+        this(store, catalogue, signals, providers, mapper, workspaceViews, embeddingSnapshots,
+                com.taxonomy.dsl.model.CatalogueDefinition::standard);
+    }
+
+    public DurableClusterAnalysisExecution(ClusterAnalysisStore store, CatalogueSnapshotService catalogue,
+            ClusterAnalysisSignals signals, LlmProviderConfig providers, ObjectMapper mapper,
+            WorkspaceViewContextReadPort workspaceViews, FrozenCatalogueEmbeddingService embeddingSnapshots,
+            java.util.function.Supplier<com.taxonomy.dsl.model.CatalogueDefinition> definitions) {
+        this.definitions = Objects.requireNonNull(definitions);
         this.store = Objects.requireNonNull(store); this.catalogue = Objects.requireNonNull(catalogue);
         this.signals = Objects.requireNonNull(signals); this.providers = Objects.requireNonNull(providers);
         this.mapper = Objects.requireNonNull(mapper);
@@ -72,7 +82,8 @@ public final class DurableClusterAnalysisExecution implements ClusterAnalysisExe
                 command.maxArchitectureNodes(), provider, command.username(), command.workspaceContext(),
                 command.provenance(), command.analysisScope(), binding, command.continuationBinding(),
                 com.taxonomy.analysis.service.AnalysisReasonContext.effective(command.analysisReasonLength()), command.retainedAnalysis(), command.analysisLanguage());
-        var available = TaxonomyShardRoot.DEFAULT_ROOTS.stream().map(TaxonomyShardRoot::code).collect(Collectors.toSet());
+        var definition = definitions.get();
+        var available = definition.rootCodes();
         command.analysisScope().validateRoots(available);
         Map<TaxonomyShardRoot, String> scoring = new LinkedHashMap<>();
         Map<TaxonomyShardRoot, String> targets = new LinkedHashMap<>();
@@ -91,10 +102,12 @@ public final class DurableClusterAnalysisExecution implements ClusterAnalysisExe
         }
         var captured = frozenRoots.stream().collect(Collectors.toMap(
                 RootCatalogueSnapshot::rootCode, java.util.function.Function.identity()));
-        if (!captured.keySet().equals(required) || captured.values().stream().anyMatch(root -> !source.equals(root.source()))) {
+        if (!captured.keySet().equals(required) || captured.values().stream().anyMatch(root -> !source.equals(root.source())
+                || !definition.spec().equals(root.catalogueDefinition() == null
+                        ? com.taxonomy.dsl.model.CatalogueDefinition.standard().spec() : root.catalogueDefinition()))) {
             throw new IllegalStateException("Captured catalogue does not match the admitted source and roots");
         }
-        for (var root : TaxonomyShardRoot.DEFAULT_ROOTS) {
+        for (var root : available.stream().map(TaxonomyShardRoot::of).toList()) {
             if (!required.contains(root.code())) continue;
             String frozen = mapper.writeValueAsString(captured.get(root.code()));
             if (command.analysisScope().selects(root.code())) scoring.put(root, frozen);
@@ -105,7 +118,9 @@ public final class DurableClusterAnalysisExecution implements ClusterAnalysisExe
         try (var subscription = signals.listen(context, ignored -> wake.release())) {
             subscription.onReconnect(wake::release);
             requireCurrentSource(context, command);
-            store.admit(context, admitted, view, scoring, targets);
+            if (definition.spec().equals(com.taxonomy.dsl.model.CatalogueDefinition.standard().spec()))
+                store.admit(context, admitted, view, scoring, targets);
+            else store.admit(context, admitted, view, scoring, targets, definition);
             while (true) {
                 // Draining before the read coalesces events without losing a post-read notification.
                 wake.drainPermits();

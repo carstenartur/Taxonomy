@@ -9,6 +9,7 @@ import com.taxonomy.workspace.storage.DslBranch;
 import com.taxonomy.workspace.storage.DslCommit;
 import com.taxonomy.dsl.validation.DslValidationResult;
 import com.taxonomy.dsl.validation.DslValidator;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.dto.VersionedSearchResult;
 import com.taxonomy.versioning.service.ConflictDetectionService;
@@ -56,7 +57,12 @@ public class DslApiController {
     private final TaxDslSerializer serializer = new TaxDslSerializer();
     private final AstToModelMapper astMapper = new AstToModelMapper();
     private final ModelToAstMapper modelToAstMapper = new ModelToAstMapper();
-    private final DslValidator validator = new DslValidator();
+    private DslValidator validator = new DslValidator();
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void useCatalogueDefinitions(CatalogueDefinitionResolver catalogues) {
+        validator = new DslValidator(catalogues);
+    }
 
     public DslApiController(DslOperationsFacade dslOps,
                             WorkspaceResolver workspaceResolver,

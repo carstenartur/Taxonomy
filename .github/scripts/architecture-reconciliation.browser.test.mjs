@@ -103,6 +103,33 @@ test('one preview renders frozen property evidence and four real diagrams with s
     } finally { await closeFixture(page); }
 });
 
+test('each side renders shared element types with its own recorded root mapping', async () => {
+    const page = await fixture();
+    try {
+        const colors = await page.evaluate(() => {
+            const comparison = window.previewValue.comparison;
+            comparison.typeRoots = {};
+            comparison.sceneTypeRoots = {
+                base: {Collection: 'BP'}, local: {Collection: 'BP'},
+                incoming: {Collection: 'CP'}, proposed: {Collection: 'CP'}
+            };
+            for (const scene of Object.values(comparison.scenes)) {
+                scene.nodes = [{...comparison.scenes.base.nodes[0], type: 'Collection'}];
+            }
+            const palette = window.TaxonomyArchitectureDiagram.taxonomyPalette();
+            return {before: palette.layer('BP'), after: palette.layer('CP')};
+        });
+        await page.locator('#lifecycleReconciliationPreview').click();
+        await page.locator('#lifecycleReconciliationAccept').waitFor({state:'visible'});
+        assert.notEqual(colors.before, colors.after);
+        for (const [part, color] of Object.entries({base: colors.before, local: colors.before,
+            incoming: colors.after, proposed: colors.after})) {
+            const card = page.locator(`[data-reconciliation-scene="${part}"] [data-node-id="one"] .editor-node-card`);
+            assert.equal(await card.getAttribute('fill'), color);
+        }
+    } finally { await closeFixture(page); }
+});
+
 test('editing the intent clears its visual evidence until another matching preview arrives', async () => {
     const page = await fixture();
     try {

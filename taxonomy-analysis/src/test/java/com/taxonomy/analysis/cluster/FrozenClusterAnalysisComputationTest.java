@@ -96,18 +96,7 @@ class FrozenClusterAnalysisComputationTest {
             db.admitFrozen(context);
             var task = db.task(TaxonomyShardRoot.of("CP"));
             var input = db.store.start(task);
-            var nodes = mock(TaxonomyNodeRepository.class);
-            var overlay = new CatalogueOverlayService(mapper, new DefaultResourceLoader(), false, "unused");
-            var snapshots = new CatalogueSnapshotService(nodes, overlay, new CatalogueRuntimePolicy("worker", "CP"), mock(CatalogueSourceJournal.class));
-            var taxonomy = new TaxonomyService(nodes, mock(TaxonomyRelationRepository.class), new AppInitializationStateService());
-            ReflectionTestUtils.setField(taxonomy, "catalogueOverlayService", overlay);
-            var embedding = mock(LocalEmbeddingService.class);
-            var providers = new LlmProviderConfig(embedding);
-            var llm = new LlmService(providers, mock(LlmGatewayRegistry.class), mapper, taxonomy,
-                    mock(PromptTemplateService.class), embedding, mock(SavedAnalysisService.class));
-            ReflectionTestUtils.setField(llm, "catalogueOverlayService", overlay);
-            var computation = new FrozenClusterAnalysisComputation(db.store, snapshots, llm, providers,
-                    FrozenClusterAnalysisComputationTest::guard, mapper);
+            var computation = mockProviderWorker(db.store, mapper, "CP", com.taxonomy.dsl.model.CatalogueDefinition.standard());
             assertThat(computation.score(input,
                     task, () -> false).getStatus()).isEqualTo("SUCCESS");
             try (var observation = new DurableClusterAnalysisObservation(db.store, new ClusterAnalysisSignals(), AnalysisEventPublisher.NONE)) {
@@ -282,6 +271,22 @@ class FrozenClusterAnalysisComputationTest {
     private static SubtaxonomyAnalysisTask task(AnalysisOperationContext context) {
         return (SubtaxonomyAnalysisTask) new AnalysisMessageFactory(context, Clock.systemUTC())
                 .task(AnalysisTaskGraph.plan(context.operationId(), List.of(TaxonomyShardRoot.of("CP")), false).tasks().getFirst());
+    }
+
+    static FrozenClusterAnalysisComputation mockProviderWorker(ClusterAnalysisStore store, ObjectMapper mapper,
+            String rootCode, com.taxonomy.dsl.model.CatalogueDefinition catalogue) {
+        var nodes = mock(TaxonomyNodeRepository.class);
+        var overlay = new CatalogueOverlayService(mapper, new DefaultResourceLoader(), false, "unused");
+        var snapshots = new CatalogueSnapshotService(nodes, overlay, new CatalogueRuntimePolicy("worker", rootCode, catalogue), mock(CatalogueSourceJournal.class));
+        var taxonomy = new TaxonomyService(nodes, mock(TaxonomyRelationRepository.class), new AppInitializationStateService());
+        ReflectionTestUtils.setField(taxonomy, "catalogueOverlayService", overlay);
+        var embedding = mock(LocalEmbeddingService.class);
+        var providers = new LlmProviderConfig(embedding);
+        var llm = new LlmService(providers, mock(LlmGatewayRegistry.class), mapper, taxonomy,
+                mock(PromptTemplateService.class), embedding, mock(SavedAnalysisService.class));
+        ReflectionTestUtils.setField(llm, "catalogueOverlayService", overlay);
+        return new FrozenClusterAnalysisComputation(store, snapshots, llm, providers,
+                FrozenClusterAnalysisComputationTest::guard, mapper);
     }
 
     private static AnalysisMemoryGuard guard() {

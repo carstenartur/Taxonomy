@@ -4,6 +4,12 @@ package com.taxonomy.catalog.snapshot;
 public enum CatalogueRoot {
     BP, BR, CP, CI, CO, CR, IP, UA;
 
+    public static String validateIdentifier(String code) {
+        if (code == null || !code.matches("[A-Z][A-Z0-9_]{0,63}"))
+            throw new IllegalArgumentException("Invalid catalogue root: " + code);
+        return code;
+    }
+
     public static CatalogueRoot require(String code) {
         if (code == null) throw new IllegalArgumentException("Catalogue root is required");
         try {

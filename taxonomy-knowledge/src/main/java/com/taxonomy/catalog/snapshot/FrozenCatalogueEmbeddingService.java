@@ -26,8 +26,6 @@ import java.util.stream.Collectors;
 /** Admission-only enrichment from proven exact-source relations and an already atomically captured catalogue. */
 @Service
 public class FrozenCatalogueEmbeddingService {
-    private static final Set<String> ALL_ROOTS = Arrays.stream(CatalogueRoot.values()).map(Enum::name)
-            .collect(Collectors.toUnmodifiableSet());
     private final RelationProjectionReadService relations;
     private final LocalEmbeddingService embeddings;
 
@@ -42,7 +40,7 @@ public class FrozenCatalogueEmbeddingService {
      * No legacy/global projection or scalar-only text fallback is permitted.
      */
     public List<RootCatalogueSnapshot> decorate(RepositoryContext context, CatalogueSourceIdentity source,
-                                                List<RootCatalogueSnapshot> allEightCapturedRoots,
+                                                List<RootCatalogueSnapshot> capturedRoots,
                                                 Set<String> requiredRoots) {
         if (TransactionSynchronizationManager.isActualTransactionActive()) {
             throw new IllegalStateException("Frozen embedding preparation requires no database transaction");
@@ -52,14 +50,18 @@ public class FrozenCatalogueEmbeddingService {
                 || !context.branch().equals(source.branch())) {
             throw new IllegalArgumentException("Embedding context does not match the captured source authority");
         }
-        if (requiredRoots == null || requiredRoots.isEmpty() || !ALL_ROOTS.containsAll(requiredRoots)) {
+        if (capturedRoots == null || capturedRoots.isEmpty()) throw new IllegalArgumentException("Captured roots are empty");
+        var spec = capturedRoots.getFirst().catalogueDefinition();
+        var allRoots = spec == null ? com.taxonomy.dsl.model.CatalogueDefinition.standard().rootCodes()
+                : spec.definition().rootCodes();
+        if (requiredRoots == null || requiredRoots.isEmpty() || !allRoots.containsAll(requiredRoots)) {
             throw new IllegalArgumentException("Required embedding roots are invalid");
         }
         // Validates source, root membership, hierarchy and one retained catalogue generation.
-        new FrozenCatalogueView(source, ALL_ROOTS, allEightCapturedRoots);
+        new FrozenCatalogueView(source, allRoots, capturedRoots);
         IdentitySnapshot before = requireExact(relations.readIdentitySnapshot(context), source);
         Map<String, TaxonomyNode> nodes = new LinkedHashMap<>();
-        for (var root : allEightCapturedRoots) {
+        for (var root : capturedRoots) {
             for (var node : root.nodes()) nodes.put(node.code(), node.detached());
         }
         before.identities().stream().sorted(Comparator.comparing(RelationIdentity::sourceCode)
@@ -71,7 +73,7 @@ public class FrozenCatalogueEmbeddingService {
         } catch (Exception failure) {
             throw new IllegalStateException("Frozen embedding model identity is unavailable", failure);
         }
-        List<RootCatalogueSnapshot> result = allEightCapturedRoots.stream()
+        List<RootCatalogueSnapshot> result = capturedRoots.stream()
                 .filter(root -> requiredRoots.contains(root.rootCode())).map(root -> {
                     Map<String, String> texts = new LinkedHashMap<>();
                     root.nodes().forEach(node -> texts.put(node.code(),

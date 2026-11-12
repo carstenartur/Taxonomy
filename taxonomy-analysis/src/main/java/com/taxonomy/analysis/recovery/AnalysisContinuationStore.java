@@ -340,14 +340,15 @@ public class AnalysisContinuationStore {
                 ? key : null;
     }
 
-    /** Only inline relation execution and its eight routed targets share exact question identities. */
+    /** Inline relation execution and its recorded target roots share exact question identities. */
     private static Set<String> inlineBridgeKeys(String namespace, AnalysisCheckpointSession.Question request) {
         if (!AnalysisCheckpointSession.isRelationQuestion(request.key())) return Set.of();
-        var roots = com.taxonomy.analysis.dag.TaxonomyShardRoot.DEFAULT_ROOTS;
+        var roots = com.taxonomy.catalog.snapshot.FrozenCatalogueContext.definition()
+                .orElseGet(com.taxonomy.dsl.model.CatalogueDefinition::standard).rootCodes();
         List<String> alternatives;
         if ("RELATION_ANALYSIS:all".equals(namespace))
-            alternatives = roots.stream().map(root -> "RELATION_ANALYSIS:" + root.code()).toList();
-        else if (roots.stream().anyMatch(root -> ("RELATION_ANALYSIS:" + root.code()).equals(namespace)))
+            alternatives = roots.stream().map(root -> "RELATION_ANALYSIS:" + root).toList();
+        else if (roots.stream().anyMatch(root -> ("RELATION_ANALYSIS:" + root).equals(namespace)))
             alternatives = List.of("RELATION_ANALYSIS:all");
         else return Set.of();
         var keys = new LinkedHashSet<String>();

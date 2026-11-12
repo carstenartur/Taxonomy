@@ -107,9 +107,10 @@ public class ArtemisAnalysisTransportConfiguration {
             ArtemisAnalysisConnection connection, AnalysisDestinations destinations,
             AnalysisTaskCompletionStore completions, AnalysisMessageCodec codec,
             ObjectProvider<AnalysisTaskHandlers> handlers,
+            com.taxonomy.catalog.definition.RetainedCatalogueDefinitions definitions,
             @Value("${taxonomy.analysis.worker.shards:}") String shards,
             @Value("${taxonomy.analysis.worker.consumers-per-shard:1}") int consumersPerShard) {
-        return new ArtemisAnalysisWorker(connection, destinations, AnalysisWorkerShards.parse(shards),
+        return new ArtemisAnalysisWorker(connection, destinations, AnalysisWorkerShards.parse(shards, definitions.current().rootCodes()),
                 consumersPerShard, handlers.getIfAvailable(() -> AnalysisTaskHandlers.NONE), completions, codec);
     }
 

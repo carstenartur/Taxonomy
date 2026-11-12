@@ -94,7 +94,8 @@ public class ArtemisClusterExecutionConfiguration {
     @Bean DurableClusterAnalysisExecution durableClusterAnalysisExecution(ClusterAnalysisStore store,
             CatalogueSnapshotService catalogue, ClusterAnalysisSignals signals, LlmProviderConfig providers,
             ObjectMapper mapper, WorkspaceViewContextReadPort workspaceViews, FrozenCatalogueEmbeddingService embeddings) {
-        return new DurableClusterAnalysisExecution(store, catalogue, signals, providers, mapper, workspaceViews, embeddings);
+        return new DurableClusterAnalysisExecution(store, catalogue, signals, providers, mapper, workspaceViews,
+                embeddings, catalogue::currentDefinition);
     }
 
     @Bean FrozenClusterAnalysisFinalizer frozenClusterAnalysisFinalizer(ClusterAnalysisStore store,

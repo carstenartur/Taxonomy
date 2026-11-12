@@ -260,6 +260,7 @@ class FrozenClusterAnalysisFinalizerTest {
         result.setViewContext(new ViewContext("commit", "draft", null, false, false, false));
         when(store.snapshot(context)).thenReturn(new ClusterAnalysisStore.Snapshot(context.operationId(),
                 ClusterAnalysisState.FINALIZING, 3, 1, 1, 0, 0, 1, 2, List.of(), result));
+        when(store.inputRoots(context)).thenReturn(TaxonomyShardRoot.DEFAULT_ROOTS);
         for (var root : TaxonomyShardRoot.DEFAULT_ROOTS) when(store.shard(context, root)).thenReturn(
                 mapper.writeValueAsString(DurableClusterAnalysisExecutionTest.root(DurableClusterAnalysisExecutionTest.source(context), root.code())));
         when(metadata.resolve()).thenReturn(DiagramViewMetadata.fromConfig(DiagramSelectionConfig.trace(), "trace"));

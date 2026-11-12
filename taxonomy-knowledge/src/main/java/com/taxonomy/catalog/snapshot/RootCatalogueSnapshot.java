@@ -1,6 +1,7 @@
 package com.taxonomy.catalog.snapshot;
 
 import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.dsl.model.CatalogueDefinition;
 import com.taxonomy.catalog.provenance.CatalogueSourceBytes;
 import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
 import com.taxonomy.catalog.service.CatalogueOverlayService.NodeMetadata;
@@ -20,19 +21,28 @@ import java.util.Set;
 public record RootCatalogueSnapshot(int schemaVersion, CatalogueSourceIdentity source, String rootCode,
                                     List<Node> nodes, OverlayMetadata overlayMetadata,
                                     CatalogueSourceJournal.Snapshot catalogueProvenance,
-                                    RootEmbeddingSnapshot embeddings) {
+                                    RootEmbeddingSnapshot embeddings,
+                                    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+                                    CatalogueDefinition.Spec catalogueDefinition) {
     public static final int SCHEMA_VERSION = 2;
+    public static final int CONFIGURED_SCHEMA_VERSION = 3;
 
     public RootCatalogueSnapshot(int schemaVersion, CatalogueSourceIdentity source, String rootCode,
                                   List<Node> nodes, OverlayMetadata overlayMetadata,
                                   CatalogueSourceJournal.Snapshot catalogueProvenance) {
-        this(schemaVersion, source, rootCode, nodes, overlayMetadata, catalogueProvenance, null);
+        this(schemaVersion, source, rootCode, nodes, overlayMetadata, catalogueProvenance, null, null);
+    }
+
+    public RootCatalogueSnapshot(int schemaVersion, CatalogueSourceIdentity source, String rootCode, List<Node> nodes,
+            OverlayMetadata overlayMetadata, CatalogueSourceJournal.Snapshot catalogueProvenance, RootEmbeddingSnapshot embeddings) {
+        this(schemaVersion, source, rootCode, nodes, overlayMetadata, catalogueProvenance, embeddings, null);
     }
 
     public RootCatalogueSnapshot {
-        if (schemaVersion != SCHEMA_VERSION) throw new IllegalArgumentException("Unsupported catalogue snapshot schema");
+        if (schemaVersion != (catalogueDefinition == null ? SCHEMA_VERSION : CONFIGURED_SCHEMA_VERSION)) throw new IllegalArgumentException("Unsupported catalogue snapshot schema");
         Objects.requireNonNull(source, "source");
-        CatalogueRoot.require(rootCode);
+        var definition = catalogueDefinition == null ? CatalogueDefinition.standard() : catalogueDefinition.definition();
+        if (!definition.rootCodes().contains(rootCode)) throw new IllegalArgumentException("Unknown root in frozen catalogue definition");
         nodes = List.copyOf(nodes);
         Objects.requireNonNull(overlayMetadata, "overlayMetadata");
         requireMatchingOverlay(catalogueProvenance, overlayMetadata);
@@ -64,7 +74,7 @@ public record RootCatalogueSnapshot(int schemaVersion, CatalogueSourceIdentity s
     }
 
     public RootCatalogueSnapshot withEmbeddings(RootEmbeddingSnapshot evidence) {
-        return new RootCatalogueSnapshot(schemaVersion, source, rootCode, nodes, overlayMetadata, catalogueProvenance, evidence);
+        return new RootCatalogueSnapshot(schemaVersion, source, rootCode, nodes, overlayMetadata, catalogueProvenance, evidence, catalogueDefinition);
     }
 
     static void requireMatchingOverlay(CatalogueSourceJournal.Snapshot provenance, OverlayMetadata overlay) {
@@ -102,7 +112,7 @@ public record RootCatalogueSnapshot(int schemaVersion, CatalogueSourceIdentity s
                        NodeMetadata metadata, boolean parentPatch) {
         public Node {
             if (code == null || code.isBlank()) throw new IllegalArgumentException("Snapshot node code is required");
-            CatalogueRoot.require(taxonomyRoot);
+            CatalogueRoot.validateIdentifier(taxonomyRoot);
             Objects.requireNonNull(nameEn, "nameEn");
             Objects.requireNonNull(metadata, "metadata");
             if (metadata.analysisRole() == null

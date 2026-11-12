@@ -64,7 +64,17 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
                 : new BackupScope.Workspace(context.repositoryId(), context.workspaceId());
     }
 
-    private final ArchitectureDslCommands transformer = new ArchitectureDslCommands();
+    private com.taxonomy.dsl.model.CatalogueDefinitionResolver catalogues = com.taxonomy.dsl.model.CatalogueDefinitionResolver.standard();
+
+    @Autowired
+    public void setCatalogueDefinitionResolver(com.taxonomy.dsl.model.CatalogueDefinitionResolver catalogues) {
+        this.catalogues = Objects.requireNonNull(catalogues);
+    }
+
+    private ArchitectureDslCommands transformer(String source) {
+        var model = new ArchitectureDslCommands().model(source);
+        return new ArchitectureDslCommands(catalogues.forModel(model));
+    }
     // A normal block identity always contains ':', including unknown extension block kinds.
     private static final String DOCUMENT_SOURCE_CONFLICT = "$document";
 
@@ -206,7 +216,7 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
                 catch (IOException failure) { throw new java.io.UncheckedIOException(failure); }
                 String before = session.state().dsl(), next = before;
                 if (portfolioContribution != null) next = portfolioContribution.apply(next);
-                next = transformer.applyAll(next, commands).dsl();
+                next = transformer(next).applyAll(next, commands).dsl();
                 // Even an unchanged reviewed integration needs its own durable retry receipt.
                 session.append(metadata, context.username(), "VERSION_IMPORT", null, fingerprint, next,
                         new ArrayList<>(affected(ArchitectureSemanticPatch.between(before, next))));
@@ -344,7 +354,7 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
         requireContext(context, expected); requireWritable(context);
         Snapshot snapshot = snapshot(context);
         expect(snapshot.state(), expected.revision());
-        transformer.model(snapshot.state().dsl());
+        new ArchitectureDslCommands().model(snapshot.state().dsl());
         return "READY";
     }
 
@@ -530,7 +540,7 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
         if (!removed.isEmpty()) return problem("PORTFOLIO_RECONCILIATION_REQUIRED", "resolutions",
                 "Keep these portfolio blocks and explicitly archive the business records before removing them; a Git omission cannot delete portfolio history", removed);
         try {
-            transformer.validateReconciledSource(source);
+            transformer(source).validateReconciledSource(source);
             if (hasPortfolioChanges(local, source)) portfolioPort().validatePortfolio(local, source);
             return null;
         } catch (CommandProblem invalid) { return invalid; }
@@ -691,7 +701,7 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
 
     private Change transform(RepositoryContext context, Command command, String current, List<OperationSummary> operations,
                              java.util.function.Function<String, Entry> loadOperation) {
-        if (command.operation() instanceof SemanticCommand semantic) return transformer.apply(current, semantic.command());
+        if (command.operation() instanceof SemanticCommand semantic) return transformer(current).apply(current, semantic.command());
         String target = target(command.operation());
         OperationSummary selected = operations.stream().filter(e -> e.commandId().equals(target) && e.actor().equals(context.username()))
                 .findFirst().orElseThrow(() -> problem("NOT_FOUND", "targetOperationId", "No personal operation in this workspace", List.of()));
@@ -708,7 +718,7 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
             }
         }
         Entry body = loadOperation.apply(selected.commandId());
-        return transformer.inverse(current, body.beforeDsl(), body.afterDsl());
+        return transformer(current).inverse(current, body.beforeDsl(), body.afterDsl());
     }
 
     private void verifyVersion(RepositoryContext context, State state) throws IOException {

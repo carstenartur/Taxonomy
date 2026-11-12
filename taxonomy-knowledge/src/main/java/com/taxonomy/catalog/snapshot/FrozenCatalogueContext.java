@@ -1,5 +1,9 @@
 package com.taxonomy.catalog.snapshot;
 
+import com.taxonomy.dsl.model.CatalogueDefinition;
+
+import java.util.Optional;
+
 /**
  * Explicit synchronous read binding. It is intentionally not inherited by executor threads:
  * each worker delivery must independently validate and bind its durable input.
@@ -10,6 +14,11 @@ public final class FrozenCatalogueContext {
     private FrozenCatalogueContext() {}
 
     public static FrozenCatalogueView current() { return CURRENT.get(); }
+
+    /** Scoped metadata for consumers that need catalogue rules without access to node or embedding payloads. */
+    public static Optional<CatalogueDefinition> definition() {
+        return Optional.ofNullable(current()).map(FrozenCatalogueView::definition);
+    }
 
     static Scope bind(FrozenCatalogueView view) {
         if (CURRENT.get() != null) throw new IllegalStateException("A catalogue snapshot is already bound");

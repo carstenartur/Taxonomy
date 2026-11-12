@@ -8,6 +8,7 @@ import com.taxonomy.analysis.recovery.AnalysisQuestionCheckpoint;
 import com.taxonomy.backup.snapshot.BackupMaintenanceLease;
 import com.taxonomy.backup.snapshot.GuardedBackupDataSource;
 import com.taxonomy.dsl.command.ArchitectureCommand.UpdateArchitectureElement;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
 import com.taxonomy.dto.AnalysisRequest;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.editor.ArchitectureCheckpointWriter;
@@ -144,6 +145,8 @@ class BackupConsistencyIT {
             repositories = new DslGitRepositoryFactory(new DefaultHibernateRepositoryFactory(factory));
             journal = new EditorJournal(factory, new JpaTransactionManager(factory));
             application.registerBean(BackupWriteBarrier.class, () -> barrier);
+            // The original test document has no catalogue revision.
+            application.registerBean(CatalogueDefinitionResolver.class, CatalogueDefinitionResolver::standard);
             application.registerBean(ArchitectureEditorService.class, () -> new ArchitectureEditorService(repositories, journal, writer));
             application.refresh(); editor = application.getBean(ArchitectureEditorService.class);
         }

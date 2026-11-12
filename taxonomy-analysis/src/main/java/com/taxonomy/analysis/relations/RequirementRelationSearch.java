@@ -57,7 +57,7 @@ public final class RequirementRelationSearch {
     public RequirementRelationSearch(InputCatalogue catalogue, RelationCompatibilityMatrix rules,
                                      Function<String, String> complete, Runnable checkpoint, String provider) {
         this.catalogue = Objects.requireNonNull(catalogue);
-        this.rules = Objects.requireNonNull(rules);
+        this.rules = new RelationCompatibilityMatrix(Objects.requireNonNull(rules).definition());
         this.completion = Objects.requireNonNull(complete);
         this.provider = Objects.requireNonNull(provider);
         this.checkpoint = Objects.requireNonNull(checkpoint);
@@ -144,7 +144,7 @@ public final class RequirementRelationSearch {
             List<Node> roots = offeredRoots.stream().sorted(Comparator.comparing(Node::id)).toList();
             nodes = sourceNodes(scores, warnings);
             budget.targetRoutes(hasTargetRoutes(nodes, roots));
-            plan = new RelationWorkPlan(nodes, roots, rules, options.limits().maxCalls());
+            plan = new RelationWorkPlan(nodes, roots, rules.definition(), options.limits().maxCalls());
             plan.restore(previous);
             if (options.budget() != null) plan.budget(() -> options.budget().usage(budget.calls, budget.totalSources.size(), budget.newWork));
             budget.plan = plan;
@@ -267,7 +267,7 @@ public final class RequirementRelationSearch {
             nodes = sourceNodes(scores, warnings);
             int[] sourceAllowance = { hasTargetRoutes(nodes, roots)
                     ? sourceCallAllowance(options.limits().maxCalls()) : options.limits().maxCalls() };
-            var progress = new RelationWorkPlan(nodes, roots, rules, options.limits().maxCalls());
+            var progress = new RelationWorkPlan(nodes, roots, rules.definition(), options.limits().maxCalls());
             if (options.budget() != null) progress.budget(() -> options.budget().usage(charged[0], charged[1], 0));
             Set<String> admittedSources = new HashSet<>();
             var protocol = new RelationSearchProtocol((step, ids, prompt) -> {
@@ -310,6 +310,9 @@ public final class RequirementRelationSearch {
         } catch (RuntimeException failure) { stop = failureReason(failure); }
         sortSourcesByRank(sources, nodes);
         boolean sourceOverflow = sources.size() < nodes.size() && warnings.stream().anyMatch(w -> w.startsWith("SOURCE_LIMIT"));
+        var spec = rules.definition().spec();
+        if (spec.equals(com.taxonomy.dsl.model.CatalogueDefinition.standard().spec())) spec = null;
+        int planVersion = spec == null ? 1 : 2;
         if (includeRelations && options.budget() != null && stop.isEmpty()
                 && (options.budget().automatic() && sourceOverflow || charged[0] == options.limits().maxCalls())) {
             // Reservation for target workers must not strand funded source work.
@@ -317,13 +320,13 @@ public final class RequirementRelationSearch {
             // charges already admitted above. At zero remaining calls this only
             // reconstructs committed answers; every new request remains deferred.
             var report = searchWithSourceContinuation(original, scores, options, charged[0]);
-            return new RelationSearchDistribution.Plan(1, preparationId, sha256(original), sourceResultIds, options,
+            return new RelationSearchDistribution.Plan(planVersion, preparationId, sha256(original), sourceResultIds, options,
                     nodes, roots, report.sources(), List.of(), charged[0], (System.nanoTime() - started) / 1_000_000,
-                    report.warnings(), report.stopReason(), true, report);
+                    report.warnings(), report.stopReason(), true, report, spec);
         }
-        return new RelationSearchDistribution.Plan(1, preparationId, sha256(original), sourceResultIds, options,
+        return new RelationSearchDistribution.Plan(planVersion, preparationId, sha256(original), sourceResultIds, options,
                 nodes, roots, sources, items, charged[0], (System.nanoTime() - started) / 1_000_000,
-                warnings, stop, includeRelations);
+                warnings, stop, includeRelations, null, spec);
     }
 
     /**
@@ -351,7 +354,7 @@ public final class RequirementRelationSearch {
         if (offered.stream().noneMatch(target::equals))
             throw new IllegalArgumentException("Missing or different frozen relation target shard");
         int[] calls = {0};
-        var progress = new RelationWorkPlan(List.of(intent.contribution().source()), List.of(target), rules, work.maxCalls());
+        var progress = new RelationWorkPlan(List.of(intent.contribution().source()), List.of(target), plan.definition(), work.maxCalls());
         progress.assessed(plan.sources().get(item.sourceIndex()));
         progress.expect(List.of(intent));
         var protocol = new RelationSearchProtocol((step, ids, prompt) -> {

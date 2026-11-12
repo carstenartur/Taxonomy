@@ -43,6 +43,9 @@ public class RelationProposalService {
     private static final Logger log = LoggerFactory.getLogger(
             RelationProposalService.class);
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private RelationCompatibilityMatrix rules = new RelationCompatibilityMatrix();
+
     private final TaxonomyNodeRepository nodeRepository;
     private final RelationProposalRepository proposalRepository;
     private final RelationCandidateService candidateService;
@@ -97,8 +100,7 @@ public class RelationProposalService {
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Source node not found: " + sourceNodeCode));
 
-        if (com.taxonomy.dsl.validation.RelationMetamodel.targetDomain(source.getTaxonomyRoot(),
-                relationType == null ? null : relationType.name()).state()
+        if (rules.targetDomain(source.getTaxonomyRoot(), relationType).state()
                 == com.taxonomy.dsl.validation.RelationMetamodel.DomainState.FORBIDDEN || limit <= 0) return List.of();
 
         log.info("Proposing {} relations for node '{}' "
@@ -299,8 +301,7 @@ public class RelationProposalService {
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Target node not found: " + targetCode));
 
-        if (!com.taxonomy.dsl.validation.RelationMetamodel.isCompatible(source.getTaxonomyRoot(), target.getTaxonomyRoot(),
-                relationType == null ? null : relationType.name())) {
+        if (!rules.isCompatible(source.getTaxonomyRoot(), target.getTaxonomyRoot(), relationType)) {
             throw new IllegalArgumentException("Relation hypothesis has incompatible endpoint types");
         }
 

@@ -60,13 +60,19 @@ public class CatalogueSourceJournal {
     /** Returns the recorded workbook for an applied source reference, independent of configured resources. */
     @Transactional(readOnly = true)
     public CatalogueSourceBytes retainedWorkbook(InputReference reference) throws IOException {
+        return retainedInput(reference);
+    }
+
+    /** Load content-addressed bytes for either applied workbook or overlay. */
+    @Transactional(readOnly = true)
+    public CatalogueSourceBytes retainedInput(InputReference reference) throws IOException {
         if (reference.use() != Use.APPLIED) throw invalid();
         var blob = em.find(CatalogueSourceBlob.class, reference.sha256());
         if (blob == null || blob.payload == null || blob.byteLength != reference.length()
                 || blob.payload.length != reference.length()) throw invalid();
-        var workbook = CatalogueSourceBytes.read(new ByteArrayInputStream(blob.payload));
-        if (!workbook.sha256().equals(reference.sha256())) throw invalid();
-        return workbook;
+        var bytes = CatalogueSourceBytes.read(new ByteArrayInputStream(blob.payload));
+        if (!bytes.sha256().equals(reference.sha256())) throw invalid();
+        return bytes;
     }
 
     /** Acquire before reading or changing any catalogue rows; held until the import commits. */

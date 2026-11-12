@@ -9,7 +9,8 @@ import com.taxonomy.diagram.DiagramScene;
 import com.taxonomy.dsl.admbw.AdmbwFffmlvProfile;
 import com.taxonomy.dsl.command.ArchitectureDslCommands;
 import com.taxonomy.dsl.model.CanonicalArchitectureModel;
-import com.taxonomy.dsl.model.TaxonomyRootTypes;
+import com.taxonomy.dsl.model.CatalogueDefinition;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
 import com.taxonomy.dsl.validation.DslValidator;
 import com.taxonomy.export.LayeredDiagramLayoutService;
 import org.springframework.stereotype.Component;
@@ -22,7 +23,15 @@ import java.util.Map;
 public class ArchitectureEditorProjection {
     private final LayeredDiagramLayoutService layout;
 
-    public ArchitectureEditorProjection(LayeredDiagramLayoutService layout) { this.layout = layout; }
+    private final CatalogueDefinitionResolver catalogues;
+    public ArchitectureEditorProjection(LayeredDiagramLayoutService layout) {
+        this(layout, CatalogueDefinitionResolver.standard());
+    }
+    @org.springframework.beans.factory.annotation.Autowired
+    public ArchitectureEditorProjection(LayeredDiagramLayoutService layout, CatalogueDefinitionResolver catalogues) {
+        this.layout = layout;
+        this.catalogues = catalogues;
+    }
 
     public record Schema(List<String> elementTypes, List<String> elementProperties,
                          List<String> relationTypes, List<String> relationStatuses,
@@ -69,7 +78,7 @@ public class ArchitectureEditorProjection {
 
     /** All visual and property evidence comes from the already frozen, fingerprinted preview. */
     public ArchitectureReconciliationProjection.Preview compare(ArchitectureEditorService.ReconciliationPreview preview) {
-        return new ArchitectureReconciliationProjection(layout).project(preview);
+        return new ArchitectureReconciliationProjection(layout, catalogues).project(preview);
     }
 
     public View project(ArchitectureEditorService.Document document, boolean mayEdit, Strategy strategy,
@@ -86,13 +95,14 @@ public class ArchitectureEditorProjection {
         }
         requireLayoutRevision(document, strategy, layoutRevision);
         CanonicalArchitectureModel model = new ArchitectureDslCommands().model(document.dsl());
-        DiagramModel diagram = selectView(diagram(model, document.context().branch()), model, selectedViewId);
-        DiagramModel reference = layoutReference == null ? null : diagram(
-                new ArchitectureDslCommands().model(layoutReference.dsl()), document.context().branch());
+        var catalogue = catalogues.forModel(model);
+        DiagramModel diagram = selectView(diagram(model, document.context().branch(), catalogue), model, selectedViewId);
+        var referenceModel = layoutReference == null ? null : new ArchitectureDslCommands().model(layoutReference.dsl());
+        DiagramModel reference = referenceModel == null ? null : diagram(referenceModel, document.context().branch(), catalogues.forModel(referenceModel));
         DiagramScene scene = layout.layout(diagram, strategy, reference);
-        Schema schema = new Schema(types(), ArchitectureDslCommands.ELEMENT_PROPERTIES.stream().sorted().toList(),
-                DslValidator.relationTypes().stream().sorted().toList(), DslValidator.relationStatuses().stream().sorted().toList(),
-                com.taxonomy.dsl.validation.RelationMetamodel.relationDomains(), TaxonomyRootTypes.TYPE_TO_ROOT, properties(),
+        Schema schema = new Schema(types(catalogue), ArchitectureDslCommands.ELEMENT_PROPERTIES.stream().sorted().toList(),
+                catalogue.relationDomains().keySet().stream().sorted().toList(), DslValidator.relationStatuses().stream().sorted().toList(),
+                catalogue.relationDomains(), catalogue.typeRoots(), properties(catalogue),
                 strategy == Strategy.STABLE ? "DERIVED_SERVER_LAYOUT" : "DERIVED_SERVER_LAYOUT_REDUCE_CROSSINGS",
                 strategy.id(), layoutRevision);
         return new View(document, model, scene, schema, mayEdit && List.of("PRIVATE_WORKSPACE", "SHARED_WORKSPACE").contains(document.context().writeMode())
@@ -121,11 +131,11 @@ public class ArchitectureEditorProjection {
                         && (recorded == null || relations.contains(edge.id()))).toList(), diagram.layout());
     }
 
-    static DiagramModel diagram(CanonicalArchitectureModel model, String branch) {
+    static DiagramModel diagram(CanonicalArchitectureModel model, String branch, CatalogueDefinition catalogue) {
         Map<String, String> parents = new java.util.LinkedHashMap<>();
         model.getRelations().stream().filter(relation -> "CONTAINS".equals(relation.getRelationType()))
                 .forEach(relation -> parents.putIfAbsent(relation.getTargetId(), relation.getSourceId()));
-        List<String> elementTypes = types();
+        List<String> elementTypes = types(catalogue);
         Map<String, Integer> typeRanks = new java.util.HashMap<>();
         for (int rank = 0; rank < elementTypes.size(); rank++) typeRanks.put(elementTypes.get(rank), rank);
         List<DiagramNode> nodes = model.getElements().stream().map(element -> new DiagramNode(
@@ -138,9 +148,9 @@ public class ArchitectureEditorProjection {
         return new DiagramModel("Architecture · " + branch, nodes, edges, new DiagramLayout("LR", true));
     }
 
-    private static List<String> types() { return TaxonomyRootTypes.TYPE_TO_ROOT.keySet().stream().sorted().toList(); }
+    private static List<String> types(CatalogueDefinition catalogue) { return catalogue.typeRoots().keySet().stream().sorted().toList(); }
 
-    private static Map<String, PropertyRule> properties() {
+    private static Map<String, PropertyRule> properties(CatalogueDefinition catalogue) {
         Map<String, PropertyRule> properties = new java.util.TreeMap<>();
         Map<String, String> labels = Map.of("title", "name", "description", "description", "x-editor-status", "elementStatus",
                 "x-owner", "owner", "x-responsible-organization", "organization", "x-product-reference", "product", "x-system-reference", "system",
@@ -156,7 +166,7 @@ public class ArchitectureEditorProjection {
         });
         properties.put("id", new PropertyRule(true, true, true, List.of(), "editor.identity"));
         properties.put("taxonomy", new PropertyRule(false, true, false, List.of(), "editor.taxonomy"));
-        properties.put("type", new PropertyRule(true, false, false, types(), "editor.type"));
+        properties.put("type", new PropertyRule(true, false, false, types(catalogue), "editor.type"));
         return java.util.Collections.unmodifiableMap(properties);
     }
 }

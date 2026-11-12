@@ -15,13 +15,17 @@
         return function () { return panelRequests[panelId] === sequence && context(); };
     }
 
-    // Layer label lookup for human-readable display of 2-letter taxonomy roots
+    // Standard labels are also available before the catalogue is loaded.
     var LAYER_LABELS = {
         'CP': 'Capabilities', 'BP': 'Business Processes', 'BR': 'Business Roles',
         'CI': 'COI Services', 'CO': 'Communications Services', 'CR': 'Core Services',
         'IP': 'Information Products', 'UA': 'User Applications'
     };
-    function layerLabel(code) { return LAYER_LABELS[code] || code || ''; }
+    function layerLabel(code) {
+        var roots = window.TaxonomyState?.taxonomyData;
+        var node = Array.isArray(roots) && roots.find(root => root.code === code);
+        return (node && node.nameEn) || LAYER_LABELS[code] || code || '';
+    }
 
     function getBusinessText() {
         var el = document.getElementById('businessText');

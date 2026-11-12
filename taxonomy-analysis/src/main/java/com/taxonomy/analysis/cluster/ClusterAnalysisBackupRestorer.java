@@ -17,6 +17,7 @@ import java.time.Clock;
 import java.util.*;
 
 import static com.taxonomy.analysis.cluster.ClusterAnalysisBackupRecords.*;
+import com.taxonomy.dsl.model.CatalogueDefinition;
 
 /**
  * Restores one already authorized/verified archive aggregate under caller-remapped identities.
@@ -134,8 +135,8 @@ public final class ClusterAnalysisBackupRestorer {
         var run = Objects.requireNonNull(archive.run()); var source = Objects.requireNonNull(run.context());
         require(run.sourceId().equals(new SourceRecordId("analysis.cluster-run", source.operationId())), "Invalid archived operation reference");
         require(!source.operationId().equals(target.operationId()), "Restore must allocate a new operation identity");
-        require(run.totalRoots() > 0 && run.totalRoots() <= 8 && run.completedRoots() >= 0 && run.completedRoots() <= run.totalRoots()
-                && run.revision() > 0 && run.revision() < Long.MAX_VALUE && archive.work().size() <= 100_009 && archive.inputs().size() <= 8
+        require(run.totalRoots() > 0 && run.totalRoots() <= AnalysisTaskId.MAX_ROUTED_ROOTS && run.completedRoots() >= 0 && run.completedRoots() <= run.totalRoots()
+                && run.revision() > 0 && run.revision() < Long.MAX_VALUE && archive.work().size() <= 100_001 + run.totalRoots() && archive.inputs().size() <= AnalysisTaskId.MAX_ROUTED_ROOTS
                 && archive.events().size() <= 100_000, "Invalid archived aggregate bounds");
         var sourceCommand = read(run.commandJson(), AnalyzeRequirementCommand.class);
         try {
@@ -156,10 +157,22 @@ public final class ClusterAnalysisBackupRestorer {
         var taskIds = new HashSet<String>(); var ordinals = new HashSet<Integer>(); var roots = new HashSet<String>();
         var inputRoots = new HashSet<String>(); var sourceIds = new HashSet<SourceRecordId>(); int completed = 0;
         long characters = bounded(run.commandJson()) + bounded(run.viewJson()) + bounded(run.resultJson()) + bounded(run.relationPlanJson());
+        CatalogueDefinition.Spec definition = null;
+        var restored = state.terminal() && archive.work().stream().allMatch(work -> work.attempts() == 0 && work.startedAt() == null);
         for (var input : archive.inputs()) {
             requireReference(input.sourceId(), "analysis.cluster-input", input.run(), run, sourceIds);
-            require(TaxonomyShardRoot.DEFAULT_ROOTS.stream().map(TaxonomyShardRoot::code).toList().contains(input.root()) && inputRoots.add(input.root()), "Invalid frozen root reference");
+            require(TaxonomyShardRoot.of(input.root()).catalogueIdentifier() && inputRoots.add(input.root()), "Invalid frozen root reference");
             require(input.inputJson() != null && !input.inputJson().isBlank(), "Missing frozen root input"); characters += bounded(input.inputJson());
+            if (!TaxonomyShardRoot.of(input.root()).defaultCatalogueRoot()) {
+                var snapshot = ClusterAnalysisProgress.frozen(input.inputJson(), json, source, input.root(), restored);
+                require(snapshot != null && snapshot.catalogueDefinition() != null, "Configured root is missing its frozen definition");
+                require(definition == null || definition.equals(snapshot.catalogueDefinition()), "Conflicting archived catalogue definitions");
+                definition = snapshot.catalogueDefinition();
+            }
+        }
+        if (definition != null && run.relationPlanJson() != null) {
+            var plan = read(run.relationPlanJson(), RelationSearchDistribution.Plan.class);
+            require(definition.equals(plan.catalogueDefinition()), "Archived relation plan differs from its frozen catalogue");
         }
         for (var work : archive.work()) {
             requireReference(work.sourceId(), "analysis.cluster-work", work.run(), run, sourceIds);
@@ -308,8 +321,10 @@ public final class ClusterAnalysisBackupRestorer {
                 var type = com.taxonomy.model.RelationType.valueOf(current.type());
                 String origin = current.direction() == RelationSearchModel.Direction.OUTGOING ? sourceRoot : current.targetRoot();
                 String destination = current.direction() == RelationSearchModel.Direction.OUTGOING ? current.targetRoot() : sourceRoot;
+                var definition = root.catalogueDefinition() == null ? com.taxonomy.dsl.model.CatalogueDefinition.standard()
+                        : root.catalogueDefinition().definition();
                 require(com.taxonomy.analysis.relations.RelationDiscoveryPolicy.automatic(type)
-                        && new com.taxonomy.relations.service.RelationCompatibilityMatrix().targetDomain(origin, type).allows(destination), "Foreign archived automatic relation route");
+                        && definition.allows(origin, type.name(), destination), "Foreign archived automatic relation route");
             }
         }
     }

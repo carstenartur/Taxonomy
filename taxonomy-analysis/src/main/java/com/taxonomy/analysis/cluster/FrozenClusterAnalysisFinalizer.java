@@ -56,9 +56,10 @@ public final class FrozenClusterAnalysisFinalizer implements Consumer<AnalysisOp
                 Objects.requireNonNull(state.result(), "Finalizing operation has no result")), AnalysisResult.class);
         // Read the admitted bytes outside the rendering-failure boundary. A database outage
         // must redeliver this durable stage instead of becoming a successful acknowledgement.
-        List<RootCatalogueSnapshot> roots = TaxonomyShardRoot.DEFAULT_ROOTS.stream()
+        var admitted = store.inputRoots(context);
+        List<RootCatalogueSnapshot> roots = admitted.stream()
                 .map(root -> mapper.readValue(store.shard(context, root), RootCatalogueSnapshot.class)).toList();
-        var required = TaxonomyShardRoot.DEFAULT_ROOTS.stream().map(TaxonomyShardRoot::code).collect(Collectors.toSet());
+        var required = admitted.stream().map(TaxonomyShardRoot::code).collect(Collectors.toSet());
         try (var catalogue = snapshots.bind(DurableClusterAnalysisExecution.source(context), required, roots)) {
             if (result.getTree() == null || result.getTree().isEmpty()) {
                 result.setTree(snapshotProjectionTree(roots, result));

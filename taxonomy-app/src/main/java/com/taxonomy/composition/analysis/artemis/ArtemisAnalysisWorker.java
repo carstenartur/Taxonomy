@@ -90,7 +90,7 @@ public final class ArtemisAnalysisWorker implements AutoCloseable {
 
     /** Subscribe once the broker connection is usable; idempotent. */
     public synchronized void start() {
-        start(true, shards.roots().containsAll(TaxonomyShardRoot.DEFAULT_ROOTS));
+        start(true, shards.roots().containsAll(shards.available()));
     }
 
     public synchronized void start(boolean rootWork, boolean sharedPreparation) {

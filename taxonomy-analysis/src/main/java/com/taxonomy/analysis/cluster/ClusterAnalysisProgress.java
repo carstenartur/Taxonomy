@@ -159,11 +159,11 @@ final class ClusterAnalysisProgress {
                 || p.totalSearches() < 0 || p.completedSearches() < 0 || p.unresolvedSearches() < 0 || p.pendingSearches() < 0
                 || (long) p.completedSearches() + p.unresolvedSearches() + p.pendingSearches() != p.totalSearches()
                 || p.calls() < 0 || p.maxCalls() < 0 || p.calls() > p.maxCalls() || p.verifiedRelations() < 0
-                || p.taxonomies().size() > 8 || p.sourceTaxonomies().size() > 8)
+                || p.taxonomies().size() > AnalysisTaskId.MAX_ROUTED_ROOTS || p.sourceTaxonomies().size() > AnalysisTaskId.MAX_ROUTED_ROOTS)
             throw new IllegalArgumentException("Invalid relation progress counts");
         int sources = 0; var sourceRoots = new HashSet<String>();
         for (var source : p.sourceTaxonomies()) {
-            if (!TaxonomyShardRoot.of(source.root()).defaultCatalogueRoot() || !sourceRoots.add(source.root())
+            if (!TaxonomyShardRoot.of(source.root()).catalogueIdentifier() || !sourceRoots.add(source.root())
                     || source.total() < 0 || source.completed() < 0 || source.unresolved() < 0
                     || (long) source.completed() + source.unresolved() > source.total())
                 throw new IllegalArgumentException("Invalid relation source progress");
@@ -173,7 +173,7 @@ final class ClusterAnalysisProgress {
             throw new IllegalArgumentException("Relation source totals differ from plan");
         int total = 0, completed = 0, unresolved = 0, pending = 0; var roots = new HashSet<String>();
         for (var root : p.taxonomies()) {
-            if (!TaxonomyShardRoot.of(root.root()).defaultCatalogueRoot() || !roots.add(root.root()) || root.total() < 0
+            if (!TaxonomyShardRoot.of(root.root()).catalogueIdentifier() || !roots.add(root.root()) || root.total() < 0
                     || root.completed() < 0 || root.unresolved() < 0 || root.pending() < 0
                     || (long) root.completed() + root.unresolved() + root.pending() != root.total())
                 throw new IllegalArgumentException("Invalid target progress");

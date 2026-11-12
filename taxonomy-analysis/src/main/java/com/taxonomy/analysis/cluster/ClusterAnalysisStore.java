@@ -202,16 +202,23 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
 
     public void admit(AnalysisOperationContext context, AnalyzeRequirementCommand command, ViewContext view,
                        Map<TaxonomyShardRoot, String> shards, Map<TaxonomyShardRoot, String> relationTargets) {
-        validateInput(context, command, shards);
+        admit(context, command, view, shards, relationTargets, com.taxonomy.dsl.model.CatalogueDefinition.standard());
+    }
+
+    public void admit(AnalysisOperationContext context, AnalyzeRequirementCommand command, ViewContext view,
+            Map<TaxonomyShardRoot,String> shards, Map<TaxonomyShardRoot,String> relationTargets,
+            com.taxonomy.dsl.model.CatalogueDefinition definition) {
+        var available = definition.rootCodes().stream().map(TaxonomyShardRoot::of).collect(java.util.stream.Collectors.toSet());
+        validateInput(context, command, shards, available);
         boolean needsTargets = command.analysisScope().includesRelations() || command.includeArchitectureView();
         if (needsTargets
-                && !relationTargets.keySet().equals(new HashSet<>(TaxonomyShardRoot.DEFAULT_ROOTS)))
+                && !relationTargets.keySet().equals(available))
             throw new IllegalArgumentException("Relation work requires every frozen target shard");
         if (!needsTargets && !relationTargets.isEmpty())
             throw new IllegalArgumentException("Unrequested relation input");
         Map<TaxonomyShardRoot, String> inputs = new LinkedHashMap<>(shards);
         relationTargets.forEach((root, value) -> {
-            if (value == null || value.isBlank() || !root.defaultCatalogueRoot()) throw new IllegalArgumentException("Missing frozen target");
+            if (value == null || value.isBlank() || !available.contains(root)) throw new IllegalArgumentException("Missing frozen target");
             String previous = inputs.putIfAbsent(root, value);
             if (previous != null && !previous.equals(value)) throw new IllegalArgumentException("Conflicting frozen catalogue shard");
         });
@@ -310,6 +317,18 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
             return new Input(read(run.contextJson, AnalysisOperationContext.class),
                     read(run.commandJson, AnalyzeRequirementCommand.class), executable, work.inputJson, work.attempts);
         });
+    }
+
+    public List<TaxonomyShardRoot> inputRoots(AnalysisOperationContext context) {
+        return tx.execute(status -> {
+            requireAuthority(requireRun(context.operationId(), false), context);
+            return storedRoots(context.operationId());
+        });
+    }
+
+    private List<TaxonomyShardRoot> storedRoots(String operation) {
+        return em.createQuery("select i.root from ClusterAnalysisInput i where i.operationId=:id order by i.root", String.class)
+                .setParameter("id", operation).getResultList().stream().map(TaxonomyShardRoot::of).toList();
     }
 
     public String shard(AnalysisOperationContext context, TaxonomyShardRoot root) {
@@ -754,7 +773,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
                 .map(w -> new AnalysisTaskId(w.taskId)).toList();
         var relationTasks = tasks.stream().filter(w -> w.taskType.equals(AnalysisTaskType.RELATION_ANALYSIS.name())).toList();
         if (relationTasks.isEmpty()) {
-            var roots = TaxonomyShardRoot.DEFAULT_ROOTS.stream().sorted().toList();
+            var roots = storedRoots(run.id);
             var node = new AnalysisTaskGraph.Node(AnalysisTaskId.relation(run.id, roots), AnalysisTaskType.RELATION_ANALYSIS, roots, prerequisites);
             var preparation = factory(context).task(node);
             addWork(preparation, run.totalRoots, null); dispatch.dispatch(List.of(preparation)); return;
@@ -772,7 +791,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
             if (tasks.stream().anyMatch(w -> w.taskId.equals(id.value()))) continue;
             var header = new AnalysisEnvelope(2, AnalysisMessageType.RELATION_ANALYSIS_TASK, run.id, id,
                     AnalysisTaskType.RELATION_ANALYSIS, context.authority(), context.requirement(), List.of(grant.targetRoot()),
-                    1, AnalysisTaskId.relation(run.id, TaxonomyShardRoot.DEFAULT_ROOTS).value(), context.correlationId(),
+                    1, relationTasks.getFirst().taskId, context.correlationId(),
                     java.time.Instant.now(), null);
             var task = new RelationAnalysisTask(header, List.of(grant.targetRoot()), prerequisites);
             addWork(task, run.totalRoots + 1 + grant.ordinal(), json(grant)); admitted.add(task);
@@ -985,7 +1004,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
             throw new IllegalStateException("Analysis operation source identity mismatch");
     }
     private static void validateInput(AnalysisOperationContext context, AnalyzeRequirementCommand command,
-                                      Map<TaxonomyShardRoot, String> shards) {
+                                      Map<TaxonomyShardRoot, String> shards, Set<TaxonomyShardRoot> available) {
         Objects.requireNonNull(context); Objects.requireNonNull(command); Objects.requireNonNull(shards);
         if (command.retainedAnalysis() != null && (command.continuationBinding() == null || !command.analysisScope().includesRelations()))
             throw new IllegalArgumentException("Retained relation input requires explicit continuation authority");
@@ -998,7 +1017,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
                 || !Objects.equals(authority.workspaceId(), workspace.workspaceId())
                 || !Objects.equals(authority.branch(), workspace.currentBranch()))
             throw new IllegalStateException("Operation input does not match its immutable authority");
-        if (shards.isEmpty() || shards.size() > 8 || shards.keySet().stream().anyMatch(r -> !r.defaultCatalogueRoot()
+        if (shards.isEmpty() || shards.size() > available.size() || shards.keySet().stream().anyMatch(r -> !available.contains(r)
                 || !command.analysisScope().selects(r.code()))) throw new IllegalArgumentException("Invalid selected catalogue shards");
         if (!command.analysisScope().taxonomyRoots().isEmpty()
                 && !shards.keySet().stream().map(TaxonomyShardRoot::code).collect(java.util.stream.Collectors.toSet())

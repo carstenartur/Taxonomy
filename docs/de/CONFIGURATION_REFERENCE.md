@@ -60,6 +60,20 @@ Git-gestützte Einstellungen (`taxonomy.llm.*`, `taxonomy.analysis.min-score`, `
 | `TAXONOMY_BACKUP_MAX_RETAINED_BYTES` | `taxonomy.backup.jobs.max-retained-bytes` | `68719476736` | 64 GiB Kontingent für aufbewahrte Archive; abgelaufene Dateien zählen bis zur erfolgreichen Löschung. |
 | `TAXONOMY_BACKUP_MAX_TEMPORARY_BYTES` | `taxonomy.backup.jobs.max-temporary-bytes` | `77309411328` | 72 GiB temporäres Kontingent, 24 GiB reserviert je Worker. Fehlgeschlagene Aufträge behalten die Reservierung bis zur Bereinigung. Mindestens 24 GiB. |
 
+### Katalogwurzeln konfigurieren
+
+Das optionale Arbeitsblatt `Catalogue Definition` legt die Datenblätter, Wurzelkennungen, DSL-Elementtypen und zulässigen Relationsrichtungen fest. Arbeitsmappen ohne dieses Blatt verwenden die acht Standardwurzeln. Die folgenden Zeilen ergänzen eine Museumssammlung.
+
+| Spalte A | Spalte B | Spalte C | Spalte D |
+|---|---|---|---|
+| `catalogue-definition-v1` | `museum-1` | `standard-v1` | |
+| `root` | `Museum Collections` | `MC` | `MuseumCollection` |
+| `direction` | `MC` | `USES` | `IP` |
+
+Mit `empty` in C1 werden sämtliche Wurzeln und ihre Richtungen in der Arbeitsmappe angegeben. Jedes deklarierte Datenblatt muss existieren. Die üblichen Spalten **Page**, **Title** und **Parent** enthalten Knotenkennung, Titel und unmittelbaren Elternknoten. Als Elternreferenz sind Knotenkennung und UUID zulässig. Jede Richtung nennt eine Quellwurzel, einen unterstützten Relationstyp und eine Zielwurzel. Unbekannte Relationstypen führen zu einem Importfehler. Die Tiefen-, Aufruf- und Arbeitsgrenzen gelten auch für neue Wurzeln. Der Relationsbericht weist den ungeprüften Ast aus, wenn eine Grenze die Suche unterbricht.
+
+Das Journal bewahrt die tatsächlich verwendeten Arbeitsmappen und Overlays auf. Ein Projekt mit gespeicherter Katalogrevision kann diese Fassung nach einem weiteren Import erneut lesen. Zur gezielten Verteilung eines neuen Teilbaums die Wurzelkennung bei den zuständigen Worker-Shards eintragen.
+
 ## Signaturen der Modell-Git-Commits
 
 Diese Einstellungen gelten für die von Taxonomy intern erzeugten Modell-Commits in persönlichen und zentralen Repositories. [Signierte Modell-Commits](MODEL_COMMIT_SIGNING.md) beschreibt die Bereitstellung der Schlüssel, das Vertrauen in öffentliche Schlüssel und die Rotation.

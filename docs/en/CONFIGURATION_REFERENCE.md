@@ -60,6 +60,20 @@ Several preferences (`taxonomy.llm.*`, `taxonomy.analysis.min-score`, `taxonomy.
 | `TAXONOMY_BACKUP_MAX_RETAINED_BYTES` | `taxonomy.backup.jobs.max-retained-bytes` | `68719476736` | 64 GiB retained artifact quota; expired files count until deletion succeeds. |
 | `TAXONOMY_BACKUP_MAX_TEMPORARY_BYTES` | `taxonomy.backup.jobs.max-temporary-bytes` | `77309411328` | 72 GiB temporary quota, reserving 24 GiB per worker. Failed jobs retain reservations until cleanup. Minimum 24 GiB. |
 
+### Configuring catalogue roots
+
+The optional worksheet `Catalogue Definition` defines which worksheets contain taxonomy nodes, their root codes, their DSL element types and permitted relation directions. A workbook without this sheet uses the eight standard roots. The following rows add a museum collection to the standard catalogue.
+
+| Column A | Column B | Column C | Column D |
+|---|---|---|---|
+| `catalogue-definition-v1` | `museum-1` | `standard-v1` | |
+| `root` | `Museum Collections` | `MC` | `MuseumCollection` |
+| `direction` | `MC` | `USES` | `IP` |
+
+Set C1 to `empty` to supply the complete root list and its directions. Each declared sheet must exist. Use its usual **Page**, **Title** and **Parent** columns for each node's identifier, name and immediate parent. A child may refer to its parent by workbook code or UUID. Each direction names a supported relation type, its source root and its target root. The importer rejects an unrecognized relation type. Existing analysis depth, call and work limits also apply to configured roots. The relation report retains the unassessed branch when a limit cuts traversal short.
+
+The journal stores the workbook and overlay bytes used by each import. Projects with a recorded revision can read that generation after another import replaces the current catalogue. Configure worker shards with the new root code when assigning individual workers to that root.
+
 ## Model Git commit signatures
 
 These settings apply to Taxonomy's internally generated model commits in personal and central repositories. See [Model commit signing](MODEL_COMMIT_SIGNING.md) for key provisioning, trust and rotation.

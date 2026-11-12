@@ -20,6 +20,14 @@ import java.util.*;
  */
 public class DslValidator {
 
+    private final CatalogueDefinitionResolver catalogues;
+
+    public DslValidator() { this(CatalogueDefinitionResolver.standard()); }
+
+    public DslValidator(CatalogueDefinitionResolver catalogues) {
+        this.catalogues = Objects.requireNonNull(catalogues);
+    }
+
     private static final Set<String> VALID_RELATION_TYPES = RelationMetamodel.relationTypes();
     private static final Set<String> VALID_STATUSES = Set.of("proposed", "provisional", "accepted", "rejected");
     public static Set<String> relationTypes() { return RelationMetamodel.relationTypes(); }
@@ -48,7 +56,7 @@ public class DslValidator {
             }
         }
 
-        validateRelations(model.getRelations(), allIds, elementTypeMap, result);
+        validateRelations(model.getRelations(), allIds, elementTypeMap, catalogues.forModel(model), result);
         validateMappings(model.getMappings(), requirementIds, elementIds, result);
         validateElements(model.getElements(), result);
         ArchitecturePackageHierarchy.validate(model, (code, message) -> result.addError(code + ": " + message));
@@ -105,7 +113,7 @@ public class DslValidator {
     }
 
     private void validateRelations(List<ArchitectureRelation> relations, Set<String> allIds,
-                                   Map<String, String> elementTypeMap,
+                                   Map<String, String> elementTypeMap, CatalogueDefinition definition,
                                    DslValidationResult result) {
         for (ArchitectureRelation rel : relations) {
             if (rel.getSourceId() == null || rel.getSourceId().isBlank()) {
@@ -131,7 +139,7 @@ public class DslValidator {
 
             // Type-combination validation using the type matrix
             if (rel.getRelationType() != null && rel.getSourceId() != null && rel.getTargetId() != null) {
-                validateTypeCombination(rel, elementTypeMap, result);
+                validateTypeCombination(rel, elementTypeMap, definition, result);
             }
         }
     }
@@ -141,17 +149,17 @@ public class DslValidator {
      * using the type matrix (e.g., REALIZES requires CP→CR).
      */
     private void validateTypeCombination(ArchitectureRelation rel,
-                                         Map<String, String> elementTypeMap,
+                                         Map<String, String> elementTypeMap, CatalogueDefinition definition,
                                          DslValidationResult result) {
         if (!RelationMetamodel.relationTypes().contains(rel.getRelationType())) return;
-        String sourceRoot = resolveTaxonomyRootCode(rel.getSourceId(), elementTypeMap);
-        String targetRoot = resolveTaxonomyRootCode(rel.getTargetId(), elementTypeMap);
+        String sourceRoot = resolveTaxonomyRootCode(rel.getSourceId(), elementTypeMap, definition);
+        String targetRoot = resolveTaxonomyRootCode(rel.getTargetId(), elementTypeMap, definition);
 
         if (sourceRoot == null || targetRoot == null) {
             return; // Can't determine type — skip validation
         }
 
-        var domain = RelationMetamodel.targetDomain(sourceRoot, rel.getRelationType());
+        var domain = definition.targetDomain(sourceRoot, rel.getRelationType());
         Set<String> allowedTargets = domain.roots();
         if (domain.state() == RelationMetamodel.DomainState.FORBIDDEN) {
             result.addWarning("Relation " + rel.getRelationType() + ": source "
@@ -168,15 +176,15 @@ public class DslValidator {
      * Resolve the taxonomy root code for an element ID, using either the
      * element type map (from DSL) or the ID prefix (e.g., CP-1023 → CP).
      */
-    private String resolveTaxonomyRootCode(String elementId, Map<String, String> elementTypeMap) {
+    private String resolveTaxonomyRootCode(String elementId, Map<String, String> elementTypeMap, CatalogueDefinition definition) {
         // Try element type from DSL model first
         String typeName = elementTypeMap.get(elementId);
         if (typeName != null) {
-            String root = TaxonomyRootTypes.rootFor(typeName);
+            String root = definition.rootFor(typeName);
             if (root != null) return root;
         }
         // Fall back to ID prefix
-        return TaxonomyRootTypes.rootFromId(elementId);
+        return definition.rootFromId(elementId);
     }
 
     private void validateMappings(List<RequirementMapping> mappings,

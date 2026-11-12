@@ -18,7 +18,6 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -31,7 +30,6 @@ import static org.mockito.Mockito.*;
 /** Reproducible real-catalogue scalar footprint; this is explicitly not a JVM heap or Lucene benchmark. */
 class CatalogueSnapshotFootprintTest {
     @Test
-    @SuppressWarnings("unchecked")
     void measuresOneRootVersusAllRootsUsingTheProductionWorkbookParserAndOverlay() throws Exception {
         var repository = mock(TaxonomyNodeRepository.class);
         var taxonomy = new TaxonomyService(repository, mock(TaxonomyRelationRepository.class),
@@ -40,30 +38,23 @@ class CatalogueSnapshotFootprintTest {
         var overlay = new CatalogueOverlayService(mapper, new DefaultResourceLoader(), true,
                 "classpath:data/nato-taxonomy.json");
         ReflectionTestUtils.setField(taxonomy, "catalogueOverlayService", overlay);
-        Map<String, String> sheets = (Map<String, String>) ReflectionTestUtils.getField(
-                TaxonomyService.class, "SHEET_PREFIXES");
-        Map<String, TaxonomyNode> nodes = new LinkedHashMap<>();
-        Map<String, String> uuids = new HashMap<>();
         byte[] workbookBytes;
         try (var input = new ClassPathResource("data/C3_Taxonomy_Catalogue_25AUG2025.xlsx").getInputStream()) {
             workbookBytes = input.readAllBytes();
         }
+        TaxonomyService.WorkbookNodes hierarchy;
         try (var workbook = new XSSFWorkbook(new java.io.ByteArrayInputStream(workbookBytes))) {
-            for (var sheet : sheets.entrySet()) {
-                var root = CatalogueSnapshotServiceTest.node(sheet.getValue(), sheet.getValue(), null, sheet.getKey());
-                root.setDescriptionEn("C3 Taxonomy – " + sheet.getKey());
-                nodes.put(root.getCode(), root);
-                ReflectionTestUtils.invokeMethod(taxonomy, "readSheet", workbook.getSheet(sheet.getKey()),
-                        sheet.getValue(), nodes, uuids);
-            }
+            hierarchy = TaxonomyService.readWorkbookNodes(workbook);
         }
-        overlay.applyAndValidate(nodes, uuids, "classpath:data/C3_Taxonomy_Catalogue_25AUG2025.xlsx");
+        var nodes = hierarchy.nodes();
+        overlay.applyAndValidate(nodes, hierarchy.uuidToCode(), "classpath:data/C3_Taxonomy_Catalogue_25AUG2025.xlsx");
         var captures = new CatalogueSnapshotService(repository, overlay, CatalogueRuntimePolicy.fullCatalogue(),
                 CatalogueSnapshotServiceTest.sources(overlay.getOverlayMetadata().sha256()));
         var source = new CatalogueSourceIdentity("fixture-repository", null, "fixture-branch", "fixture-commit");
         List<RootCatalogueSnapshot> full = new ArrayList<>();
         Map<String, Object> rootMeasurements = new LinkedHashMap<>();
-        for (String root : sheets.values()) {
+        for (TaxonomyNode rootNode : hierarchy.virtualRoots()) {
+            String root = rootNode.getCode();
             when(repository.findByTaxonomyRootOrderByLevelAscNameEnAsc(root)).thenReturn(nodes.values().stream()
                     .filter(node -> root.equals(node.getTaxonomyRoot()))
                     .sorted(Comparator.comparingInt(TaxonomyNode::getLevel).thenComparing(TaxonomyNode::getNameEn))

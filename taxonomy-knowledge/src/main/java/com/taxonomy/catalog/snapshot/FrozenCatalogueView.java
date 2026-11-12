@@ -1,6 +1,7 @@
 package com.taxonomy.catalog.snapshot;
 
 import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.dsl.model.CatalogueDefinition;
 import com.taxonomy.catalog.service.CatalogueOverlayService.OverlayMetadata;
 
 import java.util.ArrayList;
@@ -15,6 +16,7 @@ import java.util.Set;
 /** Reads only the immutable roots bound to one task; returned entity-shaped values are detached copies. */
 public final class FrozenCatalogueView {
     private final CatalogueSourceIdentity source;
+    private final CatalogueDefinition definition;
     private final Map<String, RootCatalogueSnapshot> roots = new LinkedHashMap<>();
     private final Map<String, RootCatalogueSnapshot.Node> nodes = new LinkedHashMap<>();
     private final Map<String, List<String>> childrenByParent;
@@ -23,7 +25,7 @@ public final class FrozenCatalogueView {
                         Collection<RootCatalogueSnapshot> snapshots) {
         if (expectedSource == null) throw new IllegalArgumentException("Expected source is required");
         if (requiredRoots == null || requiredRoots.isEmpty()) throw new IllegalArgumentException("Required roots are empty");
-        requiredRoots.forEach(CatalogueRoot::require);
+        requiredRoots.forEach(CatalogueRoot::validateIdentifier);
         this.source = expectedSource;
         snapshots.stream().sorted(Comparator.comparing(RootCatalogueSnapshot::rootCode)).forEach(snapshot -> {
             if (!source.equals(snapshot.source())) throw new IllegalArgumentException("Catalogue snapshot source mismatch");
@@ -43,6 +45,10 @@ public final class FrozenCatalogueView {
         if (roots.values().stream().anyMatch(root -> !overlay.equals(root.overlayMetadata()))) {
             throw new IllegalArgumentException("Inconsistent overlay evidence in snapshot roots");
         }
+        var specification = roots.values().iterator().next().catalogueDefinition();
+        if (roots.values().stream().anyMatch(root -> !java.util.Objects.equals(specification, root.catalogueDefinition())))
+            throw new IllegalArgumentException("Inconsistent catalogue definitions in snapshot roots");
+        definition = specification == null ? CatalogueDefinition.standard() : specification.definition();
         var provenance = roots.values().iterator().next().catalogueProvenance();
         if (roots.values().stream().anyMatch(root -> !provenance.equals(root.catalogueProvenance()))) {
             throw new IllegalArgumentException("Inconsistent catalogue generation in snapshot roots");
@@ -57,6 +63,8 @@ public final class FrozenCatalogueView {
                 .sorted(Comparator.comparing(code -> nodes.get(code).nameEn())).toList());
         childrenByParent = Map.copyOf(adjacency);
     }
+
+    public CatalogueDefinition definition() { return definition; }
 
     public CatalogueSourceIdentity source() { return source; }
 

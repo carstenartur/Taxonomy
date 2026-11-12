@@ -24,6 +24,8 @@ public record TaxonomyShardRoot(String code) implements Comparable<TaxonomyShard
             new TaxonomyShardRoot("CO"), new TaxonomyShardRoot("CR"),
             new TaxonomyShardRoot("IP"), new TaxonomyShardRoot("UA"));
 
+    public boolean catalogueIdentifier() { return code.matches("[A-Z][A-Z0-9_]{0,63}"); }
+
     public TaxonomyShardRoot {
         Objects.requireNonNull(code, "code");
         if (!CODE.matcher(code).matches()) {

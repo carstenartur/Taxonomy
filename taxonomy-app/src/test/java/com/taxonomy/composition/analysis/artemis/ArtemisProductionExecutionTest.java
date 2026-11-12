@@ -177,6 +177,40 @@ class ArtemisProductionExecutionTest {
         }
     }
 
+    @Test void importedMuseumBranchIsScoredAndStreamedThroughTheBroker() throws Exception {
+        var input = fixture("museum", "MC", false, "Catalogue an exhibit in the museum collection.");
+        var captured = com.taxonomy.backup.runtime.MuseumCatalogueWorkbook.importRoots(input.source);
+        var definition = captured.getFirst().catalogueDefinition().definition();
+        assertThat(definition.rootCodes()).hasSize(9);
+        var museum = new Fixture(input.label, input.root, input.source, input.context, input.command, input.view, captured);
+        var db = database();
+        var engine = new Engine(Map.of());
+        var signals = new ClusterAnalysisSignals();
+        coordinator(db, signals, finalizer(db, engine));
+        var snapshots = new CatalogueSnapshotService(engine.repository, engine.overlay,
+                new CatalogueRuntimePolicy("worker", "MC", definition), mock(CatalogueSourceJournal.class));
+        var computation = new FrozenClusterAnalysisComputation(db.store, snapshots, engine.llm, engine.providers,
+                ArtemisProductionExecutionTest::guard, JSON);
+        var handlers = new AnalysisTaskHandlers(new ClusterAnalysisService(db.store, computation, signals)::prepare, null);
+        var worker = new ArtemisAnalysisWorker(connect(), destinations, AnalysisWorkerShards.parse("MC", definition.rootCodes()),
+                1, handlers, db.ledger, codec);
+        resources.push(worker);
+        worker.start(true, false);
+
+        var progress = new CopyOnWriteArrayList<ClusterAnalysisStore.Snapshot>();
+        var result = org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(java.time.Duration.ofSeconds(60),
+                () -> execution(db, engine, List.of(museum), signals).execute(museum.context, museum.command, museum.view, progress::add));
+        assertThat(progress.getLast().state()).isEqualTo(ClusterAnalysisState.COMPLETED);
+        assertThat(db.store.snapshot(museum.context).result().getRawScores()).isEqualTo(result.getRawScores()).containsKey("MC");
+        assertThat(progress.getLast().tasks()).singleElement().satisfies(task -> assertThat(task.root()).isEqualTo("MC"));
+        var node = result.getTree().getFirst();
+        for (int level = 1; level <= 10; level++) {
+            node = node.getChildren().getFirst();
+            assertThat(node.getCode()).isEqualTo("MC-" + level);
+        }
+        engine.assertNoCurrentReadsOrExternalCalls();
+    }
+
     @Test void productionRelationWorkersMatchFrozenLocalPromptsEvidenceAndCallCount() throws Exception {
         var fixture = fixture("relation-source", "UA", true);
         var db = database();
@@ -277,7 +311,9 @@ class ArtemisProductionExecutionTest {
             return fixtures.stream().filter(fixture -> fixture.source.repositoryId().equals(context.repositoryId()))
                     .findFirst().orElseThrow().view;
         });
-        return new DurableClusterAnalysisExecution(db.store, capture, signals, engine.providers, JSON, views);
+        var spec = fixtures.getFirst().roots().getFirst().catalogueDefinition();
+        var definition = spec == null ? com.taxonomy.dsl.model.CatalogueDefinition.standard() : spec.definition();
+        return new DurableClusterAnalysisExecution(db.store, capture, signals, engine.providers, JSON, views, null, () -> definition);
     }
 
     private FrozenClusterAnalysisFinalizer finalizer(Database db, Engine engine) {
@@ -368,10 +404,14 @@ class ArtemisProductionExecutionTest {
     private record Fixture(String label, String root, CatalogueSourceIdentity source, AnalysisOperationContext context,
                            AnalyzeRequirementCommand command, ViewContext view, List<RootCatalogueSnapshot> roots) { }
     private static Fixture fixture(String label, String selected, boolean relations) {
+        return fixture(label, selected, relations, TEXT);
+    }
+
+    private static Fixture fixture(String label, String selected, boolean relations, String text) {
         var source = new CatalogueSourceIdentity("repo-" + label, "ws-" + label, "draft", "commit-" + label);
         var context = new AnalysisOperationContext("op-" + label, new AnalysisSourceAuthority(source.repositoryId(), source.workspaceId(),
-                source.branch(), source.sourceCommit()), RequirementReference.adHoc(TEXT), null);
-        var command = new AnalyzeRequirementCommand(TEXT, true, 12, "MOCK", "alice",
+                source.branch(), source.sourceCommit()), RequirementReference.adHoc(text), null);
+        var command = new AnalyzeRequirementCommand(text, true, 12, "MOCK", "alice",
                 new WorkspaceContext("alice", source.workspaceId(), "draft", source.repositoryId()), null,
                 new AnalysisScope(Set.of(selected), relations ? AnalysisMode.FULL : AnalysisMode.TAXONOMIES_ONLY));
         var view = new ViewContext(source.sourceCommit(), "draft", Instant.EPOCH, false, false, false);

@@ -24,6 +24,18 @@ import static org.mockito.Mockito.*;
 
 class CatalogueWorkerIsolationTest {
     @Test
+    void sharedAndCoordinatorRolesDoNotRejectAnIndependentlyConfiguredWorkerRootAtStartup() {
+        for (var role : List.of("all", "coordinator")) {
+            new ApplicationContextRunner().withUserConfiguration(CatalogueRuntimePolicy.class)
+                    .withPropertyValues("taxonomy.analysis.runtime-role=" + role, "taxonomy.analysis.worker.shards=MC")
+                    .run(context -> {
+                        assertThat(context).hasNotFailed();
+                        context.getBean(CatalogueRuntimePolicy.class).requireConfiguredRoots(java.util.Set.of("MC"));
+                    });
+        }
+    }
+
+    @Test
     void duplicateShardsFailStartupAfterWhitespaceNormalization() {
         for (String configured : List.of("CP,CP", "CP, CP", " CP ,IP,CP ")) {
             assertThatThrownBy(() -> new CatalogueRuntimePolicy("worker", configured))
@@ -68,8 +80,9 @@ class CatalogueWorkerIsolationTest {
         assertThatThrownBy(taxonomy::getFullTree).isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> taxonomy.getAssessmentContexts(List.of()))
                 .isInstanceOf(IllegalStateException.class);
-        assertThatThrownBy(() -> new CatalogueSnapshotService(nodes, overlay, worker, CatalogueSnapshotServiceTest.sources(null))
-                .captureRoot(new CatalogueSourceIdentity("repo", null, "branch", "commit"), "CP"))
+        var snapshots = new CatalogueSnapshotService(nodes, overlay, worker, CatalogueSnapshotServiceTest.sources(null));
+        assertThatThrownBy(snapshots::currentDefinition).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> snapshots.captureRoot(new CatalogueSourceIdentity("repo", null, "branch", "commit"), "CP"))
                 .isInstanceOf(IllegalStateException.class);
         verifyNoInteractions(nodes, relations, overlay, embedding, rebuilder);
     }

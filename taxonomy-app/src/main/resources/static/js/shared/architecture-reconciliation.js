@@ -42,7 +42,7 @@ window.TaxonomyArchitectureReconciliation = (function () {
                 function (edge) { select('relation:' + edge.sourceId + ' ' + edge.relationType + ' ' + edge.targetId); },
                 function (visible, total) { count.textContent = t('lifecycle.reconcile.visibleElements', visible, total); });
             renderers.push({renderer:renderer, ids:new Set((scene.nodes || []).map(function (item) { return item.id; }))});
-            renderer.render(scene, null, comparison.typeRoots);
+            renderer.render(scene, null, comparison.sceneTypeRoots ? comparison.sceneTypeRoots[part] : comparison.typeRoots);
             var source = node('details');
             source.append(node('summary', t('lifecycle.reconcile.source')), node('pre', preview[part === 'proposed' ? 'mergedDsl' : part + 'Dsl'] || ''));
             panel.append(source);
