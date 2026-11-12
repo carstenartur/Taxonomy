@@ -51,6 +51,9 @@ public class DslWorkspacePreResolutionInterceptor implements HandlerInterceptor 
             "/api/projects/[0-9]+/architecture-workbench/[^/]+/?")
             .stream().map(Pattern::compile).toList();
 
+    private static final Pattern HYPOTHESIS_READ = Pattern.compile(
+            "/api/dsl/hypotheses(?:/head|/[0-9]+/evidence)?/?");
+
     private final WorkspaceResolver workspaceResolver;
     private final RepositoryStateService repositoryStateService;
     private WorkspaceProvisionPermission provisionPermission = actor -> true;
@@ -71,13 +74,18 @@ public class DslWorkspacePreResolutionInterceptor implements HandlerInterceptor 
                              HttpServletResponse response,
                              Object handler) {
         String username = workspaceResolver.resolveCurrentUsername();
+        String readPath = observationalPath(request);
+        if (HYPOTHESIS_READ.matcher(readPath).matches()) {
+            Objects.requireNonNull(workspaceResolver.resolveCurrentRepositoryContextForRead());
+            return true;
+        }
         boolean mayProvision = provisionPermission.mayProvision(username);
         boolean explicitCentral = "".equals(WorkspaceContextResolver.requestedWorkspaceId(request));
         // 1.3 portfolios belong to the central repository.
         // An explicit central selection may read them without creating workspace
         // state or turning historical data into a personal workspace.
         // Git operations and every mutation retain the isolation contract below.
-        if (isSupportedCentralRead(request)) {
+        if (CENTRAL_READ_PATHS.stream().anyMatch(pattern -> pattern.matcher(readPath).matches())) {
             if (explicitCentral || !mayProvision) {
                 RepositoryContext repository = workspaceResolver.resolveCurrentRepositoryContext();
                 WorkspaceContext workspace = workspaceResolver.resolveCurrentContext();
@@ -154,19 +162,17 @@ public class DslWorkspacePreResolutionInterceptor implements HandlerInterceptor 
         return true;
     }
 
-    private static boolean isSupportedCentralRead(HttpServletRequest request) {
+    private static String observationalPath(HttpServletRequest request) {
         if (!"GET".equals(request.getMethod()) && !"HEAD".equals(request.getMethod())) {
-            return false;
+            return "";
         }
         String path = request.getRequestURI();
-        if (path == null) return false;
+        if (path == null) return "";
         String context = request.getContextPath();
         if (context != null && !context.isEmpty()) {
-            if (!path.startsWith(context + "/")) return false;
+            if (!path.startsWith(context + "/")) return "";
             path = path.substring(context.length());
         }
-        String requestPath = path;
-        return CENTRAL_READ_PATHS.stream()
-                .anyMatch(pattern -> pattern.matcher(requestPath).matches());
+        return path;
     }
 }

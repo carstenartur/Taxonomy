@@ -511,7 +511,9 @@ Das Flag selbst wird zusammen mit der `RelationHypothesis` in der Datenbank
 gespeichert, ist aber kein zusätzlicher Lebenszyklus-Status wie
 PROVISIONAL/ACCEPTED/REJECTED.
 
-Die Hypothesen-API (`/api/dsl/hypotheses`) ermöglicht das Abfragen, Akzeptieren und Ablehnen von Hypothesen, wobei für jede unterstützende Nachweise verfügbar sind.
+`GET /api/dsl/hypotheses` liest den ausgewählten Git-Branch einmal und liefert zu jeder versionierten Hypothese die für den ausgewählten Bereich geprüfte ID, Endpunkte, Typ, Status und Konfidenz. Neu veröffentlichte Hypothesen tragen ihre Prüf-ID in Git. Ältere Analysesitzungen erfordern einen eindeutig passenden Prüfdatensatz für dieselbe Sitzung und Relation. `X-Taxonomy-Commit` bezeichnet den Quellstand. `Content-Location` enthält Repository, Arbeitsbereich, Branch, Commit und Statusfilter als wiederverwendbare URL. Der starke HTTP-`ETag` gilt für die gefilterte Liste. Zur Auswahl eines zentralen Standes dienen `workspaceId=`, `repositoryId` und `branch`. Sind mehrere zentrale Repositories zugänglich, ist eine explizite Auswahl erforderlich. Eine optionale vollständige `commitId` bindet die Anfrage an den aktuellen Branch-Kopf. Hat sich der Branch bewegt, den neuen Kopf prüfen und die Anfrage für den gewünschten Stand wiederholen. Bei fehlender oder mehrdeutiger Hypothesen-ID die gespeicherte Hypothese vor der Prüfung mit der versionierten Relation abgleichen. Zustand und Ursache liefern `X-Taxonomy-Relation-Projection-State` und `X-Taxonomy-Read-Problem`.
+
+`?view=working` liefert gespeicherte Analysemetadaten, Sitzungsmarkierungen und noch nicht in Git versionierte DSL-Materialisierungen. Belege stehen unter `/{id}/evidence` am selben Endpunkt. Diese Arbeitsansichten tragen `X-Taxonomy-Relation-Read-Model: WORKING` und verwenden keine Git-Vorbedingung. Für eine Prüfentscheidung dient der starke Git-ETag aus `GET /api/dsl/hypotheses/head` als `If-Match`.
 
 ---
 

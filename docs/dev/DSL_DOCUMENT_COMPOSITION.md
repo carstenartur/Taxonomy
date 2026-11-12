@@ -39,9 +39,10 @@ architecture-owned compatibility/materialization archive; its global query
 policy is unchanged.
 
 The single workspace-owned `DslReadWorkspaceContextResolver` preserves the
-legacy HTTP read provision → resolve sequence and exception → `SHARED` fallback
-for both controllers. This compatibility helper does not weaken the fail-closed
-request pre-resolution interceptor or Git facade. `/history` retains its 503
+HTTP read provision → resolve sequence for both controllers, but never substitutes
+`SHARED` after an unavailable or missing repository selection. That case returns
+HTTP 503; explicit authorization denials and HTTP conflict responses are retained.
+The request pre-resolution interceptor and Git facade also fail closed. `/history` retains its 503
 `HISTORY_LOAD_FAILED` envelope without exception content.
 
 Materialization write scope, repository identity, checkpoints, journals, locks,

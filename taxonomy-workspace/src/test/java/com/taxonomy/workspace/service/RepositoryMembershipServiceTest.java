@@ -64,6 +64,41 @@ class RepositoryMembershipServiceTest {
     }
 
     @Test
+    void privateWorkspaceCannotOutliveSourceMembershipOrLifecycleAuthority() {
+        var repository = repository(RepositoryVisibility.PRIVATE, RepositoryLifecycleState.ACTIVE, false);
+        var workspace = new com.taxonomy.workspace.model.UserWorkspace();
+        workspace.setUsername("member");
+        workspace.setSourceRepositoryId("repo-a");
+
+        when(membershipRepository.findByRepositoryIdAndUsername("repo-a", "member"))
+                .thenReturn(Optional.empty());
+        assertFalse(service.canUseWorkspace(repository, workspace, "member"));
+        assertFalse(service.canUseWorkspace(repository, workspace, null));
+        assertFalse(service.canUseWorkspace(repository, workspace, " "));
+
+        when(membershipRepository.findByRepositoryIdAndUsername("repo-a", "member"))
+                .thenReturn(Optional.of(membership("repo-a", "member", RepositoryRole.READER)));
+        assertTrue(service.canUseWorkspace(repository, workspace, "member"));
+        repository.setLifecycleState(RepositoryLifecycleState.ARCHIVED);
+        assertFalse(service.canUseWorkspace(repository, workspace, "member"));
+        repository.setLifecycleState(RepositoryLifecycleState.ACTIVE);
+
+        when(membershipRepository.findByRepositoryIdAndUsername("repo-a", "member"))
+                .thenReturn(Optional.empty());
+        assertFalse(service.canUseWorkspace(repository, workspace, "member"));
+        workspace.setUsername("another-user");
+        workspace.setCollaborative(true);
+        when(membershipRepository.findByRepositoryIdAndUsername("repo-a", "member"))
+                .thenReturn(Optional.of(membership("repo-a", "member", RepositoryRole.READER)));
+        assertFalse(service.canUseWorkspace(repository, workspace, "member"));
+        when(membershipRepository.findByRepositoryIdAndUsername("repo-a", "member"))
+                .thenReturn(Optional.of(membership("repo-a", "member", RepositoryRole.CONTRIBUTOR)));
+        assertTrue(service.canUseWorkspace(repository, workspace, "member"));
+        workspace.setSourceRepositoryId("other-repository");
+        assertFalse(service.canUseWorkspace(repository, workspace, "member"));
+    }
+
+    @Test
     void assignOwnerCreatesExplicitOwnerMembership() {
         when(membershipRepository.findByRepositoryIdAndUsername("repo-a", "alice"))
                 .thenReturn(Optional.empty());

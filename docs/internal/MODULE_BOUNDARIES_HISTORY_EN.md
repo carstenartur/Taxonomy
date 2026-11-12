@@ -176,9 +176,10 @@ Both workspace DSL facades are free of architecture archive and document-export
 adapter dependencies.
 
 The single workspace-owned HTTP `DslReadWorkspaceContextResolver` is shared by
-both controllers. It preserves the legacy read provision/resolve sequence and
-shared-context fallback. The request pre-resolution interceptor and Git facade
-continue to fail closed on repository-selection failures. Git remains the
+both controllers. It preserves the read provision/resolve order, but missing or
+failed repository selection returns HTTP 503 instead of the shared repository.
+Explicit authorization denials and HTTP conflicts are preserved; the request
+pre-resolution interceptor and Git facade likewise fail closed. Git remains the
 versioned-content authority; numeric document comparisons keep archive
 compatibility without resolving Git. `ArchitectureDslDocument` and its repository
 remain architecture-owned, with unchanged archive/global query policy, URLs,

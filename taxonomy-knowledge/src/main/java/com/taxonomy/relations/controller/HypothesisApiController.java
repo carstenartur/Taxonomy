@@ -3,9 +3,19 @@ package com.taxonomy.relations.controller;
 import com.taxonomy.model.HypothesisStatus;
 import com.taxonomy.relations.model.RelationHypothesis;
 import com.taxonomy.relations.service.HypothesisService;
+import com.taxonomy.relations.service.HypothesisSourceReadService;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,6 +25,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,22 +40,75 @@ public class HypothesisApiController {
 
     private final HypothesisService hypothesisService;
     private final WorkspaceResolver workspaceResolver;
+    private final HypothesisSourceReadService sourceReads;
 
-    public HypothesisApiController(HypothesisService hypothesisService, WorkspaceResolver workspaceResolver) {
+    public HypothesisApiController(HypothesisService hypothesisService, WorkspaceResolver workspaceResolver,
+                                   HypothesisSourceReadService sourceReads) {
+        this.sourceReads = sourceReads;
         this.hypothesisService = hypothesisService;
         this.workspaceResolver = workspaceResolver;
     }
 
     @GetMapping
-    @Operation(summary = "List relation hypotheses, optionally filtered by status",
-            description = "Lists relation hypotheses from the authenticated repository context, optionally restricted to one status. Proposed evidence is not equivalent to an accepted knowledge-graph relation.")
-    public ResponseEntity<List<RelationHypothesis>> listHypotheses(
-            @RequestParam(required = false) HypothesisStatus status) {
-        RepositoryContext context = currentRepositoryContext();
-        List<RelationHypothesis> result = status != null
-                ? hypothesisService.findByStatus(status, context)
-                : hypothesisService.findAll(context);
-        return ResponseEntity.ok(result);
+    @Operation(summary = "List hypotheses at the selected Git revision, optionally filtered by status",
+            description = "The default view reads one selected branch head. An optional full commitId must match it. "
+                    + "X-Taxonomy-Commit identifies the source and ETag identifies the filtered representation. "
+                    + "Use view=working for retained analysis and materialization metadata without a Git precondition. "
+                    + "When central repositories overlap, select a repositoryId and branch with an empty workspace pin.",
+            parameters = {
+                    @Parameter(name = "repositoryId", in = ParameterIn.QUERY, description = "Selected repository"),
+                    @Parameter(name = "branch", in = ParameterIn.QUERY, description = "Selected branch"),
+                    @Parameter(name = "workspaceId", in = ParameterIn.QUERY, description = "Workspace pin; empty selects central")
+            },
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "Committed hypothesis facts or explicit working rows",
+                            content = @Content(array = @ArraySchema(schema = @Schema(oneOf = {
+                                    HypothesisSourceReadService.Item.class, RelationHypothesis.class})))),
+                    @ApiResponse(responseCode = "304", description = "The selected representation matches If-None-Match"),
+                    @ApiResponse(responseCode = "400", description = "Invalid view or commit precondition"),
+                    @ApiResponse(responseCode = "404", description = "Selected branch or repository is unavailable"),
+                    @ApiResponse(responseCode = "409", description = "Selection, commit or retained binding needs reconciliation"),
+                    @ApiResponse(responseCode = "503", description = "The selected source could not be verified")
+            })
+    public ResponseEntity<List<?>> listHypotheses(
+            @RequestParam(required = false) HypothesisStatus status,
+            @RequestParam(required = false) String commitId,
+            @RequestParam(defaultValue = "current") String view) {
+        RepositoryContext context = readRepositoryContext();
+        if ("working".equals(view) && commitId == null) {
+            var rows = status == null ? hypothesisService.findAll(context) : hypothesisService.findByStatus(status, context);
+            return ResponseEntity.ok().header(RelationApiController.READ_MODEL_HEADER, "WORKING")
+                    .header(HttpHeaders.CACHE_CONTROL, "no-store").body(rows);
+        }
+        if (!"current".equals(view)) return ResponseEntity.badRequest().build();
+        String expected;
+        try {
+            expected = commitId == null ? null : WorkspaceDslReadPort.normalizeCommitId(commitId);
+        } catch (IllegalArgumentException invalid) {
+            return ResponseEntity.badRequest().build();
+        }
+        var result = sourceReads.read(context, expected, status);
+        var response = ResponseEntity.status(switch (result.state()) {
+            case READY -> HttpStatus.OK;
+            case STALE -> HttpStatus.CONFLICT;
+            case MISSING -> result.commit() == null ? HttpStatus.NOT_FOUND : HttpStatus.CONFLICT;
+            case FAILED -> HttpStatus.SERVICE_UNAVAILABLE;
+        }).header(RelationApiController.PROJECTION_STATE_HEADER, result.state().name())
+                .header(RelationApiController.READ_MODEL_HEADER, "GIT")
+                .header(HttpHeaders.CACHE_CONTROL, "no-store");
+        if (result.commit() != null) {
+            String location = "?repositoryId=" + encoded(context.repositoryId())
+                    + "&workspaceId=" + encoded(Objects.toString(context.workspaceId(), ""))
+                    + "&branch=" + encoded(context.branch()) + "&commitId=" + result.commit()
+                    + (status == null ? "" : "&status=" + status.name());
+            response.header("X-Taxonomy-Commit", result.commit());
+            if (result.problem() == null) response.header(HttpHeaders.CONTENT_LOCATION, location);
+            else response.header(HttpHeaders.LINK, "<" + location + ">; rel=\"latest-version\"");
+        }
+        if (result.problem() != null) {
+            return response.header("X-Taxonomy-Read-Problem", result.problem().name()).build();
+        }
+        return response.eTag(result.entityTag()).body(result.rows());
     }
 
     @PostMapping("/{id}/accept")
@@ -110,13 +175,25 @@ public class HypothesisApiController {
     @GetMapping("/{id}/evidence")
     @Operation(summary = "Get evidence records for a hypothesis",
             description = "Reads retained evidence for one hypothesis in the authenticated repository context. Returns 404 when the hypothesis is unavailable in that context; no model call is made.")
-    public ResponseEntity<?> getHypothesisEvidence(@PathVariable Long id) {
-        RepositoryContext context = currentRepositoryContext();
+    public ResponseEntity<?> getHypothesisEvidence(@PathVariable Long id,
+            @RequestParam(required = false) String commitId) {
+        RepositoryContext context = readRepositoryContext();
+        if (commitId != null) return ResponseEntity.badRequest().build();
         try {
-            return ResponseEntity.ok(hypothesisService.findEvidence(id, context));
+            return ResponseEntity.ok().header(RelationApiController.READ_MODEL_HEADER, "WORKING")
+                    .header(HttpHeaders.CACHE_CONTROL, "no-store").body(hypothesisService.findEvidence(id, context));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();
         }
+    }
+
+    private static String encoded(String component) {
+        return URLEncoder.encode(component, StandardCharsets.UTF_8);
+    }
+
+    private RepositoryContext readRepositoryContext() {
+        return Objects.requireNonNull(workspaceResolver.resolveUnambiguousRepositoryForRead(),
+                "Repository context resolver returned null for a hypothesis operation");
     }
 
     private RepositoryContext currentRepositoryContext() {

@@ -79,6 +79,13 @@ public class WorkspaceResolver {
         return resolveCurrentRepositoryContext(false);
     }
 
+    /** An observational route must not silently choose a primary from multiple readable sources. */
+    public RepositoryContext resolveUnambiguousRepositoryForRead() {
+        RepositoryContext selected = resolveCurrentRepositoryContextForRead();
+        contextResolver.verifyReadSelection(selected);
+        return selected;
+    }
+
     private RepositoryContext resolveCurrentRepositoryContext(boolean provisionDefault) {
         RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
         if (attributes != null) {

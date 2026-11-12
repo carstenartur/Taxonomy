@@ -29,6 +29,9 @@ class ProductionImageIT {
  private void build(String tag,String target,String log) throws Exception {
   ExternalDriverSupport.command(List.of("bash",".github/scripts/build-production-image.sh",tag,commit,target),log,25);
  }
+ @Test void productionComposePreservesHttpsThroughLogin() throws Exception {
+  ExternalDriverSupport.run("verify-compose-https.mjs", List.of(image), "image-compose-https.log", 12);
+ }
  @Test void imageRevisionIdentifiesTheVerifiedSourceCommit() throws Exception {
   for(String tag:List.of(image,onnxImage)) assertEquals(commit,inspect(tag,"{{ index .Config.Labels \"org.opencontainers.image.revision\" }}","revision"));
  }

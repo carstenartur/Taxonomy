@@ -168,7 +168,12 @@ class DslMaterializeWorkspaceCommitReproductionTest {
         // A new MVC request starts a new read-only service transaction and cannot
         // observe merely uncommitted entities from the preceding write request.
         log.info("Backend materialization reproduction: reading committed hypotheses in a fresh request");
-        var after = mvc.perform(get("/api/dsl/hypotheses").header(HEADER, workspaceId)
+        mvc.perform(get("/api/dsl/hypotheses").header(HEADER, workspaceId)
+                        .with(user(OWNER).roles("USER", "ARCHITECT", "ADMIN")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string("X-Taxonomy-Commit", selectedHead.commitId()));
+        var after = mvc.perform(get("/api/dsl/hypotheses").param("view", "working").header(HEADER, workspaceId)
                         .with(user(OWNER).roles("USER", "ARCHITECT", "ADMIN")))
                 .andExpect(status().isOk()).andReturn();
         JsonNode rows = JSON.readTree(after.getResponse().getContentAsString());

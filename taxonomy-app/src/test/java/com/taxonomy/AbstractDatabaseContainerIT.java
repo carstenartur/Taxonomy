@@ -362,6 +362,14 @@ abstract class AbstractDatabaseContainerIT {
         }
     }
 
+    @Test
+    @Order(31)
+    void originalGitHistorySurvivesIndependentWorkingCopyArchivesAndDeletions() throws Exception {
+        try (var contract = new RepositoryHistoryHttpContract(URI.create(baseUrl()), BASIC_AUTH)) {
+            contract.verify();
+        }
+    }
+
     private HttpResponse<String> httpPost(String path, Object body, String revision) throws Exception {
         var request = HttpRequest.newBuilder().uri(URI.create(baseUrl() + path))
                 .header("Accept", "application/json").header("Content-Type", "application/json")
