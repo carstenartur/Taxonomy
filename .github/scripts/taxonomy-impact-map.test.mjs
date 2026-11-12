@@ -595,3 +595,40 @@ test('remount disposes the prior engine and fullscreen listener exactly once', (
   assert.equal(h.container.__taxonomyImpactMapDiagram, undefined);
   assert.equal(h.container.__taxonomyImpactMapCleanup, undefined);
 });
+
+test('reading an impact element and following its relation keep the full overview', () => {
+  const h = mountUi(), diagram = h.controller;
+  const inspect = h.container.querySelector('.impact-map-inspect-select');
+  assert.ok(inspect, 'A readable native control identifies elements independently of SVG zoom');
+  const choices = inspect.descendants().filter(option => option.value);
+  assert.deepEqual(choices.map(choice => choice.value), ['A', 'B', 'C']);
+  assert.match(choices[0].textContent, /90%.*A.*Evidence A/);
+  inspect.value = 'A';
+  inspect.fire('change');
+  assert.deepEqual(JSON.parse(JSON.stringify(diagram.calls.pop())), ['select', 'A', null, {center: false, reveal: true}]);
+  diagram.emit({...diagram.getState(), selectedNodeId: 'A'});
+  h.container.querySelector('.impact-map-related-item').fire('click');
+  assert.deepEqual(JSON.parse(JSON.stringify(diagram.calls.pop())), ['select', 'B', null, {center: false, reveal: true}]);
+  diagram.emit({...diagram.getState(), selectedNodeId: 'B'});
+  assert.equal(inspect.value, 'B');
+  assert.match(h.container.querySelector('.impact-map-details').textContent, /Evidence for B/);
+});
+
+test('the historical 20/16/7 workload exposes fit-scale glyph sizes at 781 pixels', () => {
+  const {api} = loadApi();
+  const fixture = JSON.parse(readFileSync(new URL(
+    '../../taxonomy-app/src/test/resources/ui/seven-layer-impact-map.json', import.meta.url), 'utf8'));
+  const nodes = api.normalizeNodes(fixture.nodes);
+  const edges = api.normalizeEdges(fixture.edges, new Map(nodes.map(node => [node.id, node])));
+  const scene = api.layoutScene({nodes, edges});
+  assert.deepEqual([scene.nodes.length, scene.edges.length, scene.layers.length], [20, 16, 7]);
+  const fit = api.calculateFitTransform(scene.bounds, {width: 781, height: 620}, {
+    padding: 34, minimumScale: 0.01, maximumScale: 1.25
+  });
+  const css = readFileSync(new URL(
+    '../../taxonomy-app/src/main/resources/static/css/taxonomy-impact-map.css', import.meta.url), 'utf8');
+  const baseTitle = Number(css.match(/\.impact-map-node-title\s*\{\s*font-size:\s*([\d.]+)px/)[1]);
+  const fitted = {scale: fit.scale, titlePx: baseTitle * fit.scale,
+    cardWidthPx: scene.nodes[0].width * fit.scale, cardHeightPx: scene.nodes[0].height * fit.scale};
+  assert.ok(fitted.titlePx > 0 && Number.isFinite(fitted.cardWidthPx), JSON.stringify(fitted));
+});

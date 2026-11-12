@@ -8,7 +8,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.openqa.selenium.By;
+import org.openqa.selenium.Keys;
+import org.openqa.selenium.interactions.Actions;
 import org.openqa.selenium.chromium.HasCdp;
 import org.openqa.selenium.remote.Augmenter;
 import org.openqa.selenium.support.ui.WebDriverWait;
@@ -19,6 +22,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -68,6 +72,58 @@ class SharedAdminNavigationBrowserIT {
                 .contains("/taxonomy/?lang=" + language + "#help/" + view.help());
         assertThat(page.driver().findElement(By.cssSelector("#applicationNavigation [data-app-locale='" + language + "']"))
                 .getDomAttribute("aria-current")).isEqualTo("true");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"en", "de"})
+    void recordsAProvisionalProductDecisionFromTheKeyboard(String language) {
+        String queue = "/taxonomy/api/admin/catalogue/provisional-information-products";
+        String reviews = queue + "/IP-1/reviews";
+        String expected = "0".repeat(40);
+        var source = Map.of("productCode", "IP-1", "productTitle", "Fixture product",
+                "sourceParentReference", "SRC", "proposedParentCode", "IP-F",
+                "secondaryClassificationCodes", List.of(), "confidence", 0.7,
+                "state", "PROVISIONAL", "sourceState", "draft", "justification", "Fixture rationale");
+        var submission = new AtomicReference<String>();
+        page.clearRoutes();
+        page.route("GET", queue, request -> PortfolioClientTestPage.json(200,
+                Map.of("catalogueRevision", "generation-a", "mappingVersion", "v1", "workbookSha256", "workbook",
+                        "overlaySha256", "overlay", "mappings", List.of(source))));
+        page.route("GET", reviews, request -> PortfolioClientTestPage.json(200,
+                Map.of("head", expected, "decisions", List.of())));
+        page.route("POST", reviews, request -> {
+            submission.set(request.body());
+            var decision = Map.of("action", "ACCEPT", "reviewer", "reviewer", "reviewedAt", "2026-11-12T00:00:00Z",
+                    "mappingVersion", "v1", "original", source, "proposedParent", "IP-F", "secondary", List.of(),
+                    "rationale", "Checked original workbook", "proposedVersion", "v2", "proposedSha256", "candidate");
+            return PortfolioClientTestPage.json(201, Map.of("commit", "1".repeat(40), "decision", decision));
+        });
+        page.open("catalogue-review-browser", "/taxonomy", "/review-fixture", language);
+        var driver = page.driver();
+        By panel = By.cssSelector("#provisionalProductPanel > summary");
+        wait.until(d -> d.findElement(panel).isDisplayed());
+        driver.executeScript("arguments[0].focus()", driver.findElement(panel));
+        new Actions(driver).sendKeys(Keys.ENTER).perform();
+        By product = By.cssSelector("#provisionalProductResults details > summary");
+        wait.until(d -> d.findElement(product).isDisplayed());
+        driver.executeScript("arguments[0].focus()", driver.findElement(product));
+        new Actions(driver).sendKeys(Keys.ENTER).perform();
+        By rationale = By.id("mapping-rationale-IP-1");
+        wait.until(d -> d.findElement(rationale).isDisplayed());
+        assertThat(driver.findElement(rationale).getAccessibleName())
+                .isEqualTo(language.equals("de") ? "Begründung der Prüfung" : "Review rationale");
+        driver.findElement(rationale).sendKeys("Checked original workbook", Keys.TAB);
+        assertThat(driver.switchTo().activeElement().getDomAttribute("type")).isEqualTo("submit");
+        driver.switchTo().activeElement().sendKeys(Keys.ENTER);
+        By feedback = By.cssSelector("#provisionalProductResults details [role='status']");
+        String saved = language.equals("de") ? "Prüfentscheidung gespeichert." : "Review recorded.";
+        wait.until(d -> saved.equals(d.findElement(feedback).getText()));
+        var command = new tools.jackson.databind.ObjectMapper().readTree(submission.get());
+        assertThat(command.path("expectedHead").asString()).isEqualTo(expected);
+        assertThat(command.path("rationale").asString()).isEqualTo("Checked original workbook");
+        assertThat(command.path("action").asString()).isEqualTo("ACCEPT");
+        assertThat(driver.findElement(By.cssSelector("#provisionalProductResults li a")).getDomAttribute("href"))
+                .endsWith(reviews + "/" + "1".repeat(40) + "/overlay");
     }
 
     @Test

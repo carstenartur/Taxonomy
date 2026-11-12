@@ -24,6 +24,7 @@ Mit dem Spring-Profil `keycloak` wird die Authentifizierung an Keycloak delegier
 
 - Browser-Anmeldung erfolgt über OAuth 2.0/OIDC.
 - REST-Clients verwenden Bearer-JWTs.
+- Der Ressourcenserver akzeptiert Bearer-Zugangsdaten standardmäßig bis zu einer Länge von 8.192 Zeichen. Über `TAXONOMY_BEARER_MAX_TOKEN_LENGTH` lässt sich eine positive Ganzzahl als Grenze setzen. Sie gilt auch für individuell konfigurierte Token-Resolver. Deklariert eine Anfrage Bearer-Authentifizierung und liefert ihr Resolver keine Zugangsdaten, antwortet der Server mit HTTP 401.
 - Vertrauenswürdige Rollen-Claims werden auf READER, USER (Analyst), ARCHITECT und ADMIN abgebildet. Bearer-Tokens behalten zusätzlich explizite OAuth-Authorities aus `scope`/`scp`.
 - Die lokale Passwortverwaltung ist in diesem Profil nicht das führende Identitätsmanagement.
 

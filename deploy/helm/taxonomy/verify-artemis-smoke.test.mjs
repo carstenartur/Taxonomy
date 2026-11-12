@@ -111,7 +111,13 @@ for (const [keep, missingCurrent] of [[false, false], [true, false], [false, tru
         assert.ok(!captured.includes(credential), 'Fixture credentials must not enter diagnostic artifacts');
       }
       assert.match(previous, /\[REDACTED\]/);
-      const commands = readFileSync(join(state, 'calls.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line).join(' '));
+      const calls = readFileSync(join(state, 'calls.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
+      const brokerOption = calls.flat().find(arg => arg.startsWith('--from-literal=ARTEMIS_BROKER_URL='));
+      const brokerTrust = new URL(brokerOption.slice('--from-literal=ARTEMIS_BROKER_URL='.length)).searchParams;
+      assert.equal(brokerTrust.get('forceSSLParameters'), 'true', 'HTTP provider trust must not override broker-specific TLS');
+      assert.equal(brokerTrust.get('verifyHost'), 'true');
+      assert.equal(brokerTrust.get('trustStorePath'), '/var/run/taxonomy-artemis/client.p12');
+      const commands = calls.map(call => call.join(' '));
       const install = commands.find(command => command.includes(' upgrade --install '));
       assert.ok(!install.includes('--atomic'), 'Automatic uninstall destroys evidence before cleanup can collect it');
       assert.ok(install.includes('--timeout 12m'));
@@ -318,4 +324,21 @@ ${baseline?'if identity_unchanged; then exit 0; else exit 1; fi':'frozen_identit
     const incomplete=structuredClone(identity);incomplete.intents.pop();
     assert.notEqual(observe(incomplete,false).status,0,'Incomplete graph must fail, including the jq no-output exit status');
   } finally { rmSync(root,{recursive:true,force:true}); }
+});
+
+test('requires one complete canonical administrative receipt before hashing the slot and attempt', () => {
+  const helper = join(dirname(script), 'artemis-provider-fault.sh');
+  const permit = '9a0a5a7b-1d1c-4c21-8479-f03d5323da56';
+  const attempt = 'a6606304-2749-4dd7-b644-78244b914c32';
+  const row = [permit, attempt, '1794478400000'].join('\t');
+  const complete = 'Inspection truncated=false; observation is not proof of no active remote requests';
+  const parse = lines => spawnSync('bash', ['-c', 'source "$1"; parse_quarantined_permit', 'test', helper],
+    {input: lines.join('\n') + '\n', encoding: 'utf8'});
+  const parsed = parse(['broker connected', row, complete]);
+  assert.equal(parsed.status, 0, parsed.stderr);
+  assert.equal(parsed.stdout.trim(), permit + ' ' + attempt);
+  for (const invalid of [[complete], [row, row, complete], [row], [row, complete.replace('false', 'true')],
+    [row.replace(permit, '-'.repeat(36)), complete], [row.replace('1794478400000', 'unknown'), complete]]) {
+    assert.notEqual(parse(invalid).status, 0);
+  }
 });

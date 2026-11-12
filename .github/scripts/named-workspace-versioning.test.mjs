@@ -6,13 +6,14 @@ import fixture from './canonical-api-fixture.cjs';
 const root = new URL('../../taxonomy-app/src/main/resources/static/js/', import.meta.url);
 const settle = () => new Promise(resolve => setImmediate(resolve));
 function harness(fetch) {
-  const nodes = new Map(), events = new EventTarget(), alerts = [];
+  const nodes = new Map(), events = new EventTarget(), documentEvents = new EventTarget(), alerts = [];
   const node = id => {if (!nodes.has(id)) nodes.set(id, {value:'', innerHTML:'', classList:{remove(){},add(){}}, setAttribute(){}, addEventListener(){}}); return nodes.get(id);};
   const context = {window:{fetch, location:{href:'https://example.test/taxonomy/',origin:'https://example.test',pathname:'/taxonomy/'},
     __TaxonomyAnalysisSessionContext:{runtime:{workspaceId:'original',analysisGeneration:1}},
-    addEventListener:events.addEventListener.bind(events)}, document:{getElementById:node,querySelector(){return null;},addEventListener(){},dispatchEvent(){return true;}},
+    addEventListener:events.addEventListener.bind(events)}, document:{getElementById:node,querySelector(){return null;},
+      addEventListener:documentEvents.addEventListener.bind(documentEvents),dispatchEvent:documentEvents.dispatchEvent.bind(documentEvents)},
     TaxonomyI18n:{t:key=>key},TaxonomyUtils:{escapeHtml:String}, console, alert:value=>alerts.push(value),confirm:()=>true,
-    bootstrap:{Modal:class {show(){} static getInstance(){return {hide(){}};}}}};
+    bootstrap:{Modal:class {show(){} static getOrCreateInstance(){return new this();} static getInstance(){return {hide(){}};}}}};
   fixture.install(context, ['api/workspace-api.js','api/workspace-provisioning-api.js']);
   context.fetch = (...args) => context.window.fetch(...args);
   return {context, node, alerts, load(path){vm.runInContext(readFileSync(new URL(path,root),'utf8'),context);},
@@ -64,6 +65,33 @@ test('a newer copy-back dialog owns preview even within the same workspace',asyn
  const api=h.context.window.TaxonomyContextTransfer;api.showDialog('s','t','ctx1');api.previewTransfer();await settle();
  api.showDialog('s2','t2','ctx2');pending[0](new Response('{"selectedElements":1,"selectedRelations":0,"conflicts":[]}'));await settle();await settle();
  assert.equal(h.node('transferPreviewResults').innerHTML,'');
+});
+test('a repository switch retires the open transfer and its delayed preview, including after returning', async () => {
+  const requests = [];
+  const h = harness(() => new Promise(resolve => requests.push(resolve)));
+  h.load('versioning/taxonomy-context-transfer.js');
+  const transfer = h.context.window.TaxonomyContextTransfer;
+  const changed = selectionChanged => {
+    const event = new Event('taxonomy:repository-context-changed');
+    event.detail = {selectionChanged};
+    h.context.document.dispatchEvent(event);
+  };
+  transfer.showDialog('source-A', 'target-A', 'ctx-A');
+  h.node('transferElementIds').value = 'shared-id';
+  changed(false);
+  const delayed = transfer.previewTransfer();
+  await settle();
+  assert.equal(requests.length, 1);
+  changed(true);
+  changed(true);
+  requests[0](Response.json({selectedElements: 1, selectedRelations: 0, conflicts: []}));
+  await delayed;
+  transfer.applyTransfer();
+  await settle();
+  assert.equal(requests.length, 1, 'the obsolete dialog must not submit a mutation after A–B–A');
+  assert.equal(h.node('transferPreviewResults').innerHTML, '');
+  assert.equal(h.node('transferElementIds').value, '');
+  assert.deepEqual(h.alerts, []);
 });
 for(const status of [401,403]) test(`copy-back authorization HTTP ${status} leaves feature error surface alone`,async()=>{
  const h=harness(async()=>new Response('{}',{status}));h.load('versioning/taxonomy-context-transfer.js');

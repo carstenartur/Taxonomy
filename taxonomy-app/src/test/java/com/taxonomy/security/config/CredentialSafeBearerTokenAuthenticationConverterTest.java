@@ -121,6 +121,52 @@ class CredentialSafeBearerTokenAuthenticationConverterTest {
         }
     }
 
+    @Test void configuredTokenBudgetIsAppliedBeforeTheProviderIncludingForCustomResolvers() {
+        try (var context = new GenericApplicationContext()) {
+            context.getEnvironment().getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource(
+                    "test", java.util.Map.of("taxonomy.security.bearer.max-token-length", "8")));
+            context.registerBean(BearerTokenResolver.class, () -> input -> input.getHeader("X-Fixture-Token"));
+            context.refresh();
+            var converter = CredentialSafeBearerTokenAuthenticationConverter.forContext(context);
+            var accepted = request(null);
+            accepted.addHeader("X-Fixture-Token", "abcdefgh");
+            assertThat(((BearerTokenAuthenticationToken) converter.convert(accepted)).getToken()).isEqualTo("abcdefgh");
+            var oversized = request(null);
+            oversized.addHeader("X-Fixture-Token", "abcdefghi");
+            assertThatThrownBy(() -> converter.convert(oversized))
+                    .isInstanceOf(OAuth2AuthenticationException.class).hasMessageNotContaining("abcdefghi");
+        }
+    }
+
+    @Test void aDeclaredBearerCredentialRequiresAnAuthenticationResultFromTheConfiguredResolver() {
+        try (var context = new GenericApplicationContext()) {
+            context.registerBean(BearerTokenResolver.class, () -> input -> null);
+            context.refresh();
+            var converter = CredentialSafeBearerTokenAuthenticationConverter.forContext(context);
+            assertThat(converter.convert(request(null))).isNull();
+            assertThatThrownBy(() -> converter.convert(request("Bearer " + CREDENTIAL)))
+                    .isInstanceOf(OAuth2AuthenticationException.class).hasMessageNotContaining(CREDENTIAL);
+        }
+    }
+
+    @Test void oversizedStandardCredentialIsRejectedBeforeTheConfiguredConverterRuns() {
+        try (var context = new GenericApplicationContext()) {
+            context.getEnvironment().getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource(
+                    "test", java.util.Map.of("taxonomy.security.bearer.max-token-length", "8")));
+            var calls = new AtomicInteger();
+            context.registerBean(AuthenticationConverter.class, () -> input -> {
+                calls.incrementAndGet();
+                return new BearerTokenAuthenticationToken("abcdefgh");
+            });
+            context.refresh();
+            var converter = CredentialSafeBearerTokenAuthenticationConverter.forContext(context);
+            assertThat(converter.convert(request("Bearer abcdefgh"))).isInstanceOf(BearerTokenAuthenticationToken.class);
+            assertThatThrownBy(() -> converter.convert(request("Bearer abcdefghi")))
+                    .isInstanceOf(OAuth2AuthenticationException.class).hasMessageNotContaining("abcdefghi");
+            assertThat(calls).hasValue(1);
+        }
+    }
+
     private static MockHttpServletRequest request(String authorization) {
         var request = new MockHttpServletRequest("GET", "/api/account/me");
         if (authorization != null) request.addHeader("Authorization", authorization);

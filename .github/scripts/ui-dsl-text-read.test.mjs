@@ -236,12 +236,13 @@ test('copy-back submits the dialog context and reports a 409 without closing it'
  let closes = 0;
  h.scope.bootstrap = { Modal: class {
   show() {}
+  static getOrCreateInstance() { return new this(); }
   static getInstance() { return {hide: () => closes++}; }
  }};
  h.scope.alert = value => alerts.push(value);
  h.scope.confirm = () => true;
  for (const id of ['contextTransferModal', 'transferSourceCommit', 'transferTargetCommit']) {
-  h.elements.set(id, {value: ''});
+  h.elements.set(id, {value: '', addEventListener() {}});
  }
  vm.runInNewContext(readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/versioning/taxonomy-context-transfer.js', import.meta.url), 'utf8'), h.scope);
  const initial = h.api.fetchAndRender('contextBar');

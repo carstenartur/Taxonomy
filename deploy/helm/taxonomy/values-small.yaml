@@ -3,7 +3,7 @@
 # This profile deliberately disables optional embedding/model-download work and
 # uses the in-memory search backend. It is intended for one small instance,
 # demonstrations and functional validation, not for measured high-throughput or
-# ONNX workloads. Standard/large capacity characterization is tracked in #638.
+# ONNX workloads. Measured small-profile workloads are tracked in #1351.
 
 replicaCount: 1
 

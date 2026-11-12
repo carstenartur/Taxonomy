@@ -145,6 +145,7 @@ public final class DecisionRationaleTemplateContract implements DocumentTemplate
             }
 
             Document document = parse(path, entry.getValue());
+            RepeatableWordLayout.validate(document, path);
             rejectMarkersInAttributesOrXmlMetadata(path, document);
             Element root = document.getDocumentElement();
             String completeText = root == null ? "" : root.getTextContent();
@@ -339,7 +340,7 @@ public final class DecisionRationaleTemplateContract implements DocumentTemplate
         return text.toString();
     }
 
-    private static Document parse(String path, byte[] content) {
+    static Document parse(String path, byte[] content) {
         try {
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             factory.setNamespaceAware(true);

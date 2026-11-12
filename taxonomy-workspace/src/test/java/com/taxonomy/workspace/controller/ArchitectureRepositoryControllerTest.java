@@ -14,6 +14,7 @@ import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
+import org.springframework.dao.OptimisticLockingFailureException;
 
 import java.time.Instant;
 import java.util.List;
@@ -23,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -96,19 +98,69 @@ class ArchitectureRepositoryControllerTest {
         when(membershipService.canRead(repository, "owner")).thenReturn(true);
         when(membershipService.isOwner(repository, "owner")).thenReturn(true);
         when(membershipService.assignRole(
-                        repository, "bob", RepositoryRole.CONTRIBUTOR, "owner"))
+                        repository, "bob", RepositoryRole.CONTRIBUTOR, "owner", -1L))
                 .thenReturn(membership);
 
         ResponseEntity<?> response = controller.updateMembership(
                 "repo-a",
                 "bob",
                 new ArchitectureRepositoryController.UpdateMembershipRequest(
-                        RepositoryRole.CONTRIBUTOR));
+                        RepositoryRole.CONTRIBUTOR, -1L));
 
         assertEquals(200, response.getStatusCode().value());
         Map<?, ?> body = assertInstanceOf(Map.class, response.getBody());
         assertEquals("bob", body.get("username"));
         assertEquals(RepositoryRole.CONTRIBUTOR, body.get("role"));
+    }
+
+
+    @Test
+    void membershipUpdateRequiresAnExplicitVersionWithoutWriting() {
+        SystemRepository repository = repository();
+        when(workspaceResolver.resolveCurrentUsername()).thenReturn("owner");
+        when(repositoryService.getRepository("repo-a")).thenReturn(repository);
+        when(membershipService.canRead(repository, "owner")).thenReturn(true);
+        when(membershipService.isOwner(repository, "owner")).thenReturn(true);
+
+        ResponseEntity<?> response = controller.updateMembership(
+                "repo-a", "reader", new ArchitectureRepositoryController.UpdateMembershipRequest(
+                        RepositoryRole.OWNER, null));
+
+        assertEquals(428, response.getStatusCode().value());
+        verify(membershipService, never()).assignRole(
+                any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void membershipUpdateReportsCurrentVersionConflictWithoutWritingThrough() {
+        SystemRepository repository = repository();
+        when(workspaceResolver.resolveCurrentUsername()).thenReturn("owner");
+        when(repositoryService.getRepository("repo-a")).thenReturn(repository);
+        when(membershipService.canRead(repository, "owner")).thenReturn(true);
+        when(membershipService.isOwner(repository, "owner")).thenReturn(true);
+        when(membershipService.assignRole(
+                repository, "reader", RepositoryRole.CONTRIBUTOR, "owner", 4L))
+                .thenThrow(new OptimisticLockingFailureException("stale"));
+
+        ResponseEntity<?> response = controller.updateMembership(
+                "repo-a", "reader", new ArchitectureRepositoryController.UpdateMembershipRequest(
+                        RepositoryRole.CONTRIBUTOR, 4L));
+
+        assertEquals(409, response.getStatusCode().value());
+    }
+
+    @Test
+    void membershipDeletionRequiresCurrentVersion() {
+        SystemRepository repository = repository();
+        when(workspaceResolver.resolveCurrentUsername()).thenReturn("owner");
+        when(repositoryService.getRepository("repo-a")).thenReturn(repository);
+        when(membershipService.canRead(repository, "owner")).thenReturn(true);
+        when(membershipService.isOwner(repository, "owner")).thenReturn(true);
+
+        ResponseEntity<?> response = controller.removeMembership("repo-a", "reader", null);
+
+        assertEquals(428, response.getStatusCode().value());
+        verify(membershipService, never()).removeMembership(any(), any(), any(), any());
     }
 
     @Test
@@ -136,7 +188,7 @@ class ArchitectureRepositoryControllerTest {
                 "repo-a",
                 "bob",
                 new ArchitectureRepositoryController.UpdateMembershipRequest(
-                        RepositoryRole.READER));
+                        RepositoryRole.READER, -1L));
 
         assertEquals(404, response.getStatusCode().value());
         verify(membershipService, never()).isOwner(repository, "outsider");
@@ -154,11 +206,11 @@ class ArchitectureRepositoryControllerTest {
                 .thenReturn(List.of(reader));
 
         ResponseEntity<?> listResponse = controller.listMemberships("repo-a");
-        ResponseEntity<?> deleteResponse = controller.removeMembership("repo-a", "reader");
+        ResponseEntity<?> deleteResponse = controller.removeMembership("repo-a", "reader", 0L);
 
         assertEquals(200, listResponse.getStatusCode().value());
         assertEquals(204, deleteResponse.getStatusCode().value());
-        verify(membershipService).removeMembership(repository, "reader", "owner");
+        verify(membershipService).removeMembership(repository, "reader", "owner", 0L);
     }
 
     private static SystemRepository repository() {
