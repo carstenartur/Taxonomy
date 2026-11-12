@@ -1327,3 +1327,65 @@ test('running analysis leaves tools visible with an explanation and does not sta
         assert.deepEqual(await page.evaluate(()=>guideCalls),[]);
     }finally{await finish(page);}
 });
+
+for (const locale of ['en', 'de']) {
+    test('native document receipt can be recovered and cancelled in ' + locale, async () => {
+        const page = await browser.newPage({locale});
+        const origin = 'http://taxonomy.fixture';
+        const id = '9a93df57-2938-4c75-8056-940ac7cdaaaa', commit = 'a'.repeat(40);
+        const cancelLabel = locale === 'de' ? 'Analyse abbrechen' : 'Cancel analysis';
+        const cancelledLabel = locale === 'de' ? 'Analyse abgebrochen.' : 'Analysis cancelled.';
+        const calls = [];
+        let state = 'RUNNING';
+        try {
+            await page.route(origin + '/**', async route => {
+                const request = route.request(), url = new URL(request.url());
+                if (url.pathname === '/') return route.fulfill({contentType:'text/html', body:'<html><body></body></html>'});
+                calls.push(request.method() + ' ' + url.pathname);
+                const headers = {'Content-Type':'application/json','X-Analysis-Operation-Id':id,'X-Analysis-Source-Commit':commit,'Retry-After':'1'};
+                if (url.pathname === '/api/analysis-adapters/' + id + '/cancel' && request.method() === 'POST') state='CANCELLED';
+                if (url.pathname === '/api/documents/map-regulation' && request.method() === 'POST') state='RUNNING';
+                const status = state === 'RUNNING' ? 202 : state === 'CANCELLED' ? 409 : 200;
+                const body = state === 'COMPLETED' ? {fileName:'notice.pdf',totalPages:1,matches:[{nodeCode:'CP',confidence:0.9}]}
+                    : {operationId:id,sourceCommit:commit,sequence:0,state,code:state};
+                await route.fulfill({status,headers,body:JSON.stringify(body)});
+            });
+            await page.goto(origin);
+            const template = await readFile(path.join(resources,'templates/index.html'),'utf8');
+            await page.evaluate(({template,locale,cancelLabel,cancelledLabel}) => {
+                const source = new DOMParser().parseFromString(template,'text/html');
+                for (const name of ['documentImportPanel','docCandidateReviewPanel','docAiComparisonPanel','docRegMapResultPanel']) {
+                    const element = source.getElementById(name);
+                    if (element) document.body.append(element);
+                }
+                document.documentElement.lang = locale;
+                document.getElementById('documentImportPanel').open = true;
+                const messages = {'analysis.adapter.cancel':cancelLabel,'analysis.adapter.cancelled':cancelledLabel,
+                    'docimport.regmap.mapping':locale === 'de' ? 'Regulation wird auf Architektur abgebildet…' : 'Mapping regulation to architecture…'};
+                window.TaxonomyI18n = {t:key=>messages[key] || key,resolveUrl:path=>path};
+                window.__TaxonomyAnalysisSessionContext = {runtime:{workspaceId:'document-workspace'}};
+            }, {template,locale,cancelLabel,cancelledLabel});
+            await installBrowserApiFixture(page, resources);
+            for (const script of ['api/analysis-adapter-api.js','api/import-api.js','shared/taxonomy-document-import.js'])
+                await page.addScriptTag({path:path.join(resources,'static/js',script)});
+            await page.locator('#docImportFile').setInputFiles({name:'notice.pdf',mimeType:'application/pdf',buffer:Buffer.from('controlled input')});
+            await page.locator('input[name="importMode"][value="reg-map"]').check();
+            const button = page.locator('#docImportUploadBtn');
+            const cancel = page.getByRole('button',{name:cancelLabel,exact:true});
+            await button.click();
+            await cancel.waitFor();
+            assert.equal(await page.locator('#docImportStatus').getAttribute('role'),'status');
+            assert.equal(await page.locator('#docImportStatus').getAttribute('aria-live'),'polite');
+            state='COMPLETED';
+            await page.waitForFunction(() => document.querySelector('#docRegMapTableBody')?.textContent.includes('CP'));
+            assert.equal(await cancel.count(),0);
+            await button.click();
+            await cancel.click();
+            await page.waitForFunction(text => document.getElementById('docImportStatus').textContent.includes(text),cancelledLabel);
+            assert.equal(await button.isDisabled(),false);
+            assert.equal(calls.filter(call => call === 'POST /api/documents/map-regulation').length,2);
+            assert.equal(calls.filter(call => call.endsWith('/cancel')).length,1);
+            assert.ok(calls.includes('GET /api/analysis-adapters/' + id));
+        } finally { await page.close(); }
+    });
+}

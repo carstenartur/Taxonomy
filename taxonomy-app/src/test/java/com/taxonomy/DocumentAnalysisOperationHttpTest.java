@@ -71,7 +71,9 @@ class DocumentAnalysisOperationHttpTest {
             assertEquals(result.getContentAsString(),repeat.getContentAsString());
             fixture.mvc.perform(get(location)).andExpect(status().isOk()).andExpect(content().json(result.getContentAsString()));
             fixture.commit.set("b".repeat(40));
-            fixture.mvc.perform(get(location)).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("STALE_SOURCE"));
+            fixture.mvc.perform(get(location)).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("STALE_SOURCE"))
+                    .andExpect(header().string("X-Analysis-Operation-Id",id)).andExpect(jsonPath("$.operationId").value(id))
+                    .andExpect(jsonPath("$.sourceCommit").value("a".repeat(40)));
             fixture.actor.set(PrincipalId.create());
             fixture.mvc.perform(get(location)).andExpect(status().isNotFound());
             fixture.mvc.perform(get("/api/analysis-adapters/"+UUID.randomUUID())).andExpect(status().isNotFound());

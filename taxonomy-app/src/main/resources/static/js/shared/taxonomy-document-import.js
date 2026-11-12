@@ -429,6 +429,8 @@
     }
 
     function i18n(key, fallback) {
+        var translated = window.TaxonomyI18n?.t?.(key);
+        if (translated && translated !== key) return translated;
         if (typeof window.TaxonomyI18n !== 'undefined' && window.TaxonomyI18n[key]) {
             return window.TaxonomyI18n[key];
         }

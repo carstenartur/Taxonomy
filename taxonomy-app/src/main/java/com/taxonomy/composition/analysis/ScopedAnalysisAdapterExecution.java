@@ -79,7 +79,7 @@ public class ScopedAnalysisAdapterExecution {
         if (admission == null) return ResponseEntity.ok(local.get());
         var accepted = admission.operation();
         BooleanSupplier current = () -> commit.equals(head(handle)) && sourceCurrent.getAsBoolean();
-        if (!admission.claimed()) return current.getAsBoolean() && retainedSourceCurrent(accepted) ? response(accepted) : stale();
+        if (!admission.claimed()) return current.getAsBoolean() && retainedSourceCurrent(accepted) ? response(accepted) : stale(accepted);
         if (!verifySource(current, accepted, "SOURCE_UNAVAILABLE"))
             return response(store.settle(owner, accepted.id(), accepted.revision(), null, "STALE_SOURCE"));
         String payload;
@@ -137,12 +137,20 @@ public class ScopedAnalysisAdapterExecution {
         var owner = scope(context);
         var operation = cancel ? store.cancel(owner,id) : store.read(owner,id);
         if (!cancel && !"EXPIRED".equals(operation.state()) && (!operation.sourceCommit().equals(head(repositories.openRead(context))) || !retainedSourceCurrent(operation)))
-            return stale();
+            return stale(operation);
         return response(operation);
     }
 
     private static ResponseEntity<?> stale() {
         return ResponseEntity.status(409).cacheControl(CacheControl.noStore()).body(Map.of("code","STALE_SOURCE"));
+    }
+
+    private static ResponseEntity<?> stale(AnalysisAdapterStore.Operation operation) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).cacheControl(CacheControl.noStore())
+                .header("X-Analysis-Operation-Id",operation.id()).header("X-Analysis-Source-Commit",operation.sourceCommit())
+                .header("X-Analysis-Sequence",Long.toString(operation.revision())).header("X-Analysis-Phase","STALE_SOURCE")
+                .body(Map.of("operationId",operation.id(),"sourceCommit",operation.sourceCommit(),
+                        "sequence",operation.revision(),"code","STALE_SOURCE"));
     }
 
     private ResponseEntity<?> response(AnalysisAdapterStore.Operation o) {
