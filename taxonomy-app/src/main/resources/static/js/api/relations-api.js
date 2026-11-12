@@ -13,7 +13,7 @@ window.TaxonomyRelationsApi = (function () {
     }
 
     function readQualityDashboard() {
-        return TaxonomyApiClient.getJson('/api/relations/metrics/dashboard?limit=5');
+        return TaxonomyApiClient.getJson('/api/relations/metrics/dashboard?limit=5', {selectedRepository:true});
     }
 
     function readSnapshot(relationType) {
