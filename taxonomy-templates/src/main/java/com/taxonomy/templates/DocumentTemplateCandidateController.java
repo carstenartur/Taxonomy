@@ -2,6 +2,7 @@ package com.taxonomy.templates;
 
 import com.taxonomy.templates.api.TemplateConflictException;
 import com.taxonomy.templates.api.TemplateNotFoundException;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
@@ -73,18 +74,24 @@ class DocumentTemplateCandidateController {
         }
     }
 
+    @Operation(summary = "Download the candidate's sample document",
+            description = "Administrator access. Returns the DOCX rendered from this exact staged template revision as a private attachment.")
     @GetMapping("/{version}/sample.docx")
     ResponseEntity<byte[]> sample(@PathVariable String templateId, @PathVariable String version) throws IOException {
         return attachment("sample.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 candidates.sample(templateId, version));
     }
 
+    @Operation(summary = "Download the original staged template",
+            description = "Administrator access. Returns the original uploaded DOTX bytes for the selected template and candidate revision.")
     @GetMapping("/{version}/original.dotx")
     ResponseEntity<byte[]> original(@PathVariable String templateId, @PathVariable String version) throws IOException {
         return attachment("original.dotx", com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE,
                 candidates.original(templateId, version));
     }
 
+    @Operation(summary = "Read the candidate validation report",
+            description = "Administrator access. Returns the validation evidence for the specified staged template revision before activation.")
     @GetMapping("/{version}/validation.json")
     ResponseEntity<Map<String, Object>> validation(@PathVariable String templateId, @PathVariable String version) throws IOException {
         var candidate = candidates.describe(templateId, version);
