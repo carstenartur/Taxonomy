@@ -101,6 +101,27 @@ class ArchitectureEditorControllerTest {
         verifyNoInteractions(service);
     }
 
+    @Test
+    void organizationMutationsUseTheNormalRevisionCheckedCommandPort() throws Exception {
+        var base = wire();
+        var properties = Map.of("title", "Operations", "parentId", "agency");
+        var upsert = new ArchitectureEditorController.WireCommand(base.context(), base.metadata(), "UPSERT_ORGANIZATION",
+                "ops", null, properties, null, null, null, null, null, null);
+        var delete = new ArchitectureEditorController.WireCommand(base.context(), base.metadata(), "DELETE_ORGANIZATION",
+                "ops", null, Map.of(), null, null, null, null, null, null);
+        when(resolver.resolveCurrentRepositoryContext()).thenReturn(scope);
+        when(service.preview(eq(scope), any())).thenThrow(new CommandProblem("DISPATCHED", "", "", java.util.List.of()));
+        for (var request : java.util.List.of(upsert, delete)) {
+            assertThatThrownBy(() -> controller.preview(request, "\"workspace-revision-0\"", null))
+                    .isInstanceOfSatisfying(CommandProblem.class, error -> assertThat(error.code()).isEqualTo("DISPATCHED"));
+        }
+        var captured = org.mockito.ArgumentCaptor.forClass(Command.class);
+        verify(service, times(2)).preview(eq(scope), captured.capture());
+        assertThat(captured.getAllValues()).extracting(command -> ((SemanticCommand) command.operation()).command())
+                .containsExactly(new com.taxonomy.dsl.command.ArchitectureCommand.UpsertOrganization("ops", properties),
+                        new com.taxonomy.dsl.command.ArchitectureCommand.DeleteOrganization("ops"));
+    }
+
     @Test void packageWireUsesTypedCommandAndExactRevision() throws Exception {
         var base = wire();
         var packageWire = new ArchitectureEditorController.WireCommand(base.context(), base.metadata(), "CREATE_PACKAGE",

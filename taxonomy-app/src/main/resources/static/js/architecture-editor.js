@@ -6,7 +6,6 @@
     var api = window.ArchitectureEditorApi;
     var view = null;
     var selected = null;
-    var page = 0;
     var generation = 0;
     var loader = null;
     var pending = null;
@@ -17,11 +16,10 @@
     var layoutRevision = new URLSearchParams(location.search).get('layoutRevision');
     var selectedView = new URLSearchParams(location.search).get('viewId');
     var formBaseline = {};
-    var PAGE_SIZE = 50;
     var dialog = el('editorPreviewDialog');
     var fieldMap = {
         title: 'editorTitle', description: 'editorDescription', 'x-editor-status': 'editorElementStatus',
-        'x-owner': 'editorOwner', 'x-responsible-organization': 'editorOrganization',
+        'x-owner': 'editorOwner',
         'x-product-reference': 'editorProduct', 'x-system-reference': 'editorSystem',
         'x-admbw-type': 'editorAdmbwType', 'x-admbw-catalogue-guid': 'editorAdmbwCatalogueGuid',
         'x-admbw-catalogue-reference': 'editorAdmbwCatalogueReference'
@@ -32,6 +30,10 @@
         el('editorFocus').disabled = !state.selectedNodeId;
         el('editorUnfocus').disabled = state.mode !== 'focus';
     });
+    var tree = window.TaxonomyResponsibilityTree.create({root: el('editorTree'), t: t, onSelect: selectElement});
+    var directoryRoot = el('editorOrganizationDirectory');
+    var directory = directoryRoot && window.TaxonomyOrganizationDirectory?.create({root: directoryRoot, t: t, stage: stage});
+    var legacyOption = ':legacy:';
     var briefPanel = window.TaxonomyArchitectureBrief?.create({ root: root, t: t, stage: stage });
     var planningPanel = window.TaxonomyPlanningEditor.create({ t: t, stage: stage });
     var focusPanel = window.ArchitectureFocusPanel({ t: t, request: api.suggest, present: renderer.presentFocus,
@@ -196,6 +198,7 @@
         el('architectureEditor').setAttribute('aria-busy', String(busy || loading));
         adoptionPanel.setLocked(busy || loading);
         briefPanel?.setEnabled(writable);
+        directory?.setEnabled(writable);
         planningPanel.setEnabled(writable);
         focusPanel.setLocked(!active || busy || loading);
         renderAdmbwExport();
@@ -234,6 +237,11 @@
             if ((view && !sameScope(scope, context())) || /^[a-f0-9]{40}$/i.test(String(commit))) layoutRevision = null;
             var next = await api.load(scope, commit, loader.signal, layout, layoutRevision, selectedView);
             if (ticket !== generation || !active) return false;
+            if (!view || !sameScope(view.document.context, next.document.context)) {
+                tree.reset();
+                directory?.reset();
+                el('editorSearch').value = '';
+            }
             view = next;
             layout = view.schema.layoutStrategy || 'stable';
             layoutRevision = view.schema.layoutRevision === undefined ? null : view.schema.layoutRevision;
@@ -264,6 +272,7 @@
         window.TaxonomyArchitectureLifecycle?.observe(view.document, view.mayEdit);
     }
     function render(preserveDraft) {
+        directory?.render(view.model.organizations || [], view.mayEdit, preserveDraft);
         renderPackages(preserveDraft);
         briefPanel?.render(view, preserveDraft);
         planningPanel.render(view, preserveDraft);
@@ -332,30 +341,30 @@
         el('editorCollaborationLink').value = url.href;
     }
     function renderTree() {
-        var query = el('editorSearch').value.toLowerCase();
-        var matchesIds = new Set(view.searchIndex.filter(function (entry) { return entry.text.includes(query); }).map(function (entry) { return entry.id; }));
-        var matches = view.model.elements.filter(function (item) {
-            return matchesIds.has(item.id);
-        }).sort(function (a, b) { return a.type.localeCompare(b.type) || a.id.localeCompare(b.id); });
-        page = Math.min(page, Math.max(0, Math.ceil(matches.length / PAGE_SIZE) - 1));
-        var root = el('editorTree'); root.replaceChildren();
-        var groups = new Map();
-        matches.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).forEach(function (item) {
-            if (!groups.has(item.type)) {
-                var details = document.createElement('details'); details.open = true;
-                var summary = document.createElement('summary'); summary.textContent = t('editor.type.' + item.type);
-                var list = document.createElement('ul'); details.append(summary, list); root.append(details); groups.set(item.type, list);
-            }
-            var row = document.createElement('li');
-            var select = button(item.title || item.id, function () { selectElement(item.id); });
-            select.setAttribute('aria-current', String(item.id === selected));
-            var info = document.createElement('small');
-            var sceneNode = view.scene.nodes.find(function (node) { return node.id === item.id; });
-            info.textContent = (sceneNode && sceneNode.parentId ? sceneNode.parentId + ' › ' : '') + item.id;
-            select.append(info); row.append(select); groups.get(item.type).append(row);
-        });
-        el('editorPage').textContent = t('editor.page', page + 1, Math.max(1, Math.ceil(matches.length / PAGE_SIZE)), matches.length);
-        el('editorPrevious').disabled = page === 0; el('editorNext').disabled = (page + 1) * PAGE_SIZE >= matches.length;
+        tree.render({elements: view.model.elements, hierarchy: view.hierarchy,
+            selected: selected, query: el('editorSearch').value});
+    }
+    function renderResponsibility(item) {
+        var picker = el('editorOrganization');
+        var fields = item?.extensions || {};
+        var assigned = fields['x-responsible-organization-id'];
+        var legacy = fields['x-responsible-organization'];
+        var units = view.model.organizations || [];
+        picker.replaceChildren();
+        option(picker, '', t('editor.inheritOrganization'));
+        var choices = directory?.choices() || units.map(function (unit) { return {id: unit.id, label: unit.title}; });
+        choices.forEach(function (row) { option(picker, row.id, row.label); });
+        if (!assigned && legacy) option(picker, legacyOption, t('editor.legacyOrganization', legacy));
+        picker.value = assigned || (legacy ? legacyOption : '');
+        formBaseline.editorOrganization = picker.value;
+        var effective = item && Object.hasOwn(view.hierarchy || {}, item.id) ? view.hierarchy[item.id] : null;
+        var origin = effective && view.model.elements.find(function (e) { return e.id === effective.sourceElementId; });
+        var organization = effective && choices.find(function (row) { return row.id === effective.organizationId; });
+        var label = organization?.label || effective?.legacyOrganization;
+        el('editorResponsibilitySource').textContent = label && origin
+            ? (origin.id === item.id ? t('editor.organizationDirect', label)
+                : t('editor.organizationInherited', label, origin.title || origin.id, origin.id))
+            : t('editor.organizationUnassigned');
     }
     function renderForm() {
         var item = selectedElement();
@@ -367,6 +376,7 @@
             el(fieldMap[key]).value = value || (key === 'x-editor-status' ? 'draft' : '');
             formBaseline[key] = el(fieldMap[key]).value;
         });
+        renderResponsibility(item);
         var parent = item && view.scene.nodes.find(function (node) { return node.id === item.id; });
         el('editorParent').value = parent && parent.parentId || '';
         el('editorDraft').hidden = true;
@@ -379,9 +389,7 @@
         renderForm(); renderRelations(); permissions();
         renderer.select(selected);
         focusPanel.select(selected);
-        el('editorTree').querySelectorAll('button').forEach(function (item) {
-            item.setAttribute('aria-current', String(item.querySelector('small').textContent.split(' › ').pop() === selected));
-        });
+        renderTree();
         var offset = view.document.dsl.indexOf('element ' + selected + ' type ');
         if (offset >= 0) el('editorDsl').setSelectionRange(offset, view.document.dsl.indexOf('\n}', offset) + 2);
         if (!fromHistory) linkSelection(false);
@@ -635,6 +643,11 @@
             // Track user edits to the form, including explicit clearing; displayed defaults are not semantic changes.
             if (existing ? value !== formBaseline[key] : value !== '' || key === 'title') properties[key] = value;
         });
+        var organization = el('editorOrganization').value;
+        if (organization !== formBaseline.editorOrganization && organization !== legacyOption) {
+            properties['x-responsible-organization-id'] = organization;
+            if (selectedElement()?.extensions?.['x-responsible-organization']) properties['x-responsible-organization'] = '';
+        }
         stage({ kind: existing ? 'UPDATE_ELEMENT' : 'CREATE_ELEMENT', id: selected, type: el('editorType').value, properties: properties });
     });
     el('editorForm').addEventListener('input', function () { el('editorDraft').hidden = false; pending = null; });
@@ -665,9 +678,7 @@
     }
     el('editorQuickUndo').onclick = function () { quickInverse('undo'); };
     el('editorQuickRedo').onclick = function () { quickInverse('redo'); };
-    el('editorSearch').oninput = function () { if (view) { page = 0; renderTree(); } };
-    el('editorPrevious').onclick = function () { page--; renderTree(); el('editorSearch').focus(); };
-    el('editorNext').onclick = function () { page++; renderTree(); el('editorSearch').focus(); };
+    el('editorSearch').oninput = function () { if (view) renderTree(); };
     el('editorZoomIn').onclick = function () { renderer.zoom(1.4); };
     el('editorZoomOut').onclick = function () { renderer.zoom(1 / 1.4); };
     el('editorFit').onclick = function () { renderer.fit(); };
@@ -798,7 +809,7 @@
     function draftValue() {
         return JSON.stringify(Array.from(root.querySelectorAll('#editorForm input, #editorForm select, #editorForm textarea, #editorRelationForm input, #editorRelationForm select, #editorPackageFields input, #editorPackageFields select, #editorPackageFields textarea, #editorPlanningForm input, #editorPlanningForm select, #editorPlanningForm textarea, #editorRationale')).map(function (node) { return [node.id,node.value,node.checked]; }));
     }
-    function hasDraft() { return Boolean(view && (briefPanel?.hasDraft() || draftBaseline && draftValue() !== draftBaseline)); }
+    function hasDraft() { return Boolean(view && (directory?.hasDraft() || briefPanel?.hasDraft() || draftBaseline && draftValue() !== draftBaseline)); }
     function getSource() {
         var result = Object.assign({}, activeSource, view ? context() : null, {kind:'working',element:selected,viewId:selectedView,layout:layout,layoutRevision:layoutRevision});
         if (view) {

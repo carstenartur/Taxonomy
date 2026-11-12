@@ -14,7 +14,20 @@ public class RetainedCatalogueDefinitions implements com.taxonomy.dsl.model.Cata
     private String lastWorkbook;
     private CatalogueDefinition lastDefinition;
 
-    public RetainedCatalogueDefinitions(CatalogueSourceJournal sources) { this.sources = sources; }
+    private final CatalogueParentIndex hierarchy;
+
+    public RetainedCatalogueDefinitions(CatalogueSourceJournal sources) { this(sources, null); }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public RetainedCatalogueDefinitions(CatalogueSourceJournal sources, CatalogueParentIndex hierarchy) {
+        this.sources = sources;
+        this.hierarchy = hierarchy;
+    }
+
+    @Override
+    public java.util.Map<String, String> parentsForModel(com.taxonomy.dsl.model.CanonicalArchitectureModel model) {
+        return hierarchy == null ? java.util.Map.of() : hierarchy.parentsFor(model);
+    }
 
     @Override
     public CatalogueDefinition forModel(com.taxonomy.dsl.model.CanonicalArchitectureModel model) {

@@ -866,6 +866,8 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
                 case CreateArchitecturePackage p -> { parts.add(p.id()); properties(parts, p.properties()); }
                 case UpdateArchitecturePackage p -> { parts.add(p.id()); properties(parts, p.properties()); }
                 case DeleteArchitecturePackage p -> parts.add(p.id());
+                case UpsertOrganization organization -> { parts.add(organization.id()); properties(parts, organization.properties()); }
+                case DeleteOrganization organization -> parts.add(organization.id());
                 case SetArchitecturePackagePlacements p -> {
                     p.placements().forEach(v -> { parts.add(v.kind().name()); parts.add(v.memberId()); parts.add(v.parentPackageId()); parts.add(Integer.toString(v.position())); });
                     parts.addAll(p.completeParentScopes().stream().sorted().toList());

@@ -1,0 +1,40 @@
+/* Keep the existing editor's focus, surface and contrast styling on native buttons. */
+.architecture-editor-surface :is(#editorTree, .responsibility-branches) ul,
+.architecture-editor-surface ul.responsibility-branches {
+    list-style: none;
+    margin: 0;
+    padding-inline-start: 0;
+}
+.architecture-editor-surface :is(#editorTree, .responsibility-branches) li > ul {
+    border-inline-start: 1px solid var(--taxonomy-panel-border, #8795a8);
+    margin-inline-start: 1.25rem;
+    padding-inline-start: .65rem;
+}
+.architecture-editor-surface .responsibility-row {
+    display: grid;
+    grid-template-columns: 2.75rem minmax(0, 1fr);
+    align-items: center;
+    gap: .35rem;
+}
+.architecture-editor-surface :is(#editorTree, .responsibility-branches) .responsibility-toggle {
+    grid-column: 1;
+    width: 2.75rem;
+    min-height: 2.75rem;
+    text-align: center;
+    padding: .25rem;
+}
+.architecture-editor-surface .responsibility-select,
+.architecture-editor-surface .responsibility-row > span {
+    grid-column: 2;
+    overflow-wrap: anywhere;
+}
+.architecture-editor-surface .responsibility-select {
+    text-align: start;
+}
+.architecture-editor-surface .responsibility-select small {
+    display: block;
+    font-size: .8em;
+}
+.architecture-editor-surface .responsibility-select[aria-current="true"] {
+    font-weight: 650;
+}

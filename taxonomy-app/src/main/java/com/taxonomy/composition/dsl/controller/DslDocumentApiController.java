@@ -95,6 +95,7 @@ public class DslDocumentApiController {
         result.put("views", model.getViews());
         result.put("evidence", model.getEvidence());
         result.put("packages", model.getPackages());
+        result.put("organizations", model.getOrganizations());
         result.put("sources", model.getSources());
         result.put("sourceVersions", model.getSourceVersions());
         result.put("sourceFragments", model.getSourceFragments());

@@ -33,7 +33,11 @@ Every accepted edit is stored durably with its inverse data, actor and reason. I
 
 If the workspace revision changes after preview, choose **Refresh, compare and preview again**, inspect the new state and accept explicitly. A network failure retains the exact command identity. **Resume pending checkpoint** finishes an interrupted version write after reload; it does not duplicate an already written Git commit. **Recover completed version** reconciles a completed version write when no newer uncheckpointed edits exist. Graph/list projections are rebuilt from canonical source on each load.
 
-Graph and element list share the server model. The list shows 50 searchable entries per page; the graph renders at most 200 nodes and 400 edges at once. Focus or search can reach objects outside the viewport. Arrow keys pan the focused graph and +/− change zoom. Forms provide a keyboard alternative to graph interaction.
+Search in the **Architecture tree** opens the path to a matching element. Under **Organization directory**, create a department or team and optionally choose its parent unit. The directory belongs to the selected architecture version. Collaborators on the same working copy share its entries.
+
+Select a branch in the tree, choose its **Responsible unit for this branch**, preview the change and accept it. Descendants inherit the closest assignment. A nested branch may have its own assignment. **Inherit from parent** removes that override. The form identifies the element where the effective assignment originated. Existing free-text entries remain visible and can be replaced with directory units.
+
+The tree and graph share their selection. The graph displays up to 200 nodes and 400 edges at once. Arrow keys pan the focused graph and +/− change zoom.
 
 SVG and vector PDF use the complete deterministic server layout at the displayed workspace revision or Git checkpoint. They are independent of local pan/zoom. The editor currently uses derived layout and a read-only synchronized DSL view; editable DSL translation, saved layouts, shared undo, richer evidence decisions and extended history remain tracked in [#814](https://github.com/carstenartur/Taxonomy/issues/814). Existing analysis snapshots remain immutable.
 
