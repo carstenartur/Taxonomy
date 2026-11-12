@@ -57,6 +57,16 @@ class BranchGraphVectorSearchTest {
         verify(gate, never()).inspect(any());
     }
 
+    @Test void readinessCannotAttributeAReplacementIndexToTheGenerationObservedBeforeVerification() throws Exception {
+        var captured = new BranchGraphVectorAuthority.Capture(source, null, Set.of(), "fixture-model");
+        when(authority.capture(context)).thenReturn(captured);
+        var first = new BranchGraphVectorStore.Status(BranchGraphVectorStore.State.READY,"first",HEAD,source.modelKey(),17,2);
+        var replacement = new BranchGraphVectorStore.Status(BranchGraphVectorStore.State.READY,"gen",HEAD,source.modelKey(),1,1);
+        when(store.status(context,source)).thenReturn(first, replacement);
+        when(store.read(context,source)).thenReturn(generation());
+        assertThat(branches.inspect(context).state()).isEqualTo("STALE");
+    }
+
     private BranchGraphVectorStore.Generation generation() throws Exception {
         try (var index = new BranchGraphVectorIndex.Builder(source.key())) {
             index.node("{\"code\":\"CP-test\"}","medical support",vector());

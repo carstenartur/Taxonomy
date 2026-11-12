@@ -56,7 +56,7 @@ public class RelationEmbeddingBinder implements TypeBinder {
                     relation.getSourceNode() == null ? null : relation.getSourceNode().getNameEn(),
                     relation.getRelationType(),
                     relation.getTargetNode() == null ? null : relation.getTargetNode().getNameEn(),
-                    relation.getDescription());
+                    relation.getDescription(), java.util.Locale.getDefault());
         }
     }
 }

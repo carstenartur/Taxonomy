@@ -10,7 +10,7 @@ import java.util.Set;
 record BranchGraphVectorSource(String repositoryId, String workspaceId, String branch, String commit,
                                String catalogueRevision, String catalogueDefinition, String modelKey,
                                String relationsHash, int relationCount) {
-    static final String TEXT_FORMAT = RootEmbeddingSnapshot.TEXT_VERSION + "|projected-relation-binder:v1";
+    static final String TEXT_FORMAT = RootEmbeddingSnapshot.TEXT_VERSION + "|projected-relation-binder:v1|locale:root";
     static final Comparator<RelationIdentity> ORDER = Comparator.comparing(RelationIdentity::sourceCode)
             .thenComparing(item -> item.relationType().name()).thenComparing(RelationIdentity::targetCode);
 

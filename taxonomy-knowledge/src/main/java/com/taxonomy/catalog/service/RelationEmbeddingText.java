@@ -6,8 +6,8 @@ import com.taxonomy.model.RelationType;
 public final class RelationEmbeddingText {
     private RelationEmbeddingText() { }
 
-    public static String build(String sourceName, RelationType type, String targetName, String description) {
-        String name = type == null ? "" : type.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ');
+    public static String build(String sourceName, RelationType type, String targetName, String description, java.util.Locale relationNameLocale) {
+        String name = type == null ? "" : type.name().toLowerCase(relationNameLocale).replace('_', ' ');
         StringBuilder text = new StringBuilder(sourceName == null ? "" : sourceName)
                 .append(' ').append(name).append(' ').append(targetName == null ? "" : targetName);
         if (description != null && !description.isBlank()) text.append(". ").append(description);

@@ -17,13 +17,24 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+@org.junit.jupiter.api.parallel.Isolated
 class BranchGraphVectorBuildTest {
     @Test void buildsBothFieldsFromTheSameFrozenBranchAndReopensThePublishedBytes() throws Exception {
+        var previous = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            verifyBuild();
+        } finally {
+            Locale.setDefault(previous);
+        }
+    }
+
+    private void verifyBuild() throws Exception {
         var context = RepositoryContext.workspace("repository", "copy", "draft", "actor");
         String commit = "1".repeat(40);
         var selection = new CatalogueSourceIdentity(context.repositoryId(), context.workspaceId(), context.branch(), commit);
         var model = new EmbeddingModelIdentity("a".repeat(64), "b".repeat(64), Map.of(), "query: ", EmbeddingModelIdentity.INFERENCE_VERSION);
-        var edge = new RelationProjectionReadService.RelationIdentity("CP", RelationType.SUPPORTS, "IP");
+        var edge = new RelationProjectionReadService.RelationIdentity("CP", RelationType.COMMUNICATES_WITH, "IP");
         var definition = CatalogueDefinition.standard();
         String revision = "00000000-0000-0000-0000-000000000001";
         var source = BranchGraphVectorSource.from(context, commit, revision, "c".repeat(64), model.indexKey(), Set.of(edge));
@@ -69,9 +80,9 @@ class BranchGraphVectorBuildTest {
         assertThat(vectors.rebuild(context,commit).state()).isEqualTo("READY");
         assertThat(retained.get().nodeCount()).isEqualTo(roots.size());
         assertThat(retained.get().relationCount()).isOne();
-        assertThat(submitted).hasSize(roots.size() + 1).contains("Frozen CP supports Frozen IP");
-        assertThat(submitted).anyMatch(text -> text.contains("Outgoing:") && text.contains("Frozen IP"));
-        assertThat(submitted).anyMatch(text -> text.contains("Incoming:") && text.contains("Frozen CP"));
+        assertThat(submitted).hasSize(roots.size() + 1).contains("Frozen CP communicates with Frozen IP");
+        assertThat(submitted).anyMatch(text -> text.contains("Outgoing: communicates with Frozen IP"));
+        assertThat(submitted).anyMatch(text -> text.contains("Incoming: communicates with Frozen CP"));
         verify(authority).verifyPublication(context,source);
     }
 }

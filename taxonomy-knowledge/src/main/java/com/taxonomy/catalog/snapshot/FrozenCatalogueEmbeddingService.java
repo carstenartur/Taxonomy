@@ -83,11 +83,12 @@ public class FrozenCatalogueEmbeddingService {
         } catch (Exception failure) {
             throw new IllegalStateException("Frozen embedding model identity is unavailable", failure);
         }
+        var relationNameLocale = expectedRelations == null ? java.util.Locale.getDefault() : java.util.Locale.ROOT;
         List<RootCatalogueSnapshot> result = capturedRoots.stream()
                 .filter(root -> requiredRoots.contains(root.rootCode())).map(root -> {
                     Map<String, String> texts = new LinkedHashMap<>();
                     root.nodes().forEach(node -> texts.put(node.code(),
-                            NodeEmbeddingText.buildEnrichedText(nodes.get(node.code()))));
+                            NodeEmbeddingText.buildEnrichedText(nodes.get(node.code()), relationNameLocale)));
                     return root.withEmbeddings(new RootEmbeddingSnapshot(RootEmbeddingSnapshot.SCHEMA_VERSION,
                             source, root.rootCode(), before.commitId(), RootEmbeddingSnapshot.TEXT_VERSION,
                             model, texts));

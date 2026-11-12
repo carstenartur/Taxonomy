@@ -49,7 +49,8 @@ public class BranchGraphVectors {
                 var retained = store.read(context, current);
                 BranchGraphVectorIndex.verifyArchive(retained.index());
                 var confirmed = store.status(context, authority.capture(context).source());
-                if (!retained.id().equals(confirmed.generation()) || confirmed.state() != state) state = BranchGraphVectorStore.State.STALE;
+                if (!s.generation().equals(retained.id()) || !retained.id().equals(confirmed.generation())
+                        || confirmed.state() != state) state = BranchGraphVectorStore.State.STALE;
             } catch (Exception unavailable) {
                 state = BranchGraphVectorStore.State.FAILED;
             }
@@ -83,7 +84,7 @@ public class BranchGraphVectors {
                 for (var relation : capture.relations().stream().sorted(BranchGraphVectorSource.ORDER).toList()) {
                     var from = Objects.requireNonNull(nodes.get(relation.sourceCode()));
                     var to = Objects.requireNonNull(nodes.get(relation.targetCode()));
-                    String text = RelationEmbeddingText.build(from.nameEn(), relation.relationType(), to.nameEn(), null);
+                    String text = RelationEmbeddingText.build(from.nameEn(), relation.relationType(), to.nameEn(), null, java.util.Locale.ROOT);
                     builder.relation(from.code(), to.code(), from.taxonomyRoot(), relation.relationType().name(), text, embeddings.embedDocument(text));
                 }
                 var archive = builder.finish();
