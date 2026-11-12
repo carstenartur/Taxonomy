@@ -55,6 +55,7 @@ class HypothesisSelectedSourceHttpTest {
         mvc.perform(get(URL)).andExpect(status().isConflict()).andExpect(header().doesNotExist("ETag"));
         String tag = mvc.perform(selected(a, "main").param("commitId", main))
                 .andExpect(status().isOk()).andExpect(header().string(COMMIT, main))
+                .andExpect(header().string("Content-Location", "?repositoryId=" + a + "&workspaceId=&branch=main&commitId=" + main))
                 .andExpect(header().string(STATE, "READY")).andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].id").value(am.getId())).andExpect(jsonPath("$[0].status").value("ACCEPTED"))
                 .andExpect(jsonPath("$[0].confidence").value(0.9)).andReturn().getResponse().getHeader("ETag");
@@ -68,6 +69,7 @@ class HypothesisSelectedSourceHttpTest {
                 .andExpect(jsonPath("$.length()").value(0));
         mvc.perform(selected(a, "main").param("commitId", other)).andExpect(status().isConflict())
                 .andExpect(header().string(STATE, "STALE")).andExpect(header().string(COMMIT, main))
+                .andExpect(header().string("Link", org.hamcrest.Matchers.containsString("commitId=" + main)))
                 .andExpect(header().doesNotExist("ETag")).andExpect(content().string(""));
         mvc.perform(selected(a, "main").param("commitId", "main")).andExpect(status().isBadRequest());
         mvc.perform(selected(a, "unknown")).andExpect(status().isNotFound()).andExpect(header().string(STATE,"MISSING"));

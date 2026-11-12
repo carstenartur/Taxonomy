@@ -68,6 +68,28 @@ class HypothesisSourceReadServiceTest {
         assertThat(service.read(scope, HEAD, null).state()).isEqualTo(MISSING);
     }
 
+    @Test void explicitIdAndAnalysisProvenanceMustAgreeIncludingTheHistoricalDirectReviewPublisher() throws IOException {
+        String template = """
+                relation A RELATED_TO B {
+                  status: %s;
+                  x-hypothesis-id: "7";
+                  provenance: "analysis-session:%s";
+                }
+                """;
+        when(git.dslAtCommit(HEAD)).thenReturn(Optional.of(template.formatted("provisional", "other")),
+                Optional.of(template.formatted("provisional", "original")),
+                Optional.of(template.formatted("accepted", "accepted-7")),
+                Optional.of(template.formatted("rejected", "rejected-7")),
+                Optional.of(template.formatted("accepted", "rejected-7")));
+        when(hypotheses.findAll(scope)).thenReturn(List.of(row(7L, "original"), row(8L, "other")));
+        assertThat(service.read(scope, HEAD, null).state()).isEqualTo(MISSING);
+        for (var status : List.of(HypothesisStatus.PROVISIONAL, HypothesisStatus.ACCEPTED, HypothesisStatus.REJECTED)) {
+            assertThat(service.read(scope, HEAD, null).rows()).singleElement()
+                    .satisfies(item -> { assertThat(item.id()).isEqualTo(7L); assertThat(item.status()).isEqualTo(status); });
+        }
+        assertThat(service.read(scope, HEAD, null).state()).isEqualTo(MISSING);
+    }
+
     @Test void missingRevisionAndReadFailureCannotMasqueradeAsAnEmptyRevision() throws IOException {
         when(git.currentHead()).thenReturn(null);
         assertThat(service.read(scope, null, null).state()).isEqualTo(MISSING);
@@ -91,6 +113,7 @@ class HypothesisSourceReadServiceTest {
             "relation A RELATED_TO B {\nstatus: provisional;\nx-hypothesis-id: 1;\nconfidence: NaN;\n}",
             "relation A RELATED_TO B {\nstatus: provisional;\nx-hypothesis-id: 1;\nconfidence: -1;\n}",
             "relation A RELATED_TO B {\nstatus: provisional;\nx-hypothesis-id: 1;\nconfidence: 2;\n}",
+            "relation A RELATED_TO B {\nstatus: accepted;\nunknown nested {\nx-hypothesis-id: 1;\n}\n}",
             "relation A RELATED_TO B {\nx-hypothesis-id: 1;\n}", "relation A {\nstatus: provisional;\n}",
             "relation A RELATED_TO B {\nstatus: accepted;\n}\nrelation A RELATED_TO B {\nstatus: rejected;\n}"})
     void incompleteAndContradictorySourcesNeverReportReady(String dsl) throws IOException {

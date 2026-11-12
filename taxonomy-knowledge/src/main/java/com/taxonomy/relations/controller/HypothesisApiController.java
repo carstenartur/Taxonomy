@@ -25,6 +25,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -94,7 +96,15 @@ public class HypothesisApiController {
         }).header(RelationApiController.PROJECTION_STATE_HEADER, result.state().name())
                 .header(RelationApiController.READ_MODEL_HEADER, "GIT")
                 .header(HttpHeaders.CACHE_CONTROL, "no-store");
-        if (result.commit() != null) response.header("X-Taxonomy-Commit", result.commit());
+        if (result.commit() != null) {
+            String location = "?repositoryId=" + encoded(context.repositoryId())
+                    + "&workspaceId=" + encoded(Objects.toString(context.workspaceId(), ""))
+                    + "&branch=" + encoded(context.branch()) + "&commitId=" + result.commit()
+                    + (status == null ? "" : "&status=" + status.name());
+            response.header("X-Taxonomy-Commit", result.commit());
+            if (result.problem() == null) response.header(HttpHeaders.CONTENT_LOCATION, location);
+            else response.header(HttpHeaders.LINK, "<" + location + ">; rel=\"latest-version\"");
+        }
         if (result.problem() != null) {
             return response.header("X-Taxonomy-Read-Problem", result.problem().name()).build();
         }
@@ -175,6 +185,10 @@ public class HypothesisApiController {
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();
         }
+    }
+
+    private static String encoded(String component) {
+        return URLEncoder.encode(component, StandardCharsets.UTF_8);
     }
 
     private RepositoryContext readRepositoryContext() {

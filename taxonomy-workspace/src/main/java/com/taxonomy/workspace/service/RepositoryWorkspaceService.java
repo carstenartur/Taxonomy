@@ -90,6 +90,10 @@ public class RepositoryWorkspaceService {
         workspace.setSyncTargetBranch(sourceBranch);
         workspace.setCreatedAt(now);
         workspace.setLastAccessedAt(now);
+        workspace.setProvisioningSyncBaseBranch(TRACKING_BRANCH);
+        var claim = new WorkspaceProvisioningClaim(workspace);
+        claim.initialize();
+        boolean reservationAttempted = false;
         boolean workspaceStorageAttempted = false;
         try {
             DslGitRepository sourceGit =
@@ -104,36 +108,36 @@ public class RepositoryWorkspaceService {
             }
 
             workspace.setBaseCommit(sourceCommit);
+            reservationAttempted = true;
             workspaceRepository.save(workspace);
             workspaceStorageAttempted = true;
             DslGitRepository workspaceGit = repositoryFactory.openWorkspaceRepository(workspace.getWorkspaceId());
             GitHistoryTransfer.copyCommitClosure(sourceGit, workspaceGit, sourceCommit, List.of());
-            systemRepositoryService.readCurrentAuthorization(source.getRepositoryId(),
-                    current -> requireContribution(current, user));
-            workspaceGit.recordUpstreamForkPoint(source.getRepositoryId(), sourceBranch, sourceCommit, user);
-            workspaceGit.fastForwardIfHeadMatches(WORKSPACE_BRANCH, null, sourceCommit, user,
-                    "Create working copy from " + sourceBranch);
-            workspaceGit.createBranchAtCommit(TRACKING_BRANCH, sourceCommit);
-
-            workspace.setCurrentCommit(sourceCommit);
-            workspace.setLastFetchedCommit(sourceCommit);
-            workspace.setLastIntegratedCommit(sourceCommit);
-            workspace.setProvisioningStatus(WorkspaceProvisioningStatus.READY);
-            workspace.setProvisionedAt(Instant.now());
-            workspace.setProvisioningError(null);
-            return workspaceRepository.save(workspace);
+            return claim.apply(workspaceRepository, current -> {
+                systemRepositoryService.readCurrentAuthorization(source.getRepositoryId(),
+                        metadata -> requireContribution(metadata, user));
+                workspaceGit.recordUpstreamForkPoint(source.getRepositoryId(), sourceBranch, sourceCommit, user);
+                workspaceGit.fastForwardIfHeadMatches(WORKSPACE_BRANCH, null, sourceCommit, user,
+                        "Create working copy from " + sourceBranch);
+                WorkspaceProvisioningClaim.adoptIntegrationBase(workspaceGit, TRACKING_BRANCH, sourceCommit);
+                current.setLastFetchedCommit(sourceCommit);
+                current.setLastIntegratedCommit(sourceCommit);
+                WorkspaceProvisioningClaim.markProvisioned(current, sourceCommit);
+            });
         } catch (IOException | RuntimeException exception) {
-            if (workspaceStorageAttempted) {
-                try {
-                    repositoryFactory.deleteWorkspaceRepository(workspace.getWorkspaceId());
-                } catch (RuntimeException cleanupException) {
-                    exception.addSuppressed(cleanupException);
-                }
+            if (reservationAttempted) {
+                // An insert can commit before its acknowledgement is lost. Only the current
+                // worker may record failure or remove storage after that point.
+                boolean cleanupAllocatedStorage = workspaceStorageAttempted;
+                claim.fail(workspaceRepository, exception, current -> {
+                    if (cleanupAllocatedStorage) repositoryFactory.deleteWorkspaceRepository(current.getWorkspaceId());
+                });
+            } else {
+                workspace.setProvisioningStatus(WorkspaceProvisioningStatus.FAILED);
+                workspace.setProvisioningError(WorkspaceProvisioningClaim.message(exception));
+                workspaceRepository.save(workspace);
             }
-            workspace.setProvisioningStatus(WorkspaceProvisioningStatus.FAILED);
-            workspace.setProvisioningError(safeMessage(exception));
-            workspace.setLastAccessedAt(Instant.now());
-            workspaceRepository.save(workspace);
+            if (exception instanceof org.springframework.web.server.ResponseStatusException conflict) throw conflict;
             if (exception instanceof AccessDeniedException denied) {
                 throw denied;
             }
@@ -156,9 +160,4 @@ public class RepositoryWorkspaceService {
         return value.strip();
     }
 
-    private static String safeMessage(Throwable throwable) {
-        return throwable.getMessage() == null
-                ? throwable.getClass().getSimpleName()
-                : throwable.getMessage();
-    }
 }

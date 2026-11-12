@@ -35,6 +35,7 @@ class RepositoryWorkspaceSnapshotTest {
                 call.<java.util.function.Consumer<SystemRepository>>getArgument(1).accept(metadata);
                 return null;
             }).when(catalog).readCurrentAuthorization(eq("source"), any());
+            WorkspaceProvisioningTestClaims.enable(rows);
             var service = new RepositoryWorkspaceService(rows, catalog, factory, memberships);
             var result = service.createWorkingCopy("owner", "source", "approved", "Working copy", null);
             var destination = factory.openWorkspaceRepository(result.getWorkspaceId());

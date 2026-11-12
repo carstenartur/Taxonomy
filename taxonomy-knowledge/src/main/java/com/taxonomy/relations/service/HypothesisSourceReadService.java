@@ -88,10 +88,8 @@ public class HypothesisSourceReadService {
             var header = block.getHeaderTokens();
             var key = new Identity(header.get(0), RelationType.valueOf(header.get(1).toUpperCase(Locale.ROOT)), header.get(2));
             var decision = HypothesisStatus.valueOf(status.toUpperCase(Locale.ROOT));
-            var matches = candidates.getOrDefault(key, List.of()).stream().filter(row -> marker != null
-                    ? marker.equals(row.getId().toString())
-                    : analyzed && row.getAnalysisSessionId() != null
-                            && provenance.equals("analysis-session:" + row.getAnalysisSessionId())).toList();
+            var matches = candidates.getOrDefault(key, List.of()).stream()
+                    .filter(row -> binds(row, marker, provenance, decision)).toList();
             if (matches.isEmpty()) throw new UnknownBinding(Problem.BINDING_MISSING);
             if (matches.size() > 1) throw new UnknownBinding(Problem.BINDING_AMBIGUOUS);
             long id = matches.getFirst().getId();
@@ -106,6 +104,16 @@ public class HypothesisSourceReadService {
             }
         }
         return List.copyOf(result);
+    }
+
+    private static boolean binds(RelationHypothesis row, String marker, String provenance, HypothesisStatus decision) {
+        if (marker != null && !marker.equals(row.getId().toString())) return false;
+        if (provenance == null || !provenance.startsWith("analysis-session:")) return marker != null;
+        String origin = provenance.substring("analysis-session:".length());
+        if (origin.equals(row.getAnalysisSessionId())) return true;
+        // The historical direct review publisher records its action and review ID as the session.
+        return marker != null && ((decision == HypothesisStatus.ACCEPTED && origin.equals("accepted-" + marker))
+                || (decision == HypothesisStatus.REJECTED && origin.equals("rejected-" + marker)));
     }
 
     private static String unique(BlockAst block, String field) {
@@ -123,6 +131,7 @@ public class HypothesisSourceReadService {
             int delta = TaxDslParser.blockDelimiter(line);
             if (depth == 0 && delta != 1) throw new IllegalArgumentException();
             depth += delta;
+            if (depth > 1) throw new IllegalArgumentException();
         }
         if (depth != 0) throw new IllegalArgumentException();
     }
