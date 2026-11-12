@@ -14,6 +14,8 @@ window.TaxonomyContextBar = (function () {
     var POLL_INTERVAL = 10000; // 10 seconds
     var pollTimer = null;
     var currentContext = null;
+    var selectionGeneration = 0;
+    var selectedWorkspace = null;
     var pendingRead = null;
     var pendingResult = null;
     var pendingOwner = null;
@@ -33,9 +35,16 @@ window.TaxonomyContextBar = (function () {
     });
 
     function acceptContext(context) {
+        var workspace = workspaceId();
+        var changed = currentContext !== null && (workspace !== selectedWorkspace
+            || context.contextId !== currentContext.contextId || context.branch !== currentContext.branch
+            || context.commitId !== currentContext.commitId || context.mode !== currentContext.mode);
+        if (changed) selectionGeneration++;
+        selectedWorkspace = workspace;
         currentContext = context;
         document.dispatchEvent(new CustomEvent('taxonomy:repository-context-changed', {
-            detail: {contextId:context.contextId, branch:context.branch, commitId:context.commitId}
+            detail: {contextId: context.contextId, branch: context.branch,
+                commitId: context.commitId, selectionChanged: changed}
         }));
     }
 
@@ -134,6 +143,8 @@ window.TaxonomyContextBar = (function () {
     function render(containerId, ctx) {
         var container = document.getElementById(containerId);
         if (!container) return;
+        var active = document.activeElement;
+        var focusedId = active && active.id && container.contains(active) ? active.id : null;
 
         var mode = getModeInfo(ctx.mode);
         var branchDisplay = TaxonomyI18n.formatBranch(ctx.branch);
@@ -145,7 +156,7 @@ window.TaxonomyContextBar = (function () {
         // Row 1: Status + Branch name + Time info
         html += '<div class="wb-row">';
         html += '<span class="badge ' + mode.cls + '">' + escapeHtml(mode.label) + '</span>';
-        html += '<strong>' + escapeHtml(branchDisplay) + '</strong>';
+        html += '<strong id="contextBarBranch" tabindex="-1">' + escapeHtml(branchDisplay) + '</strong>';
 
         if (timeInfo) {
             html += '<span class="text-muted small">' + escapeHtml(timeInfo) + '</span>';
@@ -156,7 +167,7 @@ window.TaxonomyContextBar = (function () {
         // Breadcrumb for origin
         if (ctx.originBranch) {
             html += '<span class="wb-breadcrumb">';
-            html += '<a onclick="TaxonomyContextBar.returnToOrigin()" title="' + escapeHtml(t('context.origin.title')) + '">' + escapeHtml(TaxonomyI18n.formatBranch(ctx.originBranch)) + '</a>';
+            html += '<button id="contextBarBreadcrumb" type="button" onclick="TaxonomyContextBar.returnToOrigin()" title="' + escapeHtml(t('context.origin.title')) + '">' + escapeHtml(TaxonomyI18n.formatBranch(ctx.originBranch)) + '</button>';
             html += '<span class="wb-sep">\u2192</span>';
             html += '<span>' + escapeHtml(branchDisplay) + '</span>';
             html += '</span>';
@@ -177,14 +188,14 @@ window.TaxonomyContextBar = (function () {
         // Action buttons
         html += '<span class="wb-actions">';
         if (ctx.originContextId) {
-            html += '<button class="btn btn-sm btn-outline-secondary" onclick="TaxonomyContextBar.back()" title="' + escapeHtml(t('context.back.title')) + '">\u21A9 ' + escapeHtml(t('context.back')) + '</button>';
-            html += '<button class="btn btn-sm btn-outline-primary" onclick="TaxonomyContextBar.returnToOrigin()" title="' + escapeHtml(t('context.origin.title')) + '">\uD83C\uDFE0 ' + escapeHtml(t('context.origin')) + '</button>';
+            html += '<button type="button" id="contextBarBack" class="btn btn-sm btn-outline-secondary" onclick="TaxonomyContextBar.back()" title="' + escapeHtml(t('context.back.title')) + '">\u21A9 ' + escapeHtml(t('context.back')) + '</button>';
+            html += '<button type="button" id="contextBarOrigin" class="btn btn-sm btn-outline-primary" onclick="TaxonomyContextBar.returnToOrigin()" title="' + escapeHtml(t('context.origin.title')) + '">\uD83C\uDFE0 ' + escapeHtml(t('context.origin')) + '</button>';
         }
         if (ctx.mode === 'READ_ONLY') {
-            html += '<button class="btn btn-sm btn-outline-warning" onclick="TaxonomyContextBar.showTransferDialog()" title="' + escapeHtml(t('context.copyback.title')) + '">\uD83D\uDCE4 ' + escapeHtml(t('context.copyback')) + '</button>';
+            html += '<button type="button" id="contextBarTransfer" class="btn btn-sm btn-outline-warning" onclick="TaxonomyContextBar.showTransferDialog()" title="' + escapeHtml(t('context.copyback.title')) + '">\uD83D\uDCE4 ' + escapeHtml(t('context.copyback')) + '</button>';
         }
-        html += '<button class="btn btn-sm btn-outline-success" onclick="TaxonomyContextBar.showVariantDialog()" title="' + escapeHtml(t('context.new.variant.title')) + '">\uD83C\uDF3F ' + escapeHtml(t('context.new.variant')) + '</button>';
-        html += '<button class="btn btn-sm btn-outline-info" onclick="TaxonomyContextBar.showCompareDialog()" title="' + escapeHtml(t('context.compare.title')) + '">\uD83D\uDD0D ' + escapeHtml(t('context.compare')) + '</button>';
+        html += '<button type="button" id="contextBarVariant" class="btn btn-sm btn-outline-success" onclick="TaxonomyContextBar.showVariantDialog()" title="' + escapeHtml(t('context.new.variant.title')) + '">\uD83C\uDF3F ' + escapeHtml(t('context.new.variant')) + '</button>';
+        html += '<button type="button" id="contextBarCompare" class="btn btn-sm btn-outline-info" onclick="TaxonomyContextBar.showCompareDialog()" title="' + escapeHtml(t('context.compare.title')) + '">\uD83D\uDD0D ' + escapeHtml(t('context.compare')) + '</button>';
         html += '</span>';
 
         html += '</div>'; // wb-row
@@ -195,6 +206,10 @@ window.TaxonomyContextBar = (function () {
 
         // Update sync info in context bar (AP 6)
         updateSyncInfoInBar();
+        if (focusedId) {
+            var focusTarget = document.getElementById(focusedId) || document.getElementById('contextBarBranch');
+            focusTarget.focus({preventScroll: true});
+        }
     }
 
     /**
@@ -210,13 +225,13 @@ window.TaxonomyContextBar = (function () {
 
         var status = state.syncStatus || 'UP_TO_DATE';
         if (status === 'AHEAD' && state.unpublishedCommitCount > 0) {
-            el.innerHTML = '<span class="badge bg-info text-dark" style="font-size:0.72rem;cursor:pointer;" '
+            el.innerHTML = '<button type="button" id="contextBarPublish" class="badge border-0 bg-info text-dark" style="font-size:0.72rem;" '
                 + 'onclick="TaxonomyWorkspaceSync.publish()" title="' + escapeHtml(t('context.sync.unpublished.title')) + '">'
-                + '\uD83D\uDD04 ' + escapeHtml(t('context.sync.unpublished', state.unpublishedCommitCount)) + '</span>';
+                + '\uD83D\uDD04 ' + escapeHtml(t('context.sync.unpublished', state.unpublishedCommitCount)) + '</button>';
         } else if (status === 'BEHIND') {
-            el.innerHTML = '<span class="badge bg-warning text-dark" style="font-size:0.72rem;cursor:pointer;" '
+            el.innerHTML = '<button type="button" id="contextBarSync" class="badge border-0 bg-warning text-dark" style="font-size:0.72rem;" '
                 + 'onclick="TaxonomyWorkspaceSync.syncFromShared()" title="' + escapeHtml(t('context.sync.behind.title')) + '">'
-                + '\u2B07 ' + escapeHtml(t('context.sync.behind')) + '</span>';
+                + '\u2B07 ' + escapeHtml(t('context.sync.behind')) + '</button>';
         } else if (status === 'DIVERGED') {
             el.innerHTML = '<span class="badge bg-danger" style="font-size:0.72rem;">'
                 + '\u26A0 ' + escapeHtml(t('context.sync.diverged')) + '</span>';
@@ -386,6 +401,7 @@ window.TaxonomyContextBar = (function () {
         createVariant: createVariant,
         showCompareDialog: showCompareDialog,
         showTransferDialog: showTransferDialog,
-        getCurrentContext: getCurrentContext
+        getCurrentContext: getCurrentContext,
+        getSelectionGeneration: function () { return selectionGeneration; }
     };
 }());

@@ -592,6 +592,10 @@ test('the comparison dialog reads one authorized workspace and ignores results f
   const {context} = app;
   const {window, document} = context;
   const results = {innerHTML: '', textContent: ''};
+  const lifecycle = new EventTarget();
+  window.addEventListener = lifecycle.addEventListener.bind(lifecycle);
+  const documentEvents = new EventTarget();
+  document.addEventListener = documentEvents.addEventListener.bind(documentEvents);
   const nodes = {contextCompareModal: {querySelector: () => null, addEventListener() {}}, contextCompareResults: results};
   for (const id of ['compareLeftBranch', 'compareRightBranch', 'compareLeftCommit', 'compareRightCommit']) {
     nodes[id] = {value: '', replaceChildren() {}, appendChild() {}, addEventListener() {}};
@@ -1023,6 +1027,30 @@ async function confirmWorkspaceBadgeSource(f, status = 200) {
     : {detail: 'Repository context is unavailable'}, {status}));
   await f.settle();
 }
+
+test('returning to a branch preserves fresh work and leaves previous callbacks obsolete', async () => {
+  const f = await loadWorkspaceBadgeStartup();
+  await confirmWorkspaceBadgeSource(f);
+  const bar = f.w.TaxonomyContextBar, client = f.w.TaxonomyApiClient;
+  const original = bar.getCurrentContext();
+  const firstVisit = client.captureContext();
+  const page = client.captureContext({contextSensitive: false});
+
+  async function refresh(context) {
+    const read = bar.fetchAndRender('contextBar');
+    f.reads('/api/context/current').at(-1).resolve(Response.json(context));
+    await read;
+  }
+
+  await refresh({...original, dirty: true});
+  assert.equal(firstVisit(), true, 'A dirty badge update keeps the same selection');
+  await refresh({...original, contextId: 'review-B', branch: 'review', mode: 'READ_ONLY'});
+  assert.equal(firstVisit(), false);
+  await refresh(original);
+  assert.equal(firstVisit(), false, 'Returning to the original branch cannot revive completed-work callbacks');
+  assert.equal(client.captureContext()(), true);
+  assert.equal(page(), true, 'An installation-wide read remains current across repository switches');
+});
 
 test('the live workspace badge waits for the initial repository context in the same workspace', async () => {
   const f = await loadWorkspaceBadgeStartup();

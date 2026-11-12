@@ -105,6 +105,11 @@ class PortfolioJobLifecycleTest {
         run("activeDiscoveryFailureRetainsBoundedRetries");
     }
 
+    @Test
+    void actionableJobsSurviveTheHistoryLimitAndAreRestoredAfterReload() throws Exception {
+        run("actionableJobsSurviveHistoryLimitAndReload");
+    }
+
     private void run(String contract) throws Exception {
         Path script = copyResource("/portfolio/job-lifecycle-contract.cjs");
         Path canonical = copyResource("/static/js/api/taxonomy-api-client.js");

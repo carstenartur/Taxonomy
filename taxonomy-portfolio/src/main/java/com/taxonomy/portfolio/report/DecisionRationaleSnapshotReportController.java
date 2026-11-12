@@ -15,6 +15,7 @@ import com.taxonomy.extension.api.report.ReportRenderContext;
 import com.taxonomy.extension.api.report.ReportRenderResult;
 import com.taxonomy.extension.api.report.ReportRendererExtension;
 import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.portfolio.service.ProjectProviderBinding;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
@@ -59,6 +60,13 @@ public class DecisionRationaleSnapshotReportController {
         this.wordReportService = wordReportService;
         this.reportRendererRegistry = reportRendererRegistry;
         this.workspaceResolver = workspaceResolver;
+    }
+
+    private ProjectProviderBinding providerBinding = ProjectProviderBinding.NONE;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setProviderBinding(ProjectProviderBinding binding) {
+        providerBinding = binding;
     }
 
     @GetMapping("/formats")
@@ -129,7 +137,8 @@ public class DecisionRationaleSnapshotReportController {
                     : wordReportService.loadEvidence(projectId, snapshotId, username, context, resolveLocale(language), options)).decision();
         } else report = snapshotReportService.generate(projectId, snapshotId, username, context, resolveLocale(language), options);
         ReportRenderResult rendered = renderer.render(ReportRenderContext.ofPayload(report));
-        String filename = DecisionRationaleReportPlugin.BASE_FILENAME
+        String filename = (providerBinding.isRecordedReplay(report.metadata().analysisProvider()) ? "DEMO-" : "")
+                + DecisionRationaleReportPlugin.BASE_FILENAME
                 + "-v" + valueOrUnknown(report.metadata().requirementVersionNumber())
                 + "." + format.fileExtension();
         ResponseEntity.BodyBuilder response = ResponseEntity.ok()

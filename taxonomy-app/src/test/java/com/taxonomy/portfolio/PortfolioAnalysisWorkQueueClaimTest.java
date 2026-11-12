@@ -43,6 +43,9 @@ class PortfolioAnalysisWorkQueueClaimTest extends RetainedPortfolioCatalogue {
     @Autowired
     private PortfolioAnalysisWorkQueue workQueue;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbc;
+
     @Test
     void pendingWorkItemCanBeClaimedOnlyOnceWithoutPrematureJobCompletion() {
         String suffix = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
@@ -85,7 +88,27 @@ class PortfolioAnalysisWorkQueueClaimTest extends RetainedPortfolioCatalogue {
                 context);
         String scopeKey = PortfolioScope.key(context.username(), context);
 
+        // Fail the parent UPDATE at commit after the child claim has been issued.
+        String constraint = "ck_claim_" + suffix;
+        jdbc.execute("alter table req_analysis_job add constraint " + constraint
+                + " check (id <> '" + UUID.fromString(job.id()) + "' or status <> 'RUNNING')");
+        try {
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> workQueue.pending(job.id(), project.id(), scopeKey))
+                    .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+            var rolledBack = persistenceService.getJob(job.id(), project.id(), context.username(), context);
+            assertThat(rolledBack.status()).isEqualTo(AnalysisStatus.PENDING);
+            assertThat(rolledBack.items()).singleElement()
+                    .satisfies(item -> assertThat(item.status()).isEqualTo(AnalysisStatus.PENDING));
+        } finally {
+            jdbc.execute("alter table req_analysis_job drop constraint " + constraint);
+        }
         var firstClaim = workQueue.pending(job.id(), project.id(), scopeKey);
+        var justClaimed = persistenceService.getJob(job.id(), project.id(), context.username(), context);
+        assertThat(justClaimed.status()).isEqualTo(AnalysisStatus.RUNNING);
+        assertThat(justClaimed.items()).singleElement().satisfies(item -> {
+            assertThat(item.status()).isEqualTo(AnalysisStatus.RUNNING);
+            assertThat(item.startedAt()).isEqualTo(justClaimed.startedAt());
+        });
         var prematureCompletion = persistenceService.completeJob(
                 job.id(), project.id(), scopeKey);
         var secondClaim = workQueue.pending(job.id(), project.id(), scopeKey);

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:lang="${#locale.language}" lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title th:text="#{document.template.candidate.title}">Template candidate — Taxonomy</title>
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy-ergonomics.css}"/>
+    <th:block th:replace="~{fragments/application-chrome :: styles}"></th:block>
+    <th:block th:replace="~{fragments/context-help :: styles}"></th:block>
+    <th:block th:replace="~{fragments/customer-stylesheet :: link}"></th:block>
+</head>
+<body class="bg-body-tertiary">
+<a class="skip-link" href="#candidateMain" th:text="#{skip.link}">Skip to main content</a>
+<nav th:replace="~{fragments/application-chrome :: navigation('admin', ~{:: localActions}, 'DOCUMENT_TEMPLATES', 'template-versions')}">
+    <th:block th:fragment="localActions"><div>
+        <a id="candidateBack" class="btn btn-outline-light"
+           th:href="@{/admin/document-templates/{id}(id=${template.templateId})}"
+           th:text="#{document.template.candidate.back}">Back to template</a>
+    </div></th:block>
+</nav>
+<main id="candidateMain" class="container py-4">
+    <h1 th:text="#{document.template.candidate.title}">Template candidate</h1>
+    <p><strong th:text="${template.displayName}">Template</strong> · <code th:text="${template.templateId}">template-id</code></p>
+    <p th:if="${candidateError != null}" role="alert" class="alert alert-warning"
+       th:text="#{__${'document.template.candidate.' + candidateError}__}">Review the template and retry.</p>
+    <form th:if="${candidate == null}" method="post" enctype="multipart/form-data"
+          th:action="@{/admin/document-templates/{id}/candidates(id=${template.templateId})}">
+        <input type="hidden" name="expectedHead" th:value="${template.headCommit}"/>
+        <div class="mb-3"><label for="candidateName" class="form-label" th:text="#{document.template.candidate.name}">Display name</label>
+            <input id="candidateName" name="displayName" class="form-control" required th:value="${template.displayName}"/></div>
+        <div class="mb-3"><label for="candidateFile" class="form-label" th:text="#{document.template.candidate.file}">Candidate DOTX</label>
+            <input id="candidateFile" name="file" type="file" accept=".dotx" class="form-control" required aria-describedby="candidateHelp"/></div>
+        <p id="candidateHelp" th:text="#{document.template.candidate.help}">Choose a DOTX to validate and generate a sample.</p>
+        <button class="btn btn-primary" type="submit" th:text="#{document.template.candidate.stage}">Preflight a candidate</button>
+    </form>
+    <section th:if="${candidate != null}" aria-labelledby="candidateResult">
+        <h2 id="candidateResult" class="h4" th:text="#{document.template.candidate.result}">Preflight result</h2>
+        <p role="status" th:text="${candidate.ready} ? #{document.template.candidate.passed} : #{document.template.candidate.sample}">Sample status</p>
+        <dl>
+            <dt th:text="#{document.template.candidate.name}">Display name</dt><dd th:text="${candidate.displayName}"></dd>
+            <dt th:text="#{document.template.candidate.version}">Candidate version</dt><dd><code class="text-break" th:text="${candidate.version}"></code></dd>
+            <dt th:text="#{document.template.candidate.base}">Active version at submission</dt><dd><code class="text-break" th:text="${candidate.baseVersion}"></code></dd>
+        </dl>
+        <div class="d-flex gap-2 flex-wrap mb-3">
+            <a class="btn btn-outline-primary" th:if="${candidate.ready}"
+               th:href="@{/admin/document-templates/{id}/candidates/{v}/sample.docx(id=${template.templateId},v=${candidate.version})}"
+               th:text="#{document.template.candidate.downloadSample}">Download sample DOCX</a>
+            <a class="btn btn-outline-primary" th:href="@{/admin/document-templates/{id}/candidates/{v}/original.dotx(id=${template.templateId},v=${candidate.version})}"
+               th:text="#{document.template.candidate.original}">Download submitted DOTX</a>
+            <a class="btn btn-outline-primary" th:href="@{/admin/document-templates/{id}/candidates/{v}/validation.json(id=${template.templateId},v=${candidate.version})}"
+               th:text="#{document.template.candidate.report}">Download validation report</a>
+        </div>
+        <form method="post" th:if="${candidate.ready and candidate.baseVersion == template.headCommit}"
+              th:action="@{/admin/document-templates/{id}/candidates/{v}/activate(id=${template.templateId},v=${candidate.version})}">
+            <button class="btn btn-primary" type="submit" th:text="#{document.template.candidate.activate}">Activate this candidate</button>
+        </form>
+        <p th:if="${candidate.baseVersion != template.headCommit}" class="alert alert-warning"
+           th:text="#{document.template.candidate.changed}">The active version changed.</p>
+        <a class="d-inline-block mt-2" th:href="@{/admin/document-templates/{id}/candidates(id=${template.templateId})}"
+           th:text="#{document.template.candidate.another}">Submit another candidate</a>
+    </section>
+</main>
+<script th:src="@{/js/taxonomy-i18n.js}"></script>
+<th:block th:replace="~{fragments/application-chrome :: navigationScript}"></th:block>
+</body>
+</html>

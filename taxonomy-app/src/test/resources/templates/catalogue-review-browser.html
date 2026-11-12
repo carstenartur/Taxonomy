@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:lang="${#locale.language}">
+<head>
+    <meta charset="UTF-8">
+    <title>Catalogue review browser fixture</title>
+    <script th:src="@{/js/taxonomy-i18n.js}"></script>
+    <script th:src="@{/js/api/taxonomy-api-client.js}"></script>
+</head>
+<body>
+<main th:insert="~{index :: #provisionalProductPanel}"></main>
+<script th:src="@{/js/api/reference-api.js}"></script>
+<script th:src="@{/js/core/provisional-product-review.js}"></script>
+</body>
+</html>

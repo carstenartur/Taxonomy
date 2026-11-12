@@ -943,6 +943,41 @@ class ClusterAnalysisBackupRestoreTest {
             return new Archive(run, work, inputs, events, calls, attempts);
         });
     }
+    @Test void eventRetentionPreservesTheLatestCheckpointAcrossExportAndInterruptedRestore() throws Exception {
+        try (var source = new Database(); var target = new Database()) {
+            var original = context("long-observed-run");
+            source.admitFrozen(original);
+            var neighbor = targetContext("other-workspace");
+            source.store.admit(neighbor, targetCommand(), null, Map.of(CP, "{}", IP, "{}"));
+            new TransactionTemplate(source.transactions).executeWithoutResult(status -> {
+                var run = source.em.find(ClusterAnalysisRun.class, original.operationId());
+                while (run.revision < 1003) source.store.diagnosticChanged(run);
+            });
+            long stored = new TransactionTemplate(source.transactions).execute(status -> source.em.createQuery(
+                    "select count(e) from ClusterAnalysisEvent e where e.operationId=:id", Long.class)
+                    .setParameter("id", original.operationId()).getSingleResult());
+            assertEquals(1000, stored);
+            assertEquals(1, source.store.events(neighbor, 0, 1000).getFirst().sequence());
+            var archive = exportedArchive(source);
+            assertEquals(1000, archive.events().size());
+            assertEquals(4, archive.events().getFirst().revision());
+            assertEquals(1003, source.store.latestEvent(original).sequence());
+            var restored = targetContext("restored-long-run");
+            var restorer = new ClusterAnalysisBackupRestorer(target.em, target.transactions, JSON);
+            var missing = new ArrayList<>(archive.events());
+            missing.remove(12);
+            var incomplete = new Archive(archive.run(), archive.work(), archive.inputs(), missing, archive.calls(), archive.attempts());
+            assertThrows(IllegalArgumentException.class, () -> restorer.restore(incomplete, restored, targetCommand()));
+            restorer.restore(archive, restored, targetCommand());
+            var events = target.store.events(restored, 0, 1000);
+            assertEquals(1000, events.size());
+            assertEquals(5, events.getFirst().sequence());
+            assertEquals(1004, events.getLast().sequence());
+            assertEquals(AnalysisProgressPhase.OPERATION_STOPPED, events.getLast().phase());
+            assertEquals(1004, target.store.snapshot(restored).revision());
+        }
+    }
+
     private static void assertTerminalProvenance(Archive original, Archive restored) {
         assertEquals(original.run().sourceState(), restored.run().sourceState());
         assertEquals(original.run().resultJson(), restored.run().resultJson());
@@ -988,7 +1023,7 @@ class ClusterAnalysisBackupRestoreTest {
         }
     }
 
-    private static Archive exportedArchive(Database database) throws Exception {
+    static Archive exportedArchive(Database database) throws Exception {
         var now = Instant.now();
         var request = new BackupRequest(BackupProfile.REPOSITORY_HISTORY, new BackupScope.Workspace("repo", "workspace"),
                 new BackupTime.History(), GitRepresentation.BUNDLE, SecretsSelection.EXCLUDE);

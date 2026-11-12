@@ -330,7 +330,7 @@ class DocumentTemplateRepositoryReadCostTest {
         return "\"" + version + "\"";
     }
 
-    private static String propfind(DocumentTemplateWebDavServlet servlet) throws Exception {
+    static String propfind(DocumentTemplateWebDavServlet servlet) throws Exception {
         var request = new MockHttpServletRequest("PROPFIND", "/dav/templates/");
         request.setPathInfo("/");
         request.addHeader("Depth", "1");
@@ -364,7 +364,7 @@ class DocumentTemplateRepositoryReadCostTest {
         return inserter.insert(commit);
     }
 
-    private static final class CountingRepository extends InMemoryRepository {
+    static final class CountingRepository extends InMemoryRepository {
         int commitOpens;
         int treeOpens;
 

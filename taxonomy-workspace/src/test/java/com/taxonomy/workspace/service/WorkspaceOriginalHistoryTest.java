@@ -40,6 +40,40 @@ class WorkspaceOriginalHistoryTest {
     @TempDir Path directory;
 
     @Test
+    void personalWorkingCopyRetainsSignedHistoryAfterSourceDeletionAndRestart() throws Exception {
+        String database = "jdbc:hsqldb:file:" + directory.resolve("personal-copy") + ";shutdown=true";
+        var signatures = SigningTestKeys.createService(directory.resolve("keys"));
+        String parent;
+        String captured;
+        String workspaceId;
+        try (var fixture = new Fixture(database, signatures)) {
+            var source = fixture.createSource();
+            var sourceId = source.getRepositoryId();
+            var git = fixture.git.getCentralRepository(sourceId);
+            parent = git.commitDsl(BRANCH, "first architecture", OWNER, "Parent");
+            captured = git.commitDsl(BRANCH, "second architecture", OWNER, "Selected");
+            var copies = new RepositoryWorkspaceService(fixture.rows, fixture.catalog, fixture.git, fixture.memberships);
+            workspaceId = copies.createWorkingCopy(OWNER, sourceId, BRANCH, "Working copy", null).getWorkspaceId();
+            fixture.git.deleteCentralRepository(sourceId);
+            assertNull(fixture.git.getCentralRepository(sourceId).getHeadCommit(BRANCH));
+        }
+        try (var fixture = new Fixture(database, new GitCommitSignatureService(
+                SigningTestKeys.verifierProperties(directory.resolve("keys"))))) {
+            var workspace = fixture.git.openWorkspaceRepository(workspaceId);
+            var metadata = fixture.rows.findByWorkspaceId(workspaceId).orElseThrow();
+            assertEquals(captured, metadata.getBaseCommit());
+            assertEquals(captured, metadata.getCurrentCommit());
+            assertEquals(captured, workspace.getHeadCommit("draft"));
+            assertEquals(captured, workspace.getHeadCommit("sync-base"));
+            assertEquals(List.of(captured, parent),
+                    workspace.getDslHistory("draft").stream().map(DslCommit::commitId).toList());
+            assertEquals("first architecture", workspace.getDslAtCommit(parent));
+            assertEquals(SignatureStatus.VERIFIED, workspace.verifyCommit(captured).status());
+            assertEquals(SignatureStatus.VERIFIED, workspace.verifyCommit(parent).status());
+        }
+    }
+
+    @Test
     void interruptedTransferRetriesTheDurableForkPointAndSurvivesSourceDeletion() throws Exception {
         String database = "jdbc:hsqldb:file:" + directory.resolve("provisioning") + ";shutdown=true";
         var signatures = SigningTestKeys.createService(directory.resolve("keys"));

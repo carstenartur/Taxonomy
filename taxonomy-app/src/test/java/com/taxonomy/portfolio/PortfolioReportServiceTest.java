@@ -16,11 +16,16 @@ import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.portfolio.service.PortfolioReportService;
 import com.taxonomy.portfolio.service.PortfolioReportService.Format;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.portfolio.controller.PortfolioExceptionHandler;
+import com.taxonomy.portfolio.controller.ProjectProductGapReviewController;
+import com.taxonomy.workspace.service.WorkspaceResolver;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.test.context.support.WithMockUser;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -28,6 +33,13 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup;
 
 @SpringBootTest
 @Tag("ci-app-shard-domain-integration")
@@ -53,7 +65,8 @@ class PortfolioReportServiceTest {
     private com.taxonomy.analysis.usecase.AnalysisAdmissionModelPort modelAdmission;
 
     @Test
-    void rendersConsistentProjectFormatsAndRequirementScope() {
+    @WithMockUser(username = "project-gap-reviewer", roles = "USER")
+    void rendersConsistentProjectFormatsAndRequirementScope() throws Exception {
         WorkspaceContext context = context();
         var project = projectService.createProject(
                 new CreateProjectRequest(
@@ -81,11 +94,36 @@ class PortfolioReportServiceTest {
                 evidence, null, null, null, null, null, "frozen-prompt", "frozen-catalogue",
                 context.username(), context, 1);
 
+        var workspace = mock(WorkspaceResolver.class);
+        when(workspace.resolveCurrentUsername()).thenCallRealMethod();
+        when(workspace.resolveCurrentContext()).thenReturn(context);
+        var routes = standaloneSetup(new ProjectProductGapReviewController(gapReviews, workspace))
+                .setControllerAdvice(new PortfolioExceptionHandler()).build();
+        var gaps = "/api/projects/{projectId}/product-gaps";
+        routes.perform(get(gaps, project.id()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].classification").value("UNDECIDED"))
+                .andExpect(jsonPath("$[0].observations[0].snapshotId").value(snapshotId));
+
         var gap = gapReviews.list(project.id(), context.username(), context).getFirst();
         assertThat(gap.classification().name()).isEqualTo("UNDECIDED");
         var classify = new com.taxonomy.portfolio.service.ProjectProductGapReviewService.ReviewRequest(0,
                 gap.evidenceFingerprint(), com.taxonomy.portfolio.model.ProductGapReview.Classification.PROCURE, "Reviewed candidates");
-        var reviewed = gapReviews.review(project.id(), gap.reviewKey(), classify, context.username(), context);
+        var request = tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(classify);
+        var reviews = gaps + "/{gapKey}/reviews";
+        routes.perform(post(reviews, project.id(), gap.reviewKey()).contentType("application/json").content(request))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.revision").value(1))
+                .andExpect(jsonPath("$.history[0].reviewer").value(context.username()));
+        routes.perform(post(reviews, project.id(), gap.reviewKey()).contentType("application/json").content(request))
+                .andExpect(status().isConflict());
+        var foreign = new WorkspaceContext(context.username(), "other-" + context.workspaceId(),
+                context.currentBranch(), context.repositoryId());
+        when(workspace.resolveCurrentContext()).thenReturn(foreign);
+        routes.perform(get(gaps, project.id())).andExpect(status().isNotFound());
+        routes.perform(post(reviews, project.id(), gap.reviewKey()).contentType("application/json").content(request))
+                .andExpect(status().isNotFound());
+        var reviewed = gapReviews.list(project.id(), context.username(), context).getFirst();
         assertThat(reviewed.revision()).isOne();
         assertThat(reviewed.history().getFirst().reviewer()).isEqualTo(context.username());
         assertThat(reviewed.history().getFirst().evidenceFingerprint()).isEqualTo(gap.evidenceFingerprint());
@@ -122,8 +160,8 @@ class PortfolioReportServiceTest {
     }
 
     private WorkspaceContext context() {
-        String user = "report-" + shortId();
-        return new WorkspaceContext(user, "ws-" + user, "draft",
+        String user = SecurityContextHolder.getContext().getAuthentication().getName();
+        return new WorkspaceContext(user, "ws-" + shortId(), "draft",
                 systemRepositoryService.getPrimaryRepository().getRepositoryId());
     }
 

@@ -69,6 +69,7 @@ final class PortfolioContextHttpFixture implements AutoCloseable {
     volatile boolean jobPollingUnavailable;
     private volatile int runningAnalysisAttempt = 1;
     volatile AnalysisJobReadGate analysisJobReadGate;
+    private volatile RetryGate retryGate;
     final AtomicInteger jobListReads = new AtomicInteger();
     final AtomicInteger successfulJobPolls = new AtomicInteger();
     volatile String head = "a".repeat(40);
@@ -120,6 +121,8 @@ final class PortfolioContextHttpFixture implements AutoCloseable {
         readGate = null;
         if (analysisJobReadGate != null) analysisJobReadGate.release.countDown();
         analysisJobReadGate = null;
+        if (retryGate != null) retryGate.release.countDown();
+        retryGate = null;
         active = false;
     }
 
@@ -136,6 +139,16 @@ final class PortfolioContextHttpFixture implements AutoCloseable {
     AnalysisJobReadGate delayAnalysisJobReads() {
         analysisJobReadGate = new AnalysisJobReadGate();
         return analysisJobReadGate;
+    }
+
+    RetryGate holdFailedJobRetry() {
+        retryGate = new RetryGate();
+        return retryGate;
+    }
+
+    static final class RetryGate {
+        final AtomicInteger requests = new AtomicInteger();
+        final CountDownLatch release = new CountDownLatch(1);
     }
 
     static final class AnalysisJobReadGate {
@@ -198,6 +211,20 @@ final class PortfolioContextHttpFixture implements AutoCloseable {
                 String relative = inContext ? path.substring(context.length()) : null;
                 String versionPath = "/api/projects/" + PROJECT_A + "/requirements/" + REQUIREMENT_A + "/versions";
                 if (!Set.of("GET", "HEAD", "OPTIONS").contains(method)) {
+                    var heldRetry = retryGate;
+                    String failedJob = "/api/projects/" + PROJECT_A + "/analysis-jobs/qa-failed";
+                    if (heldRetry != null && method.equals("POST") && (failedJob + "/retry-failed").equals(relative)
+                            && exactScope(exchange)
+                            && "qa-context-workspace".equals(exchange.getRequestHeaders().getFirst("X-Taxonomy-Workspace-Id"))) {
+                        heldRetry.requests.incrementAndGet();
+                        if (!heldRetry.release.await(30, TimeUnit.SECONDS)) {
+                            reject(exchange, "Timed out waiting to release the failed job retry");
+                            return;
+                        }
+                        exchange.getResponseHeaders().set("Location", failedJob);
+                        sendJson(exchange, 202, analysisJob("qa-failed", AnalysisStatus.FAILED));
+                        return;
+                    }
                     if (method.equals("POST") && exactScope(exchange)) {
                         if ("/api/architecture/lifecycle/intake-review".equals(relative)) {
                             var input = json.readTree(exchange.getRequestBody());
