@@ -256,11 +256,16 @@ class CatalogueOverlayProposalGeneratorTest {
         var candidate = root.resolve("candidate.json");
         var receipt = root.resolve("review.json");
         writeWorkbook(workbook, fixtureRows());
-        Files.writeString(current, overlay("Medical Treatment Report"));
+        var originalOverlay = FlatJson.parseObject(overlay("Medical Treatment Report"));
+        var baselinePatches = (List<Map<String,Object>>) originalOverlay.get("nodePatches");
+        baselinePatches.stream().filter(item -> "IP-3001".equals(item.get("code"))).findFirst()
+                .orElseThrow().remove("secondaryClassificationCodes");
+        Files.writeString(current, FlatJson.pretty(originalOverlay));
         var updated = FlatJson.parseObject(Files.readString(current));
         updated.put("mappingVersion", "fixture-v2");
         var patches = (List<Map<String,Object>>) updated.get("nodePatches");
         var product = patches.stream().filter(item -> "IP-3001".equals(item.get("code"))).findFirst().orElseThrow();
+        product.put("secondaryClassificationCodes", List.of());
         product.put("justification", "Reviewed the catalogue evidence");
         product.put("reviewRequired", false);
         Files.writeString(candidate, FlatJson.pretty(updated).replace("0.90", "0.9"));

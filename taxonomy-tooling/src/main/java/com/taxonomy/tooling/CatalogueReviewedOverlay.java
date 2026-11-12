@@ -48,8 +48,10 @@ final class CatalogueReviewedOverlay {
             if (!(before.get(i) instanceof Map<?,?> original) || !code.equals(original.get("code"))) continue;
             if (!Boolean.TRUE.equals(original.get("reviewRequired")) || !(after.get(i) instanceof Map<?,?> replacement))
                 throw new IllegalArgumentException("The recorded product was not provisional");
+            var originalSecondary = original.containsKey("secondaryClassificationCodes")
+                    ? original.get("secondaryClassificationCodes") : List.of();
             if ("ACCEPT".equals(decision.get("action")) && (!Objects.equals(original.get("parentCode"), decision.get("proposedParent"))
-                    || !Objects.equals(original.getOrDefault("secondaryClassificationCodes", null), decision.get("secondary"))))
+                    || !Objects.equals(originalSecondary, decision.get("secondary"))))
                 throw new IllegalArgumentException("Acceptance cannot replace a product's classifications");
             var edit = new java.util.LinkedHashMap<Object,Object>(original);
             edit.put("parentCode", decision.get("proposedParent"));
