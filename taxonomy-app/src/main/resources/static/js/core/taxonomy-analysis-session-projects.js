@@ -655,8 +655,8 @@
     var retainedDraft = null;
 
     function historyAnalysisSource() {
-        if (!window.location.href || (!restoredFromCache
-                && window.performance?.getEntriesByType?.('navigation')?.[0]?.type !== 'back_forward')) return null;
+        if (!restoredFromCache && window.performance?.getEntriesByType?.('navigation')?.[0]?.type !== 'back_forward') return null;
+        if (!window.location?.href) return null;
         var url = new URL(window.location.href);
         if (/\/architecture\/(editor|workbench)$/.test(url.pathname)) return null;
         var query = url.searchParams;
