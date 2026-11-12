@@ -111,7 +111,13 @@ for (const [keep, missingCurrent] of [[false, false], [true, false], [false, tru
         assert.ok(!captured.includes(credential), 'Fixture credentials must not enter diagnostic artifacts');
       }
       assert.match(previous, /\[REDACTED\]/);
-      const commands = readFileSync(join(state, 'calls.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line).join(' '));
+      const calls = readFileSync(join(state, 'calls.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
+      const brokerOption = calls.flat().find(arg => arg.startsWith('--from-literal=ARTEMIS_BROKER_URL='));
+      const brokerTrust = new URL(brokerOption.slice('--from-literal=ARTEMIS_BROKER_URL='.length)).searchParams;
+      assert.equal(brokerTrust.get('forceSSLParameters'), 'true', 'HTTP provider trust must not override broker-specific TLS');
+      assert.equal(brokerTrust.get('verifyHost'), 'true');
+      assert.equal(brokerTrust.get('trustStorePath'), '/var/run/taxonomy-artemis/client.p12');
+      const commands = calls.map(call => call.join(' '));
       const install = commands.find(command => command.includes(' upgrade --install '));
       assert.ok(!install.includes('--atomic'), 'Automatic uninstall destroys evidence before cleanup can collect it');
       assert.ok(install.includes('--timeout 12m'));

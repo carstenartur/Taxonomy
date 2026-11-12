@@ -198,12 +198,13 @@ kubectl create secret generic taxonomy-artemis-broker-tls --namespace "${NAMESPA
   --from-file="${PRIVATE_DIR}/broker.p12" --dry-run=client -o yaml | kubectl apply -f -
 kubectl create secret generic taxonomy-artemis-client-tls --namespace "${NAMESPACE}" \
   --from-file="${PRIVATE_DIR}/client.p12" --dry-run=client -o yaml | kubectl apply -f -
+# Keep this broker connector on its own trust material when the HTTPS provider installs a JVM trust store.
 kubectl create secret generic taxonomy-artemis-smoke --namespace "${NAMESPACE}" \
   --from-literal=SPRING_DATASOURCE_URL='jdbc:postgresql://smoke-postgres:5432/taxonomy' \
   --from-literal=SPRING_DATASOURCE_USERNAME=taxonomy --from-literal="SPRING_DATASOURCE_PASSWORD=${db_password}" \
   --from-literal="ADMIN_PASSWORD=${admin_password}" --from-literal="ADMIN_TOKEN=${admin_token}" \
   --from-literal=ARTEMIS_USER=taxonomy-smoke --from-literal="ARTEMIS_PASSWORD=${broker_password}" \
-  --from-literal="ARTEMIS_BROKER_URL=tcp://smoke-broker:61617?sslEnabled=true&verifyHost=true&trustStoreType=PKCS12&trustStorePath=/var/run/taxonomy-artemis/client.p12&trustStorePassword=${tls_password}" \
+  --from-literal="ARTEMIS_BROKER_URL=tcp://smoke-broker:61617?sslEnabled=true&verifyHost=true&forceSSLParameters=true&trustStoreType=PKCS12&trustStorePath=/var/run/taxonomy-artemis/client.p12&trustStorePassword=${tls_password}" \
   --dry-run=client -o yaml | kubectl apply -f -
 printf 'user = "admin:%s"\n' "${admin_password}" >"${PRIVATE_DIR}/web.curl"
 printf 'user = "taxonomy-smoke:%s"\n' "${broker_password}" >"${PRIVATE_DIR}/broker.curl"

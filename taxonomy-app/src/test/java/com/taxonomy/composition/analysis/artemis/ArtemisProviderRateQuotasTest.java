@@ -831,8 +831,7 @@ class ArtemisProviderRateQuotasTest {
     }
     void provision(ProviderQuotaLedger.Policy policy,String body,boolean exclusive,String adapter) throws Exception {
         try (var factory = factory(); var connection = factory.createConnection();var session = connection.createSession(true, Session.SESSION_TRANSACTED)) {
-            ((ActiveMQSession)session).getCoreSession().createQueue(QueueConfiguration.of(QUEUE).setAddress(QUEUE)
-                    .setRoutingType(RoutingType.ANYCAST).setDurable(true).setExclusive(exclusive).setAutoDelete(false).setAutoCreated(false));
+            ArtemisProviderCapacityQueue.create(((ActiveMQSession) session).getCoreSession(), QUEUE, exclusive);
             try (var producer = session.createProducer(session.createQueue(QUEUE + "::" + QUEUE))) {
                 var message = session.createTextMessage(body);
                 message.setIntProperty("schemaVersion", 1);message.setStringProperty("quotaGroup", GROUP);
