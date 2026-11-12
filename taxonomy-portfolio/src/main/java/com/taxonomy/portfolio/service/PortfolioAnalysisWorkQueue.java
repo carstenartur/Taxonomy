@@ -74,9 +74,12 @@ public class PortfolioAnalysisWorkQueue {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public List<WorkItem> pending(String jobId, Long projectId, String scopeKey) {
         String exactScope = requireScope(scopeKey);
-        jobRepository.findByIdAndProjectIdAndScopeKey(jobId, projectId, exactScope)
+        var job = jobRepository.findByIdAndProjectIdAndScopeKeyForUpdate(jobId, projectId, exactScope)
                 .orElseThrow(() -> PortfolioException.notFound(
                         "Analysis job not found: " + jobId));
+        if (job.getStatus() == AnalysisStatus.CANCELLED) {
+            return List.of();
+        }
 
         List<RequirementAnalysisJobItem> candidates = itemRepository
                 .findByJobIdAndProjectIdAndScopeKeyAndStatusOrderByRequirementRequirementKeyAsc(
@@ -99,6 +102,9 @@ public class PortfolioAnalysisWorkQueue {
             if (updated == 1) {
                 claimed.add(toWorkItem(item));
             }
+        }
+        if (!claimed.isEmpty() && job.getStatus() != AnalysisStatus.RUNNING) {
+            job.markRunning(claimedAt);
         }
         return List.copyOf(claimed);
     }
