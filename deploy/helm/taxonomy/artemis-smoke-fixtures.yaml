@@ -20,8 +20,8 @@ spec:
     services: "5"
     secrets: "12"
     configmaps: "8"
-    persistentvolumeclaims: "1"
-    requests.storage: 512Mi
+    persistentvolumeclaims: "2"
+    requests.storage: 1Gi
 ---
 apiVersion: v1
 kind: LimitRange
@@ -112,6 +112,16 @@ spec:
   selector: {app.kubernetes.io/name: taxonomy-smoke-postgres}
   ports: [{port: 5432, targetPort: postgres}]
 ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: smoke-broker-data
+  namespace: taxonomy-artemis-smoke
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests: {storage: 512Mi}
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -167,7 +177,7 @@ spec:
             - {name: configuration, mountPath: /var/lib/artemis-instance/etc-override, readOnly: true}
             - {name: tls, mountPath: /etc/artemis/tls, readOnly: true}
       volumes:
-        - {name: data, emptyDir: {}}
+        - {name: data, persistentVolumeClaim: {claimName: smoke-broker-data}}
         - {name: tmp, emptyDir: {}}
         - name: configuration
           secret: {secretName: taxonomy-artemis-broker-config}

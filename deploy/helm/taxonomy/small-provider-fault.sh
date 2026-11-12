@@ -27,7 +27,7 @@ install_small_provider() (
 )
 
 exercise_small_provider_fault() (
-  local pod=$1 directory=$2 operation workspace lost replacement attempts state i http_pid private
+  local pod=$1 directory=$2 observe_started=$3 operation workspace lost replacement attempts state i http_pid private
   private=$(mktemp -d)
   http_pid=""
   trap 'if [[ -n "${http_pid}" ]]; then kill "${http_pid}" 2>/dev/null || true; wait "${http_pid}" 2>/dev/null || true; fi; rm -rf -- "${private}"' EXIT
@@ -56,7 +56,7 @@ exercise_small_provider_fault() (
     sleep 1
   done
   [[ "${attempts}" == 1 ]] || fail "No real provider request arrived on the controlled TLS listener"
-  sample_resources >>"${directory}/inference-samples.ndjson"
+  "${observe_started}"
   app_request --fail -X POST "${api}/analysis-runs/${operation}/cancel?workspaceId=${workspace}" |
     jq -e --arg op "${operation}" '.operationId == $op and (.status == "CANCELLING" or .status == "CANCELLED")' >/dev/null
   kubectl rollout restart deployment/small-provider --namespace "${NAMESPACE}"
@@ -65,9 +65,14 @@ exercise_small_provider_fault() (
     jq -er '[.items[] | select(.metadata.deletionTimestamp == null)] | select(length == 1) | .[0].metadata.uid')
   [[ -n "${lost}" && "${replacement}" != "${lost}" ]] || fail "Expected a replacement provider pod"
   wait "${http_pid}"; http_pid=""
-  state=$(app_request --fail "${api}/analysis-runs/${operation}?workspaceId=${workspace}" |
-    jq -ce --arg op "${operation}" 'select(.operationId == $op and .status == "CANCELLED") |
-      {operationId,status,stopReason,queueWaitMillis,elapsedMillis}')
+  state=""
+  for ((i=0; i<45; i++)); do
+    if state=$(app_request --fail "${api}/analysis-runs/${operation}?workspaceId=${workspace}" |
+        jq -ce --arg op "${operation}" 'select(.operationId == $op and .status == "CANCELLED") |
+          {operationId,status,stopReason,queueWaitMillis,elapsedMillis}'); then break; fi
+    sleep 1
+  done
+  [[ -n "${state}" ]] || fail "The cancelled operation did not reach its scoped terminal state"
   kubectl exec --namespace "${NAMESPACE}" deployment/small-provider -- test ! -e /tmp/provider-attempts
   kubectl exec --namespace "${NAMESPACE}" "${pod}" -- curl -fsS --connect-timeout 3 --max-time 10 \
     --cacert /run/small-provider/provider.pem https://small-provider:8443/v1/models |
