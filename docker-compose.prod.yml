@@ -28,6 +28,8 @@ services:
       - .env
     environment:
       - SPRING_PROFILES_ACTIVE=production,hsqldb
+      # Caddy terminates TLS and is the only published service in this stack.
+      - SERVER_FORWARD_HEADERS_STRATEGY=native
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
