@@ -37,18 +37,23 @@ window.ArchitectureWorkbenchApi = (function () {
         return window.TaxonomyArchitectureWorkflow?.scopeUrl(path) || path;
     }
 
-    function base(projectId, snapshotId, suffix, source) {
+    function base(projectId, snapshotId, suffix, source, withLanguage) {
         const path = '/api/projects/' + positiveInteger(projectId, 'projectId')
             + '/architecture-workbench/' + snapshot(snapshotId) + (suffix || '');
-        return scoped(window.TaxonomyI18n?.resolveUrl?.(path) || path, source);
+        const url = window.TaxonomyI18n?.resolveUrl?.(path) || path;
+        return scoped(withLanguage ? withDocumentLanguage(url) : url, source);
+    }
+
+    function withDocumentLanguage(url) {
+        const language = window.TaxonomyContentLanguage?.documentLanguage(null);
+        return language ? url + '?language=' + encodeURIComponent(language) : url;
     }
 
     function wordUrl(projectId, snapshotId, report, source) {
         const path = '/api/projects/' + positiveInteger(projectId, 'projectId')
             + '/snapshots/' + snapshot(snapshotId) + '/' + report + '/docx';
         const url = window.TaxonomyI18n?.resolveUrl?.(path) || path;
-        const language = window.TaxonomyContentLanguage?.documentLanguage(null);
-        return scoped(language ? url + '?language=' + encodeURIComponent(language) : url, source);
+        return scoped(withDocumentLanguage(url), source);
     }
 
     return {
@@ -62,10 +67,10 @@ window.ArchitectureWorkbenchApi = (function () {
             return getJson(base(projectId, snapshotId, null, source), signal, source);
         },
         svgUrl: function (projectId, snapshotId, source) {
-            return base(projectId, snapshotId, '.svg', source);
+            return base(projectId, snapshotId, '.svg', source, true);
         },
         pdfUrl: function (projectId, snapshotId, source) {
-            return base(projectId, snapshotId, '.pdf', source);
+            return base(projectId, snapshotId, '.pdf', source, true);
         },
         archiMateUrl: function (projectId, snapshotId, source) {
             return base(projectId, snapshotId, '.archimate.xml', source);

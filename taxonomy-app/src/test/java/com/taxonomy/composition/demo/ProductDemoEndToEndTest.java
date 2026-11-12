@@ -16,6 +16,7 @@ import com.taxonomy.portfolio.reformulation.ReformulationAdoptionDtos;
 import com.taxonomy.portfolio.reformulation.ReformulationAdoptionService;
 import com.taxonomy.portfolio.reformulation.ReformulationDtos;
 import com.taxonomy.portfolio.reformulation.ReformulationService;
+import com.taxonomy.portfolio.reformulation.ReformulationProgressService;
 import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.PortfolioReportService;
@@ -52,6 +53,7 @@ import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -79,6 +81,7 @@ class ProductDemoEndToEndTest {
     @Autowired ProjectRequirementAnalysisService analysis;
     @Autowired PortfolioAnalysisPersistenceService analyses;
     @Autowired ReformulationService reformulations;
+    @Autowired ReformulationProgressService progress;
     @Autowired ReformulationExecutionService execution;
     @Autowired ReformulationAdoptionService adoptions;
     @Autowired PortfolioReportService reports;
@@ -319,6 +322,8 @@ class ProductDemoEndToEndTest {
 
         assertFrozenDecisionReports(run.projectId(), a0Snapshot, 1, "DEMO.TIME-TRACKING-V1.R0");
         assertFrozenDecisionReports(run.projectId(), a1Snapshot, 2, "DEMO.TIME-TRACKING-V1.R1");
+        assertArchitectureDownloads(run.projectId(), a0Snapshot, "DEMO.TIME-TRACKING-V1.R0");
+        assertArchitectureDownloads(run.projectId(), a1Snapshot, "DEMO.TIME-TRACKING-V1.R1");
         assertThat(analyses.listJobs(run.projectId(), USER, context)).isEqualTo(jobsBeforeExport);
 
         // Exports of the demo project stay labelled as demo output.
@@ -360,18 +365,60 @@ class ProductDemoEndToEndTest {
             assertThat(payload).isNotEmpty();
             if (id.equals("json")) {
                 var parsed = json.readTree(payload);
+                assertThat(parsed.path("title").asString()).startsWith("DEMO · ");
                 assertThat(parsed.at("/metadata/analysisSnapshotId").asString()).isEqualTo(snapshotId);
                 assertThat(parsed.at("/metadata/analysisProvider").asString()).isEqualTo(provider);
                 assertThat(parsed.path("languageTag").asString()).isEqualTo("de");
             } else if (id.equals("html")) {
-                assertThat(new String(payload, StandardCharsets.UTF_8)).contains(provider, snapshotId);
+                assertThat(new String(payload, StandardCharsets.UTF_8)).contains("<h1>DEMO · ", provider, snapshotId);
             } else if (id.equals("docx")) {
                 try (var document = new XWPFDocument(new ByteArrayInputStream(payload));
                      var text = new org.apache.poi.xwpf.extractor.XWPFWordExtractor(document)) {
+                    assertThat(document.getParagraphs().getFirst().getText()).startsWith("DEMO · ");
                     assertThat(text.getText()).contains(provider, snapshotId);
                 }
             }
         }
+    }
+
+    private void assertArchitectureDownloads(Long projectId, String snapshotId, String provider) throws Exception {
+        String base = "/api/projects/" + projectId;
+        String graph = base + "/architecture-workbench/" + snapshotId;
+        var word = architectureDownload(base + "/snapshots/" + snapshotId + "/architecture-report/docx");
+        assertThat(word.getHeader("X-Taxonomy-Snapshot-Id")).isEqualTo(snapshotId);
+        try (var document = new XWPFDocument(new ByteArrayInputStream(word.getContentAsByteArray()))) {
+            assertThat(document.getParagraphs().getFirst().getText()).startsWith("DEMO · ");
+        }
+        assertThat(architectureDownload(graph + ".svg").getContentAsString(StandardCharsets.UTF_8))
+                .contains("<title>DEMO · ", "xml:lang=\"de\"", "Bewertungen und vollständige Begründungen");
+        try (var pdf = org.apache.pdfbox.Loader.loadPDF(architectureDownload(graph + ".pdf").getContentAsByteArray())) {
+            assertThat(pdf.getDocumentInformation().getTitle()).startsWith("DEMO · ");
+            assertThat(pdf.getDocumentCatalog().getLanguage()).isEqualTo("de");
+            assertThat(new org.apache.pdfbox.text.PDFTextStripper().getText(pdf)).contains("Exportinventar", "Beziehungsinventar");
+        }
+        for (String format : List.of("archimate", "visio")) {
+            var download = architectureDownload(graph + "." + format + ".zip");
+            assertThat(download.getHeader("X-Taxonomy-Snapshot-Id")).isEqualTo(snapshotId);
+            try (var archive = new java.util.zip.ZipInputStream(new ByteArrayInputStream(download.getContentAsByteArray()))) {
+                java.util.zip.ZipEntry entry;
+                do {
+                    entry = archive.getNextEntry();
+                    assertThat(entry).as("offline manifest for %s", format).isNotNull();
+                } while (!entry.getName().equals("manifest.json"));
+                var manifest = json.readTree(archive.readAllBytes());
+                var source = format.equals("archimate") ? manifest.path("provenance") : manifest.at("/handoff/authority");
+                assertThat(source.at("/taxonomy.analysisProvider/value").asString()).isEqualTo(provider);
+                assertThat(source.at("/taxonomy.snapshotId/value").asString()).isEqualTo(snapshotId);
+            }
+        }
+    }
+
+    private MockHttpServletResponse architectureDownload(String path) throws Exception {
+        var response = mvc.perform(get(path).param("language", "de")).andExpect(status().isOk())
+                .andReturn().getResponse();
+        var disposition = org.springframework.http.ContentDisposition.parse(response.getHeader("Content-Disposition"));
+        assertThat(disposition.getFilename()).startsWith("DEMO-");
+        return response;
     }
 
     private record DemoReports(JsonNode json, List<String> word, String markdown, String html) { }
@@ -484,9 +531,23 @@ class ProductDemoEndToEndTest {
         var started = execution.start(run.projectId(), run.requirementId(), proposal.id(),
                 proposal.currentRevision().number(), USER, context);
         assertThat(started.provider()).startsWith("DEMO.TIME-TRACKING-V1.R");
-        await().atMost(Duration.ofSeconds(60)).until(() -> reformulations.runs(run.projectId(), run.requirementId(),
-                proposal.id(), USER, context).stream().filter(r -> r.id().equals(started.id()))
-                .anyMatch(r -> List.of("COMPLETED", "PARTIAL", "FAILED", "CANCELLED").contains(r.status())));
+        // A busy worker must commit another checkpoint within a minute. A queued or stalled worker cannot extend its wait.
+        long deadline = System.nanoTime() + Duration.ofMinutes(10).toNanos();
+        var terminal = Set.of("COMPLETED", "PARTIAL", "FAILED", "CANCELLED");
+        long checkpoints = 0;
+        while (true) {
+            long remaining = deadline - System.nanoTime();
+            assertThat(remaining).as("overall limit for run %s after %s checkpoints", started.id(), checkpoints).isPositive();
+            long previous = checkpoints;
+            Duration window = Duration.ofNanos(Math.min(remaining, Duration.ofMinutes(1).toNanos()));
+            var observed = await("completion or a new committed checkpoint for " + started.id())
+                    .pollDelay(Duration.ZERO).pollInterval(Duration.ofSeconds(1)).atMost(window)
+                    .until(() -> progress.progress(run.projectId(), run.requirementId(), proposal.id(), started.id(),
+                                    1, null, USER, context),
+                            point -> terminal.contains(point.status()) || point.runCheckpointCount() > previous);
+            if (terminal.contains(observed.status())) break;
+            checkpoints = observed.runCheckpointCount();
+        }
         var finished = reformulations.runs(run.projectId(), run.requirementId(), proposal.id(), USER, context).stream()
                 .filter(r -> r.id().equals(started.id())).findFirst().orElseThrow();
         assertThat(finished.status()).as("run %s", finished).isEqualTo(expectedStatus);

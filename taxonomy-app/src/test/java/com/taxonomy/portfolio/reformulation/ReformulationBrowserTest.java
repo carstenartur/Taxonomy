@@ -122,6 +122,49 @@ class ReformulationBrowserTest extends ReformulationWorkflowFixture {
             Files.writeString(output.resolve("failure-geometry.json"),String.valueOf(driver.executeScript("return JSON.stringify(window.__reformulationClickGeometry || {})")));throw failure;
         } finally {saveGate.release.countDown();session.close();}
     }
+    @Test void mobileRequirementRetainsSourceAndKeyboardAccessWithManyReviewedOffers() throws Exception {
+        var proposal = seed();
+        for (int index = 1; index <= 25; index++) {
+            reformulations.variant(project.id(), requirement.id(), proposal.id(), proposal.currentRevision().number(),
+                    new ReformulationDtos.VariantRequest("Reviewed alternative " + index), "architect", context);
+        }
+        inBrowser("many-offers-source", proposal.id(), (driver, wait) -> {
+            ((HasCdp) new Augmenter().augment(driver)).executeCdpCommand("Emulation.setDeviceMetricsOverride",
+                    Map.of("width", 390, "height", 844, "deviceScaleFactor", 1, "mobile", true));
+            wait.until(d -> ((Number) driver.executeScript("return innerWidth")).intValue() == 390);
+            var options = new Select(driver.findElement(By.cssSelector("#reformulationList > select"))).getOptions();
+            assertThat(options).extracting(option -> option.getDomProperty("value")).hasSize(26).doesNotHaveDuplicates();
+            assertThat(driver.findElement(By.id("currentText")).getDomProperty("innerText")).isEqualTo(ORIGINAL);
+            assertThat((Boolean) driver.executeScript("""
+                    return document.getElementById('currentText').getBoundingClientRect().bottom
+                        <= document.getElementById('reformulationOffers').getBoundingClientRect().top
+                        && document.documentElement.scrollWidth === innerWidth;
+                    """)).isTrue();
+            click(driver, By.id("versions-tab"));
+            driver.findElement(By.cssSelector("nav a[href='#reformulationOffers']")).sendKeys(Keys.ENTER);
+            wait.until(d -> "reformulationOffers".equals(d.switchTo().activeElement().getDomAttribute("id")));
+            driver.findElement(By.id("jumpToRequirementText")).sendKeys(Keys.ENTER);
+            wait.until(d -> "true".equals(d.findElement(By.id("text-tab")).getDomAttribute("aria-selected")));
+            awaitVisibleSourceFocus(driver, wait);
+            new org.openqa.selenium.interactions.Actions(driver).keyDown(Keys.SHIFT)
+                    .sendKeys(Keys.TAB).keyUp(Keys.SHIFT).perform();
+            wait.until(d -> "text-tab".equals(d.switchTo().activeElement().getDomAttribute("id")));
+            new org.openqa.selenium.interactions.Actions(driver).sendKeys(Keys.TAB).perform();
+            awaitVisibleSourceFocus(driver, wait);
+        });
+    }
+
+    private static void awaitVisibleSourceFocus(RemoteWebDriver driver, WebDriverWait wait) {
+        wait.until(d -> Boolean.TRUE.equals(driver.executeScript("""
+                const panel = document.getElementById('textPane'), box = panel.getBoundingClientRect();
+                const hit = document.elementFromPoint(box.left + 10, box.top + 9);
+                const state = {focus: document.activeElement.id || document.activeElement.outerHTML.slice(0, 90),
+                    top: box.top, hit: hit?.id || hit?.tagName, ready: document.activeElement === panel && panel.contains(hit)};
+                window.__reformulationClickGeometry = state;
+                return state.ready;
+                """)));
+    }
+
     @Test void wideAndNarrowWorkspacePreservesEditsWhitespaceAndExplicitProposalSave() throws Exception {
         var proposal=seed();var before=projects.getRequirement(project.id(),requirement.id(),"architect",context);
         var session=BrowserSession.open(port,Path.of("target/scenario-acceptance/reformulation-browser/downloads"));
