@@ -23,6 +23,7 @@ RESOURCE_SELECTOR="app.kubernetes.io/instance=${RELEASE},app.kubernetes.io/name=
 PORT_FORWARD_PID=""
 NAMESPACE_UID=""
 FIXTURE_KUBECONFIG=""
+BUILD_METADATA=""
 
 fail() {
   echo "::error::$*" >&2
@@ -40,6 +41,7 @@ cleanup() {
     printf '{"apiVersion":"v1","kind":"DeleteOptions","preconditions":{"uid":"%s"}}\n' "${NAMESPACE_UID}" \
       | kubectl delete --request-timeout=10s --raw "/api/v1/namespaces/${NAMESPACE}" -f - >/dev/null 2>&1 || true
   fi
+  if [[ -n "${BUILD_METADATA}" ]]; then rm -f -- "${BUILD_METADATA}"; fi
   if [[ -n "${FIXTURE_KUBECONFIG}" ]]; then
     rm -f -- "${FIXTURE_KUBECONFIG}"
   fi
@@ -90,7 +92,12 @@ VERSION=$("${ROOT_DIR}/mvnw" -q -f "${ROOT_DIR}/pom.xml" -DforceStdout help:eval
 
 printf 'Building constrained-smoke image %s from %s\n' \
   "${IMAGE_REFERENCE}" "${SOURCE_SHA}"
-docker build \
+build_options=()
+if [[ "${MEASURE_SMALL_SEARCH:-false}" == true ]]; then
+  BUILD_METADATA=$(mktemp)
+  build_options=(--metadata-file "${BUILD_METADATA}")
+fi
+docker build "${build_options[@]}" \
   --build-arg "BUILD_DATE=${BUILD_DATE}" \
   --build-arg "VCS_REF=${SOURCE_SHA}" \
   --build-arg "VERSION=${VERSION}" \
@@ -99,6 +106,16 @@ docker build \
 IMAGE_ID=$(docker image inspect "${IMAGE_REFERENCE}" --format '{{.Id}}')
 if ! [[ "${IMAGE_ID}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
   fail "Docker did not return an immutable local image ID"
+fi
+
+if [[ -n "${BUILD_METADATA}" ]]; then
+  # Buildx records both the native platform config and the index/manifest that owns it.
+  # Store only digests. Other BuildKit metadata is outside this fixture's evidence.
+  jq -e --arg inspected "${IMAGE_ID}" '
+    {configDigest:."containerimage.config.digest", outputDigest:."containerimage.digest"}
+    | select(all(.[]; type == "string" and test("^sha256:[0-9a-f]{64}$")))
+    | select(.outputDigest == $inspected or .configDigest == $inspected)' \
+    "${BUILD_METADATA}" >"${EVIDENCE_DIR}/built-image-digests.json" || fail "Missing matching BuildKit output digests"
 fi
 
 kind load docker-image "${IMAGE_REFERENCE}" --name "${KIND_CLUSTER_NAME}"

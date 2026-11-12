@@ -130,6 +130,7 @@ trap cleanup EXIT
 # A failed or render-only rerun must not leave a previous live success marker.
 mkdir -p "${EVIDENCE_DIR}"
 rm -f -- "${EVIDENCE_DIR}/evidence.json" \
+  "${EVIDENCE_DIR}/database-replacement.json" \
   "${EVIDENCE_DIR}/worker-loss-broker.json" "${EVIDENCE_DIR}/worker-loss-database.json" \
   "${EVIDENCE_DIR}"/{before-dispatch,after-dispatch}-coordinator-{pods,broker,database}.json \
   "${EVIDENCE_DIR}"/coordinator-{before-dispatch,after-dispatch}.json \

@@ -31,10 +31,13 @@ measure_small_search() {
   pod=$(jq -er .pod "${directory}/pod.json"); uid=$(jq -er .uid "${directory}/pod.json")
   node=$(jq -er .node "${directory}/pod.json")
   runtime_id=$(jq -er '.image | split("://") | last' "${directory}/pod.json")
-  # CRI image status supplies the configuration digest independently of the tag.
+  # The Pod may report the configuration digest while Docker reports the OCI index.
+  # Match CRI to the configuration recorded independently by the build.
   docker exec "${node}" crictl inspecti "${runtime_id}" |
-    jq -e --arg expected "${IMAGE_ID}" '.status | select(.id == $expected) |
-      {configDigest:.id, repositoryDigests:.repoDigests}' >"${directory}/runtime-image.json"
+    jq -e --slurpfile build "${EVIDENCE_DIR}/built-image-digests.json" '
+      .status | select(.id == $build[0].configDigest) |
+      {configDigest:.id, repositoryDigests:.repoDigests, builtOutputDigest:$build[0].outputDigest}' \
+    >"${directory}/runtime-image.json" || fail "Running image differs from the native platform configuration recorded by BuildKit"
   jq -e '.resources.requests.cpu == "100m" and .resources.requests.memory == "768Mi" and
     .resources.limits.cpu == "500m" and .resources.limits.memory == "1536Mi" and
     .resources.limits["ephemeral-storage"] == "512Mi"' "${directory}/pod.json" >/dev/null
