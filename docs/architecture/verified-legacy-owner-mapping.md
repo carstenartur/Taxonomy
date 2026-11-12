@@ -46,6 +46,11 @@ binding. It does not expose owner names on the startup failure path. The invento
 bounded to 100,000 distinct scopes and fails closed above that limit or if the
 identity schema is unavailable.
 
+Revoking a verified historical link disables both the principal and its binding. A
+subsequent STABLE startup recognizes that tombstone only when both the original
+link and its removal have a committed audit record. A generated STABLE scope retains
+its identity after disablement. Neither case enables the principal or grants access.
+
 `linkVerified` now rejects an otherwise complete approved mapping plan if post-V3
 LEGACY ownership has not been reserved. In the `keycloak` profile, a configured
 `principal-mode=STABLE` checks the inventory after identity-schema initialization

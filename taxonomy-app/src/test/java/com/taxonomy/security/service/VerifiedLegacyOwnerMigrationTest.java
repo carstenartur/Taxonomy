@@ -124,11 +124,15 @@ class VerifiedLegacyOwnerMigrationTest {
                 .isInstanceOf(AccessDeniedException.class);
         migration.unlinkVerified(admin, target, "https://idp.example", "sub-a", "approved:revoke");
         assertThat(identities.isEnabled(target)).isFalse();
+        LegacyOwnerMigrationReadiness.requireReady(database);
         assertThatThrownBy(() -> identities.oidc("https://idp.example", "sub-a"))
                 .isInstanceOf(org.springframework.security.authentication.DisabledException.class);
         assertThat(jdbc.queryForObject("select count(*) from principal_access_audit", Integer.class)).isEqualTo(3);
         assertThat(jdbc.queryForObject("select count(*) from principal_binding where principal_id=?",
                 Integer.class, target.value().toString())).isEqualTo(1);
+        // A disabled row without its committed removal audit is still unresolved.
+        jdbc.update("delete from principal_access_audit where decision_kind='UNLINK_LEGACY_OIDC'");
+        assertThat(LegacyOwnerMigrationReadiness.inspect(database).ready()).isFalse();
     }
 
     @Test void genericOidcPrincipalIsNotAnEligibleHistoricalUnlinkTarget() {
@@ -268,6 +272,10 @@ class VerifiedLegacyOwnerMigrationTest {
         var late = identities.oidc("https://idp.example", "different-subject");
         jdbc.update("insert into user_workspace values (?, 'new-private-workspace')", late.scopeKey());
         assertThat(LegacyOwnerMigrationReadiness.inspect(database).ready()).isTrue();
+        jdbc.update("update app_principal set enabled=0 where principal_id=?", late.id().value().toString());
+        LegacyOwnerMigrationReadiness.requireReady(database);
+        assertThatThrownBy(() -> identities.oidc("https://idp.example", "different-subject"))
+                .isInstanceOf(org.springframework.security.authentication.DisabledException.class);
         jdbc.update("insert into user_workspace values ('unmapped-after-link', 'other')");
         assertThat(LegacyOwnerMigrationReadiness.inspect(database).ready()).isFalse();
     }

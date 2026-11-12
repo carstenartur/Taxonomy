@@ -108,37 +108,40 @@ public final class LegacyOwnerMigrationReadiness {
                 where p.scope_key=?
                 """);
              var audit = connection.prepareStatement("""
-                select count(*) from principal_access_audit
-                where target_principal=? and decision_kind='LINK_LEGACY_OIDC'
+                select count(distinct decision_kind) from principal_access_audit
+                where target_principal=? and decision_kind in ('LINK_LEGACY_OIDC', ?)
                 """)) {
             for (String scope : scopes) {
                 owners.setString(1, scope);
                 boolean found = false;
                 boolean verified = false;
-                Set<String> historicalOidcIds = new HashSet<>();
+                Set<HistoricalBinding> historicalBindings = new HashSet<>();
                 try (var rows = owners.executeQuery()) {
                     while (rows.next()) {
                         found = true;
-                        if (rows.getInt(2) != 1 || rows.getInt(4) != 1) continue;
+                        boolean principalEnabled = rows.getInt(2) == 1;
+                        boolean bindingEnabled = rows.getInt(4) == 1;
                         String kind = rows.getString(3);
-                        if ("LOCAL".equals(kind)) {
+                        if ("LOCAL".equals(kind) && principalEnabled && bindingEnabled) {
                             verified = true;
                         } else if ("OIDC".equals(kind)) {
                             String id = rows.getString(1);
                             if (scope.equals("principal-" + id.toLowerCase(Locale.ROOT))) {
                                 verified = true; // new server-generated STABLE scope
-                            } else {
-                                historicalOidcIds.add(id);
+                            } else if (principalEnabled == bindingEnabled) {
+                                historicalBindings.add(new HistoricalBinding(id, !principalEnabled));
                             }
                         }
                     }
                 }
                 // Close the owner cursor first: SQL Server connections without MARS may not
                 // execute a second statement while the initial ResultSet is still open.
-                if (!verified) for (String id : historicalOidcIds) {
-                    audit.setString(1, id);
+                if (!verified) for (var binding : historicalBindings) {
+                    audit.setString(1, binding.id());
+                    // A disabled historical identity needs both the original link and its audited removal.
+                    audit.setString(2, binding.revoked() ? "UNLINK_LEGACY_OIDC" : "LINK_LEGACY_OIDC");
                     try (var matches = audit.executeQuery()) {
-                        if (matches.next() && matches.getInt(1) > 0) {
+                        if (matches.next() && matches.getInt(1) == (binding.revoked() ? 2 : 1)) {
                             verified = true;
                             break;
                         }
@@ -180,4 +183,5 @@ public final class LegacyOwnerMigrationReadiness {
     }
 
     private record Source(String table, String column) { }
+    private record HistoricalBinding(String id, boolean revoked) { }
 }
