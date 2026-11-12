@@ -202,8 +202,22 @@ public final class ArchitectureDslCommands {
     }
 
     private void validateOrganizations(String source) {
-        ArchitectureOrganization.validate(model(source),
+        var ast = new TaxDslParser().parse(source);
+        for (BlockAst block : ast.getBlocks()) {
+            if ("organization".equals(block.getKind())) {
+                requireSingleProperty(block, "parentId");
+                requireSingleProperty(block, "title");
+            } else if ("element".equals(block.getKind())) {
+                requireSingleProperty(block, ArchitectureOrganization.RESPONSIBLE_ID);
+            }
+        }
+        ArchitectureOrganization.validate(new AstToModelMapper().map(ast),
                 (code, message) -> { throw problem(code, "organization", message); });
+    }
+
+    private static void requireSingleProperty(BlockAst block, String key) {
+        if (block.propertyValues(key).size() > 1)
+            throw problem("DUPLICATE_PROPERTY", key, "Ambiguous " + key + " on " + ArchitectureSemanticPatch.key(block));
     }
 
     private String upsertOrganization(String source, Map<String, BlockAst> blocks, UpsertOrganization command) {
@@ -568,8 +582,8 @@ public final class ArchitectureDslCommands {
                     default -> false;
                 };
             } else if ("organization".equals(removed.getKind())) {
-                references = "organization".equals(candidate.getKind()) && id.equals(candidate.property("parentId"))
-                        || "element".equals(candidate.getKind()) && id.equals(candidate.property(ArchitectureOrganization.RESPONSIBLE_ID));
+                references = "organization".equals(candidate.getKind()) && candidate.propertyValues("parentId").contains(id)
+                        || "element".equals(candidate.getKind()) && candidate.propertyValues(ArchitectureOrganization.RESPONSIBLE_ID).contains(id);
             } else if ("package".equals(removed.getKind())) {
                 references = "package".equals(candidate.getKind()) && id.equals(candidate.property("parent"))
                         || "element".equals(candidate.getKind()) && id.equals(candidate.property("package"));
@@ -601,6 +615,11 @@ public final class ArchitectureDslCommands {
             }
         }
         properties.putAll(changes);
+        // The form sends an empty selection to detach. Keep the canonical absence of a reference.
+        if ("element".equals(kind) && "".equals(changes.get(ArchitectureOrganization.RESPONSIBLE_ID)))
+            properties.remove(ArchitectureOrganization.RESPONSIBLE_ID);
+        if ("organization".equals(kind) && "".equals(changes.get("parentId")))
+            properties.remove("parentId");
         List<PropertyAst> values = properties.entrySet().stream().map(e -> new PropertyAst(e.getKey(), e.getValue(), null)).toList();
         Map<String, String> extensions = new LinkedHashMap<>();
         properties.forEach((key, value) -> { if (key.startsWith("x-")) extensions.put(key, value); });

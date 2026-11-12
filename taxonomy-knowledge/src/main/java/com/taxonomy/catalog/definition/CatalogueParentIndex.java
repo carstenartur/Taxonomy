@@ -29,7 +29,12 @@ public class CatalogueParentIndex {
     }
 
     public synchronized Map<String, String> parentsFor(CanonicalArchitectureModel model) {
-        if (model.getElements().stream().noneMatch(e -> e.getTaxonomy() != null)) return Map.of();
+        var elementIds = model.allElementIds();
+        boolean needsLookup = model.getElements().stream().anyMatch(element -> {
+            String parent = element.getExtensions().get("x-catalogue-parent");
+            return element.getTaxonomy() != null && !element.getTaxonomy().equals(parent) && !elementIds.contains(parent);
+        });
+        if (!needsLookup) return Map.of();
         String revision = model.getCatalogueRevision();
         if (cached == null || !java.util.Objects.equals(revision, cachedRevision)) {
             var loaded = read(revision);

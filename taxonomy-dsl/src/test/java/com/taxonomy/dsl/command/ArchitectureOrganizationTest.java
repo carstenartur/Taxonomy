@@ -59,6 +59,8 @@ class ArchitectureOrganizationTest {
                 .isInstanceOfSatisfying(ArchitectureDslCommands.CommandProblem.class,
                         e -> assertThat(e.dependencies()).contains("element:system"));
         String cleared = commands.apply(assigned, new UpdateArchitectureElement("system", null, Map.of(REF, ""))).dsl();
+        assertThat(commands.model(cleared).getElements().getFirst().getExtensions()).doesNotContainKey(REF)
+                .containsEntry("x-responsible-organization", "Legacy office");
         var deleted = commands.apply(cleared, new DeleteOrganization("ops"));
         assertThat(commands.model(deleted.dsl()).getOrganizations()).extracting(ArchitectureOrganization::id).containsExactly("agency");
         assertThat(commands.model(commands.inverse(deleted.dsl(), cleared, deleted.dsl()).dsl()).getOrganizations())
@@ -75,6 +77,18 @@ class ArchitectureOrganizationTest {
         assertThatThrownBy(() -> commands.inverse(assigned.dsl(), LEGACY, created.dsl()))
                 .isInstanceOfSatisfying(ArchitectureDslCommands.CommandProblem.class,
                         e -> assertThat(e.dependencies()).contains("element:system"));
+    }
+
+    @Test
+    void malformedDuplicateSourceReferencesCannotStrandAssignmentsOnDelete() {
+        String duplicate = directory().replace("  x-responsible-organization:", "  " + REF + ": \"agency\";\n  "
+                + REF + ": \"ops\";\n  x-responsible-organization:");
+        assertThatThrownBy(() -> commands.apply(duplicate, new DeleteOrganization("ops")))
+                .isInstanceOfSatisfying(ArchitectureDslCommands.CommandProblem.class,
+                        e -> assertThat(e.dependencies()).contains("element:system"));
+        assertThatThrownBy(() -> commands.validateReconciledSource(duplicate))
+                .isInstanceOfSatisfying(ArchitectureDslCommands.CommandProblem.class,
+                        e -> assertThat(e.code()).isEqualTo("DUPLICATE_PROPERTY"));
     }
 
     private String directory() {

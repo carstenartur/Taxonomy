@@ -31,7 +31,7 @@
         el('editorUnfocus').disabled = state.mode !== 'focus';
     });
     var tree = window.TaxonomyResponsibilityTree.create({root: el('editorTree'), t: t, onSelect: selectElement});
-    var directoryRoot = el('editorOrganizationDirectory');
+    var directoryRoot = window.TaxonomyOrganizationDirectory && el('editorOrganizationDirectory');
     var directory = directoryRoot && window.TaxonomyOrganizationDirectory?.create({root: directoryRoot, t: t, stage: stage});
     var legacyOption = ':legacy:';
     var briefPanel = window.TaxonomyArchitectureBrief?.create({ root: root, t: t, stage: stage });
@@ -217,6 +217,7 @@
         });
         el('editorPackageFields').disabled = !writable;
         el('editorFields').disabled = !writable;
+        el('editorJumpToAssignment').disabled = !writable || !selectedElement();
         el('editorRelationFields').disabled = !writable || !selectedElement();
         el('editorDelete').disabled = !writable || !selectedElement();
         el('editorAccept').disabled = busy || !pending;
@@ -678,6 +679,7 @@
     }
     el('editorQuickUndo').onclick = function () { quickInverse('undo'); };
     el('editorQuickRedo').onclick = function () { quickInverse('redo'); };
+    el('editorJumpToAssignment').onclick = function () { el('editorOrganization').focus(); };
     el('editorSearch').oninput = function () { if (view) renderTree(); };
     el('editorZoomIn').onclick = function () { renderer.zoom(1.4); };
     el('editorZoomOut').onclick = function () { renderer.zoom(1 / 1.4); };
