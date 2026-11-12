@@ -108,30 +108,24 @@ public class DocumentTemplateService implements DocumentTemplates {
             String expectedVersion,
             String actor,
             String message) throws IOException {
-        DocumentTemplateGitRepository.validateTemplateId(templateId);
-        String normalizedDisplayName = normalizeDisplayName(displayName, templateId);
-        OoxmlTemplatePackageCodec.PackageData packageData = codec.unpack(dotx);
-        validatePackage(templateId, packageData.parts());
-        String effectiveExpectedVersion = resolveExpectedVersion(templateId, expectedVersion);
-        String user = actor == null || actor.isBlank() ? "taxonomy" : actor;
-        TemplateManifest manifest = new TemplateManifest(
-                1,
-                templateId,
-                normalizedDisplayName,
-                templateId + ".dotx",
-                com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE,
-                Instant.now().toString(),
-                user,
-                packageData.uncompressedSize(),
-                packageData.parts().size(),
-                packageData.sha256());
-        TemplateSnapshot saved = repository.commit(
-                manifest,
-                packageData.parts(),
-                effectiveExpectedVersion,
-                user,
-                message);
+        var checked = checkedUpload(templateId, displayName, dotx, actor);
+        var saved = repository.commit(checked.manifest(), checked.parts(), resolveExpectedVersion(templateId, expectedVersion),
+                checked.manifest().updatedBy(), message);
         return descriptor(saved);
+    }
+
+    record CheckedUpload(TemplateManifest manifest, Map<String, byte[]> parts) { }
+
+    CheckedUpload checkedUpload(String templateId, String displayName, InputStream dotx, String actor) throws IOException {
+        DocumentTemplateGitRepository.validateTemplateId(templateId);
+        String name = normalizeDisplayName(displayName, templateId);
+        var data = codec.unpack(dotx);
+        validatePackage(templateId, data.parts());
+        String user = actor == null || actor.isBlank() ? "taxonomy" : actor;
+        var manifest = new TemplateManifest(1, templateId, name, templateId + ".dotx",
+                com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE, Instant.now().toString(), user,
+                data.uncompressedSize(), data.parts().size(), data.sha256());
+        return new CheckedUpload(manifest, data.parts());
     }
 
     /** Validated metadata without allocating a downloadable DOTX archive. */
