@@ -752,6 +752,8 @@ curl -u alice:password -X POST "http://localhost:8080/api/workspace/publish?user
 curl -u alice:password http://localhost:8080/api/workspace/sync-state
 ```
 
+While the selected working copy is being prepared, the same read returns HTTP 200 with its repository, workspace and branch plus the current lifecycle in `syncStatus` (`NOT_PROVISIONED`, `PROVISIONING` or `FAILED`). Git observations and their timestamps stay empty. Opening the status view does not start provisioning.
+
 **Response:**
 ```json
 {

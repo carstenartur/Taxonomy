@@ -142,8 +142,8 @@ class GitNativeSyncIntegrationServiceTest {
     @Test
     void readingTheSecondWorkspaceNeverReturnsTheFirstWorkspacesPublishedCommit() {
         state.setLastPublishedCommitId("private-workspace-a-commit");
-        when(contextResolver.resolveRepositoryContextForRead("alice")).thenReturn(
-                RepositoryContext.workspace("repo-b", "workspace-b", "main", "alice"));
+        when(contextResolver.resolveSyncObservation("alice")).thenReturn(new WorkspaceContextResolver.SyncObservation(
+                RepositoryContext.workspace("repo-b", "workspace-b", "main", "alice"), com.taxonomy.workspace.model.WorkspaceProvisioningStatus.READY));
         var secondSource = new SystemRepository();
         secondSource.setRepositoryId("repo-b");
         when(systemRepositoryService.getRepository("repo-b")).thenReturn(secondSource);
@@ -153,6 +153,35 @@ class GitNativeSyncIntegrationServiceTest {
         assertThat(observed.getWorkspaceId()).isEqualTo("workspace-b");
         assertThat(observed.getLastPublishedCommitId()).isNull();
         verify(syncStateRepository, never()).save(any());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value=com.taxonomy.workspace.model.WorkspaceProvisioningStatus.class,
+            mode=org.junit.jupiter.params.provider.EnumSource.Mode.EXCLUDE, names="READY")
+    void earlyStatusPollReadsOnlyTheSelectedWorkingCopyLifecycle(com.taxonomy.workspace.model.WorkspaceProvisioningStatus lifecycle)
+            throws Exception {
+        var manager = mock(WorkspaceManager.class);
+        workspace.setDefault(true);
+        workspace.setProvisioningStatus(lifecycle);
+        when(manager.findActiveWorkspace("alice")).thenReturn(workspace);
+        when(manager.mayProvisionDefaultWorkspace("alice")).thenReturn(true);
+        var memberships = mock(RepositoryMembershipService.class, invocation -> true);
+        var resolver = new WorkspaceContextResolver(manager,systemRepositoryService,workspaceRepository,memberships);
+        var synchronization = new GitNativeSyncIntegrationService(syncStateRepository,workspaceRepository,
+                systemRepositoryService,repositoryFactory,semanticMergeService,portfolioGitPort,resolver,DIRECT_VERSIONS,memberships);
+        var identity = mock(WorkspaceResolver.class);
+        when(identity.resolveCurrentUsername()).thenReturn("alice");
+        var controller = new com.taxonomy.workspace.controller.WorkspaceController(null,identity,null,null,null,synchronization,null,systemRepositoryService);
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(controller).build();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/workspace/sync-state"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.workspaceId").value("workspace-a"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.repositoryId").value("repo-a"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.syncStatus").value(lifecycle.name()))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.lastPublishedCommitId").isEmpty());
+        verify(manager, never()).provisionDefaultWorkspaceRepository(any(),any());
+        verify(syncStateRepository, never()).readScope(any());
+        verify(repositoryFactory, never()).openWorkspaceRepository(any());
     }
 
     @Test
