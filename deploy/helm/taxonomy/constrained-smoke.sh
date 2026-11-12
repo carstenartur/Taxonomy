@@ -47,7 +47,7 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p "${EVIDENCE_DIR}"
-rm -f -- "${EVIDENCE_DIR}/evidence.json"
+rm -f -- "${EVIDENCE_DIR}/evidence.json" "${EVIDENCE_DIR}/small-search/evidence.json"
 
 for command in docker kind kubectl helm curl jq od; do
   command -v "${command}" >/dev/null 2>&1 \
@@ -56,8 +56,8 @@ done
 if ! [[ "${SOURCE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
   fail "SOURCE_SHA must be a full 40-character Git commit ID"
 fi
-if ! [[ "${IMAGE_TAG}" =~ ^sha-[0-9a-f]{40}$ ]]; then
-  fail "IMAGE_TAG must use sha-<40 lowercase hex>"
+if [[ "${IMAGE_TAG}" != "sha-${SOURCE_SHA}" ]]; then
+  fail "IMAGE_TAG must identify SOURCE_SHA exactly"
 fi
 if [[ "${KEEP_RESOURCES}" != "true" && "${KEEP_RESOURCES}" != "false" ]]; then
   fail "KEEP_RESOURCES must be true or false"
@@ -79,6 +79,11 @@ fi
 
 STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 SMOKE_START_EPOCH=$(date +%s)
+checkout_sha=$(git -C "${ROOT_DIR}" rev-parse HEAD)
+[[ "${checkout_sha}" == "${SOURCE_SHA}" ]] || fail "SOURCE_SHA must equal the checked-out commit"
+checkout_status=$(git -C "${ROOT_DIR}" status --porcelain=v1 --untracked-files=all)
+[[ -z "${checkout_status}" ]] \
+  || fail "A modified checkout cannot attest the source of the image and chart"
 BUILD_DATE=$(git -C "${ROOT_DIR}" show -s --format=%cI "${SOURCE_SHA}")
 VERSION=$("${ROOT_DIR}/mvnw" -q -f "${ROOT_DIR}/pom.xml" -DforceStdout help:evaluate \
   -Dexpression=project.version)
@@ -304,3 +309,10 @@ jq -n \
 
 printf 'Constrained Kubernetes smoke passed; deployment reached readiness in %s seconds (total smoke %s seconds). Evidence: %s\n' \
   "${READINESS_SECONDS}" "${TOTAL_SMOKE_SECONDS}" "${EVIDENCE_DIR}/evidence.json"
+
+
+# Reuse the owned namespace and built image for the independently recorded small profile.
+if [[ "${MEASURE_SMALL_SEARCH:-false}" == "true" ]]; then
+  source "${CHART_DIR}/small-search-budget.sh"
+  measure_small_search
+fi
