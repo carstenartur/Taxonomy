@@ -49,6 +49,7 @@ function element(tag = 'div') {
         removeAttribute: name => attributes.delete(name),
         append(...values) {for (const value of values) {this.children.push(value); value.parentNode = this;}},
         appendChild(value) {this.append(value); return value;},
+        prepend(value) {this.children.unshift(value); value.parentNode = this;},
         replaceChildren(...values) {this.children = []; this.append(...values);},
         querySelector() {return null;}, querySelectorAll() {return [];},
         getClientRects() {return [];}, scrollIntoView() {}, focus() {},
@@ -698,7 +699,8 @@ async function snapshot(mode) {
 }
 
 (async () => {
-    if (scenario.startsWith('versioning-')) await standaloneVersioning(scenario.slice('versioning-'.length));
+    if (scenario === 'provisional-products') await provisionalProducts();
+    else if (scenario.startsWith('versioning-')) await standaloneVersioning(scenario.slice('versioning-'.length));
     else if (scenario === 'portfolio-early-submit') await portfolio(true);
     else if (scenario === 'portfolio-ready-submit') await portfolio(false);
     else if (scenario === 'portfolio-selection-pending-submit') await portfolio(true, false, true);
@@ -717,3 +719,82 @@ async function snapshot(mode) {
     else throw new Error('Unknown JUnit scenario ' + scenario);
 })().then(() => console.log('SOURCE_BOOTSTRAP_COMPLETE '+scenario))
     .catch(error => {console.error(error); process.exitCode = 1;});
+
+async function provisionalProducts() {
+    const delayed = deferred();
+    const applied = {
+        catalogueRevision: 'generation-a', workbookSha256: 'frozen workbook', overlaySha256: 'frozen overlay', mappingVersion: 'v1',
+        mappings: [{productCode: 'IP-1', productTitle: 'Fixture product', sourceParentReference: 'Source parent',
+            proposedParentCode: 'IP-F', secondaryClassificationCodes: ['IP-S'], confidence: 0.7,
+            state: 'PROVISIONAL', sourceState: 'draft', justification: 'Fixture rationale'}]
+    };
+    const filters = [], writes = [];
+    let denyHistory = false;
+    const app = fixture('analysis', request => {
+        if (request.url.pathname.endsWith('/IP-1/reviews')) {
+            if (request.options.method === 'POST') {
+                writes.push(JSON.parse(request.options.body));
+                if (writes.length > 1) return Response.json({}, {status: 409});
+                return Response.json({commit: '1'.repeat(40), decision: {action: 'CHANGE', reviewer: 'admin',
+                    reviewedAt: '2026-11-12', mappingVersion: 'v1', original: applied.mappings[0],
+                    proposedParent: 'IP-NEW', secondary: [], rationale: 'Controlled review',
+                    proposedVersion: 'candidate-1', proposedSha256: 'candidate digest'}});
+            }
+            if (denyHistory) return Response.json({}, {status: 403});
+            return Response.json({head: '0'.repeat(40), decisions: [], next: null});
+        }
+        assert.equal(request.url.pathname, '/taxonomy/api/admin/catalogue/provisional-information-products');
+        const query = request.url.searchParams.get('q'); filters.push(query);
+        if (query === '') return delayed.promise;
+        if (query === 'denied') return Response.json({}, {status: 403});
+        return Response.json(applied);
+    });
+    app.load('api/reference-api.js');
+    app.load('core/provisional-product-review.js');
+    const panel = app.nodes.get('provisionalProductPanel'), form = app.nodes.get('provisionalProductFilter');
+    const filter = app.nodes.get('provisionalProductQuery'), results = app.nodes.get('provisionalProductResults');
+    const status = app.nodes.get('provisionalProductStatus');
+    const content = node => [node.textContent, ...node.children.flatMap(content)];
+    assert.deepEqual(filters, []);
+    panel.open = true; panel.dispatchEvent({type: 'toggle'}); await settle();
+    filter.value = '  IP & C  '; form.dispatchEvent({type: 'submit'}); await settle();
+    assert.deepEqual(filters, ['', 'IP & C']);
+    assert.equal(status.textContent, 'admin.productReview.count:1');
+    assert.equal(results.children[1].tagName, 'DETAILS');
+    assert.equal(results.children[1].children[0].tagName, 'SUMMARY');
+    const visible = content(results);
+    for (const text of ['frozen workbook','frozen overlay','v1','IP-1 — Fixture product','Source parent','IP-F','IP-S','draft','Fixture rationale']) {
+        assert.ok(visible.includes(text), text);
+    }
+    const details = results.children[1];
+    details.open = true; details.dispatchEvent({type: 'toggle'}); await settle();
+    const review = details.children.at(-1).children[0];
+    const action = review.children.find(item => item.tagName === 'SELECT');
+    action.value = 'CHANGE'; action.dispatchEvent({type: 'change'});
+    review.children.find(item => item.id === 'mapping-parent-IP-1').value = 'IP-NEW';
+    review.children.find(item => item.id === 'mapping-secondary-IP-1').value = '';
+    review.children.find(item => item.tagName === 'TEXTAREA').value = 'Controlled review';
+    review.dispatchEvent({type: 'submit'}); await settle();
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0].expectedHead, '0'.repeat(40)); assert.equal(writes[0].overlaySha256, 'frozen overlay');
+    assert.equal(writes[0].proposedParent, 'IP-NEW'); assert.deepEqual(writes[0].secondary, []);
+    assert.ok(content(details).includes('candidate digest'));
+    review.children.find(item => item.tagName === 'TEXTAREA').value = 'Concurrent decision';
+    review.dispatchEvent({type: 'submit'}); await settle();
+    assert.equal(writes[1].expectedHead, '1'.repeat(40));
+    assert.ok(content(details).includes('admin.productReview.conflict'));
+    assert.equal(review.children.find(item => item.tagName === 'BUTTON').disabled, true);
+    delayed.resolve(Response.json({...applied, mappingVersion: 'late-v0'})); await settle();
+    assert.ok(!content(results).includes('late-v0'));
+    denyHistory = true;
+    form.dispatchEvent({type: 'submit'}); await settle();
+    const deniedProduct = results.children[1];
+    deniedProduct.open = true; deniedProduct.dispatchEvent({type: 'toggle'}); await settle();
+    assert.equal(results.children.length, 0);
+    assert.equal(status.textContent, 'admin.productReview.unavailable');
+    filter.value = 'denied'; form.dispatchEvent({type: 'submit'}); await settle();
+    assert.equal(results.children.length, 0);
+    assert.equal(status.textContent, 'admin.productReview.unavailable');
+    panel.open = false; panel.dispatchEvent({type: 'toggle'});
+    assert.equal(status.textContent, '');
+}
