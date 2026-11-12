@@ -614,7 +614,7 @@ test('reading an impact element and following its relation keep the full overvie
   assert.match(h.container.querySelector('.impact-map-details').textContent, /Evidence for B/);
 });
 
-test('the historical 20/16/7 workload exposes fit-scale glyph sizes at 781 pixels', t => {
+test('the historical 20/16/7 workload exposes fit-scale glyph sizes at 781 pixels', () => {
   const {api} = loadApi();
   const fixture = JSON.parse(readFileSync(new URL(
     '../../taxonomy-app/src/test/resources/ui/seven-layer-impact-map.json', import.meta.url), 'utf8'));
@@ -630,6 +630,5 @@ test('the historical 20/16/7 workload exposes fit-scale glyph sizes at 781 pixel
   const baseTitle = Number(css.match(/\.impact-map-node-title\s*\{\s*font-size:\s*([\d.]+)px/)[1]);
   const fitted = {scale: fit.scale, titlePx: baseTitle * fit.scale,
     cardWidthPx: scene.nodes[0].width * fit.scale, cardHeightPx: scene.nodes[0].height * fit.scale};
-  t.diagnostic(JSON.stringify(fitted));
-  assert.ok(fitted.titlePx > 0 && Number.isFinite(fitted.cardWidthPx));
+  assert.ok(fitted.titlePx > 0 && Number.isFinite(fitted.cardWidthPx), JSON.stringify(fitted));
 });
