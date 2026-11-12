@@ -160,4 +160,103 @@ class VerifiedLegacyOwnerMigrationTest {
         assertThat(identities.oidc("https://idp.example", "a").id())
                 .isEqualTo(before.owners().get(0).principal());
     }
+
+    @Test void invalidPreviewLimitsAndMissingApprovedPlanFailClosed() {
+        assertThatThrownBy(() -> migration.preview(admin, 0)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> migration.preview(admin, 257)).isInstanceOf(IllegalArgumentException.class);
+        var before = migration.preview(admin, 256);
+        assertThatThrownBy(() -> migration.linkVerified(admin, before.fingerprint(), null))
+                .isInstanceOf(NullPointerException.class);
+
+        var alice = before.owners().get(0);
+        var bob = before.owners().get(1);
+        var missingEvidence = new VerifiedLegacyOwnerMigration.VerifiedMapping(
+                alice.principal(), alice.legacyScope(), "https://idp.example", "alice-subject", " ");
+        assertThatThrownBy(() -> migration.linkVerified(admin, before.fingerprint(),
+                List.of(missingEvidence, verified(bob, "bob-subject"))))
+                .isInstanceOf(IllegalArgumentException.class);
+        var missingIssuer = new VerifiedLegacyOwnerMigration.VerifiedMapping(
+                alice.principal(), alice.legacyScope(), "", "alice-subject", "verified-approval");
+        assertThatThrownBy(() -> migration.linkVerified(admin, before.fingerprint(),
+                List.of(missingIssuer, verified(bob, "bob-subject"))))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        assertThat(migration.preview(admin, 256).fingerprint()).isEqualTo(before.fingerprint());
+        assertThat(jdbc.queryForObject("select count(*) from principal_binding where binding_kind='OIDC'",
+                Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from principal_access_audit",
+                Integer.class)).isZero();
+    }
+
+    @Test void duplicateReservedIdentityAndWrongHistoricalScopeRollBackWholePlan() {
+        var before = migration.preview(admin, 256);
+        var alice = before.owners().get(0);
+        var bob = before.owners().get(1);
+        // Distinct subjects cannot legitimize a repeated historical principal.
+        assertThatThrownBy(() -> migration.linkVerified(admin, before.fingerprint(),
+                List.of(verified(alice, "sub-1"), verified(alice, "sub-2"))))
+                .isInstanceOf(IllegalArgumentException.class);
+        var wrongScope = new VerifiedLegacyOwnerMigration.VerifiedMapping(
+                alice.principal(), "not-alice", "https://idp.example", "sub-1", "approved:scope-check");
+        assertThatThrownBy(() -> migration.linkVerified(admin, before.fingerprint(),
+                List.of(wrongScope, verified(bob, "sub-2"))))
+                .isInstanceOf(IllegalStateException.class);
+        var inventedPrincipal = new VerifiedLegacyOwnerMigration.VerifiedMapping(
+                new PrincipalId(UUID.randomUUID()), alice.legacyScope(),
+                "https://idp.example", "sub-1", "approved:invented-principal");
+        assertThatThrownBy(() -> migration.linkVerified(admin, before.fingerprint(),
+                List.of(inventedPrincipal, verified(bob, "sub-2"))))
+                .isInstanceOf(IllegalStateException.class);
+
+        assertThat(migration.preview(admin, 256).total()).isEqualTo(2);
+        assertThat(jdbc.queryForObject("select count(*) from principal_binding where binding_kind='OIDC'",
+                Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from principal_access_audit",
+                Integer.class)).isZero();
+    }
+
+    @Test void removalRequiresExactFieldsAndCannotReuseARevokedSubject() {
+        var before = migration.preview(admin, 256);
+        var alice = before.owners().get(0);
+        var bob = before.owners().get(1);
+        migration.linkVerified(admin, before.fingerprint(),
+                List.of(verified(alice, "sub-a"), verified(bob, "sub-b")));
+        PrincipalId target = alice.principal();
+        assertThatThrownBy(() -> migration.unlinkVerified(admin, null,
+                "https://idp.example", "sub-a", "approved:revoke"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> migration.unlinkVerified(admin, target,
+                "", "sub-a", "approved:revoke"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> migration.unlinkVerified(admin, target,
+                "https://idp.example", "", "approved:revoke"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> migration.unlinkVerified(admin, target,
+                "https://idp.example", "sub-a", " "))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(identities.isEnabled(target)).isTrue();
+        assertThat(jdbc.queryForObject("select count(*) from principal_access_audit",
+                Integer.class)).isEqualTo(2);
+
+        migration.unlinkVerified(admin, target, "https://idp.example", "sub-a", "approved:revoke");
+        assertThatThrownBy(() -> migration.unlinkVerified(admin, target,
+                "https://idp.example", "sub-a", "approved:revoke-again"))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> identities.oidc("https://idp.example", "sub-a"))
+                .isInstanceOf(org.springframework.security.authentication.DisabledException.class);
+        assertThat(jdbc.queryForObject("select count(*) from principal_access_audit",
+                Integer.class)).isEqualTo(3);
+    }
+
+    @Test void aStaleRoleClaimWithoutCurrentAdminAuthorityCannotReadReservedScopes() {
+        var noRole = UsernamePasswordAuthenticationToken.authenticated(
+                admin.getPrincipal(), null, List.of());
+        assertThatThrownBy(() -> migration.preview(noRole, 256))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> migration.unlinkVerified(noRole, new PrincipalId(UUID.randomUUID()),
+                "https://idp.example", "unknown", "approved:revoke"))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThat(jdbc.queryForObject("select count(*) from principal_access_audit",
+                Integer.class)).isZero();
+    }
 }
