@@ -116,7 +116,7 @@ final class DocumentTemplateHttpContract implements AutoCloseable {
 
         String controlId = fixtureId();
         byte[] controlBytes = modified(original, "unrelated-control");
-        var controlPut = send("PUT", API + controlId, controlBytes, "Content-Type", DOTX);
+        var controlPut = send("PUT", API + controlId + "?displayName=Unrelated-control", controlBytes, "Content-Type", DOTX);
         status(controlPut, 201);
         var control = new Revision(etag(controlPut), controlBytes);
         peer.verifyCollectionFile(id, initial);
