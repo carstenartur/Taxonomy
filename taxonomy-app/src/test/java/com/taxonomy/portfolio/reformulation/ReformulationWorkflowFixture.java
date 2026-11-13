@@ -84,11 +84,13 @@ abstract class ReformulationWorkflowFixture extends RetainedPortfolioCatalogue {
     void select(WorkspaceContext selected) {
         when(resolver.resolveCurrentUsername()).thenReturn("architect");
         when(resolver.resolveCurrentContext()).thenReturn(selected);
+        when(resolver.resolveUnambiguousContextForRead()).thenReturn(selected);
         var repository = selected.workspaceId()==null
                 ? RepositoryContext.centralRead(selected.repositoryId(), selected.currentBranch(), "architect")
                 : RepositoryContext.workspace(selected.repositoryId(),selected.workspaceId(),selected.currentBranch(),"architect");
         when(resolver.resolveCurrentRepositoryContext()).thenReturn(repository);
         when(resolver.resolveCurrentRepositoryContextForRead()).thenReturn(repository);
+        when(resolver.resolveUnambiguousRepositoryForRead()).thenReturn(repository);
     }
     RequirementView createRequirement(String key) {
         return projects.createRequirement(project.id(), new CreateRequirementRequest(key,"Capture time",originalText,

@@ -1,5 +1,6 @@
 package com.taxonomy.portfolio.service;
 
+import com.taxonomy.portfolio.model.PortfolioTenantIdentity;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.AnalysisReasonLength;
 import com.taxonomy.dto.ArchitectureRecommendation;
@@ -501,9 +502,10 @@ public class PortfolioAnalysisPersistenceService {
                                          WorkspaceContext context) {
         String scopeKey = PortfolioScope.key(username, context);
         requireScopedProject(projectId, username, context);
+        var tenant = PortfolioTenantIdentity.parse(scopeKey);
         return jobRepository.findReadRowsByProjectIdAndScopeKey(projectId, scopeKey).stream()
                 .collect(Collectors.groupingBy(AnalysisJobReadRow::id, LinkedHashMap::new, Collectors.toList()))
-                .values().stream().map(this::toJobView).toList();
+                .values().stream().map(rows -> toJobView(rows, tenant)).toList();
     }
 
     @Transactional(readOnly = true)
@@ -801,10 +803,10 @@ public class PortfolioAnalysisPersistenceService {
         if (rows.isEmpty()) {
             throw PortfolioException.notFound("Analysis job not found: " + jobId);
         }
-        return toJobView(rows);
+        return toJobView(rows, PortfolioTenantIdentity.parse(scopeKey));
     }
 
-    private AnalysisJobView toJobView(List<AnalysisJobReadRow> rows) {
+    private AnalysisJobView toJobView(List<AnalysisJobReadRow> rows, PortfolioTenantIdentity tenant) {
         AnalysisJobReadRow job = rows.getFirst();
         List<AnalysisJobItemView> items = rows.stream().filter(row -> row.itemId() != null)
                 .map(row -> new AnalysisJobItemView(row.itemId(), row.requirementId(), row.requirementKey(),
@@ -813,10 +815,16 @@ public class PortfolioAnalysisPersistenceService {
                 .toList();
         return new AnalysisJobView(
                 job.id(), job.projectId(), job.status(), visibleIdempotencyKey(job.id(), job.idempotencyKey()),
-                job.provider(), job.maxArchitectureNodes(), job.requestedBy(), job.workspaceId(),
+                job.provider(), job.maxArchitectureNodes(), job.requestedBy(), workspaceId(tenant),
                 job.createdAt(), job.startedAt(), job.completedAt(), job.totalItems(), job.successfulItems(),
                 job.partialItems(), job.failedItems(), job.errorSummary(), items,
-                providerBinding(job), job.analysisReasonLength(), job.analysisLanguage());
+                providerBinding(job), job.analysisReasonLength(), job.analysisLanguage(), tenant.repositoryId(), tenant.branch());
+    }
+
+    /** Derive routing from the same tenant key as the row lookup, including records with older display provenance. */
+    private static String workspaceId(PortfolioTenantIdentity tenant) {
+        return PortfolioTenantIdentity.CENTRAL_SCOPE.equals(tenant.workspaceScope()) ? null
+                : tenant.workspaceScope().substring(PortfolioTenantIdentity.WORKSPACE_SCOPE_PREFIX.length());
     }
 
     private static com.taxonomy.extension.api.plugin.PluginInvocation providerBinding(AnalysisJobReadRow job) {

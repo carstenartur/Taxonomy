@@ -17,12 +17,15 @@
         repository: null,
         exported: null,
         preview: null,
+        previewGeneration: 0,
+        pendingRequests: 0,
         account: null,
         initializedMessages: new Set()
     };
 
     const labels = {
         en: {
+            previewBranchChanged: 'The preview belongs to a different branch. Preview the selected branch again.',
             title: 'Versioning & collaboration', reports: 'Reports',
             preview: 'Current portfolio change preview', refresh: 'Refresh',
             dsl: 'Technical TaxDSL preview', commit: 'Commit portfolio state',
@@ -42,6 +45,7 @@
             sourceTargetDiffer: 'Source and target branch must differ'
         },
         de: {
+            previewBranchChanged: 'Die Vorschau gehört zu einem anderen Branch. Prüfen Sie den ausgewählten Branch erneut.',
             title: 'Versionierung & Zusammenarbeit', reports: 'Berichte',
             preview: 'Vorschau der aktuellen Portfolioänderungen', refresh: 'Aktualisieren',
             dsl: 'Technische TaxDSL-Vorschau', commit: 'Portfoliozustand committen',
@@ -223,11 +227,17 @@
     }
 
     async function previewMaterialize() {
+        clearMaterializationPreview();
+        const generation = state.previewGeneration;
+        const select = document.getElementById('materializeBranch');
+        const branch = select.value;
         busy(true);
         clearMessages();
         try {
-            const branch = document.getElementById('materializeBranch').value;
-            state.preview = await api().previewMaterialization(branch);
+            const preview = await api().previewMaterialization(branch);
+            if (generation !== state.previewGeneration || branch !== select.value) return;
+            if (preview.branch !== branch) throw new Error(text('previewBranchChanged'));
+            state.preview = preview;
             const target = document.getElementById('materializePreview');
             target.innerHTML = `<dl class="portfolio-card-meta">`
                 + `<dt>${escapeHtml(text('expected'))}</dt>`
@@ -243,7 +253,7 @@
             document.getElementById('applyMaterialize').classList.toggle(
                 'd-none', !state.preview.changed);
         } catch (problem) {
-            showError(problem);
+            if (generation === state.previewGeneration && branch === select.value) showError(problem);
         } finally {
             busy(false);
         }
@@ -257,14 +267,17 @@
     }
 
     async function applyMaterialize() {
-        if (!state.preview) return;
+        if (!state.preview || state.preview.branch !== document.getElementById('materializeBranch').value) {
+            clearMaterializationPreview();
+            return;
+        }
         if (!window.confirm(state.preview.destructiveChangePossible
             ? text('destructive') : text('previewRestore'))) return;
 
         busy(true);
         clearMessages();
         try {
-            const branch = document.getElementById('materializeBranch').value;
+            const branch = state.preview.branch;
             const result = await api().materializePortfolio({
                 branch,
                 expectedHead: state.preview.targetHead
@@ -311,6 +324,7 @@
     }
 
     function clearMaterializationPreview() {
+        state.previewGeneration++;
         state.preview = null;
         document.getElementById('materializePreview').textContent = '';
         document.getElementById('applyMaterialize').classList.add('d-none');
@@ -333,7 +347,8 @@
     }
 
     function busy(active) {
-        document.getElementById('versioningBusy').classList.toggle('d-none', !active);
+        state.pendingRequests += active ? 1 : -1;
+        document.getElementById('versioningBusy').classList.toggle('d-none', state.pendingRequests === 0);
     }
 
     function clearMessages() {

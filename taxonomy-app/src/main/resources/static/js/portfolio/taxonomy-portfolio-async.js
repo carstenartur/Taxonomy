@@ -338,7 +338,12 @@
     }
 
     function durableJobOptions(job, extra) {
-        return Object.assign({contextSensitive: false, pinnedWorkspaceId: job.workspaceId || ''}, extra);
+        const workspaceId = job.workspaceId || '';
+        const options = {contextSensitive: false, pinnedWorkspaceId: workspaceId};
+        if (job.repositoryId && job.branch) {
+            options.scope = {repositoryId: job.repositoryId, workspaceId: workspaceId, branch: job.branch};
+        }
+        return Object.assign(options, extra);
     }
 
     async function loadAccountCapabilities() {
