@@ -26,6 +26,11 @@ public class WorkspaceFetchRecovery {
         this.forks = forks;
     }
 
+    private CentralForkInitialTransfer initialTransfers;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void useInitialTransfers(CentralForkInitialTransfer transfers) { this.initialTransfers = transfers; }
+
     public record Receipt(String operationId, WorkspaceUpstreamService.Status result, WorkspaceUpstreamService.TagStatus tag) {
         public Object response() { return tag == null ? result : tag; }
     }
@@ -128,6 +133,10 @@ public class WorkspaceFetchRecovery {
             checkLease.run();
         };
         authorize.run();
+        if (operation instanceof CentralFetchOperation central && CentralFetchOperation.initialIdFormat(operation.id)) {
+            if (!central.isInitialFork()) throw new AccessDeniedException("Invalid initial fork operation");
+            return initialTransfers.apply(central, authorize);
+        }
         boolean recovering = operation.attempts > 1;
         var context = operation.context();
         var fork = operation instanceof CentralFetchOperation ? forks.recorded(operation) : null;

@@ -393,6 +393,122 @@ class CentralForkOriginalHistoryTest {
         }
     }
 
+    enum InitialLoss { BEFORE_TRACKING, BEFORE_BRANCH, DENIED, OTHER_IDENTITY, FOREIGN_REF, WORKER, RACING_WORKERS, SOURCE_REWRITTEN }
+
+    @ParameterizedTest
+    @EnumSource(InitialLoss.class)
+    void leasedInitialForkResumesOnlyTheRecordedCommitAfterRestart(InitialLoss loss) throws Exception {
+        String database = "jdbc:hsqldb:file:" + directory.resolve("initial-transfer") + ";shutdown=true";
+        var actors = mock(WorkspaceFetchAuthority.class);
+        String actor = "contributor", principal = java.util.UUID.randomUUID().toString();
+        var grant = new WorkspaceFetchAuthority.Grant(principal, "LOCAL", "original-binding");
+        when(actors.currentActor(actor)).thenReturn(principal);
+        when(actors.authorize(actor, RepositoryScope.CENTRAL_WRITE)).thenReturn(grant);
+        var clock = java.time.Clock.fixed(java.time.Instant.now(), java.time.ZoneOffset.UTC);
+        String sourceId, targetId, captured, id;
+        try (var f = new Fixture(database, GitCommitSignatureService.disabled(), actors)) {
+            var source = f.createSource(RepositoryVisibility.PRIVATE);
+            sourceId = source.getRepositoryId();
+            f.memberships.assignRole(sourceId, actor, com.taxonomy.workspace.model.RepositoryRole.CONTRIBUTOR, OWNER);
+            captured = f.git.getCentralRepository(sourceId).commitDsl("main", "original", OWNER, "Original");
+            var hooked = mock(DslGitRepositoryFactory.class, delegatesTo(f.git));
+            doAnswer(call -> {
+                var real = f.git.createCentralRepository(call.getArgument(0), call.getArgument(1));
+                var target = mock(com.taxonomy.workspace.storage.DslGitRepository.class, delegatesTo(real));
+                if (loss == InitialLoss.BEFORE_BRANCH)
+                    doThrow(new AssertionError("Lost after tracking")).when(target).fastForwardIfHeadMatches(anyString(), isNull(), anyString(), anyString(), anyString());
+                else doThrow(new AssertionError("Lost after verified closure")).when(target).recordUpstreamForkPoint(anyString(), anyString(), anyString(), anyString());
+                return target;
+            }).when(hooked).createCentralRepository(anyString(), anyString());
+            var journal = f.useInitialJournal(actors, hooked, clock);
+            assertThrows(AssertionError.class, () -> f.service.createFork(sourceId,"main","Fork","retained",null,null,actor));
+            var retained = f.rows.findBySlug("retained").orElseThrow();
+            targetId = retained.getRepositoryId();
+            id = CentralFetchOperation.initialId(targetId);
+            var state = journal.status(RepositoryContext.centralWrite(targetId,"main",actor),principal,id);
+            assertEquals("RUNNING",state.phase());
+            assertEquals(1,state.attempts());
+            assertEquals(captured,state.requestedCommit());
+            assertEquals(RepositoryLifecycleState.PROVISIONING,retained.getLifecycleState());
+            var target = f.git.getCentralRepository(targetId);
+            assertTrue(target.getGitRepository().getObjectDatabase().has(ObjectId.fromString(captured)));
+            assertNull(target.getHeadCommit("main"));
+            assertEquals(loss == InitialLoss.BEFORE_BRANCH ? captured : null,new GitUpstreamRef(sourceId,"main").head(target));
+            assertEquals(409,assertThrows(ResponseStatusException.class, () -> f.service.createFork(sourceId,"main","Fork","retained",null,null,actor)).getStatusCode().value());
+        }
+        try (var f = new Fixture(database,GitCommitSignatureService.disabled(),actors)) {
+            var later = java.time.Clock.offset(clock,java.time.Duration.ofMinutes(6));
+            var journal = f.useInitialJournal(actors, f.git, later);
+            var scope = RepositoryContext.centralWrite(targetId,"main",actor);
+            var target = f.git.getCentralRepository(targetId);
+            var tracker = new GitUpstreamRef(sourceId,"main");
+            var current = f.git.getCentralRepository(sourceId).commitDsl("main","changed source",OWNER,"Advance");
+            if (loss == InitialLoss.DENIED) {
+                f.memberships.removeMembership(f.catalog.getRepository(sourceId),actor,OWNER);
+                var worker = new WorkspaceFetchRecovery(journal,null,actors,null);
+                worker.useInitialTransfers(f.initial);
+                worker.recoverDue();
+                assertEquals("DENIED",journal.status(scope,principal,id).phase());
+                assertNull(target.getHeadCommit("main"));
+                assertNull(tracker.head(target));
+            } else if (loss == InitialLoss.OTHER_IDENTITY) {
+                when(actors.authorize(actor, RepositoryScope.CENTRAL_WRITE)).thenReturn(new WorkspaceFetchAuthority.Grant(java.util.UUID.randomUUID().toString(),"LOCAL","other-binding"));
+                assertThrows(ResponseStatusException.class, () -> f.service.createFork(sourceId,"main","Fork","retained",null,null,actor));
+                assertNull(target.getHeadCommit("main"));
+                assertEquals(1,journal.status(scope,principal,id).attempts());
+            } else if (loss == InitialLoss.SOURCE_REWRITTEN) {
+                var source = f.git.getCentralRepository(sourceId);
+                var other = source.commitDsl("unrelated", "foreign history", OWNER, "Unrelated root");
+                var update = source.getGitRepository().updateRef("refs/heads/main");
+                update.setExpectedOldObjectId(ObjectId.fromString(current));
+                update.setNewObjectId(ObjectId.fromString(other));
+                update.setForceUpdate(true);
+                assertEquals(org.eclipse.jgit.lib.RefUpdate.Result.FORCED,update.update());
+                assertEquals(409,assertThrows(ResponseStatusException.class, () -> f.service.createFork(sourceId,"main","Fork","retained",null,null,actor)).getStatusCode().value());
+                assertEquals("MANUAL_REVIEW",journal.status(scope,principal,id).phase());
+                assertNull(target.getHeadCommit("main"));
+                assertNull(tracker.head(target));
+            } else if (loss == InitialLoss.FOREIGN_REF) {
+                target.createBranchAtCommit("another",captured);
+                assertEquals(409,assertThrows(ResponseStatusException.class, () -> f.service.createFork(sourceId,"main","Fork","retained",null,null,actor)).getStatusCode().value());
+                assertEquals("MANUAL_REVIEW",journal.status(scope,principal,id).phase());
+                assertNull(target.getHeadCommit("main"));
+                assertNull(tracker.head(target));
+                assertEquals(captured,target.getHeadCommit("another"));
+            } else {
+                if (loss == InitialLoss.RACING_WORKERS) {
+                    try (var second = new Fixture(database,GitCommitSignatureService.disabled(),actors);
+                         var threads = Executors.newFixedThreadPool(2)) {
+                        var otherJournal = second.useInitialJournal(actors,second.git,later);
+                        var firstWorker = new WorkspaceFetchRecovery(journal,null,actors,null);
+                        firstWorker.useInitialTransfers(f.initial);
+                        var otherWorker = new WorkspaceFetchRecovery(otherJournal,null,actors,null);
+                        otherWorker.useInitialTransfers(second.initial);
+                        var start = new CountDownLatch(1);
+                        var a = threads.submit(() -> { start.await(); firstWorker.recoverDue(); return true; });
+                        var b = threads.submit(() -> { start.await(); otherWorker.recoverDue(); return true; });
+                        start.countDown();
+                        assertTrue(a.get(30,TimeUnit.SECONDS));
+                        assertTrue(b.get(30,TimeUnit.SECONDS));
+                    }
+                } else if (loss == InitialLoss.WORKER) {
+                    var worker = new WorkspaceFetchRecovery(journal,null,actors,null);
+                    worker.useInitialTransfers(f.initial); worker.recoverDue();
+                } else f.service.createFork(sourceId,"main","Fork","retained",null,null,actor);
+                var done = journal.status(scope,principal,id);
+                assertEquals("COMPLETED",done.phase());
+                assertEquals(2,done.attempts());
+                assertEquals(captured,done.resultCommit());
+                assertEquals(current,done.observedSourceCommit());
+                assertEquals(captured,target.getHeadCommit("main"));
+                assertEquals(captured,tracker.head(target));
+                assertEquals(targetId,f.service.createFork(sourceId,"main","Fork","retained",null,null,actor).getRepositoryId());
+                assertEquals(RepositoryLifecycleState.ACTIVE,f.catalog.getRepository(targetId).getLifecycleState());
+            }
+            assertEquals(2,f.rows.count());
+        }
+    }
+
     static final class Fixture implements AutoCloseable {
         final EditorPersistenceFixture persistence;
         final SystemRepositoryRepository rows;
@@ -400,23 +516,36 @@ class CentralForkOriginalHistoryTest {
         final RepositoryMembershipService memberships;
         final DslGitRepositoryFactory git;
         final ArchitectureRepositoryProvisioningService service;
+        CentralForkInitialTransfer initial;
 
         Fixture(String database, GitCommitSignatureService signatures) {
             this(database, signatures, null);
         }
 
         Fixture(String database, GitCommitSignatureService signatures, WorkspaceFetchAuthority actors) {
-            persistence = new EditorPersistenceFixture(database, SystemRepository.class, RepositoryMembership.class);
+            persistence = new EditorPersistenceFixture(database, SystemRepository.class, RepositoryMembership.class, CentralFetchOperation.class, WorkspaceFetchOperation.class);
             var transactionManager = new JpaTransactionManager(persistence.factory);
             var entities = SharedEntityManagerCreator.createSharedEntityManager(persistence.factory);
             var repositories = new JpaRepositoryFactory(entities);
             var transactions = new TransactionInterceptor(transactionManager, new AnnotationTransactionAttributeSource());
             rows = repositories.getRepository(SystemRepositoryRepository.class);
-            catalog = transactional(new SystemRepositoryService(rows, java.util.Optional.ofNullable(actors)), SystemRepositoryService.class, transactions);
+            var rawCatalog = new SystemRepositoryService(rows, java.util.Optional.ofNullable(actors));
+            org.springframework.test.util.ReflectionTestUtils.setField(rawCatalog, "entities", entities);
+            catalog = transactional(rawCatalog, SystemRepositoryService.class, transactions);
             memberships = transactional(new RepositoryMembershipService(repositories.getRepository(RepositoryMembershipRepository.class)),
                     RepositoryMembershipService.class, transactions);
             git = new DslGitRepositoryFactory(new DefaultHibernateRepositoryFactory(persistence.factory), catalog, signatures);
             service = new ArchitectureRepositoryProvisioningService(catalog, memberships, git, namespace -> "meta { language: \"taxdsl\"; }\n");
+        }
+
+        WorkspaceFetchJournal useInitialJournal(WorkspaceFetchAuthority actors, DslGitRepositoryFactory factory, java.time.Clock clock) {
+            var transactions = new JpaTransactionManager(persistence.factory);
+            var advice = new TransactionInterceptor(transactions,new AnnotationTransactionAttributeSource());
+            var journal = transactional(new WorkspaceFetchJournal(SharedEntityManagerCreator.createSharedEntityManager(persistence.factory),
+                    transactions,clock),WorkspaceFetchJournal.class,advice);
+            initial = transactional(new CentralForkInitialTransfer(catalog,memberships,factory,journal,actors),CentralForkInitialTransfer.class,advice);
+            service.useInitialTransfers(initial);
+            return journal;
         }
 
         private static <T> T transactional(T target, Class<T> type, TransactionInterceptor transactions) {

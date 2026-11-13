@@ -38,6 +38,8 @@ public class SystemRepositoryService implements RepositoryMutationFence {
 
     private final SystemRepositoryRepository repository;
     private final WorkspaceFetchAuthority forkActors;
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entities;
 
     public SystemRepositoryService(SystemRepositoryRepository repository) {
         this(repository, Optional.empty());
@@ -140,6 +142,15 @@ public class SystemRepositoryService implements RepositoryMutationFence {
         Objects.requireNonNull(decision).accept(getRepository(repositoryId));
     }
 
+    /** Read the current policy on the same connection that owns the repository mutation fence. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public SystemRepository lockCurrentPublicationSource(String repositoryId) {
+        lock(repositoryId);
+        SystemRepository source = getRepository(repositoryId);
+        entities.refresh(source);
+        return source;
+    }
+
     /** Evaluate the fork and its recorded source in the same fresh catalogue transaction. */
     @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
     public <T> T readCurrentForkAuthorization(String forkId, BiFunction<SystemRepository, SystemRepository, T> decision) {
@@ -160,6 +171,10 @@ public class SystemRepositoryService implements RepositoryMutationFence {
     public List<SystemRepository> listActiveRepositories() {
         return repository.findByLifecycleStateOrderByDisplayNameAsc(
                 RepositoryLifecycleState.ACTIVE);
+    }
+
+    public Optional<SystemRepository> byCreationSlug(String slug, String name) {
+        return repository.findBySlug(normalizeSlug(slug == null || slug.isBlank() ? requireText(name, "displayName") : slug));
     }
 
     /** Only the original personal creation is recoverable through the ordinary lifecycle. */
@@ -317,7 +332,7 @@ public class SystemRepositoryService implements RepositoryMutationFence {
         return getRepository(existing.getRepositoryId());
     }
 
-    private static boolean matchesForkRequest(SystemRepository fork, String source, String branch, String name,
+    static boolean matchesForkRequest(SystemRepository fork, String source, String branch, String name,
             String description, RepositoryVisibility visibility, String actor) {
         var state = fork.getLifecycleState();
         boolean eligible = state == RepositoryLifecycleState.FAILED || state == RepositoryLifecycleState.PROVISIONING

@@ -190,7 +190,11 @@ public final class WorkspaceRestoreImporter {
             if (central) {
                 required(row.repositoryId(),255); required(row.upstreamRepositoryId(),255); required(row.principalScope(),255);
                 if (row.workspaceId() != null || row.detachedWorkspace() != null || row.repositoryId().equals(row.upstreamRepositoryId())
-                        || row.forkPoint() == null || !row.sourceId().value().matches("f-[0-9a-f]{62}")) throw invalid();
+                        || row.forkPoint() == null || !row.sourceId().value().matches("[fp]-[0-9a-f]{62}")) throw invalid();
+                if (row.sourceId().value().startsWith("p-")
+                        && (!row.sourceId().value().equals(row.initialForkOperationId())
+                        || !Objects.equals(row.forkPoint(),row.requestedCommit()) || !Objects.equals(row.branch(),row.sourceBranch())
+                        || row.expectedCommit() != null || row.selectedTag() != null || row.resultCommit() != null && !row.resultCommit().equals(row.forkPoint()))) throw invalid();
                 var fork = capturedRepositories.get(row.repositoryId());
                 boolean currentOrigin = fork != null && capturedRepositories.containsKey(row.upstreamRepositoryId())
                         && row.upstreamRepositoryId().equals(fork.upstreamRepositoryId())
