@@ -94,12 +94,11 @@ public class WebDavApplicationCredentialService {
 
         Duration lifetime = requestedLifetime(lifetimeDays);
         Instant now = clock.instant();
-        var identity = authority.owner(owner);
+        var identity = currentOwner(owner, now);
         Instant expires = now.plus(lifetime);
         if (identity.assertionExpiresAt() != null && identity.assertionExpiresAt().isBefore(expires)) {
             expires = identity.assertionExpiresAt();
         }
-        if (!expires.isAfter(now)) throw new org.springframework.security.access.AccessDeniedException("A fresh login is required");
         String id = randomHex(12);
         // 29 random bytes retain 232 bits of entropy while keeping the complete
         // ASCII token below BCrypt's strict 72-byte input ceiling.
@@ -128,7 +127,7 @@ public class WebDavApplicationCredentialService {
     @Transactional(readOnly = true)
     public List<CredentialMetadata> list(Authentication owner) {
         requireAuthenticated(owner);
-        String actor = authority.owner(owner).actor();
+        String actor = currentOwner(owner, clock.instant()).actor();
         return repository.findAllByOwnerIdOrderByCreatedAtDesc(actor).stream()
                 .filter(row -> actor.equals(row.getOwnerId()))
                 .map(WebDavApplicationCredentialService::metadata)
@@ -138,7 +137,7 @@ public class WebDavApplicationCredentialService {
     @Transactional
     public void revoke(Authentication owner, String credentialId) {
         requireAuthenticated(owner);
-        String actor = authority.owner(owner).actor();
+        String actor = currentOwner(owner, clock.instant()).actor();
         WebDavApplicationCredential credential = repository
                 .findByCredentialIdAndOwnerId(credentialId, actor)
                 .filter(row -> actor.equals(row.getOwnerId()))
@@ -199,10 +198,18 @@ public class WebDavApplicationCredentialService {
         }
         return Optional.of(new CredentialPrincipal(
                 credential.getCredentialId(),
-                credential.getUsername(),
+                credential.getOwnerId(),
                 credential.isReadAllowed(),
                 writable,
                 List.copyOf(authorities)));
+    }
+
+    private WebDavCredentialAuthority.Owner currentOwner(Authentication login, Instant now) {
+        var owner = authority.owner(login);
+        if (owner.assertionExpiresAt() != null && !owner.assertionExpiresAt().isAfter(now)) {
+            throw new org.springframework.security.access.AccessDeniedException("A fresh login is required");
+        }
+        return owner;
     }
 
     public static boolean isApplicationSecret(String value) {
@@ -376,7 +383,7 @@ public class WebDavApplicationCredentialService {
 
     public record CredentialPrincipal(
             String credentialId,
-            String username,
+            String ownerId,
             boolean readAllowed,
             boolean writeAllowed,
             List<GrantedAuthority> authorities) {

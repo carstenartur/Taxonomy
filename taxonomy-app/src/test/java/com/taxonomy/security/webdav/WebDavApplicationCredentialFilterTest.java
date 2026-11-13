@@ -70,7 +70,7 @@ class WebDavApplicationCredentialFilterTest {
 
         filter.doFilter(request, response, chain);
 
-        assertThat(observed.get().getName()).isEqualTo("admin");
+        assertThat(observed.get().getName()).isEqualTo(WebDavCredentialTestIdentity.actor("admin"));
         assertThat(observed.get().getCredentials())
                 .isEqualTo("[PROTECTED]");
         assertThat(observed.get().getAuthorities())
@@ -104,7 +104,7 @@ class WebDavApplicationCredentialFilterTest {
         var observed = new AtomicReference<Authentication>();
         filter.doFilter(request("GET", "203.0.113.10", "admin", TOKEN), new MockHttpServletResponse(),
                 (req, res) -> observed.set(SecurityContextHolder.getContext().getAuthentication()));
-        assertThat(observed.get().getName()).isEqualTo("admin");
+        assertThat(observed.get().getName()).isEqualTo(WebDavCredentialTestIdentity.actor("admin"));
     }
 
     @Test
@@ -548,7 +548,7 @@ class WebDavApplicationCredentialFilterTest {
                     new SimpleGrantedAuthority("SCOPE_template:read"));
         return new WebDavApplicationCredentialService.CredentialPrincipal(
                 "a".repeat(24),
-                username,
+                WebDavCredentialTestIdentity.actor(username),
                 true,
                 write,
                 List.copyOf(authorities));

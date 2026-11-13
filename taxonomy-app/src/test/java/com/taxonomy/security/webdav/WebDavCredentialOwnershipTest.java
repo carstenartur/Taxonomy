@@ -17,6 +17,10 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
+import com.taxonomy.templates.DocumentTemplateWebDavLockManager;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -134,6 +138,64 @@ class WebDavCredentialOwnershipTest {
         assertThat(legacy.currentRoles(retained, List.of("ROLE_ADMIN"))).isNull();
         new JdbcTemplate(database).update("update principal_binding set enabled=0 where binding_key=?", owner.binding());
         assertThat(legacy.currentRoles(retained, List.of("ROLE_ADMIN"))).isNull();
+    }
+
+    @Test
+    void anExpiredOidcBrowserAssertionCannotListOrRevokeApplicationPasswords() {
+        var database = database();
+        PrincipalSchemaMigration.migrate(database);
+        var ids = new PrincipalIdentityService(database);
+        var roles = List.of(new SimpleGrantedAuthority("ROLE_ADMIN"));
+        var end = Instant.now().minusSeconds(20);
+        var expired = new OidcIdToken("test", end.minusSeconds(60), end,
+                Map.of("iss", "https://issuer.example", "sub", "reader", "exp", end, "iat", end.minusSeconds(60)));
+        var login = new OAuth2AuthenticationToken(new DefaultOidcUser(roles, expired), roles, "keycloak");
+        var repository = mock(WebDavApplicationCredentialRepository.class);
+        var credentials = new WebDavApplicationCredentialService(repository, new BCryptPasswordEncoder(4),
+                authority(ids, KeycloakPrincipalMode.LEGACY));
+        assertThatThrownBy(() -> credentials.list(login)).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> credentials.revoke(login, "a".repeat(24))).isInstanceOf(AccessDeniedException.class);
+        org.mockito.Mockito.verifyNoInteractions(repository);
+    }
+
+    @Test
+    void sameDisplayNameAcrossIssuersProducesDistinctWebDavLeaseOwners() throws Exception {
+        var database = database();
+        PrincipalSchemaMigration.migrate(database);
+        var ids = new PrincipalIdentityService(database);
+        var repository = mock(WebDavApplicationCredentialRepository.class);
+        var rows = new java.util.HashMap<String, WebDavApplicationCredential>();
+        when(repository.save(any())).thenAnswer(invocation -> {
+            WebDavApplicationCredential row = invocation.getArgument(0);
+            rows.put(row.getCredentialId(), row);
+            return row;
+        });
+        when(repository.findByCredentialIdAndUsername(any(), any())).thenAnswer(invocation ->
+                Optional.ofNullable(rows.get(invocation.getArgument(0, String.class))));
+        var credentials = new WebDavApplicationCredentialService(repository, new BCryptPasswordEncoder(4),
+                authority(ids, KeycloakPrincipalMode.LEGACY));
+        var filter = new WebDavApplicationCredentialFilter(credentials);
+        var locks = new DocumentTemplateWebDavLockManager(database);
+        var roles = List.of(new SimpleGrantedAuthority("ROLE_ADMIN"));
+        var actors = new java.util.ArrayList<String>();
+        for (String issuer : List.of("https://one.example", "https://two.example")) {
+            var login = new JwtAuthenticationToken(token(issuer, "42"), roles, "same-label");
+            var issued = credentials.create(login, "Word", true, true, 1);
+            var request = new MockHttpServletRequest("LOCK", "/dav/templates/sample.dotx");
+            String header = java.util.Base64.getEncoder().encodeToString(
+                    ("same-label:" + issued.secret()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            request.addHeader("Authorization", "Basic " + header);
+            var response = new MockHttpServletResponse();
+            filter.doFilter(request, response, (req, res) ->
+                    actors.add(SecurityContextHolder.getContext().getAuthentication().getName()));
+            assertThat(response.getStatus()).isEqualTo(200);
+            assertThat(actors.getLast()).isEqualTo(rows.get(issued.credential().id()).getOwnerId());
+        }
+        assertThat(actors).doesNotHaveDuplicates();
+        var lease = locks.acquire("sample", actors.getFirst(), "a".repeat(40), java.time.Duration.ofMinutes(5), null);
+        assertThat(locks.require("sample", lease.token(), actors.getFirst()).owner()).isEqualTo(actors.getFirst());
+        assertThatThrownBy(() -> locks.require("sample", lease.token(), actors.getLast()))
+                .isInstanceOf(DocumentTemplateWebDavLockManager.LockConflictException.class);
     }
 
     @Test

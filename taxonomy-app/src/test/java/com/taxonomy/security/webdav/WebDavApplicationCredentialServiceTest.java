@@ -91,7 +91,7 @@ class WebDavApplicationCredentialServiceTest {
         assertCreatedAudit(created);
 
         var principal = service.authenticate("admin", created.secret()).orElseThrow();
-        assertThat(principal.username()).isEqualTo("admin");
+        assertThat(principal.ownerId()).isEqualTo(WebDavCredentialTestIdentity.actor("admin"));
         assertThat(principal.writeAllowed()).isTrue();
         assertThat(principal.authorities()).extracting(
                 authority -> authority.getAuthority())

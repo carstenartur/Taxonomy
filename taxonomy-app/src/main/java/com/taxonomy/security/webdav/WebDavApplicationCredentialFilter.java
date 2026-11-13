@@ -165,7 +165,7 @@ public final class WebDavApplicationCredentialFilter extends OncePerRequestFilte
                 SecurityContextHolder.createEmptyContext();
         UsernamePasswordAuthenticationToken authentication =
                 UsernamePasswordAuthenticationToken.authenticated(
-                        principal.username(),
+                        principal.ownerId(),
                         "[PROTECTED]",
                         principal.authorities());
         authentication.setDetails(
@@ -174,9 +174,9 @@ public final class WebDavApplicationCredentialFilter extends OncePerRequestFilte
         SecurityContextHolder.setContext(applicationContext);
         try {
             log.debug(
-                    "WebDAV application credential accepted id={} user={} method={}",
+                    "WebDAV application credential accepted id={} actor={} method={}",
                     principal.credentialId(),
-                    principal.username(),
+                    principal.ownerId(),
                     request.getMethod());
             chain.doFilter(request, response);
         } finally {
