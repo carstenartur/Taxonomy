@@ -49,6 +49,19 @@ public class CentralForkInitialTransfer {
         return fork;
     }
 
+    RepositoryContext operationContext(String id, String username, String operationId) {
+        if (!CentralFetchOperation.initialId(id).equals(operationId)) throw WorkspaceFetchJournal.missing();
+        String stableActor = actors.currentActor(username);
+        return catalogue.readCurrentForkAuthorization(id, (fork, source) -> {
+            if (!username.equals(fork.getOwnerId()) || !username.equals(fork.getCreatedBy())
+                    || !Objects.equals(stableActor, fork.getForkInitiatorKey())
+                    || !(fork.getLifecycleState() == RepositoryLifecycleState.PROVISIONING
+                    || fork.getLifecycleState() == RepositoryLifecycleState.ACTIVE)) throw unavailable();
+            requireSource(source, fork, username);
+            return RepositoryContext.centralWrite(id, fork.getDefaultBranch(), username);
+        });
+    }
+
     boolean isJournalled(String targetId) { return journal.hasInitialFork(targetId); }
 
     SystemRepository complete(SystemRepository fork, String username) {

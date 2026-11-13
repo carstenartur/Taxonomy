@@ -425,7 +425,16 @@ class CentralForkOriginalHistoryTest {
             var retained = f.rows.findBySlug("retained").orElseThrow();
             targetId = retained.getRepositoryId();
             id = CentralFetchOperation.initialId(targetId);
-            var state = journal.status(RepositoryContext.centralWrite(targetId,"main",actor),principal,id);
+            var resolver = mock(WorkspaceResolver.class);
+            when(resolver.resolveCurrentUsername()).thenReturn(actor);
+            var recovery = new WorkspaceFetchRecovery(journal,null,actors,null);
+            recovery.useInitialTransfers(f.initial);
+            var endpoints = new com.taxonomy.workspace.controller.CentralForkUpstreamController(null,resolver,recovery);
+            var state = endpoints.status(targetId,id);
+            assertThrows(ResponseStatusException.class, () -> endpoints.status(sourceId,id));
+            when(actors.currentActor(actor)).thenReturn(java.util.UUID.randomUUID().toString());
+            assertThrows(AccessDeniedException.class, () -> endpoints.status(targetId,id));
+            when(actors.currentActor(actor)).thenReturn(principal);
             assertEquals("RUNNING",state.phase());
             assertEquals(1,state.attempts());
             assertEquals(captured,state.requestedCommit());
@@ -494,6 +503,13 @@ class CentralForkOriginalHistoryTest {
                 } else if (loss == InitialLoss.WORKER) {
                     var worker = new WorkspaceFetchRecovery(journal,null,actors,null);
                     worker.useInitialTransfers(f.initial); worker.recoverDue();
+                } else if (loss == InitialLoss.BEFORE_BRANCH) {
+                    var resolver = mock(WorkspaceResolver.class);
+                    when(resolver.resolveCurrentUsername()).thenReturn(actor);
+                    var recovery = new WorkspaceFetchRecovery(journal,null,actors,null);
+                    recovery.useInitialTransfers(f.initial);
+                    var endpoints = new com.taxonomy.workspace.controller.CentralForkUpstreamController(null,resolver,recovery);
+                    assertEquals(200,endpoints.retry(targetId,id).getStatusCode().value());
                 } else f.service.createFork(sourceId,"main","Fork","retained",null,null,actor);
                 var done = journal.status(scope,principal,id);
                 assertEquals("COMPLETED",done.phase());
