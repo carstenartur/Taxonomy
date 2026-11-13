@@ -4,7 +4,7 @@ import com.taxonomy.dto.GraphSearchResult;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.identity.StableIdentityHash;
 import com.taxonomy.relations.service.GraphSearchService;
-import com.taxonomy.workspace.service.WorkspaceDslReadPort;
+import com.taxonomy.relations.controller.GitHttpPrecondition;
 import com.taxonomy.search.service.SearchFacade;
 import com.taxonomy.error.SearchUnavailableException;
 import com.taxonomy.workspace.service.RepositoryContext;
@@ -125,7 +125,7 @@ public class SearchApiController {
         if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();
         String expected;
         try {
-            expected = commitId == null ? null : WorkspaceDslReadPort.normalizeCommitId(commitId);
+            expected = commitId == null ? null : GitHttpPrecondition.commitId(commitId);
         } catch (IllegalArgumentException invalid) {
             return ResponseEntity.badRequest().cacheControl(CacheControl.noStore()).build();
         }

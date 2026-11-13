@@ -92,14 +92,16 @@ class WorkspaceScopedEndpointIsolationTest {
     @WithMockUser(username = "architect", roles = "USER")
     void graphSearchUsesTheSelectedContextEvenWhenWorkspaceSetupFails() throws Exception {
         var selected = RepositoryContext.workspace("selected-repository", "selected-workspace", "draft", "architect");
-        when(workspaceResolver.resolveCurrentRepositoryContextForRead()).thenReturn(selected);
+        when(workspaceResolver.resolveUnambiguousRepositoryForRead()).thenReturn(selected);
         var repository = git.openWorkspaceRepository(selected.workspaceId());
         try {
             String head = repository.commitDsl(selected.branch(), "", selected.username(), "Selected branch");
             assertThat(projections.rebuild(selected).authoritativeCommitId()).isEqualTo(head);
             mockMvc.perform(get("/api/search/graph").param("q", "secure communication").param("maxResults", "0"))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.matchedNodes").isEmpty());
+                    .andExpect(jsonPath("$.matchedNodes").isEmpty())
+                    .andExpect(jsonPath("$.source.workspaceId").value(selected.workspaceId()))
+                    .andExpect(jsonPath("$.source.sourceCommit").value(head));
 
             repository.commitDsl(selected.branch(), "// next revision\n", selected.username(), "Advance selected branch");
             mockMvc.perform(get("/api/search/graph").param("q", "secure communication").param("maxResults", "0"))
