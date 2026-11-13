@@ -121,6 +121,13 @@ abstract class AbstractExternalDatabaseContainerIT extends AbstractDatabaseConta
                 database.getJdbcUrl(), database.getUsername(), database.getPassword()));
     }
 
+    @Test @Order(27)
+    void branchProgressRetainsIndependentSyncAndPublishObservationsInTheRunningDatabase() throws Exception {
+        var database = getDatabaseContainer();
+        var source = new DriverManagerDataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword());
+        WorkspaceBranchProgressDatabaseContractTest.verify(source);
+    }
+
     @Test @Order(24)
     void webDavLeasesFenceIndependentApplicationHandlesAndRetainExactGitVersions() throws Exception {
         var database = getDatabaseContainer();

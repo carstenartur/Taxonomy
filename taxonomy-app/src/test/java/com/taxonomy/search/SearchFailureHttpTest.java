@@ -25,6 +25,7 @@ import jakarta.persistence.EntityManager;
 import org.hibernate.search.mapper.orm.Search;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.json.JsonMapper;
 import org.springframework.context.support.ResourceBundleMessageSource;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -60,11 +61,11 @@ class SearchFailureHttpTest {
         var facade = new SearchFacade(taxonomy, fullText,
                 new HybridSearchService(fullText, embeddings), embeddings,
                 new GraphSearchService(embeddings, authority), initializer);
-        when(workspaces.resolveCurrentRepositoryContextForRead()).thenReturn(RepositoryContext.centralRead("fixture-repository", "draft", "system"));
+        when(workspaces.resolveUnambiguousRepositoryForRead()).thenReturn(RepositoryContext.centralRead("fixture-repository", "draft", "system"));
         var messages = new ResourceBundleMessageSource();
         messages.setBasenames("i18n/messages_search", "i18n/messages");
         messages.setDefaultEncoding("UTF-8");
-        mvc = standaloneSetup(new SearchApiController(facade, messages, workspaces))
+        mvc = standaloneSetup(new SearchApiController(facade, messages, workspaces, JsonMapper.builder().build()))
                 .setControllerAdvice(new GlobalExceptionHandler(messages)).build();
     }
 
@@ -152,7 +153,7 @@ class SearchFailureHttpTest {
 
     @Test
     void workspaceDenialKeepsIts403Meaning() throws Exception {
-        when(workspaces.resolveCurrentRepositoryContextForRead())
+        when(workspaces.resolveUnambiguousRepositoryForRead())
                 .thenThrow(new AccessDeniedException("private-workspace"));
         mvc.perform(get("/api/search/graph").param("q", "query"))
                 .andExpect(status().isForbidden())
@@ -163,7 +164,7 @@ class SearchFailureHttpTest {
     @Test
     void graphReadPassesTheSelectedWorkspaceToSearchAuthority() throws Exception {
         var selected = RepositoryContext.workspace("fixture-repository", "selected-workspace", "draft", "test-user");
-        when(workspaces.resolveCurrentRepositoryContextForRead()).thenReturn(selected);
+        when(workspaces.resolveUnambiguousRepositoryForRead()).thenReturn(selected);
         when(authority.inspect(selected)).thenThrow(new com.taxonomy.error.SearchUnavailableException());
         mvc.perform(get("/api/search/graph").param("q", "query"))
                 .andExpect(status().isServiceUnavailable());
@@ -173,7 +174,7 @@ class SearchFailureHttpTest {
 
     @Test
     void workspaceFailureReturns503BeforeRetrieval() throws Exception {
-        when(workspaces.resolveCurrentRepositoryContextForRead())
+        when(workspaces.resolveUnambiguousRepositoryForRead())
                 .thenThrow(new IllegalStateException("private-workspace"));
         mvc.perform(get("/api/search/graph").param("q", "query"))
                 .andExpect(status().isServiceUnavailable())

@@ -11,6 +11,9 @@ import com.taxonomy.editor.persistence.EditorJournal;
 import com.taxonomy.security.backup.IdentityBackupContributor;
 import com.taxonomy.workspace.backup.*;
 import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.model.WorkspaceSyncScope;
+import com.taxonomy.workspace.repository.WorkspaceSyncStateUpdatesImpl;
+import org.springframework.orm.jpa.SharedEntityManagerCreator;
 import com.taxonomy.workspace.service.RepositoryMembershipService;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceFetchAuthority;
@@ -21,7 +24,6 @@ import com.taxonomy.workspace.service.WorkspaceUpstreamService;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.repository.WorkspaceProvisioningFenceImpl;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
-import org.springframework.orm.jpa.SharedEntityManagerCreator;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.data.jpa.repository.support.JpaRepositoryFactory;
 import org.springframework.data.repository.core.support.RepositoryComposition.RepositoryFragments;
@@ -49,7 +51,7 @@ class WorkspaceEditorRestoreRuntimeTest {
     @TempDir Path temporary;
 
     @Test void explicitActorRebindingPreservesActualEditorHistoryUndoRedoAndInterruptedCheckpointEvidence()throws Exception {
-        try(var fixture=fixture(SOURCE_SCOPE)) {
+        try(var fixture=fixture(SOURCE_SCOPE,null,true)) {
             fixture.restore();
             var target=RepositoryContext.workspace("editor-target-repository","editor-target-workspace","main",TARGET_SCOPE);
             var journal=new EditorJournal(fixture.targetFactory,new JpaTransactionManager(fixture.targetFactory));
@@ -70,11 +72,31 @@ class WorkspaceEditorRestoreRuntimeTest {
                 var redo=editor.execute(target,new Command(editor.read(target,null).context(),metadata(UUID.randomUUID().toString()),new RedoArchitectureCommand(UUID.fromString(undo.commandId()))));
                 assertThat(redo.context().revision()).isEqualTo(3);
                 assertThat(editor.read(target,null).dsl()).isEqualTo(before.dsl());
-                assertThat(new JdbcTemplate(fixture.target).queryForObject("select enabled from app_principal",Integer.class)).isZero();
+                assertThat(new JdbcTemplate(fixture.target).queryForObject("select count(*) from app_principal where enabled<>0",Integer.class)).isZero();
                 assertThat(new JdbcTemplate(fixture.target).queryForObject("select record_json from restore_workspace_evidence where record_kind='operations'",String.class)).contains("\"actor\":\""+SOURCE_SCOPE+"\"");
                 assertThat(new JdbcTemplate(fixture.source).queryForObject("select actor from editor_operation",String.class)).isEqualTo(SOURCE_SCOPE);
                 assertThat(fixture.sourceJournal.read(fixture.sourceContext).state().pendingCheckpoint()).isEqualTo(SAVE);
                 var targetRows = new JdbcTemplate(fixture.target);
+                var progress = new WorkspaceSyncStateUpdatesImpl(SharedEntityManagerCreator.createSharedEntityManager(fixture.targetFactory),
+                        new JpaTransactionManager(fixture.targetFactory));
+                var main = progress.readScope(new WorkspaceSyncScope(TARGET_SCOPE, target.repositoryId(), target.workspaceId(), "main"));
+                var review = progress.readScope(new WorkspaceSyncScope(TARGET_SCOPE, target.repositoryId(), target.workspaceId(), "review"));
+                assertThat(main.getSyncStatus()).isEqualTo("RESTORED_REVIEW_REQUIRED");
+                assertThat(main.getLastPublishedCommitId()).isEqualTo(new JdbcTemplate(fixture.source)
+                        .queryForObject("select base_commit from user_workspace", String.class));
+                assertThat(review.getLastPublishedCommitId()).isNull();
+                assertThat(review.getUnpublishedCommitCount()).isEqualTo(3);
+                assertThat(progress.readScope(new WorkspaceSyncScope(TARGET_SCOPE, target.repositoryId(), null, "main"))
+                        .getLastPublishedCommitId()).isNotNull().isNotEqualTo(main.getLastPublishedCommitId());
+                assertThat(progress.readScope(new WorkspaceSyncScope(SOURCE_SCOPE, target.repositoryId(), target.workspaceId(), "main"))
+                        .getLastSyncedCommitId()).isNull();
+                var detachedActor = new WorkspaceSyncScope("archived-collaborator", CENTRAL.repositoryId(), null, "main");
+                assertThat(targetRows.queryForObject("""
+                        select classification from restore_workspace_evidence
+                        where record_kind='branch-synchronization' and record_key=?""",String.class,detachedActor.key()))
+                        .isEqualTo("PRIVATE_QUARANTINE");
+                assertThat(progress.readScope(new WorkspaceSyncScope("quarantined-collaborator",target.repositoryId(),null,"main"))
+                        .getLastPublishedCommitId()).isNull();
                 String evidence = " from restore_workspace_evidence where record_kind='fetch-journal' and record_key=?";
                 assertThat(targetRows.queryForObject("select classification" + evidence, String.class, "f".repeat(64)))
                         .isEqualTo("INTERRUPTED_SOURCE_OPERATION");
@@ -124,6 +146,9 @@ class WorkspaceEditorRestoreRuntimeTest {
                 var fetches = new WorkspaceFetchRecovery(journal,upstream,authority);
                 var receipt = fetches.fetch(selected,new WorkspaceUpstreamService.Request(sourceHead,null),"archive-contract",null);
                 assertThat(receipt.result().trackedCommit()).isEqualTo(sourceHead);
+                var progress = new WorkspaceSyncStateUpdatesImpl(em,txManager);
+                var deletedScope = new WorkspaceSyncScope(SOURCE_SCOPE,selected.repositoryId(),selected.workspaceId(),"main");
+                progress.recordSync(deletedScope,sourceHead,Instant.now(),false);
                 var retained = journal.admit(selected,grant,upstream.capture(selected),
                         new WorkspaceUpstreamService.Request(sourceHead,sourceHead),"pending-at-deletion",null);
                 var tx = new TransactionTemplate(txManager);
@@ -133,9 +158,11 @@ class WorkspaceEditorRestoreRuntimeTest {
                 assertThatThrownBy(() -> tx.executeWithoutResult(status -> failedDelete.deleteWorkspace(selected.workspaceId(), SOURCE_SCOPE)))
                         .hasMessageContaining("repository still open");
                 assertThat(journal.status(selected,grant.principalId(),retained.operationId()).phase()).isEqualTo("ADMITTED");
+                assertThat(progress.readScope(deletedScope).getLastSyncedCommitId()).isEqualTo(sourceHead);
                 var manager = new WorkspaceManager(rows,10,catalog,routed,journal,authority);
                 tx.executeWithoutResult(status -> manager.deleteWorkspace(selected.workspaceId(), SOURCE_SCOPE));
                 assertThat(rows.findByWorkspaceId(selected.workspaceId())).isEmpty();
+                assertThat(progress.readScope(deletedScope).getLastSyncedCommitId()).isNull();
                 var denied = journal.status(selected,grant.principalId(),retained.operationId());
                 assertThat(denied.phase()).isEqualTo("ARCHIVED");
                 assertThat(denied.outcome()).isEqualTo("DENIED");
@@ -194,7 +221,9 @@ class WorkspaceEditorRestoreRuntimeTest {
 
     private Fixture fixture(String actor)throws Exception { return fixture(actor,null); }
 
-    private Fixture fixture(String actor,AnalysisArchiveRoundTrip analysis)throws Exception {
+    private Fixture fixture(String actor,AnalysisArchiveRoundTrip analysis)throws Exception { return fixture(actor,analysis,false); }
+
+    private Fixture fixture(String actor,AnalysisArchiveRoundTrip analysis,boolean archivedCollaborator)throws Exception {
         var source=database();var target=database();RestoreSchemaMigration.bootstrap(database(),source,CHECK);
         var sourceFactory=RestoreSchemaMigration.openValidatedFactory(database(),source,model(),CHECK);
         var sourceRepositories=new DslGitRepositoryFactory(new DefaultHibernateRepositoryFactory(sourceFactory));
@@ -202,9 +231,28 @@ class WorkspaceEditorRestoreRuntimeTest {
         var principal=PrincipalId.create();var rows=new JdbcTemplate(source);var created=java.sql.Timestamp.from(Instant.now());
         rows.update("insert into app_principal(principal_id,scope_key,enabled) values(?,?,1)",principal.value().toString(),SOURCE_SCOPE);
         rows.update("insert into system_repository(repository_id,storage_repository_name,slug,display_name,visibility,lifecycle_state,owner_type,owner_id,topology_mode,default_branch,primary_repo,created_at,version) values(?,?,'editor-source','Editor source','PRIVATE','ACTIVE','USER',?,'INTERNAL_SHARED','main',false,?,0)",CENTRAL.repositoryId(),"editor-source-central-storage",SOURCE_SCOPE,created);
-        sourceRepositories.createCentralRepository(CENTRAL.repositoryId(),"editor-source-central-storage").commitDsl("main","",SOURCE_SCOPE,"Original central baseline");
+        String centralBaseline=sourceRepositories.createCentralRepository(CENTRAL.repositoryId(),"editor-source-central-storage").commitDsl("main","",SOURCE_SCOPE,"Original central baseline");
         String baseline=sourceRepositories.resolveRepository(sourceContext).commitDsl("main","",SOURCE_SCOPE,"Original workspace baseline");
         rows.update("insert into user_workspace(workspace_id,username,display_name,current_branch,base_branch,shared,created_at,provisioning_status,topology_mode,source_repository_id,source_branch,relationship_type,base_commit,current_commit,archived,is_default) values(?,?,'Editor draft','main','main',false,?,'READY','INTERNAL_SHARED',?,'main','WORKING_COPY',?,?,false,false)",WORKSPACE.workspaceId(),SOURCE_SCOPE,created,CENTRAL.repositoryId(),baseline,baseline);
+        var sourceProgress = new WorkspaceSyncStateUpdatesImpl(SharedEntityManagerCreator.createSharedEntityManager(sourceFactory),
+                new JpaTransactionManager(sourceFactory));
+        var mainProgress = new WorkspaceSyncScope(SOURCE_SCOPE, WORKSPACE.repositoryId(), WORKSPACE.workspaceId(), "main");
+        var otherProgress = new WorkspaceSyncScope(SOURCE_SCOPE, WORKSPACE.repositoryId(), WORKSPACE.workspaceId(), "review");
+        var centralProgress = new WorkspaceSyncScope(SOURCE_SCOPE, CENTRAL.repositoryId(), null, "main");
+        sourceProgress.recordSync(mainProgress, baseline, created.toInstant(), true);
+        sourceProgress.recordSync(otherProgress, baseline, created.toInstant(), false);
+        sourceProgress.recordLocalChanges(otherProgress, 3, 0, created.toInstant().plusSeconds(1));
+        sourceProgress.recordSync(centralProgress, centralBaseline, created.toInstant(), true);
+        var principals = new LinkedHashMap<PrincipalId, RestorePrincipalAllocation>();
+        principals.put(principal, new RestorePrincipalAllocation(PrincipalId.create(),TARGET_SCOPE,RestorePrincipalAllocation.Disposition.EXPLICIT_TARGET));
+        if (archivedCollaborator) {
+            var collaborator = PrincipalId.create();
+            rows.update("insert into app_principal(principal_id,scope_key,enabled) values(?,?,1)",collaborator.value().toString(),"archived-collaborator");
+            var historical = new WorkspaceSyncScope("archived-collaborator",CENTRAL.repositoryId(),null,"main");
+            sourceProgress.recordSync(historical,centralBaseline,created.toInstant(),true);
+            principals.put(collaborator,new RestorePrincipalAllocation(PrincipalId.create(),"quarantined-collaborator",
+                    RestorePrincipalAllocation.Disposition.QUARANTINE));
+        }
         var sourceJournal=new EditorJournal(sourceFactory,new JpaTransactionManager(sourceFactory));
         var service=new ArchitectureEditorService(sourceRepositories,sourceJournal,new ArchitectureCheckpointWriter());
         var accepted=service.execute(sourceContext,new Command(Context.of(sourceContext,baseline,0),metadata(EDIT),new SemanticCommand(new CreateArchitectureElement("restored-editor-element","System",Map.of("title","Restored editor draft")))));
@@ -229,7 +277,6 @@ class WorkspaceEditorRestoreRuntimeTest {
         var allocations=Map.of(CENTRAL,new RestoreRepositoryAllocation(new BackupRepositoryKey("editor-target-repository",null),"editor-target-central-storage"),
                 WORKSPACE,new RestoreRepositoryAllocation(new BackupRepositoryKey("editor-target-repository","editor-target-workspace"),DslGitRepositoryFactory.workspaceRepositoryName("editor-target-workspace")));
         var generation=RestoreTargetGeneration.verified(UUID.randomUUID(),source,target,targetFactory,allocations,CHECK);
-        var principals=Map.of(principal,new RestorePrincipalAllocation(PrincipalId.create(),TARGET_SCOPE,RestorePrincipalAllocation.Disposition.EXPLICIT_TARGET));
         return new Fixture(source,target,sourceFactory,targetFactory,sourceRepositories,sourceJournal,sourceContext,archive,generation,principals,authority(principal));
     }
 

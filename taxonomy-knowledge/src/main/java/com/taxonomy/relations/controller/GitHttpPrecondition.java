@@ -48,15 +48,20 @@ public final class GitHttpPrecondition {
         }
         String commit = match.substring(1, match.length() - 1);
         try {
-            return WorkspaceDslReadPort.normalizeCommitId(commit);
+            return commitId(commit);
         } catch (IllegalArgumentException error) {
             throw new InvalidPreconditionException(
                     "If-Match must be a quoted full Git commit ID", error);
         }
     }
 
+    /** Validates and normalizes a full, unquoted object ID from an HTTP parameter. */
+    public static String commitId(String value) {
+        return WorkspaceDslReadPort.normalizeCommitId(value);
+    }
+
     public static String etag(String commitId) {
-        return '"' + WorkspaceDslReadPort.normalizeCommitId(Objects.requireNonNull(commitId, "commitId")) + '"';
+        return '"' + commitId(Objects.requireNonNull(commitId, "commitId")) + '"';
     }
 
     private static String normalize(String value) {

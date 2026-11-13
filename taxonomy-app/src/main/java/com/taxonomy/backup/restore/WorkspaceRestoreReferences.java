@@ -13,13 +13,21 @@ import java.util.*;
 final class WorkspaceRestoreReferences {
     record Rows(List<RepositoryRecord> repositories,List<WorkspaceRecord> workspaces,List<MembershipRecord> memberships,
                 List<SyncRecord> synchronization,List<WorkingStateRecord> workingStates,List<OperationRecord> operations,
+                List<CheckpointRecord> checkpoints,List<CommitIndexRecord> commitIndex,List<ContextHistoryRecord> contextHistory,
+                List<BranchSyncRecord> branchProgress) {
+        Rows(List<RepositoryRecord> repositories,List<WorkspaceRecord> workspaces,List<MembershipRecord> memberships,
+                List<SyncRecord> synchronization,List<WorkingStateRecord> workingStates,List<OperationRecord> operations,
                 List<CheckpointRecord> checkpoints,List<CommitIndexRecord> commitIndex,List<ContextHistoryRecord> contextHistory) {
+            this(repositories,workspaces,memberships,synchronization,workingStates,operations,checkpoints,commitIndex,contextHistory,List.of());
+        }
+
         Rows {
+            branchProgress=List.copyOf(branchProgress);
             repositories=List.copyOf(repositories);workspaces=List.copyOf(workspaces);memberships=List.copyOf(memberships);
             synchronization=List.copyOf(synchronization);workingStates=List.copyOf(workingStates);operations=List.copyOf(operations);
             checkpoints=List.copyOf(checkpoints);commitIndex=List.copyOf(commitIndex);contextHistory=List.copyOf(contextHistory);
             long total=(long)repositories.size()+workspaces.size()+memberships.size()+synchronization.size()+workingStates.size()
-                    +operations.size()+checkpoints.size()+commitIndex.size()+contextHistory.size();
+                    +operations.size()+checkpoints.size()+commitIndex.size()+contextHistory.size()+branchProgress.size();
             if(total>100_000)throw new IllegalArgumentException("Workspace owner row budget exceeded");
         }
     }
@@ -64,6 +72,23 @@ final class WorkspaceRestoreReferences {
             checkpoint.check();id(row.sourceId(),"workspace.sync");var parent=workspaces.get(row.workspaceId());if(parent==null)throw reference();
             var related=related(key(parent.repositoryId(),parent.workspaceId(),sourceKeys),sourceKeys);
             add(expected,row.sourceId(),Field.SYNC_LAST_SYNCED,row.lastSyncedCommit(),related);add(expected,row.sourceId(),Field.SYNC_LAST_PUBLISHED,row.lastPublishedCommit(),related);
+        }
+        for (var row : rows.branchProgress()) {
+            checkpoint.check();
+            id(row.sourceId(), "workspace.branch-sync");
+            var key = key(row.repositoryId(), row.workspaceId(), sourceKeys);
+            if (row.branch() == null || !Repository.isValidRefName("refs/heads/" + row.branch())
+                    || row.principalScope() == null || !new com.taxonomy.workspace.model.WorkspaceSyncScope(
+                    row.principalScope(), row.repositoryId(), row.workspaceId(), row.branch()).key().equals(row.sourceId().value())) {
+                throw reference();
+            }
+            if (row.workspaceId() != null) {
+                var parent = workspaces.get(row.workspaceId());
+                if (parent == null || !parent.repositoryId().equals(row.repositoryId())) throw reference();
+            }
+            var allowed = key.workspaceId() == null ? Set.of(key) : related(key, sourceKeys);
+            add(expected, row.sourceId(), Field.SYNC_LAST_SYNCED, row.lastSyncedCommit(), allowed);
+            add(expected, row.sourceId(), Field.SYNC_LAST_PUBLISHED, row.lastPublishedCommit(), allowed);
         }
         var editors=new HashMap<SourceRecordId,WorkingStateRecord>();
         for(var row:rows.workingStates()) {

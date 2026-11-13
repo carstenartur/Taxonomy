@@ -141,8 +141,22 @@ public class WorkspaceContextResolver {
                 ? null
                 : resolveWorkspace(user, provisionDefault);
 
+        return repositoryContext(user,workspace,provisionDefault);
+    }
+
+    record SyncObservation(RepositoryContext source, WorkspaceProvisioningStatus lifecycle) { }
+
+    /** The synchronization indicator can report provisioning before any physical repository exists. */
+    SyncObservation resolveSyncObservation(String username) {
+        String user = normalizeUsername(username);
+        var workspace = WorkspaceManager.DEFAULT_USER.equals(user) ? null : selectedWorkspace(user);
+        return new SyncObservation(repositoryContext(user,workspace,false),
+                workspace == null ? WorkspaceProvisioningStatus.READY : workspace.getProvisioningStatus());
+    }
+
+    private RepositoryContext repositoryContext(String user, UserWorkspace workspace, boolean persistLegacySource) {
         if (workspace != null && hasText(workspace.getWorkspaceId())) {
-            SystemRepository repository = resolveWorkspaceSource(workspace, provisionDefault);
+            SystemRepository repository = resolveWorkspaceSource(workspace, persistLegacySource);
             String branch = hasText(workspace.getCurrentBranch())
                     ? workspace.getCurrentBranch().strip()
                     : requireBranch(repository);
@@ -214,20 +228,21 @@ public class WorkspaceContextResolver {
         }
     }
 
-    private UserWorkspace resolveWorkspace(String username, boolean provisionDefault) {
-        UserWorkspace workspace = resolveWorkspaceMetadataForUser(username);
-        // Keep central reads for ineligible users with an unused default.
-        // Only callers permitting provisioning may finish default initialization.
-        if (workspace != null && workspace.isDefault() && requestedWorkspaceId() == null
+    private boolean unusedDefault(UserWorkspace workspace) {
+        return workspace != null && workspace.isDefault() && requestedWorkspaceId() == null
                 && (workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.NOT_PROVISIONED
-                || workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.PROVISIONING)) {
-            if (!workspaceManager.mayProvisionDefaultWorkspace(username)) {
-                return null;
-            }
-            if (provisionDefault) {
-                workspace = workspaceManager.provisionDefaultWorkspaceRepository(
-                        username, workspace.getWorkspaceId());
-            }
+                    || workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.PROVISIONING);
+    }
+
+    private UserWorkspace selectedWorkspace(String username) {
+        var workspace = resolveWorkspaceMetadataForUser(username);
+        return unusedDefault(workspace) && !workspaceManager.mayProvisionDefaultWorkspace(username) ? null : workspace;
+    }
+
+    private UserWorkspace resolveWorkspace(String username, boolean provisionDefault) {
+        var workspace = selectedWorkspace(username);
+        if (provisionDefault && unusedDefault(workspace)) {
+            workspace = workspaceManager.provisionDefaultWorkspaceRepository(username,workspace.getWorkspaceId());
         }
         if (workspace != null
                 && workspace.getProvisioningStatus() != WorkspaceProvisioningStatus.READY) {

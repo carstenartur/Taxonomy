@@ -6,7 +6,7 @@ import vm from 'node:vm';
 const root = new URL('../../taxonomy-app/src/main/resources/static/js/', import.meta.url);
 const sources = new Map();
 for (const path of ['api/taxonomy-api-client.js', 'api/analysis-adapter-api.js', 'api/analysis-api.js', 'api/portfolio-api.js',
-  'api/workspace-api.js', 'versioning/taxonomy-context-bar.js',
+  'api/workspace-api.js', 'api/search-api.js', 'versioning/taxonomy-context-bar.js',
   'api/import-api.js', 'api/analysis-session-api.js', 'core/taxonomy-analysis-session-core.js',
   'core/taxonomy-analysis-session-transport.js', 'portfolio/taxonomy-portfolio-async.js',
   'core/taxonomy-analysis.js', 'shared/taxonomy-document-import.js', 'shared/taxonomy-import.js', 'api/export-api.js',
@@ -933,4 +933,27 @@ test('exporting the current architecture report pins its live proposal inbox and
   assert.equal(calls[0][1].get('X-Taxonomy-Workspace-Id'),'');
   assert.equal(calls[1][0].searchParams.has('repositoryId'),false);
   assert.equal(calls[1][1].get('X-Taxonomy-Workspace-Id'),'retained');
+});
+
+test('graph search waits for the selected repository and branch without blocking global catalogue reads', async () => {
+  const admitted = deferred(), calls = [];
+  const app = boot(async (url, init) => {
+    calls.push([new URL(url, app.window.location.href), new Headers(init.headers)]);
+    return Response.json([]);
+  });
+  app.load('api/search-api.js');
+  app.runtime.workspaceId = undefined;
+  app.window.TaxonomyArchitectureWorkspace = {ready: () => admitted.promise};
+  app.window.TaxonomyArchitectureWorkflow = {getScope: () => ({repositoryId:'central B',workspaceId:'',branch:'review/B'})};
+  const graph = app.window.TaxonomySearchApi.search('care & treatment', 'graph', 3);
+  await app.window.TaxonomySearchApi.search('care', 'semantic', 2);
+  assert.deepEqual(calls.map(([url]) => url.pathname), ['/taxonomy/api/search/semantic']);
+  admitted.resolve(true);
+  await graph;
+  const [url, headers] = calls[1];
+  assert.equal(url.pathname, '/taxonomy/api/search/graph');
+  assert.deepEqual(Object.fromEntries(url.searchParams), {
+    q:'care & treatment', maxResults:'3', repositoryId:'central B', workspaceId:'', branch:'review/B'
+  });
+  assert.equal(headers.get('X-Taxonomy-Workspace-Id'), '');
 });

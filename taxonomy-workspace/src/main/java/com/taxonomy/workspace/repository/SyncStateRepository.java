@@ -10,7 +10,7 @@ import java.util.Optional;
  * JPA repository for {@link SyncState} entities.
  */
 @Repository
-public interface SyncStateRepository extends JpaRepository<SyncState, Long> {
+public interface SyncStateRepository extends JpaRepository<SyncState, Long>, WorkspaceSyncStateUpdates {
 
     Optional<SyncState> findByUsername(String username);
 

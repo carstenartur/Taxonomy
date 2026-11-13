@@ -76,11 +76,15 @@ class LlmQuotaDocumentationContractTest {
                 .doesNotContain("Anfragen pro IP pro Minute");
 
         assertThat(englishProviders)
-                .contains("immutable `iss`/`sub`")
+                .contains("stable principal ID")
+                .contains("LEGACY mode")
+                .contains("immutable issuer/subject (`iss`/`sub`)")
                 .contains("per application instance")
                 .doesNotContain("requests per client");
         assertThat(germanProviders)
-                .contains("Keycloak-Browser- und Bearer-Zugriffe teilen `iss`/`sub`")
+                .contains("stabiler Principal-ID")
+                .contains("LEGACY-Modus")
+                .contains("unveränderliche Issuer/Subject-Identität (`iss`/`sub`)")
                 .contains("je Anwendungsinstanz")
                 .doesNotContain("Aufrufe pro Client");
         assertThat(englishOperations)

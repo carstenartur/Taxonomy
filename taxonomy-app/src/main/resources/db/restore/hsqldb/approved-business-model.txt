@@ -82,6 +82,7 @@ com.taxonomy.versioning.model.ContextHistoryRecord
 com.taxonomy.workspace.model.GitReflogProvenanceRecord
 com.taxonomy.workspace.model.RepositoryMembership
 com.taxonomy.workspace.model.SyncState
+com.taxonomy.workspace.model.WorkspaceBranchSyncState
 com.taxonomy.workspace.model.SystemRepository
 com.taxonomy.workspace.model.UserWorkspace
 com.taxonomy.workspace.model.WorkspaceProjection

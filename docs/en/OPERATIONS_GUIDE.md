@@ -325,7 +325,7 @@ The application is designed for single-instance deployment. Multi-user support i
 | Incoming LLM quota | `TAXONOMY_RATE_LIMIT_PER_MINUTE` | 10 | Size per authenticated identity and per application instance |
 | JDBC Batch Size | `spring.jpa.properties.hibernate.jdbc.batch_size` | 50 | Suitable for most workloads |
 
-The incoming LLM quota is held in memory per application instance. Local usernames and immutable Keycloak `iss`/`sub` identities receive separate budgets. When enabling multiple replicas, use a distributed ingress quota for a cluster-wide ceiling or account for the aggregate allowance increasing with replica count.
+The incoming LLM quota is held in memory per application instance. Verified local and STABLE Keycloak logins share one budget per stable principal ID. In LEGACY mode, Keycloak browser and bearer logins share the immutable issuer/subject (`iss`/`sub`). When enabling multiple replicas, use a distributed ingress quota for a cluster-wide ceiling or account for the aggregate allowance increasing with replica count.
 
 ### Reverse Proxy
 

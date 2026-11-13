@@ -122,6 +122,7 @@ class IdentityExportIT {
         f.jdbc.execute("create table system_repository(repository_id varchar(255),owner_type varchar(50),owner_id varchar(255))");
         f.jdbc.execute("create table user_workspace(workspace_id varchar(255),source_repository_id varchar(255),username varchar(255))");
         f.jdbc.execute("create table repository_membership(id integer,repository_id varchar(255),username varchar(255))");
+        f.jdbc.execute("create table workspace_branch_sync(scope_key varchar(64),repository_id varchar(255),workspace_id varchar(255),username varchar(255))");
         f.jdbc.execute("create table sync_state(id integer,workspace_id varchar(255),username varchar(255))");
         for (String table : List.of("arch_project", "project_requirement", "solution_definition"))
             f.jdbc.execute("create table " + table + "(id integer,scope_key varchar(512),owner_username varchar(255))");

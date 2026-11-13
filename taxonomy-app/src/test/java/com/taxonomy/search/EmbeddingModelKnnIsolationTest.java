@@ -258,6 +258,11 @@ class EmbeddingModelKnnIsolationTest {
     @Test
     void graphRelationStatisticsExcludeCloserWrongModelAndUntaggedVectors() {
         var result = graphSearch.graphSearch("authored query", 1, CENTRAL_CONTEXT);
+        assertThat(result.getSource().modelKey()).isEqualTo(CURRENT_KEY);
+        assertThat(result.getSource().vectorSource()).isEqualTo(com.taxonomy.dto.GraphSearchResult.VectorSource.GLOBAL_INDEX);
+        assertThat(result.getSource().sourceCommit()).isEqualTo(heads.get(CENTRAL_CONTEXT));
+        assertThat(result.getSource().relationReadModel()).isEqualTo("LEGACY_FALLBACK");
+        assertThat(result.getSource().generation()).isNull();
         assertThat(result.getRelationCountByRoot()).containsExactlyInAnyOrderEntriesOf(Map.of("BP", 1L));
         assertThat(result.getTopRelationTypes()).containsExactlyInAnyOrderEntriesOf(Map.of("SUPPORTS", 1L));
     }
@@ -289,6 +294,9 @@ class EmbeddingModelKnnIsolationTest {
         var selected = RepositoryContext.workspace(CURRENT_REPOSITORY, "empty-workspace", "draft", "fixture-user");
         project(selected, "e".repeat(40), null);
         var result = graphSearch.graphSearch("authored query", 1, selected);
+        assertThat(result.getSource().workspaceId()).isEqualTo("empty-workspace");
+        assertThat(result.getSource().sourceCommit()).isEqualTo("e".repeat(40));
+        assertThat(result.getSource().relationReadModel()).isEqualTo("PROJECTION");
         assertThat(result.getMatchedNodes()).extracting(TaxonomyNodeDto::getCode).containsExactly(CURRENT_NODE);
         assertThat(result.getRelationCountByRoot()).isEmpty();
         assertThat(result.getTopRelationTypes()).isEmpty();

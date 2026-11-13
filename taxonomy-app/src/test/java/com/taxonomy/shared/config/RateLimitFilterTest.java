@@ -1,10 +1,16 @@
 package com.taxonomy.shared.config;
 
+import com.taxonomy.backup.PrincipalId;
+import com.taxonomy.security.keycloak.PrincipalJwtAuthenticationToken;
+import com.taxonomy.security.keycloak.PrincipalOidcUser;
+import com.taxonomy.security.model.AppPrincipal;
+import com.taxonomy.security.model.PrincipalUserDetails;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;
@@ -57,6 +63,42 @@ class RateLimitFilterTest {
         assertThat(second.getContentAsString()).contains("\"status\":429");
         assertThat(otherUser.getStatus()).isEqualTo(200);
         assertThat(filter.trackedPrincipalCount()).isEqualTo(2);
+    }
+
+    @Test
+    void renamedLocalAccountKeepsItsQuotaAndAReassignedLoginStartsItsOwn() throws Exception {
+        RateLimitFilter filter = filter(new AtomicLong(), 1, 10);
+        PrincipalId account = PrincipalId.create();
+        assertThat(analyze(filter, localLogin(account, "original"))).isEqualTo(200);
+        assertThat(analyze(filter, localLogin(account, "renamed"))).isEqualTo(429);
+        assertThat(analyze(filter, localLogin(PrincipalId.create(), "original"))).isEqualTo(200);
+        assertThat(filter.trackedPrincipalCount()).isEqualTo(2);
+    }
+
+    @Test
+    void verifiedBindingsOfOnePrincipalShareQuotaAcrossLocalBrowserAndBearerLogin() throws Exception {
+        RateLimitFilter filter = filter(new AtomicLong(), 1, 10);
+        AppPrincipal account = new AppPrincipal(PrincipalId.create(), "budget-owner", true);
+        String issuer = "https://identity.example/realms/test";
+        var oidc = oidcAuthentication(issuer, "browser-binding", "display");
+        var user = new PrincipalOidcUser(USER_AUTHORITIES, (DefaultOidcUser) oidc.getPrincipal(), account);
+        var browser = new OAuth2AuthenticationToken(user, USER_AUTHORITIES, "keycloak");
+        var jwt = jwtAuthentication(issuer, "bearer-binding", "display");
+        var bearer = new PrincipalJwtAuthenticationToken(jwt.getToken(), USER_AUTHORITIES, account);
+
+        assertThat(analyze(filter, localLogin(account.id(), account.scopeKey()))).isEqualTo(200);
+        assertThat(analyze(filter, browser)).isEqualTo(429);
+        assertThat(analyze(filter, bearer)).isEqualTo(429);
+        assertThat(filter.trackedPrincipalCount()).isOne();
+    }
+
+    private static Authentication localLogin(PrincipalId principal, String name) {
+        var user = new PrincipalUserDetails(principal, name, "", true, USER_AUTHORITIES);
+        return UsernamePasswordAuthenticationToken.authenticated(user, null, USER_AUTHORITIES);
+    }
+
+    private static int analyze(RateLimitFilter filter, Authentication login) throws Exception {
+        return perform(filter, "GET", "", "/api/analyze-node", login, "192.0.2.5", null).getStatus();
     }
 
     @Test
@@ -347,7 +389,7 @@ class RateLimitFilterTest {
         assertThat(filter.trackedPrincipalCount()).isZero();
     }
 
-    private static Authentication jwtAuthentication(
+    private static JwtAuthenticationToken jwtAuthentication(
             String issuer,
             String subject,
             String preferredUsername) {
@@ -364,7 +406,7 @@ class RateLimitFilterTest {
                 jwt, USER_AUTHORITIES, preferredUsername);
     }
 
-    private static Authentication oidcAuthentication(
+    private static OAuth2AuthenticationToken oidcAuthentication(
             String issuer,
             String subject,
             String preferredUsername) {
