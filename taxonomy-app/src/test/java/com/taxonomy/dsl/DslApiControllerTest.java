@@ -52,7 +52,7 @@ class DslApiControllerTest {
         var repository = repositoryProvisioning.createRepository("Variant fixture", slug, "Deletion contract",
                 com.taxonomy.workspace.model.RepositoryVisibility.PRIVATE, "admin", "draft");
         return workingCopies.createWorkingCopy("admin", repository.getRepositoryId(), "draft",
-                "Variant fixture", null).getWorkspaceId();
+                slug, null).getWorkspaceId();
     }
 
     @Test

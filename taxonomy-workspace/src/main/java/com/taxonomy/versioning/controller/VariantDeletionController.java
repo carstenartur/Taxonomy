@@ -26,14 +26,19 @@ public class VariantDeletionController {
     }
 
     @GetMapping("/deletion-preview")
-    @Operation(summary = "Review a removable working-copy variant and its exact Git head")
+    @Operation(summary = "Review a removable working-copy variant and its exact Git head",
+            description = "Checks deletion authority in the selected working copy and returns a strong ETag "
+                    + "for the named variant at its current Git commit. The response cannot be cached.")
     public ResponseEntity<WorkspaceBranchDeletion.Preview> preview(@RequestParam String name) throws IOException {
         var value = deletion.preview(resolver.resolveUnambiguousRepositoryForRead(), name);
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).eTag(value.etag()).body(value);
     }
 
     @DeleteMapping
-    @Operation(summary = "Delete the exact variant confirmed in the selected working copy")
+    @Operation(summary = "Delete the exact variant confirmed in the selected working copy",
+            description = "Rechecks current authority and deletes the named variant only when If-Match "
+                    + "matches the reviewed source, branch and commit. A missing precondition returns 428 "
+                    + "and a changed confirmation returns 412.")
     public ResponseEntity<Map<String, Object>> delete(@RequestParam String name,
             @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch) throws IOException {
         deletion.delete(resolver.resolveUnambiguousRepositoryForRead(), name, ifMatch);
