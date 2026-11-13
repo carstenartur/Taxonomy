@@ -241,9 +241,13 @@ class RepositoryOwnershipTransferTest {
         var historical = transaction.execute(s -> memberships.assignRole(repo, "alice", RepositoryRole.CONTRIBUTOR, "owner", 0L));
         assertThat(historical.getHolderPrincipalId()).isNull();
         assertThat(historical.getGrantorPrincipalId()).isNull();
-        var unbound = transaction.execute(s -> memberships.assignRole(repo, "legacy-scope", RepositoryRole.READER, "owner", -1L));
-        assertThat(unbound.getHolderPrincipalId()).isNull();
-        assertThat(unbound.getGrantorPrincipalId()).isEqualTo(identities.local(1).id().value().toString());
+        assertThatThrownBy(() -> transaction.execute(s -> memberships.assignRole(repo, "unregistered",
+                RepositoryRole.READER, "owner", -1L))).isInstanceOf(IllegalArgumentException.class);
+        jdbc.update("update app_user set enabled=false where id=3");
+        assertThatThrownBy(() -> transaction.execute(s -> memberships.assignRole(repo, "bob", RepositoryRole.READER,
+                "owner", -1L))).isInstanceOf(IllegalArgumentException.class);
+        assertThat(jdbc.queryForObject("select count(*) from repository_membership where username in ('unregistered','bob')",
+                Integer.class)).isZero();
     }
 
     @Test void unboundExternalLoginKeepsOnlyCompatibilityLabelsAndCannotExerciseAnExistingStableGrant() {

@@ -342,6 +342,9 @@ public class RepositoryMembershipService {
             var grantor = transferActor != null ? Optional.of(transferActor) : identities.flatMap(i -> i.currentActor(actor));
             var holder = transferHolder != null ? Optional.of(transferHolder)
                     : grantor.flatMap(id -> username.equals(actor) ? Optional.of(id) : identities.flatMap(i -> i.activeHolder(username)));
+            if (grantor.isPresent() && holder.isEmpty()) {
+                throw new IllegalArgumentException("A verified current member principal is required for a new grant");
+            }
             membership.setHolderPrincipalId(holder.map(java.util.UUID::toString).orElse(null));
             membership.setGrantorPrincipalId(grantor.map(java.util.UUID::toString).orElse(null));
             membership.setCreatedAt(now);
