@@ -102,6 +102,12 @@ public final class VerifiedLegacyOwnerMigration {
         transaction.executeWithoutResult(status -> {
             lockRegistry();
             PrincipalId actor = requireAdministrator(administrator);
+            // V3 ran once: a LEGACY writer may have inserted new ownership afterwards.
+            // Never accept an apparently complete approved plan while such rows are absent
+            // from the reserved-principal inventory.
+            if (LegacyOwnerMigrationReadiness.inspect(jdbc).missingReservations() != 0) {
+                throw new IllegalStateException("New historical owners lack reserved principal identities");
+            }
             var current = snapshot(MAX_APPLY);
             if (current.total() == 0 || current.total() > MAX_APPLY
                     || !current.fingerprint().equals(expectedFingerprint)
@@ -223,8 +229,8 @@ public final class VerifiedLegacyOwnerMigration {
             int current = jdbc.queryForObject("""
                     select count(*) from app_user u join user_roles ur on ur.user_id=u.id
                     join app_role r on r.id=ur.role_id
-                    where u.principal_id=? and u.enabled=1 and r.name='ROLE_ADMIN'
-                    """, Integer.class, actor.value().toString());
+                    where u.principal_id=? and u.enabled=? and r.name='ROLE_ADMIN'
+                    """, Integer.class, actor.value().toString(), true);
             if (current != 1) throw new AccessDeniedException("Current administrator authority required");
         } else if (!(authentication instanceof PrincipalJwtAuthenticationToken)
                 && !(authentication instanceof OAuth2AuthenticationToken

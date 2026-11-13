@@ -228,7 +228,9 @@ public class WorkspaceController {
         String user = workspaceResolver.resolveCurrentUsername();
         try {
             UserWorkspace ws = workspaceManager.switchWorkspace(user, id);
-            return ResponseEntity.ok(workspaceToMap(ws));
+            var result = workspaceToMap(ws);
+            result.put("sourceRepositoryId", ws.getSourceRepositoryId());
+            return ResponseEntity.ok(result);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of(
                     "error", e.getMessage()

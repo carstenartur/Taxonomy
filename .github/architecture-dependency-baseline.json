@@ -1518,7 +1518,7 @@
       "fromPackage": "com.taxonomy.relations.controller",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 42
+      "classDependencyCount": 43
     },
     {
       "fromContext": "knowledge",
@@ -1532,7 +1532,7 @@
       "fromPackage": "com.taxonomy.relations.service",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 59
+      "classDependencyCount": 63
     },
     {
       "fromContext": "knowledge",

@@ -1,5 +1,7 @@
 package com.taxonomy;
 
+import com.taxonomy.support.AnalysisCatalogueSourceFixture;
+
 import com.taxonomy.diagram.DiagramEdge;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.diagram.DiagramNode;
@@ -29,10 +31,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import org.springframework.security.test.context.support.WithMockUser;
 import com.taxonomy.diagram.DiagramLayout;
 
-@SpringBootTest
+@SpringBootTest(properties = {"spring.datasource.url=jdbc:hsqldb:mem:visio-analysis-contract", "llm.mock=true"})
 @AutoConfigureMockMvc
 @WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
-class VisioDiagramTests {
+class VisioDiagramTests implements AnalysisCatalogueSourceFixture {
 
     @Autowired
     private MockMvc mockMvc;

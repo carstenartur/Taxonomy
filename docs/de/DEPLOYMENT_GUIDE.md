@@ -24,7 +24,9 @@ cp .env.example .env
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-Der Stack aktiviert `production,hsqldb`, veröffentlicht Port 8080 nicht am Host und konfiguriert:
+Nur Caddy veröffentlicht Ports am Host. Mit `SERVER_FORWARD_HEADERS_STRATEGY=native` berücksichtigt Tomcat das von Caddy übermittelte HTTPS-Schema bei der Weiterleitung nach der Anmeldung, bei Sitzungscookies und bei HSTS.
+
+Der Stack aktiviert `production,hsqldb` und verwendet folgende Einstellungen:
 
 ```text
 TAXONOMY_DATASOURCE_URL=jdbc:hsqldb:file:/app/data/taxonomydb;hsqldb.default_table_type=cached;shutdown=true

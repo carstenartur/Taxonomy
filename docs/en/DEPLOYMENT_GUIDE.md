@@ -163,6 +163,8 @@ Browser sessions retain CSRF protection for state-changing API calls. Explicit B
 
 `docker-compose.prod.yml` uses the included Caddyfile. Caddy obtains and renews certificates automatically when `DOMAIN` resolves to the host.
 
+The Compose stack sets `SERVER_FORWARD_HEADERS_STRATEGY=native` so Tomcat can use the public HTTPS scheme supplied by Caddy for saved login redirects, session cookies and HSTS. Only Caddy publishes host ports.
+
 The application must not be published directly on port 8080. When using another proxy, forward at least:
 
 - `Host`

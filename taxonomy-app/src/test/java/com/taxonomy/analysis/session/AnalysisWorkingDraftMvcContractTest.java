@@ -103,9 +103,10 @@ class AnalysisWorkingDraftMvcContractTest {
     @BeforeEach
     void configureUserAndResponse() {
         when(workspaceResolver.resolveCurrentUsername()).thenReturn("analyst");
-        when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(
-                RepositoryContext.workspace(
-                        "repository-a", "workspace-b", "feature/b", "analyst"));
+        var selected = RepositoryContext.workspace(
+                "repository-a", "workspace-b", "feature/b", "analyst");
+        when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(selected);
+        when(workspaceResolver.resolveCurrentRepositoryContextForRead()).thenReturn(selected);
         doAnswer(invocation -> {
             SaveAnalysisDraftRequest request = invocation.getArgument(2);
             return new AnalysisDraftView(
@@ -294,6 +295,8 @@ class AnalysisWorkingDraftMvcContractTest {
         mockMvc.perform(get("/api/analysis-drafts/{workspaceId}/status", "workspace-a")
                         .header(WorkspaceContextResolver.WORKSPACE_HEADER, "workspace-b"))
                 .andExpect(status().isForbidden());
+        verify(workspaceResolver).resolveCurrentRepositoryContextForRead();
+        verify(workspaceResolver, never()).resolveCurrentRepositoryContext();
         verify(service, never()).status(any(), any());
     }
 

@@ -173,3 +173,12 @@ Use fresh tokens after permissions/mappers change. Keep clocks synchronized and 
 Use HTTPS, exact redirect/origin allowlists, separately managed client secrets, an appropriately operated identity-provider database and backup/recovery process. Verify provider availability, TLS, real browser login, roles, scopes and resource restrictions in the target environment. A startup check does not prove those flows.
 
 See [Security](SECURITY.md), [Migration](KEYCLOAK_MIGRATION.md), [Deployment Checklist](DEPLOYMENT_CHECKLIST.md) and [Configuration Reference](CONFIGURATION_REFERENCE.md).
+
+
+**STABLE migration startup fence:** before initializing STABLE mode the application
+checks the historical ownership inventory against reserved principals and verified
+bindings, including ownership written after migration V3. Missing reservations,
+unresolved historical principals or unverified owner bindings reject startup.
+This is not permission to switch an existing installation: stop all LEGACY writers,
+complete EXT-02 identity approvals and check the remaining username-keyed data and
+queued operations on the actual deployment. A new empty installation may use STABLE.
