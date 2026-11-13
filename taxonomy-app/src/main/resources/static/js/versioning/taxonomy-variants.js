@@ -92,15 +92,20 @@ window.TaxonomyVariants = (function () {
                 html += '<button class="btn btn-outline-warning btn-sm" '
                     + 'onclick="TaxonomyVariants.mergeFrom(\'' + escapeAttr(branch) + '\')" title="' + escapeAttr(t('variants.integrate.title')) + '">'
                     + '\uD83D\uDD00 ' + escapeHtml(t('variants.integrate')) + '</button>';
-                html += '<button class="btn btn-outline-danger btn-sm" '
-                    + 'onclick="TaxonomyVariants.deleteBranch(\'' + escapeAttr(branch) + '\')" title="' + escapeAttr(t('variants.delete.title')) + '">'
-                    + '\uD83D\uDDD1 ' + escapeHtml(t('variants.delete.btn')) + '</button>';
+                if (branch !== 'main' && branch !== 'accepted') {
+                    html += '<button class="btn btn-outline-danger btn-sm" data-delete-variant="' + escapeAttr(branch)
+                        + '" title="' + escapeAttr(t('variants.delete.title')) + '">'
+                        + '\uD83D\uDDD1 ' + escapeHtml(t('variants.delete.btn')) + '</button>';
+                }
             }
             html += '</div>';
             html += '</div>';
         });
         html += '</div>';
         container.innerHTML = html;
+        container.querySelectorAll('[data-delete-variant]').forEach(function (button) {
+            button.addEventListener('click', function () { deleteBranch(button.dataset.deleteVariant); });
+        });
     }
 
     function switchTo(branch) {
@@ -198,22 +203,40 @@ window.TaxonomyVariants = (function () {
     }
 
     function deleteBranch(branch) {
-        var display = TaxonomyI18n.formatBranch(branch);
-        showConfirmModal(
-            t('variants.delete.confirm.title'),
-            t('variants.delete.confirm.body', escapeHtml(display))
-            + '<p class="text-danger small">\u26A0 ' + escapeHtml(t('variants.delete.confirm.warning')) + '</p>',
-            t('variants.delete.btn'),
-            'btn-danger',
-            function () {
-                executeDelete(branch);
+        var current = window.TaxonomyApiClient.captureContext();
+        return window.TaxonomyVersioningApi.reviewBranchDeletion(branch).then(async function (response) {
+            if (!response.ok) { reportDeleteError(t('variants.delete.unavailable')); return; }
+            var review = await response.json();
+            var etag = response.headers.get('ETag');
+            if (!current()) return;
+            if (review.branch !== branch || !/^[0-9a-f]{40}$/.test(review.head) || !etag || etag !== review.etag) {
+                reportDeleteError(t('variants.delete.unavailable'));
+                return;
             }
-        );
+            showConfirmModal(t('variants.delete.confirm.title'),
+                t('variants.delete.confirm.body', escapeHtml(TaxonomyI18n.formatBranch(branch)), review.head.slice(0,12))
+                    + '<p class="text-danger small">\u26A0 ' + escapeHtml(t('variants.delete.confirm.warning')) + '</p>',
+                t('variants.delete.btn'), 'btn-danger', function () {
+                    if (current()) executeDelete(branch, etag);
+                    else reportDeleteError(t('variants.delete.changed'));
+                });
+        }).catch(function (error) {
+            if (error?.code !== 'ABORTED') reportDeleteError(t('variants.delete.unavailable'));
+        });
     }
 
-    function executeDelete(branch) {
-        window.TaxonomyVersioningApi.deleteBranch(branch)
+    function reportDeleteError(message) {
+        if (window.TaxonomyOperationResult) window.TaxonomyOperationResult.showError(t('variants.delete.failed'), message);
+        else alert(message);
+    }
+
+    function executeDelete(branch, etag) {
+        return window.TaxonomyVersioningApi.deleteBranch(branch, etag)
             .then(function (r) {
+                if (r.status === 409 || r.status === 412 || r.status === 428) {
+                    reportDeleteError(t('variants.delete.changed'));
+                    return null;
+                }
                 if (!r.ok && r.status === 404) {
                     if (window.TaxonomyOperationResult) {
                         window.TaxonomyOperationResult.showError(t('variants.delete.failed'), t('variants.delete.notfound', branch));

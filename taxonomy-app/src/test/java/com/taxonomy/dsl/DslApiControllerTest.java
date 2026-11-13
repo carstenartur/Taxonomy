@@ -948,37 +948,31 @@ class DslApiControllerTest {
     // ── Branch deletion ─────────────────────────────────────────────
 
     @Test
-    void deleteBranch_success() throws Exception {
-        // First create a branch
-        String dsl = """
-                element CP-1023 type Capability {
-                  title: "Branch Delete Test";
-                }
-                """;
-        mockMvc.perform(post("/api/dsl/commit")
-                .contentType(MediaType.TEXT_PLAIN)
-                .content(dsl)
-                .param("branch", "deletable-branch"));
-
-        // Delete it
-        mockMvc.perform(delete("/api/dsl/branch").param("name", "deletable-branch"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.deleted").value("deletable-branch"))
-                .andExpect(jsonPath("$.success").value(true));
+    @org.springframework.security.test.context.support.WithUserDetails("admin")
+    void deleteBranchRequiresTheReviewedCommit() throws Exception {
+        String branch = "deletable-branch";
+        var write = post("/api/dsl/commit").param("branch", branch)
+                .contentType(MediaType.TEXT_PLAIN).content("element CP-1023 type Capability { title: \"Review\"; }");
+        mockMvc.perform(write).andExpect(status().isOk());
+        var remove = delete("/api/dsl/branch").param("name", branch);
+        mockMvc.perform(remove).andExpect(status().isPreconditionRequired());
+        var preview = get("/api/dsl/branch/deletion-preview").param("name", branch);
+        String first = mockMvc.perform(preview).andExpect(status().isOk()).andReturn().getResponse().getHeader("ETag");
+        mockMvc.perform(write.content("element CP-1023 type Capability { title: \"Revised\"; }")).andExpect(status().isOk());
+        mockMvc.perform(remove.header("If-Match", first)).andExpect(status().isPreconditionFailed());
+        String current = mockMvc.perform(preview).andExpect(status().isOk()).andReturn().getResponse().getHeader("ETag");
+        mockMvc.perform(delete("/api/dsl/branch").param("name", branch).header("If-Match", current))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.deleted").value(branch)).andExpect(jsonPath("$.success").value(true));
+        mockMvc.perform(preview).andExpect(status().isNotFound());
     }
 
     @Test
+    @org.springframework.security.test.context.support.WithUserDetails("admin")
     void deleteBranch_protectedBranch() throws Exception {
+        repositoryStateService.ensureWorkspaceState("admin");
         mockMvc.perform(delete("/api/dsl/branch").param("name", "draft"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("Cannot delete protected branch: draft"));
-    }
-
-    @Test
-    void deleteBranch_nonexistent() throws Exception {
-        mockMvc.perform(delete("/api/dsl/branch").param("name", "nonexistent-xyz"))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error").value("Branch 'nonexistent-xyz' not found"));
     }
 
     // ── Merge conflict details ──────────────────────────────────────

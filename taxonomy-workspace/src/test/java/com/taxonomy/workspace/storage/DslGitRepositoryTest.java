@@ -573,6 +573,22 @@ class DslGitRepositoryTest {
     }
 
     @Test
+    void deletionRefusesAChangeAfterTheSelectedVariantWasReviewed() throws IOException {
+        String reviewed = repo.commitDsl("reviewed-variant", SAMPLE_DSL, "reviewer", "original review");
+        String newer = repo.commitDsl("reviewed-variant", SAMPLE_DSL_V2, "editor", "subsequent change");
+
+        assertThrows(com.taxonomy.workspace.service.BranchHeadConflictException.class,
+                () -> repo.deleteBranch("reviewed-variant", reviewed, "fixture-actor"));
+        assertEquals(newer, repo.getHeadCommit("reviewed-variant"));
+        assertNotEquals(reviewed, newer);
+        assertTrue(repo.deleteBranch("reviewed-variant", newer, "fixture-actor"));
+        assertThrows(com.taxonomy.workspace.service.BranchHeadConflictException.class,
+                () -> repo.deleteBranch("reviewed-variant", newer, "fixture-actor"));
+        assertThrows(IllegalArgumentException.class, () -> repo.deleteBranch("accepted", reviewed, "fixture-actor"));
+        assertThrows(IllegalArgumentException.class, () -> repo.deleteBranch("reviewed-variant", "short", "fixture-actor"));
+    }
+
+    @Test
     void deleteBranch_nonexistent() throws IOException {
         assertFalse(repo.deleteBranch("nonexistent"));
     }
