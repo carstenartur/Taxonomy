@@ -46,7 +46,7 @@ public class GitStateController {
             @RequestParam(defaultValue = "draft") String branch) {
         if (workspaceResolver.hasExplicitSourceSelection()) {
             WorkspaceContext selected = workspaceResolver.resolveUnambiguousContextForRead();
-            return ResponseEntity.ok(stateService.getState(selected.username(), selected.currentBranch(), selected));
+            return ResponseEntity.ok(stateService.readSelectedState(selected));
         }
         RequestContext current = context();
         return ResponseEntity.ok(stateService.getState(

@@ -97,7 +97,19 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
      * @return the full repository state
      */
     public RepositoryState getState(String username, String branch, WorkspaceContext ctx) {
-        UserWorkspaceState ws = resolveState(username);
+        return readState(username, branch, ctx, resolveState(username));
+    }
+
+    /** Read the selected Git branch and its existing workspace progress without provisioning. */
+    public RepositoryState readSelectedState(WorkspaceContext context) {
+        return readState(context.username(), context.currentBranch(), context, selectedProgress(context));
+    }
+
+    private UserWorkspaceState selectedProgress(WorkspaceContext context) {
+        return context.workspaceId() == null ? null : workspaceManager.getScopedWorkspaceState(context);
+    }
+
+    private RepositoryState readState(String username, String branch, WorkspaceContext ctx, UserWorkspaceState ws) {
         DslGitRepository repo = resolveRepository(ctx);
         try {
             DslCommit headInfo = repo.getHeadCommitInfo(branch);
@@ -185,7 +197,7 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
         if (head == null) {
             return Optional.empty();
         }
-        UserWorkspaceState state = context.workspaceId() == null ? null : workspaceManager.getScopedWorkspaceState(context);
+        UserWorkspaceState state = selectedProgress(context);
         return Optional.of(new ViewContext(head.commitId(), context.currentBranch(), head.timestamp(), true,
                 isProjectionStaleForCommit(state, head.commitId()), isIndexStale(state, head.commitId())));
     }

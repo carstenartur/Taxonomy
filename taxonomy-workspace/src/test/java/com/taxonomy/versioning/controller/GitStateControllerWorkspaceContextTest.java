@@ -85,7 +85,7 @@ class GitStateControllerWorkspaceContextTest {
         when(workspaceResolver.resolveUnambiguousContextForRead()).thenReturn(selected);
         when(workspaceResolver.hasExplicitSourceSelection()).thenReturn(true);
         controller.getState("review");
-        verify(stateService).getState("architect", "review", selected);
+        verify(stateService).readSelectedState(selected);
         verify(stateService, never()).ensureWorkspaceState("architect");
     }
 
