@@ -41,7 +41,7 @@ class OracleProvisioningServiceIT {
 
     @Test void verifiedLegacyOwnershipOnAProvisionedSchema() throws Exception {
         String user = "OWNER_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase(java.util.Locale.ROOT);
-        String password = UUID.randomUUID().toString();
+        String password = "Tx9-" + UUID.randomUUID().toString().substring(0, 24);
         var settings = input(user, password);
         var service = new DatabaseProvisioningService(new OracleProvisioningService());
         try {
