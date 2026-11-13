@@ -1609,3 +1609,84 @@ test('coverage dashboard pins the source and clears departed working-copy data',
         await page.close();
     }
 });
+
+test('relation browser pins the selected source and clears departed relations and actions', async () => {
+    const page = await browser.newPage();
+    try {
+        await page.route('http://taxonomy.fixture/', route => route.fulfill({contentType:'text/html', body:
+            '<details id="relationsBrowser" open><div id="relationsTableContainer"></div></details>'}));
+        await page.goto('http://taxonomy.fixture/');
+        await page.evaluate(() => {
+            window.TaxonomyI18n = {t:key=>key};
+            window.TaxonomyUtils = {escapeHtml:String};
+            window.selection = {repositoryId:'repo-a', workspaceId:'A1', branch:'draft'};
+            window.TaxonomyArchitectureWorkspace = {ready:async()=>true};
+            window.TaxonomyArchitectureWorkflow = {getScope:()=>window.selection};
+            window.requests = [];
+            window.__taxonomyFixtureFetch = async (input, options) => {
+                const url = new URL(input, document.baseURI);
+                const source = ['repositoryId','workspaceId','branch'].map(k=>url.searchParams.get(k));
+                window.requests.push([...source, new Headers(options.headers).get('X-Taxonomy-Workspace-Id')]);
+                return Response.json([{id:1, sourceCode:'only-' + window.selection.workspaceId,
+                    targetCode:'shared-endpoint', relationType:'SUPPORTS'}]);
+            };
+        });
+        await installBrowserApiFixture(page, resources);
+        await page.addScriptTag({path:path.join(resources, 'static/js/relations/taxonomy-relations.js')});
+        await page.evaluate(() => window.TaxonomyRelations.loadRelations());
+        assert.match(await page.locator('#relationsTableContainer').innerText(), /only-A1/);
+        await page.evaluate(() => document.dispatchEvent(new CustomEvent('taxonomy:repository-context-changed', {detail:{selectionChanged:false}})));
+        assert.equal(await page.locator('.relation-delete-btn').count(), 1);
+        await page.evaluate(() => {
+            window.selection = {repositoryId:'repo-b', workspaceId:'B1', branch:'main'};
+            document.dispatchEvent(new CustomEvent('taxonomy:repository-context-changed', {detail:{selectionChanged:true}}));
+        });
+        assert.equal(await page.locator('#relationsTableContainer').innerText(), '');
+        assert.equal(await page.locator('.relation-delete-btn').count(), 0);
+        await page.evaluate(() => window.TaxonomyRelations.loadRelations());
+        assert.match(await page.locator('#relationsTableContainer').innerText(), /only-B1/);
+        assert.deepEqual(await page.evaluate(()=>window.requests), [['repo-a','A1','draft','A1'],['repo-b','B1','main','B1']]);
+    } finally {
+        await page.close();
+    }
+});
+
+test('a relation command binds its preflight workspace and ETag and aborts a superseded selection', async () => {
+    const page = await browser.newPage();
+    try {
+        await page.route('http://taxonomy.fixture/', route=>route.fulfill({contentType:'text/html', body:
+            '<meta name="_csrf" content="fixture"><meta name="_csrf_header" content="X-CSRF-TOKEN">' +
+            '<input id="newRelSource" value="A"><input id="newRelTarget" value="B"><input id="newRelType" value="SUPPORTS">' +
+            '<button id="createRelationSubmit">Save</button><div id="createRelationError"></div>'}));
+        await page.goto('http://taxonomy.fixture/');
+        await page.evaluate(() => {
+            window.selection = {repositoryId:'repo-a',workspaceId:'A1',branch:'draft'};
+            window.TaxonomyArchitectureWorkspace = {ready:async()=>true};
+            window.TaxonomyArchitectureWorkflow = {getScope:()=>window.selection};
+            window.TaxonomyI18n = {t:key=>key};
+            window.commandRequests = [];
+            window.__taxonomyFixtureFetch = async (input, options) => {
+                const url = new URL(input, document.baseURI), headers = new Headers(options.headers);
+                if (options.method === 'PUT') {
+                    window.commandRequests.push([url.searchParams.get('repositoryId'),url.searchParams.get('workspaceId'),
+                        url.searchParams.get('branch'),headers.get('X-Taxonomy-Workspace-Id'),headers.get('If-Match')]);
+                    return Response.json({},{headers:{ETag:'"' + 'b'.repeat(40) + '"'}});
+                }
+                if (window.switchDuringPreflight) window.selection = {repositoryId:'repo-b',workspaceId:'B1',branch:'main'};
+                return Response.json([],{headers:{'X-Taxonomy-Repository':'repo-a','X-Taxonomy-Workspace-Id':'A1',
+                    'X-Taxonomy-Branch':'draft',ETag:'"' + 'a'.repeat(40) + '"'}});
+            };
+        });
+        await installBrowserApiFixture(page, resources);
+        await page.addScriptTag({path:path.join(resources, 'static/js/relations/taxonomy-relations-git-commands.js')});
+        await page.locator('#createRelationSubmit').click();
+        await page.waitForFunction(()=>window.commandRequests.length || document.getElementById('createRelationError').textContent);
+        assert.deepEqual(await page.evaluate(()=>window.commandRequests), [['repo-a','A1','draft','A1','"'+ 'a'.repeat(40)+'"']], await page.locator('#createRelationError').innerText());
+        await page.evaluate(()=>{ window.switchDuringPreflight = true; });
+        await page.locator('#createRelationSubmit').click();
+        await page.waitForFunction(()=>document.getElementById('createRelationError').textContent.includes('superseded'));
+        assert.equal(await page.evaluate(()=>window.commandRequests.length), 1);
+    } finally {
+        await page.close();
+    }
+});

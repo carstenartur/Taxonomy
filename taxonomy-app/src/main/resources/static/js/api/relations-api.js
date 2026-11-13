@@ -30,7 +30,7 @@ window.TaxonomyRelationsApi = (function () {
         var url = relationType
             ? '/api/relations?type=' + encodeURIComponent(relationType)
             : '/api/relations';
-        return domainRequest(url, {cache:'no-store'}, {acceptedStatuses:[409,412,503]});
+        return domainRequest(url, {cache:'no-store'}, {selectedRepository:true, acceptedStatuses:[404,409,412,503]});
     }
 
     function readProjectionReadiness(workspaceId, options) {
@@ -57,26 +57,22 @@ window.TaxonomyRelationsApi = (function () {
         }, Object.assign({idempotent:method === 'GET', pinnedWorkspaceId:workspaceId, acceptedStatuses:[409,412]}, options));
     }
 
-    function upsertRelation(sourceCode, relationType, targetCode, payload, headers) {
-        return domainRequest(commandUrl(sourceCode, relationType, targetCode), {
-            method: 'PUT',
-            headers: headers,
-            body: JSON.stringify(payload)
+    function upsertRelation(sourceCode, relationType, targetCode, payload, headers, source) {
+        return commandRequest(sourceCode, relationType, targetCode, source, {
+            method: 'PUT', headers: headers, body: JSON.stringify(payload)
         });
     }
 
-    function deleteRelation(sourceCode, relationType, targetCode, headers) {
-        return domainRequest(commandUrl(sourceCode, relationType, targetCode), {
-            method: 'DELETE',
-            headers: headers
-        });
+    function deleteRelation(sourceCode, relationType, targetCode, headers, source) {
+        return commandRequest(sourceCode, relationType, targetCode, source, {method: 'DELETE', headers: headers});
     }
 
-    function commandUrl(sourceCode, relationType, targetCode) {
-        return '/api/architecture/relations/'
-            + encodeURIComponent(sourceCode) + '/'
-            + encodeURIComponent(relationType) + '/'
-            + encodeURIComponent(targetCode);
+    function commandRequest(sourceCode, relationType, targetCode, source, init) {
+        var path = '/api/architecture/relations/' + encodeURIComponent(sourceCode) + '/'
+            + encodeURIComponent(relationType) + '/' + encodeURIComponent(targetCode);
+        if (!source) return domainRequest(path, init, {selectedRepository:true});
+        var target = new URLSearchParams({repositoryId:source.repositoryId, workspaceId:source.workspaceId, branch:source.branch});
+        return domainRequest(path + '?' + target, init, {pinnedWorkspaceId:source.workspaceId});
     }
 
     return {

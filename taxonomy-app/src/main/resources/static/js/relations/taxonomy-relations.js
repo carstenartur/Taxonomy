@@ -10,6 +10,16 @@
     var relationLoadSequence = 0;
     var projectionRebuildPromise = null;
 
+    document.addEventListener('taxonomy:repository-context-changed', function (event) {
+        if (event.detail?.selectionChanged === false) return;
+        relationLoadSequence++;
+        var content = document.getElementById('relationsTableContainer');
+        if (content) {
+            content.replaceChildren();
+            content.setAttribute('aria-busy', 'false');
+        }
+    });
+
     /* ------------------------------------------------------------------ */
     /*  Bootstrap on DOMContentLoaded                                      */
     /* ------------------------------------------------------------------ */

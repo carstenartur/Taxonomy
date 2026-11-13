@@ -11,8 +11,6 @@
 (function () {
     'use strict';
 
-    var headEtag = null;
-    var branchMissing = false;
     var commandSequence = 0;
     var initialized = false;
 
@@ -52,22 +50,19 @@
 
         return RelationsApi().readSnapshot(type)
             .then(function (response) {
-                branchMissing = response.status === 404
-                    && response.headers.get(
-                        'X-Taxonomy-Relation-Projection-State') === 'BRANCH_MISSING';
-                if (branchMissing) {
-                    headEtag = null;
-                    return [];
+                var branchMissing = response.status === 404
+                    && response.headers.get('X-Taxonomy-Relation-Projection-State') === 'BRANCH_MISSING';
+                if (!response.ok && !branchMissing) {
+                    throw commandError('PROJECTION_UNAVAILABLE', projectionError(response));
                 }
-                if (!response.ok) {
-                    headEtag = null;
-                    throw commandError(
-                        'PROJECTION_UNAVAILABLE',
-                        projectionError(response));
+                var source = {repositoryId:response.headers.get('X-Taxonomy-Repository'),
+                    workspaceId:response.headers.get('X-Taxonomy-Workspace-Id'), branch:response.headers.get('X-Taxonomy-Branch')};
+                if (!source.repositoryId || !source.branch || source.workspaceId === null) {
+                    throw commandError('PROJECTION_UNAVAILABLE', projectionError(response));
                 }
-                headEtag = response.headers.get('ETag');
-                branchMissing = false;
-                return response.json();
+                return (branchMissing ? Promise.resolve([]) : response.json()).then(function (relations) {
+                    return {source:source, branchMissing:branchMissing, headEtag:response.headers.get('ETag'), relations:relations};
+                });
             });
     }
 
@@ -88,7 +83,7 @@
 
         setSpinner(true);
         refreshSnapshot()
-            .then(function () {
+            .then(function (snapshot) {
                 var extensions = {};
                 if (description) extensions['x-description'] = description;
                 return RelationsApi().upsertRelation(
@@ -100,7 +95,7 @@
                         extensions: extensions,
                         rationale: description || null
                     },
-                    commandHeaders('relation-create', true));
+                    commandHeaders('relation-create', snapshot, true), snapshot.source);
             })
             .then(handleCommandResponse)
             .then(function (outcome) {
@@ -146,11 +141,11 @@
             'Delete this relation?'))) return;
 
         refreshSnapshot()
-            .then(function (relations) {
-                if (!headEtag) {
+            .then(function (snapshot) {
+                if (!snapshot.headEtag) {
                     throw new Error('The selected branch has no relation head.');
                 }
-                if (!(relations || []).some(function (candidate) {
+                if (!snapshot.relations.some(function (candidate) {
                     return sameIdentity(candidate, relation);
                 })) {
                     throw new Error(
@@ -160,7 +155,7 @@
                     relation.sourceCode,
                     relation.relationType,
                     relation.targetCode,
-                    commandHeaders('relation-delete', false));
+                    commandHeaders('relation-delete', snapshot, false), snapshot.source);
             })
             .then(handleCommandResponse)
             .then(function (outcome) {
@@ -204,20 +199,16 @@
 
     function handleCommandResponse(response) {
         var nextEtag = response.headers.get('ETag');
-        if (nextEtag) {
-            headEtag = nextEtag;
-            branchMissing = false;
-        }
 
         return readJson(response).then(function (body) {
             if (response.status === 202) {
                 return {
                     projectionPending: true,
+                    headEtag: nextEtag,
                     body: body
                 };
             }
             if (response.status === 412) {
-                headEtag = null;
                 throw commandError(
                     'CONFLICT',
                     'The selected branch changed. Relations are being reloaded.',
@@ -231,6 +222,7 @@
             }
             return {
                 projectionPending: false,
+                headEtag: nextEtag,
                 body: body
             };
         });
@@ -267,16 +259,16 @@
                     + ', but its readable projection still requires recovery.'));
     }
 
-    function commandHeaders(prefix, allowCreation) {
+    function commandHeaders(prefix, snapshot, allowCreation) {
         var headers = {
             'Content-Type': 'application/json',
             'Idempotency-Key': prefix + ':' + Date.now()
                 + ':' + (++commandSequence)
         };
-        if (allowCreation && branchMissing) {
+        if (allowCreation && snapshot.branchMissing) {
             headers['If-None-Match'] = '*';
-        } else if (headEtag) {
-            headers['If-Match'] = headEtag;
+        } else if (snapshot.headEtag) {
+            headers['If-Match'] = snapshot.headEtag;
         } else {
             throw new Error('No authoritative relation ETag is available.');
         }
