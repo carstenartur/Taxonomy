@@ -227,83 +227,58 @@ window.TaxonomyWorkspaceSync = (function () {
 
     // ── Sync Actions ────────────────────────────────────────────────
 
-    function syncFromShared() {
+    var operationKeys = new Map();
+
+    function synchronize(pull) {
         var ctx = window.TaxonomyContextBar ? window.TaxonomyContextBar.getCurrentContext() : null;
-        var branch = (ctx && ctx.branch) ? ctx.branch : 'draft';
-
-        window.TaxonomyWorkspaceApi.syncFromShared(branch)
-            .then(function (result) {
-                if (result.error) {
-                    if (window.TaxonomyOperationResult) {
-                        window.TaxonomyOperationResult.showError(t('workspace.sync.failed'), result.message || result.error);
-                    } else {
-                        alert(t('workspace.sync.failed') + ': ' + result.error);
-                    }
-                } else {
-                    if (window.TaxonomyOperationResult) {
-                        window.TaxonomyOperationResult.showSuccess(t('workspace.sync.from.success'),
-                            t('workspace.sync.from.success.detail'));
-                    }
-                    pollSyncState();
-                    if (window.TaxonomyGitStatus) window.TaxonomyGitStatus.refresh();
-                    showLocalChangesPanel();
-                }
-            }).catch(showError);
-    }
-
-    var publicationKeys = new Map();
-
-    function publish() {
-        var ctx = window.TaxonomyContextBar ? window.TaxonomyContextBar.getCurrentContext() : null;
-        var branch = (ctx && ctx.branch) ? ctx.branch : 'draft';
-
+        var branch = ctx?.branch || 'draft';
         var workspace = window.__TaxonomyAnalysisSessionContext?.runtime?.workspaceId || '';
-        var scope = 'taxonomy-publish:' + JSON.stringify([workspace, ctx?.repositoryId || '', branch]);
-        var key = publicationKeys.get(scope);
+        var scope = (pull ? 'taxonomy-pull:' : 'taxonomy-publish:') + JSON.stringify([workspace, ctx?.repositoryId || '', branch]);
+        var key = operationKeys.get(scope);
         try { key = key || window.sessionStorage?.getItem(scope); } catch (ignored) { }
-        if (!key) key = window.crypto?.randomUUID?.() || 'publish-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
-        publicationKeys.set(scope, key);
+        if (!key) key = window.crypto?.randomUUID?.() || 'sync-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+        operationKeys.set(scope, key);
         try { window.sessionStorage?.setItem(scope, key); } catch (ignored) { }
         function settled() {
-            if (publicationKeys.get(scope) !== key) return;
-            publicationKeys.delete(scope);
+            if (operationKeys.get(scope) !== key) return;
+            operationKeys.delete(scope);
             try { if (window.sessionStorage?.getItem(scope) === key) window.sessionStorage.removeItem(scope); } catch (ignored) { }
         }
 
-        return window.TaxonomyWorkspaceApi.publish(branch, {idempotencyKey:key})
+        var send = pull ? window.TaxonomyWorkspaceApi.syncFromShared : window.TaxonomyWorkspaceApi.publish;
+        var message = pull ? 'workspace.sync.from.' : 'workspace.sync.publish.';
+        return send(branch, {idempotencyKey:key})
             .then(function (result) {
                 if (result.operationId && !result.success && !result.error) {
-                    window.TaxonomyOperationResult?.showWarning(t('workspace.sync.publish.pending'),
+                    window.TaxonomyOperationResult?.showWarning(t(message + 'pending'),
                         t('workspace.sync.publish.receipt', result.operationId, result.status));
                     return;
                 }
                 settled();
                 if (result.status === 'SUPERSEDED') {
-                    window.TaxonomyOperationResult?.showWarning(t('workspace.sync.publish.superseded'),
+                    window.TaxonomyOperationResult?.showWarning(t(message + 'superseded'),
                         t('workspace.sync.publish.receipt', result.operationId, result.status));
                     pollSyncState();
                     return;
                 }
                 if (result.error) {
-                    if (window.TaxonomyOperationResult) {
-                        window.TaxonomyOperationResult.showError(t('workspace.sync.publish.failed'), result.message || result.error);
-                    } else {
-                        alert(t('workspace.sync.publish.failed') + ': ' + result.error);
-                    }
-                } else {
-                    if (window.TaxonomyOperationResult) {
-                        window.TaxonomyOperationResult.showSuccess(t('workspace.sync.publish.success'),
-                            t('workspace.sync.publish.success.detail'));
-                    }
-                    pollSyncState();
-                    if (window.TaxonomyGitStatus) window.TaxonomyGitStatus.refresh();
-                    showLocalChangesPanel();
+                    var title=t(pull ? 'workspace.sync.failed' : 'workspace.sync.publish.failed');
+                    if (window.TaxonomyOperationResult) window.TaxonomyOperationResult.showError(title, result.message || result.error);
+                    else alert(title + ': ' + result.error);
+                    return;
                 }
+                window.TaxonomyOperationResult?.showSuccess(t(message + 'success'),t(message + 'success.detail'));
+                pollSyncState();
+                if (window.TaxonomyGitStatus) window.TaxonomyGitStatus.refresh();
+                showLocalChangesPanel();
             }).catch(function (error) {
                 if (error.status === 409 || error.status === 410 || error.status === 403) settled();
                 showError(error);
             });
     }
+
+    function syncFromShared() { return synchronize(true); }
+    function publish() { return synchronize(false); }
 
     function showError(error) {
         if (error.code === 'ABORTED') return;

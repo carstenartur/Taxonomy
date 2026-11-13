@@ -31,6 +31,13 @@ public class WorkspacePublicationRecovery {
         return resume(context,grant.principalId(),row,false,executor);
     }
 
+    WorkspacePublicationJournal.View submitPull(RepositoryContext context,boolean takeSource,String key,String cause,
+            WorkspacePublicationJournal.Snapshot snapshot,PhaseExecutor executor) throws IOException {
+        var grant=actors.authorizePublication(context.username());
+        var row=journal.admit(context,grant,takeSource,key,cause,snapshot,true);
+        return resume(context,grant.principalId(),row,false,executor);
+    }
+
     WorkspacePublicationJournal.View get(RepositoryContext context,String id) {
         return journal.get(context,actors.currentActor(context.username()),id);
     }

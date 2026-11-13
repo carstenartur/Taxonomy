@@ -324,17 +324,13 @@ public class WorkspaceController {
             description = "Merges the shared integration branch into the user's branch, " +
                     "bringing it up to date with the latest team-wide state.")
     public ResponseEntity<Map<String, Object>> syncFromShared(
-            @RequestParam(required = false) String userBranch) {
+            @RequestParam(required = false) String userBranch,
+            @RequestHeader(value="Idempotency-Key",required=false) String key,
+            @RequestHeader(value="X-Causation-Id",required=false) String cause) {
         String user = workspaceResolver.resolveCurrentUsername();
         String branch = resolveBranch(user, userBranch);
         try {
-            String mergeCommit = syncIntegrationService.syncFromShared(user, branch);
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("success", true);
-            result.put("branch", branch);
-            result.put("mergeCommit", mergeCommit);
-            result.put("syncedAt", Instant.now().toString());
-            return ResponseEntity.ok(result);
+            return syncResponse(syncIntegrationService.pullWithReceipt(user,branch,key,cause),branch,"syncedAt");
         } catch (IOException e) {
             return ResponseEntity.internalServerError().body(Map.of(
                     "error", "Sync from shared failed",
@@ -342,6 +338,8 @@ public class WorkspaceController {
             ));
         }
     }
+
+    public ResponseEntity<Map<String,Object>> syncFromShared(String branch) { return syncFromShared(branch,null,null); }
 
     @PostMapping("/publish")
     @Operation(summary = "Publish to shared repository",
@@ -354,36 +352,39 @@ public class WorkspaceController {
         String user = workspaceResolver.resolveCurrentUsername();
         String branch = resolveBranch(user, userBranch);
         try {
-            var publication = syncIntegrationService.publishWithReceipt(user,branch,key,cause);
-            var operation = publication.operation();
-            String mergeCommit = publication.commit();
-            Map<String, Object> result = new LinkedHashMap<>();
-            if (operation != null) {
-                result.put("operationId",operation.operationId());
-                result.put("branch",branch);
-                result.put("status",operation.status());
-                result.put("phase",operation.nextPhase());
-                if (operation.publishedAt()!=null) result.put("publishedAt",Instant.ofEpochMilli(operation.publishedAt()).toString());
-                if (operation.completedAt()==null) return ResponseEntity.accepted().header("X-Operation-Id",operation.operationId()).body(result);
-                if ("DENIED".equals(operation.status()) || "MANUAL_REVIEW".equals(operation.status())) {
-                    return ResponseEntity.status("DENIED".equals(operation.status()) ? 403 : 409)
-                            .header("X-Operation-Id",operation.operationId()).body(result);
-                }
-                result.put("success",true);
-                result.put("mergeCommit",mergeCommit);
-                return ResponseEntity.ok().header("X-Operation-Id",operation.operationId()).body(result);
-            }
-            result.put("success", true);
-            result.put("branch", branch);
-            result.put("mergeCommit", mergeCommit);
-            result.put("publishedAt", Instant.now().toString());
-            return ResponseEntity.ok(result);
+            return syncResponse(syncIntegrationService.publishWithReceipt(user,branch,key,cause),branch,"publishedAt");
         } catch (IOException e) {
             return ResponseEntity.internalServerError().body(Map.of(
                     "error", "Publish failed",
                     "message", e.getMessage()
             ));
         }
+    }
+
+    private ResponseEntity<Map<String,Object>> syncResponse(SyncIntegrationService.Publication publication,String branch,String timeField) {
+        var operation = publication.operation();
+        String mergeCommit = publication.commit();
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (operation != null) {
+            result.put("operationId",operation.operationId());
+            result.put("branch",branch);
+            result.put("status",operation.status());
+            result.put("phase",operation.nextPhase());
+            if (operation.publishedAt()!=null) result.put(timeField,Instant.ofEpochMilli(operation.publishedAt()).toString());
+            if (operation.completedAt()==null) return ResponseEntity.accepted().header("X-Operation-Id",operation.operationId()).body(result);
+            if ("DENIED".equals(operation.status()) || "MANUAL_REVIEW".equals(operation.status())) {
+                return ResponseEntity.status("DENIED".equals(operation.status()) ? 403 : 409)
+                    .header("X-Operation-Id",operation.operationId()).body(result);
+            }
+            result.put("success",true);
+            result.put("mergeCommit",mergeCommit);
+            return ResponseEntity.ok().header("X-Operation-Id",operation.operationId()).body(result);
+        }
+        result.put("success", true);
+        result.put("branch", branch);
+        result.put("mergeCommit", mergeCommit);
+        result.put(timeField, Instant.now().toString());
+        return ResponseEntity.ok(result);
     }
 
     public ResponseEntity<Map<String,Object>> publish(String branch) { return publish(branch,null,null); }
