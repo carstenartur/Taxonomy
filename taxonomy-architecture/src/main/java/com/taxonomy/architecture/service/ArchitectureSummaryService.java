@@ -6,9 +6,15 @@ import com.taxonomy.dto.ArchitectureSummary.SummaryEntry;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.relations.repository.RelationProposalRepository;
 import com.taxonomy.relations.repository.RelationHypothesisRepository;
-import com.taxonomy.relations.repository.RequirementCoverageRepository;
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
-import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
+import com.taxonomy.dto.NodeGraphMetadata;
+import com.taxonomy.relations.service.RelationProjectionReadService;
+import com.taxonomy.relations.service.RequirementCoverageService;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
+import com.taxonomy.relations.service.CoverageSourceUnavailable;
+import com.taxonomy.workspace.service.BranchHeadConflictException;
+import java.io.IOException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,41 +35,81 @@ public class ArchitectureSummaryService {
     private static final int TOP_N = 5;
 
     private final TaxonomyNodeRepository nodeRepository;
-    private final TaxonomyRelationRepository relationRepository;
+    private final RelationProjectionReadService relations;
     private final RelationProposalRepository proposalRepository;
     private final RelationHypothesisRepository hypothesisRepository;
-    private final RequirementCoverageRepository coverageRepository;
+    private final RequirementCoverageService coverage;
+    private final WorkspaceDslReadPort git;
 
     public ArchitectureSummaryService(TaxonomyNodeRepository nodeRepository,
-                                      TaxonomyRelationRepository relationRepository,
+                                      RelationProjectionReadService relations,
                                       RelationProposalRepository proposalRepository,
                                       RelationHypothesisRepository hypothesisRepository,
-                                      RequirementCoverageRepository coverageRepository) {
+                                      RequirementCoverageService coverage, WorkspaceDslReadPort git) {
+        this.git = git;
         this.nodeRepository = nodeRepository;
-        this.relationRepository = relationRepository;
+        this.relations = relations;
         this.proposalRepository = proposalRepository;
         this.hypothesisRepository = hypothesisRepository;
-        this.coverageRepository = coverageRepository;
+        this.coverage = coverage;
     }
 
-    /**
-     * Build the architecture summary from current data.
-     */
-    @Transactional(readOnly = true)
-    public ArchitectureSummary buildSummary(com.taxonomy.workspace.service.RepositoryContext context) {
-        List<TaxonomyNode> allNodes = nodeRepository.findAll();
-        int totalRelations = (int) relationRepository.count();
-        int totalProposals = (int) proposalRepository.count();
-        int totalHypotheses = (int) hypothesisRepository.countVisibleInRepositoryWorkspaceAndBranch(
-                context.repositoryId(), context.workspaceId(), context.branch());
+    private record Graph(String head, Map<String,Integer> incoming, Map<String,Integer> outgoing,
+                         Map<String,Integer> coverage, int relations, WorkspaceDslReadPort.RepositoryRead read) {
+        int degree(TaxonomyNode node) { return incoming.getOrDefault(node.getCode(), 0) + outgoing.getOrDefault(node.getCode(), 0); }
+        NodeGraphMetadata metadata(String code) {
+            int in = incoming.getOrDefault(code, 0), out = outgoing.getOrDefault(code, 0);
+            return new NodeGraphMetadata(code, in, out, in + out, coverage.getOrDefault(code, 0), DerivedMetadataService.classifyRole(in, out));
+        }
+        void verify() {
+            try { read.verifyExpectedHead(head); }
+            catch (BranchHeadConflictException moved) { throw new CoverageSourceUnavailable(CoverageSourceUnavailable.State.STALE, moved.getActualHeadCommit()); }
+            catch (IOException failure) { throw new CoverageSourceUnavailable(CoverageSourceUnavailable.State.FAILED, null); }
+        }
+    }
 
-        // Coverage stats
-        Map<String, Integer> coverageCounts = new HashMap<>();
-        coverageRepository.findNodeCodeCountPairs().forEach(pair -> {
-            String code = (String) pair[0];
-            long count = (Long) pair[1];
-            coverageCounts.put(code, (int) count);
-        });
+    private Graph graph(RepositoryContext context) {
+        var read = git.openRead(context);
+        String head;
+        try { head = read.currentHead(); } catch (IOException failure) {
+            throw new CoverageSourceUnavailable(CoverageSourceUnavailable.State.FAILED, null);
+        }
+        if (head == null) throw new CoverageSourceUnavailable(CoverageSourceUnavailable.State.MISSING, null);
+        RelationProjectionReadService.Snapshot snapshot;
+        try { snapshot = relations.readSnapshot(context, head); }
+        catch (RelationProjectionReadService.RelationProjectionUnavailableException unavailable) {
+            var state = switch (unavailable.getReadinessState()) {
+                case BRANCH_MISSING -> CoverageSourceUnavailable.State.MISSING;
+                case NOT_BUILT, STALE, READY -> CoverageSourceUnavailable.State.STALE;
+                case CORRUPT -> CoverageSourceUnavailable.State.FAILED;
+            };
+            throw new CoverageSourceUnavailable(state, unavailable.getCurrentHeadCommit());
+        }
+        Map<String,Integer> incoming = new HashMap<>(), outgoing = new HashMap<>();
+        for (var relation : snapshot.relations()) {
+            incoming.merge(relation.targetCode(), 1, Integer::sum);
+            outgoing.merge(relation.sourceCode(), 1, Integer::sum);
+        }
+        return new Graph(head, incoming, outgoing, coverage.getRequirementDensityMap(context, head), snapshot.relations().size(), read);
+    }
+
+    @Transactional(readOnly = true)
+    public NodeGraphMetadata nodeMetadata(RepositoryContext context, String code) {
+        var graph = graph(context);
+        var metadata = graph.metadata(code);
+        graph.verify();
+        return metadata;
+    }
+
+    @Transactional(readOnly = true)
+    public ArchitectureSummary buildSummary(RepositoryContext context) {
+        var graph = graph(context);
+        List<TaxonomyNode> allNodes = nodeRepository.findAll();
+        int totalRelations = graph.relations();
+        int totalProposals = Math.toIntExact(proposalRepository.countByRepositoryIdAndWorkspaceId(context.repositoryId(), context.workspaceId()));
+        int totalHypotheses = Math.toIntExact(hypothesisRepository.countVisibleInRepositoryWorkspaceAndBranch(
+                context.repositoryId(), context.workspaceId(), context.branch()));
+        Map<String,Integer> coverageCounts = graph.coverage();
         int coveredNodes = coverageCounts.size();
 
         // Classify nodes by taxonomy root
@@ -71,24 +117,24 @@ public class ArchitectureSummaryService {
                 .filter(n -> n.getTaxonomyRoot() != null)
                 .collect(Collectors.groupingBy(TaxonomyNode::getTaxonomyRoot));
 
-        List<SummaryEntry> topCapabilities = topByRelations(byRoot.getOrDefault("CP", List.of()), coverageCounts);
-        List<SummaryEntry> topProcesses = topByRelations(byRoot.getOrDefault("BP", List.of()), coverageCounts);
-        List<SummaryEntry> topServices = topByRelations(byRoot.getOrDefault("CR", List.of()), coverageCounts);
+        List<SummaryEntry> topCapabilities = topByRelations(byRoot.getOrDefault("CP", List.of()), graph);
+        List<SummaryEntry> topProcesses = topByRelations(byRoot.getOrDefault("BP", List.of()), graph);
+        List<SummaryEntry> topServices = topByRelations(byRoot.getOrDefault("CR", List.of()), graph);
 
         // Hub nodes
         List<SummaryEntry> hubNodes = allNodes.stream()
-                .filter(n -> "hub".equals(n.getGraphRole()))
-                .sorted(Comparator.comparingInt(TaxonomyNode::getTotalRelationCount).reversed())
+                .filter(n -> "hub".equals(graph.metadata(n.getCode()).graphRole()))
+                .sorted(Comparator.comparingInt(graph::degree).reversed())
                 .limit(TOP_N)
-                .map(n -> new SummaryEntry(n.getCode(), n.getNameEn(), n.getTotalRelationCount()))
+                .map(n -> new SummaryEntry(n.getCode(), n.getNameEn(), graph.degree(n)))
                 .toList();
 
         // Gaps: nodes with no coverage
         List<String> gaps = allNodes.stream()
                 .filter(n -> n.getLevel() > 1)
                 .filter(n -> !coverageCounts.containsKey(n.getCode()))
-                .filter(n -> n.getTotalRelationCount() > 0)
-                .sorted(Comparator.comparingInt(TaxonomyNode::getTotalRelationCount).reversed())
+                .filter(n -> graph.degree(n) > 0)
+                .sorted(Comparator.comparingInt(graph::degree).reversed())
                 .limit(TOP_N)
                 .map(n -> n.getCode() + " (" + n.getNameEn() + ")")
                 .toList();
@@ -96,6 +142,7 @@ public class ArchitectureSummaryService {
         // Next steps
         List<NextStep> nextSteps = buildNextSteps(totalRelations, totalProposals, totalHypotheses, coveredNodes);
 
+        graph.verify();
         return new ArchitectureSummary(
                 Instant.now(),
                 allNodes.size(),
@@ -114,15 +161,15 @@ public class ArchitectureSummaryService {
 
     // ── Helpers ──────────────────────────────────────────────────────
 
-    private List<SummaryEntry> topByRelations(List<TaxonomyNode> nodes, Map<String, Integer> coverageCounts) {
+    private List<SummaryEntry> topByRelations(List<TaxonomyNode> nodes, Graph graph) {
         return nodes.stream()
                 .sorted(Comparator.comparingInt((TaxonomyNode n) ->
-                        n.getTotalRelationCount() + coverageCounts.getOrDefault(n.getCode(), 0)).reversed())
+                        graph.degree(n) + graph.coverage().getOrDefault(n.getCode(), 0)).reversed())
                 .limit(TOP_N)
                 .map(n -> new SummaryEntry(
                         n.getCode(),
                         n.getNameEn(),
-                        n.getTotalRelationCount() + coverageCounts.getOrDefault(n.getCode(), 0)))
+                        graph.degree(n) + graph.coverage().getOrDefault(n.getCode(), 0)))
                 .toList();
     }
 

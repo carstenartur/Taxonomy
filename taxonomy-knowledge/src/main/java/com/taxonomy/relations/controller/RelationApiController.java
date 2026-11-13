@@ -10,6 +10,7 @@ import com.taxonomy.relations.service.RelationProjectionReadService.ReadResult;
 import com.taxonomy.relations.service.RelationProjectionReadService.RelationProjectionUnavailableException;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -28,6 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 
 @RestController
 @RequestMapping("/api")
@@ -57,9 +59,10 @@ public class RelationApiController {
     @GetMapping("/relations")
     public ResponseEntity<List<TaxonomyRelationDto>> getRelations(
             @Parameter(description = "Filter by relation type")
-            @RequestParam(required = false) String type) {
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String commitId) {
         RepositoryContext context = workspaceResolver
-                .resolveCurrentRepositoryContext();
+                .resolveUnambiguousRepositoryForRead();
         try {
             ReadResult result;
             if (type != null && !type.isBlank()) {
@@ -74,7 +77,8 @@ public class RelationApiController {
             } else {
                 result = relationReadService.readAll(context);
             }
-            return readResponse(result);
+            return selectedResponse(context, commitId, result.readModel(), result.readinessState(),
+                    result.authoritativeCommitId(), result.relations());
         } catch (RelationProjectionUnavailableException error) {
             return unavailable(error).build();
         }
@@ -85,12 +89,13 @@ public class RelationApiController {
             description = "Returns complete incoming and outgoing projected relations for one node in the selected repository/workspace")
     @GetMapping("/node/{code}/relations")
     public ResponseEntity<List<TaxonomyRelationDto>> getRelationsForNode(
-            @PathVariable String code) {
+            @PathVariable String code, @RequestParam(required = false) String commitId) {
         RepositoryContext context = workspaceResolver
-                .resolveCurrentRepositoryContext();
+                .resolveUnambiguousRepositoryForRead();
         try {
-            return readResponse(
-                    relationReadService.readForNode(context, code));
+            var result = relationReadService.readForNode(context, code);
+            return selectedResponse(context, commitId, result.readModel(), result.readinessState(),
+                    result.authoritativeCommitId(), result.relations());
         } catch (IllegalArgumentException error) {
             return ResponseEntity.badRequest().build();
         } catch (RelationProjectionUnavailableException error) {
@@ -130,66 +135,49 @@ public class RelationApiController {
             summary = "Count relations",
             description = "Returns the size of the same complete relation projection used by list and node reads without materializing DTOs")
     @GetMapping("/relations/count")
-    public ResponseEntity<Map<String, Long>> countRelations() {
+    public ResponseEntity<Map<String, Long>> countRelations(@RequestParam(required = false) String commitId) {
         RepositoryContext context = workspaceResolver
-                .resolveCurrentRepositoryContext();
+                .resolveUnambiguousRepositoryForRead();
         try {
             CountResult result = relationReadService.count(context);
-            return readHeaders(
-                    result.readModel(),
-                    result.readinessState(),
-                    result.authoritativeCommitId())
-                    .body(Map.of("count", result.count()));
+            return selectedResponse(context, commitId, result.readModel(), result.readinessState(),
+                    result.authoritativeCommitId(), Map.of("count", result.count()));
         } catch (RelationProjectionUnavailableException error) {
             return unavailable(error).build();
         }
     }
 
-    private static ResponseEntity<List<TaxonomyRelationDto>> readResponse(
-            ReadResult result) {
-        return readHeaders(
-                result.readModel(),
-                result.readinessState(),
-                result.authoritativeCommitId())
-                .body(result.relations());
+    private static <T> ResponseEntity<T> selectedResponse(RepositoryContext context, String pin, ReadModel model,
+            ReadinessState state, String head, T data) {
+        if (pin != null) {
+            try {
+                if (!WorkspaceDslReadPort.normalizeCommitId(pin).equals(head)) {
+                    return sourceHeaders(HttpStatus.CONFLICT, context, ReadinessState.STALE, head).build();
+                }
+            } catch (IllegalArgumentException invalid) {
+                return ResponseEntity.badRequest().build();
+            }
+        }
+        return sourceHeaders(HttpStatus.OK, context, state, head).header(READ_MODEL_HEADER, model.name()).body(data);
     }
 
-    private static ResponseEntity.BodyBuilder readHeaders(
-            ReadModel readModel,
-            ReadinessState readinessState,
-            String authoritativeCommitId) {
-        ResponseEntity.BodyBuilder response = ResponseEntity.ok()
-                .header(READ_MODEL_HEADER, readModel.name())
-                .header(PROJECTION_STATE_HEADER, readinessState.name())
-                .header(HttpHeaders.CACHE_CONTROL, "no-store");
-        if (authoritativeCommitId != null) {
-            response.header(
-                    HttpHeaders.ETAG,
-                    GitHttpPrecondition.etag(authoritativeCommitId));
-        }
+    private static ResponseEntity.BodyBuilder sourceHeaders(HttpStatus status, RepositoryContext context,
+            ReadinessState state, String head) {
+        var response = ResponseEntity.status(status).header(PROJECTION_STATE_HEADER, state.name())
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .header("X-Taxonomy-Repository", context.repositoryId())
+                .header("X-Taxonomy-Workspace-Id", Objects.toString(context.workspaceId(), ""))
+                .header("X-Taxonomy-Branch", context.branch());
+        if (head != null) response.header("X-Taxonomy-Commit", head).eTag(GitHttpPrecondition.etag(head));
         return response;
     }
 
-    private static ResponseEntity.BodyBuilder unavailable(
-            RelationProjectionUnavailableException error) {
-        HttpStatus status = error.getReadinessState()
-                == ReadinessState.BRANCH_MISSING
-                ? HttpStatus.NOT_FOUND
-                : HttpStatus.CONFLICT;
-        ResponseEntity.BodyBuilder response = ResponseEntity.status(status)
-                .header(PROJECTION_STATE_HEADER,
-                        error.getReadinessState().name())
-                .header(HttpHeaders.CACHE_CONTROL, "no-store");
+    private static ResponseEntity.BodyBuilder unavailable(RelationProjectionUnavailableException error) {
+        var state = error.getReadinessState();
+        var status = state == ReadinessState.BRANCH_MISSING ? HttpStatus.NOT_FOUND : HttpStatus.CONFLICT;
+        var response = sourceHeaders(status, error.getContext(), state, error.getCurrentHeadCommit());
         if (error.getPendingRecoveryCount() > 0) {
-            response.header(
-                    PENDING_RECOVERY_HEADER,
-                    String.valueOf(error.getPendingRecoveryCount()));
-        }
-        if (error.getCurrentHeadCommit() != null) {
-            response.header(
-                    HttpHeaders.ETAG,
-                    GitHttpPrecondition.etag(
-                            error.getCurrentHeadCommit()));
+            response.header(PENDING_RECOVERY_HEADER, String.valueOf(error.getPendingRecoveryCount()));
         }
         return response;
     }

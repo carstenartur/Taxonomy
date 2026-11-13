@@ -8,6 +8,20 @@
 (function () {
     'use strict';
     var t = TaxonomyI18n.t;
+    var viewGeneration = 0;
+    var displayedSource = null;
+    function showSource(source) {
+        displayedSource = source;
+        var button = document.getElementById('coverageRecordBtn');
+        if (button) button.disabled = !source?.workspaceId;
+    }
+    document.addEventListener('taxonomy:repository-context-changed', function (event) {
+        if (event.detail?.selectionChanged === false) return;
+        viewGeneration += 1;
+        showSource(null);
+        var content = document.getElementById('coverageDashboardContent');
+        if (content) content.replaceChildren();
+    });
 
     /* ------------------------------------------------------------------ */
     /*  Bootstrap on DOMContentLoaded                                      */
@@ -39,11 +53,18 @@
         if (!content) return;
         content.innerHTML = '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm" role="status"></div> ' + t('coverage.loading') + '</div>';
 
-        window.TaxonomyRelationsApi.coverageStatistics()
-            .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
-            .then(function (stats) { renderDashboard(stats); })
+        var generation = ++viewGeneration;
+        showSource(null);
+        return window.TaxonomyRelationsApi.coverageStatistics()
+            .then(async function (response) {
+                if (!response.ok) throw new Error(String(response.status));
+                var stats = await response.json();
+                if (viewGeneration !== generation) return;
+                showSource(window.TaxonomyRelationsApi.coverageSource(response));
+                renderDashboard(stats);
+            })
             .catch(function (error) {
-                if (error?.code === 'ABORTED') return;
+                if (error?.code === 'ABORTED' || generation !== viewGeneration) return;
                 content.innerHTML = '<div class="text-danger small p-2">\u26A0\uFE0F ' + t('coverage.load.failed') + '</div>';
             });
     }
@@ -113,9 +134,11 @@
         if (!content) return;
         content.innerHTML = '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm" role="status"></div> ' + t('coverage.loading.node') + '</div>';
 
-        window.TaxonomyRelationsApi.nodeCoverage(nodeCode)
+        var generation = ++viewGeneration;
+        return window.TaxonomyRelationsApi.nodeCoverage(nodeCode, displayedSource)
             .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
             .then(function (entries) {
+                if (viewGeneration !== generation) return;
                 var html = '<div class="mb-2"><button id="coverageBackBtn" class="btn btn-sm btn-outline-secondary">' + t('coverage.back') + '</button>'
                          + ' <strong>' + escapeHtml(nodeCode) + '</strong> \u2014 ' + t('coverage.node.requirements', entries.length) + '</div>';
                 if (entries.length > 0) {
@@ -137,7 +160,7 @@
                 if (backBtn) backBtn.addEventListener('click', loadCoverageDashboard);
             })
             .catch(function (error) {
-                if (error?.code === 'ABORTED') return;
+                if (error?.code === 'ABORTED' || generation !== viewGeneration) return;
                 content.innerHTML = '<div class="text-danger small p-2">\u26A0\uFE0F ' + t('coverage.load.node.failed') + '</div>';
             });
     }
@@ -146,6 +169,8 @@
     /*  Record current analysis                                            */
     /* ------------------------------------------------------------------ */
     function recordCurrentAnalysis() {
+        var source = displayedSource;
+        if (!source?.workspaceId) return;
         var scores = (typeof window._getCurrentScores === 'function') ? window._getCurrentScores() : null;
         if (!scores || Object.keys(scores).length === 0) {
             alert(t('coverage.no.scores'));
@@ -164,8 +189,9 @@
                 requirementText: reqText,
                 scores: scores,
                 minScore: 50
-        })
+        }, source)
         .then(function (r) {
+            if (source !== displayedSource) return;
             if (r.ok) {
                 loadCoverageDashboard();
             } else {
@@ -173,7 +199,7 @@
             }
         })
         .catch(function (error) {
-                if (error?.code === 'ABORTED') return;
+            if (error?.code === 'ABORTED' || source !== displayedSource) return;
             alert(t('coverage.record.error'));
         });
     }

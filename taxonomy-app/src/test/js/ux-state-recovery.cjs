@@ -994,7 +994,12 @@ test('projection recovery uses current head, pinned context and canonical CSRF t
     f.window.__TaxonomyAnalysisSessionContext.runtime.workspaceId = 'workspace-B';
     f.requests[2].resolve(readinessResponse(fresh)); await tick();
     const rebuild = f.requests[3];
-    assert.match(rebuild.url, /\/projection\/rebuild\?workspaceId=workspace-A$/);
+    for (const request of [f.requests[2], rebuild]) {
+        const target = new URL(request.url, 'https://example.test');
+        assert.equal(target.searchParams.get('repositoryId'), 'repository-A');
+        assert.equal(target.searchParams.get('workspaceId'), 'workspace-A');
+        assert.equal(target.searchParams.get('branch'), 'draft');
+    }
     assert.equal(rebuild.options.headers.get('If-Match'), '"' + fresh.currentHeadCommit + '"');
     assert.equal(rebuild.options.headers.get('X-Taxonomy-Workspace-Id'), 'workspace-A');
     assert.equal(rebuild.options.headers.get('X-CSRF-TOKEN'), 'csrf-fixture');
