@@ -102,6 +102,33 @@ class ArchitectureWorkbenchServiceTest {
     }
 
     @Test
+    void diagramLanguageUsesTheFrozenAnalysisOrAnExplicitOverrideWithoutTranslatingEvidence() throws Exception {
+        var snapshot = snapshotWithArchitecture();
+        snapshot.analysis().setAnalysisLanguage(com.taxonomy.dto.AnalysisLanguage.GERMAN);
+        String sourceReason = "Recorded original analysis evidence 7412";
+        snapshot.analysis().setReasons(Map.of("CP-1", sourceReason));
+        snapshot.analysis().setWarnings(List.of("Long frozen warning ".repeat(80) + "WARNING-END-7412"));
+        prepareSnapshot(snapshot);
+        var projection = service.load(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT);
+
+        String german = service.renderSvg(projection, null);
+        String english = service.renderSvg(projection, java.util.Locale.UK);
+        assertThat(german).contains("xml:lang=\"de\"", "Bewertungen und vollständige Begründungen",
+                "Herkunft nicht aufgezeichnet", sourceReason, "CP-1");
+        assertThat(english).contains("xml:lang=\"en\"", "Scores and complete explanations",
+                "Origin unrecorded", sourceReason, "CP-1");
+        try (var de = Loader.loadPDF(service.renderPdf(projection, null));
+             var en = Loader.loadPDF(service.renderPdf(projection, java.util.Locale.UK))) {
+            assertThat(de.getDocumentCatalog().getLanguage()).isEqualTo("de");
+            assertThat(en.getDocumentCatalog().getLanguage()).isEqualTo("en");
+            assertThat(new PDFTextStripper().getText(de)).contains("Exportinventar", "Anforderung REQ-001",
+                    "Beziehungsinventar", "Siehe Exportinventar", "WARNING-END-7412", sourceReason, "CP-1");
+            assertThat(new PDFTextStripper().getText(en)).contains("Export inventory", "Requirement REQ-001",
+                    "Relationship inventory", "See export inventory", "WARNING-END-7412", sourceReason, "CP-1");
+        }
+    }
+
+    @Test
     void frozenExportsRetainScoringAndInclusionExplanationsTogether() throws Exception {
         var snapshot = snapshotWithArchitecture();
         String scoringReason = "The recorded assessment retains the original rationale. ".repeat(70) + "SCORING-REASON-END-927";

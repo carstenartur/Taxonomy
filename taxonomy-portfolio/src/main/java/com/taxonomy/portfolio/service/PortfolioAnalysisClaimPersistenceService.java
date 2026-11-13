@@ -152,14 +152,15 @@ public class PortfolioAnalysisClaimPersistenceService {
                     "Complete analysis claim identity is required");
         }
 
+        String scope = workItem.scopeKey().strip();
         RequirementAnalysisJobItem item = itemRepository
-                .findClaimForUpdate(
-                        workItem.itemId(),
-                        workItem.jobId(),
-                        workItem.projectId(),
-                        workItem.scopeKey().strip())
-                .orElseThrow(() -> PortfolioException.notFound(
-                        "Analysis job item not found: " + workItem.itemId()));
+                .findClaimGenerationForUpdate(workItem.itemId(), workItem.jobId(),
+                        workItem.projectId(), scope, workItem.attempt())
+                .orElseThrow(() -> itemRepository.existsByIdAndJobIdAndProjectIdAndScopeKey(
+                        workItem.itemId(), workItem.jobId(), workItem.projectId(), scope)
+                        ? inactiveClaim(workItem)
+                        : PortfolioException.notFound(
+                                "Analysis job item not found: " + workItem.itemId()));
 
         AnalysisStatus jobStatus = item.getJob().getStatus();
         boolean jobAcceptsWorkerResult = jobStatus == AnalysisStatus.RUNNING
@@ -172,10 +173,13 @@ public class PortfolioAnalysisClaimPersistenceService {
                         item.getRequirementVersionId(),
                         workItem.requirementVersionId());
         if (!active) {
-            throw PortfolioException.conflict(
-                    "Analysis work item claim is no longer active: "
-                            + workItem.itemId());
+            throw inactiveClaim(workItem);
         }
         return item;
+    }
+
+    private static PortfolioException inactiveClaim(PortfolioAnalysisWorkQueue.WorkItem workItem) {
+        return PortfolioException.conflict(
+                "Analysis work item claim is no longer active: " + workItem.itemId());
     }
 }

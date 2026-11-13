@@ -124,11 +124,15 @@ class VerifiedLegacyOwnerMigrationTest {
                 .isInstanceOf(AccessDeniedException.class);
         migration.unlinkVerified(admin, target, "https://idp.example", "sub-a", "approved:revoke");
         assertThat(identities.isEnabled(target)).isFalse();
+        LegacyOwnerMigrationReadiness.requireReady(database);
         assertThatThrownBy(() -> identities.oidc("https://idp.example", "sub-a"))
                 .isInstanceOf(org.springframework.security.authentication.DisabledException.class);
         assertThat(jdbc.queryForObject("select count(*) from principal_access_audit", Integer.class)).isEqualTo(3);
         assertThat(jdbc.queryForObject("select count(*) from principal_binding where principal_id=?",
                 Integer.class, target.value().toString())).isEqualTo(1);
+        // A disabled row without its committed removal audit is still unresolved.
+        jdbc.update("delete from principal_access_audit where decision_kind='UNLINK_LEGACY_OIDC'");
+        assertThat(LegacyOwnerMigrationReadiness.inspect(database).ready()).isFalse();
     }
 
     @Test void genericOidcPrincipalIsNotAnEligibleHistoricalUnlinkTarget() {
@@ -213,6 +217,67 @@ class VerifiedLegacyOwnerMigrationTest {
                 Integer.class)).isZero();
         assertThat(jdbc.queryForObject("select count(*) from principal_access_audit",
                 Integer.class)).isZero();
+    }
+
+    @Test void postV3LegacyWritesCannotBeHiddenByAnOtherwiseCompleteApprovedPlan() {
+        var initial = migration.preview(admin, 256);
+        assertThat(LegacyOwnerMigrationReadiness.inspect(database).missingReservations()).isZero();
+
+        // This write happens after the one-time V3 reservation migration.
+        jdbc.update("insert into user_workspace values ('late-legacy-owner', 'late-private-workspace')");
+        var readiness = LegacyOwnerMigrationReadiness.inspect(database);
+        assertThat(readiness.observedScopes()).isEqualTo(3);
+        assertThat(readiness.missingReservations()).isEqualTo(1);
+        assertThat(readiness.ready()).isFalse();
+        assertThatThrownBy(() -> migration.linkVerified(admin, initial.fingerprint(), List.of(
+                verified(initial.owners().get(0), "sub-a"),
+                verified(initial.owners().get(1), "sub-b"))))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("reserved principal");
+        assertThat(migration.preview(admin, 256).total()).isEqualTo(2);
+        assertThat(jdbc.queryForObject("select count(*) from principal_access_audit", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from principal_binding where binding_kind='OIDC'",
+                Integer.class)).isZero();
+    }
+
+    @Test void blankPostMigrationOwnerFailsClosedWithoutIssuingMappings() {
+        var initial = migration.preview(admin, 256);
+        jdbc.update("insert into user_workspace values ('  ', 'malformed-owner')");
+        assertThatThrownBy(() -> LegacyOwnerMigrationReadiness.inspect(database))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("operator repair");
+        assertThatThrownBy(() -> migration.linkVerified(admin, initial.fingerprint(), List.of(
+                verified(initial.owners().get(0), "sub-a"),
+                verified(initial.owners().get(1), "sub-b"))))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("operator repair");
+        assertThat(jdbc.queryForObject("select count(*) from principal_access_audit", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from principal_binding where binding_kind='OIDC'",
+                Integer.class)).isZero();
+    }
+
+    @Test void verifiedLinksClearTheReadinessFenceWithoutInferringUsernames() {
+        var initial = migration.preview(admin, 256);
+        var inventory = LegacyOwnerMigrationReadiness.inspect(database);
+        assertThat(inventory.unresolvedReservations()).isEqualTo(2);
+        assertThat(inventory.ready()).isFalse();
+
+        migration.linkVerified(admin, initial.fingerprint(), List.of(
+                verified(initial.owners().get(0), "opaque-subject-a"),
+                verified(initial.owners().get(1), "opaque-subject-b")));
+        assertThat(LegacyOwnerMigrationReadiness.inspect(database).ready()).isTrue();
+
+        // Re-using a mapped historical name as a newly created unverified OIDC identity
+        // must not be accepted merely because its owner row has a binding.
+        var late = identities.oidc("https://idp.example", "different-subject");
+        jdbc.update("insert into user_workspace values (?, 'new-private-workspace')", late.scopeKey());
+        assertThat(LegacyOwnerMigrationReadiness.inspect(database).ready()).isTrue();
+        jdbc.update("update app_principal set enabled=0 where principal_id=?", late.id().value().toString());
+        LegacyOwnerMigrationReadiness.requireReady(database);
+        assertThatThrownBy(() -> identities.oidc("https://idp.example", "different-subject"))
+                .isInstanceOf(org.springframework.security.authentication.DisabledException.class);
+        jdbc.update("insert into user_workspace values ('unmapped-after-link', 'other')");
+        assertThat(LegacyOwnerMigrationReadiness.inspect(database).ready()).isFalse();
     }
 
     @Test void removalRequiresExactFieldsAndCannotReuseARevokedSubject() {

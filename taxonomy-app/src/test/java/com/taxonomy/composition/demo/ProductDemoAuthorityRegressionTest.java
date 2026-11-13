@@ -6,6 +6,9 @@ import com.taxonomy.portfolio.PortfolioAnalysisWorkspace;
 import com.taxonomy.portfolio.RetainedPortfolioCatalogue;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateProjectRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementVersionView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotDetail;
+import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotSummary;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementVersionRequest;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.portfolio.model.PortfolioTypes.ProjectStatus;
@@ -36,7 +39,11 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 /** Durable authority regressions; no analysis worker or external provider is executed. */
@@ -155,6 +162,40 @@ class ProductDemoAuthorityRegressionTest extends RetainedPortfolioCatalogue {
                 .isEqualTo(r1.id());
         assertThat(analyses.listRequirementSnapshots(run.projectId(), run.requirementId(), USER, context)).isEmpty();
         verifyNoInteractions(analysisExecutor);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"version-id", "requirement-id", "content-hash", "replaced-detail"})
+    void comparisonRequiresTheExactStoredVersionAndSnapshot(String changed) {
+        var context = workspace();
+        var run = demos.start(null, USER, context);
+        var requirement = projects.getRequirement(run.projectId(), run.requirementId(), USER, context);
+        var selected = new SnapshotSummary("snapshot", run.projectId(),
+                "requirement-id".equals(changed) ? -1L : run.requirementId(), run.requirementKey(),
+                "version-id".equals(changed) ? -1L : requirement.currentVersionId(), 1, "job", AnalysisStatus.SUCCESS,
+                run.activeProvider(), null, null, null, context.workspaceId(), context.currentBranch(), null,
+                java.time.Instant.now(), 1, 0, null);
+        var persistence = mock(PortfolioAnalysisPersistenceService.class);
+        when(persistence.listRequirementSnapshots(run.projectId(), run.requirementId(), USER, context))
+                .thenReturn(List.of(selected));
+        when(persistence.getSnapshot(run.projectId(), "snapshot", USER, context))
+                .thenReturn(new SnapshotDetail(null, null, null, null, null, List.of(), List.of()));
+        var portfolio = projects;
+        if ("content-hash".equals(changed)) {
+            var source = requirement.currentVersion();
+            var changedText = new RequirementVersionView(source.id(), source.versionNumber(), source.text() + " Changed.",
+                    source.contentHash(), source.changeReason(), source.createdBy(), source.createdAt(), source.source());
+            portfolio = mock(ProjectPortfolioService.class);
+            when(portfolio.listRequirementVersions(run.projectId(), run.requirementId(), USER, context))
+                    .thenReturn(List.of(changedText));
+        }
+        var comparison = new ProductDemoService(runs, portfolio, persistence, scenarios, null);
+        assertThatThrownBy(() -> comparison.compare(run.id(), USER, context))
+                .isInstanceOf(PortfolioException.class)
+                .extracting(failure -> ((PortfolioException) failure).getCode())
+                .isEqualTo("DEMO_REQUIREMENT_MISMATCH");
+        verify(persistence, "replaced-detail".equals(changed) ? times(1) : never())
+                .getSnapshot(run.projectId(), "snapshot", USER, context);
     }
 
     @Test

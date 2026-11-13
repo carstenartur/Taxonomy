@@ -152,7 +152,7 @@ public final class PrincipalIdentityService {
         var rows = jdbc.query("""
                     select p.principal_id, p.scope_key, p.enabled, b.binding_key, b.principal_id,
                            b.binding_kind, b.issuer, b.subject_id, b.enabled, i.installation_id,
-                           u.principal_id, u.enabled, r.name
+                           u.principal_id, u.enabled, r.name, u.username
                     from app_principal p
                     join principal_binding b on b.principal_id=p.principal_id and b.binding_kind='LOCAL'
                     join principal_installation i on i.registry_key='local'
@@ -168,7 +168,8 @@ public final class PrincipalIdentityService {
                         && row.getInt(3) == 1 && PrincipalBinding.key(binding).equals(row.getString(4))
                         && id.equals(row.getString(5)) && "LOCAL".equals(row.getString(6))
                         && installation.equals(row.getString(7)) && id.equals(row.getString(8))
-                        && row.getInt(9) == 1 && id.equals(row.getString(11)) && row.getBoolean(12);
+                        && row.getInt(9) == 1 && id.equals(row.getString(11)) && row.getBoolean(12)
+                        && scope.equals(row.getString(14));
                 if (!current) throw denied();
                 return new LocalRole(row.getString(4), row.getString(13));
             }, id);

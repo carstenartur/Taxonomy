@@ -304,6 +304,35 @@ test('decision export stays cancellable and cancelled work cannot download after
     await pending; assert.equal(f.downloads.length, 0);
 });
 
+test('leaving the saved snapshot closes the decision dialog and cancels its unfinished body', async () => {
+    const f = decisionFixture(), source = new AbortController(), body = deferred(), reading = deferred();
+    let optionSignal, downloadSignal;
+    const dialog = f.api.openSaved({projectId: 1, snapshotId: 'snapshot', language: 'de', format: 'html', sourceSignal: source.signal, api: {
+        decisionReportOptions(project, snapshot, language, options) {
+            optionSignal = options.signal;
+            return Promise.resolve({roots: [{code: 'CP'}]});
+        },
+        downloadDecisionReport(project, snapshot, format, language, options, request) {
+            downloadSignal = request.signal;
+            const headers = {get(name) { return {
+                'Content-Type': 'text/html', 'X-Taxonomy-Analysis-SHA256': 'hash', 'X-Taxonomy-Snapshot-Id': 'snapshot'
+            }[name]; }};
+            return Promise.resolve({ok:true, headers, blob() { reading.resolve(); return body.promise; }});
+        }
+    }});
+    await tick();
+    const pending = dialog.querySelector('form').fire('submit');
+    await reading.promise;
+    source.abort();
+    body.resolve({size: 42});
+    await pending;
+    assert.equal(optionSignal, source.signal);
+    assert.equal(downloadSignal.aborted, true);
+    assert.equal(dialog.open, false);
+    assert.deepEqual(f.downloads, []);
+    assert.equal(f.api.openSaved({sourceSignal:source.signal}), undefined);
+});
+
 test('Escape also aborts an in-progress decision export', async () => {
     const f = decisionFixture(), gate = deferred(); let signal;
     const dialog = f.api.open({roots: [{code: 'CP'}], submit({signal: value}) {signal = value; return gate.promise;}});
@@ -361,6 +390,9 @@ test('new requirement writes capture AI language for automatic analysis without 
     assert.deepEqual(requests.map(request => request.headers.get('X-Taxonomy-Analysis-Language')), ['de', 'de', null, null, 'en']);
 });
 
+const liveDecisionSource = {repositoryId: 'repo-reports', workspaceId: 'ws-reports', branch: 'review'};
+const liveDecisionPath = '/api/decision-report/docx?repositoryId=repo-reports&workspaceId=ws-reports&branch=review';
+
 test('live-analysis export cancellation reaches the real API client transport', async () => {
     const f = dom();
     f.element('textarea', 'businessText').value = 'Current requirement';
@@ -368,9 +400,11 @@ test('live-analysis export cancellation reaches the real API client transport', 
     const timers = new Set();
     const window = {location: {href: 'http://localhost/', pathname: '/'},
         TaxonomyRoleSurface: {}, TaxonomyUiSemantics: {},
+        TaxonomyArchitectureWorkspace: {analysisScope: async () => liveDecisionSource},
         TaxonomyI18n: {getLocale: () => 'de'},
         fetch(url, init) {
-            assert.equal(url, '/api/decision-report/docx');
+            assert.equal(url, liveDecisionPath);
+            assert.equal(new Headers(init.headers).get('X-Taxonomy-Workspace-Id'), liveDecisionSource.workspaceId);
             assert.equal(init.method, 'POST');
             transportSignal = init.signal;
             return new Promise((resolve, reject) => {
@@ -434,6 +468,7 @@ async function liveReportBodyFixture() {
     f.element('textarea', 'businessText').value = 'Current requirement';
     const window = {location: {href: 'http://localhost/', origin: 'http://localhost', pathname: '/'},
         TaxonomyRoleSurface: {}, TaxonomyUiSemantics: {},
+        TaxonomyArchitectureWorkspace: {analysisScope: async () => liveDecisionSource},
         TaxonomyI18n: {getLocale: () => 'de'}, fetch: transfer.fetch};
     class FixtureURL extends URL {}
     Object.assign(FixtureURL, f.urls);

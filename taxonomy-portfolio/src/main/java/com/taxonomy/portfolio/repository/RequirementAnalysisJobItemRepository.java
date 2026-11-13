@@ -94,6 +94,22 @@ public interface RequirementAnalysisJobItemRepository extends JpaRepository<Requ
             @Param("projectId") Long projectId,
             @Param("scopeKey") String scopeKey);
 
+    /** An expired generation must not lock or hydrate the new worker's item and job. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select item from RequirementAnalysisJobItem item
+             where item.id = :itemId and item.jobId = :jobId
+               and item.projectId = :projectId and item.scopeKey = :scopeKey
+               and item.attempt = :attempt
+            """)
+    Optional<RequirementAnalysisJobItem> findClaimGenerationForUpdate(
+            @Param("itemId") Long itemId, @Param("jobId") String jobId,
+            @Param("projectId") Long projectId, @Param("scopeKey") String scopeKey,
+            @Param("attempt") int attempt);
+
+    boolean existsByIdAndJobIdAndProjectIdAndScopeKey(
+            Long itemId, String jobId, Long projectId, String scopeKey);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select new com.taxonomy.portfolio.repository.AnalysisItemClaimRow(

@@ -22,6 +22,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
@@ -178,12 +179,13 @@ class PortfolioAnalysisClaimPersistenceCoverageTest {
         verifyNoInteractions(itemRepository, persistenceService, hypothesisService);
 
         PortfolioAnalysisWorkQueue.WorkItem claim = claim(1);
-        when(itemRepository.findClaimForUpdate(
-                claim.itemId(), claim.jobId(), claim.projectId(), claim.scopeKey()))
+        when(itemRepository.findClaimGenerationForUpdate(
+                claim.itemId(), claim.jobId(), claim.projectId(), claim.scopeKey(), claim.attempt()))
                 .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.failItem(claim, new IllegalStateException("late")))
-                .isInstanceOf(PortfolioException.class)
+                .isInstanceOfSatisfying(PortfolioException.class, failure ->
+                        assertThat(failure.getKind()).isEqualTo(PortfolioException.Kind.NOT_FOUND))
                 .hasMessageContaining("Analysis job item not found");
         verifyNoInteractions(persistenceService, hypothesisService);
     }
@@ -204,8 +206,8 @@ class PortfolioAnalysisClaimPersistenceCoverageTest {
                            AnalysisStatus jobStatus,
                            AnalysisStatus itemStatus,
                            int attempt) {
-        when(itemRepository.findClaimForUpdate(
-                claim.itemId(), claim.jobId(), claim.projectId(), claim.scopeKey()))
+        when(itemRepository.findClaimGenerationForUpdate(
+                claim.itemId(), claim.jobId(), claim.projectId(), claim.scopeKey(), claim.attempt()))
                 .thenReturn(Optional.of(item));
         when(item.getJob()).thenReturn(job);
         when(job.getStatus()).thenReturn(jobStatus);

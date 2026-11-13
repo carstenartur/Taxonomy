@@ -72,7 +72,7 @@ public final class PrincipalAccessAdministration {
     }
 
     private PrincipalId requireAdministrator(Authentication authentication) {
-        PrincipalId actor = identities.require(authentication);
+        PrincipalId actor = identities.requireCurrent(authentication);
         boolean administrator;
         if (authentication.getPrincipal() instanceof PrincipalUserDetails) {
             administrator = jdbc.queryForObject("select count(*) from app_user u join user_roles ur on ur.user_id=u.id join app_role r on r.id=ur.role_id where u.principal_id=? and r.name='ROLE_ADMIN'",

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { provisionRoleAccount } from './ui-role-fixtures.mjs';
+import { provisionRoleAccount, settleWelcomeAfterNavigation } from './ui-role-fixtures.mjs';
 
 const ACCOUNT = Object.freeze({
   username: 'qa-user',
@@ -106,3 +106,31 @@ test('rejects invalid retry bounds before issuing a request', async () => {
 
   assert.equal(api.calls.length, 0);
 });
+
+
+for (const showWelcome of [true, false]) {
+  test(`localized document waits for onboarding initialization (prompt ${showWelcome})`, async () => {
+    const events = [];
+    let initialized = false;
+    const page = {
+      async evaluate() {events.push('i18n');},
+      locator(selector) {
+        return {
+          async waitFor({state}) {
+            events.push([selector, state]);
+            if (selector === '#analysisTaskProgress') initialized = true;
+          },
+          async isVisible() {
+            assert.ok(initialized, 'The database decision can finish after the message bundle');
+            return showWelcome;
+          },
+          async focus() {events.push('focus');}
+        };
+      },
+      keyboard: {async press(key) {events.push(key);}}
+    };
+    await settleWelcomeAfterNavigation(page);
+    assert.deepEqual(events, ['i18n', ['#analysisTaskProgress', 'attached'],
+      ...(showWelcome ? ['focus', 'Enter', ['#onboardingOverlay', 'detached']] : [])]);
+  });
+}
