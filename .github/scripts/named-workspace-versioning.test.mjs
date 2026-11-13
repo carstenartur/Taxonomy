@@ -29,6 +29,19 @@ test('provisioning preserves domain status/body and exact optimistic concurrency
  assert.equal(result.status,412);assert.equal(result.body.message,'conflict');assert.equal(new Headers(seen.init.headers).get('If-Match'),'"abc123"');
  assert.equal(seen.init.headers.get('X-Taxonomy-Workspace-Id'),'original');
 });
+test('provisioned projection carries its inspected repository, workspace and branch into the rebuild', async () => {
+ const calls=[]; const h=harness(async(url,init)=>{calls.push({url,init});return Response.json({readinessState:'READY'});});
+ const api=h.context.window.TaxonomyWorkspaceProvisioningApi;
+ const status={repositoryId:'reviewed', workspaceId:'original', branch:'team/review', currentHeadCommit:'a'.repeat(40)};
+ h.change();
+ await api.rebuildProjection(status.currentHeadCommit, status);
+ const url=new URL(calls[0].url,'https://example.test');
+ assert.equal(url.searchParams.get('repositoryId'),'reviewed');
+ assert.equal(url.searchParams.get('workspaceId'),'original');
+ assert.equal(url.searchParams.get('branch'),'team/review');
+ assert.equal(calls[0].init.headers.get('X-Taxonomy-Workspace-Id'),'original');
+ assert.equal(calls[0].init.headers.get('If-Match'),'"'+status.currentHeadCommit+'"');
+});
 test('named versioning owns encoded routes and preserves domain conflict statuses',async()=>{
  const calls=[];const h=harness(async(url,init)=>{calls.push({url,init});return new Response('{}',{status:409});});
  const api=h.context.window.TaxonomyVersioningApi;

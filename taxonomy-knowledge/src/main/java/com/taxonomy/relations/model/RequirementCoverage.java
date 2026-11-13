@@ -1,7 +1,5 @@
 package com.taxonomy.relations.model;
 
-import com.taxonomy.workspace.service.RepositoryContext;
-import com.taxonomy.workspace.service.WorkspaceDslReadPort;
 import jakarta.persistence.*;
 import java.time.Instant;
 
@@ -43,14 +41,17 @@ public class RequirementCoverage {
     protected RequirementCoverage() {
     }
 
-    public RequirementCoverage(RepositoryContext context, String commit, String requirementId, String requirementText,
+    /** Source and actor of one admitted coverage recording, shared by all its node rows. */
+    public record Source(String repositoryId, String workspaceId, String branch, String commit, String actor) {}
+
+    public RequirementCoverage(Source source, String requirementId, String requirementText,
                                String nodeCode, double score, Instant analyzedAt) {
-        this.repositoryId = context.repositoryId();
-        this.workspaceId = context.workspaceId();
-        this.workspaceScope = scope(context);
-        this.branch = context.branch();
-        this.sourceCommit = WorkspaceDslReadPort.normalizeCommitId(commit);
-        this.recordedBy = context.username();
+        this.repositoryId = source.repositoryId();
+        this.workspaceId = source.workspaceId();
+        this.workspaceScope = scope(source.workspaceId());
+        this.branch = source.branch();
+        this.sourceCommit = source.commit();
+        this.recordedBy = source.actor();
         this.requirementId = requirementId;
         this.requirementText = requirementText;
         this.nodeCode = nodeCode;
@@ -59,8 +60,8 @@ public class RequirementCoverage {
     }
 
     /** Used together with repository, branch and commit; central and named workspaces occupy disjoint keys. */
-    public static String scope(RepositoryContext context) {
-        return context.workspaceId() == null ? "C" : "W:" + context.workspaceId();
+    public static String scope(String workspaceId) {
+        return workspaceId == null ? "C" : "W:" + workspaceId;
     }
 
     public String getRepositoryId() { return repositoryId; }

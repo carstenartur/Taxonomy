@@ -33,28 +33,27 @@ window.TaxonomyRelationsApi = (function () {
         return domainRequest(url, {cache:'no-store'}, {selectedRepository:true, acceptedStatuses:[404,409,412,503]});
     }
 
-    function readProjectionReadiness(workspaceId, options) {
-        return projectionRequest('/readiness', 'GET', workspaceId, null, options);
+    function readProjectionReadiness(source, options) {
+        return projectionRequest('/readiness', 'GET', source, {}, options);
     }
 
-    // An explicit command owns the inspected source through its preflight and
-    // mutation. Visible relation reads afterward resolve the then-current tab.
+    // Keep an admitted rebuild on the repository and branch inspected even
+    // when the current tab subsequently switches to a different central source.
     function rebuildProjection(status, headEtag) {
-        return projectionRequest('/rebuild', 'POST', status.workspaceId, {
-            'If-Match': headEtag
-        }, {contextSensitive:false});
+        return projectionRequest('/rebuild', 'POST', status, {'If-Match':headEtag}, {contextSensitive:false});
     }
 
-    function projectionRequest(path, method, workspaceId, headers, options) {
-        headers = Object.assign({}, headers || {});
-        if (workspaceId !== undefined) {
-            headers['X-Taxonomy-Workspace-Id'] = workspaceId == null ? '' : workspaceId;
+    function projectionRequest(path, method, source, headers, options) {
+        var url = '/api/architecture/relations/projection' + path;
+        var workspaceId = source;
+        if (source && typeof source === 'object') {
+            workspaceId = source.workspaceId == null ? '' : source.workspaceId;
+            url += '?' + new URLSearchParams({repositoryId:source.repositoryId, workspaceId:workspaceId, branch:source.branch});
         }
-        // The named transport preserves this operation's inspected workspace,
-        // including explicit central scope, while supplying CSRF and base paths.
-        return window.TaxonomyApiClient.request('/api/architecture/relations/projection' + path, {
-            method: method, headers: headers, cache: 'no-store'
-        }, Object.assign({idempotent:method === 'GET', pinnedWorkspaceId:workspaceId, acceptedStatuses:[409,412]}, options));
+        if (workspaceId !== undefined) headers['X-Taxonomy-Workspace-Id'] = workspaceId == null ? '' : workspaceId;
+        return window.TaxonomyApiClient.request(url, {method:method, headers:headers, cache:'no-store'},
+            Object.assign({idempotent:method === 'GET', selectedRepository:source === undefined,
+                pinnedWorkspaceId:workspaceId, acceptedStatuses:[409,412]}, options));
     }
 
     function upsertRelation(sourceCode, relationType, targetCode, payload, headers, source) {

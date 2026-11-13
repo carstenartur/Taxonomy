@@ -44,6 +44,11 @@ public class RequirementCoverageService {
         this.nodeRepository = nodeRepository;
     }
 
+    public static RequirementCoverage.Source recordedSource(RepositoryContext context, String commit) {
+        return new RequirementCoverage.Source(context.repositoryId(), context.workspaceId(), context.branch(),
+                WorkspaceDslReadPort.normalizeCommitId(commit), context.username());
+    }
+
     /**
      * Records all node→score mappings from {@code scores} that are at or above
      * {@code minScore} for the given requirement. Existing entries for the same
@@ -61,14 +66,15 @@ public class RequirementCoverageService {
                                 int minScore) {
         int threshold = minScore > 0 ? minScore : DEFAULT_MIN_SCORE;
         Instant now = Instant.now();
+        var source = recordedSource(context, commit);
 
         // Remove stale entries for this requirement before re-recording
         mutations.lock(context.repositoryId());
-        coverageRepository.remove(context.repositoryId(), scope(context), context.branch(), commit, requirementId);
+        coverageRepository.remove(context.repositoryId(), scope(context.workspaceId()), context.branch(), commit, requirementId);
 
         List<RequirementCoverage> entries = scores.entrySet().stream()
                 .filter(e -> e.getValue() != null && e.getValue() >= threshold)
-                .map(e -> new RequirementCoverage(context, commit, requirementId, requirementText,
+                .map(e -> new RequirementCoverage(source, requirementId, requirementText,
                         e.getKey(), e.getValue(), now))
                 .toList();
 
@@ -81,7 +87,7 @@ public class RequirementCoverageService {
      */
     @Transactional(readOnly = true)
     public List<RequirementCoverage> getCoverageForNode(RepositoryContext context, String commit, String nodeCode) {
-        return coverageRepository.forNode(context.repositoryId(), scope(context), context.branch(), commit, nodeCode);
+        return coverageRepository.forNode(context.repositoryId(), scope(context.workspaceId()), context.branch(), commit, nodeCode);
     }
 
     /**
@@ -89,7 +95,7 @@ public class RequirementCoverageService {
      */
     @Transactional(readOnly = true)
     public List<RequirementCoverage> getCoverageForRequirement(RepositoryContext context, String commit, String requirementId) {
-        return coverageRepository.forRequirement(context.repositoryId(), scope(context), context.branch(), commit, requirementId);
+        return coverageRepository.forRequirement(context.repositoryId(), scope(context.workspaceId()), context.branch(), commit, requirementId);
     }
 
     /**
@@ -98,11 +104,11 @@ public class RequirementCoverageService {
     @Transactional(readOnly = true)
     public CoverageStatistics getCoverageStatistics(RepositoryContext context, String commit) {
         long totalNodes = nodeRepository.count();
-        long coveredNodes = coverageRepository.coveredNodes(context.repositoryId(), scope(context), context.branch(), commit, DEFAULT_MIN_SCORE);
+        long coveredNodes = coverageRepository.coveredNodes(context.repositoryId(), scope(context.workspaceId()), context.branch(), commit, DEFAULT_MIN_SCORE);
         long uncoveredNodes = Math.max(0, totalNodes - coveredNodes);
         double coveragePct = totalNodes > 0 ? (double) coveredNodes / totalNodes * 100.0 : 0.0;
 
-        long totalRequirements = coverageRepository.requirements(context.repositoryId(), scope(context), context.branch(), commit);
+        long totalRequirements = coverageRepository.requirements(context.repositoryId(), scope(context.workspaceId()), context.branch(), commit);
 
         // Build nodeCode → requirementCount map
         Map<String, Long> densityMap = buildDensityMap(context, commit);
@@ -152,7 +158,7 @@ public class RequirementCoverageService {
     @Transactional
     public void deleteCoverageForRequirement(RepositoryContext context, String commit, String requirementId) {
         mutations.lock(context.repositoryId());
-        coverageRepository.remove(context.repositoryId(), scope(context), context.branch(), commit, requirementId);
+        coverageRepository.remove(context.repositoryId(), scope(context.workspaceId()), context.branch(), commit, requirementId);
         verify(context, commit);
     }
 
@@ -172,7 +178,7 @@ public class RequirementCoverageService {
     // -------------------------------------------------------------------------
 
     private Map<String, Long> buildDensityMap(RepositoryContext context, String commit) {
-        return coverageRepository.density(context.repositoryId(), scope(context), context.branch(), commit).stream()
+        return coverageRepository.density(context.repositoryId(), scope(context.workspaceId()), context.branch(), commit).stream()
                 .collect(Collectors.toMap(
                         row -> (String) row[0],
                         row -> (Long) row[1]

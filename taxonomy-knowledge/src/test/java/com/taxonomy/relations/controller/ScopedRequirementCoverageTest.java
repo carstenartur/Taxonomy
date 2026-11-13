@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static com.taxonomy.relations.model.RequirementCoverage.scope;
+import static com.taxonomy.relations.service.RequirementCoverageService.recordedSource;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ScopedRequirementCoverageTest {
@@ -29,29 +30,29 @@ class ScopedRequirementCoverageTest {
         try (var factory = config.buildSessionFactory()) {
             factory.inTransaction(session -> {
                 for (var tenant : List.of(centralA, workspace, otherBranch, otherWorkspace, centralB)) {
-                    session.persist(new RequirementCoverage(tenant, head, "R", tenant.scope().name(), "N", 82.5, Instant.EPOCH));
+                    session.persist(new RequirementCoverage(recordedSource(tenant, head), "R", tenant.scope().name(), "N", 82.5, Instant.EPOCH));
                 }
-                session.persist(new RequirementCoverage(workspace, older, "R", "historic", "N", 90, Instant.EPOCH));
+                session.persist(new RequirementCoverage(recordedSource(workspace, older), "R", "historic", "N", 90, Instant.EPOCH));
             });
             try (var session = factory.openSession()) {
                 var tx = session.beginTransaction();
                 var repository = new JpaRepositoryFactory((EntityManager) session).getRepository(RequirementCoverageRepository.class);
-                assertThat(repository.forNode("A", scope(centralA), "main", head, "N")).singleElement()
+                assertThat(repository.forNode("A", scope(centralA.workspaceId()), "main", head, "N")).singleElement()
                         .satisfies(row -> assertThat(row.getWorkspaceId()).isNull());
-                assertThat(repository.density("A", scope(workspace), "main", head)).singleElement()
+                assertThat(repository.density("A", scope(workspace.workspaceId()), "main", head)).singleElement()
                         .satisfies(pair -> assertThat(pair).containsExactly("N", 1L));
-                assertThat(repository.coveredNodes("A", scope(workspace), "main", head, 90)).isZero();
-                assertThat(repository.requirements("B", scope(centralB), "main", head)).isOne();
-                assertThat(repository.remove("A", scope(workspace), "main", head, "R")).isOne();
+                assertThat(repository.coveredNodes("A", scope(workspace.workspaceId()), "main", head, 90)).isZero();
+                assertThat(repository.requirements("B", scope(centralB.workspaceId()), "main", head)).isOne();
+                assertThat(repository.remove("A", scope(workspace.workspaceId()), "main", head, "R")).isOne();
                 tx.commit();
             }
             try (var session = factory.openSession()) {
                 var repository = new JpaRepositoryFactory((EntityManager) session).getRepository(RequirementCoverageRepository.class);
-                assertThat(repository.forNode("A", scope(workspace), "main", head, "N")).isEmpty();
+                assertThat(repository.forNode("A", scope(workspace.workspaceId()), "main", head, "N")).isEmpty();
                 for (var other : List.of(centralA, otherBranch, otherWorkspace, centralB)) {
-                    assertThat(repository.forRequirement(other.repositoryId(), scope(other), other.branch(), head, "R")).hasSize(1);
+                    assertThat(repository.forRequirement(other.repositoryId(), scope(other.workspaceId()), other.branch(), head, "R")).hasSize(1);
                 }
-                assertThat(repository.forRequirement("A", scope(workspace), "main", older, "R")).singleElement()
+                assertThat(repository.forRequirement("A", scope(workspace.workspaceId()), "main", older, "R")).singleElement()
                         .satisfies(row -> {
                             assertThat(row.getSourceCommit()).isEqualTo(older);
                             assertThat(row.getRecordedBy()).isEqualTo("actor");

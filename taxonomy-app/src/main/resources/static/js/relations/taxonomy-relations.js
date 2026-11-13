@@ -182,8 +182,8 @@
             });
     }
 
-    function inspectProjection(api, workspaceId, options) {
-        return api.readProjectionReadiness(workspaceId, options).then(function (response) {
+    function inspectProjection(api, source, options) {
+        return api.readProjectionReadiness(source, options).then(function (response) {
             if (!response.ok) throw projectionReadError(response);
             return response.json().then(function (status) {
                 if (!status || !status.repositoryId || !status.branch
@@ -226,7 +226,7 @@
             .then(function (api) {
                 // Keep the explicitly admitted command on its inspected source;
                 // success starts a fresh authorized read for the current tab.
-                return inspectProjection(api, snapshot.status.workspaceId, {contextSensitive:false}).then(function (current) {
+                return inspectProjection(api, snapshot.status, {contextSensitive:false}).then(function (current) {
                     if (!sameProjectionContext(snapshot.status, current.status)) throw projectionContextChanged();
                     if (current.status.readinessState === 'READY') return { reload: true };
                     if (!canRebuildProjection(current)) throw projectionContextChanged();
@@ -253,7 +253,11 @@
             })
             .then(function (outcome) {
                 projectionRebuildPromise = null;
-                if (sequence !== relationLoadSequence || !outcome) return;
+                if (sequence !== relationLoadSequence) {
+                    if (document.getElementById('relationsBrowser')?.open) return loadRelations();
+                    return;
+                }
+                if (!outcome) return;
                 if (outcome.pending) {
                     var error = new Error(t('relations.projection.pending'));
                     error.projectionPending = true;

@@ -1690,3 +1690,60 @@ test('a relation command binds its preflight workspace and ETag and aborts a sup
         await page.close();
     }
 });
+
+test('projection rebuild keeps an admitted central repository and refreshes the newly selected central repository', async () => {
+    const page = await browser.newPage();
+    try {
+        await page.route('http://taxonomy.fixture/', route=>route.fulfill({contentType:'text/html', body:
+            '<meta name="_csrf" content="fixture"><meta name="_csrf_header" content="X-CSRF-TOKEN">' +
+            '<details id="relationsBrowser" open><div id="relationsTableContainer"></div></details>'}));
+        await page.goto('http://taxonomy.fixture/');
+        await page.evaluate(() => {
+            window.TaxonomyI18n = {t:key=>key};
+            window.TaxonomyUtils = {escapeHtml:String};
+            window.selection = {repositoryId:'central-a', workspaceId:'', branch:'release/a'};
+            window.TaxonomyArchitectureWorkspace = {ready:async()=>true};
+            window.TaxonomyArchitectureWorkflow = {getScope:()=>window.selection};
+            window.events = [];
+            const head = 'c'.repeat(40);
+            window.__taxonomyFixtureFetch = async (input, options) => {
+                const url = new URL(input, document.baseURI), headers = new Headers(options.headers);
+                const repository = url.searchParams.get('repositoryId'), branch = url.searchParams.get('branch');
+                const action = url.pathname.split('/').pop();
+                window.events.push([action, repository, branch, url.searchParams.get('workspaceId'),
+                    headers.get('X-Taxonomy-Workspace-Id'), headers.get('If-Match')]);
+                if (action === 'relations') {
+                    if (repository === 'central-b') return Response.json([{id:2, sourceCode:'only-central-b',
+                        targetCode:'endpoint', relationType:'SUPPORTS'}]);
+                    return new Response(null, {status:409, headers:{'X-Taxonomy-Relation-Projection-State':'NOT_BUILT'}});
+                }
+                const status = {operationStatus:action === 'rebuild' ? 'REBUILT' : 'INSPECTED',
+                    readinessState:action === 'rebuild' ? 'READY' : 'NOT_BUILT', currentHeadCommit:head,
+                    repositoryId:repository, workspaceId:null, branch:branch};
+                if (action === 'readiness' && window.events.filter(row=>row[0] === 'readiness').length === 2) {
+                    await new Promise(resolve=>{window.releaseReadiness=resolve;});
+                }
+                return Response.json(status, {headers:{ETag:'"' + head + '"'}});
+            };
+        });
+        await installBrowserApiFixture(page, resources);
+        await page.addScriptTag({path:path.join(resources, 'static/js/relations/taxonomy-relations.js')});
+        await page.evaluate(()=>window.TaxonomyRelations.loadRelations());
+        await page.getByRole('button', {name:'relations.projection.rebuild', exact:true}).click();
+        await page.waitForFunction(()=>typeof window.releaseReadiness === 'function');
+        await page.evaluate(()=>{
+            window.selection = {repositoryId:'central-b', workspaceId:'', branch:'release/b'};
+            document.dispatchEvent(new CustomEvent('taxonomy:repository-context-changed',{detail:{selectionChanged:true}}));
+            window.releaseReadiness();
+        });
+        await page.waitForFunction(()=>document.getElementById('relationsTableContainer').textContent.includes('only-central-b'));
+        const rows = await page.evaluate(()=>window.events);
+        assert.deepEqual(rows.map(row=>row.slice(0,5)), [
+            ['relations','central-a','release/a','',''], ['readiness','central-a','release/a','',''],
+            ['readiness','central-a','release/a','',''], ['rebuild','central-a','release/a','',''],
+            ['relations','central-b','release/b','','']]);
+        assert.equal(rows[3][5], '"' + 'c'.repeat(40) + '"');
+    } finally {
+        await page.close();
+    }
+});

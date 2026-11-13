@@ -21,6 +21,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 import static com.taxonomy.backup.runtime.CurrentStateExportIT.*;
+import static com.taxonomy.relations.service.RequirementCoverageService.recordedSource;
 import static org.assertj.core.api.Assertions.*;
 
 class KnowledgeExportIT {
@@ -39,9 +40,9 @@ class KnowledgeExportIT {
         try (var f = new Fixture()) {
             var context = com.taxonomy.workspace.service.RepositoryContext.workspace("repo-a", "private-a", "draft", "original-actor");
             var other = com.taxonomy.workspace.service.RepositoryContext.workspace("repo-b", "private-a", "draft", "other");
-            f.persist(new RequirementCoverage(context, COMMIT, "R", "visible-current", "A", 88, NOW));
-            f.persist(new RequirementCoverage(context, "b".repeat(40), "R", "visible-history", "A", 64, NOW));
-            f.persist(new RequirementCoverage(other, COMMIT, "R", "foreign-coverage", "A", 91, NOW));
+            f.persist(new RequirementCoverage(recordedSource(context, COMMIT), "R", "visible-current", "A", 88, NOW));
+            f.persist(new RequirementCoverage(recordedSource(context, "b".repeat(40)), "R", "visible-history", "A", 64, NOW));
+            f.persist(new RequirementCoverage(recordedSource(other, COMMIT), "R", "foreign-coverage", "A", 91, NOW));
             f.legacyCoverage("R", "legacy-installation-only");
             var contributor = f.contributor(Set.of());
             var current = new Contents();

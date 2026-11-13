@@ -1,6 +1,8 @@
 package com.taxonomy;
 
 import com.taxonomy.dto.CoverageStatistics;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceManager;
 import com.taxonomy.relations.repository.RequirementCoverageRepository;
 import com.taxonomy.relations.service.RequirementCoverageService;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,7 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import org.springframework.security.test.context.support.WithMockUser;
-import com.taxonomy.relations.controller.CoverageApiController;
+
 
 /**
  * Tests for the Requirement Coverage feature:
@@ -25,21 +27,26 @@ import com.taxonomy.relations.controller.CoverageApiController;
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
+@WithMockUser(username = "coverage-contract-admin", roles = {"USER", "ARCHITECT", "ADMIN"})
 class RequirementCoverageTests {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private RequirementCoverageService coverageService;
     @Autowired private RequirementCoverageRepository coverageRepository;
 
-    @Autowired private com.taxonomy.workspace.service.WorkspaceResolver resolver;
+    @Autowired private WorkspaceManager workspaces;
     @Autowired private com.taxonomy.workspace.storage.DslGitRepositoryFactory git;
-    private com.taxonomy.workspace.service.RepositoryContext context;
+    private RepositoryContext context;
     private String commit;
 
     @BeforeEach
     void clean() throws Exception {
-        context = resolver.resolveCurrentRepositoryContext();
+        String actor = "coverage-contract-admin";
+        var workspace = workspaces.findUserWorkspace(actor);
+        if (workspace == null) workspace = workspaces.createWorkspace(actor, "Coverage", "Coverage recording tests");
+        workspaces.switchWorkspace(actor, workspace.getWorkspaceId());
+        workspace = workspaces.provisionWorkspaceRepository(actor, workspace.getWorkspaceId());
+        context = RepositoryContext.workspace(workspace.getSourceRepositoryId(), workspace.getWorkspaceId(), workspace.getCurrentBranch(), actor);
         commit = git.resolveRepository(context).commitDsl(context.branch(), "# coverage", context.username(), "Coverage fixture");
         coverageRepository.deleteAll();
     }
@@ -156,7 +163,8 @@ class RequirementCoverageTests {
         String body = "{\"requirementId\":\"REQ-API-01\",\"requirementText\":\"api test\","
                 + "\"scores\":{\"CP-1010\":80,\"BP-1481\":40},\"minScore\":50}";
 
-        mockMvc.perform(post("/api/coverage/record").param("commitId", commit)
+        mockMvc.perform(post("/api/coverage/record").param("repositoryId", context.repositoryId()).param("workspaceId", context.workspaceId())
+                        .param("branch", context.branch()).param("commitId", commit)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk());
@@ -171,7 +179,8 @@ class RequirementCoverageTests {
     void deleteEndpointRemovesCoverage() throws Exception {
         coverageService.analyzeCoverage(context, commit, Map.of("CP-1010", 80d), "REQ-API-DEL", "text", 50);
 
-        mockMvc.perform(delete("/api/coverage/requirement/REQ-API-DEL").param("commitId", commit))
+        mockMvc.perform(delete("/api/coverage/requirement/REQ-API-DEL").param("repositoryId", context.repositoryId()).param("workspaceId", context.workspaceId())
+                        .param("branch", context.branch()).param("commitId", commit))
                 .andExpect(status().isNoContent());
 
         mockMvc.perform(get("/api/coverage/requirement/REQ-API-DEL").accept(MediaType.APPLICATION_JSON))

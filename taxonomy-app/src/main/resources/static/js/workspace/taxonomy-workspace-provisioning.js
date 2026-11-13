@@ -280,14 +280,18 @@ window.TaxonomyWorkspaceProvisioning = (function () {
                 if (readiness.readinessState === 'READY') {
                     return readiness;
                 }
-                if (!readiness.currentHeadCommit) {
+                if (!readiness.currentHeadCommit || !readiness.repositoryId || !readiness.workspaceId || !readiness.branch) {
                     throw new Error(responseError(
                         'Workspace has no authoritative branch head', response));
                 }
-                return Api().rebuildProjection(readiness.currentHeadCommit)
+                return Api().rebuildProjection(readiness.currentHeadCommit, readiness)
                     .then(function (rebuildResponse) {
                         if (!rebuildResponse.ok ||
-                                rebuildResponse.body.readinessState !== 'READY') {
+                                rebuildResponse.body.readinessState !== 'READY' ||
+                                rebuildResponse.body.currentHeadCommit !== readiness.currentHeadCommit ||
+                                rebuildResponse.body.repositoryId !== readiness.repositoryId ||
+                                rebuildResponse.body.workspaceId !== readiness.workspaceId ||
+                                rebuildResponse.body.branch !== readiness.branch) {
                             throw new Error(responseError(
                                 'Could not rebuild relation projection',
                                 rebuildResponse));
