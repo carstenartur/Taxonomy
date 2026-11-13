@@ -2,6 +2,7 @@ package com.taxonomy.security.config;
 
 import com.taxonomy.composition.architecture.SharedWorkspaceActorAccess;
 import com.taxonomy.security.access.WorkspaceFetchAuthorityAdapter;
+import com.taxonomy.workspace.service.RepositoryScope;
 import com.taxonomy.workspace.service.WorkspaceFetchAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.access.AccessDeniedException;
@@ -134,6 +135,27 @@ class CurrentPrincipalAuthoritySecurityTest {
             jdbc.update("update principal_binding set enabled=0 where binding_kind='LOCAL' and principal_id=?", principal.id().value().toString());
             assertThatThrownBy(() -> access.checkPublication(grant, principal.scopeKey(), true))
                     .isInstanceOf(AccessDeniedException.class);
+        } finally { SecurityContextHolder.clearContext(); }
+    }
+
+    @Test void aPrivateWorkingCopyGrantCannotPublishACentralFork() {
+        start(false, KeycloakPrincipalMode.LEGACY);
+        var principal = identities.local(1);
+        var access = new WorkspaceFetchAuthorityAdapter(identities);
+        try {
+            SecurityContextHolder.setContext(new SecurityContextImpl(local(principal)));
+            var central = access.authorize(principal.scopeKey(), RepositoryScope.CENTRAL_WRITE);
+            jdbc.update("insert into app_role values (3,'ROLE_USER')");
+            jdbc.update("update user_roles set role_id=3 where user_id=1 and role_id=1");
+            SecurityContextHolder.setContext(new SecurityContextImpl(local(principal,List.of(new SimpleGrantedAuthority("ROLE_USER")))));
+            var working = access.authorize(principal.scopeKey(), RepositoryScope.WORKSPACE);
+            assertThat(working.principalId()).isEqualTo(central.principalId());
+            assertThatThrownBy(() -> access.authorize(principal.scopeKey(), RepositoryScope.CENTRAL_WRITE))
+                    .isInstanceOf(AccessDeniedException.class);
+            SecurityContextHolder.clearContext();
+            access.checkPublication(working, principal.scopeKey(), RepositoryScope.WORKSPACE, true);
+            assertThatThrownBy(() -> access.checkPublication(central, principal.scopeKey(),
+                    RepositoryScope.CENTRAL_WRITE, true)).isInstanceOf(AccessDeniedException.class);
         } finally { SecurityContextHolder.clearContext(); }
     }
 

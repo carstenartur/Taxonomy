@@ -18,6 +18,8 @@ import org.springframework.transaction.annotation.Propagation;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.Objects;
 import java.util.Set;
 
@@ -29,6 +31,8 @@ public class CatalogueSnapshotService {
     private final CatalogueRuntimePolicy policy;
     private final CatalogueSourceJournal sources;
     private final RetainedCatalogueDefinitions definitions;
+
+    private RetainedHierarchy lastHierarchy;
 
     public CatalogueSnapshotService(TaxonomyNodeRepository repository, CatalogueOverlayService overlay,
                                     CatalogueRuntimePolicy policy, CatalogueSourceJournal sources) {
@@ -99,27 +103,46 @@ public class CatalogueSnapshotService {
         if (FrozenCatalogueContext.current() != null) throw new IllegalStateException("Catalogue capture is already bound");
         var generation = sources.findRevision(catalogueRevision)
                 .orElseThrow(() -> new IllegalStateException("The requested catalogue revision is unavailable"));
-        try (var input = sources.retainedWorkbook(generation.workbook()).openStream(); var book = new XSSFWorkbook(input)) {
-            var hierarchy = TaxonomyService.readWorkbookNodes(book);
+        // Even a warm hierarchy must fail if this revision or its retained blobs are unavailable or damaged.
+        try {
+            var workbook = sources.retainedWorkbook(generation.workbook());
+            var overlayBytes = generation.overlay().use() == Use.NOT_USED ? null : sources.retainedInput(generation.overlay());
+            var hierarchy = retainedHierarchy(workbook, overlayBytes);
             var definition = hierarchy.definition();
             var selected = rootCodes.isEmpty() ? definition.rootCodes() : rootCodes;
             if (!definition.rootCodes().containsAll(selected))
                 throw new IllegalArgumentException("Unknown root in the requested catalogue revision");
-            CatalogueSourceBytes overlayBytes = generation.overlay().use() == Use.NOT_USED ? null : sources.retainedInput(generation.overlay());
-            var retained = overlay.applyRetainedHierarchy(hierarchy.nodes(), hierarchy.uuidToCode(), overlayBytes);
-            var metadata = retained.getOverlayMetadata();
             var spec = definition.spec().equals(CatalogueDefinition.standard().spec()) ? null : definition.spec();
-            var nodes = hierarchy.nodes().values().stream().filter(node -> selected.contains(node.getTaxonomyRoot()))
+            return selected.stream().sorted().map(root -> new RootCatalogueSnapshot(
+                    spec == null ? RootCatalogueSnapshot.SCHEMA_VERSION : RootCatalogueSnapshot.CONFIGURED_SCHEMA_VERSION,
+                    source, root, hierarchy.nodes().get(root), hierarchy.metadata(), generation, null, spec)).toList();
+        } catch (IOException failure) {
+            throw new IllegalStateException("The requested catalogue inputs are unavailable", failure);
+        }
+    }
+
+    /** Only the content-derived data are shared. Each caller binds its own source, generation and selected roots. */
+    private record RetainedHierarchy(String workbookSha256, String overlaySha256, CatalogueDefinition definition,
+            CatalogueOverlayService.OverlayMetadata metadata, Map<String, List<RootCatalogueSnapshot.Node>> nodes) { }
+
+    private synchronized RetainedHierarchy retainedHierarchy(CatalogueSourceBytes workbook, CatalogueSourceBytes overlayBytes)
+            throws IOException {
+        String overlaySha256 = overlayBytes == null ? null : overlayBytes.sha256();
+        if (lastHierarchy != null && lastHierarchy.workbookSha256().equals(workbook.sha256())
+                && Objects.equals(lastHierarchy.overlaySha256(), overlaySha256)) return lastHierarchy;
+
+        try (var input = workbook.openStream(); var book = new XSSFWorkbook(input)) {
+            var hierarchy = TaxonomyService.readWorkbookNodes(book);
+            var retained = overlay.applyRetainedHierarchy(hierarchy.nodes(), hierarchy.uuidToCode(), overlayBytes);
+            var nodes = hierarchy.nodes().values().stream()
                     .map(node -> RootCatalogueSnapshot.Node.capture(node, retained.getNodeMetadata(node.getCode()),
                             retained.hasParentPatch(node.getCode())))
                     .sorted(Comparator.comparingInt(RootCatalogueSnapshot.Node::level).thenComparing(RootCatalogueSnapshot.Node::nameEn)
                             .thenComparing(RootCatalogueSnapshot.Node::code))
-                    .collect(java.util.stream.Collectors.groupingBy(RootCatalogueSnapshot.Node::taxonomyRoot));
-            return selected.stream().sorted().map(root -> new RootCatalogueSnapshot(
-                    spec == null ? RootCatalogueSnapshot.SCHEMA_VERSION : RootCatalogueSnapshot.CONFIGURED_SCHEMA_VERSION,
-                    source, root, nodes.get(root), metadata, generation, null, spec)).toList();
-        } catch (IOException failure) {
-            throw new IllegalStateException("The requested catalogue inputs are unavailable", failure);
+                    .collect(Collectors.groupingBy(RootCatalogueSnapshot.Node::taxonomyRoot, Collectors.toUnmodifiableList()));
+            lastHierarchy = new RetainedHierarchy(workbook.sha256(), overlaySha256, hierarchy.definition(),
+                    retained.getOverlayMetadata(), Map.copyOf(nodes));
+            return lastHierarchy;
         }
     }
 

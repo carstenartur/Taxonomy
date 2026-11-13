@@ -14,6 +14,7 @@ import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.model.WorkspaceSyncScope;
 import com.taxonomy.workspace.repository.WorkspaceSyncStateUpdatesImpl;
 import org.springframework.orm.jpa.SharedEntityManagerCreator;
+import com.taxonomy.workspace.service.RepositoryScope;
 import com.taxonomy.workspace.service.RepositoryMembershipService;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceFetchAuthority;
@@ -47,6 +48,7 @@ class WorkspaceEditorRestoreRuntimeTest {
     private static final String EDIT="00000000-0000-0000-0000-000000000211",SAVE="00000000-0000-0000-0000-000000000212";
     private static final BackupCheckpoint CHECK=()->{};
     private static final BackupRepositoryKey CENTRAL=new BackupRepositoryKey("editor-source-repository",null),WORKSPACE=new BackupRepositoryKey("editor-source-repository","editor-source-workspace");
+    private static final BackupRepositoryKey FORK = new BackupRepositoryKey("editor-source-fork", null);
     private static final BackupComponentId APPLICATION=new BackupComponentId("application"),WORKSPACE_OWNER=new BackupComponentId("workspace");
     @TempDir Path temporary;
 
@@ -111,6 +113,56 @@ class WorkspaceEditorRestoreRuntimeTest {
     }
 
     @Test
+    void centralAndTagReceiptsRestoreAsOriginalEvidenceWithoutRunnableGrants() throws Exception {
+        try (var f = fixture(SOURCE_SCOPE,null,false,true)) {
+            f.restore();
+            var target = new JdbcTemplate(f.target);
+            String sql = " from restore_workspace_evidence where record_kind='central-fetch-journal' and record_key=?";
+            String liveId = "f-" + "a".repeat(62), deletedId = "f-" + "b".repeat(62);
+            assertThat(target.queryForObject("select classification" + sql,String.class,liveId))
+                    .isEqualTo("INTERRUPTED_SOURCE_OPERATION");
+            assertThat(target.queryForObject("select classification" + sql,String.class,deletedId))
+                    .isEqualTo("DETACHED_SOURCE_QUARANTINE");
+            assertThat(target.queryForObject("select record_json" + sql,String.class,liveId))
+                    .contains("release/selected",FORK.repositoryId(),CENTRAL.repositoryId(),"ARCHITECTURE_WRITE+CONTRIBUTOR")
+                    .doesNotContain("private-source-worker","leaseId","bindingKey");
+            var both = new BackupScope.Repositories(Map.of(CENTRAL.repositoryId(),Set.of(),FORK.repositoryId(),Set.of()));
+            String historicalActor = "removed-private-fork-actor";
+            new JdbcTemplate(f.source).update("update central_fetch_operation set actor_scope=? where operation_id=?", historicalActor, deletedId);
+            assertThat(capturedCentralFetches(f,both,historicalActor)).contains(liveId).doesNotContain(deletedId);
+            assertThat(capturedCentralFetches(f,new BackupScope.Repositories(Map.of(FORK.repositoryId(),Set.of())),historicalActor)).isEmpty();
+            assertThat(capturedCentralFetches(f,new BackupScope.Workspace(CENTRAL.repositoryId(),WORKSPACE.workspaceId()),historicalActor)).isEmpty();
+            assertThat(capturedCentralFetches(f,new BackupScope.Installation(),historicalActor)).contains(liveId).doesNotContain(deletedId);
+            assertThat(target.queryForObject("select count(*) from central_fetch_operation",Long.class)).isZero();
+            assertThat(target.queryForObject("select count(*) from workspace_fetch_operation",Long.class)).isZero();
+        }
+    }
+
+    private static String capturedCentralFetches(Fixture f, BackupScope scope, String historicalActor) throws Exception {
+        var profile = scope instanceof BackupScope.Installation ? BackupProfile.INSTALLATION_CURRENT : BackupProfile.CURRENT_STATE;
+        var request = new BackupRequest(profile,scope,new BackupTime.Current(),GitRepresentation.NONE,SecretsSelection.EXCLUDE);
+        var actor = f.principals.keySet().iterator().next();
+        var captured = new HashMap<BackupRepositoryKey,SnapshotContext.RepositoryState>();
+        for (var repository : f.archive.manifest().repositories()) {
+            if (scope instanceof BackupScope.Installation || scope.selectedRepositories().contains(repository.id())) {
+                captured.put(repository.id(),repository.captured());
+            }
+        }
+        var snapshot = new SnapshotContext(BackupId.create(),f.authority.authorize(actor,request),
+                Instant.EPOCH,Instant.EPOCH,1,captured,Map.of(WORKSPACE_OWNER,1));
+        var journal = new ByteArrayOutputStream();
+        var digest = java.security.MessageDigest.getInstance("SHA-256");
+        var contributor = new WorkspaceBackupContributor(f.source,value -> value);
+        assertThat(contributor.principalScopes(snapshot,CHECK)).doesNotContain(historicalActor);
+        contributor.write(snapshot,(path,input) -> {
+            byte[] bytes = input.readAllBytes();
+            if (path.equals("data/workspace/central-fetch-journal.ndjson")) journal.write(bytes);
+            return new BackupEntry(path,bytes.length,HexFormat.of().formatHex(digest.digest(bytes)));
+        });
+        return journal.toString(java.nio.charset.StandardCharsets.UTF_8).lines().skip(1).collect(java.util.stream.Collectors.joining("\n"));
+    }
+
+    @Test
     void deletedFetchSurvivesOnlyAsQuarantinedEvidenceInAFullInstallationBackup() throws Exception {
         try (var f = fixture(SOURCE_SCOPE)) {
             var actor = f.principals.keySet().iterator().next();
@@ -138,12 +190,12 @@ class WorkspaceEditorRestoreRuntimeTest {
                 when(memberships.canContribute(metadata,SOURCE_SCOPE)).thenReturn(true);
                 var grant = new WorkspaceFetchAuthority.Grant(actor.value().toString(),"LOCAL","b".repeat(64));
                 var authority = mock(WorkspaceFetchAuthority.class);
-                when(authority.authorize(SOURCE_SCOPE)).thenReturn(grant);
+                when(authority.authorize(SOURCE_SCOPE,RepositoryScope.WORKSPACE)).thenReturn(grant);
                 String deletingActor=UUID.randomUUID().toString();
                 when(authority.currentActor(SOURCE_SCOPE)).thenReturn(deletingActor);
                 var journal = new WorkspaceFetchJournal(em,txManager);
                 var upstream = new WorkspaceUpstreamService(rows,catalog,memberships,routed);
-                var fetches = new WorkspaceFetchRecovery(journal,upstream,authority);
+                var fetches = new WorkspaceFetchRecovery(journal,upstream,authority,null);
                 var receipt = fetches.fetch(selected,new WorkspaceUpstreamService.Request(sourceHead,null),"archive-contract",null);
                 assertThat(receipt.result().trackedCommit()).isEqualTo(sourceHead);
                 var progress = new WorkspaceSyncStateUpdatesImpl(em,txManager);
@@ -221,9 +273,13 @@ class WorkspaceEditorRestoreRuntimeTest {
 
     private Fixture fixture(String actor)throws Exception { return fixture(actor,null); }
 
-    private Fixture fixture(String actor,AnalysisArchiveRoundTrip analysis)throws Exception { return fixture(actor,analysis,false); }
+    private Fixture fixture(String actor,AnalysisArchiveRoundTrip analysis)throws Exception { return fixture(actor,analysis,false,false); }
 
     private Fixture fixture(String actor,AnalysisArchiveRoundTrip analysis,boolean archivedCollaborator)throws Exception {
+        return fixture(actor,analysis,archivedCollaborator,false);
+    }
+
+    private Fixture fixture(String actor,AnalysisArchiveRoundTrip analysis,boolean archivedCollaborator,boolean includeFork)throws Exception {
         var source=database();var target=database();RestoreSchemaMigration.bootstrap(database(),source,CHECK);
         var sourceFactory=RestoreSchemaMigration.openValidatedFactory(database(),source,model(),CHECK);
         var sourceRepositories=new DslGitRepositoryFactory(new DefaultHibernateRepositoryFactory(sourceFactory));
@@ -231,7 +287,8 @@ class WorkspaceEditorRestoreRuntimeTest {
         var principal=PrincipalId.create();var rows=new JdbcTemplate(source);var created=java.sql.Timestamp.from(Instant.now());
         rows.update("insert into app_principal(principal_id,scope_key,enabled) values(?,?,1)",principal.value().toString(),SOURCE_SCOPE);
         rows.update("insert into system_repository(repository_id,storage_repository_name,slug,display_name,visibility,lifecycle_state,owner_type,owner_id,topology_mode,default_branch,primary_repo,created_at,version) values(?,?,'editor-source','Editor source','PRIVATE','ACTIVE','USER',?,'INTERNAL_SHARED','main',false,?,0)",CENTRAL.repositoryId(),"editor-source-central-storage",SOURCE_SCOPE,created);
-        String centralBaseline=sourceRepositories.createCentralRepository(CENTRAL.repositoryId(),"editor-source-central-storage").commitDsl("main","",SOURCE_SCOPE,"Original central baseline");
+        var origin = sourceRepositories.createCentralRepository(CENTRAL.repositoryId(),"editor-source-central-storage");
+        String centralBaseline = origin.commitDsl("main","",SOURCE_SCOPE,"Original central baseline");
         String baseline=sourceRepositories.resolveRepository(sourceContext).commitDsl("main","",SOURCE_SCOPE,"Original workspace baseline");
         rows.update("insert into user_workspace(workspace_id,username,display_name,current_branch,base_branch,shared,created_at,provisioning_status,topology_mode,source_repository_id,source_branch,relationship_type,base_commit,current_commit,archived,is_default) values(?,?,'Editor draft','main','main',false,?,'READY','INTERNAL_SHARED',?,'main','WORKING_COPY',?,?,false,false)",WORKSPACE.workspaceId(),SOURCE_SCOPE,created,CENTRAL.repositoryId(),baseline,baseline);
         var sourceProgress = new WorkspaceSyncStateUpdatesImpl(SharedEntityManagerCreator.createSharedEntityManager(sourceFactory),
@@ -270,17 +327,47 @@ class WorkspaceEditorRestoreRuntimeTest {
                     WORKSPACE.workspaceId(), "main", "main", baseline, baseline, UUID.randomUUID().toString(),
                     "private-source-worker", legacy ? "LEGACY_OIDC" : "LOCAL", "c".repeat(64));
         }
+        if (includeFork) {
+            String forkPoint = origin.getHeadCommit("main");
+            var targetFork = sourceRepositories.createCentralRepository(FORK.repositoryId(),"source-fork-storage");
+            GitHistoryTransfer.copyCommitClosure(origin,targetFork,forkPoint,List.of());
+            targetFork.createBranchAtVerifiedCommit("main",forkPoint);
+            rows.update("""
+                    insert into system_repository(repository_id,storage_repository_name,slug,display_name,visibility,
+                    lifecycle_state,owner_type,owner_id,topology_mode,default_branch,primary_repo,created_at,version,
+                    upstream_repository_id,upstream_branch,fork_point_commit)
+                    values(?,'source-fork-storage','editor-fork','Private fork','PRIVATE','ACTIVE','USER',?,'INTERNAL_SHARED',
+                    'main',false,?,0,?,'main',?)""",FORK.repositoryId(),SOURCE_SCOPE,created,CENTRAL.repositoryId(),forkPoint);
+            for (boolean detached : List.of(false,true)) {
+                rows.update("""
+                        insert into central_fetch_operation(operation_id,fingerprint,cause_id,actor_id,actor_scope,
+                        target_repository_id,source_repository_id,local_branch,source_branch,fork_point,requested_commit,
+                        expected_commit,observed_commit,selected_tag,requested_tag_object,phase,attempts,created_at,
+                        last_attempt_at,next_attempt_at,lease_id,executor_id,login_kind,binding_key,policy_code)
+                        values(?,?,?,?,?,?,?,'main','main',?,?,?,?, 'release/selected',?,'RUNNING',1,10,11,80000,?,?,
+                        'LOCAL',?,'ARCHITECTURE_WRITE+CONTRIBUTOR')""",
+                        "f-" + (detached ? "b" : "a").repeat(62),"a".repeat(64),"b".repeat(64),principal.value().toString(),
+                        SOURCE_SCOPE,detached ? "removed-private-fork" : FORK.repositoryId(),CENTRAL.repositoryId(),
+                        forkPoint,forkPoint,forkPoint,forkPoint,forkPoint,UUID.randomUUID().toString(),"private-source-worker","c".repeat(64));
+            }
+        }
         if (analysis != null) analysis.seed(sourceFactory,principal,sourceContext,baseline);
-        var archive=export(source,sourceFactory,principal,analysis != null);
+        var archive=export(source,sourceFactory,principal,analysis != null,includeFork ? Set.of(CENTRAL,WORKSPACE,FORK) : Set.of(CENTRAL,WORKSPACE));
         RestoreSchemaMigration.bootstrap(source,target,CHECK);
         var targetFactory=RestoreSchemaMigration.openValidatedFactory(source,target,model(),CHECK);
-        var allocations=Map.of(CENTRAL,new RestoreRepositoryAllocation(new BackupRepositoryKey("editor-target-repository",null),"editor-target-central-storage"),
-                WORKSPACE,new RestoreRepositoryAllocation(new BackupRepositoryKey("editor-target-repository","editor-target-workspace"),DslGitRepositoryFactory.workspaceRepositoryName("editor-target-workspace")));
+        var allocations=new HashMap<>(Map.of(CENTRAL,new RestoreRepositoryAllocation(new BackupRepositoryKey("editor-target-repository",null),"editor-target-central-storage"),
+                WORKSPACE,new RestoreRepositoryAllocation(new BackupRepositoryKey("editor-target-repository","editor-target-workspace"),DslGitRepositoryFactory.workspaceRepositoryName("editor-target-workspace"))));
+        if (includeFork) allocations.put(FORK,new RestoreRepositoryAllocation(new BackupRepositoryKey("editor-target-fork",null),"target-fork-storage"));
         var generation=RestoreTargetGeneration.verified(UUID.randomUUID(),source,target,targetFactory,allocations,CHECK);
         return new Fixture(source,target,sourceFactory,targetFactory,sourceRepositories,sourceJournal,sourceContext,archive,generation,principals,authority(principal));
     }
 
     private VerifiedBackup export(JDBCDataSource source,org.hibernate.SessionFactory sourceFactory,PrincipalId principal,boolean includeAnalysis)throws Exception {
+        return export(source,sourceFactory,principal,includeAnalysis,Set.of(CENTRAL,WORKSPACE));
+    }
+
+    private VerifiedBackup export(JDBCDataSource source,org.hibernate.SessionFactory sourceFactory,PrincipalId principal,
+                                  boolean includeAnalysis,Set<BackupRepositoryKey> selected)throws Exception {
         BackupMaintenanceLease.initialize(source);var prerequisites=BackupFeaturePrerequisites.discover();
         var existing=new ExistingGitBackupRepositories(source,sourceFactory);
         var history=new GitHistoryBackupContributor(existing,new GitStandBackupSource(source,existing,document->document),new WorkspaceGitHistoryReferences(source,existing),GitHistoryCapture.Limits.defaults(),
@@ -304,7 +391,7 @@ class WorkspaceEditorRestoreRuntimeTest {
             contributors.add(owner);
         }
         var coordinator=new BackupSnapshotCoordinator(new BackupMaintenanceLease(source,Duration.ofSeconds(30)),authorization,
-                auth->new BackupSnapshotCoordinator.CapturePlan(VERSION,"editor-owner-runtime-fixture",new JdbcTemplate(source).queryForObject("select installation_id from principal_installation",String.class),history.inspect(auth,Set.of(CENTRAL,WORKSPACE),CHECK),components,List.of(),List.of(),new SourceDatabaseMetadata(1,SourceDatabaseFamily.HSQLDB)),
+                auth->new BackupSnapshotCoordinator.CapturePlan(VERSION,"editor-owner-runtime-fixture",new JdbcTemplate(source).queryForObject("select installation_id from principal_installation",String.class),history.inspect(auth,selected,CHECK),components,List.of(),List.of(),new SourceDatabaseMetadata(1,SourceDatabaseFamily.HSQLDB)),
                 contributors,temporary.resolve(UUID.randomUUID()+"-capture"),BackupSnapshotCoordinator.CaptureLimits.defaults(),Clock.systemUTC(),prerequisites);
         Path output=temporary.resolve(UUID.randomUUID()+".taxbackup");try(var captured=coordinator.capture(authorization.authorize(principal,request))){new BackupArchiveWriter(ArchiveProtectionProvider.unprotected(),ArchiveLimits.defaults(),prerequisites).write(captured,output);}
         return new BackupArchiveReader(ArchiveProtectionProvider.unprotected(),ArchiveLimits.defaults(),VERSION,versions,prerequisites).verify(output);

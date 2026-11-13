@@ -15,6 +15,15 @@ import java.util.Map;
  */
 public class GraphSearchResult {
 
+    public enum VectorSource { BRANCH_GENERATION, GLOBAL_INDEX, NO_INFERENCE }
+
+    /** The relation authority and vector index actually used for this response.
+     * Only a published branch index has a generation and a source key. */
+    public record Source(String repositoryId, String workspaceId, String branch, String sourceCommit,
+                         String relationReadModel, VectorSource vectorSource, String modelKey,
+                         String generation, String sourceKey) { }
+
+    private Source source;
     private List<TaxonomyNodeDto> matchedNodes;
 
     /** Number of relation matches aggregated by taxonomy root code (e.g. "BP" → 12). */
@@ -32,11 +41,20 @@ public class GraphSearchResult {
                              Map<String, Long> relationCountByRoot,
                              Map<String, Long> topRelationTypes,
                              String summary) {
+        this(matchedNodes, relationCountByRoot, topRelationTypes, summary, null);
+    }
+
+    public GraphSearchResult(List<TaxonomyNodeDto> matchedNodes, Map<String, Long> relationCountByRoot,
+                             Map<String, Long> topRelationTypes, String summary, Source source) {
+        this.source = source;
         this.matchedNodes = matchedNodes;
         this.relationCountByRoot = relationCountByRoot;
         this.topRelationTypes = topRelationTypes;
         this.summary = summary;
     }
+
+    public Source getSource() { return source; }
+    public void setSource(Source source) { this.source = source; }
 
     public List<TaxonomyNodeDto> getMatchedNodes() { return matchedNodes; }
     public void setMatchedNodes(List<TaxonomyNodeDto> matchedNodes) { this.matchedNodes = matchedNodes; }

@@ -1153,16 +1153,16 @@ Search-mode illustrations:
 
 Graph Explorer node queries are a separate operation from graph-semantic search.
 
-Graph mode checks the selected repository, scope and exact branch head on each request. Relation similarity is available only for the migration-compatible central default branch while the canonical relation reader permits its legacy fallback. A proven empty branch projection returns global node matches with empty relation statistics. A missing workspace relation projection can return **409 NOT_BUILT**. Nonempty branch projections and other unready selected scopes return HTTP 503; they do not return partial graph results. The `graphReady` status reports global model/index prerequisites, so a visible Graph option does not guarantee that the selected scope can be searched. Branch semantic indexing remains follow-up work (#741).
+Graph mode checks the selected repository, workspace and branch. For a branch with projected relations, the search uses the published node and relation vectors for that branch’s current commit and embedding model. The Graph option becomes available when that index is ready, including while the global index is still being built. When you change branches, the search keeps your query and clears results from the previous source.
 
 ### Embedding Status
 
 The **🧠 Embeddings** badge in the expanded **System status** shows whether semantic embeddings are available:
 
 - **🧠 Embeddings: N nodes** (blue) — embeddings are loaded; mode availability also depends on index readiness, and Graph checks the selected scope on each request.
-- **🧠 Embeddings: unavailable** (grey) — embeddings not loaded; only Full-text search is available.
+- **🧠 Embeddings: unavailable** (grey) — the global semantic index is unavailable. Graph search has its own readiness check for the selected branch.
 
-When embeddings are unavailable, the Semantic, Hybrid, and Graph options are greyed out in the mode selector.
+When the embedding model itself is unavailable, the Semantic, Hybrid, and Graph options are greyed out.
 
 ### Find Similar Nodes
 

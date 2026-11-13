@@ -20,7 +20,23 @@ public final class PrincipalSchemaMigration {
                 .locations("classpath:db/identity-java-migrations")
                 .baselineOnMigrate(true).baselineVersion("0")
                 .javaMigrations(new V1__StablePrincipals(), new V2__ExplicitBackupGrants(),
-                        new V3__ReserveHistoricalScopes()).load().migrate();
+                        new V3__ReserveHistoricalScopes(), new V4__WebDavCredentialOwner()).load().migrate();
+    }
+
+    /** A pre-upgrade app password has no evidence of its original login binding. Leave it unbound. */
+    public static final class V4__WebDavCredentialOwner extends BaseJavaMigration {
+        @Override public void migrate(Context context) throws SQLException {
+            var connection = context.getConnection();
+            String table = "webdav_application_credential";
+            if (!hasTable(connection, table)) return; // A fresh JPA schema creates the same mapped columns.
+            if (!hasColumn(connection, table, "owner_id")) {
+                execute(connection, "alter table webdav_application_credential add owner_id varchar(64)");
+            }
+            if (!hasColumn(connection, table, "owner_binding")) {
+                execute(connection, "alter table webdav_application_credential add owner_binding varchar(64)");
+            }
+            execute(connection, "create index idx_webdav_grant_owner on webdav_application_credential (owner_id)");
+        }
     }
 
     /**
