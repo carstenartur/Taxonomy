@@ -1,1 +1,1 @@
-ALTER TABLE repository_membership ADD COLUMN revoked_at TIMESTAMP(6) WITH TIME ZONE;
+ALTER TABLE repository_membership ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMP(6) WITH TIME ZONE;

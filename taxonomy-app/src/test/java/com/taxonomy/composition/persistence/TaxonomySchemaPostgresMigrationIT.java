@@ -50,6 +50,11 @@ class TaxonomySchemaPostgresMigrationIT {
         installApplicationAtVersion(dataSource, "57.1");
         RelationProjectionScopeMigrationChecks.verify(dataSource, () -> TaxonomySchemaMigrationConfig.migrateApplicationSchema(
                 Flyway.configure().dataSource(dataSource).load().getConfiguration()));
+        assertThat(singleString(dataSource, """
+                select data_type || ':' || datetime_precision from information_schema.columns
+                where table_schema = current_schema() and table_name = 'repository_membership'
+                    and column_name = 'revoked_at'
+                """)).isEqualTo("timestamp with time zone:6");
     }
 
     @Test

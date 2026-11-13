@@ -36,11 +36,11 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                     + centralFetchSources(snapshot.authorization().request().profile()) + " where " + forks.sql() + " order by f.operation_id", forks.parameters()));
             queries.add(new Query("select repository_id,cast(null as varchar(255)) as workspace_id,cast(null as varchar(255)) as linked_workspace_id,1 as repository_only,owner_id as principal_scope from system_repository where "
                     + repositories.sql() + " and (owner_type='USER' or owner_type is null) order by repository_id", repositories.parameters()));
+            var memberships = activeMemberships(repositories);
             queries.add(new Query("select repository_id,cast(null as varchar(255)) as workspace_id,cast(null as varchar(255)) as linked_workspace_id,1 as repository_only,username as principal_scope from repository_membership where "
-                    + "revoked_at is null and (" + repositories.sql() + ") order by id", repositories.parameters()));
+                    + memberships.sql() + " order by id", memberships.parameters()));
             queries.add(new Query("select source_repository_id as repository_id,workspace_id,workspace_id as linked_workspace_id,0 as repository_only,username as principal_scope from user_workspace where "
                     + workspaces.sql() + " order by workspace_id", workspaces.parameters()));
-            var publications = scope.repositories("p.repository_id", "p.workspace_id");
             var branchProgress = scope.repositories("repository_id", "workspace_id");
             queries.add(new Query("select repository_id,workspace_id,workspace_id as linked_workspace_id,0 as repository_only,"
                     + "username as principal_scope from workspace_branch_sync where " + branchProgress.sql()
@@ -60,6 +60,14 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
         }, checkpoint);
     }
 
+    private Query activeMemberships(Query repositories) throws IOException {
+        if (StagedWorkspaceSchema.missingColumnBefore(database, "repository_membership", "revoked_at", "30")) {
+            // Before V30 a revoked membership was physically removed.
+            return repositories;
+        }
+        return new Query("revoked_at is null and (" + repositories.sql() + ")", repositories.parameters());
+    }
+
     /** Historical actor labels are optional identity evidence, never ownership or current grants. */
     public Set<String> historyActorScopes(SnapshotContext snapshot, BackupCheckpoint checkpoint) throws IOException {
         var scope = new BackupRowScope(snapshot); var queries = new ArrayList<Query>();
@@ -70,7 +78,7 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                         + table + " h join editor_workspace w on w.scope_id=h.scope_id where " + history.sql() + " order by h.id", history.parameters()));
         }
         var captured = new HashSet<String>();
-        if (!scope.selectedVersion()) {
+        if (!scope.selectedVersion() && !StagedWorkspaceSchema.predatesPublications(database)) {
             var selected = scope.repositories("p.repository_id","p.workspace_id");
             String query = """
                     select p.repository_id,p.workspace_id,p.workspace_owner_scope,p.actor_scope,
@@ -134,7 +142,7 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                         enumeration(r,"topology_mode",RepositoryTopologyMode.class),text(r,"source_repository_id"),text(r,"source_branch"),
                         enumeration(r,"relationship_type",WorkspaceRelationshipType.class),text(r,"base_commit"),text(r,"current_commit"),text(r,"last_fetched_commit"),
                         text(r,"last_integrated_commit"),text(r,"sync_target_branch"),instant(r,"provisioned_at"),text(r,"description"),r.getBoolean("archived"),r.getBoolean("is_default"),r.getBoolean("collaborative"))));
-        var activeMemberships = new Query("revoked_at is null and (" + repositories.sql() + ")", repositories.parameters());
+        var activeMemberships = scope.selectedVersion() ? repositories : activeMemberships(repositories);
         write(sink,"memberships",profile,query(scope,false,"select id,repository_id,username,repository_role,created_at,created_by,updated_at from repository_membership",activeMemberships,"id"),
                 scoped(scope,"repository_id",null,r -> new MembershipRecord(reference(r,"workspace.membership","id"),text(r,"repository_id"),text(r,"username"),enumeration(r,"repository_role",RepositoryRole.class),instant(r,"created_at"),text(r,"created_by"),instant(r,"updated_at"))));
         var sync = scope.repositories("w.source_repository_id","w.workspace_id");
@@ -197,7 +205,7 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                 r -> new ContextHistoryRecord(reference(r,"workspace.context-history","id"),text(r,"username"),text(r,"from_context_id"),text(r,"to_context_id"),text(r,"from_branch"),text(r,"to_branch"),text(r,"from_commit_id"),text(r,"to_commit_id"),text(r,"reason"),text(r,"origin_context_id"),instant(r,"created_at")));
     }
     private void writeHistoryIndex(BackupRowScope scope, BackupProfile profile, ComponentSink sink) throws IOException {
-        if (scope.history() && !scope.selectedVersion() && isLegacyStagedIndexSource()) return;
+        if (scope.history() && !scope.selectedVersion() && StagedWorkspaceSchema.predatesHistoryIndex(database)) return;
         var selection = scope.repositories("p.repository_id", "p.workspace_id");
         boolean full = profile == BackupProfile.INSTALLATION_FULL;
         String target = """
@@ -239,39 +247,6 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                     return new IndexDecisionRecord(reference(row,"workspace.index-decision","decision_id"),text(row,"operation_id"),
                             text(row,"actor_id"),text(row,"decision_code"),row.getLong("occurred_at"));
                 }));
-    }
-
-    /** A verified older staged HSQL database predates both datasets. A damaged current source must fail capture. */
-    private boolean isLegacyStagedIndexSource() throws IOException {
-        try (var connection = database.getConnection()) {
-            var metadata = connection.getMetaData();
-            if (!"HSQL Database Engine".equals(metadata.getDatabaseProductName())) return false;
-            int journals = 0;
-            boolean staged = false;
-            try (var tables = metadata.getTables(connection.getCatalog(), connection.getSchema(), "%", new String[]{"TABLE"})) {
-                while (tables.next()) {
-                    String name = tables.getString("TABLE_NAME").toLowerCase(Locale.ROOT);
-                    if (Set.of("history_index_decision","history_index_operation","history_index_purge_target").contains(name)) journals++;
-                    if ("restore_business_schema_history".equals(name)) staged = true;
-                }
-            }
-            if (journals == 3) return false;
-            if (journals != 0) throw new IOException("Workspace index source schema is incomplete");
-            if (!staged) return false;
-            try (var statement = connection.prepareStatement("""
-                    select "version", "success" from "restore_business_schema_history" where "version" is not null
-                    """); var versions = statement.executeQuery()) {
-                boolean predecessor = false;
-                while (versions.next()) {
-                    String version = versions.getString(1);
-                    if (!versions.getBoolean(2) || !version.matches("[1-9][0-9]?") || Integer.parseInt(version) >= 29) return false;
-                    if ("24".equals(version)) predecessor = true;
-                }
-                return predecessor;
-            }
-        } catch (SQLException failed) {
-            throw new IOException("Workspace index source schema could not be verified");
-        }
     }
 
     private static boolean detachedIndexTarget(ResultSet row, boolean full) throws SQLException, IOException {
@@ -317,6 +292,7 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
     public record IndexDecisionRecord(SourceRecordId sourceId, String operationId, String actor, String decision, long occurredAt) { }
 
     private void writePublications(BackupRowScope scope, BackupProfile profile, ComponentSink sink) throws IOException {
+        if (!scope.selectedVersion() && StagedWorkspaceSchema.predatesPublications(database)) return;
         var selected = scope.repositories("p.repository_id", "p.workspace_id");
         String parent = profile == BackupProfile.INSTALLATION_FULL ? "left join" : "join";
         String workspace = " " + parent + " user_workspace w on w.workspace_id=p.workspace_id";

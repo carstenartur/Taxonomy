@@ -246,6 +246,28 @@ class WorkspaceRecordsExportIT {
         }
     }
 
+    @Test void currentStagedSourceWithAMissingRevocationColumnRejectsMembershipCapture() throws Exception {
+        var source = new org.hsqldb.jdbc.JDBCDataSource();
+        source.setUrl("jdbc:hsqldb:mem:missing-revocation-" + UUID.randomUUID());
+        source.setUser("SA");
+        var live = new org.hsqldb.jdbc.JDBCDataSource();
+        live.setUrl("jdbc:hsqldb:mem:live-revocation-" + UUID.randomUUID());
+        live.setUser("SA");
+        try {
+            com.taxonomy.backup.restore.RestoreSchemaMigration.bootstrap(live, source, () -> {});
+            var jdbc = new org.springframework.jdbc.core.JdbcTemplate(source);
+            jdbc.execute("alter table repository_membership drop column revoked_at");
+            var contributor = new WorkspaceBackupContributor(source, dsl -> dsl);
+            var context = snapshot(BackupProfile.CURRENT_STATE, new BackupScope.Workspace("repo-a", "private-a"));
+            assertThatThrownBy(() -> contributor.principalScopes(context, () -> {})).isInstanceOf(java.io.IOException.class);
+            assertThatThrownBy(() -> contributor.write(context, new Contents())).isInstanceOf(java.io.IOException.class);
+        } finally {
+            try (var connection = source.getConnection(); var statement = connection.createStatement()) {
+                statement.execute("SHUTDOWN");
+            }
+        }
+    }
+
     private static List<com.fasterxml.jackson.databind.JsonNode> records(Contents contents, String dataset) {
         return new String(contents.entries.get("data/workspace/" + dataset + ".ndjson"), StandardCharsets.UTF_8)
                 .lines().skip(1).map(line -> {
