@@ -60,6 +60,23 @@ class PrincipalAccessAdministrationTest {
         assertThat(jdbc.queryForObject("select count(*) from principal_access_audit", Integer.class)).isZero();
     }
 
+    @Test void renamedAccountCannotChangeBackupGrantsThroughItsRetainedLogin() {
+        var repository = new BackupRepositoryKey("repo", "private");
+        var commit = "c".repeat(40);
+        administration.setVersionAccess(administrator, target, repository, commit, true);
+
+        jdbc.update("update app_user set username=? where id=?", "renamed-operator", 1);
+        assertThatThrownBy(() -> administration.setCapability(administrator, target, BackupCapability.EXPORT_HISTORY, true))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> administration.setVersionAccess(administrator, target, repository, commit, false))
+                .isInstanceOf(AccessDeniedException.class);
+
+        assertThat(identities.hasCapability(target, BackupCapability.EXPORT_HISTORY)).isFalse();
+        assertThat(identities.hasVersionAccess(target, repository, commit)).isTrue();
+        assertThat(jdbc.queryForList("select decision_kind from principal_access_audit", String.class))
+                .containsExactly("GRANT_VERSION");
+    }
+
     @Test void grantsOnlyTheExplicitVersionAndSupportsImmediateRevocation() {
         var repository = new BackupRepositoryKey("repo", "private");
         administration.setVersionAccess(administrator, target, repository, "a".repeat(40), true);
