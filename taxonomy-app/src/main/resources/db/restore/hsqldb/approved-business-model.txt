@@ -87,3 +87,6 @@ com.taxonomy.workspace.model.SystemRepository
 com.taxonomy.workspace.model.UserWorkspace
 com.taxonomy.workspace.model.WorkspaceProjection
 com.taxonomy.workspace.service.WorkspaceFetchOperation
+com.taxonomy.versioning.service.HistoryIndexOperationRow
+com.taxonomy.versioning.service.HistoryIndexDecisionRow
+com.taxonomy.versioning.service.HistoryIndexPurgeTarget

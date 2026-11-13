@@ -47,7 +47,7 @@ public class WorkspaceFetchAuthorityAdapter implements WorkspaceFetchAuthority {
         return new Grant(actor, actor.equals(binding) ? "LEGACY_OIDC" : "OIDC", binding);
     }
 
-    private static String externalBinding(Authentication authentication) {
+    static String externalBinding(Authentication authentication) {
         if (authentication instanceof JwtAuthenticationToken jwt && jwt.getToken().getIssuer() != null) {
             return binding(jwt.getToken().getIssuer().toString(), jwt.getToken().getSubject());
         }

@@ -114,6 +114,13 @@ abstract class AbstractExternalDatabaseContainerIT extends AbstractDatabaseConta
         try (var db = clusterContract()) { db.durableDocumentAdapterRetainsItsNativeResultAndFencesLateCompletion(); }
     }
 
+    @Test
+    void historyIndexClaimsAndPinnedPurgeReceiptsSurviveIndependentApplicationHandles() throws Exception {
+        var database = getDatabaseContainer();
+        com.taxonomy.versioning.service.HistoryIndexDatabaseContract.independentWorkers(new DriverManagerDataSource(
+                database.getJdbcUrl(), database.getUsername(), database.getPassword()));
+    }
+
     @Test @Order(26)
     void workingCopyFetchClaimsAndScopedReceiptsSurviveIndependentApplicationHandles() throws Exception {
         var database = getDatabaseContainer();

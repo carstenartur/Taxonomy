@@ -37,6 +37,13 @@ public class DslOperationsFacade {
     private static final Logger log = LoggerFactory.getLogger(DslOperationsFacade.class);
 
     private final DslGitRepositoryFactory repositoryFactory;
+    private HistoryIndexMaintenance historyMaintenance;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void bindHistoryMaintenance(HistoryIndexMaintenance historyMaintenance) {
+        this.historyMaintenance = historyMaintenance;
+    }
+
     private final CommitIndexService commitIndexService;
     private final ConflictDetectionService conflictDetectionService;
     private final RepositoryStateGuard stateGuard;
@@ -265,16 +272,26 @@ public class DslOperationsFacade {
 
     // ── History search ──────────────────────────────────────────────
 
+    public HistoryIndexJournal.Receipt maintainHistory(HistoryIndexJournal.Kind kind, String branch, String key, String cause) {
+        return historyMaintenance.submit(kind, branch, key, cause);
+    }
+
     public int indexBranch(String branch) {
-        return commitIndexService.indexBranch(branch, resolveRepositoryContext());
+        return appliedCount(maintainHistory(HistoryIndexJournal.Kind.INDEX, branch, null, null));
     }
 
     public int rebuildHistoryBranch(String branch) {
-        return commitIndexService.rebuildBranch(branch, resolveRepositoryContext());
+        return appliedCount(maintainHistory(HistoryIndexJournal.Kind.REBUILD, branch, null, null));
     }
 
     public int purgeHistoryIndex() {
-        return commitIndexService.purge(resolveRepositoryContext());
+        return appliedCount(maintainHistory(HistoryIndexJournal.Kind.PURGE, null, null, null));
+    }
+
+    private static int appliedCount(HistoryIndexJournal.Receipt receipt) {
+        if (receipt.count() != null) return receipt.count();
+        throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT,
+                "History index maintenance requires follow-up: " + receipt.operationId());
     }
 
     public List<ArchitectureCommitIndex> searchHistory(
