@@ -185,6 +185,60 @@ async function reportsFixture() {
 }
 const reportResponse = () => ({blob: async () => ({size: 10})});
 
+test('a product gap review stays with the source where its evidence was displayed', async () => {
+    const f = dom(), loads = [], submissions = [], reviews = [];
+    const saved = new Map(), retainedRead = deferred();
+    const panel = f.element('details', 'projectProductGaps');
+    const list = f.element('div', 'productGapFamilies');
+    f.element('input', 'productGapFilter');
+    f.element('select', 'productGapClassification').append(f.element('option'));
+    f.element('div', 'productGapStatus'); f.element('button', 'loadProductGaps');
+    let repository = 'A';
+    const family = title => ({familyCode:'F', familyName:title, reviewKey:'same-key', classification:'UNDECIDED',
+        evidenceFingerprint:'controlled', revision:0, history:[], observations:[]});
+    const window = {location:{pathname:'/projects/1/reports'}, addEventListener() {},
+        TaxonomyI18n:{ready:async () => {}, t:key => key},
+        TaxonomyApiClient:{captureContext() {const source=repository; return () => source===repository;}},
+        TaxonomyPortfolioApi:{productGaps() {
+                loads.push(repository);
+                if (loads.length === 2) return retainedRead.promise;
+                return Promise.resolve([saved.get(repository) || family(repository)]);
+            },
+            getAccount:async () => ({architectureMutationAllowed:true}),
+            reviewProductGap() {submissions.push(repository); const done=deferred(); reviews.push(done); return done.promise;}}};
+    vm.runInNewContext(source('portfolio/project-product-gaps.js'), {window,document:f.document,AbortController});
+    panel.open = true; await panel.fire('toggle'); await tick();
+    const old = list.querySelector('form');
+    old.querySelector('textarea').value = 'Reviewed on A';
+    const oldSave = old.fire('submit');
+    await f.document.fire('taxonomy:repository-context-changed', {detail:{selectionChanged:false}}); await tick();
+    assert.deepEqual(loads, ['A']);
+    panel.open = false; await panel.fire('toggle');
+    panel.open = true; await panel.fire('toggle'); await tick();
+    saved.set('A', {...family('Saved on A'), revision:1});
+    reviews[0].resolve(saved.get('A')); await oldSave; await tick();
+    retainedRead.resolve([family('Older read on A')]); await tick();
+    assert.match(list.querySelector('summary').textContent, /Saved on A/);
+    const revised = list.querySelector('form');
+    revised.querySelector('textarea').value = 'Second review on A';
+    const revisedSave = revised.fire('submit');
+    assert.equal(revised.querySelector('button').disabled, true);
+    repository = 'B';
+    await f.document.fire('taxonomy:entity-context-changed'); await tick();
+    const current = list.querySelector('form');
+    assert.notEqual(current, old);
+    assert.equal(current.querySelector('button').disabled, false);
+    await old.fire('submit');
+    assert.deepEqual(submissions, ['A','A']);
+    current.querySelector('textarea').value = 'Reviewed on B';
+    const newSave = current.fire('submit');
+    reviews[1].resolve(family('A')); await revisedSave;
+    assert.equal(current.querySelector('button').disabled, true);
+    reviews[2].resolve(family('B')); await newSave;
+    assert.deepEqual(submissions, ['A','A','B']);
+    assert.deepEqual(loads, ['A','A','A','B']);
+});
+
 test('report navigation publishes its project for the shared navigation and retains versioning', async () => {
     const f = await reportsFixture();
     assert.equal(f.contexts.at(-1).project.id, 1);
