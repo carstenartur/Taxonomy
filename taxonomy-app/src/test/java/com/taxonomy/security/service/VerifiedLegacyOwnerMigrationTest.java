@@ -1,11 +1,13 @@
 package com.taxonomy.security.service;
 
 import com.taxonomy.backup.PrincipalId;
+import com.taxonomy.security.controller.LegacyOwnerReservationController;
 import com.taxonomy.security.model.PrincipalUserDetails;
 import com.taxonomy.security.persistence.PrincipalSchemaMigration;
 import org.hsqldb.jdbc.JDBCDataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -17,6 +19,11 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class VerifiedLegacyOwnerMigrationTest {
     JDBCDataSource database;
@@ -217,6 +224,79 @@ class VerifiedLegacyOwnerMigrationTest {
                 Integer.class)).isZero();
         assertThat(jdbc.queryForObject("select count(*) from principal_access_audit",
                 Integer.class)).isZero();
+    }
+
+    @Test void analysisAndBranchRecoveryOwnersMustBeAccountedForBeforeAStableRestart() {
+        for (String table : List.of("analysis_continuation", "analysis_cluster_run", "workspace_branch_sync")) {
+            jdbc.execute("create table " + table + " (username varchar(160))");
+            jdbc.update("insert into " + table + " values (?)", "fixture-" + table);
+        }
+        var readiness = LegacyOwnerMigrationReadiness.inspect(database);
+        assertThat(readiness.observedScopes()).isEqualTo(5);
+        assertThat(readiness.missingReservations()).isEqualTo(3);
+        assertThatThrownBy(() -> LegacyOwnerMigrationReadiness.requireReady(database))
+                .isInstanceOf(IllegalStateException.class);
+
+        assertThat(migration.reserveMissing(admin)).isEqualTo(3);
+        assertThat(migration.reserveMissing(admin)).isZero();
+        var reserved = LegacyOwnerMigrationReadiness.inspect(database);
+        assertThat(reserved.missingReservations()).isZero();
+        assertThat(reserved.unresolvedReservations()).isEqualTo(5);
+        assertThat(reserved.ready()).isFalse();
+        assertThat(migration.preview(admin, 256).owners()).extracting(VerifiedLegacyOwnerMigration.UnresolvedOwner::legacyScope)
+                .contains("fixture-analysis_cluster_run", "fixture-analysis_continuation", "fixture-workspace_branch_sync");
+        assertThat(jdbc.queryForObject("select count(*) from principal_binding where binding_kind='OIDC'",
+                Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from principal_access_audit where decision_kind='RESERVE_LEGACY_OWNER' "
+                + "and actor_principal=? and target_principal in (select principal_id from app_principal where enabled=0)",
+                Integer.class, identities.requireCurrent(admin).value().toString())).isEqualTo(3);
+    }
+
+    @Test void theOperatorApiReportsDriftAndCreatesOnlyUnboundReservations() throws Exception {
+        var mvc = MockMvcBuilders
+                .standaloneSetup(new LegacyOwnerReservationController(migration)).build();
+        var route = "/api/admin/users/ownership-reservations";
+        jdbc.update("insert into user_workspace values ('late-owner', 'late-copy')");
+        mvc.perform(get(route).principal(admin))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.inventory.missingReservations").value(1));
+        mvc.perform(post(route).principal(admin))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.created").value(1));
+        mvc.perform(get(route).param("limit", "1").principal(admin))
+                .andExpect(jsonPath("$.inventory.missingReservations").value(0))
+                .andExpect(jsonPath("$.reservations.total").value(3))
+                .andExpect(jsonPath("$.reservations.truncated").value(true));
+    }
+
+    @Test void reservationNeedsACurrentAdminAndRollsBackWhenItsAuditCannotCommit() {
+        jdbc.update("insert into user_workspace values ('late-owner', 'late-copy')");
+        jdbc.update("delete from user_roles where user_id=1");
+        assertThatThrownBy(() -> migration.reserveMissing(admin)).isInstanceOf(AccessDeniedException.class);
+        jdbc.update("insert into user_roles values (1, 1)");
+        jdbc.execute("alter table principal_access_audit add constraint reject_reservation "
+                + "check (decision_kind <> 'RESERVE_LEGACY_OWNER')");
+        assertThatThrownBy(() -> migration.reserveMissing(admin))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class);
+        assertThat(jdbc.queryForObject("select count(*) from app_principal where scope_key='late-owner'",
+                Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from principal_access_audit", Integer.class)).isZero();
+    }
+
+    @Test void independentAdministratorsReserveTheSameUnboundOwnerOnlyOnce() throws Exception {
+        jdbc.update("insert into user_workspace values ('late-owner', 'late-copy')");
+        var second = new VerifiedLegacyOwnerMigration(database, new PrincipalIdentityService(database));
+        var start = new java.util.concurrent.CountDownLatch(1);
+        try (var workers = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var first = workers.submit(() -> { start.await(); return migration.reserveMissing(admin); });
+            var other = workers.submit(() -> { start.await(); return second.reserveMissing(admin); });
+            start.countDown();
+            assertThat(List.of(first.get(15, java.util.concurrent.TimeUnit.SECONDS),
+                    other.get(15, java.util.concurrent.TimeUnit.SECONDS))).containsExactlyInAnyOrder(0, 1);
+        }
+        assertThat(jdbc.queryForObject("select count(*) from principal_access_audit", Integer.class)).isOne();
+        assertThat(migration.preview(admin, 256).total()).isEqualTo(3);
     }
 
     @Test void postV3LegacyWritesCannotBeHiddenByAnOtherwiseCompleteApprovedPlan() {
