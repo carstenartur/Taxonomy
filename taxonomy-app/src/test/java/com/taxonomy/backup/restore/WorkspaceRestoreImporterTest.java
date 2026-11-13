@@ -31,7 +31,7 @@ class WorkspaceRestoreImporterTest {
     private static final String COMMAND="00000000-0000-0000-0000-000000000019",SAVE="00000000-0000-0000-0000-000000000020",RAW="Unsaved architecture\nλ\n",TIME="2026-10-10T00:00:00Z";
 
     @Test void repositoryHistoryRetainsARevokedDisabledCollaboratorsAcceptedWorkWithoutReplayingGrants() throws Exception {
-        try (var fixture=fixture(false,false,false,"source-retired")) {
+        try (var fixture=fixture(null,false,false,"source-retired")) {
             assertThat(fixture.archive.manifest().request().profile()).isEqualTo(BackupProfile.REPOSITORY_HISTORY);
             new WorkspaceRestoreImporter().restore(fixture.archive,fixture.generation(),fixture.principals,fixture.git,()->{});
             var target=new JdbcTemplate(fixture.target);
@@ -50,7 +50,7 @@ class WorkspaceRestoreImporterTest {
     @org.junit.jupiter.params.provider.ValueSource(strings = {"legacy", "control", "long"})
     void anUnmappedLegacyJournalActorStillRetainsItsEvidenceInPrivateQuarantine(String shape) throws Exception {
         String actor=switch(shape) { case "control" -> "old\tactor"; case "long" -> "x".repeat(320); default -> "legacy-unmapped-actor"; };
-        try (var fixture=fixture(false,false,false,actor)) {
+        try (var fixture=fixture(null,false,false,actor)) {
             new WorkspaceRestoreImporter().restore(fixture.archive,fixture.generation(),fixture.principals,fixture.git,()->{});
             var target=new JdbcTemplate(fixture.target);
             assertThat(target.queryForObject("select count(*) from editor_workspace",Long.class)).isZero();
@@ -138,8 +138,10 @@ class WorkspaceRestoreImporterTest {
             assertThatThrownBy(()->new WorkspaceRestoreImporter().restore(fixture.archive,generation,fixture.principals,fixture.git,()->{})).isInstanceOf(IOException.class).hasMessageContaining("proof");
         }
     }
-    @Test void centralIndexUsesItsReviewedSharedScopeWithoutInventingAWorkspaceOrPrincipal()throws Exception {
-        try(var fixture=fixture(true)) {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"27", "27.1", "28"})
+    void centralIndexUsesItsReviewedSharedScopeWithoutInventingAWorkspaceOrPrincipal(String sourceVersion)throws Exception {
+        try(var fixture=fixture(sourceVersion,false,false,null)) {
             var result=new WorkspaceRestoreImporter().restore(fixture.archive,fixture.generation(),fixture.principals,fixture.git,()->{});
             var target=new JdbcTemplate(fixture.target);
             assertThat(target.queryForObject("select count(*) from architecture_commit_index",Long.class)).isEqualTo(2);
@@ -148,8 +150,51 @@ class WorkspaceRestoreImporterTest {
             assertThat(new WorkspaceRestoreImporter().restore(fixture.archive,fixture.generation(),fixture.principals,fixture.git,()->{})).isEqualTo(result);
         }
     }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"partial-publication", "installed-without-publication", "current-without-index", "changed-checksum", "missing-version"})
+    void captureRejectsIncompleteJournalsAndUnverifiedSourceHistory(String damage) throws Exception {
+        var source = database();
+        try {
+            String version = switch (damage) {
+                case "current-without-index" -> "29";
+                case "installed-without-publication" -> "27.1";
+                default -> "27";
+            };
+            migrateStagedSource(source, version);
+            var jdbc = new JdbcTemplate(source);
+            switch (damage) {
+                case "partial-publication" -> jdbc.execute("create table workspace_publication_operation(operation_id varchar(64))");
+                case "installed-without-publication" -> {
+                    jdbc.execute("drop table workspace_publication_decision");
+                    jdbc.execute("drop table workspace_publication_operation");
+                }
+                case "current-without-index" -> {
+                    jdbc.execute("drop table history_index_purge_target");
+                    jdbc.execute("drop table history_index_decision");
+                    jdbc.execute("drop table history_index_operation");
+                }
+                case "changed-checksum" -> jdbc.update("update \"restore_business_schema_history\" set \"checksum\" = 0 where \"version\" = '25'");
+                case "missing-version" -> jdbc.update("delete from \"restore_business_schema_history\" where \"version\" = '25'");
+            }
+            var contributor = new WorkspaceBackupContributor(source, dsl -> dsl);
+            var request = new BackupRequest(BackupProfile.INSTALLATION_FULL, new BackupScope.Installation(),
+                    new BackupTime.History(), GitRepresentation.BUNDLE, SecretsSelection.EXCLUDE);
+            var authorization = new AuthorizedBackupRequest(request, principal, "test-decision", Instant.now(), EnumSet.allOf(BackupCapability.class));
+            var now = Instant.now();
+            var snapshot = new SnapshotContext(BackupId.create(), authorization, now, now, 1, Map.of(), Map.of());
+            ComponentSink sink = (path, input) -> {
+                input.transferTo(OutputStream.nullOutputStream());
+                return null;
+            };
+            assertThatThrownBy(() -> contributor.write(snapshot, sink)).isInstanceOf(IOException.class)
+                    .hasMessageContaining(damage.equals("partial-publication") ? "journal schema is incomplete" : "Portable dataset capture failed");
+        } finally {
+            shutdown(source);
+        }
+    }
+
     @Test void systemOwnershipAndHistoricalNavigationLabelsStayPrivateWithoutInventedIdentityAuthority()throws Exception {
-        try(var fixture=fixture(false,true,true)) {
+        try(var fixture=fixture(null,true,true,null)) {
             var result=new WorkspaceRestoreImporter().restore(fixture.archive,fixture.generation(),fixture.principals,fixture.git,()->{});
             assertThat(result.targetRows()).isZero();assertThat(result.editorScopes()).isEmpty();var target=new JdbcTemplate(fixture.target);
             for(String table:List.of("system_repository","user_workspace","repository_membership","sync_state","editor_workspace","editor_operation","editor_checkpoint","architecture_commit_index","context_history_record"))
@@ -201,25 +246,24 @@ class WorkspaceRestoreImporterTest {
             var target=new JdbcTemplate(fixture.target);assertThat(target.queryForObject("select count(*) from system_repository",Long.class)).isZero();assertThat(target.queryForObject("select count(*) from restore_workspace_owner",Long.class)).isZero();
         }
     }
-    private Fixture fixture()throws Exception{return fixture(false);}
-    private Fixture fixture(boolean centralIndex)throws Exception{return fixture(centralIndex,false,false);}
-    private Fixture fixture(boolean centralIndex,boolean systemOwner,boolean historicalUnknownPrincipal)throws Exception {
-        return fixture(centralIndex,systemOwner,historicalUnknownPrincipal,null);
+    private static void migrateStagedSource(JDBCDataSource source, String sourceVersion) throws IOException {
+        var business = org.flywaydb.core.Flyway.configure().dataSource(source)
+                .table("restore_business_schema_history").locations("classpath:db/restore/hsqldb");
+        business.target("1").load().migrate();
+        com.taxonomy.security.persistence.PrincipalSchemaMigration.migrate(source);
+        business.target(sourceVersion).load().migrate();
+        com.taxonomy.composition.persistence.CatalogueSourceSchemaMigration.migrate(source);
+        com.taxonomy.workspace.storage.StagedJgitSchemaMigration.migrate(source, () -> {});
     }
-    private Fixture fixture(boolean centralIndex,boolean systemOwner,boolean historicalUnknownPrincipal,String journalActor)throws Exception {
+    private Fixture fixture()throws Exception{return fixture(null,false,false,null);}
+    private Fixture fixture(String sourceVersion,boolean systemOwner,boolean historicalUnknownPrincipal,String journalActor)throws Exception {
         Path nativeSource=root.resolve(UUID.randomUUID()+"-source");Files.createDirectories(nativeSource);
         var git=Git.init().setDirectory(nativeSource.toFile()).setInitialBranch("main").call();Files.writeString(nativeSource.resolve("architecture.taxdsl"),"architecture Original {}");git.add().addFilepattern(".").call();
         String commit=git.commit().setMessage("Original source history").setAuthor(new PersonIdent("Original","source@example.test",Date.from(Instant.parse(TIME)),TimeZone.getTimeZone("UTC"))).setCommitter(new PersonIdent("Original","source@example.test",Date.from(Instant.parse(TIME)),TimeZone.getTimeZone("UTC"))).call().name();
         var source = database();
-        if (centralIndex) {
-            // Export a genuine V27 source, then restore it to the current schema below.
-            var business = org.flywaydb.core.Flyway.configure().dataSource(source)
-                    .table("restore_business_schema_history").locations("classpath:db/restore/hsqldb");
-            business.target("1").load().migrate();
-            com.taxonomy.security.persistence.PrincipalSchemaMigration.migrate(source);
-            business.target("27").load().migrate();
-            com.taxonomy.composition.persistence.CatalogueSourceSchemaMigration.migrate(source);
-            com.taxonomy.workspace.storage.StagedJgitSchemaMigration.migrate(source, () -> {});
+        if (sourceVersion != null) {
+            // Capture each installed predecessor without upgrading the source.
+            migrateStagedSource(source, sourceVersion);
         } else {
             RestoreSchemaMigration.bootstrap(database(), source, () -> {});
         }
@@ -233,7 +277,8 @@ class WorkspaceRestoreImporterTest {
         rows.update("insert into editor_operation(body_version,previous_revision,semantic_revision,causation_id,command_id,correlation_id,occurred_at,fingerprint,scope_id,kind,id,actor,rationale,affected_ids,after_dsl,before_dsl) values(1,6,7,?,?,?,?,'"+"c".repeat(64)+"',?,'CHANGE',?,'source-owner','Original edit','1:[]',?,'1:Original before')",COMMAND,COMMAND,COMMAND,TIME,editor,editor+":"+COMMAND,"1:"+RAW);
         rows.update("insert into editor_checkpoint(commit_created,completed,from_revision,semantic_revision,command_id,commit_id,expected_commit,occurred_at,origin,fingerprint,scope_id,id,actor,rationale,dsl) values(false,false,0,4,?,?,?,?,'USER','"+"d".repeat(64)+"',?,?,'source-owner','Interrupted save','1:Original checkpoint')",SAVE,commit,commit,TIME,editor,editor+":"+SAVE);
         rows.update("insert into architecture_commit_index(commit_timestamp,indexed_at,commit_id,branch,repository_id,workspace_id,workspace_scope_key,message) values(?,?,?,'main','source-repository','source-workspace','source-workspace','Original indexed commit')",java.sql.Timestamp.from(Instant.parse(TIME)),java.sql.Timestamp.from(Instant.parse(TIME)),commit);
-        if(centralIndex)rows.update("insert into architecture_commit_index(commit_timestamp,indexed_at,commit_id,branch,repository_id,workspace_scope_key,message) values(?,?,?,'main','source-repository','__shared__','Original central commit')",java.sql.Timestamp.from(Instant.parse(TIME)),java.sql.Timestamp.from(Instant.parse(TIME)),commit);
+        if(sourceVersion != null)rows.update("insert into architecture_commit_index(commit_timestamp,indexed_at,commit_id,branch,repository_id,workspace_scope_key,message) values(?,?,?,'main','source-repository',?,'Original central commit')",java.sql.Timestamp.from(Instant.parse(TIME)),java.sql.Timestamp.from(Instant.parse(TIME)),commit,
+                "28".equals(sourceVersion) ? com.taxonomy.model.WorkspaceOverlayScope.CENTRAL_STORAGE_KEY : "__shared__");
         rows.update("insert into context_history_record(created_at,from_commit_id,to_commit_id,username,from_context_id,to_context_id,from_branch,to_branch) values(?,?,?,'source-owner',?,?,'main','main')",java.sql.Timestamp.from(Instant.parse(TIME)),commit,commit,UUID.randomUUID().toString(),UUID.randomUUID().toString());
         if(systemOwner)rows.update("update system_repository set owner_type='SYSTEM',owner_id='unmapped-system-label'");
         if(historicalUnknownPrincipal)rows.update("update context_history_record set username='deleted-historical-navigation-label'");
@@ -303,9 +348,17 @@ class WorkspaceRestoreImporterTest {
     private Map<BackupRepositoryKey,RestoreRepositoryAllocation> allocations(){return Map.of(central,new RestoreRepositoryAllocation(new BackupRepositoryKey("target-repository",null),"target-central-storage"),workspace,new RestoreRepositoryAllocation(new BackupRepositoryKey("target-repository","target-workspace"),com.taxonomy.workspace.storage.DslGitRepositoryFactory.workspaceRepositoryName("target-workspace")));}
     private static Object invoke(java.lang.reflect.Method method,Object target,Object[] args)throws Throwable{try{return method.invoke(target,args);}catch(java.lang.reflect.InvocationTargetException e){throw e.getCause();}}
     private static List<Class<?>> model()throws Exception {try(var input=WorkspaceRestoreImporterTest.class.getResourceAsStream("/db/restore/hsqldb/approved-business-model.txt")){var model=new ArrayList<Class<?>>();for(String name:new String(input.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8).lines().toList())if(!name.isBlank()&&!name.startsWith("#"))model.add(Class.forName(name));return model;}}
+    private static void shutdown(JDBCDataSource database) { new JdbcTemplate(database).execute("shutdown"); }
     private static JDBCDataSource database(){var ds=new JDBCDataSource();ds.setURL("jdbc:hsqldb:mem:workspace-restore-"+UUID.randomUUID());ds.setUser("sa");return ds;}
     private record Fixture(JDBCDataSource source,JDBCDataSource target,org.hibernate.SessionFactory factory,VerifiedBackup archive,Map<PrincipalId,RestorePrincipalAllocation> principals,GitRestoreImporter.Result git,Git nativeSource,String commit,UUID generationId)implements AutoCloseable {
         RestoreTargetGeneration generation()throws IOException{return RestoreTargetGeneration.verified(generationId,source,target,factory,Map.of(new BackupRepositoryKey("source-repository",null),new RestoreRepositoryAllocation(new BackupRepositoryKey("target-repository",null),"target-central-storage"),new BackupRepositoryKey("source-repository","source-workspace"),new RestoreRepositoryAllocation(new BackupRepositoryKey("target-repository","target-workspace"),com.taxonomy.workspace.storage.DslGitRepositoryFactory.workspaceRepositoryName("target-workspace"))),()->{});}
-        public void close()throws Exception{archive.close();factory.close();nativeSource.close();}
+        public void close()throws Exception {
+            try { archive.close(); } finally {
+                try { factory.close(); } finally {
+                    nativeSource.close();
+                    try { shutdown(source); } finally { shutdown(target); }
+                }
+            }
+        }
     }
 }
