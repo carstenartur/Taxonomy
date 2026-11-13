@@ -26,6 +26,46 @@ class BranchGraphVectorPersistenceTest {
     @TempDir Path directory;
     static final String HEAD = "1".repeat(40);
 
+    @Test void replayAfterRestartPreservesANewerVectorGenerationAtTheSameGitHead() {
+        var context = RepositoryContext.centralRead("repo:a", "main", "operator");
+        var selected = source(context, "m1");
+        String original;
+        try (var admitted = open("create")) {
+            admitted.checkpoint(context);
+            admitted.transaction(() -> admitted.store.begin(context, selected, "fixture"));
+            original = admitted.store.currentGeneration(context);
+            assertThat(admitted.store.purge(context, original, () -> {})).isTrue();
+        }
+        try (var resumed = open("validate")) {
+            assertThat(resumed.store.currentGeneration(context)).isNull();
+            String successor = resumed.transaction(() -> resumed.store.begin(context, selected, "fixture"));
+            assertThat(successor).isNotEqualTo(original);
+            assertThat(resumed.store.purge(context, original, () -> {})).isFalse();
+            assertThat(resumed.store.purge(context, null, () -> {})).isFalse();
+            assertThat(resumed.transaction(() -> resumed.store.status(context, selected)).generation()).isEqualTo(successor);
+        }
+    }
+
+    @Test void acknowledgedGenerationIsAdoptedAndAReopenedBuilderCannotReplaceItsSuccessor() throws Exception {
+        var context = RepositoryContext.centralRead("repo:A", "main", "operator");
+        var selected = source(context, "m1");
+        String operation = java.util.UUID.randomUUID().toString();
+        var archive = archive(selected, "initial");
+        try (var original = open("create")) {
+            original.checkpoint(context);
+            String token = original.store.beginCaptured(context, selected, "fixture", operation, null);
+            original.store.publish(context, selected, token, archive, () -> {});
+        }
+        try (var resumed = open("validate")) {
+            assertThat(resumed.store.beginCaptured(context, selected, "fixture", operation, null)).isEqualTo(operation);
+            assertThat(resumed.store.status(context, selected).state()).isEqualTo(BranchGraphVectorStore.State.READY);
+            String successor = resumed.store.begin(context, selected, "fixture");
+            assertThatThrownBy(() -> resumed.store.beginCaptured(context, selected, "fixture", operation, null))
+                    .isInstanceOf(BranchGraphVectorStore.GenerationChanged.class);
+            assertThat(resumed.store.currentGeneration(context)).isEqualTo(successor);
+        }
+    }
+
     @Test void aRestartPreservesExactNativeFieldsAndCompetingBuildersOrPurgesFencePublication() throws Exception {
         var a = RepositoryContext.centralRead("repo:A", "main", "reader");
         var b = RepositoryContext.centralRead("repo:B", "main", "reader");
@@ -33,7 +73,8 @@ class BranchGraphVectorPersistenceTest {
         var worker = new RepositoryContext("repo:A", "copy", "main", "reader", RepositoryScope.WORKSPACE);
         var otherWorker = new RepositoryContext("repo:A", "copy-2", "main", "reader", RepositoryScope.WORKSPACE);
         var foreignWorker = new RepositoryContext("repo:B", "copy", "main", "reader", RepositoryScope.WORKSPACE);
-        var scopes = List.of(a, b, draft, worker, otherWorker, foreignWorker);
+        var reservedLookingWorker = RepositoryContext.workspace("repo:A", "__shared__", "main", "reader");
+        var scopes = List.of(a, b, draft, worker, otherWorker, foreignWorker, reservedLookingWorker);
         try (var first = open("create")) {
             for (var scope : scopes) {
                 first.checkpoint(scope);
@@ -67,11 +108,14 @@ class BranchGraphVectorPersistenceTest {
                     .isInstanceOf(SearchUnavailableException.class);
             second.transaction(() -> {second.store.fail(a, first); return null;});
             assertThat(second.transaction(() -> second.store.status(a, chosen)).state()).isEqualTo(BranchGraphVectorStore.State.BUILDING);
-            second.transaction(() -> {second.store.purge(a, () -> {}); return null;});
+            assertThat(second.store.purge(a, secondToken, () -> {})).isTrue();
             assertThatThrownBy(() -> second.transaction(() -> {second.store.publish(a, chosen, secondToken, obsolete, () -> {}); return null;}))
                     .isInstanceOf(SearchUnavailableException.class);
             assertThat(second.transaction(() -> second.store.status(a, chosen)).state()).isEqualTo(BranchGraphVectorStore.State.MISSING);
-            assertThat(second.transaction(() -> second.store.status(worker, source(worker, "m1"))).state()).isEqualTo(BranchGraphVectorStore.State.READY);
+            for (var survivingWorker : List.of(worker, reservedLookingWorker)) {
+                assertThat(second.transaction(() -> second.store.status(survivingWorker, source(survivingWorker, "m1"))).state())
+                        .isEqualTo(BranchGraphVectorStore.State.READY);
+            }
             second.transaction(() -> {
                 second.em.createNativeQuery("update branch_graph_vector_generation set index_sha256 = :wrong where source_key = :chosen")
                         .setParameter("wrong", "0".repeat(64)).setParameter("chosen", source(worker, "m1").key()).executeUpdate();

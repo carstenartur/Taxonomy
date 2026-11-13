@@ -1,13 +1,11 @@
 package com.taxonomy.versioning.service;
 
-import com.taxonomy.versioning.model.ArchitectureCommitIndex;
 import com.taxonomy.versioning.service.CommitIndexService;
 import com.taxonomy.dsl.diff.ModelDiff;
 import com.taxonomy.workspace.storage.DslBranch;
 import com.taxonomy.workspace.storage.DslCommit;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
-import com.taxonomy.dto.ElementHistoryAggregation;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryScope;
@@ -37,6 +35,13 @@ public class DslOperationsFacade {
     private static final Logger log = LoggerFactory.getLogger(DslOperationsFacade.class);
 
     private final DslGitRepositoryFactory repositoryFactory;
+    private HistoryIndexMaintenance historyMaintenance;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void bindHistoryMaintenance(HistoryIndexMaintenance historyMaintenance) {
+        this.historyMaintenance = historyMaintenance;
+    }
+
     private final CommitIndexService commitIndexService;
     private final ConflictDetectionService conflictDetectionService;
     private final RepositoryStateGuard stateGuard;
@@ -265,36 +270,26 @@ public class DslOperationsFacade {
 
     // ── History search ──────────────────────────────────────────────
 
+    public HistoryIndexJournal.Receipt maintainHistory(HistoryIndexJournal.Kind kind, String branch, String key, String cause) {
+        return historyMaintenance.submit(kind, branch, key, cause);
+    }
+
     public int indexBranch(String branch) {
-        return commitIndexService.indexBranch(branch, resolveRepositoryContext());
+        return appliedCount(maintainHistory(HistoryIndexJournal.Kind.INDEX, branch, null, null));
     }
 
     public int rebuildHistoryBranch(String branch) {
-        return commitIndexService.rebuildBranch(branch, resolveRepositoryContext());
+        return appliedCount(maintainHistory(HistoryIndexJournal.Kind.REBUILD, branch, null, null));
     }
 
     public int purgeHistoryIndex() {
-        return commitIndexService.purge(resolveRepositoryContext());
+        return appliedCount(maintainHistory(HistoryIndexJournal.Kind.PURGE, null, null, null));
     }
 
-    public List<ArchitectureCommitIndex> searchHistory(
-            String query, int maxResults) {
-        return commitIndexService.search(
-                query, maxResults, resolveRepositoryContext());
+    private static int appliedCount(HistoryIndexJournal.Receipt receipt) {
+        if (receipt.count() != null) return receipt.count();
+        throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT,
+                "History index maintenance requires follow-up: " + receipt.operationId());
     }
 
-    public List<ArchitectureCommitIndex> findByElement(String elementId) {
-        return commitIndexService.findByElement(
-                elementId, resolveRepositoryContext());
-    }
-
-    public List<ArchitectureCommitIndex> findByRelation(String key) {
-        return commitIndexService.findByRelation(
-                key, resolveRepositoryContext());
-    }
-
-    public ElementHistoryAggregation aggregateElementHistory(String elementId) {
-        return commitIndexService.aggregateElementHistory(
-                elementId, resolveRepositoryContext());
-    }
 }

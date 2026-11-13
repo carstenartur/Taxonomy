@@ -12,6 +12,48 @@ window.TaxonomyRelationsApi = (function () {
         return window.TaxonomyApiClient.request(url, init, Object.assign({acceptedStatuses:[400,404,409,412,422]}, options));
     }
 
+    function coverageSource(response) {
+        var source = {repositoryId:response.headers.get('X-Taxonomy-Repository'),
+            workspaceId:response.headers.get('X-Taxonomy-Workspace-Id'), branch:response.headers.get('X-Taxonomy-Branch'),
+            commit:response.headers.get('X-Taxonomy-Commit')};
+        if (response.headers.get('X-Taxonomy-Source-State') !== 'READY' || !source.repositoryId || source.workspaceId === null
+                || !source.branch || !/^[a-f0-9]{40}$/.test(source.commit || '')) throw new Error('Invalid coverage source');
+        return Object.freeze(source);
+    }
+
+    async function coverageRequest(path, pinned, init) {
+        var workspace = window.TaxonomyArchitectureWorkspace;
+        if (await workspace?.ready?.() === false) throw new Error('Coverage selection unavailable');
+        var selected = window.TaxonomyArchitectureWorkflow?.getScope?.();
+        if (!selected?.repositoryId || typeof selected.workspaceId !== 'string' || !selected.branch)
+            throw new Error('Coverage selection unavailable');
+        var visible = window.TaxonomyAppChrome?.getContext?.()?.architecture;
+        var visibleWorkspace = visible?.workspaceId ?? (visible?.workspaceScopeKey === '__shared__' ? '' : visible?.workspaceScopeKey);
+        if (!visible || visible.repositoryId !== selected.repositoryId || visible.branch !== selected.branch
+                || visibleWorkspace !== selected.workspaceId) throw new Error('Coverage selection changed');
+        if (pinned && (pinned.repositoryId !== selected.repositoryId || pinned.workspaceId !== selected.workspaceId
+                || pinned.branch !== selected.branch || visible.commit && visible.commit !== pinned.commit))
+            throw new Error('Coverage selection changed');
+        var commit = pinned?.commit || visible.commit;
+        var params = new URLSearchParams({repositoryId:selected.repositoryId, workspaceId:selected.workspaceId, branch:selected.branch});
+        if (commit) {
+            if (!/^[a-f0-9]{40}$/.test(commit)) throw new Error('Invalid coverage revision');
+            params.set('commitId', commit);
+        }
+        if (init?.method === 'POST' && !pinned?.commit) throw new Error('Read the coverage source before recording');
+        var headers = new Headers(init?.headers);
+        headers.set('X-Taxonomy-Workspace-Id', selected.workspaceId);
+        var response = await domainRequest(path + '?' + params, Object.assign({}, init, {headers:headers}),
+            {pinnedWorkspaceId:selected.workspaceId, retries:0});
+        if (response.ok) {
+            var evidence = coverageSource(response);
+            if (evidence.repositoryId !== selected.repositoryId || evidence.workspaceId !== selected.workspaceId
+                    || evidence.branch !== selected.branch || commit && evidence.commit !== commit)
+                throw new Error('Coverage response source changed');
+        }
+        return response;
+    }
+
     function readQualityDashboard() {
         return TaxonomyApiClient.getJson('/api/relations/metrics/dashboard?limit=5', {selectedRepository:true});
     }
@@ -20,62 +62,58 @@ window.TaxonomyRelationsApi = (function () {
         var url = relationType
             ? '/api/relations?type=' + encodeURIComponent(relationType)
             : '/api/relations';
-        return domainRequest(url, {cache:'no-store'}, {acceptedStatuses:[409,412,503]});
+        return domainRequest(url, {cache:'no-store'}, {selectedRepository:true, acceptedStatuses:[404,409,412,503]});
     }
 
-    function readProjectionReadiness(workspaceId, options) {
-        return projectionRequest('/readiness', 'GET', workspaceId, null, options);
+    function readProjectionReadiness(source, options) {
+        return projectionRequest('/readiness', 'GET', source, {}, options);
     }
 
-    // An explicit command owns the inspected source through its preflight and
-    // mutation. Visible relation reads afterward resolve the then-current tab.
+    // Keep an admitted rebuild on the repository and branch inspected even
+    // when the current tab subsequently switches to a different central source.
     function rebuildProjection(status, headEtag) {
-        return projectionRequest('/rebuild', 'POST', status.workspaceId, {
-            'If-Match': headEtag
-        }, {contextSensitive:false});
+        return projectionRequest('/rebuild', 'POST', status, {'If-Match':headEtag}, {contextSensitive:false});
     }
 
-    function projectionRequest(path, method, workspaceId, headers, options) {
-        headers = Object.assign({}, headers || {});
-        if (workspaceId !== undefined) {
-            headers['X-Taxonomy-Workspace-Id'] = workspaceId == null ? '' : workspaceId;
+    function projectionRequest(path, method, source, headers, options) {
+        var url = '/api/architecture/relations/projection' + path;
+        var workspaceId = source;
+        if (source && typeof source === 'object') {
+            workspaceId = source.workspaceId == null ? '' : source.workspaceId;
+            url += '?' + new URLSearchParams({repositoryId:source.repositoryId, workspaceId:workspaceId, branch:source.branch});
         }
-        // The named transport preserves this operation's inspected workspace,
-        // including explicit central scope, while supplying CSRF and base paths.
-        return window.TaxonomyApiClient.request('/api/architecture/relations/projection' + path, {
-            method: method, headers: headers, cache: 'no-store'
-        }, Object.assign({idempotent:method === 'GET', pinnedWorkspaceId:workspaceId, acceptedStatuses:[409,412]}, options));
+        if (workspaceId !== undefined) headers['X-Taxonomy-Workspace-Id'] = workspaceId == null ? '' : workspaceId;
+        return window.TaxonomyApiClient.request(url, {method:method, headers:headers, cache:'no-store'},
+            Object.assign({idempotent:method === 'GET', selectedRepository:source === undefined,
+                pinnedWorkspaceId:workspaceId, acceptedStatuses:[409,412]}, options));
     }
 
-    function upsertRelation(sourceCode, relationType, targetCode, payload, headers) {
-        return domainRequest(commandUrl(sourceCode, relationType, targetCode), {
-            method: 'PUT',
-            headers: headers,
-            body: JSON.stringify(payload)
+    function upsertRelation(sourceCode, relationType, targetCode, payload, headers, source) {
+        return commandRequest(sourceCode, relationType, targetCode, source, {
+            method: 'PUT', headers: headers, body: JSON.stringify(payload)
         });
     }
 
-    function deleteRelation(sourceCode, relationType, targetCode, headers) {
-        return domainRequest(commandUrl(sourceCode, relationType, targetCode), {
-            method: 'DELETE',
-            headers: headers
-        });
+    function deleteRelation(sourceCode, relationType, targetCode, headers, source) {
+        return commandRequest(sourceCode, relationType, targetCode, source, {method: 'DELETE', headers: headers});
     }
 
-    function commandUrl(sourceCode, relationType, targetCode) {
-        return '/api/architecture/relations/'
-            + encodeURIComponent(sourceCode) + '/'
-            + encodeURIComponent(relationType) + '/'
-            + encodeURIComponent(targetCode);
+    function commandRequest(sourceCode, relationType, targetCode, source, init) {
+        var path = '/api/architecture/relations/' + encodeURIComponent(sourceCode) + '/'
+            + encodeURIComponent(relationType) + '/' + encodeURIComponent(targetCode);
+        if (!source) return domainRequest(path, init, {selectedRepository:true});
+        var target = new URLSearchParams({repositoryId:source.repositoryId, workspaceId:source.workspaceId, branch:source.branch});
+        return domainRequest(path + '?' + target, init, {pinnedWorkspaceId:source.workspaceId});
     }
 
     return {
         createLegacy: function (payload) { return domainRequest('/api/relations', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); },
         deleteLegacy: function (id) { return domainRequest('/api/relations/' + encodeURIComponent(id), {method:'DELETE'}); },
         impact: function (payload) { return domainRequest('/api/graph/impact', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); },
-        coverageStatistics: function () { return domainRequest('/api/coverage/statistics'); },
-        nodeCoverage: function (code) { return domainRequest('/api/coverage/node/' + encodeURIComponent(code)); },
-        recordCoverage: function (payload) { return domainRequest('/api/coverage/record', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); },
+        coverageSource: coverageSource,
+        coverageStatistics: function () { return coverageRequest('/api/coverage/statistics'); },
+        nodeCoverage: function (code, source) { return coverageRequest('/api/coverage/node/' + encodeURIComponent(code), source); },
+        recordCoverage: function (payload, source) { return coverageRequest('/api/coverage/record', source, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); },
         readQualityDashboard: readQualityDashboard,
         readSnapshot: readSnapshot,
         readProjectionReadiness: readProjectionReadiness,

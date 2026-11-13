@@ -44,8 +44,15 @@ class BranchGraphVectorAuthority {
     @Transactional(propagation = Propagation.MANDATORY)
     void verifyPublication(RepositoryContext context, BranchGraphVectorSource expected) {
         var locked = catalogue.lockForCapture();
-        if (locked == null || !expected.catalogueRevision().equals(locked.id())
-                || !expected.equals(capture(context).source())) throw new SearchUnavailableException();
+        requireHead(context, expected.commit());
+        try {
+            if (locked == null || !expected.catalogueRevision().equals(locked.id())
+                    || !expected.equals(capture(context).source())) throw new BranchGraphVectorStore.GenerationChanged();
+        } catch (SearchUnavailableException conflict) {
+            requireHead(context, expected.commit());
+            throw conflict;
+        }
+        requireHead(context, expected.commit());
     }
 
     @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)

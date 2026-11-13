@@ -30,6 +30,7 @@ class ModuleOwnedTestPlacementTest {
             "workspace/service/WorkspaceDataIsolationTest.java",
             // Runs the app-owned restore migration and the live Testcontainers vendor matrix.
             "workspace/service/WorkspaceFetchDatabaseContractTest.java",
+            "workspace/service/WorkspacePublicationDatabaseContractTest.java",
             "workspace/service/WorkspaceProvisioningClaimIT.java",
             "workspace/service/WorkspaceRestartSelectionIT.java",
             "workspace/storage/DslWorkspaceReadAdapterTest.java",
@@ -37,6 +38,10 @@ class ModuleOwnedTestPlacementTest {
             "workspace/storage/JgitStorageHibernateIntegrationTest.java",
             "workspace/storage/JgitStorageOracleMigrationIT.java",
             "workspace/storage/JgitStoragePostgresMigrationIT.java",
+            // The application owns the restore migration and runs these contracts on its supported databases.
+            "versioning/service/HistoryIndexDatabaseContract.java",
+            "versioning/service/HistoryIndexMaintenanceTest.java",
+            "versioning/service/HistoryIndexWriterContractTest.java",
             "versioning/controller/ContextNavigationControllerTest.java",
             "versioning/controller/GitStateControllerTest.java",
             "versioning/controller/ViewContextIntegrationTest.java");

@@ -78,7 +78,7 @@ public class ProjectPortfolioController {
     @Operation(summary = "List projects in the current workspace",
             description = "Lists projects visible to the authenticated user in the current workspace. Repository or workspace identifiers from another context do not expand the result.")
     public List<ProjectView> listProjects() {
-        RequestScope scope = scope();
+        RequestScope scope = readScope();
         return projectService.listProjects(scope.username(), scope.context());
     }
 
@@ -86,7 +86,7 @@ public class ProjectPortfolioController {
     @Operation(summary = "Read one project",
             description = "Reads one project after validating visibility in the authenticated workspace. This read does not create a project or provision analysis work.")
     public ProjectView getProject(@PathVariable Long projectId) {
-        RequestScope scope = scope();
+        RequestScope scope = readScope();
         return projectService.getProject(projectId, scope.username(), scope.context());
     }
 
@@ -146,7 +146,7 @@ public class ProjectPortfolioController {
     @Operation(summary = "List project requirements",
             description = "Lists requirements belonging to the authorized project in the current workspace. Returns recorded requirement state without starting analysis.")
     public List<RequirementView> listRequirements(@PathVariable Long projectId) {
-        RequestScope scope = scope();
+        RequestScope scope = readScope();
         return projectService.listRequirements(projectId, scope.username(), scope.context());
     }
 
@@ -155,7 +155,7 @@ public class ProjectPortfolioController {
             description = "Reads the specified requirement only within its authorized project and workspace, including the current recorded version information. Does not recalculate analysis results.")
     public RequirementView getRequirement(@PathVariable Long projectId,
                                           @PathVariable Long requirementId) {
-        RequestScope scope = scope();
+        RequestScope scope = readScope();
         return projectService.getRequirement(
                 projectId, requirementId, scope.username(), scope.context());
     }
@@ -193,7 +193,7 @@ public class ProjectPortfolioController {
     public List<RequirementVersionView> listRequirementVersions(
             @PathVariable Long projectId,
             @PathVariable Long requirementId) {
-        RequestScope scope = scope();
+        RequestScope scope = readScope();
         return projectService.listRequirementVersions(
                 projectId, requirementId, scope.username(), scope.context());
     }
@@ -224,6 +224,10 @@ public class ProjectPortfolioController {
 
     private static int length(String value) {
         return value != null ? value.length() : 0;
+    }
+
+    private RequestScope readScope() {
+        return new RequestScope(workspaceResolver.resolveCurrentUsername(), workspaceResolver.resolveUnambiguousContextForRead());
     }
 
     private RequestScope scope() {

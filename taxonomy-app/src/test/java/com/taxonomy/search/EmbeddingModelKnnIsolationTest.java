@@ -247,6 +247,7 @@ class EmbeddingModelKnnIsolationTest {
     void similarNodesReturnsMatchingModelDespiteCloserIncompatibleVectors() {
         assertThat(embeddings.findSimilarNodes(QUERY_NODE, 1))
                 .extracting(TaxonomyNodeDto::getCode).containsExactly(CURRENT_NODE);
+        assertThat(embeddings.lastSimilarInput).isEqualTo("Query source.");
     }
 
     @Test
@@ -440,6 +441,7 @@ class EmbeddingModelKnnIsolationTest {
         // can share this fixture service without changing an in-flight document's authored tag.
         private final ThreadLocal<String> documentKey = new ThreadLocal<>();
         private Runnable onQuery = () -> {};
+        private String lastSimilarInput;
 
         @Override public boolean isEnabled() { return true; }
         @Override public boolean isAvailable() { return true; }
@@ -453,7 +455,10 @@ class EmbeddingModelKnnIsolationTest {
 
         @Override
         public float[] embedDocument(String text) {
-            if (!indexing) return vector(1, 0);
+            if (!indexing) {
+                lastSimilarInput = text;
+                return vector(1, 0);
+            }
             if (text.contains("foreign relation")) {
                 documentKey.set(CURRENT_KEY);
                 return vector(1, 0);

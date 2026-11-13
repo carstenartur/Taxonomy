@@ -206,6 +206,17 @@ public class RepositoryMembershipService {
                 .orElse(false);
     }
 
+    /** The publishing caller holds the catalogue lock. Read memberships in a fresh transaction. */
+    @Transactional(readOnly = true, propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public boolean canPublishLockedSource(SystemRepository source, String username) {
+        return canRead(source, username) && canContribute(source, username);
+    }
+
+    @Transactional(readOnly = true, propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public boolean canCollaborateOnLockedSource(SystemRepository source, String username) {
+        return canCollaborate(source, username);
+    }
+
     public boolean canMaintain(SystemRepository repository, String username) {
         return isActive(repository)
                 && effectiveRole(repository, username)

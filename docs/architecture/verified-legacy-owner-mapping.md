@@ -65,3 +65,16 @@ approvals in EXT-02. Stop all LEGACY writers, inventory and migrate the real
 installation, verify the full username-key audit and all retained actors, and
 collect restart/multi-instance evidence before any authorized mode switch.
 Issue #785 remains open.
+
+## Reserving owners written after the initial migration
+
+A current administrator can use `GET /api/admin/users/ownership-reservations?limit=100` to read the inventory, the total number of unresolved disabled reservations, and a page of up to 256 records. The response uses `Cache-Control: no-store`. The inventory includes owners of analysis continuations, clustered analysis runs and per-branch workspace synchronization records.
+
+After quiescing LEGACY writers, `POST /api/admin/users/ownership-reservations` reserves each observed, previously unregistered ownership scope. The response reports the number created. Each new principal is disabled and has no identity bindings or grants. The transaction records the authenticated administrator and reserved principal in the existing audit table. A repeated call returns zero when there are no additional owners. Conflicting scope spellings or more than 4,096 new reservations abort the transaction. The normal administrator permission and browser-session CSRF rules apply.
+
+Read the preview again before preparing a mapping plan. An installation with unverified reservations still fails the STABLE readiness check. Activating a real owner binding requires separate operator verification of its exact issuer and subject under EXT-02.
+
+Administrators can inspect the same bounded inventory in German or English under
+**Administration → Historical ownership** (`/admin/identity/ownership`). Opening
+the page reads the current inventory and up to 100 unresolved reservations.
+The reservation and operator-verified mapping procedures remain separate.

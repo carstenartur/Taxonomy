@@ -278,6 +278,8 @@ The selected repository, workspace and branch must have a complete relation proj
 
 `GET /api/architecture/relations/projection/vectors` returns the selected generation, source commit, model key, native counts and current state. Search returns HTTP 503 when the current scope lacks a complete matching generation. A changed commit, relation set, catalogue revision, model or text configuration requires a rebuild. Retry the rebuild after an interrupted build. `DELETE /api/architecture/relations/projection/vectors` with the same commit precondition purges only the selected branch and fences builders that started earlier.
 
+Readiness, relation rebuild and vector operations accept the same explicit `repositoryId`, `workspaceId` and `branch` selectors. Pass an empty `workspaceId` for a central branch. Ambiguous central selections and inconsistent workspace/branch pins return HTTP 409 before projection work. Vector status and rebuild responses also identify the repository, workspace and branch in the response headers.
+
 ### Index recovery
 
 Do not delete `/app/data/lucene-index/*` expecting an automatic full rebuild.

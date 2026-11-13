@@ -62,7 +62,7 @@ public class SearchApiController {
         ResponseEntity<List<TaxonomyNodeDto>> guard = checkInitialized();
         if (guard != null) return guard;
         if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();
-        return ResponseEntity.ok(searchFacade.fullTextSearch(q, maxResults));
+        return referenceResults(searchFacade.fullTextSearch(q, maxResults));
     }
 
     @Operation(summary = "Semantic search", description = "Search taxonomy nodes using embedding similarity (KNN). Requires a ready local embedding index.", tags = {"Search"})
@@ -75,7 +75,7 @@ public class SearchApiController {
         if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();
         guard = checkSemanticReady();
         if (guard != null) return guard;
-        return ResponseEntity.ok(searchFacade.semanticSearch(q, maxResults));
+        return referenceResults(searchFacade.semanticSearch(q, maxResults));
     }
 
     @Operation(summary = "Hybrid search", description = "Combines full-text Lucene and semantic KNN results via Reciprocal Rank Fusion. Falls back to full-text only when embedding is unavailable.", tags = {"Search"})
@@ -86,7 +86,7 @@ public class SearchApiController {
         ResponseEntity<List<TaxonomyNodeDto>> guard = checkInitialized();
         if (guard != null) return guard;
         if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();
-        return ResponseEntity.ok(searchFacade.hybridSearch(q, maxResults));
+        return referenceResults(searchFacade.hybridSearch(q, maxResults));
     }
 
     @Operation(summary = "Find similar nodes", description = "Find taxonomy nodes semantically similar to a given node", tags = {"Search"})
@@ -98,7 +98,14 @@ public class SearchApiController {
         if (guard != null) return guard;
         guard = checkSemanticReady();
         if (guard != null) return guard;
-        return ResponseEntity.ok(searchFacade.findSimilarNodes(code, topK));
+        return referenceResults(searchFacade.findSimilarNodes(code, topK));
+    }
+
+    private ResponseEntity<List<TaxonomyNodeDto>> referenceResults(List<TaxonomyNodeDto> rows) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .header("X-Taxonomy-Source-Scope", "GLOBAL_REFERENCE")
+                .header("X-Taxonomy-Source-State", "READY")
+                .eTag("W/\"" + StableIdentityHash.sha256(json.writeValueAsString(rows)) + "\"").body(rows);
     }
 
     @Operation(summary = "Embedding model status", description = "Returns model and semantic-index readiness independently", tags = {"Embedding"})

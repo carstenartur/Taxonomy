@@ -48,7 +48,8 @@ public class WorkspaceUpstreamController {
     public ResponseEntity<WorkspaceUpstreamService.Status> fetch(@RequestBody WorkspaceUpstreamService.Request request,
             @RequestHeader(name = "Idempotency-Key", required = false) String key,
             @RequestHeader(name = "X-Causation-Id", required = false) String cause) throws IOException {
-        return response(recovery.fetch(resolver.resolveCurrentRepositoryContextForRead(), request, key, cause));
+        var receipt = recovery.fetch(resolver.resolveCurrentRepositoryContextForRead(), request, key, cause);
+        return response(receipt.operationId(), receipt.result());
     }
 
     @GetMapping("/operations/{id}")
@@ -59,8 +60,9 @@ public class WorkspaceUpstreamController {
 
     @PostMapping("/operations/{id}/retry")
     @Operation(summary = "Retry the original working-copy fetch", description = "Claims a retryable fetch and reconciles its recorded source and expected tracking commit with current authorization.")
-    public ResponseEntity<WorkspaceUpstreamService.Status> retry(@PathVariable String id) throws IOException {
-        return response(recovery.retry(resolver.resolveCurrentRepositoryContextForRead(), id));
+    public ResponseEntity<?> retry(@PathVariable String id) throws IOException {
+        var receipt = recovery.retry(resolver.resolveCurrentRepositoryContextForRead(), id);
+        return response(receipt.operationId(), receipt.response());
     }
 
     @DeleteMapping("/operations/{id}")
@@ -69,9 +71,9 @@ public class WorkspaceUpstreamController {
         return recovery.archive(resolver.resolveCurrentRepositoryContextForRead(), id);
     }
 
-    private ResponseEntity<WorkspaceUpstreamService.Status> response(WorkspaceFetchRecovery.Receipt receipt) {
-        return ResponseEntity.status(receipt.result() == null ? HttpStatus.ACCEPTED : HttpStatus.OK)
-                .header("X-Operation-Id", receipt.operationId()).body(receipt.result());
+    private static <T> ResponseEntity<T> response(String id, T body) {
+        return ResponseEntity.status(body == null ? HttpStatus.ACCEPTED : HttpStatus.OK)
+                .header("X-Operation-Id", id).body(body);
     }
 
     @GetMapping("/tag")
@@ -84,8 +86,11 @@ public class WorkspaceUpstreamController {
     @PostMapping("/fetch-tag")
     @Operation(summary = "Import one selected upstream tag",
             description = "Copies the selected lightweight or annotated Git tag at the confirmed identity. A conflicting local tag is preserved.")
-    public WorkspaceUpstreamService.TagStatus fetchTag(@RequestBody WorkspaceUpstreamService.TagRequest request) throws IOException {
-        return upstream.fetchTag(resolver.resolveCurrentRepositoryContextForRead(), request);
+    public ResponseEntity<WorkspaceUpstreamService.TagStatus> fetchTag(@RequestBody WorkspaceUpstreamService.TagRequest request,
+            @RequestHeader(name = "Idempotency-Key", required = false) String key,
+            @RequestHeader(name = "X-Causation-Id", required = false) String cause) throws IOException {
+        var receipt = recovery.fetchTag(resolver.resolveCurrentRepositoryContextForRead(), request, key, cause);
+        return response(receipt.operationId(), receipt.tag());
     }
 
     @ExceptionHandler(BranchHeadConflictException.class)

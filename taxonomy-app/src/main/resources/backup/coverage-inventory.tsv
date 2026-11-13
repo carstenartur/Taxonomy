@@ -70,6 +70,9 @@ com.taxonomy.portfolio.reformulation.ReformulationUsageSession	portfolio	PORTABL
 com.taxonomy.editor.persistence.EditorCheckpoint	workspace	PORTABLE_PRIMARY	History profile includes full records; stand export only selected current content/provenance, never inverse/old payloads
 com.taxonomy.editor.persistence.EditorOperation	workspace	PORTABLE_PRIMARY	History profile includes full records; stand export only selected current content/provenance, never inverse/old payloads
 com.taxonomy.editor.persistence.EditorWorkspace	workspace	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.versioning.service.HistoryIndexOperationRow	workspace	PORTABLE_PRIMARY	Scoped command, originating principal, source and outcome; historical evidence only on isolated restore
+com.taxonomy.versioning.service.HistoryIndexDecisionRow	workspace	PORTABLE_PRIMARY	Retain the original append-only claim, denial, completion and archive observations
+com.taxonomy.versioning.service.HistoryIndexPurgeTarget	workspace	TRANSIENT	Physical row identities for the original installation only; never restore a pending deletion
 com.taxonomy.versioning.model.ArchitectureCommitIndex	workspace	PORTABLE_PRIMARY	Retain commit index until complete reconstruction for all retained contexts is proven; Lucene remains rebuildable
 com.taxonomy.versioning.model.ContextHistoryRecord	workspace	PORTABLE_PRIMARY	History profile includes full records; stand export only selected current content/provenance, never inverse/old payloads
 com.taxonomy.workspace.model.RepositoryMembership	workspace	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
@@ -79,7 +82,10 @@ com.taxonomy.workspace.model.GitReflogProvenanceRecord	workspace	PORTABLE_PRIMAR
 com.taxonomy.workspace.model.SystemRepository	workspace	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.workspace.model.UserWorkspace	workspace	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.workspace.model.WorkspaceProjection	workspace	REBUILDABLE	Rebuild workspace projection from captured DSL and Git; old readiness is invalid
+com.taxonomy.workspace.service.CentralFetchOperation	workspace	PORTABLE_PRIMARY	Central fork transfers and selected tags retain scoped history; an isolated restore imports no lease or credentials
 com.taxonomy.workspace.service.WorkspaceFetchOperation	workspace	PORTABLE_PRIMARY	Exact scoped fetch authority and status; restore active attempts as interrupted without a dispatch lease
+com.taxonomy.workspace.service.WorkspacePublicationDecision	workspace	PORTABLE_PRIMARY	Append-only source decisions retain original actors and executors in isolated history evidence
+com.taxonomy.workspace.service.WorkspacePublicationOperation	workspace	PORTABLE_PRIMARY	Workspace-owned publication journal and Git observations are retained without live authorization bindings, leases or cleanup schedules
 storage.jgit.objects-refs-reflogs	workspace	GIT_PRIMARY	All logical repositories via Git objects/refs plus explicit reflog records; never duplicate physical pack tables
 storage.git.preferences	application	GIT_PRIMARY	Current sanitized preferences or full authorized history; credentials excluded by default
 storage.git.document-templates	templates	GIT_PRIMARY	Template manifests and all OOXML/blob parts from document-template Git repository

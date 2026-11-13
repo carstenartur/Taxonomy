@@ -48,12 +48,12 @@ class RelationApiControllerRepositoryScopeTest {
                 ReadinessState.READY,
                 "a".repeat(40),
                 List.of(relation));
-        when(workspaceResolver.resolveCurrentRepositoryContext())
+        when(workspaceResolver.resolveUnambiguousRepositoryForRead())
                 .thenReturn(context);
         when(relationReadService.readAll(context)).thenReturn(result);
 
         ResponseEntity<List<TaxonomyRelationDto>> response =
-                controller.getRelations(null);
+                controller.getRelations(null, null);
 
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getBody()).containsExactly(relation);
@@ -67,6 +67,9 @@ class RelationApiControllerRepositoryScopeTest {
                 .isEqualTo("READY");
         assertThat(response.getHeaders().getFirst(HttpHeaders.CACHE_CONTROL))
                 .isEqualTo("no-store");
+        assertThat(response.getHeaders().getFirst("X-Taxonomy-Repository")).isEqualTo("repo-b");
+        assertThat(response.getHeaders().getFirst("X-Taxonomy-Branch")).isEqualTo("main");
+        assertThat(response.getHeaders().getFirst("X-Taxonomy-Workspace-Id")).isEmpty();
         verify(relationReadService).readAll(context);
     }
 
@@ -79,16 +82,16 @@ class RelationApiControllerRepositoryScopeTest {
                 ReadinessState.READY,
                 "b".repeat(40),
                 List.of());
-        when(workspaceResolver.resolveCurrentRepositoryContext())
+        when(workspaceResolver.resolveUnambiguousRepositoryForRead())
                 .thenReturn(context);
         when(relationReadService.readByType(
                 context, RelationType.SUPPORTS)).thenReturn(result);
         when(relationReadService.readForNode(context, "BP"))
                 .thenReturn(result);
 
-        assertThat(controller.getRelations("supports").getStatusCode().value())
+        assertThat(controller.getRelations("supports", null).getStatusCode().value())
                 .isEqualTo(200);
-        assertThat(controller.getRelationsForNode("BP")
+        assertThat(controller.getRelationsForNode("BP", null)
                 .getStatusCode().value()).isEqualTo(200);
 
         verify(relationReadService).readByType(
@@ -100,7 +103,7 @@ class RelationApiControllerRepositoryScopeTest {
     void unsafeProjectionReturnsConflictAndActualPendingRecoveryCount() {
         RepositoryContext context = RepositoryContext.workspace(
                 "repo-b", "workspace-b1", "feature/b1", "alice");
-        when(workspaceResolver.resolveCurrentRepositoryContext())
+        when(workspaceResolver.resolveUnambiguousRepositoryForRead())
                 .thenReturn(context);
         when(relationReadService.readAll(context)).thenThrow(
                 new RelationProjectionUnavailableException(
@@ -111,7 +114,7 @@ class RelationApiControllerRepositoryScopeTest {
                         2));
 
         ResponseEntity<List<TaxonomyRelationDto>> response =
-                controller.getRelations(null);
+                controller.getRelations(null, null);
 
         assertThat(response.getStatusCode().value()).isEqualTo(409);
         assertThat(response.getHeaders().getFirst(
@@ -128,7 +131,7 @@ class RelationApiControllerRepositoryScopeTest {
     void unsafeProjectionWithoutPendingRecoveryOmitsRecoveryHeader() {
         RepositoryContext context = RepositoryContext.workspace(
                 "repo-b", "workspace-b1", "feature/b1", "alice");
-        when(workspaceResolver.resolveCurrentRepositoryContext())
+        when(workspaceResolver.resolveUnambiguousRepositoryForRead())
                 .thenReturn(context);
         when(relationReadService.readAll(context)).thenThrow(
                 new RelationProjectionUnavailableException(
@@ -139,7 +142,7 @@ class RelationApiControllerRepositoryScopeTest {
                         0));
 
         ResponseEntity<List<TaxonomyRelationDto>> response =
-                controller.getRelations(null);
+                controller.getRelations(null, null);
 
         assertThat(response.getStatusCode().value()).isEqualTo(409);
         assertThat(response.getHeaders().getFirst(
@@ -155,11 +158,11 @@ class RelationApiControllerRepositoryScopeTest {
                 ReadinessState.NOT_BUILT,
                 "e".repeat(40),
                 2L);
-        when(workspaceResolver.resolveCurrentRepositoryContext())
+        when(workspaceResolver.resolveUnambiguousRepositoryForRead())
                 .thenReturn(context);
         when(relationReadService.count(context)).thenReturn(result);
 
-        ResponseEntity<Map<String, Long>> response = controller.countRelations();
+        ResponseEntity<Map<String, Long>> response = controller.countRelations(null);
 
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getBody()).containsEntry("count", 2L);
@@ -169,6 +172,27 @@ class RelationApiControllerRepositoryScopeTest {
         assertThat(response.getHeaders().getETag())
                 .isEqualTo("\"" + "e".repeat(40) + "\"");
         verify(relationReadService).count(context);
+    }
+
+    @Test
+    void listNodeAndCountRejectPinsFromBeforeTheSelectedBranchMoved() {
+        var context = RepositoryContext.workspace("repo", "A2", "draft", "alice");
+        String head = "a".repeat(40);
+        String old = "b".repeat(40);
+        var result = new ReadResult(ReadModel.PROJECTION, ReadinessState.READY, head, List.of());
+        when(workspaceResolver.resolveUnambiguousRepositoryForRead()).thenReturn(context);
+        when(relationReadService.readAll(context)).thenReturn(result);
+        when(relationReadService.readForNode(context, "BP")).thenReturn(result);
+        when(relationReadService.count(context)).thenReturn(new CountResult(ReadModel.PROJECTION, ReadinessState.READY, head, 2));
+        for (var response : List.of(controller.getRelations(null, old), controller.getRelationsForNode("BP", old), controller.countRelations(old))) {
+            assertThat(response.getStatusCode().value()).isEqualTo(409);
+            assertThat(response.getBody()).isNull();
+            assertThat(response.getHeaders().getFirst(RelationApiController.PROJECTION_STATE_HEADER)).isEqualTo("STALE");
+            assertThat(response.getHeaders().getFirst("X-Taxonomy-Workspace-Id")).isEqualTo("A2");
+            assertThat(response.getHeaders().getFirst("X-Taxonomy-Commit")).isEqualTo(head);
+        }
+        assertThat(controller.getRelations(null, "not-a-commit").getStatusCode().value()).isEqualTo(400);
+        assertThat(controller.getRelations(null, head).getStatusCode().value()).isEqualTo(200);
     }
 
     @Test

@@ -34,6 +34,29 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 abstract class AbstractExternalDatabaseContainerIT extends AbstractDatabaseContainerIT {
     protected abstract JdbcDatabaseContainer<?> getDatabaseContainer();
 
+    @Override
+    protected String publicationEvidence(String workspace) {
+        var database = getDatabaseContainer();
+        var source = new DriverManagerDataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword());
+        var jdbc = new JdbcTemplate(source);
+        jdbc.setMaxRows(25);
+        var operations = jdbc.query("""
+                select phase, operation_step, attempts, decision_code from workspace_publication_operation
+                where workspace_id=? order by created_at, operation_id
+                """, (row, index) -> row.getString(1) + "/" + row.getString(2)
+                + " attempts=" + row.getInt(3) + " decision=" + row.getString(4), workspace);
+        var trail = jdbc.query("""
+                select d.phase_code, d.decision_code from workspace_publication_decision d
+                join workspace_publication_operation p on p.operation_id=d.operation_id
+                where p.workspace_id=? order by d.id
+                """, (row, index) -> row.getString(1) + "/" + row.getString(2), workspace);
+        var sqlStates = java.util.regex.Pattern.compile("HHH000247: ErrorCode: -?[0-9]+, SQLState: [A-Z0-9]{5}\\b")
+                .matcher(getAppContainer().getLogs()).results().map(java.util.regex.MatchResult::group)
+                .distinct().limit(12).toList();
+        return "Publication phases for the tested working copy: " + operations + ", decisions: " + trail
+                + ", SQL diagnostic codes from the test container: " + sqlStates;
+    }
+
     @Test
     void currentLocalAdministratorCanPreviewLegacyOwnersOnTheDeployedSchema() {
         var database = getDatabaseContainer();
@@ -114,6 +137,14 @@ abstract class AbstractExternalDatabaseContainerIT extends AbstractDatabaseConta
         try (var db = clusterContract()) { db.durableDocumentAdapterRetainsItsNativeResultAndFencesLateCompletion(); }
     }
 
+    @Test
+    void historyIndexClaimsAndPinnedPurgeReceiptsSurviveIndependentApplicationHandles() throws Exception {
+        var database = getDatabaseContainer();
+        var data = new DriverManagerDataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword());
+        com.taxonomy.versioning.service.HistoryIndexDatabaseContract.independentWorkers(data);
+        com.taxonomy.versioning.service.HistoryIndexWriterContractTest.verify(data, false);
+    }
+
     @Test @Order(26)
     void workingCopyFetchClaimsAndScopedReceiptsSurviveIndependentApplicationHandles() throws Exception {
         var database = getDatabaseContainer();
@@ -126,6 +157,13 @@ abstract class AbstractExternalDatabaseContainerIT extends AbstractDatabaseConta
         var database = getDatabaseContainer();
         var source = new DriverManagerDataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword());
         WorkspaceBranchProgressDatabaseContractTest.verify(source);
+    }
+
+    @Test @Order(28)
+    void publicationSurvivesIndependentDatabaseSessionsAndFencesDeletedSources() throws Exception {
+        var database=getDatabaseContainer();
+        com.taxonomy.workspace.service.WorkspacePublicationDatabaseContractTest.verify(new DriverManagerDataSource(
+                database.getJdbcUrl(),database.getUsername(),database.getPassword()));
     }
 
     @Test @Order(24)

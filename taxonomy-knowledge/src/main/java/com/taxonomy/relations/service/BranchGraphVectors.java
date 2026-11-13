@@ -59,11 +59,26 @@ public class BranchGraphVectors {
     }
 
     public Status rebuild(RepositoryContext context, String expectedCommit) {
+        return rebuild(context, expectedCommit, null, null, null, () -> {});
+    }
+
+    Status rebuild(RepositoryContext context, String expectedCommit, String acceptedSource,
+                   String originalGeneration, String operationGeneration, Runnable authorize) {
         authority.requireHead(context, expectedCommit);
         var capture = authority.capture(context);
         var source = capture.source();
         if (!source.commit().equals(expectedCommit)) throw new RelationProjectionOperationsService.RebuildHeadConflictException(expectedCommit, source.commit());
-        String token = store.begin(context, source, capture.modelIdentity());
+        if (acceptedSource != null && !acceptedSource.equals(source.key())) throw new BranchGraphVectorStore.GenerationChanged();
+        String token = operationGeneration == null ? store.begin(context, source, capture.modelIdentity())
+                : store.beginCaptured(context, source, capture.modelIdentity(), operationGeneration, originalGeneration);
+        if (operationGeneration != null) {
+            var retained = store.status(context, source);
+            if (retained.state() == BranchGraphVectorStore.State.READY && token.equals(retained.generation())) {
+                var verified = inspect(context);
+                if (!"READY".equals(verified.state()) || !token.equals(verified.generation())) throw new BranchGraphVectorStore.GenerationChanged();
+                return verified;
+            }
+        }
         try {
             var selection = new CatalogueSourceIdentity(context.repositoryId(), context.workspaceId(), context.branch(), expectedCommit);
             var rootCodes = capture.definition().rootCodes();
@@ -88,11 +103,19 @@ public class BranchGraphVectors {
                     builder.relation(from.code(), to.code(), from.taxonomyRoot(), relation.relationType().name(), text, embeddings.embedDocument(text));
                 }
                 var archive = builder.finish();
-                store.publish(context, source, token, archive, () -> authority.verifyPublication(context, source));
+                store.publish(context, source, token, archive, () -> {
+                    authority.verifyPublication(context, source);
+                    authorize.run();
+                });
             }
             var result = inspect(context);
             if (!"READY".equals(result.state()) || !token.equals(result.generation())) throw new SearchUnavailableException();
             return result;
+        } catch (RelationProjectionOperationsService.RebuildHeadConflictException | BranchGraphVectorStore.GenerationChanged
+                 | org.springframework.security.access.AccessDeniedException | org.springframework.security.core.AuthenticationException
+                 | com.taxonomy.workspace.service.WorkspaceFetchAuthority.FreshLoginRequired changed) {
+            store.fail(context, token);
+            throw changed;
         } catch (Exception failure) {
             store.fail(context, token);
             throw new SearchUnavailableException();
@@ -100,7 +123,9 @@ public class BranchGraphVectors {
     }
 
     public void purge(RepositoryContext context, String expectedCommit) {
-        store.purge(context, () -> authority.requireHead(context, expectedCommit));
+        authority.requireHead(context, expectedCommit);
+        String generation = store.currentGeneration(context);
+        store.purge(context, generation, () -> authority.requireHead(context, expectedCommit));
     }
 
     GraphSearchResult search(RepositoryContext context, String expectedCommit, String query, int nodeLimit, int relationLimit) throws Exception {

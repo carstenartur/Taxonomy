@@ -109,8 +109,10 @@ window.TaxonomyPortfolioApi = (function () {
 
     function reportUrl(projectId, format, parameters) {
         const query = new URLSearchParams(parameters || {}).toString();
-        return applicationUrl(projectPath(projectId) + '/reports/' + encodeURIComponent(String(format))
-            + (query ? '?' + query : ''));
+        const path = projectPath(projectId) + '/reports/' + encodeURIComponent(String(format))
+            + (query ? '?' + query : '');
+        const pinned = sourceRequest(path);
+        return pinned.url === path ? applicationUrl(path) : pinned.url;
     }
 
     function applicationUrl(path) {
@@ -388,20 +390,21 @@ window.TaxonomyPortfolioApi = (function () {
 
         // ── Portfolio Git and repository state ────────────────────────────────
         getGitState: function () {
-            return getJson('/api/git/state');
+            return getJson('/api/git/state', {scope: window.TaxonomyArchitectureWorkflow?.getScope?.()});
         },
         exportPortfolio: function () {
             return getJson('/api/projects/git/export');
         },
         previewMaterialization: function (branch) {
-            return getJson('/api/projects/git/materialize-preview?branch='
+            return getJson('/api/projects/git/materialize-preview?targetBranch='
                 + encodeURIComponent(String(branch || '')));
         },
         commitPortfolio: function (body) {
             return sendJson('/api/projects/git/commit', 'POST', body);
         },
         materializePortfolio: function (body) {
-            return sendJson('/api/projects/git/materialize', 'POST', body);
+            const target = body?.branch ? '?targetBranch=' + encodeURIComponent(body.branch) : '';
+            return sendJson('/api/projects/git/materialize' + target, 'POST', body);
         },
         mergePortfolio: function (body) {
             return sendJson('/api/projects/git/merge', 'POST', body);
