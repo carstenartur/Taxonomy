@@ -359,6 +359,8 @@ test('context polling and keyboard navigation retain focus on the active branch'
 
 test('changing the selected Git context clears previous sync state and actions before another response', async () => {
     const page = await fixture();
+    const index = await readFile(path.join(resources, 'templates/index.html'), 'utf8');
+    const fixedPull = page.locator('#fixedActionsFixture button[onclick="TaxonomyWorkspaceSync.syncFromShared()"]');
     const draft = {contextId:'a', branch:'draft-A', commitId:'aaaaaaaa', mode:'EDITABLE'};
     const snapshot = {contextId:'b', branch:'snapshot-B', commitId:'bbbbbbbb', mode:'READ_ONLY'};
     try {
@@ -366,6 +368,15 @@ test('changing the selected Git context clears previous sync state and actions b
             document.body.insertAdjacentHTML('beforeend', '<div id="contextBar"></div><div id="localChangesPanel"></div>');
             window.TaxonomyI18n.formatBranch = branch => branch;
         });
+        await page.evaluate(html => {
+            const template = new DOMParser().parseFromString(html, 'text/html');
+            const group = template.querySelector('#versions-sync button[onclick="TaxonomyWorkspaceSync.syncFromShared()"]').parentElement;
+            const section = document.createElement('div');
+            section.id = 'fixedActionsFixture';
+            section.append(document.importNode(group, true));
+            document.body.append(section);
+        }, index);
+        assert.equal(await fixedPull.isDisabled(), true, 'Wait for the first confirmed Git selection');
         await page.addScriptTag({path: path.join(resources, 'static/js/versioning/taxonomy-context-bar.js')});
         async function select(context) {
             await page.evaluate(() => { window.currentRead = TaxonomyContextBar.fetchAndRender('contextBar'); });
@@ -380,6 +391,7 @@ test('changing the selected Git context clears previous sync state and actions b
         await page.evaluate(() => TaxonomyWorkspaceSync.refresh());
         await syncResponse(page, {branch:draft.branch, syncStatus:'AHEAD', unpublishedCommitCount:3, lastSyncedCommitId:draft.commitId});
         await select(draft);
+        assert.equal(await fixedPull.isEnabled(), true);
         await page.locator('#contextBarPublish').focus();
         await page.evaluate(() => TaxonomyWorkspaceSync.refresh());
         await syncResponse(page, {branch:draft.branch, syncStatus:'AHEAD', unpublishedCommitCount:4});
@@ -398,7 +410,10 @@ test('changing the selected Git context clears previous sync state and actions b
             TaxonomyWorkspaceSync.showLocalChangesPanel();
             window.pendingPublication = TaxonomyWorkspaceSync.publish();
         });
+        await fixedPull.focus();
         await select(snapshot);
+        assert.equal(await fixedPull.isDisabled(), true, 'The fixed Sync tab must block writes at the same switch boundary');
+        assert.equal(await page.evaluate(() => document.activeElement.id), 'contextBarBranch');
         assert.equal(await page.evaluate(() => TaxonomyWorkspaceSync.getSyncState()), null);
         assert.equal(await page.locator('#contextBarPublish, #syncStatusIndicator, #localChangesPanel button').count(), 0);
         assert.equal(await page.locator('#syncStatePanel').innerText(), '');
@@ -430,6 +445,7 @@ test('changing the selected Git context clears previous sync state and actions b
         await syncResponse(page, {branch:draft.branch, syncStatus:'AHEAD', unpublishedCommitCount:2});
         await page.locator('#contextBarPublish').waitFor();
         assert.match(await page.locator('#syncStatePanel').innerText(), /2 unpublished/);
+        assert.equal(await fixedPull.isEnabled(), true);
 
         // ContextRef has no repository field. Pinned source navigation owns that identity.
         await page.evaluate(() => { window.TaxonomyArchitectureWorkflow = {getScope: () => ({repositoryId:'other-repo'})}; });

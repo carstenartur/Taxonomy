@@ -45,6 +45,12 @@ window.TaxonomyWorkspaceSync = (function () {
     }
 
     document.addEventListener('taxonomy:repository-context-changed', function (event) {
+        var actions = document.getElementById('workspaceSyncActions');
+        if (actions) {
+            var moveFocus = actions.contains(document.activeElement) && !editable();
+            actions.disabled = !editable();
+            if (moveFocus) document.getElementById('contextBarBranch')?.focus({preventScroll: true});
+        }
         if (!event.detail?.selectionChanged) return;
         syncState = null;
         document.getElementById('syncStatusIndicator')?.remove();
