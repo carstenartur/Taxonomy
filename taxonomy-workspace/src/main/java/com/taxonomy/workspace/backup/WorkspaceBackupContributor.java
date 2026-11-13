@@ -15,9 +15,11 @@ import static com.taxonomy.exchange.backup.PortableRows.*;
 
 /** Portable routing, ownership and durable editor schemas. No source storage names, credentials or live locks. */
 public final class WorkspaceBackupContributor implements BackupDataContributor {
+    private final DataSource database;
     private final PortableRows rows;
     private final BackupDocumentProjector projector;
     public WorkspaceBackupContributor(DataSource database, BackupDocumentProjector projector) {
+        this.database = database;
         rows = new PortableRows(database); this.projector = Objects.requireNonNull(projector);
     }
     @Override public BackupComponentId componentId() { return new BackupComponentId("workspace"); }
@@ -37,7 +39,6 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                     + repositories.sql() + " order by id", repositories.parameters()));
             queries.add(new Query("select source_repository_id as repository_id,workspace_id,workspace_id as linked_workspace_id,0 as repository_only,username as principal_scope from user_workspace where "
                     + workspaces.sql() + " order by workspace_id", workspaces.parameters()));
-            var publications = scope.repositories("p.repository_id", "p.workspace_id");
             var branchProgress = scope.repositories("repository_id", "workspace_id");
             queries.add(new Query("select repository_id,workspace_id,workspace_id as linked_workspace_id,0 as repository_only,"
                     + "username as principal_scope from workspace_branch_sync where " + branchProgress.sql()
@@ -67,7 +68,7 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                         + table + " h join editor_workspace w on w.scope_id=h.scope_id where " + history.sql() + " order by h.id", history.parameters()));
         }
         var captured = new HashSet<String>();
-        if (!scope.selectedVersion()) {
+        if (!scope.selectedVersion() && !StagedWorkspaceSchema.predatesPublications(database)) {
             var selected = scope.repositories("p.repository_id","p.workspace_id");
             String query = """
                     select p.repository_id,p.workspace_id,p.workspace_owner_scope,p.actor_scope,
@@ -191,6 +192,7 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                 r -> new ContextHistoryRecord(reference(r,"workspace.context-history","id"),text(r,"username"),text(r,"from_context_id"),text(r,"to_context_id"),text(r,"from_branch"),text(r,"to_branch"),text(r,"from_commit_id"),text(r,"to_commit_id"),text(r,"reason"),text(r,"origin_context_id"),instant(r,"created_at")));
     }
     private void writePublications(BackupRowScope scope, BackupProfile profile, ComponentSink sink) throws IOException {
+        if (!scope.selectedVersion() && StagedWorkspaceSchema.predatesPublications(database)) return;
         var selected = scope.repositories("p.repository_id", "p.workspace_id");
         String parent = profile == BackupProfile.INSTALLATION_FULL ? "left join" : "join";
         String workspace = " " + parent + " user_workspace w on w.workspace_id=p.workspace_id";

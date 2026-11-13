@@ -222,6 +222,7 @@ class WorkspaceGitHistoryReferencesTest {
             base.sql("create table workspace_publication_operation(operation_id varchar(64) primary key,repository_id varchar(255),workspace_id varchar(255),actor_scope varchar(255),workspace_owner_scope varchar(255),"
                     + "fork_point varchar(40),input_source varchar(40),input_local varchar(40),input_tracking varchar(40),"
                     + "expected_local varchar(40),expected_tracking varchar(40),prepared_source varchar(40),prepared_local varchar(40),prepared_tracking varchar(40))");
+            base.sql("create table workspace_publication_decision(id bigint primary key)");
             base.sql("create table workspace_branch_sync(scope_key varchar(64) primary key,repository_id varchar(255),workspace_id varchar(255),last_synced_commit_id varchar(40),last_published_commit_id varchar(40))");
             base.sql("create table sync_state(id bigint primary key,workspace_id varchar(255),last_synced_commit_id varchar(40),last_published_commit_id varchar(40))");
             base.sql("create table architecture_commit_index(id bigint primary key,repository_id varchar(255),workspace_id varchar(255),commit_id varchar(40))");
