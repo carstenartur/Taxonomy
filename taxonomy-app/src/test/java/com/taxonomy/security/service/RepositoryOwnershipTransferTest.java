@@ -124,6 +124,38 @@ class RepositoryOwnershipTransferTest {
         assertThat(role("bob")).isEqualTo("OWNER");
     }
 
+    @Test void aRenamedLocalAccountCannotReceiveUnusableCatalogueOwnership() {
+        var successor = identities.local(2);
+        jdbc.update("update app_user set username='alice-renamed' where id=2");
+        // The regular local login still returns the same UUID, with the account's current login name.
+        var login = new PrincipalUserDetails(identities.local(2).id(), "alice-renamed", "unused", true, List.of());
+        var acceptedLogin = UsernamePasswordAuthenticationToken.authenticated(login, null, List.of());
+        assertThatThrownBy(() -> identities.requireCurrent(acceptedLogin)).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThatThrownBy(() -> move(auth(1), successor.id(), revision)).isInstanceOf(ResponseStatusException.class);
+        assertThat(jdbc.queryForObject("select owner_id from system_repository",String.class)).isEqualTo("owner");
+        assertThat(jdbc.queryForObject("select count(*) from principal_access_audit",Integer.class)).isZero();
+    }
+
+    @Test void oneRemainingValidExternalLoginCanUseTheTransferredOwnership() {
+        var successor = identities.local(2);
+        jdbc.update("update app_user set username='alice-renamed' where id=2");
+        String issuer = "https://issuer.example.test";
+        for (String subject : List.of("old-subject", "current-subject")) {
+            var binding = new com.taxonomy.backup.IdentityBinding(com.taxonomy.backup.IdentityBinding.Kind.OIDC,issuer,subject);
+            jdbc.update("insert into principal_binding values (?, ?, 'OIDC', ?, ?, ?)",
+                    com.taxonomy.security.model.PrincipalBinding.key(binding),successor.id().value().toString(),issuer,subject,
+                    subject.equals("current-subject") ? 1 : 0);
+        }
+        assertThat(identities.oidc(issuer,"current-subject")).isEqualTo(successor);
+        var token = org.springframework.security.oauth2.jwt.Jwt.withTokenValue("test")
+                .header("alg","test").issuer(issuer).subject("current-subject").build();
+        var login = new com.taxonomy.security.keycloak.PrincipalJwtAuthenticationToken(token,List.of(),successor);
+        assertThat(identities.requireCurrent(login)).isEqualTo(successor.id());
+        var first = move(auth(1),successor.id(),revision);
+        var next = move(login,identities.local(3).id(),first.version());
+        assertThat(next.previousOwner()).isEqualTo(successor.id().value());
+    }
+
     @Test void aFailedAuditRollsBackTheCatalogueAndBothMembershipChanges() {
         jdbc.execute("alter table principal_access_audit add constraint fail_transfer check(decision_kind <> 'TRANSFER_REPOSITORY_OWNER')");
         assertThatThrownBy(() -> move(auth(1),identities.local(2).id(),revision)).isInstanceOf(org.springframework.dao.DataAccessException.class);

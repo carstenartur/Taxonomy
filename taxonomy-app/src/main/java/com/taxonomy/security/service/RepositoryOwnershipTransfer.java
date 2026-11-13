@@ -59,7 +59,7 @@ public class RepositoryOwnershipTransfer {
         var previous = identities.find(actor).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
         if (!scope.equals(previous.scopeKey())) throw new ResponseStatusException(HttpStatus.FORBIDDEN);
         if (actor.equals(target)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Select a different owner");
-        AppPrincipal successor = identities.find(target).filter(p -> identities.isEnabled(p.id()))
+        AppPrincipal successor = identities.find(target).filter(identities::hasCurrentLoginForScope)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "The target requires an active identity"));
         // Hold the authoritative identity rows until the ownership and audit transaction commits. An
         // unlink or account disable either precedes this decision or waits until the handoff is durable.
@@ -69,12 +69,12 @@ public class RepositoryOwnershipTransfer {
             jdbc.update("update app_user set enabled=enabled where principal_id=?", principal);
         }
         identities.requireCurrent(authentication);
-        if (!identities.isEnabled(target)) throw new ResponseStatusException(HttpStatus.CONFLICT, "The target is no longer active");
+        if (!identities.hasCurrentLoginForScope(successor)) throw new ResponseStatusException(HttpStatus.CONFLICT, "The target is no longer active");
         try {
             memberships.transferPersonalOwnership(repository, expectedVersion, scope, successor.scopeKey());
             repositories.saveAndFlush(repository);
             // Revalidate the exact initiating login and the successor after waiting for the catalogue fence.
-            if (!actor.equals(identities.requireCurrent(authentication)) || !identities.isEnabled(target)) {
+            if (!actor.equals(identities.requireCurrent(authentication)) || !identities.hasCurrentLoginForScope(successor)) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "A principal is no longer active");
             }
         } catch (OptimisticLockingFailureException conflict) {
