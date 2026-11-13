@@ -16,6 +16,7 @@ window.TaxonomyContextBar = (function () {
     var currentContext = null;
     var selectionGeneration = 0;
     var selectedWorkspace = null;
+    var selectedRepository = null;
     var pendingRead = null;
     var pendingResult = null;
     var pendingOwner = null;
@@ -50,11 +51,13 @@ window.TaxonomyContextBar = (function () {
 
     function acceptContext(context) {
         var workspace = workspaceId();
-        var changed = currentContext !== null && (workspace !== selectedWorkspace
+        var repository = window.TaxonomyArchitectureWorkflow?.getScope?.()?.repositoryId;
+        var changed = currentContext !== null && (workspace !== selectedWorkspace || repository !== selectedRepository
             || context.contextId !== currentContext.contextId || context.branch !== currentContext.branch
             || context.commitId !== currentContext.commitId || context.mode !== currentContext.mode);
         if (changed) selectionGeneration++;
         selectedWorkspace = workspace;
+        selectedRepository = repository;
         currentContext = context;
         document.dispatchEvent(new CustomEvent('taxonomy:repository-context-changed', {
             detail: {contextId: context.contextId, branch: context.branch,
@@ -236,22 +239,26 @@ window.TaxonomyContextBar = (function () {
         if (!window.TaxonomyWorkspaceSync) return;
 
         var state = window.TaxonomyWorkspaceSync.getSyncState();
-        if (!state) return;
-
-        var status = state.syncStatus || 'UP_TO_DATE';
+        var html = '';
+        var status = currentContext?.mode === 'READ_ONLY' ? null : state?.syncStatus;
         if (status === 'AHEAD' && state.unpublishedCommitCount > 0) {
-            el.innerHTML = '<button type="button" id="contextBarPublish" class="badge border-0 bg-info text-dark" style="font-size:0.72rem;" '
+            html = '<button type="button" id="contextBarPublish" class="badge border-0 bg-info text-dark" style="font-size:0.72rem;" '
                 + 'onclick="TaxonomyWorkspaceSync.publish()" title="' + escapeHtml(t('context.sync.unpublished.title')) + '">'
                 + '\uD83D\uDD04 ' + escapeHtml(t('context.sync.unpublished', state.unpublishedCommitCount)) + '</button>';
         } else if (status === 'BEHIND') {
-            el.innerHTML = '<button type="button" id="contextBarSync" class="badge border-0 bg-warning text-dark" style="font-size:0.72rem;" '
+            html = '<button type="button" id="contextBarSync" class="badge border-0 bg-warning text-dark" style="font-size:0.72rem;" '
                 + 'onclick="TaxonomyWorkspaceSync.syncFromShared()" title="' + escapeHtml(t('context.sync.behind.title')) + '">'
                 + '\u2B07 ' + escapeHtml(t('context.sync.behind')) + '</button>';
         } else if (status === 'DIVERGED') {
-            el.innerHTML = '<span class="badge bg-danger" style="font-size:0.72rem;">'
+            html = '<span class="badge bg-danger" style="font-size:0.72rem;">'
                 + '\u26A0 ' + escapeHtml(t('context.sync.diverged')) + '</span>';
-        } else {
-            el.innerHTML = '';
+        }
+        // Polls also refresh this element between full context-bar renders.
+        var focusedId = el.contains(document.activeElement) ? document.activeElement.id : null;
+        el.innerHTML = html;
+        if (focusedId) {
+            var target = document.getElementById(focusedId) || document.getElementById('contextBarBranch');
+            target?.focus({preventScroll: true});
         }
     }
 
@@ -417,6 +424,7 @@ window.TaxonomyContextBar = (function () {
         showCompareDialog: showCompareDialog,
         showTransferDialog: showTransferDialog,
         getCurrentContext: getCurrentContext,
+        updateSyncInfoInBar: updateSyncInfoInBar,
         getSelectionGeneration: function () { return selectionGeneration; }
     };
 }());

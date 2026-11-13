@@ -214,9 +214,9 @@ async function fixture() {
         window.statusReads = [];
         window.fetch = url => new Promise(resolve => {
             window.statusReads.push({url: String(url), pending: true,
-                answer(value) {
+                answer(value, status = 200) {
                     this.pending = false;
-                    resolve(new Response(JSON.stringify(value), {status: 200,
+                    resolve(new Response(JSON.stringify(value), {status,
                         headers: {'Content-Type': 'application/json'}}));
                 }});
         });
@@ -229,12 +229,12 @@ async function fixture() {
     return page;
 }
 
-async function answer(page, endpoint, value) {
-    await page.evaluate(({endpoint, value}) => {
+async function answer(page, endpoint, value, status = 200) {
+    await page.evaluate(({endpoint, value, status}) => {
         const request = window.statusReads.find(read => read.pending && read.url.split('?')[0] === endpoint);
         if (!request) throw new Error('Expected a pending production poll: ' + endpoint);
-        request.answer(value);
-    }, {endpoint, value});
+        request.answer(value, status);
+    }, {endpoint, value, status});
 }
 async function syncResponse(page, value = initial) {
     await answer(page, '/api/workspace/sync-state', value);
@@ -353,6 +353,92 @@ test('context polling and keyboard navigation retain focus on the active branch'
         await page.locator('#outside').focus();
         await refresh(origin);
         assert.equal(await page.evaluate(() => document.activeElement.id), 'outside');
+        assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+});
+
+test('changing the selected Git context clears previous sync state and actions before another response', async () => {
+    const page = await fixture();
+    const draft = {contextId:'a', branch:'draft-A', commitId:'aaaaaaaa', mode:'EDITABLE'};
+    const snapshot = {contextId:'b', branch:'snapshot-B', commitId:'bbbbbbbb', mode:'READ_ONLY'};
+    try {
+        await page.evaluate(() => {
+            document.body.insertAdjacentHTML('beforeend', '<div id="contextBar"></div><div id="localChangesPanel"></div>');
+            window.TaxonomyI18n.formatBranch = branch => branch;
+        });
+        await page.addScriptTag({path: path.join(resources, 'static/js/versioning/taxonomy-context-bar.js')});
+        async function select(context) {
+            await page.evaluate(() => { window.currentRead = TaxonomyContextBar.fetchAndRender('contextBar'); });
+            await answer(page, '/api/context/current', context);
+            await page.evaluate(() => window.currentRead);
+        }
+        async function settle() {
+            await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 0)));
+        }
+        await select(draft);
+        await answer(page, '/api/workspace/sync-state', initial);
+        await page.evaluate(() => TaxonomyWorkspaceSync.refresh());
+        await syncResponse(page, {branch:draft.branch, syncStatus:'AHEAD', unpublishedCommitCount:3, lastSyncedCommitId:draft.commitId});
+        await select(draft);
+        await page.locator('#contextBarPublish').focus();
+        await page.evaluate(() => TaxonomyWorkspaceSync.refresh());
+        await syncResponse(page, {branch:draft.branch, syncStatus:'AHEAD', unpublishedCommitCount:4});
+        assert.equal(await page.evaluate(() => document.activeElement.id), 'contextBarPublish');
+        await page.evaluate(() => TaxonomyWorkspaceSync.showLocalChangesPanel());
+        await answer(page, '/api/workspace/local-changes', {changeCount:3});
+        await page.locator('#localChangesPanel button.btn-primary').waitFor();
+
+        await page.evaluate(() => {
+            window.notices = [];
+            window.TaxonomyOperationResult = {
+                showError: (...args) => notices.push(args),
+                showWarning: (...args) => notices.push(args),
+                showSuccess: (...args) => notices.push(args)
+            };
+            TaxonomyWorkspaceSync.showLocalChangesPanel();
+            window.pendingPublication = TaxonomyWorkspaceSync.publish();
+        });
+        await select(snapshot);
+        assert.equal(await page.evaluate(() => TaxonomyWorkspaceSync.getSyncState()), null);
+        assert.equal(await page.locator('#contextBarPublish, #syncStatusIndicator, #localChangesPanel button').count(), 0);
+        assert.equal(await page.locator('#syncStatePanel').innerText(), '');
+        await answer(page, '/api/workspace/local-changes', {changeCount:19});
+        await answer(page, '/api/workspace/publish', {error:'previous draft', message:'previous draft'}, 409);
+        await page.evaluate(() => pendingPublication);
+        await settle();
+        assert.equal(await page.locator('#localChangesPanel').innerText(), '');
+        assert.deepEqual(await page.evaluate(() => notices), []);
+        await answer(page, '/api/workspace/sync-state', {message:'temporarily unavailable'}, 503);
+        await settle();
+        assert.equal(await page.locator('#contextBarPublish, #syncStatusIndicator').count(), 0);
+        await page.evaluate(() => TaxonomyWorkspaceSync.refresh());
+        // The workspace's current branch is still A when looking at B's historical state.
+        await answer(page, '/api/workspace/sync-state', {branch:draft.branch, syncStatus:'AHEAD', unpublishedCommitCount:3});
+        await settle();
+        assert.equal(await page.evaluate(() => TaxonomyWorkspaceSync.getSyncState()), null);
+
+        await page.evaluate(() => TaxonomyWorkspaceSync.refresh());
+        await syncResponse(page, {branch:snapshot.branch, syncStatus:'DIVERGED', unpublishedCommitCount:1});
+        await page.evaluate(() => { TaxonomyWorkspaceSync.publish(); TaxonomyWorkspaceSync.syncFromShared(); });
+        assert.equal(await page.locator('#syncStatePanel button, #contextBarPublish, #contextBarSync').count(), 0);
+        assert.deepEqual(await page.evaluate(() => statusReads.filter(read =>
+            /workspace\/(publish|sync-from-shared)/.test(read.url)).map(read => read.url)),
+            ['/api/workspace/publish?userBranch=draft-A']);
+
+        await select(draft);
+        assert.equal(await page.evaluate(() => TaxonomyWorkspaceSync.getSyncState()), null);
+        await syncResponse(page, {branch:draft.branch, syncStatus:'AHEAD', unpublishedCommitCount:2});
+        await page.locator('#contextBarPublish').waitFor();
+        assert.match(await page.locator('#syncStatePanel').innerText(), /2 unpublished/);
+
+        // ContextRef has no repository field. Pinned source navigation owns that identity.
+        await page.evaluate(() => { window.TaxonomyArchitectureWorkflow = {getScope: () => ({repositoryId:'other-repo'})}; });
+        await select(draft);
+        assert.equal(await page.evaluate(() => TaxonomyWorkspaceSync.getSyncState()), null);
+        await answer(page, '/api/workspace/sync-state', {repositoryId:'previous-repo', branch:draft.branch,
+            syncStatus:'AHEAD', unpublishedCommitCount:3});
+        await settle();
+        assert.equal(await page.locator('#contextBarPublish').count(), 0);
         assert.deepEqual(page.errors, []);
     } finally { await page.close(); }
 });
