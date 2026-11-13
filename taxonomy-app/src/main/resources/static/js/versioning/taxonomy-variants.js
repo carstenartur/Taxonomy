@@ -92,7 +92,7 @@ window.TaxonomyVariants = (function () {
                 html += '<button class="btn btn-outline-warning btn-sm" '
                     + 'onclick="TaxonomyVariants.mergeFrom(\'' + escapeAttr(branch) + '\')" title="' + escapeAttr(t('variants.integrate.title')) + '">'
                     + '\uD83D\uDD00 ' + escapeHtml(t('variants.integrate')) + '</button>';
-                if (branch !== 'main' && branch !== 'accepted') {
+                if (branch !== 'main' && branch !== 'accepted' && branch !== 'sync-base') {
                     html += '<button class="btn btn-outline-danger btn-sm" data-delete-variant="' + escapeAttr(branch)
                         + '" title="' + escapeAttr(t('variants.delete.title')) + '">'
                         + '\uD83D\uDDD1 ' + escapeHtml(t('variants.delete.btn')) + '</button>';

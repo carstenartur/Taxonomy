@@ -589,6 +589,13 @@ class DslGitRepositoryTest {
     }
 
     @Test
+    void cannotDeleteTheAcceptedSynchronizationBase() throws IOException {
+        String original = repo.commitDsl("sync-base", SAMPLE_DSL, "fixture", "Accepted shared baseline");
+        assertThrows(IllegalArgumentException.class, () -> repo.deleteBranch("sync-base", original, "fixture"));
+        assertEquals(original, repo.getHeadCommit("sync-base"));
+    }
+
+    @Test
     void deleteBranch_nonexistent() throws IOException {
         assertFalse(repo.deleteBranch("nonexistent"));
     }

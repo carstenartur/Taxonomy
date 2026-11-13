@@ -1034,6 +1034,11 @@ public class DslGitRepository implements AutoCloseable {
         return databaseBacked;
     }
 
+    /** These workflow refs are managed by sync/publication and cannot be removed as user variants. */
+    public static boolean isProtectedVariant(String name) {
+        return "draft".equals(name) || "accepted".equals(name) || "main".equals(name) || "sync-base".equals(name);
+    }
+
     /** Delete a non-protected branch and record a queryable reflog entry. */
     public boolean deleteBranch(String branchName) throws IOException {
         return deleteBranch(branchName, null, null);
@@ -1041,7 +1046,7 @@ public class DslGitRepository implements AutoCloseable {
 
     /** Delete the reviewed ref only if the stored head still matches its exact object ID. */
     public boolean deleteBranch(String branchName, String expectedHead, String actor) throws IOException {
-        if ("draft".equals(branchName) || "accepted".equals(branchName) || "main".equals(branchName)) {
+        if (isProtectedVariant(branchName)) {
             throw new IllegalArgumentException("Cannot delete protected branch: " + branchName);
         }
         String refName = Constants.R_HEADS + branchName;

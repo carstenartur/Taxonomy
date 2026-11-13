@@ -3,6 +3,7 @@ package com.taxonomy.workspace.service;
 import com.taxonomy.identity.StableIdentityHash;
 import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.Repository;
@@ -75,11 +76,11 @@ public class WorkspaceBranchDeletion {
         if (workspace.getProvisioningStatus() != WorkspaceProvisioningStatus.READY
                 || !selection.branch().equals(workspace.getCurrentBranch())
                 || !memberships.canUseWorkspace(repository, workspace, user)
-                || !memberships.canContribute(repository, user)
+                || !memberships.canCollaborate(repository, user)
                 || (!user.equals(workspace.getUsername()) && !memberships.canMaintain(repository, user))) throw denied();
         String actorId = actor.require(user);
         if (name == null || !Repository.isValidRefName(Constants.R_HEADS + name)) throw new IllegalArgumentException("Invalid branch");
-        if (name.equals("draft") || name.equals("accepted") || name.equals("main") || name.equals(selection.branch())) {
+        if (DslGitRepository.isProtectedVariant(name) || name.equals(selection.branch())) {
             throw new IllegalArgumentException("Cannot delete protected branch: " + name);
         }
         return actorId;

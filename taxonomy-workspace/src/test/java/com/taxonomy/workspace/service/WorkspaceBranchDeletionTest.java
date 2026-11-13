@@ -35,7 +35,7 @@ class WorkspaceBranchDeletionTest {
         when(rows.findByWorkspaceIdForUpdate("copy")).thenReturn(Optional.of(copy));
         when(repositories.getRepository("repo")).thenReturn(repo);
         when(members.canUseWorkspace(repo, copy, "ann")).thenReturn(true);
-        when(members.canContribute(repo, "ann")).thenReturn(true);
+        when(members.canCollaborate(repo, "ann")).thenReturn(true);
         when(actor.require("ann")).thenReturn("stable-actor");
         when(stores.resolveRepository(selected)).thenReturn(git);
         when(git.getHeadCommit("alternative")).thenReturn(head);
@@ -54,7 +54,7 @@ class WorkspaceBranchDeletionTest {
         assertThatThrownBy(() -> service.delete(RepositoryContext.centralRead("repo","draft","ann"),"alternative",null))
                 .isInstanceOf(AccessDeniedException.class);
         var receipt = service.preview(selected, "alternative");
-        when(members.canContribute(repo, copy.getUsername())).thenReturn(false);
+        when(members.canCollaborate(repo, copy.getUsername())).thenReturn(false);
         assertThatThrownBy(() -> service.delete(selected,"alternative",receipt.etag())).isInstanceOf(AccessDeniedException.class);
         verify(git, never()).deleteBranch(anyString(), anyString(), anyString());
     }
@@ -86,6 +86,18 @@ class WorkspaceBranchDeletionTest {
         when(actor.require("ann")).thenThrow(new AccessDeniedException("Permission revoked"));
         assertThatThrownBy(() -> service.delete(selected, "alternative", receipt.etag())).isInstanceOf(AccessDeniedException.class);
         verify(git, never()).deleteBranch(anyString(), anyString(), anyString());
+    }
+
+    @Test void primaryContributionCompatibilityCannotAuthorizeDestructiveDeletion() {
+        when(members.canContribute(repo, "ann")).thenReturn(true);
+        when(members.canCollaborate(repo, "ann")).thenReturn(false);
+        assertThatThrownBy(() -> service.delete(selected, "alternative", null)).isInstanceOf(AccessDeniedException.class);
+        verifyNoInteractions(git);
+    }
+
+    @Test void cannotOfferTheSynchronizationBaseForDeletion() {
+        assertThatThrownBy(() -> service.preview(selected, "sync-base")).isInstanceOf(IllegalArgumentException.class);
+        verifyNoInteractions(git);
     }
 
     @Test void missingAndWildcardPreconditionsCannotReachTheRef() {

@@ -41,6 +41,20 @@ class DslApiControllerTest {
     @Autowired
     private WorkspaceResolver workspaceResolver;
 
+    @Autowired
+    private com.taxonomy.workspace.service.ArchitectureRepositoryProvisioningService repositoryProvisioning;
+
+    @Autowired
+    private com.taxonomy.workspace.service.RepositoryWorkspaceService workingCopies;
+
+    private String createOwnedDeletionFixture() {
+        String slug = "variant-" + java.util.UUID.randomUUID();
+        var repository = repositoryProvisioning.createRepository("Variant fixture", slug, "Deletion contract",
+                com.taxonomy.workspace.model.RepositoryVisibility.PRIVATE, "admin", "draft");
+        return workingCopies.createWorkingCopy("admin", repository.getRepositoryId(), "draft",
+                "Variant fixture", null).getWorkspaceId();
+    }
+
     @Test
     void exportCurrentArchitectureReturnsText() throws Exception {
         mockMvc.perform(get("/api/dsl/export"))
@@ -950,18 +964,19 @@ class DslApiControllerTest {
     @Test
     @org.springframework.security.test.context.support.WithUserDetails("admin")
     void deleteBranchRequiresTheReviewedCommit() throws Exception {
+        String copy = createOwnedDeletionFixture();
         String branch = "deletable-branch";
-        var write = post("/api/dsl/commit").param("branch", branch)
+        var write = post("/api/dsl/commit").param("workspaceId", copy).param("branch", branch)
                 .contentType(MediaType.TEXT_PLAIN).content("element CP-1023 type Capability { title: \"Review\"; }");
         mockMvc.perform(write).andExpect(status().isOk());
-        var remove = delete("/api/dsl/branch").param("name", branch);
+        var remove = delete("/api/dsl/branch").param("workspaceId", copy).param("name", branch);
         mockMvc.perform(remove).andExpect(status().isPreconditionRequired());
-        var preview = get("/api/dsl/branch/deletion-preview").param("name", branch);
+        var preview = get("/api/dsl/branch/deletion-preview").param("workspaceId", copy).param("name", branch);
         String first = mockMvc.perform(preview).andExpect(status().isOk()).andReturn().getResponse().getHeader("ETag");
         mockMvc.perform(write.content("element CP-1023 type Capability { title: \"Revised\"; }")).andExpect(status().isOk());
         mockMvc.perform(remove.header("If-Match", first)).andExpect(status().isPreconditionFailed());
         String current = mockMvc.perform(preview).andExpect(status().isOk()).andReturn().getResponse().getHeader("ETag");
-        mockMvc.perform(delete("/api/dsl/branch").param("name", branch).header("If-Match", current))
+        mockMvc.perform(delete("/api/dsl/branch").param("workspaceId", copy).param("name", branch).header("If-Match", current))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.deleted").value(branch)).andExpect(jsonPath("$.success").value(true));
         mockMvc.perform(preview).andExpect(status().isNotFound());
     }
@@ -969,8 +984,8 @@ class DslApiControllerTest {
     @Test
     @org.springframework.security.test.context.support.WithUserDetails("admin")
     void deleteBranch_protectedBranch() throws Exception {
-        repositoryStateService.ensureWorkspaceState("admin");
-        mockMvc.perform(delete("/api/dsl/branch").param("name", "draft"))
+        String copy = createOwnedDeletionFixture();
+        mockMvc.perform(delete("/api/dsl/branch").param("workspaceId", copy).param("name", "draft"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("Cannot delete protected branch: draft"));
     }
