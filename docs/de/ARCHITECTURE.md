@@ -357,10 +357,8 @@ Betriebsmaßnahmen, Geheimnisse, Reverse-Proxy-TLS und Transportbeschränkungen 
 [Sicherheit](SECURITY.md) zusammen mit dem [Deployment-Leitfaden](DEPLOYMENT_GUIDE.md).
 
 Das eingehende LLM-Kontingent wird nach dem `AuthorizationFilter` geprüft. Standard sind
-10 zugelassene Aufrufe je stabiler authentifizierter Identität und Minute. Lokale Konten
-verwenden ihren kanonischen authentifizierten Benutzernamen; Keycloak-Browser- und
-Bearer-Anfragen teilen das unveränderliche Paar `iss`/`sub`, nicht `preferred_username`
-oder eine Peer-Adresse. Wegen Authentifizierung oder Autorisierung abgewiesene Anfragen
+10 zugelassene Aufrufe je stabiler authentifizierter Identität und Minute. Verifizierte lokale und STABLE-Keycloak-Anmeldungen teilen ein Kontingent je stabiler Principal-ID.
+Im LEGACY-Modus teilen Keycloak-Browser- und Bearer-Anmeldungen die unveränderliche Issuer/Subject-Identität (`iss`/`sub`). Wegen Authentifizierung oder Autorisierung abgewiesene Anfragen
 erzeugen und verbrauchen keinen Kontingentzustand. Die begrenzten In-Memory-Zähler gelten
 je Anwendungsinstanz. Mehrere Replikate vervielfachen das Gesamtkontingent.
 Für ein clusterweites Budget ist ein verteilter äußerer Begrenzer erforderlich.
