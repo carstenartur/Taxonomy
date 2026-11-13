@@ -3,6 +3,7 @@ package com.taxonomy.security.access;
 import com.taxonomy.backup.PrincipalId;
 import com.taxonomy.security.model.PrincipalUserDetails;
 import com.taxonomy.security.service.PrincipalIdentityService;
+import com.taxonomy.workspace.service.HistoryIndexGrant;
 import com.taxonomy.workspace.service.WorkspaceFetchAuthority;
 import com.taxonomy.workspace.service.WorkspaceFetchAuthority.Grant;
 import org.junit.jupiter.api.AfterEach;
@@ -21,9 +22,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class HistoryIndexGrantAdapterTest {
-    final WorkspaceFetchAuthority originator = mock(WorkspaceFetchAuthority.class);
     final PrincipalIdentityService identities = mock(PrincipalIdentityService.class);
-    final HistoryIndexGrantAdapter grants = new HistoryIndexGrantAdapter(originator, identities);
+    final HistoryIndexGrant grants = new WorkspaceFetchAuthorityAdapter(identities);
     final PrincipalId principal = new PrincipalId(UUID.randomUUID());
     final String actor = principal.value().toString();
 
@@ -32,36 +32,38 @@ class HistoryIndexGrantAdapterTest {
     @Test void localArchitectureRoleAndExactBindingAreRequiredForUnattendedPurge() {
         var roles = List.of(new SimpleGrantedAuthority("ROLE_ARCHITECT"));
         var user = new PrincipalUserDetails(principal, "owner", "unused", true, roles);
-        SecurityContextHolder.getContext().setAuthentication(UsernamePasswordAuthenticationToken.authenticated(user, null, roles));
-        when(originator.currentActor("owner")).thenReturn(actor);
+        var authentication = UsernamePasswordAuthenticationToken.authenticated(user, null, roles);
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+        when(identities.requireCurrent(authentication)).thenReturn(principal);
         when(identities.currentLocalAuthority(principal, "owner")).thenReturn(new PrincipalIdentityService.LocalAuthority("original", List.of("ROLE_ARCHITECT")));
-        var recorded = grants.authorize("owner", true);
+        var recorded = grants.authorizeHistoryIndex("owner", true);
         assertThat(recorded).isEqualTo(new Grant(actor, "LOCAL", "original"));
-        grants.verify(recorded, "owner", true, false);
+        grants.checkHistoryIndex(recorded, "owner", true, false);
         SecurityContextHolder.clearContext();
-        grants.verify(recorded, "owner", true, true);
+        grants.checkHistoryIndex(recorded, "owner", true, true);
 
         when(identities.currentLocalAuthority(principal, "owner")).thenReturn(new PrincipalIdentityService.LocalAuthority("different", List.of("ROLE_ARCHITECT")));
-        assertThatThrownBy(() -> grants.verify(recorded, "owner", true, true)).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> grants.checkHistoryIndex(recorded, "owner", true, true)).isInstanceOf(AccessDeniedException.class);
         when(identities.currentLocalAuthority(principal, "owner")).thenReturn(new PrincipalIdentityService.LocalAuthority("original", List.of("ROLE_USER")));
-        assertThatThrownBy(() -> grants.verify(recorded, "owner", false, true)).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> grants.checkHistoryIndex(recorded, "owner", false, true)).isInstanceOf(AccessDeniedException.class);
     }
 
     @Test void externalOriginsNeedFreshVerifiedLoginAndCannotFallBackToAnotherEnabledIdentity() {
         var legacy = new Grant("issuer-key", "LEGACY_OIDC", "issuer-key");
-        assertThatThrownBy(() -> grants.verify(legacy, "owner", true, true)).isInstanceOf(WorkspaceFetchAuthority.FreshLoginRequired.class);
+        assertThatThrownBy(() -> grants.checkHistoryIndex(legacy, "owner", true, true)).isInstanceOf(WorkspaceFetchAuthority.FreshLoginRequired.class);
         var stable = new Grant(actor, "OIDC", "issuer-key");
         when(identities.isEnabled(principal)).thenReturn(false);
-        assertThatThrownBy(() -> grants.verify(stable, "owner", false, true)).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> grants.checkHistoryIndex(stable, "owner", false, true)).isInstanceOf(AccessDeniedException.class);
         when(identities.isEnabled(principal)).thenReturn(true);
-        assertThatThrownBy(() -> grants.verify(stable, "owner", false, true)).isInstanceOf(WorkspaceFetchAuthority.FreshLoginRequired.class);
+        assertThatThrownBy(() -> grants.checkHistoryIndex(stable, "owner", false, true)).isInstanceOf(WorkspaceFetchAuthority.FreshLoginRequired.class);
     }
 
     @Test void aReadOnlyLoginCannotSubmitAnIndexMutation() {
         var roles = List.of(new SimpleGrantedAuthority("ROLE_USER"));
         var user = new PrincipalUserDetails(principal, "owner", "unused", true, roles);
-        SecurityContextHolder.getContext().setAuthentication(UsernamePasswordAuthenticationToken.authenticated(user, null, roles));
-        when(originator.currentActor("owner")).thenReturn(actor);
-        assertThatThrownBy(() -> grants.authorize("owner", false)).isInstanceOf(AccessDeniedException.class);
+        var authentication = UsernamePasswordAuthenticationToken.authenticated(user, null, roles);
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+        when(identities.requireCurrent(authentication)).thenReturn(principal);
+        assertThatThrownBy(() -> grants.authorizeHistoryIndex("owner", false)).isInstanceOf(AccessDeniedException.class);
     }
 }

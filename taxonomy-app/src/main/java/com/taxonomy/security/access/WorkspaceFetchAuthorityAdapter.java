@@ -6,6 +6,7 @@ import com.taxonomy.security.model.PrincipalBinding;
 import com.taxonomy.security.model.PrincipalUserDetails;
 import com.taxonomy.security.model.StablePrincipal;
 import com.taxonomy.security.service.PrincipalIdentityService;
+import com.taxonomy.workspace.service.HistoryIndexGrant;
 import com.taxonomy.workspace.service.WorkspaceFetchAuthority;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
@@ -21,7 +22,7 @@ import java.util.UUID;
 
 @Component
 @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
-public class WorkspaceFetchAuthorityAdapter implements WorkspaceFetchAuthority {
+public class WorkspaceFetchAuthorityAdapter implements WorkspaceFetchAuthority, HistoryIndexGrant {
     private final PrincipalIdentityService identities;
 
     public WorkspaceFetchAuthorityAdapter(PrincipalIdentityService identities) { this.identities = identities; }
@@ -37,9 +38,17 @@ public class WorkspaceFetchAuthorityAdapter implements WorkspaceFetchAuthority {
     }
 
     @Override public Grant authorize(String username) {
+        return authorize(username, ApiPermission.ANALYSIS_RUN);
+    }
+
+    @Override public Grant authorizeHistoryIndex(String username, boolean purge) {
+        return authorize(username, historyPermission(purge));
+    }
+
+    private Grant authorize(String username, ApiPermission required) {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
         String actor = currentActor(username);
-        if (!ApiAccessPolicy.hasPermission(authentication, ApiPermission.ANALYSIS_RUN)) throw denied();
+        if (!ApiAccessPolicy.hasPermission(authentication, required)) throw denied();
         if (authentication.getPrincipal() instanceof PrincipalUserDetails local) {
             return new Grant(actor, "LOCAL", identities.currentLocalAuthority(local.principalId(), username).bindingKey());
         }
@@ -47,7 +56,7 @@ public class WorkspaceFetchAuthorityAdapter implements WorkspaceFetchAuthority {
         return new Grant(actor, actor.equals(binding) ? "LEGACY_OIDC" : "OIDC", binding);
     }
 
-    static String externalBinding(Authentication authentication) {
+    private static String externalBinding(Authentication authentication) {
         if (authentication instanceof JwtAuthenticationToken jwt && jwt.getToken().getIssuer() != null) {
             return binding(jwt.getToken().getIssuer().toString(), jwt.getToken().getSubject());
         }
@@ -62,8 +71,20 @@ public class WorkspaceFetchAuthorityAdapter implements WorkspaceFetchAuthority {
     }
 
     @Override public void checkPublication(Grant original, String username, boolean unattended) {
+        checkGrant(original, username, ApiPermission.ANALYSIS_RUN, unattended);
+    }
+
+    @Override public void checkHistoryIndex(Grant original, String username, boolean purge, boolean unattended) {
+        checkGrant(original, username, historyPermission(purge), unattended);
+    }
+
+    private static ApiPermission historyPermission(boolean purge) {
+        return purge ? ApiPermission.ARCHITECTURE_DELETE : ApiPermission.ARCHITECTURE_WRITE;
+    }
+
+    private void checkGrant(Grant original, String username, ApiPermission required, boolean unattended) {
         if (!unattended) {
-            if (!authorize(username).equals(original)) throw denied();
+            if (!authorize(username, required).equals(original)) throw denied();
             return;
         }
         if ("LEGACY_OIDC".equals(original.loginKind())) throw new FreshLoginRequired();
@@ -74,9 +95,9 @@ public class WorkspaceFetchAuthorityAdapter implements WorkspaceFetchAuthority {
             throw new FreshLoginRequired();
         }
         var local = identities.currentLocalAuthority(id, username);
-        if (!local.bindingKey().equals(original.bindingKey()) || ApiPermission.ANALYSIS_RUN.roles().stream()
+        if (!local.bindingKey().equals(original.bindingKey()) || required.roles().stream()
                 .noneMatch(role -> local.roles().contains("ROLE_" + role))) throw denied();
     }
 
-    private static AccessDeniedException denied() { return new AccessDeniedException("Workspace fetch permission is unavailable"); }
+    private static AccessDeniedException denied() { return new AccessDeniedException("Workspace operation permission is unavailable"); }
 }

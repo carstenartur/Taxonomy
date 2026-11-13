@@ -4,6 +4,7 @@ import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import com.taxonomy.workspace.repository.SystemRepositoryRepository;
 import com.taxonomy.workspace.service.BranchHeadConflictException;
+import com.taxonomy.workspace.service.HistoryIndexGrant;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryMembershipService;
 import com.taxonomy.workspace.service.WorkspaceFetchAuthority;
@@ -52,7 +53,7 @@ public class HistoryIndexMaintenance {
 
     public Receipt submit(Kind kind, String requestedBranch, String key, String cause) {
         var context = selected.resolveCurrentRepositoryContext();
-        var grant = actors.authorize(context.username(), kind == Kind.PURGE);
+        var grant = actors.authorizeHistoryIndex(context.username(), kind == Kind.PURGE);
         String branch = kind == Kind.PURGE ? context.branch() : checkedBranch(requestedBranch);
         var row = journal.admit(context, branch, kind, grant, key, cause, () -> {
             String owner = authorizeTarget(context);
@@ -76,14 +77,14 @@ public class HistoryIndexMaintenance {
     public Receipt retry(String id) {
         var context = selected.resolveCurrentRepositoryContext();
         var row = journal.get(context, actors.currentActor(context.username()), id);
-        var grant = actors.authorize(context.username(), row.receipt().kind() == Kind.PURGE);
+        var grant = actors.authorizeHistoryIndex(context.username(), row.receipt().kind() == Kind.PURGE);
         if (!row.grant().equals(grant)) throw denied();
         return resume(row, context, grant.principalId(), true);
     }
 
     public Receipt archive(String id) {
         var context = selected.resolveCurrentRepositoryContextForRead();
-        var grant = actors.authorize(context.username(), true);
+        var grant = actors.authorizeHistoryIndex(context.username(), true);
         return journal.archive(context, grant.principalId(), id, this::verifyTarget);
     }
 
@@ -114,12 +115,12 @@ public class HistoryIndexMaintenance {
             return journal.execute(token, row -> {
                 var receipt = row.receipt();
                 boolean purge = receipt.kind() == Kind.PURGE;
-                actors.verify(row.grant(), row.username(), purge, background);
+                actors.checkHistoryIndex(row.grant(), row.username(), purge, background);
                 var context = row.context();
                 verifyTarget(row);
                 int result = purge ? projections.purgeCaptured(context, receipt.operationId())
                         : projections.applyCapturedBranch(receipt.branch(), context, receipt.sourceCommit(), receipt.kind() == Kind.REBUILD);
-                actors.verify(row.grant(), row.username(), purge, background);
+                actors.checkHistoryIndex(row.grant(), row.username(), purge, background);
                 verifyTarget(row);
                 return result;
             });

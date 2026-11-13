@@ -4,6 +4,7 @@ import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.repository.SystemRepositoryRepository;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryMembershipService;
+import com.taxonomy.workspace.service.HistoryIndexGrant;
 import com.taxonomy.workspace.service.WorkspaceFetchAuthority.Grant;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import com.taxonomy.workspace.storage.DslGitRepository;
@@ -76,7 +77,7 @@ class HistoryIndexMaintenanceTest {
         try (var f = new Fixture()) {
             String head = f.git.commitDsl("draft","initial","owner","first");
             var admitted = f.admit("revoked", head);
-            doThrow(new AccessDeniedException("removed grant")).when(f.principals).verify(f.grant, "owner", false, true);
+            doThrow(new AccessDeniedException("removed grant")).when(f.principals).checkHistoryIndex(f.grant, "owner", false, true);
             f.service.recover();
             var row = f.journal.get(f.scope, f.grant.principalId(), admitted.receipt().operationId()).receipt();
             assertThat(row.phase()).isEqualTo("DENIED");
@@ -103,11 +104,11 @@ class HistoryIndexMaintenanceTest {
             String head = f.git.commitDsl("draft", "model", "owner", "one");
             var original = f.admit("external", head);
             doThrow(new com.taxonomy.workspace.service.WorkspaceFetchAuthority.FreshLoginRequired())
-                    .when(f.principals).verify(f.grant, "owner", false, true);
+                    .when(f.principals).checkHistoryIndex(f.grant, "owner", false, true);
             f.service.recover();
             assertThat(f.service.get(original.receipt().operationId()).phase()).isEqualTo("AWAITING_AUTHORIZATION");
             assertThat(f.service.retry(original.receipt().operationId()).phase()).isEqualTo("COMPLETED");
-            when(f.principals.authorize("owner", true)).thenReturn(f.grant);
+            when(f.principals.authorizeHistoryIndex("owner", true)).thenReturn(f.grant);
             assertThat(f.service.archive(original.receipt().operationId()).archivedAt()).isNotNull();
         }
     }
@@ -131,7 +132,7 @@ class HistoryIndexMaintenanceTest {
     void retryRequiresTheOriginalBindingEvenAfterAnotherLoginReceivesTheSameScope() throws Exception {
         try (var f = new Fixture()) {
             var original = f.admit("same-scope", f.git.commitDsl("draft", "model", "owner", "one"));
-            when(f.principals.authorize("owner", false)).thenReturn(new Grant(f.grant.principalId(), "OIDC", "new-binding"));
+            when(f.principals.authorizeHistoryIndex("owner", false)).thenReturn(new Grant(f.grant.principalId(), "OIDC", "new-binding"));
             assertThatThrownBy(() -> f.service.retry(original.receipt().operationId())).isInstanceOf(AccessDeniedException.class);
             assertThat(f.service.get(original.receipt().operationId()).attempts()).isZero();
             verifyNoInteractions(f.indexRows);
@@ -184,7 +185,7 @@ class HistoryIndexMaintenanceTest {
             assertThat(f.jdbc.queryForObject("select count(*) from history_index_decision where operation_id=? and decision_code='AUTHORIZATION_CHANGED'",
                     Integer.class, decision.operationId())).isEqualTo(1);
             assertThatThrownBy(() -> f.service.get(decision.operationId())).isInstanceOf(AccessDeniedException.class);
-            when(f.principals.authorize("owner", true)).thenReturn(f.grant);
+            when(f.principals.authorizeHistoryIndex("owner", true)).thenReturn(f.grant);
             assertThatThrownBy(() -> f.service.archive(decision.operationId())).isInstanceOf(AccessDeniedException.class);
         }
     }
@@ -215,7 +216,7 @@ class HistoryIndexMaintenanceTest {
             when(resolver.resolveCurrentRepositoryContext()).thenReturn(scope);
             when(resolver.resolveCurrentRepositoryContextForRead()).thenReturn(scope);
             when(principals.currentActor("owner")).thenReturn(grant.principalId());
-            when(principals.authorize("owner", false)).thenReturn(grant);
+            when(principals.authorizeHistoryIndex("owner", false)).thenReturn(grant);
             var factory = mock(DslGitRepositoryFactory.class);
             when(factory.resolveRepository(scope)).thenReturn(git);
             var membershipFence = mock(jakarta.persistence.Query.class);
