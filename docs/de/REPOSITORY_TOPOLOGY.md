@@ -182,6 +182,12 @@ Um ein bestimmtes Tag zu übernehmen, rufen Sie nach dem zugehörigen Commit `GE
 
 Bei aktivierter Multi-Repository-API verwendet ein zentraler Fork dieselben Anfrage- und Antwortfelder unter `/api/repositories/{forkId}/upstream`. Für den Basis-Endpunkt und `/tag` gilt `GET`, für `/fetch` und `/fetch-tag` gilt `POST`. Der Fork-Katalog legt Quell-Repository und Quell-Branch fest. Das Lesen erfordert aktuelle Contributor-Rechte in beiden Repositories. Für die Veröffentlichung ist zusätzlich die Berechtigung zum Schreiben von Architekturdaten erforderlich. Ein Fork aus einer eingeschränkten Quelle muss auch bei der Veröffentlichung privat sein. Der Abruf aktualisiert die Tracking-Ref des Forks. Sein Standardbranch, unabhängig angelegte Branches und der ursprüngliche Forkpunkt behalten ihre Werte.
 
+### Persönliches Repository-Eigentum übertragen
+
+`GET /api/repositories/{repositoryId}` liefert die aktuelle Katalogrevision `version`. Der persönliche Katalogeigentümer kann anschließend `PUT /api/repositories/{repositoryId}/ownership` mit der stabilen `targetPrincipalId` des Nachfolgers, dieser `expectedVersion` und einer kurzen `rationale` aufrufen. Der Nachfolger braucht eine aktive Identität. Die Antwort enthält die bisherigen und neuen Principal-IDs, die neue Katalogrevision und die `auditId` des gespeicherten Belegs.
+
+Der Nachfolger erhält eine explizite `OWNER`-Mitgliedschaft. In derselben Transaktion wird die direkte `OWNER`-Mitgliedschaft des bisherigen Eigentümers widerrufen. Unabhängige Rollenzuweisungen gelten weiterhin. Eine veraltete Revision führt zu HTTP 409. Für Organisations- und System-Repositories gelten die jeweiligen Eigentumsregeln.
+
 ## Benutzerfreundliche Terminologie
 
 Die folgende Terminologie wird in der Benutzeroberfläche verwendet, um

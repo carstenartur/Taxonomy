@@ -1074,6 +1074,27 @@
     },
     {
       "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.security.service",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.model",
+      "classDependencyCount": 3
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.security.service",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.repository",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.security.service",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.service",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.setup",
       "toContext": "preferences",
       "toPackage": "com.taxonomy.preferences",

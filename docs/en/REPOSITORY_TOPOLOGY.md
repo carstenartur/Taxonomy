@@ -181,6 +181,12 @@ To retain a specific tag, read `GET /api/workspace/upstream/tag?name=release-1` 
 
 A central fork uses the same request and response fields under `/api/repositories/{forkId}/upstream` when the multi-repository API is enabled. Use `GET` on the base route or `/tag`, and `POST` on `/fetch` or `/fetch-tag`. The fork catalogue fixes the upstream repository and branch. Reading requires current contributor access to both repositories. Publication additionally requires architecture write permission. A fork of a restricted source must still be private at publication. Fetch advances the fork's upstream tracking ref. Its default branch, independently created branches and original fork point retain their values.
 
+### Transfer personal repository ownership
+
+Read `GET /api/repositories/{repositoryId}` to obtain the current catalogue `version`. The personal catalogue owner can then send `PUT /api/repositories/{repositoryId}/ownership` with the successor's stable `targetPrincipalId`, that `expectedVersion` and a short `rationale`. The successor must have an active identity. The response identifies the previous and new principals, the new catalogue version and the committed `auditId`.
+
+The successor acquires an explicit `OWNER` membership in the same transaction that relinquishes the previous owner's direct `OWNER` membership. Independently assigned roles continue to apply. A stale version returns HTTP 409. Organization and system repositories retain their own ownership rules.
+
 ## User-Facing Terminology
 
 The following terminology is used in the user interface to avoid exposing
