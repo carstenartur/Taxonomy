@@ -11,6 +11,13 @@ public final class WorkspaceOverlayScope {
 
     public static final String CENTRAL_SCOPE_KEY = "__shared__";
 
+    /** In a relational projection, workspace IDs are nonblank and null denotes the central owner. */
+    public static final String CENTRAL_STORAGE_KEY = "";
+
+    public static String storageKeyFor(String workspaceId) {
+        return workspaceId == null ? CENTRAL_STORAGE_KEY : workspaceId.strip();
+    }
+
     private WorkspaceOverlayScope() {
     }
 

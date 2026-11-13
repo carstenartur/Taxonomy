@@ -344,7 +344,7 @@ public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQuery
         var context = snapshot.context();
         boolean weightedTraversal = "git-present-weighted-bfs-v1".equals(policy);
         return new GraphQueryEvidence(context.repositoryId(), context.workspaceId(),
-                com.taxonomy.relations.model.RelationDecisionProjection.scopeKeyFor(context.workspaceId()),
+                com.taxonomy.model.WorkspaceOverlayScope.keyFor(context.workspaceId()),
                 context.branch(), snapshot.commitId(), "GIT_BRANCH_PROJECTION", "READY", snapshot.relations().size(), policy,
                 requested, effective, weightedTraversal ? MIN_RELEVANCE : 0, weightedTraversal ? HOP_DECAY : 1,
                 weightedTraversal ? ANCHOR_THRESHOLD_HIGH : 0, weightedTraversal ? ANCHOR_THRESHOLD_LOW : 0,

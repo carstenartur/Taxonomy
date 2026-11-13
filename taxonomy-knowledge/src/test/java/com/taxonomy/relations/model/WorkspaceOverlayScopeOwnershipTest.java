@@ -12,12 +12,17 @@ class WorkspaceOverlayScopeOwnershipTest {
 
     private static final List<String> WORKSPACE_SCOPED_MODELS = List.of(
             "../taxonomy-workspace/src/main/java/com/taxonomy/versioning/model/ArchitectureCommitIndex.java",
-            "src/main/java/com/taxonomy/relations/model/RelationDecisionProjection.java",
-            "src/main/java/com/taxonomy/relations/model/RelationDecisionProjectionCheckpoint.java",
-            "src/main/java/com/taxonomy/relations/model/RelationProjectionRecovery.java",
             "src/main/java/com/taxonomy/relations/model/RelationHypothesis.java",
             "src/main/java/com/taxonomy/relations/model/RelationProposal.java",
             "src/main/java/com/taxonomy/catalog/model/TaxonomyRelation.java");
+
+    @Test
+    void relationAuthoritiesUseTheDisjointStorageKey() throws Exception {
+        for (String model : List.of("RelationDecisionProjection", "RelationDecisionProjectionCheckpoint", "RelationProjectionRecovery")) {
+            String source = Files.readString(Path.of("src/main/java/com/taxonomy/relations/model", model + ".java"));
+            assertThat(source).contains("WorkspaceOverlayScope.storageKeyFor(").doesNotContain("WorkspaceOverlayScope.keyFor(");
+        }
+    }
 
     @Test
     void workspaceScopedModelsDelegateOverlayIdentityToDomainOwner() throws Exception {

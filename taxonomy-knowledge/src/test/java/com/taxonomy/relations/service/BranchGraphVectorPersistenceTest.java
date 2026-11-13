@@ -33,7 +33,8 @@ class BranchGraphVectorPersistenceTest {
         var worker = new RepositoryContext("repo:A", "copy", "main", "reader", RepositoryScope.WORKSPACE);
         var otherWorker = new RepositoryContext("repo:A", "copy-2", "main", "reader", RepositoryScope.WORKSPACE);
         var foreignWorker = new RepositoryContext("repo:B", "copy", "main", "reader", RepositoryScope.WORKSPACE);
-        var scopes = List.of(a, b, draft, worker, otherWorker, foreignWorker);
+        var reservedLookingWorker = RepositoryContext.workspace("repo:A", "__shared__", "main", "reader");
+        var scopes = List.of(a, b, draft, worker, otherWorker, foreignWorker, reservedLookingWorker);
         try (var first = open("create")) {
             for (var scope : scopes) {
                 first.checkpoint(scope);
@@ -71,7 +72,10 @@ class BranchGraphVectorPersistenceTest {
             assertThatThrownBy(() -> second.transaction(() -> {second.store.publish(a, chosen, secondToken, obsolete, () -> {}); return null;}))
                     .isInstanceOf(SearchUnavailableException.class);
             assertThat(second.transaction(() -> second.store.status(a, chosen)).state()).isEqualTo(BranchGraphVectorStore.State.MISSING);
-            assertThat(second.transaction(() -> second.store.status(worker, source(worker, "m1"))).state()).isEqualTo(BranchGraphVectorStore.State.READY);
+            for (var survivingWorker : List.of(worker, reservedLookingWorker)) {
+                assertThat(second.transaction(() -> second.store.status(survivingWorker, source(survivingWorker, "m1"))).state())
+                        .isEqualTo(BranchGraphVectorStore.State.READY);
+            }
             second.transaction(() -> {
                 second.em.createNativeQuery("update branch_graph_vector_generation set index_sha256 = :wrong where source_key = :chosen")
                         .setParameter("wrong", "0".repeat(64)).setParameter("chosen", source(worker, "m1").key()).executeUpdate();
