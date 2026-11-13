@@ -16,7 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpMethod;
-import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.security.test.context.support.WithUserDetails;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
@@ -36,14 +36,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /** Exercises the same screenshot fixture against real controllers, repository routing and Git storage. */
 @SpringBootTest(properties = {
         "taxonomy.features.multi-repository-api.enabled=true",
+        "taxonomy.admin-password=local-graph-fixture-password",
         "spring.datasource.url=jdbc:hsqldb:mem:saved-graph-http-fixture;shutdown=true"
 })
 @ActiveProfiles("hsqldb")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @AutoConfigureMockMvc
-@WithMockUser(username = SavedGraphHttpFixtureTest.USER, roles = {"USER", "ARCHITECT", "ADMIN"})
+@WithUserDetails(SavedGraphHttpFixtureTest.USER)
 class SavedGraphHttpFixtureTest {
-    static final String USER = "saved-graph-fixture";
+    static final String USER = "admin";
     private static final String DSL = """
             meta {
               language: "taxdsl";

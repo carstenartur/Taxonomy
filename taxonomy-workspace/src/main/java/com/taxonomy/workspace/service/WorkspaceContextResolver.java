@@ -214,8 +214,11 @@ public class WorkspaceContextResolver {
         }
         String repository = servlet.getRequest().getParameter("repositoryId");
         String branch = servlet.getRequest().getParameter("branch");
+        String workspaceScope = servlet.getRequest().getParameter("workspaceScopeKey");
         if ((repository != null && !repository.equals(selected.repositoryId()))
-                || (branch != null && !branch.equals(selected.branch()))) {
+                || (branch != null && !branch.equals(selected.branch()))
+                || (workspaceScope != null && !workspaceScope.equals(
+                        com.taxonomy.model.WorkspaceOverlayScope.keyFor(selected.workspaceId())))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Requested source differs from selected source");
         }
         if (selected.workspaceId() != null || repository != null) return;

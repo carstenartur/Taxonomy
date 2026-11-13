@@ -5,6 +5,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 /**
  * Resolves the current username plus request-bound workspace and repository contexts.
@@ -59,6 +60,15 @@ public class WorkspaceResolver {
         WorkspaceContext resolved = workspaceContext(repository);
         cache(attributes, REQUEST_CONTEXT_ATTRIBUTE, resolved);
         return resolved;
+    }
+
+    /** Browser page pins distinguish a selected source from legacy operation-specific branch parameters. */
+    public boolean hasExplicitSourceSelection() {
+        if (!(RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes)) {
+            return false;
+        }
+        var request = attributes.getRequest();
+        return request.getParameter("repositoryId") != null || request.getParameter("workspaceScopeKey") != null;
     }
 
     /** Compatibility view of the authorized, non-provisioning selection for an observational route. */

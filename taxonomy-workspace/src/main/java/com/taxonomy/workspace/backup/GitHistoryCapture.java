@@ -34,6 +34,7 @@ public final class GitHistoryCapture {
     private final Repository repository;
     private final Limits limits;
     private final SnapshotContext.RepositoryState state;
+    private final RefInventory sourceRefs;
     private final Map<String, String> backupRefs;
     private final Map<String, String> symbolicRefs;
     private final List<Reflog> reflogs;
@@ -51,11 +52,11 @@ public final class GitHistoryCapture {
     @FunctionalInterface interface ProvenanceInventory { List<GitReflogProvenance.Event> events(BackupCheckpoint checkpoint) throws IOException; }
 
     private GitHistoryCapture(Repository repository, Limits limits, SnapshotContext.RepositoryState state,
-                              Map<String, String> backupRefs, Map<String, String> symbolicRefs, List<Reflog> reflogs,
+                              RefInventory sourceRefs, Map<String, String> backupRefs, Map<String, String> symbolicRefs, List<Reflog> reflogs,
                               Map<ObjectId, GitHistoryObjects.Proof> objects, BackupCheckpoint lifetime, ReflogInventory reflogInventory, Origin origin,
                               List<GitReflogProvenance.Event> importedReflogs, ProvenanceInventory provenanceInventory) {
         this.repository = repository; this.limits = limits; this.state = state; this.backupRefs = Map.copyOf(backupRefs);
-        this.symbolicRefs = Map.copyOf(symbolicRefs);
+        this.sourceRefs = sourceRefs; this.symbolicRefs = Map.copyOf(symbolicRefs);
         this.reflogs = List.copyOf(reflogs); this.objects = Map.copyOf(objects); this.lifetime = lifetime; this.reflogInventory = reflogInventory;
         this.importedReflogs = List.copyOf(importedReflogs); this.provenanceInventory = provenanceInventory;
         this.origin = origin;
@@ -89,10 +90,31 @@ public final class GitHistoryCapture {
             Objects.requireNonNull(provenanceInventory);
             var check = guard(lifetime, checkpoint); check.check();
             if (requiredCommits.size() > limits.maxRefs()) throw failure("Required Git commit limit exceeded");
-            var refs = refs(repository, limits, check);
-            String symbolicHead = symbolicHead(repository);
-            var symbolicRefs = symbolicRefs(repository, limits, check);
-            var logs = logs(repository, refs.keySet(), reflogInventory, limits, check);
+            var sourceRefs = RefInventory.read(repository, limits, check);
+            var refs = new TreeMap<>(sourceRefs.refs());
+            var backupRefs = new TreeMap<String, String>();
+            var symbolicRefs = new TreeMap<>(sourceRefs.aliases());
+            // A live publication pin grants authority to finish a particular application operation.
+            // Carry its tag, candidate and parents under an object-addressed retention ref instead.
+            for (var ref : sourceRefs.refs().entrySet()) {
+                if (!isPublicationPin(ref.getKey())) continue;
+                refs.remove(ref.getKey());
+                symbolicRefs.remove(ref.getKey());
+                String retained = retentionRef(ref.getValue());
+                String existing = refs.get(retained);
+                if (existing == null) backupRefs.put(retained, ref.getValue());
+                else if (!existing.equals(ref.getValue())) throw failure("Prepared Git object retention ref collision");
+            }
+            for (var alias : symbolicRefs.entrySet()) {
+                if (!isPublicationPin(alias.getValue())) continue;
+                String target = sourceRefs.refs().get(alias.getValue());
+                if (target == null || alias.getKey().equals(retentionRef(target)))
+                    throw failure("Invalid alias to a prepared Git revision");
+                alias.setValue(retentionRef(target));
+            }
+            String symbolicHead = sourceRefs.head();
+            if (symbolicHead != null && isPublicationPin(symbolicHead)) throw failure("Git HEAD points to a publication pin");
+            var logs = logs(repository, sourceRefs.refs().keySet(), reflogInventory, limits, check);
             var imported = GitReflogProvenance.canonical(provenanceInventory.events(check), limits.maxReflogEntries() - logs.size(), check);
             var logBudget = new GitHistoryReflogs.Budget(limits.maxReflogEntries());
             for (var log : logs) logBudget.add(log);
@@ -100,6 +122,7 @@ public final class GitHistoryCapture {
             var required = new TreeSet<String>(requiredCommits);
             workingStates.values().stream().map(SnapshotContext.WorkingState::checkpointCommit).filter(Objects::nonNull).forEach(required::add);
             var extras = new TreeSet<String>(required);
+            extras.addAll(backupRefs.values());
             for (var log : logs) {
                 if (!ObjectId.zeroId().name().equals(log.oldId())) extras.add(log.oldId());
                 if (!ObjectId.zeroId().name().equals(log.newId())) extras.add(log.newId());
@@ -126,11 +149,10 @@ public final class GitHistoryCapture {
                     objects.put(object.copy(), GitHistoryObjects.verify(reader, object, check));
                 for (String id : extras) if (objects.get(ObjectId.fromString(id)).type() == Constants.OBJ_COMMIT) required.add(id);
             }
-            var backupRefs = new TreeMap<String, String>();
             for (String id : extras) {
                 check.check();
                 if (!refs.containsValue(id)) {
-                    String ref = "refs/taxonomy-backup/required/" + id;
+                    String ref = retentionRef(id);
                     if (refs.containsKey(ref) && !id.equals(refs.get(ref))) throw failure("Required Git ref collides with source ref");
                     backupRefs.put(ref, id);
                 }
@@ -139,7 +161,7 @@ public final class GitHistoryCapture {
                 throw failure("Git history ref closure limit exceeded");
             check.check();
             var result = new GitHistoryCapture(repository, limits,
-                    new SnapshotContext.RepositoryState(refs, symbolicHead, workingStates, required), backupRefs, symbolicRefs, logs, objects, lifetime, reflogInventory, origin,
+                    new SnapshotContext.RepositoryState(refs, symbolicHead, workingStates, required), sourceRefs, backupRefs, symbolicRefs, logs, objects, lifetime, reflogInventory, origin,
                     imported, provenanceInventory);
             result.checkSource(check); return result;
         } catch (IOException | RuntimeException problem) { throw sanitized(problem); }
@@ -328,6 +350,17 @@ public final class GitHistoryCapture {
             generator.flush(); check.check();
         }
     }
+    static boolean isPublicationPin(String name) {
+        return name.startsWith("refs/taxonomy/prepared-sync/");
+    }
+    private static String retentionRef(String id) { return "refs/taxonomy-backup/required/" + id; }
+
+    private record RefInventory(Map<String, String> refs, String head, Map<String, String> aliases) {
+        static RefInventory read(Repository repository, Limits limits, BackupCheckpoint check) throws IOException {
+            return new RefInventory(GitHistoryCapture.refs(repository, limits, check), symbolicHead(repository),
+                    symbolicRefs(repository, limits, check));
+        }
+    }
     private static Map<String, String> refs(Repository repository, Limits limits, BackupCheckpoint check) throws IOException {
         check.check();repository.scanForRepoChanges();check.check();
         var result = new TreeMap<String, String>();
@@ -343,10 +376,9 @@ public final class GitHistoryCapture {
     }
     private void checkSource(BackupCheckpoint check) throws IOException {
         check.check();
-        if (!state.refs().equals(refs(repository, limits, check)) || !Objects.equals(state.symbolicHead(), symbolicHead(repository))
-                || !symbolicRefs.equals(symbolicRefs(repository, limits, check)))
+        if (!sourceRefs.equals(RefInventory.read(repository, limits, check)))
             throw failure("Git refs changed after history capture");
-        if (!reflogs.equals(logs(repository, state.refs().keySet(), reflogInventory, limits, check)))
+        if (!reflogs.equals(logs(repository, sourceRefs.refs().keySet(), reflogInventory, limits, check)))
             throw failure("Git reflogs changed after history capture");
         if (!importedReflogs.equals(GitReflogProvenance.canonical(provenanceInventory.events(check), limits.maxReflogEntries() - reflogs.size(), check)))
             throw failure("Original Git event provenance changed after history capture");

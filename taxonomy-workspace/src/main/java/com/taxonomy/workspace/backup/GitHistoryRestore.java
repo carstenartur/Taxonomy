@@ -223,7 +223,7 @@ public final class GitHistoryRestore {
         }
     }
     private static void refName(String name,boolean head)throws IOException {
-        if(name==null||name.length()>1024||!(head&&name.equals(Constants.HEAD))&&(!name.startsWith(Constants.R_REFS)||!Repository.isValidRefName(name)))
+        if(name==null||name.length()>1024||GitHistoryCapture.isPublicationPin(name)||!(head&&name.equals(Constants.HEAD))&&(!name.startsWith(Constants.R_REFS)||!Repository.isValidRefName(name)))
             throw failure("Invalid restored Git ref name");
     }
     private static void id(String id)throws IOException {

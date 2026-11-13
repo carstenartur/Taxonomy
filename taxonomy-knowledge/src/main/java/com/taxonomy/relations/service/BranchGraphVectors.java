@@ -140,6 +140,9 @@ public class BranchGraphVectors {
         var published = store.status(context, current);
         if (!source.equals(current) || published.state() != BranchGraphVectorStore.State.READY
                 || !generation.id().equals(published.generation())) throw new SearchUnavailableException();
-        return new GraphSearchResult(nodes, roots, types, GraphSearchService.buildSummary(roots, types, query));
+        var provenance = new GraphSearchResult.Source(source.repositoryId(), source.workspaceId(), source.branch(),
+                source.commit(), RelationProjectionReadService.ReadModel.PROJECTION.name(),
+                GraphSearchResult.VectorSource.BRANCH_GENERATION, source.modelKey(), generation.id(), source.key());
+        return new GraphSearchResult(nodes, roots, types, GraphSearchService.buildSummary(roots, types, query), provenance);
     }
 }

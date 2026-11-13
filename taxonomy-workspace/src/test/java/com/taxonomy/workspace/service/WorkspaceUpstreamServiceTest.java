@@ -78,9 +78,9 @@ class WorkspaceUpstreamServiceTest {
         when(resolver.resolveCurrentRepositoryContextForRead()).thenReturn(selected);
         database = new WorkspaceFetchJournalTest.Database();
         actors = mock(WorkspaceFetchAuthority.class);
-        when(actors.authorize("alice")).thenReturn(WorkspaceFetchJournalTest.GRANT);
+        when(actors.authorize("alice", RepositoryScope.WORKSPACE)).thenReturn(WorkspaceFetchJournalTest.GRANT);
         when(actors.currentActor("alice")).thenReturn(WorkspaceFetchJournalTest.ALICE);
-        recovery = new WorkspaceFetchRecovery(database.journal, service, actors);
+        recovery = new WorkspaceFetchRecovery(database.journal, service, actors, null);
         mvc = MockMvcBuilders.standaloneSetup(new WorkspaceUpstreamController(service, resolver, recovery)).build();
     }
 
@@ -176,6 +176,32 @@ class WorkspaceUpstreamServiceTest {
         assertThat(tracked.head(target)).isNull();
         assertThat(target.getHeadCommit("draft")).isEqualTo(local);
         verify(rows, never()).save(any());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void replayRejectsASelectedTagReplacedDuringFinalAuthorization(boolean recovering) throws Exception {
+        service.fetch(selected, new WorkspaceUpstreamService.Request(incoming, null));
+        String name = "review/interrupted";
+        try (var walk = new RevWalk(source.getGitRepository())) {
+            Git.wrap(source.getGitRepository()).tag().setName(name).setAnnotated(false)
+                    .setObjectId(walk.parseCommit(ObjectId.fromString(base))).call();
+        }
+        var request = new WorkspaceUpstreamService.TagRequest(name, base, incoming);
+        service.fetchTag(selected, request);
+        var transfer = new GitUpstreamTransfer(tracked, source, target, base, "alice", () -> {
+            try (var walk = new RevWalk(target.getGitRepository())) {
+                Git.wrap(target.getGitRepository()).tag().setName(name).setAnnotated(false).setForceUpdate(true)
+                        .setObjectId(walk.parseCommit(ObjectId.fromString(local))).call();
+            } catch (Exception e) {
+                throw new AssertionError(e);
+            }
+        });
+        assertThatThrownBy(() -> transfer.fetchTag(request, recovering, () -> { }))
+                .isInstanceOf(BranchHeadConflictException.class);
+        assertThat(target.readFreshRef(Constants.R_TAGS + name).getObjectId().name()).isEqualTo(local);
+        assertThat(tracked.head(target)).isEqualTo(incoming);
+        assertThat(target.getHeadCommit("draft")).isEqualTo(local);
     }
 
     @Test

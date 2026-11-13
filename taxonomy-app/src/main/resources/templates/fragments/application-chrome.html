@@ -75,6 +75,7 @@
                         <div class="application-menu-admin" data-required-roles="ADMIN" hidden>
                             <hr/><span class="application-menu-group" th:text="#{navbar.administration}">Administration</span>
                             <a class="application-utility-link" id="adminNavTab" data-page="admin" data-app-route="admin" th:href="@{/#admin}" href="/#admin" th:text="#{navbar.administration}">Administration</a>
+                            <a class="application-utility-link" th:href="@{/admin/identity/ownership(lang=${#locale.language})}" th:text="#{ownership.title}">Historical ownership</a>
                             <a class="application-utility-link" id="userManagementMenuAction" data-page="admin" href="#admin" th:text="#{users.title}">User management</a>
                             <a class="application-utility-link" id="preferencesNavTab" data-page="preferences" data-app-route="preferences" th:href="@{/#preferences}" href="/#preferences" th:text="#{navbar.server.settings}">Server settings</a>
                             <button id="databaseSetupMenuAction" type="button" th:if="${active == 'analysis'}" th:text="#{database.setup.menu}">Database setup</button>

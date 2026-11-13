@@ -9,22 +9,18 @@ import com.taxonomy.relations.service.HybridSearchService;
 import com.taxonomy.search.controller.SearchApiController;
 import com.taxonomy.search.service.SearchFacade;
 import com.taxonomy.shared.config.GlobalExceptionHandler;
-import com.taxonomy.versioning.controller.DslApiController;
-import com.taxonomy.versioning.controller.DslReadWorkspaceContextResolver;
+import com.taxonomy.versioning.controller.CommitHistoryQueryController;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
 import com.taxonomy.versioning.repository.ArchitectureCommitIndexRepository;
 import com.taxonomy.versioning.service.CommitIndexService;
-import com.taxonomy.versioning.service.ConflictDetectionService;
-import com.taxonomy.versioning.service.DslOperationsFacade;
-import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.RepositoryContext;
-import com.taxonomy.workspace.service.RepositoryStateGuard;
-import com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import jakarta.persistence.EntityManager;
 import org.hibernate.search.mapper.orm.Search;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.json.JsonMapper;
 import org.springframework.context.support.ResourceBundleMessageSource;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -60,11 +56,11 @@ class SearchFailureHttpTest {
         var facade = new SearchFacade(taxonomy, fullText,
                 new HybridSearchService(fullText, embeddings), embeddings,
                 new GraphSearchService(embeddings, authority), initializer);
-        when(workspaces.resolveCurrentRepositoryContextForRead()).thenReturn(RepositoryContext.centralRead("fixture-repository", "draft", "system"));
+        when(workspaces.resolveUnambiguousRepositoryForRead()).thenReturn(RepositoryContext.centralRead("fixture-repository", "draft", "system"));
         var messages = new ResourceBundleMessageSource();
         messages.setBasenames("i18n/messages_search", "i18n/messages");
         messages.setDefaultEncoding("UTF-8");
-        mvc = standaloneSetup(new SearchApiController(facade, messages, workspaces))
+        mvc = standaloneSetup(new SearchApiController(facade, messages, workspaces, JsonMapper.builder().build()))
                 .setControllerAdvice(new GlobalExceptionHandler(messages)).build();
     }
 
@@ -73,13 +69,14 @@ class SearchFailureHttpTest {
         var repositories = mock(DslGitRepositoryFactory.class);
         var history = new CommitIndexService(repositories, mock(ArchitectureCommitIndexRepository.class));
         ReflectionTestUtils.setField(history, "entityManager", manager);
-        when(workspaces.resolveCurrentRepositoryContext()).thenReturn(
-                RepositoryContext.workspace("repo", "workspace", "draft", "alice"));
-        var operations = new DslOperationsFacade(repositories, history, mock(ConflictDetectionService.class),
-                mock(RepositoryStateGuard.class), mock(RepositoryStateService.class), workspaces,
-                mock(WorkspaceArchitectureVersionPort.class));
-        var historyMvc = standaloneSetup(new DslApiController(operations, workspaces,
-                mock(DslReadWorkspaceContextResolver.class)))
+        var selected = RepositoryContext.workspace("repo", "workspace", "draft", "alice");
+        when(workspaces.resolveUnambiguousRepositoryForRead()).thenReturn(selected);
+        var store = mock(WorkspaceDslReadPort.class);
+        var read = mock(WorkspaceDslReadPort.RepositoryRead.class);
+        when(store.openRead(selected)).thenReturn(read);
+        when(read.currentHead()).thenReturn("a".repeat(40));
+        var historyMvc = standaloneSetup(new CommitHistoryQueryController(history, workspaces, store,
+                tools.jackson.databind.json.JsonMapper.builder().build()))
                 .setControllerAdvice(new GlobalExceptionHandler(new ResourceBundleMessageSource())).build();
         try (var search = mockStatic(Search.class)) {
             search.when(() -> Search.session(manager)).thenThrow(new IllegalStateException("private-index-path"));
@@ -152,7 +149,7 @@ class SearchFailureHttpTest {
 
     @Test
     void workspaceDenialKeepsIts403Meaning() throws Exception {
-        when(workspaces.resolveCurrentRepositoryContextForRead())
+        when(workspaces.resolveUnambiguousRepositoryForRead())
                 .thenThrow(new AccessDeniedException("private-workspace"));
         mvc.perform(get("/api/search/graph").param("q", "query"))
                 .andExpect(status().isForbidden())
@@ -163,7 +160,7 @@ class SearchFailureHttpTest {
     @Test
     void graphReadPassesTheSelectedWorkspaceToSearchAuthority() throws Exception {
         var selected = RepositoryContext.workspace("fixture-repository", "selected-workspace", "draft", "test-user");
-        when(workspaces.resolveCurrentRepositoryContextForRead()).thenReturn(selected);
+        when(workspaces.resolveUnambiguousRepositoryForRead()).thenReturn(selected);
         when(authority.inspect(selected)).thenThrow(new com.taxonomy.error.SearchUnavailableException());
         mvc.perform(get("/api/search/graph").param("q", "query"))
                 .andExpect(status().isServiceUnavailable());
@@ -173,7 +170,7 @@ class SearchFailureHttpTest {
 
     @Test
     void workspaceFailureReturns503BeforeRetrieval() throws Exception {
-        when(workspaces.resolveCurrentRepositoryContextForRead())
+        when(workspaces.resolveUnambiguousRepositoryForRead())
                 .thenThrow(new IllegalStateException("private-workspace"));
         mvc.perform(get("/api/search/graph").param("q", "query"))
                 .andExpect(status().isServiceUnavailable())

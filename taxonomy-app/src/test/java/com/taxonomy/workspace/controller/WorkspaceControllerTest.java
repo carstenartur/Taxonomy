@@ -1,6 +1,8 @@
 package com.taxonomy.workspace.controller;
 
 import com.taxonomy.portfolio.RetainedPortfolioCatalogue;
+import com.taxonomy.security.service.DatabaseUserDetailsService;
+import com.taxonomy.security.service.UserManagementService;
 import org.junit.jupiter.api.Tag;
 
 import org.junit.jupiter.api.Test;
@@ -12,6 +14,12 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 
 import org.springframework.http.MediaType;
+
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -35,6 +43,9 @@ class WorkspaceControllerTest extends RetainedPortfolioCatalogue {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired private UserManagementService accounts;
+    @Autowired private DatabaseUserDetailsService users;
 
     // ── Basic workspace endpoints ───────────────────────────────────
 
@@ -237,7 +248,10 @@ class WorkspaceControllerTest extends RetainedPortfolioCatalogue {
 
     @Test
     void publish_returnsOk() throws Exception {
-        mockMvc.perform(post("/api/workspace/publish"))
+        String username = "workspace-publisher-" + UUID.randomUUID();
+        accounts.createUser(Map.of("username", username, "roles", List.of("USER", "ARCHITECT", "ADMIN")),
+                UUID.randomUUID().toString(), "test");
+        mockMvc.perform(post("/api/workspace/publish").with(user(users.loadUserByUsername(username))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
     }

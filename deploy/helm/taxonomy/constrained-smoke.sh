@@ -235,10 +235,12 @@ fi
 grep -Fq 'Created configured administrator account' \
   "${EVIDENCE_DIR}/application.log"
 
+# The parent polls this log immediately after spawning kubectl. Create it before the fork.
+: >"${EVIDENCE_DIR}/port-forward.log"
 command kubectl --kubeconfig "${FIXTURE_KUBECONFIG}" --context "${KUBE_CONTEXT}" \
   port-forward --namespace "${NAMESPACE}" --address 127.0.0.1 \
   "service/${SERVICE}" :80 \
-  >"${EVIDENCE_DIR}/port-forward.log" 2>&1 &
+  >>"${EVIDENCE_DIR}/port-forward.log" 2>&1 &
 PORT_FORWARD_PID=$!
 WEB_READY=false
 for _ in $(seq 1 60); do

@@ -41,43 +41,59 @@ public class HistoryIndexWriterContractTest {
             var selected = RepositoryContext.workspace("purge-" + UUID.randomUUID(), "__shared__", "draft", "owner");
             String repo = selected.repositoryId();
             var otherRepo = "other-" + repo;
-            var first = add(factory, repo, "__shared__", "a");
-            var gone = add(factory, repo, "__shared__", "b");
-            var central = add(factory, repo, null, "c");
-            var neighbour = add(factory, otherRepo, "__shared__", "d");
-            var grant = new Grant("verified-owner", "LOCAL", "current-binding");
             var jdbc = new JdbcTemplate(db);
-            var manager = new JpaTransactionManager(factory);
-            var journal = new HistoryIndexJournal(jdbc, manager, Clock.systemUTC());
-            var receipt = journal.admit(selected, selected.branch(), HistoryIndexJournal.Kind.PURGE, grant,
-                    "purge-key", null, () -> new HistoryIndexJournal.Capture(null, "owner"));
-            String id = receipt.receipt().operationId();
             try {
-                factory.inTransaction(session -> session.remove(session.find(ArchitectureCommitIndex.class, gone)));
-                var replacement = add(factory, repo, "__shared__", "b");
-                var writer = new CommitIndexService(mock(DslGitRepositoryFactory.class), mock(ArchitectureCommitIndexRepository.class));
-                ReflectionTestUtils.setField(writer, "entityManager", SharedEntityManagerCreator.createSharedEntityManager(factory));
-                var original = journal.claim(id, "first", false);
-                assertThatThrownBy(() -> journal.execute(original, row -> {
-                    assertThat(writer.purgeCaptured(selected, id)).isEqualTo(1);
-                    throw new org.springframework.security.access.AccessDeniedException("permission changed before commit");
-                })).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
-                assertThat(factory.fromTransaction(session -> session.find(ArchitectureCommitIndex.class, first)) != null).isTrue();
-                journal.failed(original, "RETRYABLE", "TRANSIENT_TEST_CHECKPOINT");
-                var retry = journal.claim(id, "next", true);
-                assertThat(journal.execute(retry, row -> writer.purgeCaptured(selected, id)).count()).isEqualTo(1);
-                factory.inTransaction(session -> {
-                    assertThat(session.find(ArchitectureCommitIndex.class, first)).isNull();
-                    assertThat(session.find(ArchitectureCommitIndex.class, gone)).isNull();
-                    for (var untouched : new Long[]{replacement, central, neighbour})
-                        assertThat(session.find(ArchitectureCommitIndex.class, untouched)).isNotNull();
-                });
+                if (!createSchema) {
+                    // V8 enforces repository ownership for every index row on a migrated installation.
+                    for (String repositoryId : java.util.List.of(repo, otherRepo)) {
+                        jdbc.update("""
+                                insert into system_repository
+                                    (repository_id, default_branch, topology_mode, created_at, primary_repo, version)
+                                values (?, ?, ?, ?, ?, ?)
+                                """, repositoryId, "draft", "INTERNAL_SHARED", java.sql.Timestamp.from(Instant.now()), false, 0L);
+                    }
+                }
+                var first = add(factory, repo, "__shared__", "a");
+                var gone = add(factory, repo, "__shared__", "b");
+                var central = add(factory, repo, null, "c");
+                var neighbour = add(factory, otherRepo, "__shared__", "d");
+                var grant = new Grant("verified-owner", "LOCAL", "current-binding");
+                var manager = new JpaTransactionManager(factory);
+                var journal = new HistoryIndexJournal(jdbc, manager, Clock.systemUTC());
+                var receipt = journal.admit(selected, selected.branch(), HistoryIndexJournal.Kind.PURGE, grant,
+                        "purge-key", null, () -> new HistoryIndexJournal.Capture(null, "owner"));
+                String id = receipt.receipt().operationId();
+                try {
+                    factory.inTransaction(session -> session.remove(session.find(ArchitectureCommitIndex.class, gone)));
+                    var replacement = add(factory, repo, "__shared__", "b");
+                    var writer = new CommitIndexService(mock(DslGitRepositoryFactory.class), mock(ArchitectureCommitIndexRepository.class));
+                    ReflectionTestUtils.setField(writer, "entityManager", SharedEntityManagerCreator.createSharedEntityManager(factory));
+                    var original = journal.claim(id, "first", false);
+                    assertThatThrownBy(() -> journal.execute(original, row -> {
+                        assertThat(writer.purgeCaptured(selected, id)).isEqualTo(1);
+                        throw new org.springframework.security.access.AccessDeniedException("permission changed before commit");
+                    })).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+                    assertThat(factory.fromTransaction(session -> session.find(ArchitectureCommitIndex.class, first)) != null).isTrue();
+                    journal.failed(original, "RETRYABLE", "TRANSIENT_TEST_CHECKPOINT");
+                    var retry = journal.claim(id, "next", true);
+                    assertThat(journal.execute(retry, row -> writer.purgeCaptured(selected, id)).count()).isEqualTo(1);
+                    factory.inTransaction(session -> {
+                        assertThat(session.find(ArchitectureCommitIndex.class, first)).isNull();
+                        assertThat(session.find(ArchitectureCommitIndex.class, gone)).isNull();
+                        for (var untouched : new Long[]{replacement, central, neighbour})
+                            assertThat(session.find(ArchitectureCommitIndex.class, untouched)).isNotNull();
+                    });
+                } finally {
+                    jdbc.update("delete from history_index_purge_target where operation_id=?", id);
+                    jdbc.update("delete from history_index_decision where operation_id=?", id);
+                    jdbc.update("delete from history_index_operation where operation_id=?", id);
+                }
             } finally {
                 factory.inTransaction(session -> session.createMutationQuery(
                         "delete from ArchitectureCommitIndex p where p.repositoryId in (:repos)").setParameterList("repos", java.util.List.of(repo, otherRepo)).executeUpdate());
-                jdbc.update("delete from history_index_purge_target where operation_id=?", id);
-                jdbc.update("delete from history_index_decision where operation_id=?", id);
-                jdbc.update("delete from history_index_operation where operation_id=?", id);
+                if (!createSchema) {
+                    jdbc.update("delete from system_repository where repository_id in (?, ?)", repo, otherRepo);
+                }
             }
         }
     }

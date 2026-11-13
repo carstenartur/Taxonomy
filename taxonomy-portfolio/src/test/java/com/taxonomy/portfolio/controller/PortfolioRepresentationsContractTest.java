@@ -39,7 +39,7 @@ class PortfolioRepresentationsContractTest {
     void reportDownloadsPreserveFormatBytesAndScope(PortfolioReportService.Format format) {
         var service=mock(PortfolioReportService.class);var resolver=mock(WorkspaceResolver.class);
         var context=new WorkspaceContext("alice","ws-a","draft","repo-a");
-        when(resolver.resolveCurrentUsername()).thenReturn("alice");when(resolver.resolveCurrentContext()).thenReturn(context);
+        when(resolver.resolveCurrentUsername()).thenReturn("alice");when(resolver.resolveUnambiguousContextForRead()).thenReturn(context);
         byte[] bytes={1,2,3};String filename="portfolio."+format.extension();
         when(service.render(1L,2L,format,"solution","alice",context))
                 .thenReturn(new PortfolioReportService.RenderedReport(bytes,format.contentType(),filename));

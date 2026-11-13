@@ -362,10 +362,14 @@ abstract class AbstractDatabaseContainerIT {
         }
     }
 
+    protected String publicationEvidence(String workspace) {
+        return "";
+    }
+
     @Test
     @Order(31)
     void originalGitHistorySurvivesIndependentWorkingCopyArchivesAndDeletions() throws Exception {
-        try (var contract = new RepositoryHistoryHttpContract(URI.create(baseUrl()), BASIC_AUTH)) {
+        try (var contract = new RepositoryHistoryHttpContract(URI.create(baseUrl()), BASIC_AUTH, this::publicationEvidence)) {
             contract.verify();
         }
     }

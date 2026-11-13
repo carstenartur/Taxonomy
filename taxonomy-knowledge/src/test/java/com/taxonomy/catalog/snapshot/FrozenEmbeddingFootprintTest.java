@@ -4,7 +4,7 @@ import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
 import com.taxonomy.catalog.service.CatalogueOverlayService;
 import com.taxonomy.catalog.service.TaxonomyService;
-import com.taxonomy.search.NodeEmbeddingBinder;
+import com.taxonomy.catalog.service.NodeEmbeddingText;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
@@ -52,7 +52,7 @@ class FrozenEmbeddingFootprintTest {
             String root = rootNode.getCode();
             var selected = nodes.values().stream().filter(node -> root.equals(node.getTaxonomyRoot())).toList();
             Map<String, String> texts = new LinkedHashMap<>();
-            selected.forEach(node -> texts.put(node.getCode(), NodeEmbeddingBinder.Bridge.buildEnrichedText(node)));
+            selected.forEach(node -> texts.put(node.getCode(), NodeEmbeddingText.buildEnrichedText(node)));
             snapshots.add(new RootCatalogueSnapshot(RootCatalogueSnapshot.SCHEMA_VERSION, source, root,
                     selected.stream().map(node -> RootCatalogueSnapshot.Node.capture(node,
                             overlay.getNodeMetadata(node.getCode()), overlay.hasParentPatch(node.getCode()))).toList(),

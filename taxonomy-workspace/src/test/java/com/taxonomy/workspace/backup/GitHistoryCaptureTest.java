@@ -1,6 +1,7 @@
 package com.taxonomy.workspace.backup;
 
 import com.taxonomy.backup.*;
+import com.taxonomy.workspace.storage.DslGitRepository;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.dircache.DirCache;
 import org.eclipse.jgit.lib.*;
@@ -24,6 +25,22 @@ import static org.assertj.core.api.Assertions.*;
 class GitHistoryCaptureTest {
     private static final BackupCheckpoint CHECK = () -> { };
     @TempDir Path temporary;
+
+    @Test void releasedPublicationPinInvalidatesAnAlreadyCapturedRevision() throws Exception {
+        try (var git = Git.init().setDirectory(temporary.resolve("pin-fence").toFile()).setInitialBranch("main").call()) {
+            var repository = new DslGitRepository(git.getRepository());
+            String head = commit(git, "ORIGINAL", "main");
+            String candidate = repository.prepareDslCommit("operation", "main", head, null,
+                    "UNPUBLISHED", "editor", "pending", null);
+            var capture = GitHistoryCapture.capture(git.getRepository(), Set.of(), Map.of(),
+                    GitHistoryCapture.Limits.defaults(), CHECK);
+            assertThat(capture.state().requiredCommits()).contains(candidate);
+            repository.releasePreparedDslCommit("operation", "main", candidate);
+            var contents = new Contents();
+            assertThatThrownBy(() -> capture.write("source", GitRepresentation.BUNDLE, contents)).isInstanceOf(IOException.class);
+            assertThat(contents.entries).isEmpty();
+        }
+    }
 
     @Test void anOfflineBundlePreservesOriginalHistoryIncludingACommitWithoutABranch() throws Exception {
         String first, current, unreferenced, tag, notes;

@@ -73,6 +73,13 @@ class PortfolioReportServiceTest {
                         "P-" + shortId(), "Report project", "Report scope",
                         ProjectStatus.ACTIVE, null, null, null, null),
                 context.username(), context);
+        var emptyProject = reportService.render(
+                project.id(), null, Format.HTML, "taxonomy", context.username(), context);
+        assertThat(new String(emptyProject.bytes(), StandardCharsets.UTF_8)).contains(project.projectKey());
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> reportService.render(
+                project.id(), 123456789L, Format.HTML, "taxonomy", context.username(), context))
+                .isInstanceOf(com.taxonomy.portfolio.service.PortfolioException.class)
+                .hasMessageContaining("Requirement not found");
         var requirement = projectService.createRequirement(
                 project.id(),
                 new CreateRequirementRequest(
@@ -97,6 +104,7 @@ class PortfolioReportServiceTest {
         var workspace = mock(WorkspaceResolver.class);
         when(workspace.resolveCurrentUsername()).thenCallRealMethod();
         when(workspace.resolveCurrentContext()).thenReturn(context);
+        when(workspace.resolveUnambiguousContextForRead()).thenReturn(context);
         var routes = standaloneSetup(new ProjectProductGapReviewController(gapReviews, workspace))
                 .setControllerAdvice(new PortfolioExceptionHandler()).build();
         var gaps = "/api/projects/{projectId}/product-gaps";
@@ -120,6 +128,7 @@ class PortfolioReportServiceTest {
         var foreign = new WorkspaceContext(context.username(), "other-" + context.workspaceId(),
                 context.currentBranch(), context.repositoryId());
         when(workspace.resolveCurrentContext()).thenReturn(foreign);
+        when(workspace.resolveUnambiguousContextForRead()).thenReturn(foreign);
         routes.perform(get(gaps, project.id())).andExpect(status().isNotFound());
         routes.perform(post(reviews, project.id(), gap.reviewKey()).contentType("application/json").content(request))
                 .andExpect(status().isNotFound());

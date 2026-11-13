@@ -43,7 +43,8 @@ public class CoverageApiController {
 
     public record RecordCoverageRequest(String requirementId, String requirementText, Map<String, Double> scores, int minScore) {}
 
-    @Operation(summary = "Record requirement coverage at the selected workspace revision")
+    @Operation(summary = "Record requirement coverage at the selected workspace revision",
+            description = "Records qualifying node scores for a requirement at the supplied commitId. A moved branch returns a stale-source response before it can receive the scores.")
     @PostMapping("/record")
     public ResponseEntity<?> recordCoverage(@RequestBody RecordCoverageRequest request, @RequestParam String commitId) {
         if (request.requirementId() == null || request.requirementId().isBlank() || request.requirementId().length() > 255
@@ -60,26 +61,36 @@ public class CoverageApiController {
         });
     }
 
+    @Operation(summary = "Coverage for a node",
+            description = "Returns requirements recorded against the node in the selected repository, workspace, branch and revision. An optional commitId pins the observed head.")
     @GetMapping("/node/{code}")
     public ResponseEntity<?> forNode(@PathVariable String code, @RequestParam(required = false) String commitId) {
         return atSource(commitId, "node/" + code, false, (context, head) -> coverage.getCoverageForNode(context, head, code));
     }
 
+    @Operation(summary = "Coverage for a requirement",
+            description = "Returns node scores recorded for the requirement at the selected branch head. The response identifies its repository, workspace and immutable commit.")
     @GetMapping("/requirement/{id}")
     public ResponseEntity<?> forRequirement(@PathVariable String id, @RequestParam(required = false) String commitId) {
         return atSource(commitId, "requirement/" + id, false, (context, head) -> coverage.getCoverageForRequirement(context, head, id));
     }
 
+    @Operation(summary = "Requirement coverage statistics",
+            description = "Returns totals, percentages, top-covered nodes and gap candidates for the selected source. A stale commit pin prevents reading another revision.")
     @GetMapping("/statistics")
     public ResponseEntity<?> statistics(@RequestParam(required = false) String commitId) {
         return atSource(commitId, "statistics", false, coverage::getCoverageStatistics);
     }
 
+    @Operation(summary = "Requirement density by node",
+            description = "Returns the number of recorded requirements per node for the selected repository, workspace, branch and revision.")
     @GetMapping("/density")
     public ResponseEntity<?> density(@RequestParam(required = false) String commitId) {
         return atSource(commitId, "density", false, coverage::getRequirementDensityMap);
     }
 
+    @Operation(summary = "Delete requirement coverage at the selected workspace revision",
+            description = "Removes this requirement’s coverage from the selected working copy at the supplied commitId. Other sources and revisions retain their rows.")
     @DeleteMapping("/requirement/{id}")
     public ResponseEntity<?> delete(@PathVariable String id, @RequestParam String commitId) {
         var response = atSource(commitId, "delete", true, (context, head) -> {

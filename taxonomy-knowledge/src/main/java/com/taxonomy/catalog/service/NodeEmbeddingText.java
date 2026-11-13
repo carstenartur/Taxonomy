@@ -14,16 +14,27 @@ public final class NodeEmbeddingText {
     private NodeEmbeddingText() {
     }
 
-    public static String buildEnrichedText(TaxonomyNode node) {
-        return buildEnrichedText(node, java.util.Locale.getDefault());
+    /** Shared index input consists solely of reference-catalogue fields. */
+    public static String globalReferenceText(TaxonomyNode node) {
+        return referenceFields(node).toString().trim();
     }
 
-    public static String buildEnrichedText(TaxonomyNode node, java.util.Locale relationNameLocale) {
+    private static StringBuilder referenceFields(TaxonomyNode node) {
         StringBuilder sb = new StringBuilder();
         if (node.getNameEn() != null) sb.append(node.getNameEn()).append(".\n");
         if (node.getDescriptionEn() != null && !node.getDescriptionEn().isBlank()) {
             sb.append(node.getDescriptionEn()).append("\n");
         }
+        return sb;
+    }
+
+    /** Only a caller with an explicitly selected relation snapshot may enrich document input. */
+    public static String buildEnrichedText(TaxonomyNode node) {
+        return buildEnrichedText(node, java.util.Locale.getDefault());
+    }
+
+    public static String buildEnrichedText(TaxonomyNode node, java.util.Locale relationNameLocale) {
+        StringBuilder sb = referenceFields(node);
         if (!node.getOutgoingRelations().isEmpty()) {
             sb.append("Outgoing: ");
             for (TaxonomyRelation r : node.getOutgoingRelations()) {

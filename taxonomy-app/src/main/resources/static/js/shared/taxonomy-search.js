@@ -14,6 +14,7 @@
     const MAX_FOCUS_ATTEMPTS = 4;
     let embeddingAvailable = false;
     let graphAvailable = false;
+    let readinessGeneration = 0;
     let resultState = emptyResultState();
     let searchGeneration = 0;
     let activeSearchController = null;
@@ -99,6 +100,13 @@
         checkEmbeddingStatus();
     });
     document.addEventListener('taxonomy-i18n-loaded', updateSearchInputHelp);
+    document.addEventListener('taxonomy:repository-context-changed', function (event) {
+        if (event.detail?.selectionChanged === false || !document.getElementById('searchModeSelect')) return;
+        discardResults();
+        graphAvailable = false;
+        updateSearchModes();
+        checkEmbeddingStatus();
+    });
 
     function emptyResultState() {
         return {
@@ -171,18 +179,29 @@
     }
 
     function checkEmbeddingStatus() {
-        window.TaxonomySearchApi.status()
+        var generation = ++readinessGeneration;
+        return window.TaxonomySearchApi.status()
             .then(function (response) {
                 if (!response.ok) throw new Error('Embedding status is unavailable');
                 return response.json();
             })
-            .then(function (data) {
+            .then(async function (data) {
+                if (generation !== readinessGeneration) return;
                 embeddingAvailable = data.available === true;
-                graphAvailable = embeddingAvailable && data.graphReady === true;
                 updateEmbeddingBadge(data);
+                var ready = false;
+                if (data.modelAvailable === true || embeddingAvailable) {
+                    try {
+                        var response = await window.TaxonomySearchApi.graphReadiness();
+                        ready = response.ok && (await response.json()).ready === true;
+                    } catch (unavailable) { /* The selected source cannot currently be searched. */ }
+                }
+                if (generation !== readinessGeneration) return;
+                graphAvailable = ready;
                 updateSearchModes();
             })
             .catch(function () {
+                if (generation !== readinessGeneration) return;
                 embeddingAvailable = false;
                 graphAvailable = false;
                 updateEmbeddingBadge({ available: false });
@@ -813,16 +832,20 @@
             && !(area && area.style.display === 'block');
     }
 
-    function clearSearch() {
+    function discardResults() {
         searchGeneration += 1;
         if (activeSearchController) activeSearchController.abort();
         activeSearchController = null;
         resetResultState();
-        var input = document.getElementById('searchInput');
         var area = document.getElementById('searchResultsArea');
-        if (input) input.value = '';
         if (area) { area.innerHTML = ''; area.style.display = 'none'; }
         updateClearControl();
+    }
+
+    function clearSearch() {
+        var input = document.getElementById('searchInput');
+        if (input) input.value = '';
+        discardResults();
     }
 
     window.TaxonomySearch = {

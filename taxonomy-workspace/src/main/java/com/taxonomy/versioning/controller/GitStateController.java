@@ -44,6 +44,10 @@ public class GitStateController {
                     "and any in-progress operations.")
     public ResponseEntity<RepositoryState> getState(
             @RequestParam(defaultValue = "draft") String branch) {
+        if (workspaceResolver.hasExplicitSourceSelection()) {
+            WorkspaceContext selected = workspaceResolver.resolveUnambiguousContextForRead();
+            return ResponseEntity.ok(stateService.readSelectedState(selected));
+        }
         RequestContext current = context();
         return ResponseEntity.ok(stateService.getState(
                 current.username(), branch, current.workspaceContext()));

@@ -17,7 +17,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -114,19 +116,49 @@ class IdentityExportIT {
         }
     }
 
+    @Test void centralFetchInitiatorBelongsToInstallationAndStaysOutsideAPrivateWorkspaceExport() throws Exception {
+        try (var f = new Fixture()) {
+            ownershipTables(f);
+            var actor = new PrincipalIdentityService(f.database).oidc("https://issuer.example", "fork-only");
+            String forkPoint = "a".repeat(40);
+            f.jdbc.update("update system_repository set upstream_repository_id='foreign', upstream_branch='main', "
+                    + "fork_point_commit=? where repository_id='repo'", forkPoint);
+            f.jdbc.update("""
+                    insert into central_fetch_operation(operation_id,fingerprint,cause_id,actor_id,login_kind,binding_key,
+                        policy_code,actor_scope,target_repository_id,source_repository_id,local_branch,source_branch,
+                        fork_point,requested_commit,phase,attempts,created_at)
+                    values (?,?,?,?,'OIDC',?,'ARCHITECTURE_WRITE+CONTRIBUTOR',?,'repo','foreign','main','main',
+                        ?,?,'ADMITTED',0,1)
+                    """, "f-" + "1".repeat(62), "2".repeat(64), UUID.randomUUID().toString(),
+                    actor.id().value().toString(), "3".repeat(64), actor.scopeKey(), forkPoint, "b".repeat(40));
+
+            var selector = ownershipSelector(f);
+            assertThat(selector.select(snapshot(f.alice, BackupProfile.INSTALLATION_CURRENT, SecretsSelection.EXCLUDE), () -> { }))
+                    .contains(actor.id());
+            assertThat(selector.select(snapshot(f.alice, BackupProfile.CURRENT_STATE, SecretsSelection.EXCLUDE), () -> { }))
+                    .doesNotContain(actor.id());
+        }
+    }
+
     private static PrincipalScopeBackupSelector ownershipSelector(Fixture f) {
         var workspace = new WorkspaceBackupContributor(f.database, text -> text); var portfolio = new PortfolioBackupContributor(f.database);
         return new PrincipalScopeBackupSelector(f.database, List.of(workspace::principalScopes, portfolio::principalScopes));
     }
     private static void ownershipTables(Fixture f) {
-        f.jdbc.execute("create table system_repository(repository_id varchar(255),owner_type varchar(50),owner_id varchar(255))");
+        new ResourceDatabasePopulator(
+                new ClassPathResource("db/restore/hsqldb/V23__Workspace_fetch_operation.sql"),
+                new ClassPathResource("db/restore/hsqldb/V25__Central_fetch_and_selected_tags.sql")).execute(f.database);
+        f.jdbc.execute("""
+                create table system_repository(repository_id varchar(255), owner_type varchar(50), owner_id varchar(255),
+                    upstream_repository_id varchar(255), upstream_branch varchar(255), fork_point_commit varchar(40))
+                """);
         f.jdbc.execute("create table user_workspace(workspace_id varchar(255),source_repository_id varchar(255),username varchar(255))");
         f.jdbc.execute("create table repository_membership(id integer,repository_id varchar(255),username varchar(255))");
         f.jdbc.execute("create table workspace_branch_sync(scope_key varchar(64),repository_id varchar(255),workspace_id varchar(255),username varchar(255))");
         f.jdbc.execute("create table sync_state(id integer,workspace_id varchar(255),username varchar(255))");
         for (String table : List.of("arch_project", "project_requirement", "solution_definition"))
             f.jdbc.execute("create table " + table + "(id integer,scope_key varchar(512),owner_username varchar(255))");
-        f.jdbc.update("insert into system_repository values ('repo','USER','alice'),('foreign','USER','bob')");
+        f.jdbc.update("insert into system_repository(repository_id,owner_type,owner_id) values ('repo','USER','alice'),('foreign','USER','bob')");
         f.jdbc.update("insert into user_workspace values ('workspace','repo','retired-owner'),('private-other','repo','bob')");
         f.jdbc.update("insert into repository_membership values (1,'repo','alice'),(2,'foreign','bob')");
         f.jdbc.update("insert into sync_state values (1,'workspace','retired-owner'),(2,'private-other','bob')");

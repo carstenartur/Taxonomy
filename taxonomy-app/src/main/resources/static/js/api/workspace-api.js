@@ -79,7 +79,10 @@
         syncState: function (options) { return get('/api/workspace/sync-state', options); },
         localChanges: function (branch, options) { return get('/api/workspace/local-changes?branch=' + encodeURIComponent(branch), options); },
         syncFromShared: function (branch, options) { return post('/api/workspace/sync-from-shared' + branchQuery(branch), options); },
-        publish: function (branch, options) { return post('/api/workspace/publish' + branchQuery(branch), options); }
+        publish: function (branch, options) {
+            var headers = options && options.idempotencyKey ? {'Idempotency-Key': options.idempotencyKey} : {};
+            return request('/api/workspace/publish' + branchQuery(branch), {method:'POST', headers:headers}, options);
+        }
     });
 
     window.TaxonomyContextApi = Object.freeze({
@@ -100,7 +103,8 @@
             return get('/api/context/compare?' + query, options);
         },
         searchHistory: function (query, branch, options) {
-            var params = new URLSearchParams({ query: query, currentBranch: branch });
+            var params = new URLSearchParams({query: query});
+            if (branch) params.set('currentBranch', branch);
             return get('/api/dsl/history/search-versioned?' + params, options);
         }
     });

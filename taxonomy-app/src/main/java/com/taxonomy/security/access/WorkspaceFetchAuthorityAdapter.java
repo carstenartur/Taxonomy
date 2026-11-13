@@ -6,8 +6,10 @@ import com.taxonomy.security.model.PrincipalBinding;
 import com.taxonomy.security.model.PrincipalUserDetails;
 import com.taxonomy.security.model.StablePrincipal;
 import com.taxonomy.security.service.PrincipalIdentityService;
-import com.taxonomy.workspace.service.HistoryIndexGrant;
 import com.taxonomy.workspace.service.WorkspaceFetchAuthority;
+import com.taxonomy.workspace.service.HistoryIndexGrant;
+import com.taxonomy.workspace.service.WorkspacePublicationAuthority;
+import com.taxonomy.workspace.service.RepositoryScope;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -22,7 +24,7 @@ import java.util.UUID;
 
 @Component
 @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
-public class WorkspaceFetchAuthorityAdapter implements WorkspaceFetchAuthority, HistoryIndexGrant {
+public class WorkspaceFetchAuthorityAdapter implements WorkspaceFetchAuthority, WorkspacePublicationAuthority, HistoryIndexGrant {
     private final PrincipalIdentityService identities;
 
     public WorkspaceFetchAuthorityAdapter(PrincipalIdentityService identities) { this.identities = identities; }
@@ -37,8 +39,12 @@ public class WorkspaceFetchAuthorityAdapter implements WorkspaceFetchAuthority, 
         return externalBinding(authentication);
     }
 
-    @Override public Grant authorize(String username) {
-        return authorize(username, ApiPermission.ANALYSIS_RUN);
+    @Override public Grant authorize(String username, RepositoryScope scope) {
+        return authorize(username, permission(scope));
+    }
+
+    @Override public Grant authorizePublication(String username) {
+        return authorize(username, ApiPermission.ARCHITECTURE_PUBLISH);
     }
 
     @Override public Grant authorizeHistoryIndex(String username, boolean purge) {
@@ -70,8 +76,12 @@ public class WorkspaceFetchAuthorityAdapter implements WorkspaceFetchAuthority, 
         return PrincipalBinding.key(new IdentityBinding(IdentityBinding.Kind.OIDC, issuer, subject));
     }
 
-    @Override public void checkPublication(Grant original, String username, boolean unattended) {
-        checkGrant(original, username, ApiPermission.ANALYSIS_RUN, unattended);
+    @Override public void checkPublication(Grant original, String username, RepositoryScope scope, boolean unattended) {
+        checkGrant(original, username, permission(scope), unattended);
+    }
+
+    @Override public void checkPublicationGrant(Grant original, String username, boolean unattended) {
+        checkGrant(original, username, ApiPermission.ARCHITECTURE_PUBLISH, unattended);
     }
 
     @Override public void checkHistoryIndex(Grant original, String username, boolean purge, boolean unattended) {
@@ -108,6 +118,14 @@ public class WorkspaceFetchAuthorityAdapter implements WorkspaceFetchAuthority, 
         var local = identities.currentLocalAuthority(id, username);
         if (!local.bindingKey().equals(original.bindingKey()) || required.roles().stream()
                 .noneMatch(role -> local.roles().contains("ROLE_" + role))) throw denied();
+    }
+
+    private static ApiPermission permission(RepositoryScope scope) {
+        return switch (scope) {
+            case WORKSPACE -> ApiPermission.ANALYSIS_RUN;
+            case CENTRAL_WRITE -> ApiPermission.ARCHITECTURE_WRITE;
+            default -> throw denied();
+        };
     }
 
     private static AccessDeniedException denied() { return new AccessDeniedException("Workspace operation permission is unavailable"); }

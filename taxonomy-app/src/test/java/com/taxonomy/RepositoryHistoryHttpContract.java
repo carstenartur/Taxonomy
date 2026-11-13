@@ -19,10 +19,17 @@ final class RepositoryHistoryHttpContract implements AutoCloseable {
     private static final ObjectMapper JSON = JsonMapper.builder().build();
     private final URI application;
     private final String authorization;
+    private final java.util.function.Function<String, String> publicationEvidence;
     private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     private final String name = "history-" + UUID.randomUUID();
 
     RepositoryHistoryHttpContract(URI application, String authorization) {
+        this(application, authorization, workspace -> "");
+    }
+
+    RepositoryHistoryHttpContract(URI application, String authorization,
+                                  java.util.function.Function<String, String> publicationEvidence) {
+        this.publicationEvidence = publicationEvidence;
         this.application = application;
         this.authorization = authorization;
     }
@@ -204,7 +211,27 @@ final class RepositoryHistoryHttpContract implements AutoCloseable {
         assertThat(result.required("databaseBacked").booleanValue()).isTrue();
         String commit = result.required("commitId").textValue();
         assertThat(head(copy)).isEqualTo(commit);
-        var published = json("POST", "/api/workspace/publish", copy, Map.of());
+        JsonNode published;
+        try {
+            published = json("POST", "/api/workspace/publish", copy, Map.of());
+        } catch (AssertionError failedResponse) {
+            try {
+                String evidence = publicationEvidence.apply(copy.workspace);
+                if (!evidence.isEmpty()) failedResponse.addSuppressed(new AssertionError(evidence));
+            } catch (RuntimeException evidenceUnavailable) {
+                failedResponse.addSuppressed(new AssertionError("Publication evidence unavailable: "
+                        + evidenceUnavailable.getClass().getSimpleName()));
+            }
+            throw failedResponse;
+        }
+        assertThat(published.required("status").textValue()).isEqualTo("COMPLETED");
+        String id = published.required("operationId").textValue();
+        JsonNode receipt = get("/api/workspace/publications/" + id, copy);
+        assertThat(receipt.required("repositoryId").textValue()).isEqualTo(copy.repository);
+        assertThat(receipt.required("workspaceId").textValue()).isEqualTo(copy.workspace);
+        assertThat(receipt.required("branch").textValue()).isEqualTo(copy.branch);
+        assertThat(receipt.required("resultCommit").textValue()).isEqualTo(commit);
+        assertThat(receipt.required("decisionCode").textValue()).isEqualTo("COMPLETED");
         assertThat(published.required("mergeCommit").textValue()).isEqualTo(commit);
         return commit;
     }

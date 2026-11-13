@@ -22,10 +22,9 @@ window.TaxonomyHistorySearch = (function () {
      *
      * @param {string} query — search query
      * @param {string} containerId — DOM ID for results container
-     * @param {string} [branch='draft'] — current branch for lineage detection
+     * @param {string} [branch] — optional pin for the selected branch
      */
     function search(query, containerId, branch) {
-        branch = branch || 'draft';
         var previous = pendingSearches.get(containerId);
         if (previous) previous.abort();
         var controller = new AbortController();
