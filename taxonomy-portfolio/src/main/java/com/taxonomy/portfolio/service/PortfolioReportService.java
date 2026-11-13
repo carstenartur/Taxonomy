@@ -102,7 +102,7 @@ public class PortfolioReportService {
                 : portfolio.requirements().stream()
                         .filter(requirement -> requirement.id().equals(requirementId))
                         .toList();
-        if (requirements.isEmpty()) {
+        if (requirementId != null && requirements.isEmpty()) {
             throw PortfolioException.notFound("Requirement not found in project: " + requirementId);
         }
         List<Long> requirementIds = requirements.stream().map(RequirementView::id).toList();

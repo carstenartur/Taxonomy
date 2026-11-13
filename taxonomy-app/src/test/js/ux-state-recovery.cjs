@@ -168,8 +168,12 @@ async function reportsFixture() {
     for (const selector of ['.skip-link', 'label[for="reportScope"]', 'label[for="reportRequirement"]', 'label[for="matrixType"]', '#reportsBusy span']) selectors.set(selector, d.element());
     selectors.set('#reportPreviewFrame', frame);
     d.document.querySelector = selector => selectors.get(selector) || null;
-    const window = {addEventListener() {}, TaxonomyAppChrome: {updateContext: context => contexts.push(context)}, TaxonomyPortfolioApi: {
-        getProject: async () => ({projectKey: 'P', title: 'Project'}),
+    let sourceGeneration = 0;
+    const window = {addEventListener() {}, TaxonomyApiClient: {captureContext() {
+        const generation = sourceGeneration;
+        return () => generation === sourceGeneration;
+    }}, TaxonomyAppChrome: {updateContext: context => contexts.push(context)}, TaxonomyPortfolioApi: {
+        getProject: async () => ({projectKey: sourceGeneration ? 'P2' : 'P', title: 'Project'}),
         listRequirements: async () => [{id: 1, requirementKey: 'A', title: 'Alpha'}, {id: 2, requirementKey: 'B', title: 'Beta'}],
         fetchReport(...args) {const gate = deferred(); requests.push({args, ...gate}); return gate.promise;},
         reportUrl: () => '/api/report'
@@ -177,7 +181,7 @@ async function reportsFixture() {
     vm.runInNewContext(source('portfolio/portfolio-reports.js'), {window, document: d.document,
         location: {pathname: '/projects/1/reports', search: '?lang=de'}, URLSearchParams, URL: d.urls, AbortController});
     await d.document.fire('DOMContentLoaded');
-    return {...d, requests, prints, frame, contexts};
+    return {...d, requests, prints, frame, contexts, switchSource() { sourceGeneration++; }};
 }
 const reportResponse = () => ({blob: async () => ({size: 10})});
 
@@ -192,6 +196,35 @@ test('German report scope uses German matrix option labels', async () => {
     const f = await reportsFixture();
     assert.deepEqual(f.document.getElementById('matrixType').options.map(option => option.textContent),
         ['Anforderungen × Taxonomie', 'Anforderungen × Lösungen', 'Lösungen × Produkte']);
+});
+
+test('same-source notifications retain the loaded preview; changing repository clears it before print', async () => {
+    const f = await reportsFixture(), print = f.document.getElementById('printReport');
+    const pending = f.document.getElementById('previewReport').click();
+    f.requests[0].resolve(reportResponse()); await pending; await f.frame.fire('load');
+    await f.document.fire('taxonomy:repository-context-changed', {detail: {selectionChanged: false}});
+    assert.equal(print.disabled, false);
+    f.switchSource();
+    await f.document.fire('taxonomy:entity-context-changed');
+    assert.deepEqual(f.revoked, ['blob:preview-1']);
+    assert.equal(f.frame.src, 'about:blank'); assert.equal(print.disabled, true);
+    await print.click(); assert.deepEqual(f.prints, []);
+    assert.equal(f.contexts.at(-2).project.key, null);
+    assert.equal(f.contexts.at(-2).project.title, null);
+    assert.match(f.document.getElementById('reportsProject').textContent, /P2/);
+});
+
+test('a source switch during response.body cannot install an obsolete report', async () => {
+    const f = await reportsFixture(), body = deferred(), reading = deferred();
+    const pending = f.document.getElementById('previewReport').click();
+    f.requests[0].resolve({blob() {reading.resolve(); return body.promise;}});
+    await reading.promise;
+    f.switchSource();
+    await f.document.fire('taxonomy:repository-context-changed', {detail: {selectionChanged: true}});
+    body.resolve({size: 10}); await pending;
+    assert.equal(f.frame.src, 'about:blank');
+    assert.equal(f.document.getElementById('printReport').disabled, true);
+    assert.equal(f.document.getElementById('reportsError').textContent, '');
 });
 
 test('scope changes invalidate the report preview and discard stale success and failure', async () => {
