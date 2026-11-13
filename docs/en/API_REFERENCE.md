@@ -156,6 +156,8 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/jus
 
 ## Search
 
+Full-text, semantic, hybrid and similar-node searches read the shared reference catalogue. Successful results carry `X-Taxonomy-Source-Scope: GLOBAL_REFERENCE` and a representation ETag. The shared node index and the similar-node query embed the English catalogue name and description. Graph search on a selected branch uses its own relation-aware vectors. When upgrading, normal local ONNX index startup rebuilds the shared vectors under the new input-format key.
+
 ### Full-text search
 
 ```bash
@@ -176,10 +178,12 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/search/hyb
 
 ### Graph-semantic search
 
-Graph mode checks the selected repository, scope and exact branch head on each request. Relation similarity is available only for the migration-compatible central default branch while the canonical relation reader permits its legacy fallback. A proven empty branch projection returns global node matches with empty relation statistics. Nonempty branch projections and unready selected scopes return HTTP 503; they do not return partial graph results. The `graphReady` status reports global model/index prerequisites, so a visible Graph option does not guarantee that the selected scope can be searched. Branch semantic indexing remains follow-up work (#741).
+For a branch with projected relations, graph search uses its published node and relation vector generation. The `source` object identifies the repository, workspace, branch, Git commit, relation read model and vector source. A `BRANCH_GENERATION` includes the generation ID, source key and embedding model key. A verified empty projection uses the global node index and returns empty relation statistics. The primary default branch can also use its migration-compatible relation source.
+
+Use `GET /api/search/graph/readiness` with the same repository, workspace and branch to check the selected index. The optional full `commitId` on the search request pins the current revision. A stale pin or an ambiguous repository selection returns HTTP 409. A positive search with an unavailable index returns HTTP 503. Successful responses include the selected commit in `X-Taxonomy-Commit` and a representation `ETag` for conditional reads.
 
 ```bash
-curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/search/graph?q=communications&maxResults=20"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/search/graph?q=communications&maxResults=20&repositoryId=${TAXONOMY_REPOSITORY_ID}&workspaceId=&branch=main"
 ```
 
 ### Find similar nodes
@@ -745,6 +749,16 @@ curl -u alice:password -X POST "http://localhost:8080/api/workspace/publish?user
 ```
 
 **Response:** `{ "success": true, "branch": "feature-x", "mergeCommit": "def5678...", "publishedAt": "2026-03-15T10:05:00Z" }`
+
+A private working copy returns an operation ID in the response and in `X-Operation-Id`. Supply the same `Idempotency-Key` when repeating the same publish from the same actor, repository, workspace and branch. An optional UUID in `X-Causation-Id` links the request to its initiating command. A keyless request creates a new operation.
+
+| Request in the selected working copy | Result |
+| --- | --- |
+| `GET /api/workspace/publications/{id}` | Inspect the recorded inputs, phase, source observation, result and audit times. A prepared commit becomes a reported result once the source ref has been observed. |
+| `POST /api/workspace/publications/{id}/retry` | Recheck the original identity and current contribution rights, then resume the stored operation. A live lease or a required fresh login leaves it pending. |
+| `DELETE /api/workspace/publications/{id}` | Archive a terminal receipt and attempt conditional cleanup of its own private Git refs. An active operation returns **409**. |
+
+Publish and retry return **202** while recovery is pending, **403** when access is revoked, or **409** when the recorded source requires reconciliation. A normal replay observes the current backoff. The receipt records archiving separately from the original publication. Completed receipts are automatically archived after 30 days. After a further 90 days and confirmed private-ref cleanup, a scoped tombstone retains the original operation ID and prevents another publication with the archived key (**410**).
 
 ### Get Sync State
 

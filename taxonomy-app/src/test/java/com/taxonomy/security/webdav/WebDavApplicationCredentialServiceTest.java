@@ -91,7 +91,7 @@ class WebDavApplicationCredentialServiceTest {
         assertCreatedAudit(created);
 
         var principal = service.authenticate("admin", created.secret()).orElseThrow();
-        assertThat(principal.username()).isEqualTo("admin");
+        assertThat(principal.ownerId()).isEqualTo(WebDavCredentialTestIdentity.actor("admin"));
         assertThat(principal.writeAllowed()).isTrue();
         assertThat(principal.authorities()).extracting(
                 authority -> authority.getAuthority())
@@ -186,6 +186,7 @@ class WebDavApplicationCredentialServiceTest {
         WebDavApplicationCredential credential = new WebDavApplicationCredential();
         credential.setCredentialId("a".repeat(24));
         credential.setUsername("admin");
+        credential.setOwnerId(WebDavCredentialTestIdentity.actor("admin"));
         credential.setDescription("Word");
         credential.setSecretHash("hash");
         credential.setReadAllowed(true);
@@ -193,7 +194,7 @@ class WebDavApplicationCredentialServiceTest {
         credential.setAuthorities("ROLE_ADMIN");
         credential.setCreatedAt(NOW);
         credential.setExpiresAt(NOW.plusSeconds(3600));
-        when(repository.findByCredentialIdAndUsername("a".repeat(24), "admin"))
+        when(repository.findByCredentialIdAndOwnerId("a".repeat(24), WebDavCredentialTestIdentity.actor("admin")))
                 .thenReturn(Optional.of(credential));
         WebDavApplicationCredentialService service = service(
                 repository, new BCryptPasswordEncoder(4));
@@ -237,7 +238,7 @@ class WebDavApplicationCredentialServiceTest {
             transaction.executeWithoutResult(status -> service.revoke(owner, id));
             var revoked = transaction.execute(status -> service.authenticate("admin", created.secret()));
             assertThat(revoked).isEmpty();
-            assertThat(revokedAudits()).containsExactly("audit.webdav_credential.revoked id=" + id + " user=admin");
+            assertThat(revokedAudits()).containsExactly("audit.webdav_credential.revoked id=" + id + " actor=" + WebDavCredentialTestIdentity.actor("admin"));
         }
     }
 
@@ -245,7 +246,7 @@ class WebDavApplicationCredentialServiceTest {
     void failedRevocationCommitDoesNotProduceASuccessEvent() throws SQLException {
         var fixture = new CreationTransaction();
         var credential = fixture.create().credential();
-        when(fixture.repository.findByCredentialIdAndUsername(credential.id(), "admin"))
+        when(fixture.repository.findByCredentialIdAndOwnerId(credential.id(), WebDavCredentialTestIdentity.actor("admin")))
                 .thenReturn(Optional.of(fixture.stored.get()));
         doThrow(new SQLException("credential store unavailable")).when(fixture.connection).commit();
         assertThatThrownBy(() -> fixture.transaction.executeWithoutResult(status ->
@@ -271,10 +272,10 @@ class WebDavApplicationCredentialServiceTest {
             assertThat(event.getLevel()).isEqualTo(Level.INFO);
             assertThat(event.getFormattedMessage()).isEqualTo(
                     "audit.webdav_credential.created id=" + created.credential().id()
-                            + " user=admin read=true write=true expires="
+                            + " actor=" + WebDavCredentialTestIdentity.actor("admin") + " read=true write=true expires="
                             + created.credential().expiresAt());
             assertThat(event.getArgumentArray()).containsExactly(
-                    created.credential().id(), "admin", true, true,
+                    created.credential().id(), WebDavCredentialTestIdentity.actor("admin"), true, true,
                     created.credential().expiresAt());
             assertThat(event.getThrowableProxy()).isNull();
         });
@@ -312,7 +313,7 @@ class WebDavApplicationCredentialServiceTest {
             BCryptPasswordEncoder encoder) {
         SecureRandom random = new SecureRandom(new byte[]{1, 2, 3, 4});
         return new WebDavApplicationCredentialService(
-                repository, encoder, random, Clock.fixed(NOW, ZoneOffset.UTC));
+                repository, encoder, WebDavCredentialTestIdentity.fixture(), random, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     private static UsernamePasswordAuthenticationToken owner(
@@ -328,6 +329,7 @@ class WebDavApplicationCredentialServiceTest {
         WebDavApplicationCredential credential = new WebDavApplicationCredential();
         credential.setCredentialId("a".repeat(24));
         credential.setUsername("admin");
+        credential.setOwnerId(WebDavCredentialTestIdentity.actor("admin"));
         credential.setDescription("Word");
         credential.setSecretHash(encoder.encode(token));
         credential.setReadAllowed(true);

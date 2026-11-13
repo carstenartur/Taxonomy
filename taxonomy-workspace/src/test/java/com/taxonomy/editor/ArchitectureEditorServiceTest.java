@@ -481,6 +481,43 @@ class ArchitectureEditorServiceTest {
         assertThat(fixture.repositories.resolveRepository(alice).getDslAtHead("draft")).isEqualTo(SEED);
     }
 
+    @Test void preparedPublicationCannotOverwriteAnEditAcceptedAfterPreparation() throws Exception {
+        var git = fixture.repositories.resolveRepository(alice);
+        String expected = git.getHeadCommit("draft");
+        String operation = UUID.randomUUID().toString();
+        String candidate = git.prepareDslCommit(operation, "draft", expected, null, SEED.replace("Original", "Prepared"),
+                "alice", "Frozen publication", null);
+        execute(update("Later uncheckpointed edit"));
+        var before = service.read(alice, null);
+        assertThatThrownBy(() -> service.applyPreparedVersion(alice, expected, candidate, "Publish prepared version",
+                () -> git.publishPreparedDslCommit(operation, "draft", expected, candidate)))
+                .isInstanceOf(com.taxonomy.workspace.service.BranchHeadConflictException.class);
+        assertThat(git.getHeadCommit("draft")).isEqualTo(expected);
+        assertThat(service.read(alice, null).context().revision()).isEqualTo(before.context().revision());
+        assertThat(service.read(alice, null).dsl()).contains("Later uncheckpointed edit");
+    }
+
+    @Test void preparedPublicationImportsTheExactVersionOnceAfterAnInterruptedGitAcknowledgement() throws Exception {
+        var git = fixture.repositories.resolveRepository(alice);
+        execute(update("Checkpoint before publication"));
+        String expected = service.checkpoint(alice, new CreateCheckpointCommand(service.read(alice, null).context(), metadata())).commitId();
+        String operation = UUID.randomUUID().toString();
+        String candidate = git.prepareDslCommit(operation, "draft", expected, null, SEED.replace("Original", "Published"),
+                "alice", "Frozen publication", null);
+        assertThatThrownBy(() -> service.applyPreparedVersion(alice, expected, candidate, "Publish prepared version", () -> {
+            git.publishPreparedDslCommit(operation, "draft", expected, candidate);
+            throw new java.io.IOException("Process interrupted after branch update");
+        })).isInstanceOf(java.io.IOException.class);
+        var restarted = new ArchitectureEditorService(fixture.repositories, fixture.journal, new ArchitectureCheckpointWriter());
+        for (int i = 0; i < 2; i++) {
+            assertThat(restarted.applyPreparedVersion(alice, expected, candidate, "Publish prepared version",
+                    () -> git.publishPreparedDslCommit(operation, "draft", expected, candidate))).isEqualTo(candidate);
+        }
+        assertThat(restarted.read(alice, null).dsl()).contains("Published");
+        assertThat(restarted.read(alice, null).history()).filteredOn(entry -> entry.kind().equals("VERSION_IMPORT")).hasSize(1);
+        assertThat(git.getCommitCount("draft")).isEqualTo(3);
+    }
+
     @Test void failedVersionCompletionRequiresRecoveryAndNeverOverwritesUncheckpointedEdits() throws Exception {
         var git = fixture.repositories.resolveRepository(alice);
         execute(update("Checkpointed edit"));

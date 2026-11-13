@@ -265,7 +265,7 @@
       "fromPackage": "com.taxonomy.backup.restore",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.backup",
-      "classDependencyCount": 60
+      "classDependencyCount": 67
     },
     {
       "fromContext": "app-composition",
@@ -1070,7 +1070,7 @@
       "fromPackage": "com.taxonomy.security.access",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 5
+      "classDependencyCount": 8
     },
     {
       "fromContext": "app-composition",
@@ -1595,7 +1595,7 @@
       "fromPackage": "com.taxonomy.portfolio.controller",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 27
+      "classDependencyCount": 26
     },
     {
       "fromContext": "portfolio",

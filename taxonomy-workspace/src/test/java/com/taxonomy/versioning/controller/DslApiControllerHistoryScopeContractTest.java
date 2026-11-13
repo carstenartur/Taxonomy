@@ -1,16 +1,14 @@
 package com.taxonomy.versioning.controller;
 
-import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.dto.ElementHistoryAggregation;
 import com.taxonomy.versioning.model.ArchitectureCommitIndex;
 import com.taxonomy.versioning.service.CommitIndexService;
-import com.taxonomy.versioning.service.ConflictDetectionService;
-import com.taxonomy.versioning.service.DslOperationsFacade;
-import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.RepositoryContext;
-import com.taxonomy.workspace.service.RepositoryStateGuard;
-import com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort;
 import com.taxonomy.workspace.service.WorkspaceResolver;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
+import tools.jackson.databind.json.JsonMapper;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -22,30 +20,25 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import java.time.Instant;
 import java.util.List;
 
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-/** Retained history HTTP routes must preserve the selected repository through the real workspace facade. */
+/** Retained history HTTP routes must preserve the selected repository without provisioning a new one. */
 class DslApiControllerHistoryScopeContractTest {
     private static final String RELATION = "BP RELATED_TO CP";
     private final RepositoryContext selected = RepositoryContext.workspace(
             "selected-repository", "alice-workspace", "review", "alice");
     private final WorkspaceResolver resolver = mock(WorkspaceResolver.class);
-    private final RepositoryStateService state = mock(RepositoryStateService.class);
     private final CommitIndexService history = mock(CommitIndexService.class);
-    private final DslGitRepositoryFactory repositories = mock(DslGitRepositoryFactory.class);
-    private final DslReadWorkspaceContextResolver readContext = mock(DslReadWorkspaceContextResolver.class);
+    private final WorkspaceDslReadPort git = mock(WorkspaceDslReadPort.class);
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
-        var facade = new DslOperationsFacade(repositories, history, mock(ConflictDetectionService.class),
-                mock(RepositoryStateGuard.class), state, resolver, mock(WorkspaceArchitectureVersionPort.class));
-        mvc = MockMvcBuilders.standaloneSetup(new DslApiController(facade, resolver, readContext)).build();
-        when(resolver.resolveCurrentUsername()).thenReturn("alice");
-        when(resolver.resolveCurrentRepositoryContext()).thenReturn(selected);
+        mvc = MockMvcBuilders.standaloneSetup(new CommitHistoryQueryController(history, resolver, git,
+                JsonMapper.builder().build())).build();
+        when(resolver.resolveUnambiguousRepositoryForRead()).thenReturn(selected);
     }
 
     @Test
@@ -81,40 +74,22 @@ class DslApiControllerHistoryScopeContractTest {
                 .andExpect(jsonPath("$[0].affectedRelationIds").value(RELATION))
                 .andExpect(jsonPath("$[0].message").value("Review relation"));
 
-        var order = inOrder(state, resolver, history);
-        order.verify(resolver).resolveCurrentUsername();
-        order.verify(state).ensureWorkspaceState("alice");
-        order.verify(resolver).resolveCurrentRepositoryContext();
+        var order = inOrder(resolver, history);
+        order.verify(resolver).resolveUnambiguousRepositoryForRead();
         order.verify(history).aggregateElementHistory(eq("BP"), same(selected));
-        order.verify(resolver).resolveCurrentUsername();
-        order.verify(state).ensureWorkspaceState("alice");
-        order.verify(resolver).resolveCurrentRepositoryContext();
+        order.verify(resolver).resolveUnambiguousRepositoryForRead();
         order.verify(history).findByRelation(eq(RELATION), same(selected));
         order.verifyNoMoreInteractions();
-        verifyNoInteractions(repositories, readContext);
+        verifyNoInteractions(git);
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/api/dsl/history/element/BP/aggregation", "/api/dsl/history/relation"})
-    void missingRepositoryContextFailsBeforeAnyProjectionOrFallback(String path) {
-        when(resolver.resolveCurrentRepositoryContext()).thenReturn(null);
-        assertThatThrownBy(() -> mvc.perform(get(path).param("key", RELATION)))
-                .hasRootCauseInstanceOf(IllegalStateException.class)
-                .hasRootCauseMessage("Repository context resolver returned null");
-        verify(state).ensureWorkspaceState("alice");
-        verifyNoInteractions(history, repositories, readContext);
-        verify(resolver, never()).resolveCurrentContext();
-    }
-
-    @ParameterizedTest
-    @ValueSource(strings = {"/api/dsl/history/element/BP/aggregation", "/api/dsl/history/relation"})
-    void failedProvisioningStopsBeforeContextOrProjectionRead(String path) {
-        doThrow(new IllegalStateException("workspace unavailable")).when(state).ensureWorkspaceState("alice");
-        assertThatThrownBy(() -> mvc.perform(get(path).param("key", RELATION)))
-                .hasRootCauseInstanceOf(IllegalStateException.class)
-                .hasRootCauseMessage("workspace unavailable");
+    @ValueSource(strings = {"/api/dsl/history/element/BP/aggregation", "/api/dsl/history/relation",
+            "/api/dsl/history/element/BP", "/api/dsl/history/search", "/api/dsl/history/search-versioned"})
+    void ambiguousReadStopsBeforeAnyProjectionOrFallback(String path) throws Exception {
+        when(resolver.resolveUnambiguousRepositoryForRead()).thenThrow(new ResponseStatusException(HttpStatus.CONFLICT));
+        mvc.perform(get(path).param("key", RELATION).param("query", "BP")).andExpect(status().isConflict());
+        verifyNoInteractions(history, git);
         verify(resolver, never()).resolveCurrentRepositoryContext();
-        verify(resolver, never()).resolveCurrentContext();
-        verifyNoInteractions(history, repositories, readContext);
     }
 }

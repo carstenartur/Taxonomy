@@ -44,6 +44,7 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
     private final DslGitRepositoryFactory repositories;
     private final EditorJournal journal;
     private final ArchitectureCheckpointWriter checkpointWriter;
+    private static final ScopedValue<RepositoryContext> ACTIVE_VERSION = ScopedValue.newInstance();
     private BackupWriteBarrier writeBarrier = BackupWriteBarrier.disabled();
     private ObjectProvider<WorkspacePortfolioGitPort> portfolioGitPort;
 
@@ -369,6 +370,13 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
 
     @Override
     public <T> T version(RepositoryContext context, String rationale, GitAction<T> action) throws IOException {
+        if (ACTIVE_VERSION.isBound()) {
+            if (!ACTIVE_VERSION.get().equals(context)) {
+                throw new IllegalStateException("Nested version action selected a different repository, branch, workspace or actor");
+            }
+            // The outer action holds this editor journal and imports its final Git head.
+            return action.run();
+        }
         if (context.scope() == RepositoryScope.CENTRAL_READ) {
             throw new AccessDeniedException("A central read selection cannot create architecture versions; use a working copy");
         }
@@ -387,8 +395,40 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
                 return journal.locked(context, snapshot.state(), session -> {
                     session.expect(prepared.context().revision());
                     try {
-                        T result = action.run();
+                        T result = ScopedValue.where(ACTIVE_VERSION, context).call(action::run);
                         importVersion(context, session, rationale);
+                        return result;
+                    } catch (IOException failure) { throw new java.io.UncheckedIOException(failure); }
+                });
+            } catch (java.io.UncheckedIOException failure) { throw failure.getCause(); }
+        }
+    }
+
+    @Override
+    public <T> T applyPreparedVersion(RepositoryContext context, String expectedHead, String candidate, String rationale,
+                                      GitAction<T> action) throws IOException {
+        requireWritable(context);
+        Objects.requireNonNull(candidate, "prepared commit");
+        try (var write = writeBarrier.enter(backupScope(context))) {
+            var repository = repositories.resolveRepository(context);
+            var initial = snapshot(context).state();
+            try {
+                return journal.locked(context, initial, session -> {
+                    var state = session.state();
+                    try {
+                        if (!Objects.equals(state.checkpointCommit(), candidate)) {
+                            if (!Objects.equals(state.checkpointCommit(), expectedHead) || state.pendingCheckpoint() != null
+                                    || state.checkpointRevision() != state.revision()) {
+                                throw new BranchHeadConflictException(context.branch(), expectedHead, state.checkpointCommit(),
+                                        "The editor changed after this publication was prepared");
+                            }
+                        } else {
+                            // The editor already adopted this result. Subsequent local edits stay in that journal.
+                            repository.verifyExpectedHead(context.branch(), candidate);
+                        }
+                        T result = action.run();
+                        repository.verifyExpectedHead(context.branch(), candidate);
+                        importVersionAt(context, session, rationale, repository, candidate);
                         return result;
                     } catch (IOException failure) { throw new java.io.UncheckedIOException(failure); }
                 });
@@ -696,7 +736,11 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
 
     private void importVersion(RepositoryContext context, EditorJournal.Session session, String rationale) throws IOException {
         var repository = repositories.resolveRepository(context);
-        String head = head(repository, context.branch());
+        importVersionAt(context, session, rationale, repository, head(repository, context.branch()));
+    }
+
+    private void importVersionAt(RepositoryContext context, EditorJournal.Session session, String rationale,
+                                 DslGitRepository repository, String head) throws IOException {
         if (Objects.equals(head, session.state().checkpointCommit())) return;
         String dsl = source(repository, head);
         if (!dsl.equals(session.state().dsl())) {

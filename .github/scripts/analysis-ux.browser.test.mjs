@@ -280,12 +280,17 @@ async function searchFixture(locale = 'de', withArchitecture = false, delayedTra
         document.body.append(left, source.getElementById('tab-graph'));
         document.getElementById('tab-graph').classList.remove('d-none');
         document.getElementById('searchPanel').open = true;
+        window.TaxonomyArchitectureWorkspace = {ready: async () => true};
+        window.TaxonomyArchitectureWorkflow = Object.assign({}, window.TaxonomyArchitectureWorkflow, {
+            getScope: () => ({repositoryId:'fixture-repo', workspaceId:'', branch:'fixture'})
+        });
         window.searchRequests = [];
         window.graphQueries = [];
         window.embeddingStatus = {available: true, graphReady: true};
         window.searchNodes = [{code: 'BP-1000', nameEn: 'Time capture'},
             {code: 'BP-1001', nameEn: 'Safety reporting'}, {code: 'BP-1002', nameEn: 'Outside architecture'}];
         window.__taxonomyFixtureFetch = async url => {
+            if (String(url).startsWith('/api/search/graph/readiness')) return {ok:true, json: async () => ({ready:embeddingStatus.graphReady})};
             if (url === '/api/embedding/status') return {ok: true, json: async () => embeddingStatus};
             searchRequests.push(url);
             return {ok: true, json: async () => searchNodes};
@@ -349,6 +354,51 @@ for (const locale of ['de', 'en']) test(`${locale}: search explains accepted inp
         await page.waitForFunction(() => document.getElementById('searchModeSelect').value === 'fulltext');
         assert.match(await help.textContent(), prompts.fulltext, 'Readiness fallback explains the mode actually selected');
         assert.equal(await page.locator('#searchInput').inputValue(), query);
+    } finally { await finish(page); }
+});
+
+test('selected branch vectors enable graph search independently of the global model index', async () => {
+    const page = await searchFixture('en');
+    try {
+        await page.evaluate(() => {
+            const original = window.__taxonomyFixtureFetch;
+            window.graphScope = {repositoryId:'central-b',workspaceId:'',branch:'review'};
+            window.checkedGraphPaths = [];
+            window.TaxonomyArchitectureWorkflow.getScope = () => graphScope;
+            window.__taxonomyFixtureFetch = async (input, init) => {
+                const url = new URL(input, location.href);
+                if (url.pathname === '/api/embedding/status') return Response.json({available:false,modelAvailable:true,graphReady:false});
+                if (url.pathname.startsWith('/api/search/graph')) {
+                    checkedGraphPaths.push([url.pathname,url.searchParams.get('repositoryId'),url.searchParams.get('branch')]);
+                    if (url.pathname.endsWith('/readiness')) return Response.json({ready:graphScope.branch === 'review'});
+                    return Response.json({matchedNodes:[],summary:'Selected review result'});
+                }
+                return original(input, init);
+            };
+            return TaxonomySearch.checkEmbeddingStatus();
+        });
+        assert.equal(await page.locator('#searchModeSelect option[value="graph"]').isEnabled(), true);
+        assert.equal(await page.locator('#searchModeSelect option[value="semantic"]').isDisabled(), true);
+        await page.locator('#searchModeSelect').selectOption('graph');
+        await page.locator('#searchInput').fill('local query');
+        await page.locator('#searchInput').press('Enter');
+        await page.getByText('Selected review result').waitFor();
+        await page.evaluate(() => document.dispatchEvent(new CustomEvent('taxonomy:repository-context-changed', {
+            detail:{selectionChanged:false}
+        })));
+        assert.equal(await page.getByText('Selected review result').isVisible(), true);
+        await page.evaluate(() => {
+            window.graphScope = {repositoryId:'central-b',workspaceId:'',branch:'main'};
+            document.dispatchEvent(new CustomEvent('taxonomy:repository-context-changed'));
+        });
+        await page.waitForFunction(() => document.querySelector('#searchModeSelect option[value="graph"]').disabled);
+        assert.equal(await page.getByText('Selected review result').count(), 0);
+        assert.equal(await page.locator('#searchInput').inputValue(), 'local query');
+        await page.waitForFunction(() => checkedGraphPaths.some(call => call[2] === 'main'));
+        assert.deepEqual(await page.evaluate(() => checkedGraphPaths), [
+            ['/api/search/graph/readiness','central-b','review'], ['/api/search/graph','central-b','review'],
+            ['/api/search/graph/readiness','central-b','main']
+        ]);
     } finally { await finish(page); }
 });
 
@@ -1574,26 +1624,42 @@ for (const surface of ['node','leaf','editor-focus','source-focus']) {
 test('coverage dashboard pins the source and clears departed working-copy data', async () => {
     const page = await browser.newPage();
     try {
-        await page.setContent('<base href="https://taxonomy.test/"><div id="coverageDashboardContent"></div>');
+        await page.setContent('<base href="https://taxonomy.test/"><div id="coverageDashboardContent"></div><button id="coverageRecordBtn"></button>');
         await page.evaluate(() => {
             window.TaxonomyI18n = {t: key => key};
             window.TaxonomyUtils = {escapeHtml: value => String(value)};
-            window.selection = {repositoryId:'repo-a', workspaceId:'A1', branch:'draft', commit:'a'.repeat(40)};
+            window.selection = {repositoryId:'repo-a', workspaceId:'A1', branch:'draft', commit:null};
             window.TaxonomyAppChrome = {getContext: () => ({architecture:window.selection})};
+            window.TaxonomyArchitectureWorkspace = {ready:async()=>true};
+            window.TaxonomyArchitectureWorkflow = {getScope:()=>window.selection};
+            window._getCurrentScores = () => ({BP:98});
+            window.prompt = () => 'REQ-001';
+            window.alert = message => { window.lastAlert = message; };
             window.captured = [];
             window.__taxonomyFixtureFetch = async (input, options) => {
                 const url = new URL(input, document.baseURI);
                 window.captured.push([url.searchParams.get('repositoryId'), url.searchParams.get('workspaceId'),
                     url.searchParams.get('branch'), url.searchParams.get('commitId'), new Headers(options.headers).get('X-Taxonomy-Workspace-Id')]);
+                if (window.captured.length === 3) {
+                    await new Promise(resolve => { window.releaseCoverageRefresh = resolve; });
+                }
                 const stats = {totalNodes:2,coveredNodes:1,uncoveredNodes:1,coveragePercentage:50,totalRequirements:1,
                     avgRequirementsPerNode:1,topCovered:[{nodeCode:'only-' + window.selection.workspaceId,requirementCount:1}],gapCandidates:[]};
-                return Response.json(stats);
+                return Response.json(stats, {headers:{'X-Taxonomy-Repository':window.selection.repositoryId,
+                    'X-Taxonomy-Workspace-Id':window.selection.workspaceId, 'X-Taxonomy-Branch':window.selection.branch,
+                    'X-Taxonomy-Commit':window.selection.commit || 'a'.repeat(40), 'X-Taxonomy-Source-State':'READY'}});
             };
         });
         await installBrowserApiFixture(page, resources);
         await page.addScriptTag({path:path.join(resources, 'static/js/relations/taxonomy-coverage.js')});
+        await page.evaluate(() => document.dispatchEvent(new Event('DOMContentLoaded')));
         await page.evaluate(() => window.TaxonomyCoverage.loadCoverageDashboard());
         assert.match(await page.locator('#coverageDashboardContent').innerText(), /only-A1/);
+        await page.locator('#coverageRecordBtn').click();
+        await page.waitForFunction(() => typeof window.releaseCoverageRefresh === 'function');
+        assert.equal(await page.locator('#coverageDashboardContent').innerText(), 'coverage.loading');
+        await page.evaluate(() => window.releaseCoverageRefresh());
+        await page.waitForFunction(() => document.getElementById('coverageDashboardContent').textContent.includes('only-A1'));
         await page.evaluate(() => document.dispatchEvent(new CustomEvent('taxonomy:repository-context-changed', {detail:{selectionChanged:false}})));
         assert.match(await page.locator('#coverageDashboardContent').innerText(), /only-A1/);
         await page.evaluate(() => {
@@ -1601,10 +1667,12 @@ test('coverage dashboard pins the source and clears departed working-copy data',
             document.dispatchEvent(new CustomEvent('taxonomy:repository-context-changed', {detail:{selectionChanged:true}}));
         });
         assert.equal(await page.locator('#coverageDashboardContent').innerText(), '');
+        assert.equal(await page.locator('#coverageRecordBtn').isDisabled(), true);
         await page.evaluate(() => window.TaxonomyCoverage.loadCoverageDashboard());
         assert.match(await page.locator('#coverageDashboardContent').innerText(), /only-B1/);
         assert.deepEqual(await page.evaluate(() => window.captured), [
-            ['repo-a','A1','draft','a'.repeat(40),'A1'], ['repo-b','B1','main','b'.repeat(40),'B1']]);
+            ['repo-a','A1','draft',null,'A1'], ['repo-a','A1','draft','a'.repeat(40),'A1'],
+            ['repo-a','A1','draft',null,'A1'], ['repo-b','B1','main','b'.repeat(40),'B1']]);
     } finally {
         await page.close();
     }

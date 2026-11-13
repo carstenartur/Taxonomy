@@ -19,6 +19,13 @@ import java.util.Objects;
 /** Exact-source fetch and selected-tag publication shared by working copies and central forks. */
 record GitUpstreamTransfer(GitUpstreamRef upstream, DslGitRepository source, DslGitRepository target,
                            String forkPoint, String actor, Runnable reauthorize) {
+    void requireOrigin(String repository, String branch, String originalForkPoint) throws IOException {
+        if (!upstream.repositoryId().equals(repository) || !upstream.branch().equals(branch)
+                || !Objects.equals(forkPoint, originalForkPoint)) {
+            throw new BranchHeadConflictException(branch, originalForkPoint, forkPoint, "The recorded upstream changed");
+        }
+    }
+
     Status inspect() throws IOException {
         return new Status(upstream.repositoryId(), upstream.branch(), sourceHead(),
                 upstream.name(), upstream.head(target));
@@ -87,7 +94,26 @@ record GitUpstreamTransfer(GitUpstreamRef upstream, DslGitRepository source, Dsl
     }
 
     TagStatus fetchTag(TagRequest request) throws IOException {
+        return fetchTag(request, false, () -> { });
+    }
+
+    TagStatus fetchTag(TagRequest request, boolean recovering, Runnable fence) throws IOException {
         String tracked = upstream.head(target);
+        if (recovering && request.sourceTagObject().equals(GitSelectedTag.objectAt(target, request.name()))) {
+            var retained = GitSelectedTag.read(target, request.name());
+            if (retained != null && request.sourceTagObject().equals(retained.objectId())
+                    && tracked != null && reachable(target, retained.commit(), request.trackedCommit())
+                    && reachable(target, request.trackedCommit(), tracked)) {
+                reauthorize.run();
+                fence.run();
+                String current = upstream.head(target);
+                if (current == null || !reachable(target, request.trackedCommit(), current)) {
+                    throw new BranchHeadConflictException(upstream.name(), request.trackedCommit(), current, "Tracking ref changed");
+                }
+                retained.verifyRetained(target);
+                return new TagStatus(request.name(), retained.objectId(), retained.objectId(), request.trackedCommit());
+            }
+        }
         if (!request.trackedCommit().equals(tracked)) {
             throw new BranchHeadConflictException(upstream.name(), request.trackedCommit(), tracked, "Tracking ref changed");
         }
@@ -95,17 +121,17 @@ record GitUpstreamTransfer(GitUpstreamRef upstream, DslGitRepository source, Dsl
         if (tag == null || !request.sourceTagObject().equals(tag.objectId())) {
             throw new BranchHeadConflictException(request.name(), request.sourceTagObject(), null, "Selected source tag changed");
         }
-        reauthorize.run();
-        if (!tag.objectId().equals(GitSelectedTag.objectAt(source, request.name()))) {
-            throw new BranchHeadConflictException(request.name(), tag.objectId(), null, "Selected source tag changed");
-        }
-        synchronized (target.getGitRepository()) {
+        tag.publish(target, actor, () -> {
+            reauthorize.run();
+            if (!tag.objectId().equals(GitSelectedTag.objectAt(source, request.name()))) {
+                throw new BranchHeadConflictException(request.name(), tag.objectId(), null, "Selected source tag changed");
+            }
             String current = upstream.head(target);
             if (!tracked.equals(current)) {
                 throw new BranchHeadConflictException(upstream.name(), tracked, current, "Tracking ref changed");
             }
-            tag.publish(target, actor);
-        }
+            fence.run();
+        });
         return new TagStatus(request.name(), tag.objectId(), tag.objectId(), tracked);
     }
 

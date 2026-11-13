@@ -55,6 +55,11 @@ public record EmbeddingModelIdentity(String modelSha256, String tokenizerSha256,
         return com.taxonomy.identity.StableIdentityHash.sha256(text.toString());
     }
 
+    /** A prior global index mixed business-relation text into node vectors built with the same model. */
+    public String globalIndexKey() {
+        return com.taxonomy.identity.StableIdentityHash.sha256("global-reference-index-v2:" + indexKey());
+    }
+
     private static void append(StringBuilder text, String field) {
         text.append(field.length()).append(':').append(field);
     }

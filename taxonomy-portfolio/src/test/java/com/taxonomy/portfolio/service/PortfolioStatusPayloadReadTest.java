@@ -173,6 +173,11 @@ class PortfolioStatusPayloadReadTest {
         try (var f = new Fixture()) {
             var jobs = read.equals("job") ? List.of(f.persistence.getJob(f.jobId, f.projectId, "owner", f.scope))
                     : f.persistence.listJobs(f.projectId, "owner", f.scope);
+            assertThat(jobs).allSatisfy(job -> {
+                assertThat(job.repositoryId()).isEqualTo(f.scope.repositoryId());
+                assertThat(job.branch()).isEqualTo(f.scope.currentBranch());
+                assertThat(job.workspaceId()).isEqualTo(f.scope.workspaceId());
+            });
             assertThat(jobs).hasSize(1);
             var job = jobs.getFirst();
             assertThat(job.id()).isEqualTo(f.jobId);

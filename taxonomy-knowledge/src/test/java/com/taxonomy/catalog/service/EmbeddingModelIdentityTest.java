@@ -75,6 +75,7 @@ class EmbeddingModelIdentityTest {
         reversed.put("two", "d".repeat(64)); reversed.put("one", "c".repeat(64));
         var second = new EmbeddingModelIdentity(first.modelSha256(), first.tokenizerSha256(), reversed, "", "mean-v1");
         assertThat(first.indexKey()).isEqualTo(second.indexKey()).hasSize(64);
+        assertThat(first.globalIndexKey()).isEqualTo(second.globalIndexKey()).hasSize(64).isNotEqualTo(first.indexKey());
         assertThat(new EmbeddingModelIdentity(first.modelSha256(), first.tokenizerSha256(), reversed,
                 "", "other-runtime-v1").indexKey()).isNotEqualTo(first.indexKey());
     }

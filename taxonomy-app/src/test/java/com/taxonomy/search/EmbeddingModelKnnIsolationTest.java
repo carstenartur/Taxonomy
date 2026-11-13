@@ -247,6 +247,7 @@ class EmbeddingModelKnnIsolationTest {
     void similarNodesReturnsMatchingModelDespiteCloserIncompatibleVectors() {
         assertThat(embeddings.findSimilarNodes(QUERY_NODE, 1))
                 .extracting(TaxonomyNodeDto::getCode).containsExactly(CURRENT_NODE);
+        assertThat(embeddings.lastSimilarInput).isEqualTo("Query source.");
     }
 
     @Test
@@ -258,6 +259,11 @@ class EmbeddingModelKnnIsolationTest {
     @Test
     void graphRelationStatisticsExcludeCloserWrongModelAndUntaggedVectors() {
         var result = graphSearch.graphSearch("authored query", 1, CENTRAL_CONTEXT);
+        assertThat(result.getSource().modelKey()).isEqualTo(CURRENT_KEY);
+        assertThat(result.getSource().vectorSource()).isEqualTo(com.taxonomy.dto.GraphSearchResult.VectorSource.GLOBAL_INDEX);
+        assertThat(result.getSource().sourceCommit()).isEqualTo(heads.get(CENTRAL_CONTEXT));
+        assertThat(result.getSource().relationReadModel()).isEqualTo("LEGACY_FALLBACK");
+        assertThat(result.getSource().generation()).isNull();
         assertThat(result.getRelationCountByRoot()).containsExactlyInAnyOrderEntriesOf(Map.of("BP", 1L));
         assertThat(result.getTopRelationTypes()).containsExactlyInAnyOrderEntriesOf(Map.of("SUPPORTS", 1L));
     }
@@ -289,6 +295,9 @@ class EmbeddingModelKnnIsolationTest {
         var selected = RepositoryContext.workspace(CURRENT_REPOSITORY, "empty-workspace", "draft", "fixture-user");
         project(selected, "e".repeat(40), null);
         var result = graphSearch.graphSearch("authored query", 1, selected);
+        assertThat(result.getSource().workspaceId()).isEqualTo("empty-workspace");
+        assertThat(result.getSource().sourceCommit()).isEqualTo("e".repeat(40));
+        assertThat(result.getSource().relationReadModel()).isEqualTo("PROJECTION");
         assertThat(result.getMatchedNodes()).extracting(TaxonomyNodeDto::getCode).containsExactly(CURRENT_NODE);
         assertThat(result.getRelationCountByRoot()).isEmpty();
         assertThat(result.getTopRelationTypes()).isEmpty();
@@ -432,6 +441,7 @@ class EmbeddingModelKnnIsolationTest {
         // can share this fixture service without changing an in-flight document's authored tag.
         private final ThreadLocal<String> documentKey = new ThreadLocal<>();
         private Runnable onQuery = () -> {};
+        private String lastSimilarInput;
 
         @Override public boolean isEnabled() { return true; }
         @Override public boolean isAvailable() { return true; }
@@ -445,7 +455,10 @@ class EmbeddingModelKnnIsolationTest {
 
         @Override
         public float[] embedDocument(String text) {
-            if (!indexing) return vector(1, 0);
+            if (!indexing) {
+                lastSimilarInput = text;
+                return vector(1, 0);
+            }
             if (text.contains("foreign relation")) {
                 documentKey.set(CURRENT_KEY);
                 return vector(1, 0);

@@ -40,7 +40,7 @@ class SystemRepositoryServiceTest {
         repository = mock(SystemRepositoryRepository.class);
         when(repository.save(any(SystemRepository.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        service = new SystemRepositoryService(repository);
+        service = new SystemRepositoryService(repository, mock(jakarta.persistence.EntityManager.class));
     }
 
     @Test

@@ -13,9 +13,7 @@ import com.taxonomy.portfolio.dto.PortfolioDtos.ContinueAnalysisRequest;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
 import com.taxonomy.portfolio.service.ProjectRequirementAnalysisService;
-import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceContext;
-import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -57,7 +55,7 @@ class ProjectAnalysisControllerAsyncContractTest {
 
     @Mock private ProjectRequirementAnalysisService analysisService;
     @Mock private PortfolioAnalysisPersistenceService persistenceService;
-    @Mock private WorkspaceContextResolver workspaceContexts;
+    @Mock private WorkspaceResolver workspaceResolver;
 
     private ProjectAnalysisController controller;
     private final WorkspaceContext context = new WorkspaceContext("architect", "ws-architect", "draft", "architecture-repo");
@@ -67,9 +65,10 @@ class ProjectAnalysisControllerAsyncContractTest {
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(new MockHttpServletRequest()));
         SecurityContextHolder.getContext().setAuthentication(
                 new TestingAuthenticationToken(context.username(), null, "ROLE_ARCHITECT"));
-        when(workspaceContexts.resolveRepositoryContextForUser(context.username())).thenReturn(
-                RepositoryContext.workspace(context.repositoryId(), context.workspaceId(), context.currentBranch(), context.username()));
-        controller = new ProjectAnalysisController(analysisService, persistenceService, new WorkspaceResolver(workspaceContexts));
+        org.mockito.Mockito.lenient().when(workspaceResolver.resolveCurrentUsername()).thenReturn(context.username());
+        org.mockito.Mockito.lenient().when(workspaceResolver.resolveCurrentContext()).thenReturn(context);
+        org.mockito.Mockito.lenient().when(workspaceResolver.resolveUnambiguousContextForRead()).thenReturn(context);
+        controller = new ProjectAnalysisController(analysisService, persistenceService, workspaceResolver);
     }
 
     @AfterEach

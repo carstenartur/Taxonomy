@@ -290,7 +290,7 @@ class CentralForkOriginalHistoryTest {
             var repositories = new JpaRepositoryFactory(entities);
             var transactions = new TransactionInterceptor(transactionManager, new AnnotationTransactionAttributeSource());
             rows = repositories.getRepository(SystemRepositoryRepository.class);
-            catalog = transactional(new SystemRepositoryService(rows), SystemRepositoryService.class, transactions);
+            catalog = transactional(new SystemRepositoryService(rows, entities), SystemRepositoryService.class, transactions);
             memberships = transactional(new RepositoryMembershipService(repositories.getRepository(RepositoryMembershipRepository.class)),
                     RepositoryMembershipService.class, transactions);
             git = new DslGitRepositoryFactory(new DefaultHibernateRepositoryFactory(persistence.factory), catalog, signatures);

@@ -350,12 +350,31 @@ public class WorkspaceController {
             description = "Merges the user's branch into the shared integration branch, " +
                     "making local changes available to all team members.")
     public ResponseEntity<Map<String, Object>> publish(
-            @RequestParam(required = false) String userBranch) {
+            @RequestParam(required = false) String userBranch,
+            @RequestHeader(value="Idempotency-Key",required=false) String key,
+            @RequestHeader(value="X-Causation-Id",required=false) String cause) {
         String user = workspaceResolver.resolveCurrentUsername();
         String branch = resolveBranch(user, userBranch);
         try {
-            String mergeCommit = syncIntegrationService.publishToShared(user, branch);
+            var publication = syncIntegrationService.publishWithReceipt(user,branch,key,cause);
+            var operation = publication.operation();
+            String mergeCommit = publication.commit();
             Map<String, Object> result = new LinkedHashMap<>();
+            if (operation != null) {
+                result.put("operationId",operation.operationId());
+                result.put("branch",branch);
+                result.put("status",operation.status());
+                result.put("phase",operation.nextPhase());
+                if (operation.publishedAt()!=null) result.put("publishedAt",Instant.ofEpochMilli(operation.publishedAt()).toString());
+                if (operation.completedAt()==null) return ResponseEntity.accepted().header("X-Operation-Id",operation.operationId()).body(result);
+                if ("DENIED".equals(operation.status()) || "MANUAL_REVIEW".equals(operation.status())) {
+                    return ResponseEntity.status("DENIED".equals(operation.status()) ? 403 : 409)
+                            .header("X-Operation-Id",operation.operationId()).body(result);
+                }
+                result.put("success",true);
+                result.put("mergeCommit",mergeCommit);
+                return ResponseEntity.ok().header("X-Operation-Id",operation.operationId()).body(result);
+            }
             result.put("success", true);
             result.put("branch", branch);
             result.put("mergeCommit", mergeCommit);
@@ -368,6 +387,8 @@ public class WorkspaceController {
             ));
         }
     }
+
+    public ResponseEntity<Map<String,Object>> publish(String branch) { return publish(branch,null,null); }
 
     @GetMapping("/sync-state")
     @Operation(summary = "Get current sync state",

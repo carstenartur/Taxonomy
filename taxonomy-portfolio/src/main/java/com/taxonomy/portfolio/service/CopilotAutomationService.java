@@ -168,7 +168,7 @@ public class CopilotAutomationService {
         }
         OperationDefinition definition = definition(jobs);
         if (!operationTerminal(jobs, definition.totalPasses())) {
-            schedule(definition, username, context);
+            schedule(definition, username, context, null);
         }
         return finalizedView(definition, jobsForOperation(
                 projectId, operationId, username, context), username, context);
@@ -295,8 +295,8 @@ public class CopilotAutomationService {
                 settings.proposeSolutions(),
                 settings.proposeProducts(), language);
 
-        enqueuePass(definition, 1, username, context);
-        schedule(definition, username, context);
+        AnalysisJobView firstPass = enqueuePass(definition, 1, username, context);
+        schedule(definition, username, context, firstPass);
         return finalizedView(definition, jobsForOperation(
                 projectId, operationId, username, context), username, context);
     }
@@ -304,7 +304,8 @@ public class CopilotAutomationService {
     private void schedule(
             OperationDefinition definition,
             String username,
-            WorkspaceContext context) {
+            WorkspaceContext context,
+            AnalysisJobView dispatchedFirstPass) {
         String executionKey = executionKey(definition, username, context);
         while (true) {
             CompletableFuture<Void> future = new CompletableFuture<>();
@@ -316,7 +317,7 @@ public class CopilotAutomationService {
                     try {
                         coordinator.execute(() -> {
                             try {
-                                execute(definition, username, context);
+                                execute(definition, username, context, dispatchedFirstPass);
                                 future.complete(null);
                             } catch (Throwable failure) {
                                 LOGGER.error(
@@ -354,11 +355,16 @@ public class CopilotAutomationService {
     private void execute(
             OperationDefinition definition,
             String username,
-            WorkspaceContext context) {
+            WorkspaceContext context,
+            AnalysisJobView dispatchedFirstPass) {
         for (int pass = 1; pass <= definition.totalPasses(); pass++) {
             if (cancellationRecorded(definition, username, context)) return;
 
-            AnalysisJobView job = enqueuePass(definition, pass, username, context);
+            // A new operation already dispatched its first job. Explicit recovery must
+            // still dispatch a persisted PENDING job whose original worker was lost.
+            AnalysisJobView job = pass == 1 && dispatchedFirstPass != null
+                    ? dispatchedFirstPass
+                    : enqueuePass(definition, pass, username, context);
             if (cancellationRecorded(definition, username, context)) {
                 if (!isTerminal(job.status())) {
                     jobControlService.cancel(

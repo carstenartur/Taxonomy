@@ -20,9 +20,10 @@ import static org.assertj.core.api.Assertions.*;
 
 class WorkspaceRecordsExportIT {
     private static final List<String> WORKSPACE_DATASETS = List.of("repositories","workspaces","memberships","synchronization",
-            "branch-synchronization","fetch-journal",
+            "branch-synchronization","fetch-journal","central-fetch-journal","publication-journal","publication-decisions",
             "working-states","operations","checkpoints","commit-index","context-history").stream()
             .map(name -> "data/workspace/" + name + ".ndjson").toList();
+
     @ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(strings = {"control", "long"})
     void legacyJournalLabelsOutsideTheIdentityDomainDoNotBecomePrincipalReferences(String shape) throws Exception {
         try (var fixture = new Fixture()) {
@@ -185,9 +186,12 @@ class WorkspaceRecordsExportIT {
             }
             assertThat(contributor.componentId()).isEqualTo(new BackupComponentId("workspace"));
             assertThat(contributor.schemaVersion()).isEqualTo(1);
-            assertThat(contributor.categories()).hasSize(11).contains(UserWorkspace.class.getName(), ContextHistoryRecord.class.getName(),
+            assertThat(contributor.categories()).hasSize(14).contains(UserWorkspace.class.getName(), ContextHistoryRecord.class.getName(),
                     com.taxonomy.workspace.model.WorkspaceBranchSyncState.class.getName(),
-                    com.taxonomy.workspace.service.WorkspaceFetchOperation.class.getName());
+                    com.taxonomy.workspace.service.WorkspaceFetchOperation.class.getName(),
+                    com.taxonomy.workspace.service.CentralFetchOperation.class.getName(),
+                    com.taxonomy.workspace.service.WorkspacePublicationOperation.class.getName(),
+                    com.taxonomy.workspace.service.WorkspacePublicationDecision.class.getName());
             assertThat(contributor.omissions(BackupProfile.SELECTED_VERSION)).anyMatch(value -> value.contains("selected Git state is authoritative"));
             assertThat(contributor.omissions(BackupProfile.INSTALLATION_FULL)).noneMatch(value -> value.contains("context navigation"));
         }

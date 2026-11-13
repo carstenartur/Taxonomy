@@ -1180,16 +1180,16 @@ Darstellungen der Suchmodi:
 
 Knotenabfragen im Graph Explorer und die graph-semantische Suche sind getrennte Operationen.
 
-Der Graph-Modus prüft bei jeder Anfrage das ausgewählte Repository, den Geltungsbereich und den exakten Branch-Head. Beziehungsähnlichkeit ist nur für den zentralen Standardbranch im Migrationsbetrieb verfügbar, solange der kanonische Beziehungsleser seinen Legacy-Fallback erlaubt. Eine nachweislich leere Branch-Projektion liefert globale Knotentreffer mit leeren Beziehungsstatistiken. Eine fehlende Workspace-Relationsprojektion kann **409 NOT_BUILT** liefern. Nichtleere Branch-Projektionen und andere nicht bereite Geltungsbereiche liefern HTTP 503 statt unvollständiger Graph-Ergebnisse. Der Status `graphReady` beschreibt die globalen Modell-/Indexvoraussetzungen; eine sichtbare Graph-Option garantiert daher keine Suche im ausgewählten Geltungsbereich. Semantische Branch-Indizierung bleibt Folgearbeit (#741).
+Der Graph-Modus prüft das ausgewählte Repository, die Arbeitskopie und den Branch. Für einen Branch mit projizierten Beziehungen verwendet die Suche die veröffentlichten Knoten- und Beziehungsvektoren für dessen aktuellen Commit und das verwendete Embedding-Modell. Sobald dieser Index bereit ist, können Sie den Graph-Modus auswählen, auch während der globale Index aufgebaut wird. Beim Branchwechsel bleibt der Suchtext erhalten, und die Treffer der vorherigen Quelle verschwinden.
 
 ### Embedding-Status
 
 Das Badge **🧠 Embeddings** im aufgeklappten **Systemstatus** zeigt an, ob semantische Embeddings verfügbar sind:
 
 - **🧠 Embeddings: N nodes** (blau) — Embeddings sind geladen; die Modusverfügbarkeit hängt zusätzlich vom Indexstatus ab, und Graph prüft bei jeder Anfrage den ausgewählten Geltungsbereich.
-- **🧠 Embeddings: unavailable** (grau) — Embeddings nicht geladen; nur die Volltextsuche ist verfügbar.
+- **🧠 Embeddings: unavailable** (grau) — der globale semantische Index ist nicht verfügbar. Die Graph-Suche prüft die Bereitschaft des ausgewählten Branches separat.
 
-Wenn Embeddings nicht verfügbar sind, sind die Optionen Semantic, Hybrid und Graph im Modusauswahl-Menü ausgegraut.
+Ist das Embedding-Modell selbst nicht verfügbar, sind die Optionen Semantic, Hybrid und Graph ausgegraut.
 
 ### Ähnliche Knoten finden
 

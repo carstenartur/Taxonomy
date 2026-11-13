@@ -2,7 +2,11 @@ package com.taxonomy.relations.controller;
 
 import com.taxonomy.relations.service.RequirementCoverageService;
 import org.junit.jupiter.api.Test;
+import java.io.IOException;
 import java.util.Map;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
@@ -45,6 +49,32 @@ class CoverageApiControllerInputTest {
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
         verifyNoInteractions(service);
         verify(store, times(2)).openRead(selected);
+    }
+
+    @Test
+    void missingAndFailedSourceReadsExposeNoCommitAndNeverQueryCoverage() throws Exception {
+        var service = mock(RequirementCoverageService.class);
+        var resolver = mock(com.taxonomy.workspace.service.WorkspaceResolver.class);
+        var store = mock(com.taxonomy.workspace.service.WorkspaceDslReadPort.class);
+        var read = mock(com.taxonomy.workspace.service.WorkspaceDslReadPort.RepositoryRead.class);
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(
+                new CoverageApiController(service, resolver, store, tools.jackson.databind.json.JsonMapper.builder().build()))
+                .setControllerAdvice(new CoverageSourceErrors()).build();
+        when(resolver.resolveUnambiguousRepositoryForRead()).thenReturn(selected);
+        when(store.openRead(selected)).thenReturn(read);
+        when(read.currentHead()).thenReturn(null).thenThrow(new IOException("Git read unavailable"));
+
+        mvc.perform(get("/api/coverage/density"))
+                .andExpect(status().isNotFound())
+                .andExpect(header().string("X-Taxonomy-Source-State", "MISSING"))
+                .andExpect(header().doesNotExist("X-Taxonomy-Commit"))
+                .andExpect(header().string("Cache-Control", "no-store"));
+        mvc.perform(get("/api/coverage/density"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(header().string("X-Taxonomy-Source-State", "FAILED"))
+                .andExpect(header().doesNotExist("X-Taxonomy-Commit"))
+                .andExpect(header().string("Cache-Control", "no-store"));
+        verifyNoInteractions(service);
     }
 
     @Test

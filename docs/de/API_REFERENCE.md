@@ -150,6 +150,8 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/jus
 
 ## Suche
 
+Volltext-, semantische, hybride und Ähnlichkeitssuche lesen den gemeinsamen Referenzkatalog. Erfolgreiche Antworten liefern `X-Taxonomy-Source-Scope: GLOBAL_REFERENCE` und eine ETag für das Ergebnis. Der gemeinsame Knotenindex und die Ähnlichkeitsabfrage verwenden den englischen Katalognamen und die Beschreibung. Die Graphsuche auf einem ausgewählten Branch verwendet dessen eigene Vektoren mit Relationskontext. Beim Upgrade baut der reguläre Start der lokalen ONNX-Indizierung die gemeinsamen Vektoren mit der neuen Kennung des Eingabeformats auf.
+
 ### Volltextsuche
 
 ```bash
@@ -170,10 +172,12 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/search/hyb
 
 ### Graph-semantische Suche
 
-Der Graph-Modus prüft bei jeder Anfrage das ausgewählte Repository, den Geltungsbereich und den exakten Branch-Head. Beziehungsähnlichkeit ist nur für den zentralen Standardbranch im Migrationsbetrieb verfügbar, solange der kanonische Beziehungsleser seinen Legacy-Fallback erlaubt. Eine nachweislich leere Branch-Projektion liefert globale Knotentreffer mit leeren Beziehungsstatistiken. Nichtleere Branch-Projektionen und nicht bereite Geltungsbereiche liefern HTTP 503 statt unvollständiger Graph-Ergebnisse. Der Status `graphReady` beschreibt die globalen Modell-/Indexvoraussetzungen; eine sichtbare Graph-Option garantiert daher keine Suche im ausgewählten Geltungsbereich. Semantische Branch-Indizierung bleibt Folgearbeit (#741).
+Für einen Branch mit projizierten Beziehungen verwendet die Graph-Suche dessen veröffentlichte Vektorgeneration für Knoten und Beziehungen. Das Objekt `source` nennt Repository, Arbeitskopie, Branch, Git-Commit, Lesemodell der Beziehungen und Vektorquelle. Für `BRANCH_GENERATION` enthält es außerdem die Generations-ID, den Quellschlüssel und den Schlüssel des Embedding-Modells. Eine nachweislich leere Projektion verwendet den globalen Knotenindex und liefert leere Beziehungsstatistiken. Der primäre Standardbranch kann im Migrationsbetrieb auch seine bestehende Beziehungsquelle verwenden.
+
+`GET /api/search/graph/readiness` prüft den ausgewählten Index für dasselbe Repository, dieselbe Arbeitskopie und denselben Branch. Die optionale vollständige `commitId` bindet die Suchanfrage an die erwartete aktuelle Revision. Eine veraltete Commit-ID oder eine mehrdeutige Repository-Auswahl führt zu HTTP 409. Ist der Index für eine Suche mit angeforderten Treffern nicht verfügbar, antwortet der Server mit HTTP 503. Erfolgreiche Antworten liefern den aktuellen Commit in `X-Taxonomy-Commit` und einen `ETag` für bedingte Lesezugriffe.
 
 ```bash
-curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/search/graph?q=communications&maxResults=20"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/search/graph?q=communications&maxResults=20&repositoryId=${TAXONOMY_REPOSITORY_ID}&workspaceId=&branch=main"
 ```
 
 ### Ähnliche Knoten finden
@@ -708,6 +712,16 @@ curl -u alice:password -X POST "http://localhost:8080/api/workspace/publish?user
 ```
 
 **Antwort:** `{ "success": true, "branch": "feature-x", "mergeCommit": "def5678...", "publishedAt": "2026-03-15T10:05:00Z" }`
+
+Eine persönliche Arbeitskopie liefert die Vorgangskennung in der Antwort und im Header `X-Operation-Id`. Verwenden Sie für die Wiederholung derselben Veröffentlichung denselben `Idempotency-Key` unter demselben Akteur, Repository, Workspace und Branch. Eine optionale UUID im Header `X-Causation-Id` ordnet den Vorgang dem auslösenden Auftrag zu. Ohne Schlüssel entsteht ein neuer Vorgang.
+
+| Anfrage in der ausgewählten Arbeitskopie | Ergebnis |
+| --- | --- |
+| `GET /api/workspace/publications/{id}` | Zeigt Eingaben, Phase, Beobachtung des Quell-Refs, Ergebnis und Zeitpunkte. Ein vorbereiteter Commit erscheint als Ergebnis, sobald er am Quell-Ref nachgewiesen wurde. |
+| `POST /api/workspace/publications/{id}/retry` | Prüft die ursprüngliche Identität und die aktuellen Schreibrechte erneut und setzt den gespeicherten Vorgang fort. Eine laufende Ausführung oder eine erforderliche Neuanmeldung lässt den Vorgang offen. |
+| `DELETE /api/workspace/publications/{id}` | Archiviert einen abgeschlossenen Vorgang und versucht, dessen eigene private Git-Refs bedingt freizugeben. Bei aktiven Vorgängen folgt **409**. |
+
+Veröffentlichung und Wiederaufnahme liefern **202** für ausstehende Arbeit, **403** nach Rechteentzug und **409**, wenn die ursprüngliche Quelle abgeglichen werden muss. Die Wiederholung der ursprünglichen Anfrage hält die laufende Wartefrist ein. Das Journal erfasst die Archivierung getrennt von der Veröffentlichung. Abgeschlossene Vorgänge werden nach 30 Tagen archiviert. Nach weiteren 90 Tagen und bestätigter Freigabe der privaten Git-Refs bleiben die Kennung und der ihrem ursprünglichen Kontext zugeordnete Nachweis erhalten. Eine erneute Veröffentlichung mit dem archivierten Schlüssel liefert **410**.
 
 ### Synchronisierungsstatus abrufen
 
