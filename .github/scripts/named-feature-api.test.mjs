@@ -613,6 +613,26 @@ test('the named binary export retains bytes and blocks a download body after nav
   assert.match(calls[0].url, /\/taxonomy\/api\/diagram\/current\/pdf/);
   assert.equal(calls[0].init.body, '{"elements":[]}');
 });
+test('an admitted central job still polls its repository after switching between equally named branches', async () => {
+  const calls = [];
+  const job = {id:'job-central-a', projectId:41, status:'RUNNING', workspaceId:null, repositoryId:'central-a', branch:'review'};
+  const app = boot(async (url, init) => {
+    calls.push({url, init});
+    return Response.json({...job, status:'COMPLETED'});
+  }, {portfolio:true});
+  app.window.TaxonomyArchitectureWorkflow = {getScope:()=>({repositoryId:'central-b',workspaceId:'',branch:'review'})};
+  app.window.taxonomyPortfolioRegisterJob('/taxonomy/api/projects/41/analysis-jobs/job-central-a', job);
+  const timer = [...app.timers.values()].find(t => t.delay === 1500);
+  assert.ok(timer);
+  await timer.callback();
+  assert.equal(calls.length, 1);
+  const selected = new URL(calls[0].url, app.window.location.href);
+  assert.equal(selected.searchParams.get('repositoryId'), 'central-a');
+  assert.equal(selected.searchParams.get('branch'), 'review');
+  assert.equal(selected.searchParams.get('workspaceId'), '');
+  assert.equal(new Headers(calls[0].init.headers).get('X-Taxonomy-Workspace-Id'), '');
+});
+
 test('named durable job reads retain their original workspace pin after tab switching', async () => {
   const calls = [];
   const app = boot(async (url, init) => {calls.push({url, init}); return Response.json({id: 'job-1'});});
