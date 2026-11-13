@@ -2,13 +2,13 @@
 window.ArchitectureWorkbenchApi = (function () {
     'use strict';
 
-    function getJson(url, signal, source) {
+    function sourceOptions(signal, source) {
         const options = {signal: signal};
         if (source && (source.workspaceScopeKey !== undefined || source.workspaceId !== undefined)) {
             const workspace = source.workspaceScopeKey || source.workspaceId || '__shared__';
             options.pinnedWorkspaceId = workspace === '__shared__' ? '' : String(workspace);
         }
-        return window.TaxonomyApiClient.getJson(url, options);
+        return options;
     }
 
     function positiveInteger(value, field) {
@@ -64,7 +64,13 @@ window.ArchitectureWorkbenchApi = (function () {
             return wordUrl(projectId, snapshotId, 'decision-report', source);
         },
         load: function (projectId, snapshotId, source, signal) {
-            return getJson(base(projectId, snapshotId, null, source), signal, source);
+            return window.TaxonomyApiClient.getJson(base(projectId, snapshotId, null, source), sourceOptions(signal, source));
+        },
+        download: function (url, source, signal) {
+            const options = sourceOptions(signal, source);
+            // Large attachments may take longer than an interactive JSON read.
+            options.timeoutMillis = 0;
+            return window.TaxonomyApiClient.requestBlob(url, {method:'GET'}, options);
         },
         svgUrl: function (projectId, snapshotId, source) {
             return base(projectId, snapshotId, '.svg', source, true);
