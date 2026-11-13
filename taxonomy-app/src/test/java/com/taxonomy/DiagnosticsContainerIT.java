@@ -37,7 +37,8 @@ class DiagnosticsContainerIT extends AbstractDatabaseContainerIT {
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     @Container
-    static GenericContainer<?> app = ContainerTestUtils.appContainer();
+    static GenericContainer<?> app = ContainerTestUtils.appContainer()
+            .withEnv("TAXONOMY_FEATURES_MULTI_REPOSITORY_API_ENABLED", "true");
 
     @Override
     protected GenericContainer<?> getAppContainer() {

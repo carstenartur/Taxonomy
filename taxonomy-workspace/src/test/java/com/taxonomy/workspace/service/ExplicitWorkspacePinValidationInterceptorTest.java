@@ -31,18 +31,18 @@ class ExplicitWorkspacePinValidationInterceptorTest {
     @Test
     void requestWithoutExplicitPinKeepsEndpointSpecificResolution() {
         assertThat(interceptor.preHandle(
-                new MockHttpServletRequest(),
+                new MockHttpServletRequest("GET", "/api/dsl/hypotheses"),
                 new MockHttpServletResponse(),
                 new Object())).isTrue();
 
-        verify(workspaceResolver, never()).resolveCurrentRepositoryContext();
+        verify(workspaceResolver, never()).resolveCurrentRepositoryContextForRead();
     }
 
     @Test
     void headerPinMustResolveToTheExactOwnedWorkspace() {
-        MockHttpServletRequest request = new MockHttpServletRequest();
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/dsl/hypotheses");
         request.addHeader(WorkspaceContextResolver.WORKSPACE_HEADER, " workspace-a ");
-        when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(
+        when(workspaceResolver.resolveCurrentRepositoryContextForRead()).thenReturn(
                 RepositoryContext.workspace(
                         "repo-a", "workspace-a", "feature/a", "alice"));
 
@@ -52,11 +52,11 @@ class ExplicitWorkspacePinValidationInterceptorTest {
 
     @Test
     void queryPinUsesTheSameAuthorizationBoundary() {
-        MockHttpServletRequest request = new MockHttpServletRequest();
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/dsl/hypotheses");
         request.addParameter(
                 WorkspaceContextResolver.WORKSPACE_QUERY_PARAMETER,
                 "workspace-sse");
-        when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(
+        when(workspaceResolver.resolveCurrentRepositoryContextForRead()).thenReturn(
                 RepositoryContext.workspace(
                         "repo-a", "workspace-sse", "feature/sse", "alice"));
 
@@ -66,11 +66,11 @@ class ExplicitWorkspacePinValidationInterceptorTest {
 
     @Test
     void deniedPinPropagatesBeforeControllerFallbacksCanRun() {
-        MockHttpServletRequest request = new MockHttpServletRequest();
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/dsl/hypotheses");
         request.addHeader(
                 WorkspaceContextResolver.WORKSPACE_HEADER,
                 "foreign-workspace");
-        when(workspaceResolver.resolveCurrentRepositoryContext())
+        when(workspaceResolver.resolveCurrentRepositoryContextForRead())
                 .thenThrow(new AccessDeniedException("foreign workspace"));
 
         assertThatThrownBy(() -> interceptor.preHandle(
@@ -81,11 +81,11 @@ class ExplicitWorkspacePinValidationInterceptorTest {
 
     @Test
     void mismatchedOrCentralResolutionFailsClosed() {
-        MockHttpServletRequest request = new MockHttpServletRequest();
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/dsl/hypotheses");
         request.addParameter(
                 WorkspaceContextResolver.WORKSPACE_QUERY_PARAMETER,
                 "workspace-a");
-        when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(
+        when(workspaceResolver.resolveCurrentRepositoryContextForRead()).thenReturn(
                 RepositoryContext.centralRead("repo-a", "main", "alice"));
 
         assertThatThrownBy(() -> interceptor.preHandle(
@@ -96,18 +96,28 @@ class ExplicitWorkspacePinValidationInterceptorTest {
 
     @Test
     void headerKeepsPrecedenceOverAConflictingQueryPin() {
-        MockHttpServletRequest request = new MockHttpServletRequest();
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/dsl/hypotheses");
         request.addHeader(
                 WorkspaceContextResolver.WORKSPACE_HEADER,
                 "workspace-header");
         request.addParameter(
                 WorkspaceContextResolver.WORKSPACE_QUERY_PARAMETER,
                 "workspace-query");
-        when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(
+        when(workspaceResolver.resolveCurrentRepositoryContextForRead()).thenReturn(
                 RepositoryContext.workspace(
                         "repo-a", "workspace-header", "feature/header", "alice"));
 
         assertThat(interceptor.preHandle(
                 request, new MockHttpServletResponse(), new Object())).isTrue();
+    }
+
+    @Test
+    void mutationKeepsTheProvisioningAwareResolverForItsExplicitPin() {
+        var request = new MockHttpServletRequest("POST", "/api/dsl/hypotheses/1/accept");
+        request.addParameter("workspaceId", "workspace-a");
+        when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(
+                RepositoryContext.workspace("repository-a", "workspace-a", "main", "alice"));
+        assertThat(interceptor.preHandle(request, new MockHttpServletResponse(), new Object())).isTrue();
+        verify(workspaceResolver, never()).resolveCurrentRepositoryContextForRead();
     }
 }

@@ -272,6 +272,12 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:8080/actuator/metr
 - **Development (in-memory):** `local-heap` — no disk I/O, lost on restart
 - **Production (persistent):** `local-filesystem` at `TAXONOMY_SEARCH_DIRECTORY_ROOT` (default: `/app/data/lucene-index`)
 
+### Graph search for a nonempty branch
+
+The selected repository, workspace and branch must have a complete relation projection at its current Git commit. A maintainer of the repository or the owner of the selected working copy can build the node and relation vector generation with `POST /api/architecture/relations/projection/vectors/rebuild`. Send the full current commit as a quoted strong `If-Match` header. Building uses the installed local embedding model and the retained official catalogue. Both vector fields are published together after Lucene can reopen the stored bytes and verify the expected counts. A database restart preserves the published generation. Deployment backups classify these indexes as rebuildable. After restoring the branch and its relation projection, run the same build command with the restored commit and pinned embedding model. Building and reopening enforce a 128 MiB uncompressed index limit per branch.
+
+`GET /api/architecture/relations/projection/vectors` returns the selected generation, source commit, model key, native counts and current state. Search returns HTTP 503 when the current scope lacks a complete matching generation. A changed commit, relation set, catalogue revision, model or text configuration requires a rebuild. Retry the rebuild after an interrupted build. `DELETE /api/architecture/relations/projection/vectors` with the same commit precondition purges only the selected branch and fences builders that started earlier.
+
 ### Index recovery
 
 Do not delete `/app/data/lucene-index/*` expecting an automatic full rebuild.

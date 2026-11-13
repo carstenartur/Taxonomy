@@ -20,7 +20,10 @@ public class JustifyLeafUseCase {
     }
 
     public JustifyLeafResult justify(JustifyLeafCommand command) {
-        List<TaxonomyNode> path = taxonomyService.getPathToRoot(command.nodeCode());
+        return justify(command, taxonomyService.getPathToRoot(command.nodeCode()));
+    }
+
+    public JustifyLeafResult justify(JustifyLeafCommand command, List<TaxonomyNode> path) {
         String justification = llmService.generateLeafJustification(
                 command.businessText(),
                 command.nodeCode(),
@@ -29,4 +32,9 @@ public class JustifyLeafUseCase {
                 command.reasons());
         return new JustifyLeafResult(command.nodeCode(), justification);
     }
+    public JustifyLeafResult require(JustifyLeafCommand command, List<TaxonomyNode> path) {
+        return new JustifyLeafResult(command.nodeCode(), llmService.requireLeafJustification(command.businessText(),
+                command.nodeCode(), path, command.scores(), command.reasons()));
+    }
+
 }

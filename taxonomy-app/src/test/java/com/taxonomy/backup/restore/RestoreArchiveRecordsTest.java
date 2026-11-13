@@ -1,6 +1,12 @@
 package com.taxonomy.backup.restore;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.taxonomy.analysis.cluster.ClusterAnalysisBackupRecords.Run;
+import com.taxonomy.analysis.dag.AnalysisOperationContext;
+import com.taxonomy.analysis.dag.AnalysisSourceAuthority;
+import com.taxonomy.analysis.dag.RequirementReference;
 import com.taxonomy.backup.*;
+import com.taxonomy.exchange.backup.PortableRows;
 import com.taxonomy.security.backup.IdentityBackupContributor.*;
 import org.junit.jupiter.api.Test;
 import java.io.*;
@@ -51,6 +57,28 @@ class RestoreArchiveRecordsTest {
             assertThatThrownBy(()->RestoreArchiveRecords.read(input(document),"principals",BackupProfile.CURRENT_STATE,PrincipalRecord.class,10,()->{},ignored->{}))
                     .as(uuid).isInstanceOf(IOException.class).hasMessage("Invalid or unsupported portable restore dataset");
         }
+    }
+    @Test void clusteredRunsAcceptOnlyTheTwoHistoricalOptionalSourceFields() throws Exception {
+        var source = new AnalysisSourceAuthority("repo",null,"main","a".repeat(40));
+        var requirement = RequirementReference.adHoc("bounded fixture");
+        var context = new AnalysisOperationContext("run",source,requirement,"run");
+        var run = new Run(new SourceRecordId("analysis.cluster-run","run"),
+                "owner",context,"{}",null,null,null,"QUEUED",null,1,0,1,0,0);
+        var json = PortableRows.json();
+        var row = (ObjectNode) json.readTree(json.writeValueAsBytes(run));
+        String header = HEADER.replace("principals","cluster-runs");
+        var restored = new ArrayList<Run>();
+        RestoreArchiveRecords.read(input(header+row+"\n"),"cluster-runs",BackupProfile.CURRENT_STATE,
+                Run.class,1,()->{},restored::add);
+        assertThat(restored).extracting(Run::context).containsExactly(context);
+        var missing = row.deepCopy();
+        ((ObjectNode)missing.at("/context/authority")).remove("branch");
+        var unknown = row.deepCopy();
+        ((ObjectNode)unknown.at("/context/requirement")).put("extra","unexpected");
+        for (var invalid : List.of(missing,unknown))
+            assertThatThrownBy(() -> RestoreArchiveRecords.read(input(header+invalid+"\n"),"cluster-runs",BackupProfile.CURRENT_STATE,
+                    Run.class,1,()->{},restored::add))
+                    .isInstanceOf(IOException.class).hasMessage("Invalid or unsupported portable restore dataset");
     }
     private static InputStream input(String text) { return new ByteArrayInputStream(text.getBytes(StandardCharsets.UTF_8)); }
 }

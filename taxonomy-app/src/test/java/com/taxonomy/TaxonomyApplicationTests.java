@@ -1,5 +1,6 @@
 package com.taxonomy;
 
+import com.taxonomy.support.AnalysisCatalogueSourceFixture;
 import com.taxonomy.analysis.service.AnalysisMemoryGuard;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.catalog.service.SearchService;
@@ -23,10 +24,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.security.test.context.support.WithUserDetails;
 
 @SpringBootTest
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
+    "spring.datasource.url=jdbc:hsqldb:mem:taxonomy-application-contract",
     "gemini.api.key=",
     "openai.api.key=",
     "deepseek.api.key=",
@@ -36,7 +39,7 @@ import org.springframework.security.test.context.support.WithMockUser;
     "embedding.enabled=false"
 })
 @WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
-class TaxonomyApplicationTests {
+class TaxonomyApplicationTests implements AnalysisCatalogueSourceFixture {
 
     @Autowired
     private MockMvc mockMvc;
@@ -354,6 +357,7 @@ class TaxonomyApplicationTests {
     }
 
     @Test
+    @WithUserDetails("admin")
     void analyzeNodeEndpointIncludesErrorFieldWhenNoKeyConfigured() throws Exception {
         // In CI / test environment no API key is set — error field should be non-null
         mockMvc.perform(get("/api/analyze-node")

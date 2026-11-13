@@ -84,6 +84,11 @@ for (const prefix of ['', '/taxonomy']) test(`root-shell reload pins original st
             const target = new URL(route.request().url()), relative = target.pathname.slice(prefix.length);
             if (relative.startsWith('/js/')) return route.fulfill({contentType:'text/javascript',
                 body:await readFile(path.join(resources, 'static', relative), 'utf8')});
+            // This navigation proof requires both original reads to finish. Deliver Git first;
+            // the converse ordering has a separate contract below for the superseded read.
+            if (relative === '/api/context/current') {
+                await page.waitForFunction(() => document.querySelector('.git-sha')?.textContent === 'aaaaaaa');
+            }
             if (relative.startsWith('/api/')) return route.fulfill({contentType:'application/json', body:JSON.stringify(
                 relative === '/api/i18n/en' ? messages : relative === '/api/git/state' ? git : relative === '/api/context/current' ? current : {})});
             return route.fulfill({contentType:'text/html', body:'<!doctype html><html lang="en"><head><meta charset="UTF-8">'
@@ -242,6 +247,29 @@ async function gitResponse(page, headCommit = 'abcdef012345') {
     await answer(page, '/api/git/state', {currentBranch: 'draft', headCommit, branches: []});
     await page.waitForFunction(head => document.querySelector('.git-sha')?.textContent === head.slice(0, 7), headCommit);
 }
+
+test('initial context adoption immediately replaces a pending Git read for the default branch', async () => {
+    const page = await fixture();
+    try {
+        await page.evaluate(() => {
+            document.body.insertAdjacentHTML('beforeend', '<div id="contextBar"></div>');
+            window.TaxonomyI18n.formatBranch = branch => branch;
+        });
+        await page.addScriptTag({path: path.join(resources, 'static/js/versioning/taxonomy-context-bar.js')});
+        await page.evaluate(() => { window.initialContext = TaxonomyContextBar.fetchAndRender('contextBar'); });
+        await answer(page, '/api/context/current', {contextId: 'review-1', branch: 'review', mode: 'EDITABLE'});
+        await page.evaluate(() => window.initialContext);
+        await page.waitForFunction(() => window.statusReads.some(read => read.url.includes('branch=review')),
+            null, {timeout: 3000});
+        await answer(page, '/api/git/state', {currentBranch: 'draft', headCommit: '1111111', branches: []});
+        assert.equal(await page.locator('.git-sha').count(), 0);
+        await answer(page, '/api/git/state', {currentBranch: 'review', headCommit: '2222222', branches: []});
+        await page.waitForFunction(() => document.querySelector('.git-sha')?.textContent === '2222222');
+        assert.equal(await page.locator('.git-branch').innerText(), 'review');
+        assert.equal(await page.evaluate(() => window.statusReads.filter(read => read.url.startsWith('/api/git/state')).length), 2);
+        assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+});
 
 for (const order of [['sync', 'git'], ['git', 'sync']]) {
     test('both statuses remain visible when responses arrive: ' + order.join(' then '), async () => {

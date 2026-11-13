@@ -142,7 +142,7 @@ public class WorkspaceContextResolver {
                 : resolveWorkspace(user, provisionDefault);
 
         if (workspace != null && hasText(workspace.getWorkspaceId())) {
-            SystemRepository repository = resolveWorkspaceSource(workspace);
+            SystemRepository repository = resolveWorkspaceSource(workspace, provisionDefault);
             String branch = hasText(workspace.getCurrentBranch())
                     ? workspace.getCurrentBranch().strip()
                     : requireBranch(repository);
@@ -191,6 +191,27 @@ public class WorkspaceContextResolver {
         if (!org.eclipse.jgit.lib.Repository.isValidRefName("refs/heads/" + selectedBranch))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"An exact valid central branch is required");
         return RepositoryContext.centralRead(requireRepositoryId(repository),selectedBranch,user);
+    }
+
+    void verifyReadSelection(RepositoryContext selected) {
+        var attributes = RequestContextHolder.getRequestAttributes();
+        if (!(attributes instanceof ServletRequestAttributes servlet)) {
+            throw new IllegalStateException("Read selection requires an HTTP request");
+        }
+        String repository = servlet.getRequest().getParameter("repositoryId");
+        String branch = servlet.getRequest().getParameter("branch");
+        if ((repository != null && !repository.equals(selected.repositoryId()))
+                || (branch != null && !branch.equals(selected.branch()))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Requested source differs from selected source");
+        }
+        if (selected.workspaceId() != null || repository != null) return;
+        boolean ambiguous = systemRepositoryService.listActiveRepositories().stream()
+                .anyMatch(other -> !selected.repositoryId().equals(other.getRepositoryId())
+                        && repositoryMembershipService.canRead(other, selected.username()));
+        if (ambiguous) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Select an explicit repository and branch for this read");
+        }
     }
 
     private UserWorkspace resolveWorkspace(String username, boolean provisionDefault) {
@@ -265,13 +286,16 @@ public class WorkspaceContextResolver {
         return workspace != null ? workspace : workspaceManager.findUserWorkspace(username);
     }
 
-    private SystemRepository resolveWorkspaceSource(UserWorkspace workspace) {
+    private SystemRepository resolveWorkspaceSource(UserWorkspace workspace, boolean persistProvenance) {
         if (hasText(workspace.getSourceRepositoryId())) {
             return systemRepositoryService.getRepository(
                     workspace.getSourceRepositoryId().strip());
         }
 
         SystemRepository primary = systemRepositoryService.getPrimaryRepository();
+        // This historical generation could only reference the primary repository.
+        // Reading that source must not update a managed legacy row or allocate workspace state.
+        if (!persistProvenance) return primary;
         String primaryRepositoryId = requireRepositoryId(primary);
         workspace.setSourceRepositoryId(primaryRepositoryId);
         if (workspaceRepository != null) {

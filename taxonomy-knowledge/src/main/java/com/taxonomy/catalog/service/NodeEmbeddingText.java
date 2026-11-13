@@ -15,6 +15,10 @@ public final class NodeEmbeddingText {
     }
 
     public static String buildEnrichedText(TaxonomyNode node) {
+        return buildEnrichedText(node, java.util.Locale.getDefault());
+    }
+
+    public static String buildEnrichedText(TaxonomyNode node, java.util.Locale relationNameLocale) {
         StringBuilder sb = new StringBuilder();
         if (node.getNameEn() != null) sb.append(node.getNameEn()).append(".\n");
         if (node.getDescriptionEn() != null && !node.getDescriptionEn().isBlank()) {
@@ -24,7 +28,7 @@ public final class NodeEmbeddingText {
             sb.append("Outgoing: ");
             for (TaxonomyRelation r : node.getOutgoingRelations()) {
                 if (r.getRelationType() == null) continue;
-                sb.append(r.getRelationType().name().toLowerCase().replace('_', ' '));
+                sb.append(r.getRelationType().name().toLowerCase(relationNameLocale).replace('_', ' '));
                 String targetName = (r.getTargetNode() != null && r.getTargetNode().getNameEn() != null)
                         ? r.getTargetNode().getNameEn() : "";
                 sb.append(" ").append(targetName).append(", ");
@@ -38,7 +42,7 @@ public final class NodeEmbeddingText {
             sb.append("Incoming: ");
             for (TaxonomyRelation r : node.getIncomingRelations()) {
                 if (r.getRelationType() == null) continue;
-                sb.append(r.getRelationType().name().toLowerCase().replace('_', ' '));
+                sb.append(r.getRelationType().name().toLowerCase(relationNameLocale).replace('_', ' '));
                 String sourceName = (r.getSourceNode() != null && r.getSourceNode().getNameEn() != null)
                         ? r.getSourceNode().getNameEn() : "";
                 sb.append(" ").append(sourceName).append(", ");

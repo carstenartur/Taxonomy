@@ -26,6 +26,10 @@ class BackupCoverageInventoryTest {
     @Test void includesStorageOutsideJpaWithoutTreatingGitTablesAsSecondTruth() throws Exception {
         var categories = BackupCoverageInventory.load().categories();
         assertThat(categories).anySatisfy(c -> {
+            assertThat(c.id()).isEqualTo("com.taxonomy.relations.service.BranchGraphVectorGeneration");
+            assertThat(c.rule()).isEqualTo(BackupStorageRule.REBUILDABLE);
+        });
+        assertThat(categories).anySatisfy(c -> {
             assertThat(c.id()).isEqualTo("storage.jgit.objects-refs-reflogs");
             assertThat(c.rule()).isEqualTo(BackupStorageRule.GIT_PRIMARY);
         });

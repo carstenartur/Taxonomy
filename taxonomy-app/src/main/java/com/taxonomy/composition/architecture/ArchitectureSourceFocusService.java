@@ -61,6 +61,29 @@ public class ArchitectureSourceFocusService {
 
     public ArchitectureSourceFocusDtos.Response investigate(RepositoryContext selected, ArchitectureSourceFocusDtos.Request request) {
         var source = request.source();
+        var evidence = evidence(selected, source);
+        var binding = evidence.retained().binding();
+        return engine.investigateModel(evidence.model(), evidence.catalogue(),
+                binding == null ? Set.of() : binding.excludedRelationTypes(), request.sourceId(),
+                request.candidateLimit(), request.useAi(), request.language(), evidence.hash(), evidence.provenance(),
+                ArchitectureSourceFocusDtos.Response.class,
+                result -> new ArchitectureSourceFocusDtos.Response(source, request.sourceId(), evidence.hash(), result.method(),
+                        result.outcome(), result.modelCalls(), result.candidateCount(), result.suggestions()),
+                () -> sourceCurrent(selected, source, evidence.hash()));
+    }
+
+    public boolean sourceCurrent(RepositoryContext selected, ArchitectureSourceFocusDtos.Source source, String hash) {
+        try {
+            return hash.equals(evidence(selected, source).hash());
+        } catch (CommandProblem | SecurityException deniedOrStale) {
+            return false;
+        }
+    }
+
+    private record Evidence(Retained retained, CanonicalArchitectureModel model, CatalogueDefinition catalogue,
+                            String hash, Map<String,String> provenance) { }
+
+    private Evidence evidence(RepositoryContext selected, ArchitectureSourceFocusDtos.Source source) {
         if (selected == null || selected.username() == null || !source.repositoryId().equals(selected.repositoryId()))
             throw problem("NOT_FOUND","Source repository is not accessible in the selected context");
         String workspace = WorkspaceOverlayScope.CENTRAL_SCOPE_KEY.equals(source.workspaceScopeKey()) ? null : source.workspaceScopeKey();
@@ -90,9 +113,7 @@ public class ArchitectureSourceFocusService {
         String encoded = json.writeValueAsString(canonical(json.valueToTree(evidence)));
         if (encoded.length() > MAX_PAYLOAD) throw problem("ITEM_LIMIT","Source graph exceeds the bounded investigation payload");
         String hash = StableIdentityHash.sha256(encoded);
-        var result = engine.investigateModel(model, catalogue, binding == null ? Set.of() : binding.excludedRelationTypes(),
-                request.sourceId(),request.candidateLimit(),request.useAi(),request.language(),hash,provenance);
-        return new ArchitectureSourceFocusDtos.Response(source,request.sourceId(),hash,result.method(),result.outcome(),result.modelCalls(),result.candidateCount(),result.suggestions());
+        return new Evidence(retained, model, catalogue, hash, provenance);
     }
 
     private Retained draft(ArchitectureSourceFocusDtos.Source source, WorkspaceContext scope) {

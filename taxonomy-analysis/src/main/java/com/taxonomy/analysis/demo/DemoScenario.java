@@ -2,6 +2,8 @@ package com.taxonomy.analysis.demo;
 
 import com.taxonomy.identity.StableIdentityHash;
 import com.taxonomy.dto.RootAssessment;
+import tools.jackson.core.StreamReadFeature;
+import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -31,7 +33,10 @@ public record DemoScenario(String id, int version, String fingerprint, Map<Strin
     public static final List<String> ROOTS = List.of("BP", "BR", "CP", "CI", "CO", "CR", "IP", "UA");
     static final String SCENARIO_SCHEMA = "taxonomy-product-demo-scenario-v1";
     static final String REPLIES_SCHEMA = "taxonomy-product-demo-replies-v1";
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final JsonMapper JSON = JsonMapper.builder()
+            .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
+            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+            .build();
 
     public record Requirement(String key, String title, String language, String text) { }
     public record DemoDecision(String question, List<String> values, String rationale) { }
@@ -89,13 +94,17 @@ public record DemoScenario(String id, int version, String fingerprint, Map<Strin
         return iterations.keySet().stream().mapToInt(k -> Integer.parseInt(k.substring(1))).max().orElse(0);
     }
 
+    static JsonNode parseResource(byte[] bytes) {
+        return JSON.readTree(bytes);
+    }
+
     /** Loads (a) and (b) only. A missing reference annotation never affects replay. */
     public static DemoScenario load(String id, Function<String, InputStream> resources) {
         if (id == null || !id.matches("[a-z0-9][a-z0-9-]{0,63}")) throw new IllegalArgumentException("Invalid demo scenario ID");
         byte[] scenarioBytes = read(resources, "demo-scenarios/" + id + "/scenario.json");
         byte[] replyBytes = read(resources, "demo-scenarios/" + id + "/replies.json");
-        JsonNode scenario = JSON.readTree(scenarioBytes);
-        JsonNode replies = JSON.readTree(replyBytes);
+        JsonNode scenario = parseResource(scenarioBytes);
+        JsonNode replies = parseResource(replyBytes);
         require(SCENARIO_SCHEMA.equals(scenario.path("schema").asString()), "Unsupported scenario schema");
         require(REPLIES_SCHEMA.equals(replies.path("schema").asString()), "Unsupported replies schema");
         require(id.equals(scenario.path("id").asString()), "Scenario ID mismatch");

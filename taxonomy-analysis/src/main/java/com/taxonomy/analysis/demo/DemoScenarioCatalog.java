@@ -3,7 +3,6 @@ package com.taxonomy.analysis.demo;
 import com.taxonomy.extension.api.llm.ProviderId;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -19,7 +18,6 @@ import java.util.function.Function;
 @Component
 public class DemoScenarioCatalog {
     public static final String INDEX = "demo-scenarios/index.json";
-    private static final JsonMapper JSON = JsonMapper.builder().build();
 
     private final String command;
     private final String defaultScenario;
@@ -33,7 +31,7 @@ public class DemoScenarioCatalog {
         JsonNode index;
         try (InputStream stream = resources.apply(INDEX)) {
             if (stream == null) throw new IllegalStateException("Missing " + INDEX);
-            index = JSON.readTree(stream);
+            index = DemoScenario.parseResource(stream.readAllBytes());
         } catch (IOException failure) {
             throw new IllegalStateException("Cannot read " + INDEX, failure);
         }

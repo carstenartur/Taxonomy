@@ -304,6 +304,35 @@ test('decision export stays cancellable and cancelled work cannot download after
     await pending; assert.equal(f.downloads.length, 0);
 });
 
+test('leaving the saved snapshot closes the decision dialog and cancels its unfinished body', async () => {
+    const f = decisionFixture(), source = new AbortController(), body = deferred(), reading = deferred();
+    let optionSignal, downloadSignal;
+    const dialog = f.api.openSaved({projectId: 1, snapshotId: 'snapshot', language: 'de', format: 'html', sourceSignal: source.signal, api: {
+        decisionReportOptions(project, snapshot, language, options) {
+            optionSignal = options.signal;
+            return Promise.resolve({roots: [{code: 'CP'}]});
+        },
+        downloadDecisionReport(project, snapshot, format, language, options, request) {
+            downloadSignal = request.signal;
+            const headers = {get(name) { return {
+                'Content-Type': 'text/html', 'X-Taxonomy-Analysis-SHA256': 'hash', 'X-Taxonomy-Snapshot-Id': 'snapshot'
+            }[name]; }};
+            return Promise.resolve({ok:true, headers, blob() { reading.resolve(); return body.promise; }});
+        }
+    }});
+    await tick();
+    const pending = dialog.querySelector('form').fire('submit');
+    await reading.promise;
+    source.abort();
+    body.resolve({size: 42});
+    await pending;
+    assert.equal(optionSignal, source.signal);
+    assert.equal(downloadSignal.aborted, true);
+    assert.equal(dialog.open, false);
+    assert.deepEqual(f.downloads, []);
+    assert.equal(f.api.openSaved({sourceSignal:source.signal}), undefined);
+});
+
 test('Escape also aborts an in-progress decision export', async () => {
     const f = decisionFixture(), gate = deferred(); let signal;
     const dialog = f.api.open({roots: [{code: 'CP'}], submit({signal: value}) {signal = value; return gate.promise;}});

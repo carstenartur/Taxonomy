@@ -7,8 +7,8 @@ import com.taxonomy.workspace.service.RepositoryContext;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verifyNoInteractions;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.*;
 
 class GraphSearchServiceResultLimitTest {
 
@@ -18,9 +18,10 @@ class GraphSearchServiceResultLimitTest {
         GraphSearchAuthorityService authority = mock(GraphSearchAuthorityService.class);
         GraphSearchService service = new GraphSearchService(embeddingService, authority);
 
+        var context = RepositoryContext.centralRead("fixture-repository", "draft", "system");
         for (int maxResults : new int[]{0, -1}) {
             GraphSearchResult result = service.graphSearch(
-                    "bounded query", maxResults, RepositoryContext.centralRead("fixture-repository", "draft", "system"));
+                    "bounded query", maxResults, context);
 
             assertThat(result.getMatchedNodes()).isEmpty();
             assertThat(result.getRelationCountByRoot()).isEmpty();
@@ -28,6 +29,24 @@ class GraphSearchServiceResultLimitTest {
             assertThat(result.getSummary())
                     .isEqualTo("No graph search results were requested.");
         }
-        verifyNoInteractions(embeddingService, authority);
+        verify(authority, times(2)).inspect(context);
+        verifyNoInteractions(embeddingService);
+    }
+
+    @Test
+    void callerLimitCannotSkipSelectedSourceInspectionOrTriggerInferenceWhenDenied() {
+        var context = RepositoryContext.workspace("repo-a", "work-a", "draft", "actor");
+        var embedding = mock(LocalEmbeddingService.class);
+        var authority = mock(GraphSearchAuthorityService.class);
+        var vectors = mock(BranchGraphVectors.class);
+        var graph = new GraphSearchService(embedding, authority, vectors);
+        when(authority.inspectForBranchSelection(context))
+                .thenThrow(new com.taxonomy.error.SearchUnavailableException());
+        for (int limit : new int[]{-1, 0, 1}) {
+            assertThatThrownBy(() -> graph.graphSearch("term", limit, context))
+                    .isInstanceOf(com.taxonomy.error.SearchUnavailableException.class);
+        }
+        verify(authority, times(3)).inspectForBranchSelection(context);
+        verifyNoInteractions(embedding, vectors);
     }
 }

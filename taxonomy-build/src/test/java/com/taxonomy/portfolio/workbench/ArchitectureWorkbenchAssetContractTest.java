@@ -153,7 +153,13 @@ class ArchitectureWorkbenchAssetContractTest {
                 .containsPattern("ArchitectureWorkbenchApi\\.load\\(\\s*selectedSource\\.projectId\\s*,"
                         + "\\s*selectedSource\\.snapshotId\\s*,\\s*selectedSource\\s*,\\s*controller\\.signal\\s*\\)")
                 .containsPattern("catch\\s*\\(([\\w$]+)\\)\\s*\\{[^}]*showError\\(\\1\\)")
-                .contains("ArchitectureWorkbenchApi.pdfUrl");
+                .doesNotContain("window.location.assign");
+        assertThat(resource("static/js/architecture-workbench-export.js"))
+                .contains("bind('downloadArchitecturePdf', ArchitectureWorkbenchApi.pdfUrl)")
+                .contains("ArchitectureWorkbenchApi.download(url, selected, signal)")
+                .doesNotContain("fetch(", "window.location.assign");
+        assertThat(resource("static/js/api/architecture-workbench-api.js"))
+                .contains("TaxonomyApiClient.requestBlob(");
         assertThat(adapter.indexOf("await window.TaxonomyI18n.ready()"))
                 .isLessThan(adapter.indexOf("ArchitectureWorkbenchApi.load("));
     }

@@ -1,12 +1,14 @@
 package com.taxonomy.provenance.controller;
 
 import com.taxonomy.dto.AiExtractedCandidate;
+import com.taxonomy.analysis.operation.AnalysisAdapterStore;
 import com.taxonomy.dto.DocumentParseResult;
 import com.taxonomy.dto.RegulationArchitectureMatch;
 import com.taxonomy.dto.RequirementSourceLinkDto;
 import com.taxonomy.dto.SourceArtifactDto;
 import com.taxonomy.model.SourceType;
 import com.taxonomy.provenance.config.DocumentImportLimits;
+import com.taxonomy.provenance.service.DocumentAnalysisExecution;
 import com.taxonomy.provenance.service.DocumentAnalysisService;
 import com.taxonomy.provenance.service.DocumentLimitException;
 import com.taxonomy.provenance.service.DocumentParserService;
@@ -45,17 +47,19 @@ public class DocumentImportController {
     private final DocumentProvenanceCommandService provenanceCommands;
     private final DocumentAnalysisService analysisService;
     private final DocumentImportLimits limits;
+    private final DocumentAnalysisExecution operations;
 
     public DocumentImportController(DocumentParserService parserService,
                                     SourceProvenanceService provenanceService,
                                     DocumentProvenanceCommandService provenanceCommands,
                                     DocumentAnalysisService analysisService,
-                                    DocumentImportLimits limits) {
+                                    DocumentImportLimits limits, DocumentAnalysisExecution operations) {
         this.parserService = parserService;
         this.provenanceService = provenanceService;
         this.provenanceCommands = provenanceCommands;
         this.analysisService = analysisService;
         this.limits = limits;
+        this.operations = operations;
     }
 
     @Operation(summary = "Upload and parse document",
@@ -111,16 +115,16 @@ public class DocumentImportController {
         try {
             DocumentParseResult parseResult = parserService.parse(file);
             BoundedText fullText = buildBoundedText(parseResult);
-            List<AiExtractedCandidate> candidates =
-                    analysisService.extractWithAi(fullText.value(), sourceType);
-            return ResponseEntity.ok(Map.of(
-                    "fileName", safeResultFileName(parseResult),
-                    "totalPages", parseResult.getTotalPages(),
-                    "inputTruncated", fullText.truncated(),
-                    "inputCharacters", fullText.value().length(),
-                    "ruleBased", parseResult.getCandidates() != null
-                            ? parseResult.getCandidates() : List.of(),
-                    "aiCandidates", candidates));
+            String name = safeResultFileName(parseResult);
+            String fingerprint = AnalysisAdapterStore.digest(parserService.computeContentHash(file), name, sourceType);
+            java.util.function.Function<List<AiExtractedCandidate>, Map<String, Object>> result = candidates -> Map.of(
+                    "fileName", name, "totalPages", parseResult.getTotalPages(), "inputTruncated", fullText.truncated(),
+                    "inputCharacters", fullText.value().length(), "ruleBased", parseResult.getCandidates() != null
+                            ? parseResult.getCandidates() : List.of(), "aiCandidates", candidates);
+            return operations.execute("DOCUMENT_EXTRACTION", fingerprint, analysisService.providerAvailable(),
+                    () -> result.apply(analysisService.extractWithAi(fullText.value(), sourceType)), () -> result.apply(List.of()));
+        } catch (org.springframework.web.server.ResponseStatusException | org.springframework.security.access.AccessDeniedException scoped) {
+            throw scoped;
         } catch (DocumentLimitException error) {
             throw error;
         } catch (IOException error) {
@@ -143,14 +147,15 @@ public class DocumentImportController {
         try {
             DocumentParseResult parseResult = parserService.parse(file);
             BoundedText fullText = buildBoundedText(parseResult);
-            List<RegulationArchitectureMatch> matches =
-                    analysisService.mapRegulationToArchitecture(fullText.value());
-            return ResponseEntity.ok(Map.of(
-                    "fileName", safeResultFileName(parseResult),
-                    "totalPages", parseResult.getTotalPages(),
-                    "inputTruncated", fullText.truncated(),
-                    "inputCharacters", fullText.value().length(),
-                    "matches", matches));
+            String name = safeResultFileName(parseResult);
+            String fingerprint = AnalysisAdapterStore.digest(parserService.computeContentHash(file), name);
+            java.util.function.Function<List<RegulationArchitectureMatch>, Map<String, Object>> result = matches -> Map.of(
+                    "fileName", name, "totalPages", parseResult.getTotalPages(), "inputTruncated", fullText.truncated(),
+                    "inputCharacters", fullText.value().length(), "matches", matches);
+            return operations.execute("REGULATION_MAPPING", fingerprint, analysisService.providerAvailable(),
+                    () -> result.apply(analysisService.mapRegulationToArchitecture(fullText.value())), () -> result.apply(List.of()));
+        } catch (org.springframework.web.server.ResponseStatusException | org.springframework.security.access.AccessDeniedException scoped) {
+            throw scoped;
         } catch (DocumentLimitException error) {
             throw error;
         } catch (IOException error) {

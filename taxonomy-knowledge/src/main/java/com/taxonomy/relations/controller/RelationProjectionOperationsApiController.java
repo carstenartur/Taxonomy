@@ -3,6 +3,7 @@ package com.taxonomy.relations.controller;
 import com.taxonomy.workspace.service.BranchHeadConflictException;
 import com.taxonomy.relations.service.RelationBranchProjectionRebuildService.BranchProjectionSourceException;
 import com.taxonomy.relations.service.RelationProjectionOperationsService;
+import com.taxonomy.relations.service.BranchGraphVectors;
 import com.taxonomy.relations.service.RelationProjectionOperationsService.ProjectionStatus;
 import com.taxonomy.relations.service.RelationProjectionOperationsService.RebuildHeadConflictException;
 import com.taxonomy.relations.service.RelationProjectionOperationsService.RebuildOperation;
@@ -42,16 +43,67 @@ public class RelationProjectionOperationsApiController {
     private final WorkspaceResolver workspaceResolver;
     private final SystemRepositoryService repositoryService;
     private final RepositoryMembershipService membershipService;
+    private final BranchGraphVectors vectors;
 
     public RelationProjectionOperationsApiController(
             RelationProjectionOperationsService operationsService,
             WorkspaceResolver workspaceResolver,
             SystemRepositoryService repositoryService,
-            RepositoryMembershipService membershipService) {
+            RepositoryMembershipService membershipService, BranchGraphVectors vectors) {
+        this.vectors = vectors;
         this.operationsService = operationsService;
         this.workspaceResolver = workspaceResolver;
         this.repositoryService = repositoryService;
         this.membershipService = membershipService;
+    }
+
+    @Operation(summary = "Inspect the selected branch vector generation",
+            description = "Checks the retained node and relation index against the authorized branch, current commit, catalogue and embedding model.")
+    @GetMapping("/vectors")
+    public ResponseEntity<BranchGraphVectors.Status> vectorStatus() {
+        var context = workspaceResolver.resolveCurrentRepositoryContextForRead();
+        if (context == null) return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        return ResponseEntity.ok(vectors.inspect(context));
+    }
+
+    @Operation(summary = "Rebuild the selected branch vector generation",
+            description = "Requires a writable scope and the current commit as a strong If-Match ETag. Publishes the node and relation vectors together.")
+    @PostMapping("/vectors/rebuild")
+    public ResponseEntity<BranchGraphVectors.Status> rebuildVectors(
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch) {
+        return changeVectors(ifMatch, false);
+    }
+
+    @Operation(summary = "Purge the selected branch vector generation",
+            description = "Requires a writable scope and the current commit as a strong If-Match ETag. Removes the selected generation and retains the branch relation projection.")
+    @org.springframework.web.bind.annotation.DeleteMapping("/vectors")
+    public ResponseEntity<BranchGraphVectors.Status> purgeVectors(
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch) {
+        return changeVectors(ifMatch, true);
+    }
+
+    private ResponseEntity<BranchGraphVectors.Status> changeVectors(String ifMatch, boolean purge) {
+        var selected = workspaceResolver.resolveCurrentRepositoryContextForRead();
+        var context = selected == null ? null : writableContext(selected);
+        if (context == null) return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        try {
+            String commit = GitHttpPrecondition.expectedHead(ifMatch, null);
+            if (purge) {
+                vectors.purge(context, commit);
+                return ResponseEntity.noContent().build();
+            }
+            return ResponseEntity.ok().eTag(GitHttpPrecondition.etag(commit)).body(vectors.rebuild(context, commit));
+        } catch (GitHttpPrecondition.PreconditionRequiredException missing) {
+            return ResponseEntity.status(HttpStatus.PRECONDITION_REQUIRED).build();
+        } catch (GitHttpPrecondition.InvalidPreconditionException invalid) {
+            return ResponseEntity.badRequest().build();
+        } catch (RebuildHeadConflictException moved) {
+            var response = ResponseEntity.status(HttpStatus.PRECONDITION_FAILED);
+            if (moved.getActualHeadCommit() != null) response.eTag(GitHttpPrecondition.etag(moved.getActualHeadCommit()));
+            return response.build();
+        } catch (com.taxonomy.error.SearchUnavailableException unavailable) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+        }
     }
 
     @Operation(summary = "Inspect exact-branch projection readiness and recovery",

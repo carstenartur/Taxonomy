@@ -133,7 +133,7 @@ public record RootCatalogueSnapshot(int schemaVersion, CatalogueSourceIdentity s
         /** Frozen role for analysis consumers without depending on overlay implementation types. */
         public String analysisRole() { return metadata.analysisRole(); }
 
-        TaxonomyNode detached() {
+        public TaxonomyNode detached() {
             TaxonomyNode node = new TaxonomyNode();
             node.setId(id);
             node.setCode(code);
