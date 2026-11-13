@@ -26,19 +26,21 @@ window.TaxonomyWorkspaceProvisioningApi = (function () {
         });
     }
 
-    function rebuildProjection(expectedHead) {
-        return requestJson('/api/architecture/relations/projection/rebuild', {
-            method: 'POST',
-            headers: {
-                'If-Match': '"' + expectedHead + '"'
-            }
-        });
+    function rebuildProjection(expectedHead, source) {
+        var url = '/api/architecture/relations/projection/rebuild';
+        var policy = {};
+        if (source) {
+            var workspaceId = source.workspaceId == null ? '' : source.workspaceId;
+            url += '?' + new URLSearchParams({repositoryId:source.repositoryId, workspaceId:workspaceId, branch:source.branch});
+            policy.pinnedWorkspaceId = workspaceId;
+        }
+        return requestJson(url, {method:'POST', headers:{'If-Match':'"' + expectedHead + '"'}}, policy);
     }
 
-    function requestJson(url, options) {
-        return window.TaxonomyApiClient.request(url, options || {}, {
+    function requestJson(url, options, policy) {
+        return window.TaxonomyApiClient.request(url, options || {}, Object.assign({
             retries: 0, acceptedStatuses: [400, 404, 409, 412, 422, 423]
-        })
+        }, policy))
             .then(function (response) {
                 return response.text().then(function (text) {
                     var body = {};

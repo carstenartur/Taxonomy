@@ -2,7 +2,6 @@ package com.taxonomy.architecture.service;
 
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
-import com.taxonomy.relations.repository.RequirementCoverageRepository;
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
 import org.slf4j.Logger;
@@ -37,16 +36,13 @@ public class DerivedMetadataService {
 
     private final TaxonomyNodeRepository nodeRepository;
     private final TaxonomyRelationRepository relationRepository;
-    private final RequirementCoverageRepository coverageRepository;
     private final CatalogueSourceJournal catalogueSources;
 
     public DerivedMetadataService(TaxonomyNodeRepository nodeRepository,
                                   TaxonomyRelationRepository relationRepository,
-                                  RequirementCoverageRepository coverageRepository,
                                   CatalogueSourceJournal catalogueSources) {
         this.nodeRepository = nodeRepository;
         this.relationRepository = relationRepository;
-        this.coverageRepository = coverageRepository;
         this.catalogueSources = catalogueSources;
     }
 
@@ -64,21 +60,13 @@ public class DerivedMetadataService {
 
         Map<String, Integer> incomingCounts = new HashMap<>();
         Map<String, Integer> outgoingCounts = new HashMap<>();
-        Map<String, Integer> coverageCounts = new HashMap<>();
 
         // Count relations
-        relationRepository.findAll().forEach(rel -> {
+        relationRepository.findCentralReferenceRelations().forEach(rel -> {
             String srcCode = rel.getSourceNode().getCode();
             String tgtCode = rel.getTargetNode().getCode();
             outgoingCounts.merge(srcCode, 1, Integer::sum);
             incomingCounts.merge(tgtCode, 1, Integer::sum);
-        });
-
-        // Count requirement coverage
-        coverageRepository.findNodeCodeCountPairs().forEach(pair -> {
-            String nodeCode = (String) pair[0];
-            long count = (Long) pair[1];
-            coverageCounts.put(nodeCode, (int) count);
         });
 
         List<TaxonomyNode> allNodes = nodeRepository.findAll();
@@ -88,7 +76,7 @@ public class DerivedMetadataService {
             String code = node.getCode();
             int incoming = incomingCounts.getOrDefault(code, 0);
             int outgoing = outgoingCounts.getOrDefault(code, 0);
-            int coverage = coverageCounts.getOrDefault(code, 0);
+            int coverage = 0; // Authored coverage belongs to a selected source, never the shared catalogue.
             String role = classifyRole(incoming, outgoing);
 
             boolean changed = node.getIncomingRelationCount() != incoming

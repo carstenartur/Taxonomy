@@ -156,6 +156,8 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/jus
 
 ## Search
 
+Full-text, semantic, hybrid and similar-node searches read the shared reference catalogue. Successful results carry `X-Taxonomy-Source-Scope: GLOBAL_REFERENCE` and a representation ETag. The shared node index and the similar-node query embed the English catalogue name and description. Graph search on a selected branch uses its own relation-aware vectors. When upgrading, normal local ONNX index startup rebuilds the shared vectors under the new input-format key.
+
 ### Full-text search
 
 ```bash

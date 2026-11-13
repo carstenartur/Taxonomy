@@ -267,7 +267,21 @@ public final class PortfolioDtos {
             List<AnalysisJobItemView> items,
             com.taxonomy.extension.api.plugin.PluginInvocation providerBinding,
             com.taxonomy.dto.AnalysisReasonLength analysisReasonLength,
-            com.taxonomy.dto.AnalysisLanguage analysisLanguage) {
+            com.taxonomy.dto.AnalysisLanguage analysisLanguage,
+            String repositoryId,
+            String branch) {
+        /** Compatibility constructor for callers that do not persist a repository-scoped job. */
+        public AnalysisJobView(String id, Long projectId, AnalysisStatus status, String idempotencyKey,
+                String provider, int maxArchitectureNodes, String requestedBy, String workspaceId,
+                Instant createdAt, Instant startedAt, Instant completedAt, int totalItems, int successfulItems,
+                int partialItems, int failedItems, String errorSummary, List<AnalysisJobItemView> items,
+                com.taxonomy.extension.api.plugin.PluginInvocation providerBinding,
+                com.taxonomy.dto.AnalysisReasonLength analysisReasonLength, com.taxonomy.dto.AnalysisLanguage analysisLanguage) {
+            this(id, projectId, status, idempotencyKey, provider, maxArchitectureNodes, requestedBy, workspaceId,
+                    createdAt, startedAt, completedAt, totalItems, successfulItems, partialItems, failedItems,
+                    errorSummary, items, providerBinding, analysisReasonLength, analysisLanguage, null, null);
+        }
+
         public AnalysisJobView(String id, Long projectId, AnalysisStatus status, String idempotencyKey,
                 String provider, int maxArchitectureNodes, String requestedBy, String workspaceId,
                 Instant createdAt, Instant startedAt, Instant completedAt, int totalItems, int successfulItems,

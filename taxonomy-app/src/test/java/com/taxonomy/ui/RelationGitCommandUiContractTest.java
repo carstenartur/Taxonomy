@@ -83,7 +83,7 @@ class RelationGitCommandUiContractTest {
             throws Exception {
         String adapter = Files.readString(RELATION_ADAPTER);
 
-        int etagUpdate = adapter.indexOf("headEtag = nextEtag");
+        int etagUpdate = adapter.indexOf("var nextEtag = response.headers.get('ETag')");
         int accepted = adapter.indexOf("if (response.status === 202)");
         int pendingOutcome = adapter.indexOf(
                 "projectionPending: true", accepted);
@@ -144,7 +144,7 @@ class RelationGitCommandUiContractTest {
 
         assertThat(api)
                 .contains("return domainRequest(url, {cache:'no-store'},")
-                .contains("return domainRequest(commandUrl(")
+                .contains("return commandRequest(sourceCode, relationType, targetCode, source,")
                 .contains("window.TaxonomyApiClient.request(url, init,")
                 .contains("acceptedStatuses:[400,404,409,412,422]")
                 .doesNotContain("fetch(")

@@ -5,9 +5,12 @@ import org.w3c.dom.Element;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Path;
+import java.util.regex.Pattern;
 
 /** Verifies actual named JUnit suites, not a successful build with zero matching tests. */
 final class JunitReportVerifier {
+    private static final Pattern SUFFIXED_SUITE = Pattern.compile("([^()]+)\\(([^()]+)\\)");
+
     private JunitReportVerifier() {}
 
     static int run(String[] arguments, Path root, PrintStream output, PrintStream error) {
@@ -23,7 +26,7 @@ final class JunitReportVerifier {
                 Path report = root.resolve(arguments[index]).normalize();
                 Element suite = XmlSupport.parse(report).getDocumentElement();
                 if (!"testsuite".equals(suite.getLocalName())
-                        || !report.getFileName().toString().equals("TEST-" + suite.getAttribute("name") + ".xml"))
+                        || !matchesReportName(report.getFileName().toString(), suite.getAttribute("name")))
                     throw new IllegalArgumentException("Expected the exact named JUnit suite");
                 long tests = count(suite, "tests");
                 long failures = count(suite, "failures");
@@ -43,6 +46,13 @@ final class JunitReportVerifier {
             }
         }
         return valid ? 0 : 1;
+    }
+
+    private static boolean matchesReportName(String fileName, String suiteName) {
+        if (fileName.equals("TEST-" + suiteName + ".xml")) return true;
+        // Surefire writes Suite(suffix) into the XML and Suite-suffix into the filename.
+        var suffixed = SUFFIXED_SUITE.matcher(suiteName);
+        return suffixed.matches() && fileName.equals("TEST-" + suffixed.group(1) + "-" + suffixed.group(2) + ".xml");
     }
 
     private static long count(Element suite, String attribute) {

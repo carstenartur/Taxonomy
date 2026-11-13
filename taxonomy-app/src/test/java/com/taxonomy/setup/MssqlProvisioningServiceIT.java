@@ -1,7 +1,9 @@
 package com.taxonomy.setup;
 
+import com.taxonomy.security.service.LegacyOwnershipDatabaseContract;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.mssqlserver.MSSQLServerContainer;
@@ -21,6 +23,21 @@ class MssqlProvisioningServiceIT {
     @SuppressWarnings("rawtypes")
     static final MSSQLServerContainer server = new MSSQLServerContainer("mcr.microsoft.com/mssql/server:2022-CU18-ubuntu-22.04")
             .withPassword("A_Str0ng_Required_Password").acceptLicense();
+
+    @Test void verifiedLegacyOwnershipOnAProvisionedDatabase() throws Exception {
+        String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        String login = "owner_user_" + suffix;
+        String database = "owner_db_" + suffix;
+        String password = "Owner-Fixture-1!" + suffix;
+        var settings = input(database, login, password);
+        var service = new DatabaseProvisioningService(new MssqlProvisioningService());
+        try {
+            var provisioned = service.provision(reviewed(settings, service.inspect(settings)));
+            assertEquals(Outcome.COMPLETE, provisioned.outcome(), provisioned.toString());
+            LegacyOwnershipDatabaseContract.verify(new DriverManagerDataSource(
+                    url(database), login, password), "bit");
+        } finally { cleanup(database, login); }
+    }
 
     @Test void createsAndReusesDedicatedLoginAndDatabaseOwner() throws Exception {
         String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 10);

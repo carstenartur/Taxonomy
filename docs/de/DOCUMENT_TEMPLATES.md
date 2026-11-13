@@ -161,6 +161,21 @@ einen WebDAV-kompatiblen, begrenzten Zugang wie ein App-Passwort implementiert u
 getestet hat. WebDAV-Clients mit Bearer-Token-Unterstützung können den Endpunkt weiter
 verwenden.
 
+Neue Anwendungskennungen gehören zum ausstellenden Konto und zu dessen Anmeldebindung.
+Im lokalen Profil prüft jede WebDAV-Anfrage das Konto, die Bindung und die aktuellen
+Rollen. Nach dem Entzug der Administratorrolle entfällt der Schreibzugriff bei der
+nächsten Anfrage. Die Kontosperre beendet auch den Lesezugriff. Ein anderes Konto
+mit demselben Namen kann die Kennungen nicht verwalten.
+
+Bei Keycloak gilt der frühere der beiden Zeitpunkte aus gewünschtem Ablaufdatum und
+Ablauf des bei der Ausstellung geprüften Anmeldenachweises. Nach diesem Zeitpunkt
+ist eine neue Anmeldung und Ausstellung erforderlich. Im Modus STABLE prüft jede
+Verwendung auch die ursprüngliche OIDC-Bindung im lokalen Register. Im Modus LEGACY
+bestimmen Issuer und Subject die Kennung. Sobald diese Bindung für die Migration
+registriert ist, erlischt die alte Kennung. Nach einem Upgrade von einer ausschließlich
+namensbasierten Speicherung müssen Benutzer sich anmelden und Ersatzkennungen ausstellen.
+Die bisherigen Passwortprüfwerte enthalten keinen Beleg für die ursprüngliche Bindung.
+
 Taxonomy-App-Zugangsdaten haben genau ein 71 Zeichen langes ASCII-Format. Der
 WebDAV-Filter weist zu große Basic-Header, ungültiges UTF-8, zu lange decodierte
 Benutzernamen oder Passwörter sowie fehlerhafte `taxdav_`-Kandidaten vor

@@ -150,6 +150,8 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/jus
 
 ## Suche
 
+Volltext-, semantische, hybride und Ähnlichkeitssuche lesen den gemeinsamen Referenzkatalog. Erfolgreiche Antworten liefern `X-Taxonomy-Source-Scope: GLOBAL_REFERENCE` und eine ETag für das Ergebnis. Der gemeinsame Knotenindex und die Ähnlichkeitsabfrage verwenden den englischen Katalognamen und die Beschreibung. Die Graphsuche auf einem ausgewählten Branch verwendet dessen eigene Vektoren mit Relationskontext. Beim Upgrade baut der reguläre Start der lokalen ONNX-Indizierung die gemeinsamen Vektoren mit der neuen Kennung des Eingabeformats auf.
+
 ### Volltextsuche
 
 ```bash

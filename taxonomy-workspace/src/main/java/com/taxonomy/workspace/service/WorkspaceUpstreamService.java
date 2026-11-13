@@ -20,6 +20,9 @@ public class WorkspaceUpstreamService {
     public record TagStatus(String name, String sourceTagObject, String destinationTagObject, String trackedCommit) {}
     public record TagRequest(String name, String sourceTagObject, String trackedCommit) {
         public TagRequest {
+            if (name == null || !org.eclipse.jgit.lib.Repository.isValidRefName("refs/tags/" + name)) {
+                throw new IllegalArgumentException("A valid Git tag name is required");
+            }
             sourceTagObject = objectId(sourceTagObject);
             trackedCommit = objectId(trackedCommit);
         }
@@ -89,6 +92,14 @@ public class WorkspaceUpstreamService {
     @Transactional(rollbackFor = IOException.class)
     public TagStatus fetchTag(RepositoryContext selected, TagRequest request) throws IOException {
         return open(selected, true).transfer().fetchTag(request);
+    }
+
+    @Transactional(rollbackFor = IOException.class)
+    public TagStatus fetchRecordedTag(RepositoryContext selected, String sourceBranch, String forkPoint,
+                                      TagRequest request, boolean recovering, Runnable fence) throws IOException {
+        var transfer = open(selected, true).transfer();
+        transfer.requireOrigin(selected.repositoryId(), sourceBranch, forkPoint);
+        return transfer.fetchTag(request, recovering, fence);
     }
 
     private WorkingCopy open(RepositoryContext selected, boolean forUpdate) {

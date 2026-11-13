@@ -1,13 +1,11 @@
 package com.taxonomy.versioning.service;
 
-import com.taxonomy.versioning.model.ArchitectureCommitIndex;
 import com.taxonomy.versioning.service.CommitIndexService;
 import com.taxonomy.dsl.diff.ModelDiff;
 import com.taxonomy.workspace.storage.DslBranch;
 import com.taxonomy.workspace.storage.DslCommit;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
-import com.taxonomy.dto.ElementHistoryAggregation;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort;
@@ -267,24 +265,4 @@ public class DslOperationsFacade {
         return commitIndexService.purge(resolveRepositoryContext());
     }
 
-    public List<ArchitectureCommitIndex> searchHistory(
-            String query, int maxResults) {
-        return commitIndexService.search(
-                query, maxResults, resolveRepositoryContext());
-    }
-
-    public List<ArchitectureCommitIndex> findByElement(String elementId) {
-        return commitIndexService.findByElement(
-                elementId, resolveRepositoryContext());
-    }
-
-    public List<ArchitectureCommitIndex> findByRelation(String key) {
-        return commitIndexService.findByRelation(
-                key, resolveRepositoryContext());
-    }
-
-    public ElementHistoryAggregation aggregateElementHistory(String elementId) {
-        return commitIndexService.aggregateElementHistory(
-                elementId, resolveRepositoryContext());
-    }
 }

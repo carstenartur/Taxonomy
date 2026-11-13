@@ -87,6 +87,25 @@ public final class PrincipalIdentityService {
         return false;
     }
 
+    /** Includes disabled binding tombstones so a delegated LEGACY grant cannot outlive migration. */
+    public boolean hasRegisteredBinding(String key) {
+        return jdbc.queryForObject("select count(*) from principal_binding where binding_key=?",
+                Integer.class, key) != 0;
+    }
+
+    /** Check the exact OIDC binding on each use of a credential issued by that login. */
+    public boolean isCurrentExternalBinding(PrincipalId owner, String key) {
+        String expected = owner.value().toString();
+        var matches = jdbc.query("""
+                select b.binding_key,b.principal_id,b.issuer,b.subject_id
+                from principal_binding b join app_principal p on p.principal_id=b.principal_id
+                where b.binding_key=? and b.principal_id=? and b.binding_kind='OIDC' and b.enabled=1 and p.enabled=1
+                """, (row, number) -> key.equals(row.getString(1)) && expected.equals(row.getString(2))
+                && key.equals(PrincipalBinding.key(new IdentityBinding(IdentityBinding.Kind.OIDC,
+                        row.getString(3), row.getString(4)))), key, expected);
+        return matches.size() == 1 && matches.getFirst();
+    }
+
     public boolean hasCapability(PrincipalId principal, BackupCapability capability) {
         if (!isEnabled(principal)) return false;
         return jdbc.queryForObject("select count(*) from backup_capability_grant where principal_id=? and capability=?",

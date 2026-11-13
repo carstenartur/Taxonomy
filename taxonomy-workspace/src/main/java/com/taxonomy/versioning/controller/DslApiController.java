@@ -11,7 +11,6 @@ import com.taxonomy.dsl.validation.DslValidationResult;
 import com.taxonomy.dsl.validation.DslValidator;
 import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
 import com.taxonomy.dto.ViewContext;
-import com.taxonomy.dto.VersionedSearchResult;
 import com.taxonomy.versioning.service.ConflictDetectionService;
 import com.taxonomy.versioning.service.DslOperationsFacade;
 import com.taxonomy.workspace.service.RepositoryStateGuard;
@@ -575,111 +574,4 @@ public class DslApiController {
         return ResponseEntity.ok(result);
     }
 
-    @GetMapping("/history/search")
-    @Operation(summary = "Search architecture commit history",
-            description = "Full-text search across tokenized DSL changes, commit messages, " +
-                    "and affected element/relation IDs using Hibernate Search (Lucene backend). " +
-                    "Results are ranked by relevance score.")
-    public ResponseEntity<?> searchHistory(
-            @RequestParam String query,
-            @RequestParam(defaultValue = "50") int maxResults) {
-        return ResponseEntity.ok(dslOps.searchHistory(query, maxResults));
-    }
-
-    @GetMapping("/history/element/{elementId}")
-    @Operation(summary = "Find commits that affected a specific element",
-            description = "Searches affectedElementIds and tokenized DSL text for the given " +
-                    "element ID using Hibernate Search.")
-    public ResponseEntity<?> findHistoryByElement(@PathVariable String elementId) {
-        return ResponseEntity.ok(dslOps.findByElement(elementId));
-    }
-
-    @GetMapping("/history/relation")
-    @Operation(summary = "Find commits that affected a specific relation",
-            description = "Searches affectedRelationIds and tokenized DSL text for the given " +
-                    "relation key (e.g., 'CP-1023 REALIZES CR-1047') using Hibernate Search.")
-    public ResponseEntity<?> findHistoryByRelation(@RequestParam String key) {
-        return ResponseEntity.ok(dslOps.findByRelation(key));
-    }
-
-    @GetMapping("/history/element/{elementId}/aggregation")
-    @Operation(summary = "Get aggregated history for an element",
-            description = "Returns firstSeen, lastSeen, occurrence count, volatility, " +
-                    "and recent commit messages for the given element ID.")
-    public ResponseEntity<?> elementHistoryAggregation(@PathVariable String elementId) {
-        var aggregation = dslOps.aggregateElementHistory(elementId);
-        if (aggregation == null) {
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("elementId", elementId);
-            result.put("message", "No history found for element " + elementId);
-            return ResponseEntity.ok(result);
-        }
-        return ResponseEntity.ok(aggregation);
-    }
-
-    // ── Versioned History Search (Phase 2) ──────────────────────────
-
-    @GetMapping("/history/search-versioned")
-    @Operation(summary = "Search architecture history with version context",
-            description = "Full-text search returning results enriched with version metadata: " +
-                    "lineage info, recency, and suggested context actions.")
-    public ResponseEntity<List<VersionedSearchResult>> searchVersioned(
-            @RequestParam String query,
-            @RequestParam(defaultValue = "draft") String currentBranch,
-            @RequestParam(defaultValue = "50") int maxResults) {
-
-        var hits = dslOps.searchHistory(query, maxResults);
-        if (hits.isEmpty()) {
-            return ResponseEntity.ok(List.of());
-        }
-
-        String headCommit;
-        try {
-            headCommit = dslOps.getHeadCommit(currentBranch);
-        } catch (IOException e) {
-            headCommit = null;
-        }
-
-        // Find the latest overall and latest on current branch
-        var latestOverall = hits.stream()
-                .filter(h -> h.getCommitTimestamp() != null)
-                .max(java.util.Comparator.comparing(h -> h.getCommitTimestamp()))
-                .orElse(null);
-        var latestOnBranch = hits.stream()
-                .filter(h -> currentBranch.equals(h.getBranch()) && h.getCommitTimestamp() != null)
-                .max(java.util.Comparator.comparing(h -> h.getCommitTimestamp()))
-                .orElse(null);
-
-        final String resolvedHead = headCommit;
-        List<VersionedSearchResult> results = hits.stream().map(hit -> {
-            boolean onLineage = currentBranch.equals(hit.getBranch());
-            boolean isLatestOnBranch = latestOnBranch != null
-                    && hit.getCommitId().equals(latestOnBranch.getCommitId());
-            boolean isLatestOverall = latestOverall != null
-                    && hit.getCommitId().equals(latestOverall.getCommitId());
-
-            List<String> actions = new java.util.ArrayList<>();
-            actions.add("OPEN_READ_ONLY");
-            if (!onLineage || !isLatestOnBranch) {
-                actions.add("SWITCH");
-            }
-            actions.add("CREATE_VARIANT");
-            actions.add("COMPARE");
-
-            return new VersionedSearchResult(
-                    hit.getCommitId(),
-                    hit.getBranch(),
-                    hit.getCommitTimestamp(),
-                    hit.getAffectedElementIds(),
-                    hit.getMessage(),
-                    0.0f,
-                    onLineage,
-                    isLatestOnBranch,
-                    isLatestOverall,
-                    actions
-            );
-        }).toList();
-
-        return ResponseEntity.ok(results);
-    }
 }
