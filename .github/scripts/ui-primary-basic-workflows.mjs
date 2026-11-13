@@ -1,6 +1,7 @@
 import { request } from '@playwright/test';
+import { selectAnalysisWorkspace } from './ui-primary-preferences-workflow.mjs';
 import { basicAuthorization, ROLE_ACCOUNTS, navigateToPage } from './ui-role-fixtures.mjs';
-import { usingComparisonBranch } from './ui-primary-version-workflow.mjs';
+import { usingComparisonBranch, runVersionComparisonWorkflow } from './ui-primary-version-workflow.mjs';
 
 /** Persist real catalogue identities and an accepted relation; no browser graph response is intercepted. */
 export async function seedSavedGraph(api, branch, onResources = () => {}) {
@@ -58,7 +59,7 @@ export async function seedSavedGraph(api, branch, onResources = () => {}) {
       || projection.readinessState !== 'READY' || projection.currentHeadCommit !== commit
       || projection.projectedCommit !== commit || projection.relationCount !== 1)
     throw new Error('The saved graph projection does not prove its accepted relation at the selected head');
-  return {...resources,workspaceScopeKey:'__shared__',commit,
+  return {...resources,workspaceBranch:workspace.currentBranch,workspaceScopeKey:'__shared__',commit,
     code:process.code,serviceCode:service.code,scope:String(scope)};
 }
 
@@ -80,6 +81,12 @@ export async function removeSavedGraph(api, resources) {
 export async function verifyGraphEntry(workflow) {
   const {page} = workflow;
   const returnUrl = page.url();
+  let originalWorkspace;
+  if (workflow.role === 'ADMIN') {
+    await page.waitForFunction(() => window.TaxonomyAnalysisSession?.state?.().ready === true);
+    originalWorkspace = await page.evaluate(() => window.TaxonomyAnalysisSession.state().workspaceId);
+    workflow.evidence.assert(originalWorkspace, 'Version comparison requires a resolved original workspace');
+  }
   // Provision through the same administrator account used by the role fixture. The
   // browser keeps its original USER/ARCHITECT/ADMIN identity for all reads and actions.
   const apiRoot = await page.evaluate(() => new URL(
@@ -99,9 +106,18 @@ export async function verifyGraphEntry(workflow) {
         await page.locator('#architectureWorkingSource').waitFor({state:'visible'});
         await page.waitForFunction(commit => document.getElementById('applicationContextSummaryStand').textContent.includes(commit.slice(0,12)), fixture.commit);
         await verifySelectedGraphEntry(workflow,fixture);
+        if (workflow.role === 'ADMIN') {
+          // The real comparison and its conditional cleanup belong to this account's working copy.
+          selected.search = new URLSearchParams({repositoryId:fixture.repositoryId,workspaceId:fixture.workspaceId,
+            workspaceScopeKey:fixture.workspaceId,branch:fixture.workspaceBranch,lang:'en'});
+          selected.hash = 'versions';
+          await selectAnalysisWorkspace(page, fixture.workspaceId, workflow.evidence.assert, selected.href);
+          await runVersionComparisonWorkflow({...workflow, sourceBranch:fixture.workspaceBranch, workspaceId:fixture.workspaceId});
+        }
       } finally {
         // Leave the temporary branch even when browser assertions fail.
-        await page.goto(returnUrl);
+        if (originalWorkspace) await selectAnalysisWorkspace(page, originalWorkspace, workflow.evidence.assert, returnUrl);
+        else await page.goto(returnUrl);
         await page.waitForFunction(() => Boolean(window.TaxonomyRoleSurface?.getContext()));
       }
     }, async () => {
@@ -162,7 +178,7 @@ export async function runBasicWorkflows({ page, role, evidence }) {
   await axeState('analysis-empty-error');
   await saveState('analysis-empty-error');
   passed('empty analysis actionable status and live announcement');
-  await verifyGraphEntry({ page, evidence });
+  await verifyGraphEntry({ page, role, evidence });
 
   const roleContext = await page.evaluate(() => window.TaxonomyRoleSurface.getContext());
   assert(roleContext.roles.includes(role),
