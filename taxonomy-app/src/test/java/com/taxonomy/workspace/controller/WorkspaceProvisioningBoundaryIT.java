@@ -141,7 +141,13 @@ class WorkspaceProvisioningBoundaryIT {
         assertThat(memberships.listMemberships(source, USER))
                 .noneMatch(membership -> member.equals(membership.getUsername()));
 
-        var replacement = memberships.assignRole(source, member, RepositoryRole.CONTRIBUTOR, USER, -1L);
+        var revoked = memberships.membershipRevision(source, member, USER);
+        assertThat(revoked.active()).isFalse();
+        assertThat(revoked.version()).isGreaterThan(firstVersion);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                memberships.assignRole(source, member, RepositoryRole.OWNER, USER, -1L))
+                .isInstanceOf(org.springframework.dao.OptimisticLockingFailureException.class);
+        var replacement = memberships.assignRole(source, member, RepositoryRole.CONTRIBUTOR, USER, revoked.version());
         assertThat(replacement.getVersion()).isGreaterThan(firstVersion);
         org.assertj.core.api.Assertions.assertThatThrownBy(() ->
                 memberships.assignRole(source, member, RepositoryRole.OWNER, USER, firstVersion))
@@ -152,6 +158,13 @@ class WorkspaceProvisioningBoundaryIT {
         assertThat(memberships.effectiveRole(source, member)).contains(RepositoryRole.CONTRIBUTOR);
         memberships.removeMembership(source, member, USER, replacement.getVersion());
         assertThat(memberships.effectiveRole(source, member)).isEmpty();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                memberships.assignRole(source, member, RepositoryRole.READER, USER, revoked.version()))
+                .isInstanceOf(org.springframework.dao.OptimisticLockingFailureException.class);
+        var latest = memberships.membershipRevision(source, member, USER);
+        assertThat(latest.version()).isGreaterThan(replacement.getVersion());
+        memberships.assignRole(source, member, RepositoryRole.READER, USER, latest.version());
+        assertThat(memberships.effectiveRole(source, member)).contains(RepositoryRole.READER);
     }
 
     @ParameterizedTest

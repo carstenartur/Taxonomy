@@ -90,6 +90,25 @@ class ArchitectureRepositoryControllerTest {
     }
 
     @Test
+    void memberRevisionIsVisibleOnlyToAnOwnerAndMustNotBeCached() {
+        var repository = repository();
+        var revoked = new RepositoryMembershipService.MembershipRevision(false, 3L);
+        when(workspaceResolver.resolveCurrentUsername()).thenReturn("owner");
+        when(repositoryService.getRepository("repo-a")).thenReturn(repository);
+        when(membershipService.membershipRevision(repository, "bob", "owner")).thenReturn(revoked);
+
+        assertEquals(404, controller.membershipRevision("repo-a", "bob").getStatusCode().value());
+        when(membershipService.canRead(repository, "owner")).thenReturn(true);
+        assertEquals(403, controller.membershipRevision("repo-a", "bob").getStatusCode().value());
+        verify(membershipService, never()).membershipRevision(repository, "bob", "owner");
+        when(membershipService.isOwner(repository, "owner")).thenReturn(true);
+        var response = controller.membershipRevision("repo-a", "bob");
+        assertEquals(200, response.getStatusCode().value());
+        assertEquals("no-store", response.getHeaders().getCacheControl());
+        assertEquals(revoked, response.getBody());
+    }
+
+    @Test
     void ownerCanAssignMembership() {
         SystemRepository repository = repository();
         RepositoryMembership membership = membership("bob", RepositoryRole.CONTRIBUTOR);

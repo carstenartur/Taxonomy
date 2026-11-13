@@ -76,7 +76,7 @@ public class RepositoryMembershipService {
 
     /**
      * Version-preconditioned membership update for external callers.
-     * -1 requires an absent active grant. Regranting reuses the locked row and advances
+     * -1 requires that this member has never had a grant. Regranting reuses the locked row and advances
      * its version so a previously removed grant cannot match the new one.
      * Internal migration/bootstrap callers retain the distinct, trusted four-argument API.
      */
@@ -252,6 +252,18 @@ public class RepositoryMembershipService {
         return listMemberships(repository.getRepositoryId());
     }
 
+    public record MembershipRevision(boolean active, long version) {}
+
+    /** Read the version needed for an owner's next grant, regrant or role change. */
+    @Transactional(readOnly = true)
+    public MembershipRevision membershipRevision(SystemRepository repository, String username, String actor) {
+        requireOwner(repository, actor);
+        return membershipRepository.findByRepositoryIdAndUsername(
+                        requireRepositoryId(repository), requireText(username, "username"))
+                .map(member -> new MembershipRevision(member.isActive(), member.getVersion()))
+                .orElse(new MembershipRevision(false, -1L));
+    }
+
     public long countOwners(String repositoryId) {
         return membershipRepository.countByRepositoryIdAndRole(
                 requireText(repositoryId, "repositoryId"), RepositoryRole.OWNER);
@@ -264,7 +276,7 @@ public class RepositoryMembershipService {
         if (expectedVersion < -1) {
             throw new IllegalArgumentException("expectedVersion must be -1 or nonnegative");
         }
-        long currentVersion = existing != null && existing.isActive() ? existing.getVersion() : -1L;
+        long currentVersion = existing == null ? -1L : existing.getVersion();
         if (currentVersion != expectedVersion) {
             throw new OptimisticLockingFailureException(
                     "Repository membership changed; reload the latest version");
