@@ -50,6 +50,29 @@ class RepositoryStateServiceTest {
                 mock(com.taxonomy.workspace.service.SystemRepositoryService.class));
     }
 
+    @Test
+    void aSelectedViewReadsItsOwnBranchAndWorkspaceProgressWithoutAllocatingState() throws IOException {
+        var factory = mock(DslGitRepositoryFactory.class);
+        var navigation = mock(WorkspaceManager.class);
+        var selected = new com.taxonomy.workspace.service.WorkspaceContext("reader", "work-B", "review", "repo-B");
+        var progress = new com.taxonomy.workspace.service.UserWorkspaceState("reader", 10);
+        String head = gitRepo.commitDsl("review", SAMPLE_DSL, "author", "selected review");
+        progress.recordProjection(head, "review");
+        progress.recordIndexBuild("e".repeat(40));
+        org.mockito.Mockito.when(factory.resolveRepository(selected)).thenReturn(gitRepo);
+        org.mockito.Mockito.when(navigation.getScopedWorkspaceState(selected)).thenReturn(progress);
+        var states = new RepositoryStateService(factory, navigation, mock(com.taxonomy.workspace.service.SystemRepositoryService.class));
+
+        var version = states.readSelectedViewContext(selected).orElseThrow();
+        assertEquals(head, version.basedOnCommit());
+        assertEquals("review", version.basedOnBranch());
+        assertNotNull(version.commitTimestamp());
+        assertFalse(version.projectionStale());
+        assertTrue(version.indexStale());
+        org.mockito.Mockito.verify(navigation).getScopedWorkspaceState(selected);
+        org.mockito.Mockito.verifyNoMoreInteractions(navigation);
+    }
+
     // ── getState ────────────────────────────────────────────────────
 
     private static final String USER = "testuser";
