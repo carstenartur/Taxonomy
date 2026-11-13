@@ -31,6 +31,16 @@ public final class RelationProjectionScopeMigrationChecks {
         portable.migrate();
         seed(rows, "main", null);
         seed(rows, "historic", "__shared__");
+        for (long id : new long[] {7001, 7002, 7003}) {
+            rows.update("""
+                    insert into taxonomy_node (id,code,name_en,node_level,has_embedding,incoming_relation_count,
+                        outgoing_relation_count,requirement_coverage_count) values (?,?,?,1,false,0,0,0)
+                    """, id, "projection-" + id, "Scope fixture " + id);
+        }
+        seedLegacyRelations(rows, null, 7002);
+        seedLegacyRelations(rows, "__shared__", 7003);
+        long centralHypothesis = seedHypothesis(rows, null, "main");
+        long privateHypothesis = seedHypothesis(rows, "__shared__", "historic");
         try (var connection = database.getConnection()) {
             if (connection.getMetaData().getDatabaseProductName().equalsIgnoreCase("HSQL Database Engine")) {
                 portable.migrate();
@@ -55,6 +65,19 @@ public final class RelationProjectionScopeMigrationChecks {
             assertThatThrownBy(() -> rows.update("update " + table + " set workspace_scope_key='' where repository_id=? and branch='historic'", REPO))
                     .isInstanceOf(DataIntegrityViolationException.class);
         }
+        assertThat(rows.queryForObject("select workspace_scope_key from relation_evidence where hypothesis_id=?",
+                String.class, centralHypothesis)).isEqualTo(" central");
+        assertThat(rows.queryForObject("select workspace_scope_key from relation_evidence where hypothesis_id=?",
+                String.class, privateHypothesis)).isEqualTo("__shared__");
+        seedLegacyRelations(rows, "__shared__", 7002);
+        for (String table : new String[] {"taxonomy_relation", "relation_proposal"}) {
+            assertThat(rows.queryForList("select workspace_scope_key from " + table
+                    + " where repository_id=? and target_node_id=7002 order by id", String.class, REPO))
+                    .containsExactly(" central", "__shared__");
+        }
+        assertThatThrownBy(() -> rows.update("update relation_evidence set workspace_scope_key='__shared__' where hypothesis_id=?", centralHypothesis))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        seedHypothesis(rows, "__shared__", "main");
         seed(rows, "main", "__shared__");
         portable.migrate();
         portable.migrate();
@@ -64,6 +87,33 @@ public final class RelationProjectionScopeMigrationChecks {
                 Long.class, REPO)).isEqualTo(2);
         assertThat(rows.queryForObject("select last_observed_at from relation_projection_recovery where repository_id=? and workspace_id is null",
                 Timestamp.class, REPO).toInstant()).isEqualTo(ORIGINAL.toInstant());
+    }
+
+    private static void seedLegacyRelations(JdbcTemplate rows, String owner, long target) {
+        rows.update("""
+                insert into taxonomy_relation (repository_id,workspace_id,workspace_scope_key,source_node_id,target_node_id,
+                    relation_type,bidirectional,has_embedding) values (?,?,'__shared__',7001,?,'SUPPORTS',false,false)
+                """, REPO, owner, target);
+        rows.update("""
+                insert into relation_proposal (repository_id,workspace_id,workspace_scope_key,source_node_id,target_node_id,
+                    relation_type,status,confidence,created_at) values (?,?,'__shared__',7001,?,'SUPPORTS','PENDING',1,?)
+                """, REPO, owner, target, ORIGINAL);
+    }
+
+    private static long seedHypothesis(JdbcTemplate rows, String owner, String branch) {
+        rows.update("""
+                insert into relation_hypothesis (repository_id, workspace_id, workspace_scope_key, branch_name,
+                    source_node_id, target_node_id, relation_type, status, applied_in_current_analysis, analysis_session_scope_key, created_at)
+                values (?, ?, '__shared__', ?, 'BP', 'CP', 'SUPPORTS', 'PROVISIONAL', false, '__unspecified__', ?)
+                """, REPO, owner, branch, ORIGINAL);
+        long id = rows.queryForObject("""
+                select id from relation_hypothesis where repository_id=? and branch_name=? and workspace_scope_key='__shared__'
+                """, Long.class, REPO, branch);
+        rows.update("""
+                insert into relation_evidence (hypothesis_id, repository_id, workspace_scope_key, branch_name, evidence_type, created_at)
+                values (?, ?, '__shared__', ?, 'MANUAL', ?)
+                """, id, REPO, branch, ORIGINAL);
+        return id;
     }
 
     private static void seed(JdbcTemplate rows, String branch, String workspaceId) {

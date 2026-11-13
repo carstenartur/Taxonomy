@@ -25,7 +25,7 @@ import java.util.TreeMap;
 final class SchemaContractMigrator {
 
     private static final Logger log = LoggerFactory.getLogger(SchemaContractMigrator.class);
-    private static final String SHARED_SCOPE = "__shared__";
+    private static final String SHARED_SCOPE = com.taxonomy.model.WorkspaceOverlayScope.CENTRAL_STORAGE_KEY;
     private static final String UNSPECIFIED_SESSION_SCOPE = "__unspecified__";
 
     private static final Set<String> PROPOSAL_LEGACY_COLUMNS = Set.of(
@@ -131,7 +131,7 @@ final class SchemaContractMigrator {
                 + " SET workspace_id = TRIM(workspace_id) WHERE workspace_id IS NOT NULL");
         execute(connection, "UPDATE " + qualified(connection, table)
                 + " SET analysis_session_id = NULLIF(TRIM(analysis_session_id), '')");
-        normalizeWorkspaceScope(connection, table);
+        ensureColumn(connection, table, "workspace_scope_key", "VARCHAR(255)");
         ensureColumn(connection, table, "analysis_session_scope_key", "VARCHAR(255)");
         execute(connection, "UPDATE " + qualified(connection, table)
                 + " SET analysis_session_scope_key = " + sessionScopeExpression());
@@ -173,7 +173,10 @@ final class SchemaContractMigrator {
             String reason = parent == null ? "missing_evidence_parent" : null;
             if (parent != null) {
                 for (String key : List.of("repository_id", "workspace_scope_key", "branch_name")) {
-                    if (row.get(key) != null && !Objects.equals(row.get(key), parent.get(key))) {
+                    boolean previousCentralKey = key.equals("workspace_scope_key") && parent.get("workspace_id") == null
+                            && Objects.equals(parent.get(key), SHARED_SCOPE)
+                            && com.taxonomy.model.WorkspaceOverlayScope.CENTRAL_SCOPE_KEY.equals(row.get(key));
+                    if (!previousCentralKey && row.get(key) != null && !Objects.equals(row.get(key), parent.get(key))) {
                         reason = "conflicting_evidence_scope";
                     }
                 }
@@ -184,6 +187,18 @@ final class SchemaContractMigrator {
             }
         }
         if (!failures.isEmpty()) throw branchFailure(failures, failedIds);
+        // Upgrade only the verified parent/child authority. Oracle commits each DDL phase,
+        // so a retry accepts the old child key solely for a proven central parent.
+        boolean changingOwnerKey = parents.values().stream().anyMatch(row -> !Objects.equals(
+                row.get("workspace_scope_key"), com.taxonomy.model.WorkspaceOverlayScope.storageKeyFor(row.get("workspace_id"))));
+        if (changingOwnerKey && evidence != null) {
+            var names = ForeignKeyMetadata.matchingNames(connection, evidence.catalog(), evidence.schema(), evidence.name(),
+                    table.schema(), table.name(), List.of("hypothesis_id", "repository_id", "workspace_scope_key", "branch_name"),
+                    List.of("id", "repository_id", "workspace_scope_key", "branch_name"));
+            for (String name : names) execute(connection, "ALTER TABLE " + qualified(connection, evidence)
+                    + " DROP CONSTRAINT " + quoted(connection, name));
+        }
+        normalizeWorkspaceScope(connection, table);
         for (var entry : parents.entrySet()) {
             branchUpdate(connection, "UPDATE " + qualified(connection, table)
                     + " SET branch_name=? WHERE id=?", entry.getValue().get("branch_name"), Long.valueOf(entry.getKey()));
@@ -192,7 +207,7 @@ final class SchemaContractMigrator {
             var parent = parents.get(entry.getValue().get("hypothesis_id"));
             branchUpdate(connection, "UPDATE " + qualified(connection, evidence)
                     + " SET repository_id=?, workspace_scope_key=?, branch_name=? WHERE id=?",
-                    parent.get("repository_id"), parent.get("workspace_scope_key"), parent.get("branch_name"),
+                    parent.get("repository_id"), com.taxonomy.model.WorkspaceOverlayScope.storageKeyFor(parent.get("workspace_id")), parent.get("branch_name"),
                     Long.valueOf(entry.getKey()));
         }
         // SQL Server's default case-insensitive collation cannot represent Git refs.
@@ -293,7 +308,7 @@ final class SchemaContractMigrator {
                             "branch_name", "project_id", "requirement_id", "analysis_snapshot_id", "scope_key",
                             "workspace_scope").contains(key)) {
                         String value=rs.getString(i);
-                        boolean exact=key.equals("scope_key") || (table.name().equalsIgnoreCase("relation_evidence")
+                        boolean exact=key.equals("scope_key") || key.equals("workspace_scope_key") || (table.name().equalsIgnoreCase("relation_evidence")
                                 && Set.of("repository_id", "workspace_scope_key", "branch_name").contains(key));
                         row.put(key, exact ? value : normalizeOptional(value));
                     }

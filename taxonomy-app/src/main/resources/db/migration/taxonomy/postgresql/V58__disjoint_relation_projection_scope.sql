@@ -28,3 +28,24 @@ update architecture_commit_index set workspace_scope_key = ' central' where work
 alter table architecture_commit_index add constraint ck_commit_index_workspace_scope
     check ((workspace_id is null and workspace_scope_key = ' central')
         or (workspace_id is not null and trim(workspace_id) <> '' and workspace_scope_key = trim(workspace_id)));
+
+-- The child has no independently chosen owner. Its established foreign key
+-- proves which parent supplies the new storage key while retaining the audit.
+alter table relation_evidence drop constraint fk_evidence_hypothesis_scope;
+update relation_evidence set workspace_scope_key=' central'
+    where hypothesis_id in (select id from relation_hypothesis where workspace_id is null);
+update relation_hypothesis set workspace_scope_key=' central' where workspace_id is null;
+alter table relation_evidence add constraint fk_evidence_hypothesis_scope
+    foreign key (hypothesis_id, repository_id, workspace_scope_key, branch_name)
+    references relation_hypothesis (id, repository_id, workspace_scope_key, branch_name);
+alter table relation_hypothesis add constraint ck_hyp_owner_key
+    check ((workspace_id is null and workspace_scope_key=' central')
+        or (workspace_id is not null and trim(workspace_id) <> '' and workspace_scope_key=trim(workspace_id)));
+update relation_proposal set workspace_scope_key=' central' where workspace_id is null;
+alter table relation_proposal add constraint ck_prop_owner_key
+    check ((workspace_id is null and workspace_scope_key=' central')
+        or (workspace_id is not null and trim(workspace_id) <> '' and workspace_scope_key=trim(workspace_id)));
+update taxonomy_relation set workspace_scope_key=' central' where workspace_id is null;
+alter table taxonomy_relation add constraint ck_relation_owner_key
+    check ((workspace_id is null and workspace_scope_key=' central')
+        or (workspace_id is not null and trim(workspace_id) <> '' and workspace_scope_key=trim(workspace_id)));

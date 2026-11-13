@@ -32,7 +32,7 @@ class WorkspaceOverlayScopeOwnershipTest {
 
             assertThat(source)
                     .as("workspace overlay identity in %s", path)
-                    .contains("WorkspaceOverlayScope.keyFor(")
+                    .contains("WorkspaceOverlayScope.storageKeyFor(")
                     .doesNotContain("\"__shared__\"");
         }
     }

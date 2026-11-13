@@ -253,7 +253,7 @@ class SchemaContractMigrationRepositoryBackfillTest {
             String sessionId,
             String owner) throws SQLException {
         String workspace = workspaceId == null ? "null" : "'" + workspaceId + "'";
-        String workspaceScope = workspaceId == null ? "__shared__" : workspaceId;
+        String workspaceScope = com.taxonomy.model.WorkspaceOverlayScope.storageKeyFor(workspaceId);
         String session = sessionId == null ? "null" : "'" + sessionId + "'";
         String sessionScope = sessionId == null ? "__unspecified__" : sessionId;
         execute(dataSource, """

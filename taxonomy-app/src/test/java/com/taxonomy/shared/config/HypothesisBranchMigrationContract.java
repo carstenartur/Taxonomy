@@ -35,11 +35,11 @@ public final class HypothesisBranchMigrationContract {
             assertThat(scalar(database, "SELECT branch_name FROM relation_evidence WHERE id=1")).isEqualTo("main");
             insertExact(database, 3, "Main"); // Git ref comparisons must remain case-sensitive.
             insertExact(database, 4, "draft");
-            try (var connection=database.getConnection(); var insert=connection.prepareStatement("INSERT INTO relation_hypothesis (id,repository_id,workspace_scope_key,branch_name,source_node_id,target_node_id,relation_type,analysis_session_scope_key) VALUES (6,'repo','__shared__',?,'BP','CP','SUPPORTS','__unspecified__')")) {
+            try (var connection=database.getConnection(); var insert=connection.prepareStatement("INSERT INTO relation_hypothesis (id,repository_id,workspace_scope_key,branch_name,source_node_id,target_node_id,relation_type,analysis_session_scope_key) VALUES (6,'repo',' central',?,'BP','CP','SUPPORTS','__unspecified__')")) {
                 insert.setNString(1, "レビュー/Δ"); insert.executeUpdate();
             }
             assertThat(scalar(database,"SELECT branch_name FROM relation_hypothesis WHERE id=6")).isEqualTo("レビュー/Δ");
-            try(var connection=database.getConnection();var insert=connection.prepareStatement("INSERT INTO relation_hypothesis (id,repository_id,workspace_scope_key,branch_name,source_node_id,target_node_id,relation_type,analysis_session_scope_key) VALUES (7,'repo','__shared__',?,'BP','CP','SUPPORTS','__unspecified__')")) {
+            try(var connection=database.getConnection();var insert=connection.prepareStatement("INSERT INTO relation_hypothesis (id,repository_id,workspace_scope_key,branch_name,source_node_id,target_node_id,relation_type,analysis_session_scope_key) VALUES (7,'repo',' central',?,'BP','CP','SUPPORTS','__unspecified__')")) {
                 insert.setNString(1,"枝".repeat(255)); insert.executeUpdate();
             }
             assertThat(scalar(database,"SELECT branch_name FROM relation_hypothesis WHERE id=7")).isEqualTo("枝".repeat(255));
@@ -168,7 +168,7 @@ public final class HypothesisBranchMigrationContract {
         sql(database, "CREATE TABLE relation_evidence(id BIGINT PRIMARY KEY, hypothesis_id BIGINT)".replace("BIGINT", product.contains("Oracle") ? "NUMBER(19)" : "BIGINT"));
     }
     private static void insertExact(DataSource database, int id, String branch) throws SQLException {
-        sql(database, "INSERT INTO relation_hypothesis (id,repository_id,workspace_scope_key,branch_name,source_node_id,target_node_id,relation_type,analysis_session_scope_key) VALUES (" + id + ",'repo','__shared__','" + branch + "','BP','CP','SUPPORTS','__unspecified__')");
+        sql(database, "INSERT INTO relation_hypothesis (id,repository_id,workspace_scope_key,branch_name,source_node_id,target_node_id,relation_type,analysis_session_scope_key) VALUES (" + id + ",'repo',' central','" + branch + "','BP','CP','SUPPORTS','__unspecified__')");
     }
     public static void reset(DataSource database) throws SQLException {
         for (String table : List.of("relation_evidence", "relation_hypothesis", "req_analysis_snapshot", "project_requirement", "arch_project", "system_repository")) {
