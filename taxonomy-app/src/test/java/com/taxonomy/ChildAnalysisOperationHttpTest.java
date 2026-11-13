@@ -136,7 +136,7 @@ class ChildAnalysisOperationHttpTest {
             var handle = mock(WorkspaceDslReadPort.RepositoryRead.class);
             when(git.openRead(any())).thenReturn(handle);
             when(handle.currentHead()).thenReturn("a".repeat(40));
-            when(identities.require(any())).thenAnswer(call -> actor.get());
+            when(identities.requireCurrent(any())).thenAnswer(call -> actor.get());
             when(taxonomy.isInitialized()).thenReturn(true);
             var candidates = List.of(new TaxonomyNode());
             when(taxonomy.getChildrenOf("CP")).thenReturn(candidates);
