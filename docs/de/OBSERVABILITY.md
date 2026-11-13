@@ -35,7 +35,7 @@ Der Java-Agent deckt unterstützte technische Grenzen automatisch ab, insbesonde
 - Workspace-Auflösung und Routing logischer Repositories;
 - JGit-Lesen, Commits, Diffs, Branches und Merges;
 - DSL-Parsing und Materialisierung;
-- Hibernate-Search-Abfragen;
+- Hibernate-Search-Abfragen, einschließlich der Suche am ausgewählten Commit-Index über `CommitIndexService.search`.
 - Anforderungs- und Kindknotenanalysen;
 - LLM-Orchestrierungsaufrufe;
 - Framework-Vorschau und -Import;

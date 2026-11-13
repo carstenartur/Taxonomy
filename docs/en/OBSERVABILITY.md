@@ -35,7 +35,7 @@ The Java agent automatically covers supported technical boundaries such as:
 - workspace resolution and logical repository routing;
 - JGit repository reads, commits, diffs, branches and merges;
 - DSL parsing and materialisation;
-- Hibernate Search queries;
+- Hibernate Search queries, including selected commit-history searches through `CommitIndexService.search`.
 - requirement and child-node analysis;
 - LLM orchestration calls;
 - framework preview/import;
