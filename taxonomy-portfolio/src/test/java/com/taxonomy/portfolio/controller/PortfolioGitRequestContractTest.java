@@ -66,6 +66,17 @@ class PortfolioGitRequestContractTest {
         verifyNoInteractions(service, repositories);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"", "{}", "{\"expectedHead\":\"  \"}"})
+    void explicitlySelectedTargetRequiresTheReviewedHead(String body) throws Exception {
+        var mvc = MockMvcBuilders.standaloneSetup(controller).build();
+        mvc.perform(post("/api/projects/git/materialize")
+                        .param("branch", "current").param("targetBranch", "review")
+                        .contentType("application/json").content(body))
+                .andExpect(status().isPreconditionRequired());
+        verifyNoInteractions(service, repositories);
+    }
+
     @Test void contradictoryExplicitTargetsCannotApplyAReviewedCommit() throws Exception {
         var mvc = MockMvcBuilders.standaloneSetup(controller).build();
         mvc.perform(post("/api/projects/git/materialize").param("branch", "current").param("targetBranch", "review")

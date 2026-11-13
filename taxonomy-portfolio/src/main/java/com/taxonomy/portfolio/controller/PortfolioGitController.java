@@ -110,7 +110,11 @@ public class PortfolioGitController {
         WorkspaceContext selected = targetBranch == null ? context().workspaceContext()
                 : workspaceResolver.resolveUnambiguousContextForRead();
         String effectiveBranch = firstNonBlank(targetBranch, bodyBranch, branch, selected.currentBranch(), "draft");
-        return gitService.materialize(effectiveBranch, request != null ? request.expectedHead() : null, selected);
+        String expectedHead = request != null ? request.expectedHead() : null;
+        if (targetBranch != null && (expectedHead == null || expectedHead.isBlank())) {
+            throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED, "The reviewed target head is required");
+        }
+        return gitService.materialize(effectiveBranch, expectedHead, selected);
     }
 
     @Operation(summary = "Semantically merge two branches and materialize the target portfolio",

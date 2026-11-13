@@ -698,7 +698,7 @@ curl -u architect:password \
   'http://localhost:8080/api/projects/git/materialize-preview?branch=draft'
 ```
 
-For a pinned page, `branch` identifies the page source and `targetBranch` selects the branch to preview. When applying a reviewed target, the browser sends the same source and target query along with the reviewed branch and expected head in the body. A stale page source receives HTTP 409. Existing clients may continue to use a single `branch` for preview and a body branch for apply.
+For a pinned page, `branch` identifies the page source and `targetBranch` selects the branch to preview. When applying a reviewed target, the browser sends the same source and target query along with the reviewed branch and expected head in the body. A stale page source receives HTTP 409. Applying an explicit `targetBranch` without its reviewed `expectedHead` returns HTTP 428. Existing clients may continue to use a single `branch` for preview and a body branch for apply.
 
 The preview contains the exact target HEAD, current and target fingerprints, line counts and bounded added/removed previews. Clients should repeat the preview immediately before applying and reject a changed `targetHead`.
 
