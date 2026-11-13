@@ -88,7 +88,7 @@ class ProductionCurrentBackupIT {
                 root.resolve("direct-capture-" + suffix), ArchiveProgress.NONE)) {
             assertThat(captured.manifest().entries()).isNotEmpty();
             assertThat(captured.manifest().components()).filteredOn(component -> component.id().value().equals("knowledge"))
-                    .singleElement().extracting(BackupManifest.Component::version).isEqualTo(2);
+                    .singleElement().extracting(BackupManifest.Component::version).isEqualTo(3);
             assertThat(captured.manifest().requiredFeatures()).contains("source-database-family-v1");
             try (var proof = captured.openEntry("verification/capture.json")) {
                 var sourceDatabase = com.taxonomy.exchange.backup.PortableRows.json().readTree(proof).get("sourceDatabase");
