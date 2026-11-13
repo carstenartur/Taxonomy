@@ -841,6 +841,7 @@ test('versioned history search uses the current pin and ignores a superseded res
   assert.doesNotMatch(app.search.innerHTML, /obsolete result/);
 
   const hidden = w.TaxonomyHistorySearch.search('hidden', 'versionedSearch');
+  assert.equal(new URL(reads[2].url, w.location.href).searchParams.has('currentBranch'), false);
   app.lifecycle.dispatchEvent(new Event('pagehide'));
   assert.equal(reads[2].init.signal.aborted, true);
   reads[2].resolve(Response.json([{branch: 'draft', matchedText: 'after departure'}]));
