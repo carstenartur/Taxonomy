@@ -139,7 +139,7 @@ Taxonomy-eigene Micrometer-Observations ergänzen am selben Endpunkt begrenzte f
 taxonomy_workspace_resolve_seconds_count
 ```
 
-Verwendet werden ausschließlich feste, niedrig-kardinale Labels: `taxonomy.component`, `taxonomy.operation` und das normalisierte `outcome` (`success` oder `error`). Benutzernamen, Workspace- oder Repository-Namen, Suchanfragen, Prompts, Dateinamen und Exception-Meldungen werden niemals Metrik-Labels. Die Live-Containerprüfung ruft `/api/relations` auf und verlangt den Workspace-Timer mit `component=workspace`, `operation=resolveCurrentContext` und `outcome=success`.
+Verwendet werden ausschließlich feste, niedrig-kardinale Labels: `taxonomy.component`, `taxonomy.operation` und das normalisierte `outcome` (`success` oder `error`). Benutzernamen, Workspace- oder Repository-Namen, Suchanfragen, Prompts, Dateinamen und Exception-Meldungen werden niemals Metrik-Labels. Die Live-Containerprüfung ruft `/api/relations` auf und verlangt den Workspace-Timer mit `component=workspace`, `operation=resolveUnambiguousRepositoryForRead` und `outcome=success`.
 
 ## Log-Korrelation
 
@@ -154,7 +154,7 @@ Mit diesen Kennungen kann der zugehörige Trace beziehungsweise Span gefunden we
 Taxonomy kann an einer beobachteten fachlichen Grenze zusätzlich genau eine begrenzte DEBUG-Meldung ausgeben:
 
 ```text
-Observed taxonomy operation component=workspace operation=resolveCurrentContext outcome=success
+Observed taxonomy operation component=workspace operation=resolveUnambiguousRepositoryForRead outcome=success
 ```
 
 Sie wird nur bei Bedarf mit `LOGGING_LEVEL_COM_TAXONOMY_OBSERVABILITY=DEBUG` aktiviert. Der normale INFO-Betrieb bleibt unverändert. Die Meldung enthält ausschließlich feste Komponenten-/Operationsnamen und ein normalisiertes Ergebnis; Methodenargumente, Rückgabewerte, Identitäten, Inhalte und Exception-Meldungen werden nie ausgegeben. Der Live-Abnahmetest verlangt für diese Zeile dieselbe `trace_id` wie im exportierten HTTP-/Domain-Trace.
