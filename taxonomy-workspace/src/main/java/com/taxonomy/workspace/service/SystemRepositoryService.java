@@ -36,6 +36,9 @@ public class SystemRepositoryService implements RepositoryMutationFence {
 
     private final SystemRepositoryRepository repository;
 
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entities;
+
     public SystemRepositoryService(SystemRepositoryRepository repository) {
         this.repository = repository;
     }
@@ -129,6 +132,15 @@ public class SystemRepositoryService implements RepositoryMutationFence {
     @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
     public void readCurrentAuthorization(String repositoryId, Consumer<SystemRepository> decision) {
         Objects.requireNonNull(decision).accept(getRepository(repositoryId));
+    }
+
+    /** Read the current policy on the same connection that owns the repository mutation fence. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public SystemRepository lockCurrentPublicationSource(String repositoryId) {
+        lock(repositoryId);
+        SystemRepository source = getRepository(repositoryId);
+        entities.refresh(source);
+        return source;
     }
 
     /** Evaluate the fork and its recorded source in the same fresh catalogue transaction. */

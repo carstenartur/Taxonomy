@@ -213,7 +213,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                     requireReviewedPortfolio(row.centralPortfolioDigest,"shared",target.centralContext());
                     requireReviewedPortfolio(row.localPortfolioDigest,row.username,target.workspace());
                 }
-                grant.run();
+                requireLockedPublicationAuthority(row, actor);
                 target.central().publishPreparedDslCommit(row.id,row.sourceBranch,row.inputSource,row.preparedSource);
                 var proof=target.central().preparedPublicationTime(row.id,row.sourceBranch,row.inputSource,row.preparedSource);
                 if (proof!=null) row.publishedAt=proof.toEpochMilli();
@@ -223,7 +223,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                     "Publish prepared architecture workspace", () -> {
                         if (!java.util.Objects.equals(row.preparedLocal,freshHead(target.local(),row.localBranch)))
                             requireReviewedPortfolio(row.localPortfolioDigest,row.username,target.workspace());
-                        grant.run();
+                        requireLockedPublicationAuthority(row, actor);
                         return target.local().publishPreparedDslCommit(row.id,row.localBranch,row.expectedLocal,row.preparedLocal);
                     });
             case TRACKING_REF -> {
@@ -236,7 +236,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                 var scope=central ? target.centralContext() : target.workspace();
                 requireReviewedPortfolio(central ? row.centralPortfolioDigest : row.localPortfolioDigest,owner,scope);
                 portfolioGitPort.materializePortfolio(content,owner,scope);
-                grant.run();
+                requireLockedPublicationAuthority(row, actor);
                 exactPublicationSource(target.central(),row,false);
             }
             case WORKSPACE_METADATA -> {
@@ -253,6 +253,17 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
             case PROGRESS -> syncStateRepository.recordPublication(new WorkspaceSyncScope(row.username,row.repository,row.workspace,row.localBranch),
                     row.preparedSource,row.publishedAt==null ? null : Instant.ofEpochMilli(row.publishedAt),Instant.ofEpochMilli(row.sourceObservedAt),Instant.now());
             default -> throw new IllegalStateException("Unsupported publication phase: " + row.step);
+        }
+    }
+
+    private void requireLockedPublicationAuthority(WorkspacePublicationOperation operation, Runnable actor) {
+        actor.run();
+        // Portfolio materialization fences the catalogue in this transaction. Suspending it
+        // to read the same row on a second connection deadlocks on locking databases.
+        var source = systemRepositoryService.lockCurrentPublicationSource(operation.repository);
+        if (!sourceMemberships.canPublishLockedSource(source, operation.username)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Current source repository CONTRIBUTOR role is required");
         }
     }
 
@@ -916,9 +927,15 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
 
     @Override
     public SyncState getSyncState(String username) {
-        var selected = contextResolver.resolveRepositoryContextForRead(username);
+        var observation = contextResolver.resolveSyncObservation(username);
+        var selected = observation.source();
         var scope = new WorkspaceSyncScope(selected.username(), selected.repositoryId(), selected.workspaceId(), selected.branch());
         requireSourceAuthority(username, systemRepositoryService.getRepository(selected.repositoryId()), false);
+        if (observation.lifecycle() != com.taxonomy.workspace.model.WorkspaceProvisioningStatus.READY) {
+            var unavailable = new com.taxonomy.workspace.model.WorkspaceBranchSyncState(scope).view();
+            unavailable.setSyncStatus(observation.lifecycle().name());
+            return unavailable;
+        }
         // Older username-wide observations cannot prove which working branch produced them.
         return syncStateRepository.readScope(scope);
     }

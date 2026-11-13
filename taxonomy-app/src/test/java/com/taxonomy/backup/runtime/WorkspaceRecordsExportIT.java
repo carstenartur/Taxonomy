@@ -131,6 +131,7 @@ class WorkspaceRecordsExportIT {
             var current = new Contents();
             contributor.write(snapshot(BackupProfile.CURRENT_STATE, scope), current);
             assertThat(current.entries.keySet()).containsExactlyInAnyOrderElementsOf(WORKSPACE_DATASETS);
+            assertThat(records(current, "fetch-journal")).isEmpty();
             for (String dataset : List.of("repositories", "workspaces", "memberships", "synchronization", "working-states")) {
                 assertThat(records(current, dataset)).as(dataset).hasSize(1);
             }
@@ -186,6 +187,9 @@ class WorkspaceRecordsExportIT {
             assertThat(contributor.componentId()).isEqualTo(new BackupComponentId("workspace"));
             assertThat(contributor.schemaVersion()).isEqualTo(1);
             assertThat(contributor.categories()).hasSize(14).contains(UserWorkspace.class.getName(), ContextHistoryRecord.class.getName(),
+                    com.taxonomy.workspace.model.WorkspaceBranchSyncState.class.getName(),
+                    com.taxonomy.workspace.service.WorkspaceFetchOperation.class.getName(),
+                    com.taxonomy.workspace.service.CentralFetchOperation.class.getName(),
                     com.taxonomy.workspace.service.WorkspacePublicationOperation.class.getName(),
                     com.taxonomy.workspace.service.WorkspacePublicationDecision.class.getName());
             assertThat(contributor.omissions(BackupProfile.SELECTED_VERSION)).anyMatch(value -> value.contains("selected Git state is authoritative"));

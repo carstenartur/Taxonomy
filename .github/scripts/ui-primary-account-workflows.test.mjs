@@ -378,3 +378,17 @@ test('pending publication retains its key across reload and a different workspac
   assert.match(notices[0][1],/saved-operation RETRYABLE/);
   assert.deepEqual(notices.slice(3),['success','success']);
 });
+
+test('the synchronization panel reports an unready working copy without announcing a successful sync', async () => {
+  const harness = createHarness();
+  for (const [syncStatus, label] of [
+    ['NOT_PROVISIONED', 'not.provisioned'], ['PROVISIONING', 'provisioning'], ['FAILED', 'failed']
+  ]) {
+    await harness.page.route(/\/api\/workspace\/sync-state(?:\?|$)/, async route => {
+      await route.fulfill({status:200,body:JSON.stringify({workspaceId:'selected',branch:'draft',syncStatus})});
+    }, {times:1});
+    await harness.readState();
+    assert.ok(harness.panel.innerHTML.includes('workspace.sync.lifecycle.' + label));
+    assert.ok(!harness.panel.innerHTML.includes('workspace.sync.panel.uptodate'));
+  }
+});

@@ -725,6 +725,8 @@ Veröffentlichung und Wiederaufnahme liefern **202** für ausstehende Arbeit, **
 curl -u alice:password http://localhost:8080/api/workspace/sync-state
 ```
 
+Während der Bereitstellung liefert derselbe Lesezugriff HTTP 200 mit Repository, Arbeitskopie, Branch und dem aktuellen Zustand in `syncStatus` (`NOT_PROVISIONED`, `PROVISIONING` oder `FAILED`). Git-Beobachtungen und deren Zeitstempel bleiben leer. Das Öffnen der Statusansicht löst keine Bereitstellung aus.
+
 **Antwort:**
 ```json
 {

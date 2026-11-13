@@ -61,6 +61,12 @@ window.TaxonomyWorkspaceSync = (function () {
 
     // ── Sync Indicator (appended to Git Status Bar) ─────────────────
 
+    var lifecycleLabels = {
+        NOT_PROVISIONED: 'workspace.sync.lifecycle.not.provisioned',
+        PROVISIONING: 'workspace.sync.lifecycle.provisioning',
+        FAILED: 'workspace.sync.lifecycle.failed'
+    };
+
     function renderSyncIndicator(state) {
         var bar = document.getElementById('gitStatusBar');
         if (!bar) return;
@@ -71,7 +77,10 @@ window.TaxonomyWorkspaceSync = (function () {
         var status = state.syncStatus || 'UP_TO_DATE';
         var dot = 'fresh';
         var label = t('workspace.sync.status.synced');
-        if (status === 'BEHIND') {
+        if (Object.hasOwn(lifecycleLabels, status)) {
+            dot = status === 'FAILED' ? 'error' : 'stale';
+            label = t(lifecycleLabels[status]);
+        } else if (status === 'BEHIND') {
             dot = 'stale';
             label = t('workspace.sync.status.behind');
         } else if (status === 'AHEAD') {
@@ -122,7 +131,10 @@ window.TaxonomyWorkspaceSync = (function () {
         var status = state.syncStatus || 'UP_TO_DATE';
         var badgeClass = 'bg-success';
         var statusLabel = t('workspace.sync.panel.uptodate');
-        if (status === 'BEHIND') {
+        if (Object.hasOwn(lifecycleLabels, status)) {
+            badgeClass = status === 'FAILED' ? 'bg-danger' : 'bg-secondary';
+            statusLabel = t(lifecycleLabels[status]);
+        } else if (status === 'BEHIND') {
             badgeClass = 'bg-warning text-dark';
             statusLabel = t('workspace.sync.panel.behind');
         } else if (status === 'AHEAD') {

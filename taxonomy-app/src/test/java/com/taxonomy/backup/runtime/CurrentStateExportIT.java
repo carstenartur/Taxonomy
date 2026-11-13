@@ -8,7 +8,7 @@ import com.taxonomy.analysis.recovery.AnalysisQuestionCheckpoint;
 import com.taxonomy.analysis.session.AnalysisWorkingDraft;
 import com.taxonomy.editor.persistence.*;
 import com.taxonomy.workspace.backup.WorkspaceBackupContributor;
-import com.taxonomy.workspace.model.*;
+import com.taxonomy.workspace.model.RepositoryTenantIdentity;
 import com.taxonomy.portfolio.backup.PortfolioBackupContributor;
 import com.taxonomy.portfolio.backup.PortfolioStandDocument;
 import com.taxonomy.portfolio.model.*;
@@ -231,10 +231,6 @@ class CurrentStateExportIT {
                     .setProperty("hibernate.search.enabled", "false");
             configuration.getProperties().put("hibernate.connection.datasource", database);
             for (var type : List.of(EditorWorkspace.class, EditorOperation.class, EditorCheckpoint.class,
-                    SystemRepository.class, UserWorkspace.class, RepositoryMembership.class, SyncState.class,
-                    com.taxonomy.workspace.model.WorkspaceBranchSyncState.class, com.taxonomy.workspace.service.WorkspaceFetchOperation.class,
-                    com.taxonomy.workspace.service.CentralFetchOperation.class, com.taxonomy.workspace.service.WorkspacePublicationOperation.class,
-                    com.taxonomy.workspace.service.WorkspacePublicationDecision.class,
                     com.taxonomy.versioning.model.ArchitectureCommitIndex.class, com.taxonomy.versioning.model.ContextHistoryRecord.class,
                     AnalysisWorkingDraft.class, AnalysisContinuationRun.class, AnalysisQuestionCheckpoint.class,
                     com.taxonomy.analysis.operation.AnalysisAdapterOperation.class, com.taxonomy.analysis.cluster.ClusterAnalysisRun.class, com.taxonomy.analysis.cluster.ClusterAnalysisWork.class,
@@ -243,7 +239,9 @@ class CurrentStateExportIT {
             try (var inventory = CurrentStateExportIT.class.getResourceAsStream("/backup/coverage-inventory.tsv")) {
                 for (String line : new String(Objects.requireNonNull(inventory).readAllBytes(), StandardCharsets.UTF_8).split("\n")) {
                     String category = line.split("\t")[0];
-                    if (category.startsWith("com.taxonomy.portfolio.")) configuration.addAnnotatedClass(Class.forName(category));
+                    if (category.startsWith("com.taxonomy.portfolio.") || category.startsWith("com.taxonomy.workspace.")) {
+                        configuration.addAnnotatedClass(Class.forName(category));
+                    }
                 }
             } catch (Exception failure) { throw new AssertionError(failure); }
             for (Class<?> type : additionalEntities) configuration.addAnnotatedClass(type);

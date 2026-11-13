@@ -232,6 +232,29 @@ class GitNativeSyncSourceAuthorityTest {
         }
     }
 
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void publicationRechecksCatalogueAndMembershipUnderThePortfolioFence(boolean archive) throws Exception {
+        var authority = mock(WorkspacePublicationAuthority.class);
+        var grant = new WorkspaceFetchAuthority.Grant(java.util.UUID.randomUUID().toString(), "LOCAL", "a".repeat(64));
+        when(authority.authorizePublication("alice")).thenReturn(grant);
+        try (var fixture = new Fixture();
+             var factory = publicationDatabase("jdbc:hsqldb:mem:publication-grant-" + java.util.UUID.randomUUID(), "create")) {
+            fixture.service.configurePublications(new WorkspacePublicationRecovery(publicationJournal(factory), authority));
+            String before = fixture.source.getHeadCommit("draft");
+            fixture.local.commitDsl("main", dsl("Changed working copy"), "alice", "Edit");
+            doAnswer(call -> {
+                if (archive) fixture.sourceMetadata.setLifecycleState(RepositoryLifecycleState.ARCHIVED);
+                else fixture.member.setRole(RepositoryRole.READER);
+                return fixture.sourceMetadata;
+            }).when(fixture.catalog).lockCurrentPublicationSource("private-source");
+
+            var publication = fixture.service.publishWithReceipt("alice", "main", "revoked-at-fence", null);
+            assertEquals("DENIED", publication.operation().status());
+            assertEquals(before, fixture.source.getHeadCommit("draft"));
+        }
+    }
+
     @org.junit.jupiter.api.Test
     void terminalCleanupAfterRestartReleasesOnlyItsOwnPinsAndPreservesAnotherOperationsPin() throws Exception {
         var context = RepositoryContext.workspace("private-source","old-copy","main","alice");
