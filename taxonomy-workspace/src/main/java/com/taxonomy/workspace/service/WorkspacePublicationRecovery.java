@@ -25,10 +25,10 @@ public class WorkspacePublicationRecovery {
     }
 
     WorkspacePublicationJournal.View submit(RepositoryContext context,boolean keepWorkspace,String key,String cause,
-            WorkspacePublicationJournal.Snapshot snapshot,PhaseExecutor executor) throws IOException {
+            WorkspacePublicationJournal.Snapshot snapshot, PhaseExecutor executor, boolean commandErrors) throws IOException {
         var grant=actors.authorizePublication(context.username());
         var row=journal.admit(context,grant,keepWorkspace,key,cause,snapshot);
-        return resume(context,grant.principalId(),row,false,executor);
+        return resume(context,grant.principalId(),row,false,executor,commandErrors);
     }
 
     WorkspacePublicationJournal.View get(RepositoryContext context,String id) {
@@ -41,14 +41,14 @@ public class WorkspacePublicationRecovery {
 
     WorkspacePublicationJournal.View retry(RepositoryContext context,String id,PhaseExecutor executor) {
         var grant=actors.authorizePublication(context.username());
-        return resume(context,grant.principalId(),journal.get(context,grant.principalId(),id),true,executor);
+        return resume(context,grant.principalId(),journal.get(context,grant.principalId(),id),true,executor,false);
     }
 
     void recoverDue(PhaseExecutor executor) {
         for (String id:journal.due()) {
             var claim=journal.claim(id,WORKER,false);
             if (claim!=null) {
-                try { run(claim,executor); }
+                try { run(claim,executor,false); }
                 catch (ResponseStatusException failure) {
                     if (failure.getStatusCode()!=HttpStatus.CONFLICT) throw failure;
                 }
@@ -81,14 +81,14 @@ public class WorkspacePublicationRecovery {
     }
 
     private WorkspacePublicationJournal.View resume(RepositoryContext context,String actor,WorkspacePublicationJournal.View row,
-            boolean explicit,PhaseExecutor executor) {
+            boolean explicit,PhaseExecutor executor,boolean commandErrors) {
         if (row.archivedAt()!=null) throw new ResponseStatusException(HttpStatus.GONE,"Publication archived");
         if (row.completedAt()!=null) return row;
         var claim=journal.claim(row.operationId(),actor,explicit);
-        return claim==null ? journal.get(context,actor,row.operationId()) : run(claim,executor);
+        return claim==null ? journal.get(context,actor,row.operationId()) : run(claim,executor,commandErrors);
     }
 
-    private WorkspacePublicationJournal.View run(WorkspacePublicationJournal.Claim claim,PhaseExecutor executor) {
+    private WorkspacePublicationJournal.View run(WorkspacePublicationJournal.Claim claim,PhaseExecutor executor,boolean commandErrors) {
         while (true) {
             try {
                 var state=journal.step(claim,(row,checkLease) -> {
@@ -110,7 +110,9 @@ public class WorkspacePublicationRecovery {
             } catch (SemanticConflict failure) {
                 return journal.decide(claim,MANUAL_REVIEW,"SEMANTIC_CONFLICT");
             } catch (com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem failure) {
-                return journal.decide(claim,MANUAL_REVIEW,"RECONCILIATION_REQUIRED");
+                var decision = journal.decide(claim, MANUAL_REVIEW, "RECONCILIATION_REQUIRED");
+                if (commandErrors) throw failure;
+                return decision;
             } catch (BranchHeadConflictException failure) {
                 return journal.decide(claim,MANUAL_REVIEW,"AUTHORITY_CHANGED");
             } catch (ResponseStatusException failure) {

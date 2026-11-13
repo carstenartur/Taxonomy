@@ -96,10 +96,10 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         if (context.workspaceId() == null || publications == null) {
             return new Publication(publishToShared(username,branch),null);
         }
-        return submitPublication(context,false,key,cause);
+        return submitPublication(context,false,key,cause,false);
     }
 
-    private Publication submitPublication(WorkspaceContext context,boolean keep,String key,String cause) throws IOException {
+    private Publication submitPublication(WorkspaceContext context,boolean keep,String key,String cause,boolean commandErrors) throws IOException {
         var selected=RepositoryContext.workspace(context.repositoryId(),context.workspaceId(),context.currentBranch(),context.username());
         requireSourceAuthority(context.username(),context,true);
         var current=publicationMetadata(selected,false);
@@ -108,7 +108,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
             return new WorkspacePublicationJournal.Source(target.branch(),target.owner().getBaseCommit(),
                     freshHead(target.central(),target.branch()),freshHead(target.local(),selected.branch()),
                     freshHead(target.local(),TRACKING_BRANCH),target.owner().getUsername());
-        },this::applyPublicationPhase);
+        },this::applyPublicationPhase,commandErrors);
         if (!current.owner().getUsername().equals(operation.workspaceOwner())) throw unavailable();
         return new Publication(operation.resultCommit(),operation);
     }
@@ -562,7 +562,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                                             WorkspaceContext context,
                                             String userBranch,
                                             boolean keepWorkspace) throws IOException {
-        if (publications!=null) return completedPublication(submitPublication(context,keepWorkspace,null,null));
+        if (publications!=null) return completedPublication(submitPublication(context,keepWorkspace,null,null,true));
         requireSourceAuthority(username, context, true);
         RepositoryContext selected = RepositoryContext.workspace(
                 context.repositoryId(), context.workspaceId(), userBranch, username);
