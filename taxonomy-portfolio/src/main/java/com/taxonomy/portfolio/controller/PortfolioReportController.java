@@ -47,7 +47,7 @@ public class PortfolioReportController {
             return ResponseEntity.badRequest().build();
         }
         String username = workspaceResolver.resolveCurrentUsername();
-        WorkspaceContext context = workspaceResolver.resolveCurrentContext();
+        WorkspaceContext context = workspaceResolver.resolveUnambiguousContextForRead();
         var rendered = reportService.render(
                 projectId, requirementId, requestedFormat, matrix, username, context);
         return ResponseEntity.ok()

@@ -109,8 +109,10 @@ window.TaxonomyPortfolioApi = (function () {
 
     function reportUrl(projectId, format, parameters) {
         const query = new URLSearchParams(parameters || {}).toString();
-        return applicationUrl(projectPath(projectId) + '/reports/' + encodeURIComponent(String(format))
-            + (query ? '?' + query : ''));
+        const path = projectPath(projectId) + '/reports/' + encodeURIComponent(String(format))
+            + (query ? '?' + query : '');
+        const pinned = sourceRequest(path);
+        return pinned.url === path ? applicationUrl(path) : pinned.url;
     }
 
     function applicationUrl(path) {

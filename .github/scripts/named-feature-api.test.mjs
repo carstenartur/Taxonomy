@@ -216,6 +216,25 @@ test('global database onboarding survives initial workspace hydration without ac
   assert.equal(app.timers.size,0);
 });
 
+test('a report download link retains its repository, working copy and branch behind the application prefix', () => {
+  const {window} = boot(() => { throw new Error('Building the download link must not send a request'); });
+  const selected = {repositoryId:'repo-a', workspaceId:'copy-a', workspaceScopeKey:'copy-a', branch:'review/A'};
+  window.TaxonomyArchitectureWorkflow = {getScope: () => selected};
+  const link = new URL(window.TaxonomyPortfolioApi.reportUrl(41, 'json', {matrix:'taxonomy', requirementId:'7'}), window.location.href);
+  assert.equal(link.pathname, '/taxonomy/api/projects/41/reports/json');
+  assert.deepEqual(Object.fromEntries(link.searchParams), {matrix:'taxonomy', requirementId:'7', repositoryId:'repo-a',
+    workspaceScopeKey:'copy-a', workspaceId:'copy-a', branch:'review/A'});
+  selected.repositoryId = 'central-b';
+  selected.workspaceId = '';
+  selected.workspaceScopeKey = '__shared__';
+  selected.branch = 'release';
+  const central = new URL(window.TaxonomyPortfolioApi.reportUrl(41, 'html'), window.location.href);
+  assert.equal(central.searchParams.get('workspaceId'), '');
+  assert.equal(central.searchParams.get('repositoryId'), 'central-b');
+  assert.equal(central.searchParams.get('branch'), 'release');
+  assert.equal(link.searchParams.get('repositoryId'), 'repo-a');
+});
+
 test('portfolio startup reads the selected source only after lifecycle initialization settles',async()=>{
   const hydration=deferred(),requests=[],nodes=new Map();
   function element() {return {value:'',textContent:'',innerHTML:'',dataset:{},children:[],
