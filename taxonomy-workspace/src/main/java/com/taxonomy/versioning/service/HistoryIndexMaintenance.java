@@ -81,11 +81,11 @@ public class HistoryIndexMaintenance {
     /** The caller has already applied the public writable-scope selection and HTTP precondition grammar. */
     public ProjectionOutcome submitProjection(RepositoryContext context, DerivedProjection.Kind command,
                                              String expectedCommit, String key, String cause) {
+        Kind kind = Kind.valueOf(command.name());
+        var grant = actors.authorizeHistoryIndex(context.username(), kind.destructive());
         if (expectedCommit == null || !expectedCommit.matches("[a-fA-F0-9]{40}")) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "An existing Git commit is required");
         }
-        Kind kind = Kind.valueOf(command.name());
-        var grant = actors.authorizeHistoryIndex(context.username(), kind.destructive());
         var row = journal.admit(context, context.branch(), kind, grant, key, cause, () -> {
             String owner = authorizeProjectionTarget(context, grant, false);
             var source = derived.capture(context, command, expectedCommit);

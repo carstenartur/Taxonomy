@@ -37,6 +37,10 @@ class ModuleOwnedTestPlacementTest {
             "workspace/storage/JgitStorageHibernateIntegrationTest.java",
             "workspace/storage/JgitStorageOracleMigrationIT.java",
             "workspace/storage/JgitStoragePostgresMigrationIT.java",
+            // The application owns the restore migration and runs these contracts on its supported databases.
+            "versioning/service/HistoryIndexDatabaseContract.java",
+            "versioning/service/HistoryIndexMaintenanceTest.java",
+            "versioning/service/HistoryIndexWriterContractTest.java",
             "versioning/controller/ContextNavigationControllerTest.java",
             "versioning/controller/GitStateControllerTest.java",
             "versioning/controller/ViewContextIntegrationTest.java");

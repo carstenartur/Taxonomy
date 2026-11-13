@@ -191,6 +191,24 @@ class HistoryIndexMaintenanceTest {
         }
     }
 
+    @Test
+    void projectionAdmissionChecksTheRequestedPrivilegeBeforeEvaluatingTheGitPrecondition() throws Exception {
+        try (var f = new Fixture()) {
+            var projection = mock(DerivedProjection.class);
+            f.service.configureDerivedProjection(projection);
+            for (var command : java.util.List.of(DerivedProjection.Kind.RELATION, DerivedProjection.Kind.VECTOR_PURGE)) {
+                boolean destructive = command == DerivedProjection.Kind.VECTOR_PURGE;
+                when(f.principals.authorizeHistoryIndex("owner", destructive))
+                        .thenThrow(new AccessDeniedException("Projection grant revoked"));
+                for (String precondition : java.util.Arrays.asList(null, "invalid", "a".repeat(40))) {
+                    assertThatThrownBy(() -> f.service.submitProjection(f.scope, command, precondition, null, null))
+                            .isInstanceOf(AccessDeniedException.class);
+                }
+            }
+            verifyNoInteractions(projection);
+        }
+    }
+
     @Test void projectionReplayRetainsItsResultAndRequiresBothOriginalPreconditionAndCurrentMaintainer() throws Exception {
         try (var f = new Fixture()) {
             var port = mock(DerivedProjection.class);
