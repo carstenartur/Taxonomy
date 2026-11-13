@@ -41,7 +41,7 @@ public final class HistoryIndexDatabaseContract {
                 .containsExactly(1L);
         var claim = journal.claim(id, "worker-purge", false);
         assertThat(journal.execute(claim, row -> 0).count()).isZero();
-        journal.archive(selected, GRANT.principalId(), id);
+        journal.archive(selected, GRANT.principalId(), id, row -> {});
         assertThat(jdbc.queryForList("select projection_id from history_index_purge_target where operation_id=?", Long.class, id)).isEmpty();
         assertThat(jdbc.queryForList("select id from architecture_commit_index order by id", Long.class)).containsExactly(2L, 3L, 4L);
         jdbc.update("delete from history_index_decision where operation_id=?", id);
@@ -84,7 +84,7 @@ public final class HistoryIndexDatabaseContract {
                 assertThat(done.actor()).isEqualTo("p-1");
                 assertThat(done.executor()).isEqualTo("replacement");
             }
-            assertThat(later.archive(a, GRANT.principalId(), id).archivedAt()).isNotNull();
+            assertThat(later.archive(a, GRANT.principalId(), id, row -> {}).archivedAt()).isNotNull();
             assertThat(jdbc.queryForObject("select count(*) from history_index_decision where operation_id=?", Integer.class, id)).isEqualTo(5);
             var expired = new HistoryIndexJournal(jdbc, new DataSourceTransactionManager(database),
                     Clock.offset(NOW, Duration.ofDays(100)));

@@ -122,6 +122,14 @@ public class HistoryIndexJournal {
         return row;
     }
 
+    Receipt inspect(RepositoryContext selected, String actor, String id, java.util.function.Consumer<Operation> authorize) {
+        return transaction.execute(status -> {
+            Operation row = get(selected, actor, id);
+            authorize.accept(row);
+            return row.receipt();
+        });
+    }
+
     private Operation lookup(String id) {
         return jdbc.query("select * from history_index_operation where operation_id=?", ROW, id).stream().findFirst().orElse(null);
     }
@@ -196,9 +204,11 @@ public class HistoryIndexJournal {
         return lookup(claim.id);
     }
 
-    Receipt archive(RepositoryContext context, String actor, String id) {
+    Receipt archive(RepositoryContext context, String actor, String id, java.util.function.Consumer<Operation> authorize) {
         return transaction.execute(status -> {
-            Receipt row = get(context, actor, id).receipt;
+            Operation operation = get(context, actor, id);
+            authorize.accept(operation);
+            Receipt row = operation.receipt;
             if (row.archivedAt() != null) return row;
             long now = clock.millis();
             int changed = jdbc.update("update history_index_operation set archived_at=? where operation_id=? and completed_at is not null and archived_at is null", now, id);

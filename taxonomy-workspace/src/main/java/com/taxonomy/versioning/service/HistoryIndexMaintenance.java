@@ -70,7 +70,7 @@ public class HistoryIndexMaintenance {
 
     public Receipt get(String id) {
         var context = selected.resolveCurrentRepositoryContextForRead();
-        return journal.get(context, actors.currentActor(context.username()), id).receipt();
+        return journal.inspect(context, actors.currentActor(context.username()), id, this::verifyTarget);
     }
 
     public Receipt retry(String id) {
@@ -84,7 +84,7 @@ public class HistoryIndexMaintenance {
     public Receipt archive(String id) {
         var context = selected.resolveCurrentRepositoryContextForRead();
         var grant = actors.authorize(context.username(), true);
-        return journal.archive(context, grant.principalId(), id);
+        return journal.archive(context, grant.principalId(), id, this::verifyTarget);
     }
 
     private Receipt resume(HistoryIndexJournal.Operation row, RepositoryContext context, String actor, boolean explicit) {
@@ -114,10 +114,11 @@ public class HistoryIndexMaintenance {
                 boolean purge = receipt.kind() == Kind.PURGE;
                 actors.verify(row.grant(), row.username(), purge, background);
                 var context = row.context();
-                if (!Objects.equals(row.owner(), authorizeTarget(context))) throw denied();
+                verifyTarget(row);
                 int result = purge ? projections.purgeCaptured(context, receipt.operationId())
                         : projections.applyCapturedBranch(receipt.branch(), context, receipt.sourceCommit(), receipt.kind() == Kind.REBUILD);
                 actors.verify(row.grant(), row.username(), purge, background);
+                verifyTarget(row);
                 return result;
             });
         } catch (WorkspaceFetchAuthority.FreshLoginRequired failure) {
@@ -147,9 +148,17 @@ public class HistoryIndexMaintenance {
         }
     }
 
+    private void verifyTarget(HistoryIndexJournal.Operation row) {
+        if (!Objects.equals(row.owner(), authorizeTarget(row.context()))) throw denied();
+    }
+
     /** Use physical row writes for HSQL MVCC as well as PostgreSQL before testing target policy. */
     private String authorizeTarget(RepositoryContext context) {
         if (catalogue.lockForMutation(context.repositoryId()) != 1) throw denied();
+        // Role updates and revocations mutate these same membership rows. A physical write
+        // also holds the fence on HSQL MVCC, where SELECT FOR UPDATE alone is insufficient.
+        entities.createQuery("update RepositoryMembership m set m.version=m.version where m.repositoryId=:repository and m.username=:actor")
+                .setParameter("repository", context.repositoryId()).setParameter("actor", context.username()).executeUpdate();
         var repo = catalogue.findByRepositoryId(context.repositoryId()).orElseThrow(HistoryIndexMaintenance::denied);
         if (context.workspaceId() == null) {
             if (!membership.canContribute(repo, context.username())) throw denied();

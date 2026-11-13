@@ -117,8 +117,9 @@ abstract class AbstractExternalDatabaseContainerIT extends AbstractDatabaseConta
     @Test
     void historyIndexClaimsAndPinnedPurgeReceiptsSurviveIndependentApplicationHandles() throws Exception {
         var database = getDatabaseContainer();
-        com.taxonomy.versioning.service.HistoryIndexDatabaseContract.independentWorkers(new DriverManagerDataSource(
-                database.getJdbcUrl(), database.getUsername(), database.getPassword()));
+        var data = new DriverManagerDataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword());
+        com.taxonomy.versioning.service.HistoryIndexDatabaseContract.independentWorkers(data);
+        com.taxonomy.versioning.service.HistoryIndexWriterContractTest.verify(data, false);
     }
 
     @Test @Order(26)
