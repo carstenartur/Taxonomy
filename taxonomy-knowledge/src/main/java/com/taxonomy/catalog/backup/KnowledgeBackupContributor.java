@@ -22,6 +22,7 @@ public final class KnowledgeBackupContributor implements BackupDataContributor {
     /** Complete knowledge owner version, shared by its capture delegates. */
     public static final int SCHEMA_VERSION = 3;
     private static final int MAX_IDENTITIES = 100_000;
+    private final DataSource database;
     private final PortableRows rows;
     private final BackupAnalysisReference.Selector analyses;
     private final SelectionReader selections;
@@ -39,6 +40,7 @@ public final class KnowledgeBackupContributor implements BackupDataContributor {
     }
     @FunctionalInterface public interface SelectionReader { Selection select(SnapshotContext context) throws IOException; }
     public KnowledgeBackupContributor(DataSource database, BackupAnalysisReference.Selector analyses, SelectionReader selections) {
+        this.database = Objects.requireNonNull(database);
         rows = new PortableRows(database); this.analyses = Objects.requireNonNull(analyses); this.selections = Objects.requireNonNull(selections);
     }
     @Override public BackupComponentId componentId() { return new BackupComponentId("knowledge"); }
@@ -63,12 +65,13 @@ public final class KnowledgeBackupContributor implements BackupDataContributor {
         Selection selection = scope.selectedVersion() ? new Selection(Set.of(),Set.of()) : Objects.requireNonNull(selections.select(snapshot));
         Set<String> hypotheses = scope.selectedVersion() ? Set.of() : hypotheses(snapshot,scope,selection);
         Set<String> codes = new TreeSet<>(selection.catalogueCodes());
+        boolean captureLegacyCoverage = scope.installation() && hasLegacyCoverageTable();
         if (!scope.selectedVersion()) {
             endpoints(scope,"taxonomy_relation",codes); endpoints(scope,"relation_proposal",codes);
             rows.visit(hypothesisQuery(scope), r -> new HypothesisEndpoint(r.getString("id"),text(r,"source_node_id"),text(r,"target_node_id")), h -> {
                 if (hypotheses.contains(h.id())) { addCode(codes,h.source()); addCode(codes,h.target()); }
             });
-            if (scope.installation()) rows.requireEmpty(new Query("select 1 from requirement_coverage c left join taxonomy_node n on n.code=c.node_code where n.id is null",List.of()));
+            if (captureLegacyCoverage) rows.requireEmpty(new Query("select 1 from requirement_coverage c left join taxonomy_node n on n.code=c.node_code where n.id is null",List.of()));
         }
         Map<String,NodeIdentity> catalogue = scope.selectedVersion() ? Map.of() : catalogueClosure(scope,codes);
         rows.writeBatches(sink,"knowledge","node",profile,nodeQueries(scope,catalogue.keySet()), r -> new NodeRecord(
@@ -110,10 +113,26 @@ public final class KnowledgeBackupContributor implements BackupDataContributor {
                         text(r, "repository_id"), text(r, "workspace_id"), text(r, "branch_name"), text(r, "source_commit"),
                         text(r, "requirement_id"), text(r, "requirement_text"), text(r, "node_code"),
                         com.taxonomy.dto.AnalysisPercentages.require((Number) r.getObject("score")), text(r, "recorded_by"), instant(r, "analyzed_at")));
-        rows.write(sink,"knowledge","legacy-coverage",profile,scope.selectedVersion() || !scope.installation() ? null
+        rows.write(sink,"knowledge","legacy-coverage",profile,!captureLegacyCoverage ? null
                 : new Query("select id,requirement_id,"+(scope.history()?"requirement_text":"cast(null as varchar(2000)) as requirement_text")
                 + ",node_code,score,analyzed_at from requirement_coverage order by id",List.of()), r -> new CoverageRecord(
                 reference(r,"knowledge.legacy-coverage","id"),text(r,"requirement_id"),text(r,"requirement_text"),text(r,"node_code"),r.getObject("score") == null ? null : com.taxonomy.dto.AnalysisPercentages.require((Number) r.getObject("score")),instant(r,"analyzed_at")));
+    }
+
+    private boolean hasLegacyCoverageTable() throws IOException {
+        try (var connection = database.getConnection()) {
+            var metadata = connection.getMetaData();
+            String schema = connection.getSchema();
+            String table = metadata.storesUpperCaseIdentifiers() ? "REQUIREMENT_COVERAGE" : "requirement_coverage";
+            try (var matches = metadata.getTables(connection.getCatalog(), schema, table, new String[]{"TABLE"})) {
+                while (matches.next()) {
+                    if (table.equals(matches.getString("TABLE_NAME")) && Objects.equals(schema, matches.getString("TABLE_SCHEM"))) return true;
+                }
+                return false;
+            }
+        } catch (SQLException failure) {
+            throw new IOException("Could not verify legacy coverage storage", failure);
+        }
     }
 
     private List<Query> coverageQueries(SnapshotContext snapshot, BackupRowScope scope) {

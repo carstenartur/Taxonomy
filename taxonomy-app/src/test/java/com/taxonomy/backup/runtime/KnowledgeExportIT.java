@@ -26,6 +26,15 @@ import static org.assertj.core.api.Assertions.*;
 class KnowledgeExportIT {
     static final BackupScope SCOPE = new BackupScope.Workspace("repo-a", "private-a");
 
+    @Test void freshInstallationWithoutALegacyTableStillCapturesAnEmptyLegacySection() throws Exception {
+        try (var f = new Fixture()) {
+            f.rows.jdbc.execute("drop table requirement_coverage");
+            var output = new Contents();
+            f.contributor(Set.of()).write(snapshot(BackupProfile.INSTALLATION_FULL, new BackupScope.Installation()), output);
+            assertThat(records(output, "legacy-coverage")).isEmpty();
+        }
+    }
+
     @Test void scopedCoverageExportsOnlyEligibleOwnersAndCurrentBranchTips() throws Exception {
         try (var f = new Fixture()) {
             var context = com.taxonomy.workspace.service.RepositoryContext.workspace("repo-a", "private-a", "draft", "original-actor");
