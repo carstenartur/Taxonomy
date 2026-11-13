@@ -8,7 +8,8 @@ class WorkspaceOverlayScopeTest {
 
     @Test
     void storedScopeDistinguishesTheCentralOwnerFromEveryNonblankWorkingCopyId() {
-        assertEquals("", WorkspaceOverlayScope.storageKeyFor(null));
+        assertEquals(" central", WorkspaceOverlayScope.storageKeyFor(null));
+        assertEquals("central", WorkspaceOverlayScope.storageKeyFor(" central"));
         assertEquals("__shared__", WorkspaceOverlayScope.storageKeyFor("__shared__"));
         assertEquals("a:b", WorkspaceOverlayScope.storageKeyFor(" a:b "));
     }

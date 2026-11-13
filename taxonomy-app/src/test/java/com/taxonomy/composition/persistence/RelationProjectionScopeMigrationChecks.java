@@ -25,8 +25,21 @@ public final class RelationProjectionScopeMigrationChecks {
                 false, current_timestamp, 'projection-scope-test', 'projection-scope-test', 'ORGANIZATION',
                 'ACTIVE', 'SYSTEM', 'system', 'system', current_timestamp, 0)
             """, REPO);
+        var portable = new com.taxonomy.shared.config.SchemaContractMigration(database);
+        // First application startup establishes the original JDBC tenancy contract;
+        // records below then represent an already running installation.
+        portable.migrate();
         seed(rows, "main", null);
         seed(rows, "historic", "__shared__");
+        try (var connection = database.getConnection()) {
+            if (connection.getMetaData().getDatabaseProductName().equalsIgnoreCase("HSQL Database Engine")) {
+                portable.migrate();
+                assertThat(rows.queryForObject("select workspace_scope_key from relation_decision_projection_checkpoint where repository_id=? and workspace_id is null",
+                        String.class, REPO)).isEqualTo(" central");
+            }
+        } catch (java.sql.SQLException error) {
+            throw new IllegalStateException(error);
+        }
         var originalIds = rows.queryForList("""
                 select id from relation_decision_projection_checkpoint where repository_id=? order by id
                 """, Long.class, REPO);
@@ -36,13 +49,17 @@ public final class RelationProjectionScopeMigrationChecks {
                 """, Long.class, REPO)).isEqualTo(originalIds);
         for (String table : new String[] {"relation_decision_projection", "relation_decision_projection_checkpoint", "relation_projection_recovery", "architecture_commit_index"}) {
             assertThat(rows.queryForObject("select workspace_scope_key from " + table + " where repository_id=? and branch='main'",
-                    String.class, REPO)).isEmpty();
+                    String.class, REPO)).isEqualTo(" central");
             assertThat(rows.queryForObject("select workspace_scope_key from " + table + " where repository_id=? and branch='historic'",
                     String.class, REPO)).isEqualTo("__shared__");
             assertThatThrownBy(() -> rows.update("update " + table + " set workspace_scope_key='' where repository_id=? and branch='historic'", REPO))
                     .isInstanceOf(DataIntegrityViolationException.class);
         }
         seed(rows, "main", "__shared__");
+        portable.migrate();
+        portable.migrate();
+        assertThat(rows.queryForList("select workspace_scope_key from architecture_commit_index where repository_id=? and branch='main' order by id",
+                String.class, REPO)).containsExactly(" central", "__shared__");
         assertThat(rows.queryForObject("select count(*) from relation_decision_projection_checkpoint where repository_id=? and branch='main'",
                 Long.class, REPO)).isEqualTo(2);
         assertThat(rows.queryForObject("select last_observed_at from relation_projection_recovery where repository_id=? and workspace_id is null",

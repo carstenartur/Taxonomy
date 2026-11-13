@@ -75,6 +75,7 @@ final class SchemaContractMigrator {
                                 WORKSPACE_SCOPE_KEY_COLUMNS),
                         REPOSITORY_SCOPE_KEY_COLUMNS);
                 migrateHypothesisUniqueness(connection);
+                migrateProjectionKeys(connection);
                 ensurePasswordChangeColumn(connection);
                 connection.commit();
                 log.info("Verified repository, workspace, hypothesis and account schema contracts");
@@ -424,6 +425,27 @@ final class SchemaContractMigrator {
             }
             execute(c, "ALTER TABLE " + qualified(c, table)
                     + " ALTER COLUMN branch_name NVARCHAR(255) COLLATE Latin1_General_100_BIN2 NOT NULL");
+        }
+    }
+
+    /** PostgreSQL's versioned migration also replaces the old key constraints.
+     * The other application profiles use Hibernate plus this portable initializer.
+     */
+    private void migrateProjectionKeys(Connection connection) throws SQLException {
+        if (connection.getMetaData().getDatabaseProductName().equalsIgnoreCase("PostgreSQL")) return;
+        String schema = connection.getSchema();
+        if (schema == null) schema = connection.getMetaData().getUserName();
+        for (String name : List.of("relation_decision_projection", "relation_decision_projection_checkpoint",
+                "relation_projection_recovery")) {
+            TableRef table = findTable(connection, name);
+            if (table == null || schema == null || !schema.equalsIgnoreCase(table.schema())) continue;
+            if (!columnExists(connection, table, "workspace_scope_key") || !columnExists(connection, table, "workspace_id")) continue;
+            try (PreparedStatement update = connection.prepareStatement("UPDATE " + qualified(connection, table)
+                    + " SET workspace_scope_key=? WHERE workspace_id IS NULL AND workspace_scope_key=?")) {
+                update.setString(1, com.taxonomy.model.WorkspaceOverlayScope.CENTRAL_STORAGE_KEY);
+                update.setString(2, com.taxonomy.model.WorkspaceOverlayScope.CENTRAL_SCOPE_KEY);
+                update.executeUpdate();
+            }
         }
     }
 
