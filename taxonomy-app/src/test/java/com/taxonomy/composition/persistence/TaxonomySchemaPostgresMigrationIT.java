@@ -4,6 +4,7 @@ import com.taxonomy.dto.AnalysisMode;
 import com.taxonomy.dto.AnalysisModelBinding;
 import com.taxonomy.dto.AnalysisScope;
 import com.taxonomy.portfolio.service.PortfolioJsonCodec;
+import com.taxonomy.security.service.LegacyOwnershipDatabaseContract;
 import com.taxonomy.workspace.storage.JgitStorageSchemaMigrationConfig;
 
 import io.github.carstenartur.jgit.storage.hibernate.schema.CoreSchemaMigrations;
@@ -41,6 +42,11 @@ class TaxonomySchemaPostgresMigrationIT {
             .withDatabaseName("taxonomy")
             .withUsername("taxonomy")
             .withPassword("taxonomy");
+
+    @Test
+    void verifiedLegacyOwnershipOnAnIsolatedSchema() throws Exception {
+        LegacyOwnershipDatabaseContract.verify(isolatedDataSource("legacy_ownership"), "boolean");
+    }
 
     @Test
     void freshInstallationCreatesLegacyAndPortfolioSchema() throws Exception {
