@@ -23,7 +23,7 @@ public final class WorkspaceRestoreImporter {
     private static final BackupComponentId OWNER=new BackupComponentId("workspace");
     private static final int MAX_ROWS=100_000,MAX_BYTES=32*1024*1024;
     private static final JsonMapper JSON=JsonMapper.builder().enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).build();
-    private static final List<String> TABLES=List.of("system_repository","user_workspace","repository_membership","sync_state","editor_workspace","editor_operation","editor_checkpoint","architecture_commit_index","context_history_record");
+    private static final List<String> TABLES=List.of("system_repository","user_workspace","repository_membership","sync_state","workspace_branch_sync","editor_workspace","editor_operation","editor_checkpoint","architecture_commit_index","context_history_record");
     public record Result(Map<SourceRecordId,String> editorScopes,int targetRows,int evidenceRows) {
         public Result {editorScopes=Map.copyOf(editorScopes);}
     }
@@ -76,6 +76,9 @@ public final class WorkspaceRestoreImporter {
         var workspaces=read(archive,"workspaces",WorkspaceRecord.class,model,r->new SourceRecordId("workspace.workspace",r.workspaceId()),checkpoint);
         var memberships=read(archive,"memberships",MembershipRecord.class,model,MembershipRecord::sourceId,checkpoint);
         var sync=read(archive,"synchronization",SyncRecord.class,model,SyncRecord::sourceId,checkpoint);
+        var branchProgress = RestoreArchiveRecords.declares(archive, OWNER, "data/workspace/branch-synchronization.ndjson")
+                ? read(archive,"branch-synchronization",BranchSyncRecord.class,model,BranchSyncRecord::sourceId,checkpoint)
+                : List.<BranchSyncRecord>of();
         var fetches = RestoreArchiveRecords.declares(archive, OWNER, "data/workspace/fetch-journal.ndjson")
                 ? read(archive,"fetch-journal",FetchRecord.class,model,FetchRecord::sourceId,checkpoint) : List.<FetchRecord>of();
         var editors=read(archive,"working-states",WorkingStateRecord.class,model,WorkingStateRecord::sourceId,checkpoint);
@@ -104,7 +107,7 @@ public final class WorkspaceRestoreImporter {
             }
             if(!capturedWorking.getOrDefault(repository.id(),Map.of()).equals(repository.captured().workingStates()))throw invalid();
         }
-        var rows=new WorkspaceRestoreReferences.Rows(repositories,workspaces,memberships,sync,editors,operations,checkpoints,index,context);
+        var rows=new WorkspaceRestoreReferences.Rows(repositories,workspaces,memberships,sync,editors,operations,checkpoints,index,context,branchProgress);
         var commits=WorkspaceRestoreReferences.resolve(rows,references,working,sourceKeys,generation.allocations(),git,checkpoint);
         var privateScopes=new HashSet<String>();for(var allocation:principals.values())if(allocation.disposition()==RestorePrincipalAllocation.Disposition.QUARANTINE)privateScopes.add(allocation.targetScope());
         var activeRepositories=new HashSet<String>();var activeWorkspaces=new HashSet<String>();var workspaceById=new HashMap<String,WorkspaceRecord>();
@@ -154,6 +157,26 @@ public final class WorkspaceRestoreImporter {
             model.target("synchronization",row.sourceId().value(),"sync_state","workspace_id",target.targetKey().workspaceId(),columns("id",model.numeric(row.sourceId()),"username",scope,"workspace_id",target.targetKey().workspaceId(),
                     "last_synced_commit_id",commit(commits,row.sourceId(),Field.SYNC_LAST_SYNCED,row.lastSyncedCommit()),"last_sync_timestamp",timestamp(row.lastSyncAt()),"last_published_commit_id",commit(commits,row.sourceId(),Field.SYNC_LAST_PUBLISHED,row.lastPublishedCommit()),
                     "last_publish_timestamp",timestamp(row.lastPublishAt()),"sync_status","RESTORED_REVIEW_REQUIRED","unpublished_commit_count",row.unpublishedCommitCount(),"created_at",timestamp(row.createdAt()),"updated_at",timestamp(row.updatedAt())));
+        }
+        for (var row : branchProgress) {
+            checkpoint.check();
+            String actor = scope(identities,row.principalScope());
+            required(row.syncStatus(),255);
+            if (row.unpublishedCommitCount() < 0) throw invalid();
+            boolean available = row.workspaceId() == null ? activeRepositories.contains(row.repositoryId())
+                    : activeWorkspaces.contains(row.workspaceId());
+            if (!available || privateScopes.contains(actor)) {
+                model.classify("branch-synchronization", row.sourceId().value(), "PRIVATE_QUARANTINE");
+                continue;
+            }
+            var target = generation.allocations().get(new BackupRepositoryKey(row.repositoryId(), row.workspaceId())).targetKey();
+            String key = new com.taxonomy.workspace.model.WorkspaceSyncScope(actor,target.repositoryId(),target.workspaceId(),row.branch()).key();
+            model.target("branch-synchronization",row.sourceId().value(),"workspace_branch_sync","scope_key",key,
+                    columns("scope_key",key,"username",actor,"repository_id",target.repositoryId(),"workspace_id",target.workspaceId(),
+                            "sync_branch",row.branch(),"last_synced_commit_id",commit(commits,row.sourceId(),Field.SYNC_LAST_SYNCED,row.lastSyncedCommit()),
+                            "last_sync_timestamp",timestamp(row.lastSyncAt()),"last_published_commit_id",commit(commits,row.sourceId(),Field.SYNC_LAST_PUBLISHED,row.lastPublishedCommit()),
+                            "last_publish_timestamp",timestamp(row.lastPublishAt()),"sync_status","RESTORED_REVIEW_REQUIRED",
+                            "unpublished_commit_count",row.unpublishedCommitCount(),"created_at",timestamp(row.createdAt()),"updated_at",timestamp(row.updatedAt())));
         }
         for (var row : fetches) {
             checkpoint.check();

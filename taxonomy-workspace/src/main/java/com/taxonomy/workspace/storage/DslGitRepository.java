@@ -919,6 +919,30 @@ public class DslGitRepository implements AutoCloseable {
         }
     }
 
+    /** Compare selected branches in separate object stores without importing objects or changing refs. */
+    public int[] getAheadBehindCounts(String branch, DslGitRepository source, String sourceBranch) throws IOException {
+        if (source == this) return getAheadBehindCounts(branch, sourceBranch);
+        String localHead = getHeadCommit(branch);
+        String sourceHead = source.getHeadCommit(sourceBranch);
+        if (Objects.equals(localHead, sourceHead)) return new int[]{0, 0};
+
+        var localOnly = new java.util.HashSet<ObjectId>();
+        try (var local = new RevWalk(gitRepo); var upstream = new RevWalk(source.gitRepo)) {
+            if (localHead != null) {
+                local.markStart(local.parseCommit(ObjectId.fromString(localHead)));
+                for (var commit : local) localOnly.add(commit.copy());
+            }
+            int behind = 0;
+            if (sourceHead != null) {
+                upstream.markStart(upstream.parseCommit(ObjectId.fromString(sourceHead)));
+                for (var commit : upstream) {
+                    if (!localOnly.remove(commit)) behind++;
+                }
+            }
+            return new int[]{localOnly.size(), behind};
+        }
+    }
+
     private static int countCommitsNotIn(
             RevWalk walk,
             RevCommit tip,

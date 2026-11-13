@@ -30,7 +30,7 @@ class RestoreSchemaMigrationTest {
         for (String table : List.of("branch_graph_vector_generation", "source_artifact", "source_version", "source_fragment", "user_workspace", "app_user", "app_principal", "principal_binding", "backup_capability_grant", "git_packs", "workspace_git_reflog_provenance", "analysis_cluster_call", "analysis_cluster_attempt", "inventory_comparison", "inventory_assertion", "inventory_observation", "inventory_review", "inventory_mapping", "interop_file"))
             assertThat(rows.queryForObject("select count(*) from " + table, Long.class)).as(table).isZero();
         assertThat(rows.queryForObject("select count(*) from principal_installation", Long.class)).isEqualTo(1);
-        assertThat(rows.queryForObject("select count(*) from \"restore_business_schema_history\" where \"success\"=true", Long.class)).isEqualTo(23);
+        assertThat(rows.queryForObject("select count(*) from \"restore_business_schema_history\" where \"success\"=true", Long.class)).isEqualTo(24);
         assertFileExportSchema(target);
         assertReasonLengthColumn(target);
         assertLanguageColumn(target);

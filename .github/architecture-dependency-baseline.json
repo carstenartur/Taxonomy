@@ -265,14 +265,14 @@
       "fromPackage": "com.taxonomy.backup.restore",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.backup",
-      "classDependencyCount": 57
+      "classDependencyCount": 60
     },
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.backup.restore",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.model",
-      "classDependencyCount": 2
+      "classDependencyCount": 4
     },
     {
       "fromContext": "app-composition",

@@ -113,6 +113,14 @@ public final class WorkspaceGitHistoryReferences {
                 result.resolve(source, Field.SYNC_LAST_SYNCED, related, text(row, "last_synced_commit_id"));
                 result.resolve(source, Field.SYNC_LAST_PUBLISHED, related, text(row, "last_published_commit_id"));
             });
+            read("select scope_key,repository_id,workspace_id,last_synced_commit_id,last_published_commit_id from workspace_branch_sync",
+                    scope.repositories("repository_id", "workspace_id"), "scope_key", checkpoint, row -> {
+                var key = result.key(row, "repository_id", "workspace_id");
+                var record = reference(row, "workspace.branch-sync", "scope_key");
+                var related = key.workspaceId() == null ? List.of(key) : List.of(key, new BackupRepositoryKey(key.repositoryId(), null));
+                result.resolve(record, Field.SYNC_LAST_SYNCED, related, text(row, "last_synced_commit_id"));
+                result.resolve(record, Field.SYNC_LAST_PUBLISHED, related, text(row, "last_published_commit_id"));
+            });
             read("select scope_id,repository_id,workspace_id,branch,semantic_revision,checkpoint_commit,checkpoint_revision,dsl,pending_checkpoint from editor_workspace",
                     scope.repositories("repository_id", "workspace_id"), "scope_id", checkpoint, row -> {
                 var key = result.key(row, "repository_id", "workspace_id");

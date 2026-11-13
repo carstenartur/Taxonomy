@@ -715,15 +715,23 @@ curl -u alice:password -X POST "http://localhost:8080/api/workspace/publish?user
 curl -u alice:password http://localhost:8080/api/workspace/sync-state
 ```
 
+Während der Bereitstellung liefert derselbe Lesezugriff HTTP 200 mit Repository, Arbeitskopie, Branch und dem aktuellen Zustand in `syncStatus` (`NOT_PROVISIONED`, `PROVISIONING` oder `FAILED`). Git-Beobachtungen und deren Zeitstempel bleiben leer. Das Öffnen der Statusansicht löst keine Bereitstellung aus.
+
 **Antwort:**
 ```json
 {
+  "repositoryId": "architecture",
+  "workspaceId": "alice-workspace",
+  "branch": "feature-x",
+  "observedAt": "2026-03-15T10:03:00Z",
   "syncStatus": "AHEAD",
   "unpublishedCommitCount": 3,
   "lastSyncTimestamp": "2026-03-15T10:00:00Z",
   "lastPublishTimestamp": null
 }
 ```
+
+Die Antwort nennt das ausgewählte Repository, die Arbeitskopie und den Branch für den angemeldeten Benutzer. Bei einem zentralen Branch ist `workspaceId` null. `observedAt` bezeichnet die jüngste gespeicherte Beobachtung. `lastSyncTimestamp` und `lastPublishTimestamp` enthalten die Zeitpunkte der jeweiligen Vorgänge. Ältere Zeilen ohne erfassten Branch bleiben als historische Datenbankeinträge erhalten.
 
 ### Navigationsverlauf abrufen
 
