@@ -30,10 +30,11 @@ import static org.assertj.core.api.Assertions.*;
 class KeycloakPrincipalModeTest {
     private PrincipalIdentityService identities;
     private JdbcTemplate jdbc;
+    private JDBCDataSource database;
     private ApplicationContextRunner context;
 
     @BeforeEach void legacyOwnership() {
-        var database = new JDBCDataSource();
+        database = new JDBCDataSource();
         database.setUrl("jdbc:hsqldb:mem:legacy-login-" + UUID.randomUUID());
         database.setUser("sa");
         jdbc = new JdbcTemplate(database);
@@ -44,6 +45,7 @@ class KeycloakPrincipalModeTest {
         context = new ApplicationContextRunner()
                 .withInitializer(c -> c.getEnvironment().setActiveProfiles("keycloak"))
                 .withUserConfiguration(LoginConfiguration.class)
+                .withBean(javax.sql.DataSource.class, () -> database)
                 .withBean(PrincipalIdentityService.class, () -> identities);
     }
 
@@ -66,6 +68,10 @@ class KeycloakPrincipalModeTest {
     }
 
     @Test void stableIdentityRequiresExplicitOptInAndDoesNotLinkTheDisplayName() {
+        context.withPropertyValues("taxonomy.keycloak.principal-mode=STABLE")
+                .run(c -> assertThat(c).hasFailed());
+        jdbc.update("delete from user_workspace");
+        jdbc.update("delete from app_principal where scope_key='alice'");
         context.withPropertyValues("taxonomy.keycloak.principal-mode=STABLE").run(c -> {
             assertThat(c).hasNotFailed();
             var bearer = c.getBean(KeycloakJwtAuthConverter.class).convert(jwt());
@@ -74,7 +80,7 @@ class KeycloakPrincipalModeTest {
             assertThat(browser.getName()).isEqualTo(bearer.getName());
             assertThat(bearer).isInstanceOf(StablePrincipal.class);
             assertThat(browser).isInstanceOf(StablePrincipal.class);
-            assertThat(jdbc.queryForObject("select enabled from app_principal where scope_key='alice'", Integer.class)).isZero();
+            assertThat(jdbc.queryForObject("select count(*) from app_principal where scope_key='alice'", Integer.class)).isZero();
         });
     }
 
@@ -95,7 +101,26 @@ class KeycloakPrincipalModeTest {
         context.withPropertyValues("taxonomy.backup.enabled=true", "taxonomy.keycloak.principal-mode=LEGACY")
                 .run(c -> assertThat(c).hasFailed());
         context.withPropertyValues("taxonomy.backup.enabled=true", "taxonomy.keycloak.principal-mode=STABLE")
+                .run(c -> assertThat(c).hasFailed());
+        jdbc.update("delete from user_workspace");
+        jdbc.update("delete from app_principal where scope_key='alice'");
+        context.withPropertyValues("taxonomy.backup.enabled=true", "taxonomy.keycloak.principal-mode=STABLE")
                 .run(c -> assertThat(c).hasNotFailed());
+    }
+
+    @Test void postMigrationLegacyOwnershipPreventsModeSwitchEvenAfterNewOidcRegistration() {
+        // V3 cannot reserve rows inserted by a still-running LEGACY instance later.
+        jdbc.update("insert into user_workspace values ('later-owner', 'another-private-workspace')");
+        var inventory = com.taxonomy.security.service.LegacyOwnerMigrationReadiness.inspect(database);
+        assertThat(inventory.missingReservations()).isEqualTo(1);
+        context.withPropertyValues("taxonomy.keycloak.principal-mode=STABLE")
+                .run(c -> assertThat(c).hasFailed());
+
+        identities.oidc("https://idp.example", "a-new-stable-subject");
+        context.withPropertyValues("taxonomy.keycloak.principal-mode=STABLE")
+                .run(c -> assertThat(c).hasFailed());
+        assertThat(jdbc.queryForObject("select count(*) from app_principal where scope_key='later-owner'",
+                Integer.class)).isZero();
     }
 
     @Test void unknownIdentityModeCannotSilentlyFallBackToLegacy() {
