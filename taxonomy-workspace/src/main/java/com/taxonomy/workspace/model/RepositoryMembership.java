@@ -37,6 +37,18 @@ public class RepositoryMembership {
     @Column(name = "username", nullable = false)
     private String username;
 
+    @Column(name = "holder_principal_id", length = 36)
+    private String holderPrincipalId;
+
+    @Column(name = "grantor_principal_id", length = 36)
+    private String grantorPrincipalId;
+
+    public String getHolderPrincipalId() { return holderPrincipalId; }
+    public void setHolderPrincipalId(String value) { holderPrincipalId = value; }
+
+    public String getGrantorPrincipalId() { return grantorPrincipalId; }
+    public void setGrantorPrincipalId(String value) { grantorPrincipalId = value; }
+
     @Enumerated(EnumType.STRING)
     @Column(name = "repository_role", nullable = false)
     private RepositoryRole role;

@@ -143,8 +143,15 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                         enumeration(r,"relationship_type",WorkspaceRelationshipType.class),text(r,"base_commit"),text(r,"current_commit"),text(r,"last_fetched_commit"),
                         text(r,"last_integrated_commit"),text(r,"sync_target_branch"),instant(r,"provisioned_at"),text(r,"description"),r.getBoolean("archived"),r.getBoolean("is_default"),r.getBoolean("collaborative"))));
         var activeMemberships = scope.selectedVersion() ? repositories : activeMemberships(repositories);
-        write(sink,"memberships",profile,query(scope,false,"select id,repository_id,username,repository_role,created_at,created_by,updated_at from repository_membership",activeMemberships,"id"),
-                scoped(scope,"repository_id",null,r -> new MembershipRecord(reference(r,"workspace.membership","id"),text(r,"repository_id"),text(r,"username"),enumeration(r,"repository_role",RepositoryRole.class),instant(r,"created_at"),text(r,"created_by"),instant(r,"updated_at"))));
+        String principals = "holder_principal_id,grantor_principal_id";
+        if (!scope.selectedVersion()) {
+            boolean oldHolder = StagedWorkspaceSchema.missingColumnBefore(database, "repository_membership", "holder_principal_id", "33");
+            boolean oldGrantor = StagedWorkspaceSchema.missingColumnBefore(database, "repository_membership", "grantor_principal_id", "33");
+            if (oldHolder != oldGrantor) throw new IOException("Incomplete repository membership principal columns");
+            if (oldHolder) principals = "cast(null as varchar(36)) as holder_principal_id,cast(null as varchar(36)) as grantor_principal_id";
+        }
+        write(sink,"memberships",profile,query(scope,false,"select id,repository_id,username,repository_role,created_at,created_by,updated_at," + principals + " from repository_membership",activeMemberships,"id"),
+                scoped(scope,"repository_id",null,r -> new MembershipRecord(reference(r,"workspace.membership","id"),text(r,"repository_id"),text(r,"username"),enumeration(r,"repository_role",RepositoryRole.class),instant(r,"created_at"),text(r,"created_by"),instant(r,"updated_at"),text(r,"holder_principal_id"),text(r,"grantor_principal_id"))));
         var sync = scope.repositories("w.source_repository_id","w.workspace_id");
         write(sink,"synchronization",profile,query(scope,false,"select w.source_repository_id as captured_repository_id,w.workspace_id as captured_workspace_id,s.id,s.username,s.workspace_id,s.last_synced_commit_id,s.last_sync_timestamp,s.last_published_commit_id,s.last_publish_timestamp,s.sync_status,s.unpublished_commit_count,s.created_at,s.updated_at from sync_state s join user_workspace w on w.workspace_id=s.workspace_id",sync,"s.id"),
                 scoped(scope,"captured_repository_id","captured_workspace_id",linked("captured_workspace_id","workspace_id",r -> new SyncRecord(reference(r,"workspace.sync","id"),text(r,"username"),text(r,"workspace_id"),text(r,"last_synced_commit_id"),instant(r,"last_sync_timestamp"),
@@ -405,7 +412,12 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
             this(workspaceId,ownerScope,displayName,currentBranch,baseBranch,shared,createdAt,lastAccessedAt,provisioningStatus,topologyMode,repositoryId,sourceBranch,relationshipType,baseCommit,currentCommit,lastFetchedCommit,lastIntegratedCommit,syncTargetBranch,provisionedAt,description,archived,defaultWorkspace,false);
         }
     }
-    public record MembershipRecord(SourceRecordId sourceId,String repositoryId,String principalScope,RepositoryRole role,String createdAt,String createdBy,String updatedAt) { }
+    public record MembershipRecord(SourceRecordId sourceId,String repositoryId,String principalScope,RepositoryRole role,String createdAt,String createdBy,String updatedAt,String holderPrincipalId,String grantorPrincipalId) {
+        public MembershipRecord(SourceRecordId sourceId,String repositoryId,String principalScope,RepositoryRole role,
+                                String createdAt,String createdBy,String updatedAt) {
+            this(sourceId,repositoryId,principalScope,role,createdAt,createdBy,updatedAt,null,null);
+        }
+    }
     public record FetchRecord(SourceRecordId sourceId, String principalId, String principalScope, String repositoryId,
                               String workspaceId, String branch, String sourceBranch, String forkPoint, String requestedCommit,
                               String expectedCommit, String observedCommit, String resultCommit, String causationId,

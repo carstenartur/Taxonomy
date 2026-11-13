@@ -128,6 +128,10 @@ public class WorkspaceFetchRecovery {
             checkLease.run();
         };
         authorize.run();
+        return RepositoryMembershipIdentity.RecordedActor.during(operation.username, original, () -> applyVerified(operation, authorize));
+    }
+
+    private WorkspaceUpstreamService.Status applyVerified(RepositoryFetchOperation operation, Runnable authorize) throws IOException {
         boolean recovering = operation.attempts > 1;
         var context = operation.context();
         var fork = operation instanceof CentralFetchOperation ? forks.recorded(operation) : null;

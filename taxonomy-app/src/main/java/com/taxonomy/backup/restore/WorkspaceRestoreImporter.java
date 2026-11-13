@@ -161,7 +161,7 @@ public final class WorkspaceRestoreImporter {
                     "last_fetched_commit",commit(commits,id,Field.WORKSPACE_LAST_FETCHED,row.lastFetchedCommit()),"last_integrated_commit",commit(commits,id,Field.WORKSPACE_LAST_INTEGRATED,row.lastIntegratedCommit()),"sync_target_branch",row.syncTargetBranch(),
                     "provisioned_at",timestamp(row.provisionedAt()),"description",row.description(),"archived",row.archived(),"is_default",false,"provisioning_error",null));
         }
-        for(var row:memberships) {checkpoint.check();id(row.sourceId(),"workspace.membership");if(!sourceKeys.stream().anyMatch(key->key.repositoryId().equals(row.repositoryId()))||row.role()==null)throw invalid();scope(identities,row.principalScope());instant(row.createdAt());model.classify("memberships",row.sourceId().value(),"INERT_SOURCE_AUTHORITY");}
+        for(var row:memberships) {checkpoint.check();id(row.sourceId(),"workspace.membership");if(!sourceKeys.stream().anyMatch(key->key.repositoryId().equals(row.repositoryId()))||row.role()==null)throw invalid();scope(identities,row.principalScope());instant(row.createdAt());canonicalUuidOptional(row.holderPrincipalId());canonicalUuidOptional(row.grantorPrincipalId());model.classify("memberships",row.sourceId().value(),"INERT_SOURCE_AUTHORITY");}
         for(var row:sync) {
             checkpoint.check();var parent=workspaceById.get(row.workspaceId());if(parent==null||!Objects.equals(parent.ownerScope(),row.principalScope()))throw invalid();String scope=scope(identities,row.principalScope());
             if(!activeWorkspaces.contains(row.workspaceId())){model.classify("synchronization",row.sourceId().value(),"PRIVATE_QUARANTINE");continue;}

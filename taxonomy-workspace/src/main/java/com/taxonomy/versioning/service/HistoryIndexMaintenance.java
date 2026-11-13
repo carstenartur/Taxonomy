@@ -177,24 +177,8 @@ public class HistoryIndexMaintenance {
                 var receipt = row.receipt();
                 boolean purge = receipt.kind().destructive();
                 actors.checkHistoryIndex(row.grant(), row.username(), purge, background);
-                var context = row.context();
-                if (receipt.kind().relationProjection()) {
-                    verifyProjectionTarget(row, background);
-                    String operationId = receipt.operationId();
-                    var result = derived.apply(context, DerivedProjection.Kind.valueOf(receipt.kind().name()),
-                            receipt.sourceCommit(), new DerivedProjection.Source(row.sourceKey(), row.generation()),
-                            operationId, () -> actors.checkHistoryIndex(row.grant(), row.username(), purge, background));
-                    actors.checkHistoryIndex(row.grant(), row.username(), purge, background);
-                    verifyProjectionTarget(row, background);
-                    journal.saveProjectionResult(operationId, derived.describe(result));
-                    return result.relations();
-                }
-                verifyTarget(row);
-                int result = purge ? projections.purgeCaptured(context, receipt.operationId())
-                        : projections.applyCapturedBranch(receipt.branch(), context, receipt.sourceCommit(), receipt.kind() == Kind.REBUILD);
-                actors.checkHistoryIndex(row.grant(), row.username(), purge, background);
-                verifyTarget(row);
-                return result;
+                return com.taxonomy.workspace.service.RepositoryMembershipIdentity.RecordedActor.during(row.username(),
+                        row.grant(), () -> applyVerified(row, purge, background));
             });
         } catch (WorkspaceFetchAuthority.FreshLoginRequired failure) {
             return journal.failed(token, "AWAITING_AUTHORIZATION", "FRESH_LOGIN_REQUIRED");
@@ -234,6 +218,28 @@ public class HistoryIndexMaintenance {
             return journal.failed(token, "MANUAL_REVIEW", "GIT_ANCESTRY_UNAVAILABLE");
         }
         return journal.failed(token, "MANUAL_REVIEW", "GIT_HISTORY_CHANGED");
+    }
+
+    private int applyVerified(HistoryIndexJournal.Operation row, boolean purge, boolean background) {
+        var receipt = row.receipt();
+        var context = row.context();
+        if (receipt.kind().relationProjection()) {
+            verifyProjectionTarget(row, background);
+            String operationId = receipt.operationId();
+            var result = derived.apply(context, DerivedProjection.Kind.valueOf(receipt.kind().name()),
+                    receipt.sourceCommit(), new DerivedProjection.Source(row.sourceKey(), row.generation()),
+                    operationId, () -> actors.checkHistoryIndex(row.grant(), row.username(), purge, background));
+            actors.checkHistoryIndex(row.grant(), row.username(), purge, background);
+            verifyProjectionTarget(row, background);
+            journal.saveProjectionResult(operationId, derived.describe(result));
+            return result.relations();
+        }
+        verifyTarget(row);
+        int result = purge ? projections.purgeCaptured(context, receipt.operationId())
+                : projections.applyCapturedBranch(receipt.branch(), context, receipt.sourceCommit(), receipt.kind() == Kind.REBUILD);
+        actors.checkHistoryIndex(row.grant(), row.username(), purge, background);
+        verifyTarget(row);
+        return result;
     }
 
     private void verifyReadableTarget(HistoryIndexJournal.Operation row) {

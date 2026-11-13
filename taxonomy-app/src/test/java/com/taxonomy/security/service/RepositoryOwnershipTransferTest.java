@@ -54,7 +54,8 @@ class RepositoryOwnershipTransferTest {
         transaction = new TransactionTemplate(manager);
         var repoFactory = new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(factory));
         repositories = repoFactory.getRepository(SystemRepositoryRepository.class);
-        memberships = new RepositoryMembershipService(repoFactory.getRepository(RepositoryMembershipRepository.class));
+        memberships = new RepositoryMembershipService(repoFactory.getRepository(RepositoryMembershipRepository.class), java.util.Optional.empty(),
+                java.util.Optional.of(new com.taxonomy.composition.architecture.RepositoryGrantIdentity(identities, java.util.Optional.empty())));
         transfer = new RepositoryOwnershipTransfer(identities, repositories, memberships, jdbc);
         revision = transaction.execute(s -> {
             var repo = new SystemRepository(); repo.setRepositoryId("project"); repo.setOwnerId("owner");
@@ -63,7 +64,7 @@ class RepositoryOwnershipTransferTest {
             return repo.getVersion();
         });
     }
-    @AfterEach void close() { if (factory != null) factory.close(); }
+    @AfterEach void close() { org.springframework.security.core.context.SecurityContextHolder.clearContext(); if (factory != null) factory.close(); }
 
     @Test void handsOffCatalogueAndMembershipsWithStableAuditInOneCommit() {
         var before = identities.local(1).id(); var after = identities.local(2).id();
@@ -179,6 +180,89 @@ class RepositoryOwnershipTransferTest {
         assertThat(jdbc.queryForObject("select count(*) from principal_access_audit",Integer.class)).isOne();
         assertThat(jdbc.queryForObject("select count(*) from repository_membership where repository_role='OWNER' and revoked_at is null",Integer.class)).isOne();
     }
+    @Test void directRolesCaptureTheVerifiedHolderAndGrantorOnlyForTheirGeneration() {
+        var owner = auth(1);
+        var alice = auth(2);
+        var bob = auth(3);
+        var aliceId = identities.local(2).id().value().toString();
+        var ownerId = identities.local(1).id().value().toString();
+        var bobId = identities.local(3).id().value().toString();
+        var security = org.springframework.security.core.context.SecurityContextHolder.getContext();
+        security.setAuthentication(owner);
+        var self = transaction.execute(s -> memberships.assignOwner("new-private", "owner"));
+        assertThat(self.getHolderPrincipalId()).isEqualTo(ownerId);
+        assertThat(self.getGrantorPrincipalId()).isEqualTo(ownerId);
+        var grant = transaction.execute(s -> memberships.assignRole(repositories.findByRepositoryId("project").orElseThrow(),
+                "alice", RepositoryRole.OWNER, "owner", -1L));
+        assertThat(grant.getHolderPrincipalId()).isEqualTo(aliceId);
+        assertThat(grant.getGrantorPrincipalId()).isEqualTo(ownerId);
+        security.setAuthentication(null);
+        var repository = repositories.findByRepositoryId("project").orElseThrow();
+        assertThat(memberships.isOwner(repository, "alice")).isFalse();
+        var original = new com.taxonomy.workspace.service.WorkspaceFetchAuthority.Grant(aliceId, "LOCAL", "checked-original");
+        assertThat(com.taxonomy.workspace.service.RepositoryMembershipIdentity.RecordedActor.during("alice", original,
+                () -> memberships.isOwner(repository, "alice"))).isTrue();
+        assertThat(memberships.isOwner(repository, "alice")).isFalse();
+        security.setAuthentication(alice);
+        var revised = transaction.execute(s -> memberships.assignRole(repositories.findByRepositoryId("project").orElseThrow(),
+                "alice", RepositoryRole.CONTRIBUTOR, "alice", grant.getVersion()));
+        assertThat(revised.getCreatedAt().toEpochMilli()).isEqualTo(grant.getCreatedAt().toEpochMilli());
+        assertThat(revised.getCreatedBy()).isEqualTo("owner");
+        assertThat(revised.getGrantorPrincipalId()).isEqualTo(ownerId);
+        security.setAuthentication(owner);
+        transaction.executeWithoutResult(s -> memberships.removeMembership(repositories.findByRepositoryId("project").orElseThrow(),
+                "alice", "owner", revised.getVersion()));
+        transaction.executeWithoutResult(s -> memberships.assignRole(repositories.findByRepositoryId("project").orElseThrow(),
+                "bob", RepositoryRole.OWNER, "owner", -1L));
+        security.setAuthentication(bob);
+        var regranted = transaction.execute(s -> {
+            var repo = repositories.findByRepositoryId("project").orElseThrow();
+            var version = memberships.membershipRevision(repo, "alice", "bob").version();
+            return memberships.assignRole(repo, "alice", RepositoryRole.READER, "bob", version);
+        });
+        assertThat(regranted.getId()).isEqualTo(grant.getId());
+        assertThat(regranted.getVersion()).isGreaterThan(revised.getVersion());
+        assertThat(regranted.getHolderPrincipalId()).isEqualTo(aliceId);
+        assertThat(regranted.getGrantorPrincipalId()).isEqualTo(bobId);
+        assertThat(regranted.getCreatedBy()).isEqualTo("bob");
+        security.setAuthentication(owner);
+        var handoff = move(owner, identities.local(2).id(), revision);
+        assertThat(jdbc.queryForObject("select holder_principal_id from repository_membership where username='alice'", String.class))
+                .isEqualTo(handoff.newOwner().toString());
+        assertThat(jdbc.queryForObject("select grantor_principal_id from repository_membership where username='alice'", String.class))
+                .isEqualTo(bobId);
+    }
+
+    @Test void aHistoricalGrantRetainsUnknownOriginalActorsAndAnUnboundTargetIsNotInferred() {
+        var repo = repositories.findByRepositoryId("project").orElseThrow();
+        transaction.executeWithoutResult(s -> memberships.assignRole("project", "alice", RepositoryRole.READER, "before-migration"));
+        var security = org.springframework.security.core.context.SecurityContextHolder.getContext();
+        security.setAuthentication(auth(1));
+        var historical = transaction.execute(s -> memberships.assignRole(repo, "alice", RepositoryRole.CONTRIBUTOR, "owner", 0L));
+        assertThat(historical.getHolderPrincipalId()).isNull();
+        assertThat(historical.getGrantorPrincipalId()).isNull();
+        var unbound = transaction.execute(s -> memberships.assignRole(repo, "legacy-scope", RepositoryRole.READER, "owner", -1L));
+        assertThat(unbound.getHolderPrincipalId()).isNull();
+        assertThat(unbound.getGrantorPrincipalId()).isEqualTo(identities.local(1).id().value().toString());
+    }
+
+    @Test void unboundExternalLoginKeepsOnlyCompatibilityLabelsAndCannotExerciseAnExistingStableGrant() {
+        var security = org.springframework.security.core.context.SecurityContextHolder.getContext();
+        var repo = repositories.findByRepositoryId("project").orElseThrow();
+        security.setAuthentication(auth(1));
+        transaction.executeWithoutResult(s -> memberships.assignRole(repo, "alice", RepositoryRole.OWNER, "owner", -1L));
+        var now = Instant.now();
+        var token = org.springframework.security.oauth2.jwt.Jwt.withTokenValue("test-token").header("alg", "none")
+                .issuer("https://issuer.example.test").subject("unbound-legacy-subject")
+                .issuedAt(now).expiresAt(now.plusSeconds(120)).build();
+        security.setAuthentication(new org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken(
+                token, List.of(), "alice"));
+        assertThat(memberships.isOwner(repo, "alice")).isFalse();
+        var legacy = transaction.execute(s -> memberships.assignOwner("legacy-private", "alice"));
+        assertThat(legacy.getHolderPrincipalId()).isNull();
+        assertThat(legacy.getGrantorPrincipalId()).isNull();
+    }
+
     private RepositoryOwnershipTransfer.Receipt move(Authentication actor, PrincipalId target, long version) {
         return transaction.execute(s -> transfer.transfer(actor,"project",target,version,"Team transition"));
     }
