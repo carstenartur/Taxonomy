@@ -1,6 +1,7 @@
 package com.taxonomy.shared.config;
 
 import com.taxonomy.preferences.PreferencesService;
+import com.taxonomy.security.model.StablePrincipal;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -34,9 +35,9 @@ import java.util.function.LongSupplier;
  * Bounded in-memory quota for authenticated LLM-backed API operations.
  *
  * <p>The filter is installed inside Spring Security after request authorization.
- * Each admitted local request is keyed by a digest of its authenticated username.
- * Keycloak browser and bearer requests are keyed by the same immutable
- * issuer/subject pair, never by the editable {@code preferred_username} claim.
+ * Verified logins share a quota by stable principal ID across login methods.
+ * Legacy Keycloak logins use issuer and subject. Local identities without a
+ * registry binding retain their authenticated username quota.
  * Forwarding headers and peer addresses are not quota identities.</p>
  *
  * <p>Protected operations are:</p>
@@ -227,6 +228,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
             return null;
         }
 
+        if (authentication instanceof StablePrincipal stable) {
+            return digestIdentity("principal", stable.principalId().value().toString());
+        }
+        if (authentication.getPrincipal() instanceof StablePrincipal stable) {
+            return digestIdentity("principal", stable.principalId().value().toString());
+        }
         if (authentication instanceof JwtAuthenticationToken jwtAuthentication) {
             return oidcPrincipalKey(jwtAuthentication.getToken().getClaims());
         }

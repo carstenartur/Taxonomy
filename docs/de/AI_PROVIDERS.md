@@ -221,7 +221,7 @@ Der Standardwert für den eigenen Endpunkt ist `0`, also keine ausgehende RPM-Be
 
 ### Eingehende Ratenbegrenzung
 
-`TAXONOMY_RATE_LIMIT_PER_MINUTE` begrenzt zugelassene LLM-gestützte Aufrufe je stabiler authentifizierter Identität. Lokale Konten verwenden ihren kanonischen Benutzernamen; Keycloak-Browser- und Bearer-Zugriffe teilen `iss`/`sub`. Abgewiesene Aufrufe, Forwarding-Header und Peer-Adressen definieren oder verbrauchen kein Budget. HTTP `429` enthält `Retry-After` und `Cache-Control: no-store`. Die In-Memory-Zähler gelten je Anwendungsinstanz, nicht clusterweit.
+`TAXONOMY_RATE_LIMIT_PER_MINUTE` begrenzt zugelassene LLM-gestützte Aufrufe je stabiler authentifizierter Identität. Verifizierte lokale und STABLE-Keycloak-Anmeldungen teilen ein Kontingent je stabiler Principal-ID. Im LEGACY-Modus teilen Keycloak-Browser- und Bearer-Anmeldungen die unveränderliche Issuer/Subject-Identität (`iss`/`sub`). Abgewiesene Aufrufe, Forwarding-Header und Peer-Adressen definieren oder verbrauchen kein Budget. HTTP `429` enthält `Retry-After` und `Cache-Control: no-store`. Die In-Memory-Zähler gelten je Anwendungsinstanz, nicht clusterweit.
 
 ---
 
