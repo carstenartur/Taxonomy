@@ -114,6 +114,41 @@ class RelationProjectionCheckpointPostgresMigrationIT {
                 .isInstanceOf(SQLException.class);
     }
 
+    @Test
+    void vectorGenerationsRetainTheirBytesAcrossConnectionsAndPurgeWithOnlyTheirOwningCheckpoint() throws Exception {
+        DataSource dataSource = isolatedDataSource("branch_graph_vectors");
+        migrateJgit(dataSource);
+        migrateApplicationTo(dataSource, "52");
+        insertRepository(dataSource, "vector-repo", true);
+        for (String branch : java.util.List.of("main", "draft")) {
+            insertCheckpoint(dataSource, "vector-repo", null, "__shared__", branch, "a".repeat(40), 1);
+            try (var connection = dataSource.getConnection();
+                 var insert = connection.prepareStatement("""
+                    insert into branch_graph_vector_generation
+                        (checkpoint_id,generation_id,state,source_commit,source_key,catalogue_revision,definition_key,
+                         model_key,model_identity,text_format,index_format,relations_key,node_count,relation_count,index_sha256,
+                         index_bytes,started_at,started_by,published_at)
+                    select id,?,'READY',authoritative_commit_id,?,'edition',?,?,?,'text-v1','lucene-v1',?,1,1,?,
+                           ?,current_timestamp,'operator',current_timestamp
+                    from relation_decision_projection_checkpoint where repository_id=? and workspace_scope_key=? and branch=?
+                    """)) {
+                insert.setString(1, java.util.UUID.randomUUID().toString());
+                insert.setString(2, "a".repeat(64)); insert.setString(3, "b".repeat(64));
+                insert.setString(4, "c".repeat(64)); insert.setString(5, "{}"); insert.setString(6, "d".repeat(64));
+                insert.setString(7, "e".repeat(64)); insert.setBytes(8, new byte[]{1,2,3});
+                insert.setString(9, "vector-repo"); insert.setString(10, "__shared__"); insert.setString(11, branch);
+                assertThat(insert.executeUpdate()).isOne();
+            }
+        }
+        assertThat(singleLong(dataSource, "select count(*) from branch_graph_vector_generation where index_bytes=decode('010203','hex')")).isEqualTo(2);
+        execute(dataSource, "delete from relation_decision_projection_checkpoint where repository_id='vector-repo' and branch='draft'");
+        assertThat(singleLong(dataSource, "select count(*) from branch_graph_vector_generation")).isOne();
+        assertThat(singleLong(dataSource, """
+                select count(*) from branch_graph_vector_generation v join relation_decision_projection_checkpoint p
+                on p.id=v.checkpoint_id where p.repository_id='vector-repo' and p.branch='main'
+                """)).isOne();
+    }
+
     private static void insertRepository(
             DataSource dataSource,
             String repositoryId,

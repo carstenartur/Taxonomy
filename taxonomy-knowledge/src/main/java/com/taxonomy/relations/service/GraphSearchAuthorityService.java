@@ -35,13 +35,21 @@ public class GraphSearchAuthorityService {
     }
 
     public CountResult inspect(RepositoryContext context) {
+        return inspect(context, false);
+    }
+
+    CountResult inspectForBranchSelection(RepositoryContext context) {
+        return inspect(context, true);
+    }
+
+    private CountResult inspect(RepositoryContext context, boolean allowNonemptyProjection) {
         Objects.requireNonNull(context, "context");
         return inspection.execute(status -> {
             CountResult source = relations.count(context);
             boolean supported = (source.readModel() == ReadModel.LEGACY_FALLBACK
                     && source.readinessState() == ReadinessState.NOT_BUILT)
                     || (source.readModel() == ReadModel.PROJECTION
-                    && source.readinessState() == ReadinessState.READY && source.count() == 0);
+                    && source.readinessState() == ReadinessState.READY && (allowNonemptyProjection || source.count() == 0));
             // NOT_BUILT returns early in projection readiness; explicitly verify
             // the live head for that source as well as for an empty projection.
             if (!supported || source.authoritativeCommitId() == null

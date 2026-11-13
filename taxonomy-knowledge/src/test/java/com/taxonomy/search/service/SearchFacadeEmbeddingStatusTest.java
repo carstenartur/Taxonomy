@@ -1,6 +1,7 @@
 package com.taxonomy.search.service;
 
 import com.taxonomy.catalog.service.LocalEmbeddingService;
+import com.taxonomy.dto.GraphSearchResult;
 
 import com.taxonomy.relations.service.HybridSearchService;
 
@@ -18,9 +19,15 @@ import com.taxonomy.workspace.service.RepositoryContext;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -102,9 +109,13 @@ class SearchFacadeEmbeddingStatusTest {
         when(indexInitializer.isNodeSearchReady()).thenReturn(true);
         when(indexInitializer.getState()).thenReturn(state);
 
-        assertThatThrownBy(() -> facade.graphSearch("communications", 10, RepositoryContext.centralRead("fixture-repository", "draft", "system")))
+        var context = RepositoryContext.centralRead("fixture-repository", "draft", "system");
+        when(graphSearchService.searchBranchIfPresent("communications", 10, context)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> facade.graphSearch("communications", 10, context))
                 .isInstanceOf(IllegalStateException.class).hasMessage("Search is temporarily unavailable.");
-        verifyNoInteractions(graphSearchService);
+        verify(graphSearchService).searchBranchIfPresent("communications", 10, context);
+        verifyNoMoreInteractions(graphSearchService);
     }
 
     @Test
@@ -114,10 +125,29 @@ class SearchFacadeEmbeddingStatusTest {
         when(indexInitializer.isNodeSearchReady()).thenReturn(true);
         when(indexInitializer.getState()).thenReturn(LocalOnnxIndexInitializer.State.READY);
 
-        facade.graphSearch("communications", 10, RepositoryContext.centralRead("fixture-repository", "draft", "system"));
+        var context = RepositoryContext.centralRead("fixture-repository", "draft", "system");
+        when(graphSearchService.searchBranchIfPresent("communications", 10, context)).thenReturn(Optional.empty());
+
+        facade.graphSearch("communications", 10, context);
 
         assertThat(facade.getEmbeddingStatus()).containsEntry("graphReady", true);
-        verify(graphSearchService).graphSearch("communications", 10, RepositoryContext.centralRead("fixture-repository", "draft", "system"));
+        var retrieval = inOrder(graphSearchService);
+        retrieval.verify(graphSearchService).searchBranchIfPresent("communications", 10, context);
+        retrieval.verify(graphSearchService).searchGlobalSource("communications", 10, context);
+        retrieval.verifyNoMoreInteractions();
+    }
+
+    @Test
+    void readyBranchReturnsItsResultWithoutConsultingGlobalIndexes() {
+        var context = RepositoryContext.centralRead("fixture-repository", "draft", "system");
+        var result = new GraphSearchResult(List.of(), Map.of(), Map.of(), "selected branch");
+        when(graphSearchService.searchBranchIfPresent("communications", 10, context)).thenReturn(Optional.of(result));
+
+        assertThat(facade.graphSearch("communications", 10, context)).isSameAs(result);
+
+        verify(graphSearchService).searchBranchIfPresent("communications", 10, context);
+        verifyNoMoreInteractions(graphSearchService);
+        verifyNoInteractions(indexInitializer, embeddingService);
     }
 
     @Test

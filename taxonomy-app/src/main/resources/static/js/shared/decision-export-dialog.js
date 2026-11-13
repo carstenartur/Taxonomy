@@ -55,6 +55,7 @@
         return node;
     }
     function open(config) {
+        if (config.sourceSignal?.aborted) return;
         if (active) { active.focus(); return; }
         const opener = document.activeElement;
         const de = String(config.language || document.documentElement.lang).startsWith('de');
@@ -172,9 +173,20 @@
         function abortExport(){if(exportController)exportController.abort();}
         cancel.addEventListener('click',()=>{abortExport();dialog.close();});
         dialog.addEventListener('cancel',abortExport);
-        dialog.addEventListener('close',()=>{abortExport();if(active===dialog)active=null;dialog.remove();opener?.focus();});
+        function sourceChanged() {
+            abortExport();
+            if (dialog.open) dialog.close();
+        }
+        config.sourceSignal?.addEventListener('abort', sourceChanged, {once:true});
+        dialog.addEventListener('close',()=>{
+            config.sourceSignal?.removeEventListener('abort', sourceChanged);
+            abortExport();
+            if(active===dialog)active=null;
+            dialog.remove();
+            if (!config.sourceSignal?.aborted) opener?.focus();
+        });
         form.addEventListener('submit',async event=>{
-            event.preventDefault();if(busy||!ready)return;
+            event.preventDefault();if(busy||!ready||!dialog.open||config.sourceSignal?.aborted)return;
             const selected = checks.filter(c=>c.checked&&!c.disabled).map(c=>c.value);
             if (!selected.length) {error.textContent=t('Select at least one taxonomy.','Wählen Sie mindestens eine Taxonomie.');return;}
             const included = sections.filter(c=>c.checked).map(c=>c.value);
@@ -205,7 +217,7 @@
         const openingScope = config.scope || window.TaxonomyArchitectureWorkflow?.getScope?.();
         const scope = openingScope ? Object.freeze(Object.assign({}, openingScope)) : undefined;
         return open({...config,saved:true,source:config.source || ('Snapshot: '+snapshotId),
-            load:()=>config.api.decisionReportOptions(projectId,snapshotId,window.TaxonomyContentLanguage?.documentLanguage(null) || null, {scope}),
+            load:()=>config.api.decisionReportOptions(projectId,snapshotId,window.TaxonomyContentLanguage?.documentLanguage(null) || null, {scope,signal:config.sourceSignal}),
             submit:config.submit || (async ({format,descriptor,options,language,signal})=>download(await config.api.downloadDecisionReport(projectId,snapshotId,format,language,options,{signal,scope}),format,snapshotId,signal,undefined,descriptor))});
     }
     window.TaxonomyDecisionExport={open,openSaved,selection,query,download};
