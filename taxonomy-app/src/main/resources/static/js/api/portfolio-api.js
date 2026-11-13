@@ -401,7 +401,8 @@ window.TaxonomyPortfolioApi = (function () {
             return sendJson('/api/projects/git/commit', 'POST', body);
         },
         materializePortfolio: function (body) {
-            return sendJson('/api/projects/git/materialize', 'POST', body);
+            const target = body?.branch ? '?targetBranch=' + encodeURIComponent(body.branch) : '';
+            return sendJson('/api/projects/git/materialize' + target, 'POST', body);
         },
         mergePortfolio: function (body) {
             return sendJson('/api/projects/git/merge', 'POST', body);
