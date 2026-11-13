@@ -121,7 +121,7 @@ class WebDavApplicationCredentialCoverageTest {
 
         WebDavApplicationCredential noScopes = metadataCredential(
                 "c".repeat(24), "reader", false, false);
-        when(repository.findAllByUsernameOrderByCreatedAtDesc("reader"))
+        when(repository.findAllByOwnerIdOrderByCreatedAtDesc(WebDavCredentialTestIdentity.actor("reader")))
                 .thenReturn(List.of(stored.get(0), noScopes));
 
         assertThat(service.list(readerWithoutRetainedRole))
@@ -138,7 +138,7 @@ class WebDavApplicationCredentialCoverageTest {
         String id = "a".repeat(24);
         WebDavApplicationCredential credential = metadataCredential(
                 id, "admin", true, false);
-        when(repository.findByCredentialIdAndUsername(id, "admin"))
+        when(repository.findByCredentialIdAndOwnerId(id, WebDavCredentialTestIdentity.actor("admin")))
                 .thenReturn(Optional.of(credential));
 
         service.revoke(owner, id);
@@ -149,7 +149,7 @@ class WebDavApplicationCredentialCoverageTest {
         service.revoke(owner, id);
         verify(repository, never()).save(any());
 
-        when(repository.findByCredentialIdAndUsername("b".repeat(24), "admin"))
+        when(repository.findByCredentialIdAndOwnerId("b".repeat(24), WebDavCredentialTestIdentity.actor("admin")))
                 .thenReturn(Optional.empty());
         assertThatThrownBy(() -> service.revoke(owner, "b".repeat(24)))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -254,7 +254,7 @@ class WebDavApplicationCredentialCoverageTest {
             BCryptPasswordEncoder encoder) {
         SecureRandom random = new SecureRandom(new byte[]{1, 2, 3, 4});
         return new WebDavApplicationCredentialService(
-                repository, encoder, random, Clock.fixed(NOW, ZoneOffset.UTC));
+                repository, encoder, WebDavCredentialTestIdentity.fixture(), random, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     private static UsernamePasswordAuthenticationToken owner(
@@ -292,6 +292,7 @@ class WebDavApplicationCredentialCoverageTest {
         WebDavApplicationCredential credential = new WebDavApplicationCredential();
         credential.setCredentialId(id);
         credential.setUsername(username);
+        credential.setOwnerId(WebDavCredentialTestIdentity.actor(username));
         credential.setDescription("Word");
         credential.setSecretHash("hash");
         credential.setReadAllowed(readAllowed);
