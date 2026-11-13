@@ -22,6 +22,7 @@ import com.taxonomy.portfolio.dto.SnapshotSelection;
 import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotDiff;
 import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotSummary;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import com.taxonomy.workspace.service.WorkspaceActorAccess.AnalysisOwner;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -129,11 +130,12 @@ public class ProjectRequirementAnalysisService {
                                           AnalyzeProjectRequest request,
                                           String username,
                                           WorkspaceContext context) {
+        var owner = admitOwner(username, context);
         AnalysisJobView job = prepareJob(projectId, request, username, context);
         if (job.status() != AnalysisStatus.PENDING) {
             return job;
         }
-        return executePendingItems(job.id(), projectId, username, context);
+        return executePendingItems(job.id(), projectId, username, context, owner);
     }
 
     /** Persists and dispatches a job, returning before any LLM request is made. */
@@ -141,19 +143,22 @@ public class ProjectRequirementAnalysisService {
                                           AnalyzeProjectRequest request,
                                           String username,
                                           WorkspaceContext context) {
+        var owner = admitOwner(username, context);
         AnalysisJobView job = prepareJob(projectId, request, username, context);
-        return dispatchPending(job, projectId, username, context);
+        return dispatchPending(job, projectId, username, context, owner);
     }
 
     public AnalysisJobView enqueueVerificationPass(Long projectId, Long requirementId, CopilotOperationKey key,
                                                   String username, WorkspaceContext context) {
+        var owner = admitOwner(username, context);
         var job = persistenceService.createOrReuseVerificationPass(projectId, requirementId, key, username, context);
-        return dispatchPending(job, projectId, username, context);
+        return dispatchPending(job, projectId, username, context, owner);
     }
 
-    private AnalysisJobView dispatchPending(AnalysisJobView job, Long projectId, String username, WorkspaceContext context) {
+    private AnalysisJobView dispatchPending(AnalysisJobView job, Long projectId, String username, WorkspaceContext context,
+                                            AnalysisOwner owner) {
         if (job.status() == AnalysisStatus.PENDING) {
-            dispatch(job.id(), projectId, username, context);
+            dispatch(job.id(), projectId, username, context, owner);
         }
         return job;
     }
@@ -195,13 +200,14 @@ public class ProjectRequirementAnalysisService {
                                        Long projectId,
                                        String username,
                                        WorkspaceContext context) {
+        var owner = admitOwner(username, context);
         recoveryService.prepareRetryableItems(
                 jobId,
                 projectId,
                 username,
                 context,
                 Instant.now().minusSeconds(claimTimeoutSeconds));
-        return executePendingItems(jobId, projectId, username, context);
+        return executePendingItems(jobId, projectId, username, context, owner);
     }
 
     /** Re-dispatches pending jobs or recovers failed/expired claims without holding the HTTP request. */
@@ -209,6 +215,7 @@ public class ProjectRequirementAnalysisService {
                                               Long projectId,
                                               String username,
                                               WorkspaceContext context) {
+        var owner = admitOwner(username, context);
         AnalysisJobView job = persistenceService.getJob(jobId, projectId, username, context);
         if (job.status() == AnalysisStatus.PENDING) {
             requireJobProviderBinding(job, username, context);
@@ -221,7 +228,7 @@ public class ProjectRequirementAnalysisService {
                     Instant.now().minusSeconds(claimTimeoutSeconds));
             job = persistenceService.getJob(jobId, projectId, username, context);
         }
-        dispatch(jobId, projectId, username, context);
+        dispatch(jobId, projectId, username, context, owner);
         return job;
     }
 
@@ -240,9 +247,10 @@ public class ProjectRequirementAnalysisService {
     /** One explicit action authorizes one further ordinary, bounded worker attempt. */
     public AnalysisJobView enqueueContinuation(String jobId, Long projectId, Long itemId,
             ContinueAnalysisRequest request, String username, WorkspaceContext context) {
+        var owner = admitOwner(username, context);
         requireContinuations().prepare(jobId, projectId, itemId, request, username, context);
         AnalysisJobView prepared = persistenceService.getJob(jobId, projectId, username, context);
-        dispatch(jobId, projectId, username, context);
+        dispatch(jobId, projectId, username, context, owner);
         return prepared;
     }
 
@@ -325,11 +333,12 @@ public class ProjectRequirementAnalysisService {
     private void dispatch(String jobId,
                           Long projectId,
                           String username,
-                          WorkspaceContext context) {
+                          WorkspaceContext context,
+                          AnalysisOwner owner) {
         try {
             analysisExecutor.execute(() -> {
                 try {
-                    executePendingItems(jobId, projectId, username, context);
+                    executePendingItems(jobId, projectId, username, context, owner);
                 } catch (RuntimeException failure) {
                     LOGGER.error("Asynchronous portfolio analysis job {} for project {} stopped unexpectedly",
                             jobId, projectId, failure);
@@ -350,10 +359,15 @@ public class ProjectRequirementAnalysisService {
                 targets, username, context);
     }
 
+    private AnalysisOwner admitOwner(String username, WorkspaceContext context) {
+        return budgetContinuations == null ? null : budgetContinuations.admitOwner(username, context);
+    }
+
     private AnalysisJobView executePendingItems(String jobId,
                                                 Long projectId,
                                                 String username,
-                                                WorkspaceContext context) {
+                                                WorkspaceContext context,
+                                                AnalysisOwner owner) {
         String scopeKey = PortfolioScope.key(username, context);
         AnalysisJobView job = persistenceService.getJob(jobId, projectId, username, context);
         var admittedModel = persistenceService.admittedModel(jobId, projectId, username, context);
@@ -400,14 +414,15 @@ public class ProjectRequirementAnalysisService {
                 // Close the question journal before optional snapshot enrichment. Only
                 // the actual classification/relation procedure owns these checkpoints.
                 try (var continuation = budgetContinuations == null ? null
-                        : budgetContinuations.begin(workItem, job, username, context, admittedModel)) {
+                        : budgetContinuations.begin(workItem, job, username, context, admittedModel, owner)) {
                     if (continuation == null) {
                         analysis = analyzeRequirementUseCase.analyze(command).analysisResult();
                     } else if (continuation.replay() != null) {
                         analysis = continuation.replay();
                     } else {
-                        analysis = continuation.complete(analyzeRequirementUseCase
-                                .analyze(continuation.bind(command)).analysisResult());
+                        var result = analyzeRequirementUseCase.analyze(continuation.bind(command)).analysisResult();
+                        if (owner != null) budgetContinuations.checkOwner(owner, username, context);
+                        analysis = continuation.complete(result);
                     }
                 }
                 if (analysis == null || analysis.getScores() == null
@@ -427,6 +442,7 @@ public class ProjectRequirementAnalysisService {
                 PatternDetectionView patterns = copilot.patterns();
                 ArchitectureRecommendation recommendation = copilot.recommendation();
                 long durationMs = (System.nanoTime() - startedAt) / 1_000_000L;
+                if (owner != null) budgetContinuations.checkOwner(owner, username, context);
                 claimPersistenceService.persistSnapshot(
                         workItem,
                         snapshotId,

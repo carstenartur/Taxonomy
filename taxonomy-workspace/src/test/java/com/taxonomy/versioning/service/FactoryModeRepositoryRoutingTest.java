@@ -228,6 +228,7 @@ class FactoryModeRepositoryRoutingTest {
         UserWorkspaceRepository wsRepo = mock(UserWorkspaceRepository.class);
         WorkspaceManager wm = new WorkspaceManager(wsRepo, 50,
                 mock(SystemRepositoryService.class), repo);
+        com.taxonomy.workspace.service.WorkspaceProvisioningTestClaims.withOwners(wm);
         return new RepositoryStateService(factory, wm,
                 mock(SystemRepositoryService.class));
     }
@@ -236,6 +237,7 @@ class FactoryModeRepositoryRoutingTest {
         UserWorkspaceRepository wsRepo = mock(UserWorkspaceRepository.class);
         WorkspaceManager wm = new WorkspaceManager(wsRepo, 50,
                 mock(SystemRepositoryService.class), repo);
+        com.taxonomy.workspace.service.WorkspaceProvisioningTestClaims.withOwners(wm);
         RepositoryStateService stateService = new RepositoryStateService(factory, wm,
                 mock(SystemRepositoryService.class));
         return new ContextNavigationService(factory, stateService, wm, 50);

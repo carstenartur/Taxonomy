@@ -24,6 +24,13 @@ public class RepositoryWorkspaceService {
     private static final String WORKSPACE_BRANCH = "draft";
     private static final String TRACKING_BRANCH = "sync-base";
 
+    private WorkspaceActorAccess actorAccess = WorkspaceActorAccess.unavailable();
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void configureActorAccess(WorkspaceActorAccess actorAccess) {
+        this.actorAccess = java.util.Objects.requireNonNull(actorAccess);
+    }
+
     private final UserWorkspaceRepository workspaceRepository;
     private final SystemRepositoryService systemRepositoryService;
     private final DslGitRepositoryFactory repositoryFactory;
@@ -75,6 +82,7 @@ public class RepositoryWorkspaceService {
         UserWorkspace workspace = new UserWorkspace();
         workspace.setWorkspaceId(UUID.randomUUID().toString());
         workspace.setUsername(user);
+        actorAccess.currentOwnerPrincipal(user).ifPresent(workspace::assignOwnerPrincipal);
         workspace.setDisplayName(name);
         workspace.setDescription(description);
         workspace.setCurrentBranch(WORKSPACE_BRANCH);

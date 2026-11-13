@@ -73,6 +73,8 @@ class WorkspaceRestoreImporterTest {
             assertThat(target.queryForObject("select source_repository_id from user_workspace",String.class)).isEqualTo("target-repository");
             assertThat(target.queryForObject("select workspace_id from user_workspace",String.class)).isEqualTo("target-workspace");
             assertThat(target.queryForObject("select collaborative from user_workspace",Boolean.class)).isTrue();
+            assertThat(target.queryForObject("select owner_principal_id from user_workspace",String.class))
+                    .isEqualTo(fixture.principals.get(principal).targetPrincipal().value().toString());
             assertThat(target.queryForObject("select current_commit from user_workspace",String.class)).isEqualTo(fixture.commit);
             assertThat(target.queryForObject("select dsl from editor_workspace",String.class)).isEqualTo("1:"+RAW);
             assertThat(target.queryForObject("select scope_id from editor_workspace",String.class)).isEqualTo(targetEditor);
@@ -149,6 +151,7 @@ class WorkspaceRestoreImporterTest {
             }
             var result=new WorkspaceRestoreImporter().restore(fixture.archive,fixture.generation(),fixture.principals,fixture.git,()->{});
             var target=new JdbcTemplate(fixture.target);
+            assertThat(target.queryForObject("select owner_principal_id from user_workspace",String.class)).isNull();
             assertThat(target.queryForObject("select count(*) from architecture_commit_index",Long.class)).isEqualTo(2);
             assertThat(target.queryForObject("select workspace_scope_key from architecture_commit_index where workspace_id is null",String.class)).isEqualTo(com.taxonomy.versioning.model.ArchitectureCommitIndex.scopeKeyFor(null));
             assertThat(target.queryForObject("select repository_id from architecture_commit_index where workspace_id is null",String.class)).isEqualTo("target-repository");
@@ -276,6 +279,7 @@ class WorkspaceRestoreImporterTest {
         rows.update("insert into app_principal(principal_id,scope_key,enabled) values(?,'source-owner',1)",principal.value().toString());
         rows.update("insert into system_repository(repository_id,slug,display_name,visibility,lifecycle_state,owner_type,owner_id,topology_mode,default_branch,fork_point_commit,last_fetch_commit,primary_repo,created_at,version) values('source-repository','source-slug','Original','PUBLIC','ACTIVE','USER','source-owner','INTERNAL_SHARED','main',?,?,true,?,0)",commit,commit,java.sql.Timestamp.from(Instant.parse(TIME)));
         rows.update("insert into user_workspace(workspace_id,username,display_name,current_branch,base_branch,shared,collaborative,created_at,provisioning_status,topology_mode,source_repository_id,source_branch,relationship_type,base_commit,current_commit,last_fetched_commit,last_integrated_commit,sync_target_branch,archived,is_default) values('source-workspace','source-owner','Original work','main','main',true,true,?,'READY','INTERNAL_SHARED','source-repository','main','WORKING_COPY',?,?,?,?,'main',false,true)",java.sql.Timestamp.from(Instant.parse(TIME)),commit,commit,commit,commit);
+        if (sourceVersion == null) rows.update("update user_workspace set owner_principal_id=?", principal.value().toString());
         rows.update("insert into repository_membership(repository_id,username,repository_role,created_at,created_by,version) values('source-repository','source-owner','OWNER',?,'source-owner',0)",java.sql.Timestamp.from(Instant.parse(TIME)));
         rows.update("insert into sync_state(username,workspace_id,last_synced_commit_id,last_published_commit_id,sync_status,unpublished_commit_count,created_at) values('source-owner','source-workspace',?,?,'SYNCED',0,?)",commit,commit,java.sql.Timestamp.from(Instant.parse(TIME)));
         rows.update("insert into editor_workspace values(4,0,7,?,?,?,'source-repository','source-workspace','main',?)",SAVE,commit,editor,"1:"+RAW);

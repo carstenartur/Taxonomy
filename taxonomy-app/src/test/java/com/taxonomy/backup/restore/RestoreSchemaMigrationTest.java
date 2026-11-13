@@ -39,7 +39,7 @@ class RestoreSchemaMigrationTest {
         for (String table : List.of("scoped_requirement_coverage", "requirement_coverage", "branch_graph_vector_generation", "source_artifact", "source_version", "source_fragment", "user_workspace", "app_user", "app_principal", "principal_binding", "backup_capability_grant", "git_packs", "workspace_git_reflog_provenance", "workspace_publication_operation", "workspace_publication_decision", "analysis_cluster_call", "analysis_cluster_attempt", "inventory_comparison", "inventory_assertion", "inventory_observation", "inventory_review", "inventory_mapping", "interop_file"))
             assertThat(rows.queryForObject("select count(*) from " + table, Long.class)).as(table).isZero();
         assertThat(rows.queryForObject("select count(*) from principal_installation", Long.class)).isEqualTo(1);
-        assertThat(rows.queryForObject("select count(*) from \"restore_business_schema_history\" where \"success\"=true", Long.class)).isEqualTo(30);
+        assertThat(rows.queryForObject("select count(*) from \"restore_business_schema_history\" where \"success\"=true", Long.class)).isEqualTo(31);
         assertFileExportSchema(target);
         assertReasonLengthColumn(target);
         assertLanguageColumn(target);
@@ -95,11 +95,11 @@ class RestoreSchemaMigrationTest {
         assertThatThrownBy(() -> insertHypothesis(rows, 3, "main"))
                 .isInstanceOf(DataIntegrityViolationException.class);
 
-        insertEvidence(rows, 1, "repository", "WORKSPACE:workspace", "main");
+        insertEvidence(rows, 1, "repository", "workspace", "main");
         for (var authority : List.of(
-                List.of("foreign-repository", "WORKSPACE:workspace", "main"),
-                List.of("repository", "WORKSPACE:foreign-workspace", "main"),
-                List.of("repository", "WORKSPACE:workspace", "draft"))) {
+                List.of("foreign-repository", "workspace", "main"),
+                List.of("repository", "foreign-workspace", "main"),
+                List.of("repository", "workspace", "draft"))) {
             assertThatThrownBy(() -> insertEvidence(rows, 2, authority.get(0), authority.get(1), authority.get(2)))
                     .as("evidence must match its exact parent authority: %s", authority)
                     .isInstanceOf(DataIntegrityViolationException.class);
@@ -406,7 +406,7 @@ class RestoreSchemaMigrationTest {
                 insert into relation_hypothesis (id, repository_id, workspace_id, workspace_scope_key,
                     branch_name, source_node_id, target_node_id, relation_type, status,
                     analysis_session_id, analysis_session_scope_key, created_at)
-                values (?, 'repository', 'workspace', 'WORKSPACE:workspace', ?, 'A', 'B', 'DEPENDS_ON',
+                values (?, 'repository', 'workspace', 'workspace', ?, 'A', 'B', 'DEPENDS_ON',
                     'PROPOSED', 'same-session', 'same-session', timestamp '2026-01-01 12:00:00')
                 """, id, branch);
     }

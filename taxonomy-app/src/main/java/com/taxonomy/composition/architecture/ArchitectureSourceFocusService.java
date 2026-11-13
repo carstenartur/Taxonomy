@@ -231,7 +231,7 @@ public class ArchitectureSourceFocusService {
     private UserWorkspace owned(String id,String username,String repositoryId) {
         var workspace = workspaces.findByWorkspaceId(id).orElseThrow(() -> problem("NOT_FOUND","Workspace is not accessible"));
         if (workspace.isShared() || workspace.isArchived() || !repositoryId.equals(workspace.getSourceRepositoryId())
-                || (!username.equals(workspace.getUsername()) && !(workspace.isCollaborative()
+                || (!actorAccess.owns(username, workspace) && !(workspace.isCollaborative()
                 && membership.canCollaborate(repositories.getRepository(repositoryId), username))))
             throw problem("NOT_FOUND","Workspace is not accessible");
         if (workspace.isCollaborative()) actorAccess.requireActive(username);

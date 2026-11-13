@@ -136,12 +136,16 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                         instant(r,"last_fetch_at"),instant(r,"last_push_at"),text(r,"last_fetch_commit"),r.getBoolean("primary_repo"),
                         text(r,"created_by"),instant(r,"created_at"),instant(r,"updated_at"))));
         var workspaces = scope.repositories("source_repository_id", "workspace_id");
-        write(sink,"workspaces",profile,query(scope,false,"select workspace_id,username,display_name,current_branch,base_branch,shared,created_at,last_accessed_at,provisioning_status,topology_mode,source_repository_id,source_branch,relationship_type,base_commit,current_commit,last_fetched_commit,last_integrated_commit,sync_target_branch,provisioned_at,description,archived,is_default,collaborative from user_workspace",workspaces,"workspace_id"),
+        boolean legacyOwner = !scope.selectedVersion() && StagedWorkspaceSchema.missingColumnBefore(
+                database, "user_workspace", "owner_principal_id", "31");
+        String ownerColumn = legacyOwner ? "cast(null as varchar(36)) as owner_principal_id" : "owner_principal_id";
+        write(sink,"workspaces",profile,query(scope,false,"select workspace_id,username," + ownerColumn + ",display_name,current_branch,base_branch,shared,created_at,last_accessed_at,provisioning_status,topology_mode,source_repository_id,source_branch,relationship_type,base_commit,current_commit,last_fetched_commit,last_integrated_commit,sync_target_branch,provisioned_at,description,archived,is_default,collaborative from user_workspace",workspaces,"workspace_id"),
                 scoped(scope,"source_repository_id","workspace_id",r -> new WorkspaceRecord(text(r,"workspace_id"),text(r,"username"),text(r,"display_name"),text(r,"current_branch"),text(r,"base_branch"),r.getBoolean("shared"),
                         instant(r,"created_at"),instant(r,"last_accessed_at"),enumeration(r,"provisioning_status",WorkspaceProvisioningStatus.class),
                         enumeration(r,"topology_mode",RepositoryTopologyMode.class),text(r,"source_repository_id"),text(r,"source_branch"),
                         enumeration(r,"relationship_type",WorkspaceRelationshipType.class),text(r,"base_commit"),text(r,"current_commit"),text(r,"last_fetched_commit"),
-                        text(r,"last_integrated_commit"),text(r,"sync_target_branch"),instant(r,"provisioned_at"),text(r,"description"),r.getBoolean("archived"),r.getBoolean("is_default"),r.getBoolean("collaborative"))));
+                        text(r,"last_integrated_commit"),text(r,"sync_target_branch"),instant(r,"provisioned_at"),text(r,"description"),r.getBoolean("archived"),r.getBoolean("is_default"),r.getBoolean("collaborative"),text(r,"owner_principal_id"))));
+        if (!legacyOwner && !scope.selectedVersion()) verifyOwnerPrincipals(scope, sink::checkpoint);
         var activeMemberships = scope.selectedVersion() ? repositories : activeMemberships(repositories);
         write(sink,"memberships",profile,query(scope,false,"select id,repository_id,username,repository_role,created_at,created_by,updated_at from repository_membership",activeMemberships,"id"),
                 scoped(scope,"repository_id",null,r -> new MembershipRecord(reference(r,"workspace.membership","id"),text(r,"repository_id"),text(r,"username"),enumeration(r,"repository_role",RepositoryRole.class),instant(r,"created_at"),text(r,"created_by"),instant(r,"updated_at"))));
@@ -247,6 +251,42 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                     return new IndexDecisionRecord(reference(row,"workspace.index-decision","decision_id"),text(row,"operation_id"),
                             text(row,"actor_id"),text(row,"decision_code"),row.getLong("occurred_at"));
                 }));
+    }
+
+    private record WorkspaceOwner(String id, String scope) {}
+
+    private void verifyOwnerPrincipals(BackupRowScope scope, BackupCheckpoint checkpoint) throws IOException {
+        var predicate = scope.repositories("source_repository_id", "workspace_id");
+        var query = new Query("select source_repository_id,workspace_id,username,owner_principal_id from user_workspace "
+                + "where owner_principal_id is not null and (" + predicate.sql() + ") order by workspace_id",
+                predicate.parameters());
+        var owners = new TreeMap<String,String>();
+        rows.visit(query, scoped(scope, "source_repository_id", "workspace_id", row -> {
+            checkpoint.check();
+            return new WorkspaceOwner(text(row, "owner_principal_id"), text(row, "username"));
+        }), owner -> {
+            if (owner.id() == null || owner.scope() == null
+                    || !owner.id().matches("[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}")) throw invalidOwner();
+            var previous = owners.putIfAbsent(owner.id(), owner.scope());
+            if (previous != null && !previous.equals(owner.scope()) || owners.size() > BackupLimits.MAX_ITEMS) throw invalidOwner();
+        });
+        var ids = List.copyOf(owners.keySet());
+        for (int offset = 0; offset < ids.size(); offset += 100) {
+            checkpoint.check();
+            var batch = ids.subList(offset, Math.min(offset + 100, ids.size()));
+            var selection = new Query("select principal_id,scope_key from app_principal where principal_id in ("
+                    + String.join(",", Collections.nCopies(batch.size(), "?")) + ")", batch);
+            var found = new HashSet<String>();
+            rows.visit(selection, row -> new WorkspaceOwner(text(row, "principal_id"), text(row, "scope_key")), owner -> {
+                if (!batch.contains(owner.id()) || !Objects.equals(owners.get(owner.id()), owner.scope())
+                        || !found.add(owner.id())) throw invalidOwner();
+            });
+            if (found.size() != batch.size()) throw invalidOwner();
+        }
+    }
+
+    private static IOException invalidOwner() {
+        return new IOException("Workspace owner principal evidence is inconsistent");
     }
 
     private static boolean detachedIndexTarget(ResultSet row, boolean full) throws SQLException, IOException {
@@ -400,9 +440,9 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
         String value=text(row,column); return value==null?null:Enum.valueOf(type,value);
     }
     public record RepositoryRecord(String repositoryId,String slug,String displayName,String description,RepositoryVisibility visibility,RepositoryLifecycleState lifecycleState,RepositoryOwnerType ownerType,String ownerScope,RepositoryTopologyMode topologyMode,String defaultBranch,String upstreamRepositoryId,String upstreamBranch,String forkPointCommit,String lastFetchAt,String lastPushAt,String lastFetchCommit,boolean primaryRepository,String createdBy,String createdAt,String updatedAt) { }
-    public record WorkspaceRecord(String workspaceId,String ownerScope,String displayName,String currentBranch,String baseBranch,boolean shared,String createdAt,String lastAccessedAt,WorkspaceProvisioningStatus provisioningStatus,RepositoryTopologyMode topologyMode,String repositoryId,String sourceBranch,WorkspaceRelationshipType relationshipType,String baseCommit,String currentCommit,String lastFetchedCommit,String lastIntegratedCommit,String syncTargetBranch,String provisionedAt,String description,boolean archived,boolean defaultWorkspace,boolean collaborative) {
+    public record WorkspaceRecord(String workspaceId,String ownerScope,String displayName,String currentBranch,String baseBranch,boolean shared,String createdAt,String lastAccessedAt,WorkspaceProvisioningStatus provisioningStatus,RepositoryTopologyMode topologyMode,String repositoryId,String sourceBranch,WorkspaceRelationshipType relationshipType,String baseCommit,String currentCommit,String lastFetchedCommit,String lastIntegratedCommit,String syncTargetBranch,String provisionedAt,String description,boolean archived,boolean defaultWorkspace,boolean collaborative,String ownerPrincipalId) {
         public WorkspaceRecord(String workspaceId,String ownerScope,String displayName,String currentBranch,String baseBranch,boolean shared,String createdAt,String lastAccessedAt,WorkspaceProvisioningStatus provisioningStatus,RepositoryTopologyMode topologyMode,String repositoryId,String sourceBranch,WorkspaceRelationshipType relationshipType,String baseCommit,String currentCommit,String lastFetchedCommit,String lastIntegratedCommit,String syncTargetBranch,String provisionedAt,String description,boolean archived,boolean defaultWorkspace) {
-            this(workspaceId,ownerScope,displayName,currentBranch,baseBranch,shared,createdAt,lastAccessedAt,provisioningStatus,topologyMode,repositoryId,sourceBranch,relationshipType,baseCommit,currentCommit,lastFetchedCommit,lastIntegratedCommit,syncTargetBranch,provisionedAt,description,archived,defaultWorkspace,false);
+            this(workspaceId,ownerScope,displayName,currentBranch,baseBranch,shared,createdAt,lastAccessedAt,provisioningStatus,topologyMode,repositoryId,sourceBranch,relationshipType,baseCommit,currentCommit,lastFetchedCommit,lastIntegratedCommit,syncTargetBranch,provisionedAt,description,archived,defaultWorkspace,false,null);
         }
     }
     public record MembershipRecord(SourceRecordId sourceId,String repositoryId,String principalScope,RepositoryRole role,String createdAt,String createdBy,String updatedAt) { }

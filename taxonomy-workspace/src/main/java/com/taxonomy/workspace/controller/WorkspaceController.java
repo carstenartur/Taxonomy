@@ -171,6 +171,8 @@ public class WorkspaceController {
         try {
             UserWorkspace ws = workspaceManager.createWorkspace(user, displayName, description);
             return ResponseEntity.ok(workspaceToMap(ws));
+        } catch (org.springframework.security.access.AccessDeniedException denied) {
+            throw denied;
         } catch (Exception e) {
             log.warn("Failed to create workspace for user '{}'", user, e);
             return ResponseEntity.internalServerError().body(Map.of(

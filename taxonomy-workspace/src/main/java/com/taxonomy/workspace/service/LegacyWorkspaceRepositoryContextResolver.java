@@ -13,9 +13,17 @@ public class LegacyWorkspaceRepositoryContextResolver implements WorkspaceReposi
 
     private final SystemRepositoryService repositories;
     private final UserWorkspaceRepository workspaces;
+    private final WorkspaceActorAccess actors;
 
     public LegacyWorkspaceRepositoryContextResolver(
             SystemRepositoryService repositories, UserWorkspaceRepository workspaces) {
+        this(repositories, workspaces, WorkspaceActorAccess.unavailable());
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public LegacyWorkspaceRepositoryContextResolver(SystemRepositoryService repositories,
+            UserWorkspaceRepository workspaces, WorkspaceActorAccess actors) {
+        this.actors = Objects.requireNonNull(actors, "actors");
         this.repositories = Objects.requireNonNull(repositories, "repositories");
         this.workspaces = Objects.requireNonNull(workspaces, "workspaces");
     }
@@ -44,6 +52,9 @@ public class LegacyWorkspaceRepositoryContextResolver implements WorkspaceReposi
         UserWorkspace workspace = workspaces.findByWorkspaceId(workspaceId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Workspace not found while resolving repository context: " + workspaceId));
+        if (workspace.getOwnerPrincipalId() != null && !actors.owns(username, workspace)) {
+            throw new org.springframework.security.access.AccessDeniedException("Workspace is unavailable");
+        }
         if (workspace.getUsername() != null
                 && !workspace.getUsername().equals(username)
                 && !"system".equals(username)) {

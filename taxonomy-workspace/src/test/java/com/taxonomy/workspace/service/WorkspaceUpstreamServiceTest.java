@@ -142,6 +142,24 @@ class WorkspaceUpstreamServiceTest {
     }
 
     @Test
+    void boundWorkingCopyFetchUsesTheFencedOriginalActor() throws Exception {
+        var original = java.util.UUID.fromString(WorkspaceFetchJournalTest.ALICE);
+        workspace.assignOwnerPrincipal(original);
+        var request = new WorkspaceUpstreamService.Request(incoming, null);
+        var fence = mock(Runnable.class);
+        assertThatThrownBy(() -> service.fetchRecorded(selected, "main", base, request, true,
+                fence, java.util.UUID.randomUUID().toString())).isInstanceOf(AccessDeniedException.class);
+        verify(fence).run();
+        assertThat(tracked.head(target)).isNull();
+        verify(rows, never()).save(any());
+
+        assertThat(service.fetchRecorded(selected, "main", base, request, true, fence, original.toString())
+                .trackedCommit()).isEqualTo(incoming);
+        assertThat(tracked.head(target)).isEqualTo(incoming);
+        assertThat(target.getHeadCommit("draft")).isEqualTo(local);
+    }
+
+    @Test
     void upstreamUsesTheConfiguredSyncBranchAndTheCatalogueDefaultForOlderWorkingCopies() throws Exception {
         workspace.setSourceBranch(null);
         metadata.setDefaultBranch("main");

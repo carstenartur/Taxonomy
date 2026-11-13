@@ -10,6 +10,7 @@ import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.WorkspaceActorAccess;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -50,6 +51,8 @@ class HypothesisLegacyRepositoryRoutingTest {
     private SystemRepository primaryRepository;
     @Mock
     private UserWorkspace workspace;
+    @Mock(answer = org.mockito.Answers.CALLS_REAL_METHODS)
+    private WorkspaceActorAccess actors;
 
     private HypothesisService service;
 
@@ -62,7 +65,7 @@ class HypothesisLegacyRepositoryRoutingTest {
                 nodeRepository,
                 new DslWorkspacePublicationAdapter(repositoryFactory),
                 new com.taxonomy.workspace.service.LegacyWorkspaceRepositoryContextResolver(
-                        systemRepositoryService, userWorkspaceRepository));
+                        systemRepositoryService, userWorkspaceRepository, actors));
     }
 
     @Test
@@ -96,6 +99,37 @@ class HypothesisLegacyRepositoryRoutingTest {
                         "Workspace repository does not match the selected repository");
 
         verifyNoInteractions(hypothesisRepository);
+    }
+
+    @Test
+    void boundWorkspaceHypothesesRequireTheirVerifiedOwner() {
+        var row = new UserWorkspace();
+        row.setUsername("alice");
+        row.setSourceRepositoryId("repo-a");
+        var original = java.util.UUID.randomUUID();
+        row.assignOwnerPrincipal(original);
+        when(userWorkspaceRepository.findByWorkspaceId("ws-1")).thenReturn(Optional.of(row));
+        var selection = new WorkspaceContext("alice", "ws-1", "draft", "repo-a");
+        org.mockito.Mockito.doReturn(Optional.of(java.util.UUID.randomUUID()), Optional.of(original))
+                .when(actors).currentOwnerPrincipal("alice");
+
+        assertThatThrownBy(() -> service.findAll(selection))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThatThrownBy(() -> service.findAll(new WorkspaceContext("system", "ws-1", "draft", "repo-a")))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        verifyNoInteractions(hypothesisRepository);
+
+        assertThat(service.findAll(selection)).isEmpty();
+        verify(hypothesisRepository).findVisibleByRepositoryAndWorkspaceAndBranch("repo-a", "ws-1", "draft");
+    }
+
+    @Test
+    void centralSystemSelectionStillReadsThePrimaryDraftWithoutPersonalOwnership() {
+        when(systemRepositoryService.getPrimaryRepository()).thenReturn(primaryRepository);
+        when(primaryRepository.getRepositoryId()).thenReturn("primary");
+        assertThat(service.findAll(WorkspaceContext.SHARED)).isEmpty();
+        verify(hypothesisRepository).findCentralByRepositoryAndBranch("primary", "draft");
+        verifyNoInteractions(userWorkspaceRepository, actors);
     }
 
     @Test
