@@ -40,6 +40,13 @@ public interface SystemRepositoryRepository extends JpaRepository<SystemReposito
     @Query("update SystemRepository repository set repository.version = repository.version where repository.repositoryId = :repositoryId")
     int lockForMutation(@Param("repositoryId") String repositoryId);
 
+    @Modifying(clearAutomatically = true)
+    @Query("update SystemRepository r set r.lifecycleState = :ready, r.provisioningError = null, r.updatedAt = :now, "
+            + "r.version = r.version + 1 where r.repositoryId = :id and r.lifecycleState = :expectedState and r.version = :version")
+    int acknowledgePublishedFork(@Param("id") String id, @Param("version") long version,
+            @Param("expectedState") RepositoryLifecycleState expectedState, @Param("ready") RepositoryLifecycleState ready,
+            @Param("now") Instant now);
+
     Optional<SystemRepository> findBySlug(String slug);
 
     /** Serialize a retained creation claim across application instances. */

@@ -43,6 +43,44 @@ class SystemRepositoryServiceTest {
         service = new SystemRepositoryService(repository);
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"source", "sourceBranch", "localBranch", "ownerType",
+            "owner", "creator", "name", "description", "visibility", "primary", "topology", "storage", "forkPoint", "state"})
+    void mismatchedForkClaimsNeverReachGitVerification(String mismatch) {
+        var actors = mock(WorkspaceFetchAuthority.class);
+        when(actors.currentActor("alice")).thenReturn("stable-alice");
+        service = new SystemRepositoryService(repository, Optional.of(actors));
+        var fork = new SystemRepository();
+        fork.setRepositoryId("target"); fork.setSlug("fork"); fork.setStorageRepositoryName("central-target");
+        fork.setForkInitiatorKey("stable-alice"); fork.setCreatedBy("alice"); fork.setOwnerId("alice");
+        fork.setOwnerType(RepositoryOwnerType.USER); fork.setVisibility(RepositoryVisibility.PRIVATE);
+        fork.setDisplayName("Fork"); fork.setDescription("original"); fork.setDefaultBranch("draft");
+        fork.setUpstreamRepositoryId("source"); fork.setUpstreamBranch("draft"); fork.setForkPointCommit("1".repeat(40));
+        fork.setLifecycleState(RepositoryLifecycleState.FAILED); fork.setTopologyMode(RepositoryTopologyMode.INTERNAL_SHARED);
+        switch (mismatch) {
+            case "source" -> fork.setUpstreamRepositoryId("neighbor");
+            case "sourceBranch" -> fork.setUpstreamBranch("main");
+            case "localBranch" -> fork.setDefaultBranch("main");
+            case "ownerType" -> fork.setOwnerType(RepositoryOwnerType.ORGANIZATION);
+            case "owner" -> fork.setOwnerId("someone-else");
+            case "creator" -> fork.setCreatedBy("someone-else");
+            case "name" -> fork.setDisplayName("Unrelated");
+            case "description" -> fork.setDescription(null);
+            case "visibility" -> fork.setVisibility(RepositoryVisibility.PUBLIC);
+            case "primary" -> fork.setPrimaryRepo(true);
+            case "topology" -> fork.setTopologyMode(RepositoryTopologyMode.EXTERNAL_CANONICAL);
+            case "storage" -> fork.setStorageRepositoryName("central-neighbor");
+            case "forkPoint" -> fork.setForkPointCommit(null);
+            case "state" -> fork.setLifecycleState(RepositoryLifecycleState.ARCHIVED);
+            default -> throw new AssertionError(mismatch);
+        }
+        when(repository.findBySlug("fork")).thenReturn(Optional.of(fork));
+        var denial = org.junit.jupiter.api.Assertions.assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> service.acknowledgePublishedFork("source", "draft", "Fork", "fork", "original", null, "alice",
+                        ignored -> { throw new AssertionError("An unrelated fork must never reach the Git reader"); }));
+        org.junit.jupiter.api.Assertions.assertEquals(409, denial.getStatusCode().value());
+    }
+
     @Test
     void ensureSystemRepositoryCreatesCataloguedPrimaryWhenNoneExists() {
         when(repository.findByPrimaryRepoTrue()).thenReturn(Optional.empty());
