@@ -1,5 +1,6 @@
 package com.taxonomy.security.config;
 
+import com.taxonomy.composition.architecture.SharedWorkspaceActorAccess;
 import com.taxonomy.security.access.WorkspaceFetchAuthorityAdapter;
 import com.taxonomy.workspace.service.WorkspaceFetchAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -134,6 +135,24 @@ class CurrentPrincipalAuthoritySecurityTest {
             assertThatThrownBy(() -> access.checkPublication(grant, principal.scopeKey(), true))
                     .isInstanceOf(AccessDeniedException.class);
         } finally { SecurityContextHolder.clearContext(); }
+    }
+
+    @Test void sharedEditingRequiresTheOriginalOidcLoginEvenWhenAnotherBindingIsEnabled() {
+        start(true, KeycloakPrincipalMode.STABLE);
+        var principal = identities.oidc("https://idp.test", "original");
+        addBinding(principal, "https://idp.test", "replacement");
+        var editing = new SharedWorkspaceActorAccess(identities);
+        try {
+            SecurityContextHolder.setContext(new SecurityContextImpl(oidc(principal, "https://idp.test", "original", true)));
+            editing.requireActive(principal.scopeKey());
+            jdbc.update("update principal_binding set enabled=0 where principal_id=? and subject_id=?",
+                    principal.id().value().toString(), "original");
+            assertThatThrownBy(() -> editing.requireActive(principal.scopeKey())).isInstanceOf(AccessDeniedException.class);
+            SecurityContextHolder.setContext(new SecurityContextImpl(oidc(principal, "https://idp.test", "replacement", true)));
+            editing.requireActive(principal.scopeKey());
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
     }
 
     @Test void backgroundFetchRejectsAReassignedLocalAccountName() {
