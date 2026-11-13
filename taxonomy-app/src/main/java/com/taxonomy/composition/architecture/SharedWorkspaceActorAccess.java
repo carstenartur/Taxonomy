@@ -15,9 +15,8 @@ public final class SharedWorkspaceActorAccess implements WorkspaceActorAccess {
 
     @Override public void requireActive(String username) {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
-        var principal = identities.require(authentication);
-        if (!username.equals(authentication.getName()) || identities.find(principal)
-                .filter(identity -> username.equals(identity.scopeKey())).isEmpty()) {
+        identities.requireCurrent(authentication);
+        if (!username.equals(authentication.getName())) {
             throw new AccessDeniedException("Verified active principal required for shared editing");
         }
     }

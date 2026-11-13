@@ -127,8 +127,10 @@ public class GitAuthoritativeProposalReviewService {
                 proposal.relationType().name(),
                 proposal.targetCode());
         if (action == ReviewAction.REVERT) {
-            return mutationService.remove(
-                    context, expectedHeadCommit, identity, metadata);
+            return mutationService.removeMatching(
+                    context, expectedHeadCommit, identity, metadata,
+                    Map.of("status", proposal.status().name().toLowerCase(java.util.Locale.ROOT),
+                            "provenance", PROPOSAL_PROVENANCE, "x-proposal-id", proposal.id().toString()));
         }
         return mutationService.upsert(
                 context,

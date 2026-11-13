@@ -25,6 +25,9 @@ The existing routes remain:
 | POST | `/api/decision-report/html` |
 | POST | `/api/decision-report/json` |
 
+The current exports resolve the authorized repository, workspace and branch once, without allocating a working copy. An optional `commitId` must be a full Git object ID matching that branch head. A successful export includes `X-Taxonomy-Commit` and an ETag over the actual rendered bytes. The report metadata retains the selected Git commit timestamp and the separate fingerprints of the taxonomy catalogue and analysis input. The `X-Taxonomy-Source-State` header identifies a ready source (200), a moved head (409), an absent branch (404), or a Git read failure (503). A stale pin returns the observed authorized head. Historical portfolio snapshot exports retain their recorded source.
+
+
 The controller source changes only its package declaration. All endpoint and
 OpenAPI annotations, request-record fields and constructors, controller
 constructors, validation limits, raw-score derivation, locale handling, trusted

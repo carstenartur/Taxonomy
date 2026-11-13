@@ -2,6 +2,7 @@ package com.taxonomy;
 
 import com.taxonomy.dto.ContextMode;
 import com.taxonomy.dto.ContextRef;
+import com.taxonomy.dto.RepositoryState;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
@@ -164,6 +165,16 @@ class ArchitectureWorkspaceBrowserIT {
         page.route("GET", "/taxonomy/api/projects", request -> json(200, List.of()));
         page.route("GET", "/taxonomy/api/analysis-runs", request -> json(200, List.of()));
         page.route("GET", "/taxonomy/api/workspace/current", request -> json(200, Map.of("workspaceId", "analysis-A")));
+        page.route("GET", "/taxonomy/api/git/state", request -> {
+            var pins = query(request.query());
+            String branch = pins.get("branch");
+            if (!"analysis-A".equals(pins.get("workspaceId")) || !("draft".equals(branch) || "draft/A".equals(branch))) {
+                return json(404, Map.of("error", "Unknown fixture Git source"));
+            }
+            var time = Instant.parse("2026-10-07T09:00:00Z");
+            return json(200, new RepositoryState(branch, COMMIT, time, "fixture", "Fixture commit",
+                    List.of("draft", "draft/A"), false, null, COMMIT, branch, time, false, COMMIT, false, 1, true));
+        });
         // ContextRef belongs to the retained analysis-A request scope, not the displayed working/snapshot source.
         page.route("GET", "/taxonomy/api/context/current", request -> json(200, new ContextRef(
                 "context-analysis-A", "draft/A", COMMIT, Instant.parse("2026-10-07T09:00:00Z"), ContextMode.EDITABLE,

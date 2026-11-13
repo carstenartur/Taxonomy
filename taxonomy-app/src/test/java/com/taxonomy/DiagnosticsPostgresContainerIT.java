@@ -29,6 +29,7 @@ class DiagnosticsPostgresContainerIT extends AbstractExternalDatabaseContainerIT
 
     @Container
     static GenericContainer<?> app = ContainerTestUtils.postgresAppContainer(network)
+            .withEnv("TAXONOMY_FEATURES_MULTI_REPOSITORY_API_ENABLED", "true")
             .dependsOn(db);
 
     @Override

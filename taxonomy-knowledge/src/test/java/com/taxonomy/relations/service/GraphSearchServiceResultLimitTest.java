@@ -19,6 +19,9 @@ class GraphSearchServiceResultLimitTest {
         GraphSearchService service = new GraphSearchService(embeddingService, authority);
 
         var context = RepositoryContext.centralRead("fixture-repository", "draft", "system");
+        when(authority.inspect(context)).thenReturn(new RelationProjectionReadService.CountResult(
+                RelationProjectionReadService.ReadModel.LEGACY_FALLBACK,
+                RelationBranchProjectionReadinessService.ReadinessState.NOT_BUILT, "1".repeat(40), 0));
         for (int maxResults : new int[]{0, -1}) {
             GraphSearchResult result = service.graphSearch(
                     "bounded query", maxResults, context);

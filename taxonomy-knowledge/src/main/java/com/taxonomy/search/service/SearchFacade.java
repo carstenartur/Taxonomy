@@ -100,6 +100,10 @@ public class SearchFacade {
         return Math.max(0, Math.min(requestedResults, MAX_SEARCH_RESULTS));
     }
 
+    public GraphSearchService.Readiness graphReadiness(RepositoryContext selected) {
+        return graphSearchService.readiness(selected, this::isGraphSearchReady);
+    }
+
     public GraphSearchResult graphSearch(String query,
                                          int maxResults,
                                          RepositoryContext repositoryContext) {

@@ -108,7 +108,7 @@ export const settleDraftBeforeLocaleNavigation = settleDraftBeforeNavigation;
 export async function runSystemInformationAcceptance({
   page, evidence, outputDir, onLocaleNavigationStart, onLocaleNavigationEnd, onLocaleVerified
 }) {
-  const { navigateToPage } = await import('./ui-role-fixtures.mjs');
+  const { navigateToPage, settleWelcomeAfterNavigation } = await import('./ui-role-fixtures.mjs');
   const cases = [];
   for (const locale of ['en', 'de']) {
     let requests = 0;
@@ -127,7 +127,7 @@ export async function runSystemInformationAcceptance({
       } finally {
         await onLocaleNavigationEnd?.(locale, navigationSucceeded);
       }
-      await page.evaluate(() => window.TaxonomyI18n?.ready?.());
+      await settleWelcomeAfterNavigation(page);
       await navigateToPage(page, 'admin');
       try {
         await page.waitForFunction(() => {

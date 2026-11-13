@@ -12,13 +12,8 @@ window.TaxonomyRelationsApi = (function () {
         return window.TaxonomyApiClient.request(url, init, Object.assign({acceptedStatuses:[400,404,409,412,422]}, options));
     }
 
-    /** All three reads must succeed; a failed response is not an empty metric. */
     function readQualityDashboard() {
-        return Promise.all([
-            TaxonomyApiClient.getJson('/api/relations/metrics'),
-            TaxonomyApiClient.getJson('/api/relations/metrics/by-type'),
-            TaxonomyApiClient.getJson('/api/relations/metrics/top-rejected?limit=5')
-        ]);
+        return TaxonomyApiClient.getJson('/api/relations/metrics/dashboard?limit=5', {selectedRepository:true});
     }
 
     function readSnapshot(relationType) {

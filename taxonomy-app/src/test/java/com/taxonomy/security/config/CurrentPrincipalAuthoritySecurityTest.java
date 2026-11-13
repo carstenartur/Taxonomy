@@ -1,5 +1,6 @@
 package com.taxonomy.security.config;
 
+import com.taxonomy.composition.architecture.SharedWorkspaceActorAccess;
 import com.taxonomy.security.access.WorkspaceFetchAuthorityAdapter;
 import com.taxonomy.workspace.service.RepositoryScope;
 import com.taxonomy.workspace.service.WorkspaceFetchAuthority;
@@ -24,6 +25,7 @@ import org.springframework.jdbc.datasource.AbstractDataSource;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.mock.web.MockServletContext;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -177,6 +179,44 @@ class CurrentPrincipalAuthoritySecurityTest {
         } finally { SecurityContextHolder.clearContext(); }
     }
 
+    @Test void sharedEditingRequiresTheOriginalOidcLoginEvenWhenAnotherBindingIsEnabled() {
+        start(true, KeycloakPrincipalMode.STABLE);
+        var principal = identities.oidc("https://idp.test", "original");
+        addBinding(principal, "https://idp.test", "replacement");
+        var editing = new SharedWorkspaceActorAccess(identities);
+        try {
+            SecurityContextHolder.setContext(new SecurityContextImpl(oidc(principal, "https://idp.test", "original", true)));
+            editing.requireActive(principal.scopeKey());
+            jdbc.update("update principal_binding set enabled=0 where principal_id=? and subject_id=?",
+                    principal.id().value().toString(), "original");
+            assertThatThrownBy(() -> editing.requireActive(principal.scopeKey())).isInstanceOf(AccessDeniedException.class);
+            SecurityContextHolder.setContext(new SecurityContextImpl(oidc(principal, "https://idp.test", "replacement", true)));
+            editing.requireActive(principal.scopeKey());
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+    }
+
+    @Test void backgroundFetchRejectsAReassignedLocalAccountName() {
+        start(false, KeycloakPrincipalMode.LEGACY);
+        var principal = identities.local(1);
+        var access = new WorkspaceFetchAuthorityAdapter(identities);
+        WorkspaceFetchAuthority.Grant grant;
+        try {
+            SecurityContextHolder.setContext(new SecurityContextImpl(local(principal)));
+            grant = access.authorize(principal.scopeKey());
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+        access.checkPublication(grant, principal.scopeKey(), true);
+
+        jdbc.update("update app_user set username=? where id=?", "alice-renamed", 1);
+        jdbc.update("insert into app_user (id, username, enabled, principal_id) values (?, ?, ?, ?)",
+                2, "alice", true, UUID.randomUUID().toString());
+        assertThatThrownBy(() -> access.checkPublication(grant, principal.scopeKey(), true))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
     @Test void interactiveRecoveryRequiresTheOriginalVerifiedExternalBinding() {
         start(true, KeycloakPrincipalMode.STABLE);
         var principal = identities.oidc("https://idp.test", "original");
@@ -244,6 +284,20 @@ class CurrentPrincipalAuthoritySecurityTest {
         jdbc.update("update app_user set enabled=false where id=1");
         first.perform(get("/api/projects/p").session(session)).andExpect(status().isForbidden());
         http.perform(get("/api/projects/p").session(session)).andExpect(status().isForbidden());
+    }
+
+    @Test void retainedLocalLoginRequiresTheSameNameOnItsBoundAccount() {
+        start(false, KeycloakPrincipalMode.LEGACY);
+        var principal = identities.local(1);
+        var login = local(principal);
+        assertThat(identities.requireCurrent(login)).isEqualTo(principal.id());
+
+        jdbc.update("update app_user set username=? where id=?", "alice-renamed", 1);
+        assertThatThrownBy(() -> identities.requireCurrent(login)).isInstanceOf(AccessDeniedException.class);
+
+        jdbc.update("insert into app_user (id, username, enabled, principal_id) values (?, ?, ?, ?)",
+                2, "alice", true, UUID.randomUUID().toString());
+        assertThatThrownBy(() -> identities.requireCurrent(login)).isInstanceOf(AccessDeniedException.class);
     }
 
     @Test void localRoleRemovalDeniesTheNextRetainedRequestAcrossApplicationContexts() throws Exception {

@@ -5,6 +5,7 @@ import com.taxonomy.workspace.model.RepositoryMembership;
 import com.taxonomy.workspace.model.RepositoryRole;
 import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.model.RepositoryLifecycleState;
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import com.taxonomy.workspace.repository.RepositoryMembershipRepository;
@@ -20,6 +21,8 @@ import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.storage.GitUpstreamRef;
 import io.github.carstenartur.jgit.storage.hibernate.DefaultHibernateRepositoryFactory;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.data.jpa.repository.support.JpaRepositoryFactory;
@@ -89,6 +92,80 @@ class WorkspaceOriginalHistoryTest {
             assertEquals(SignatureStatus.VERIFIED, workspace.verifyCommit(parent).status());
             assertEquals(tagId, workspace.getGitRepository().exactRef("refs/tags/reviewed/v1").getObjectId());
             assertArrayEquals(annotation, workspace.getGitRepository().open(tagId).getBytes());
+        }
+    }
+
+    private enum ArchivedRepository { SOURCE, FORK }
+
+    @ParameterizedTest
+    @EnumSource(ArchivedRepository.class)
+    void archivedCentralStorageDeletionRetainsBothSurvivorsAfterReopen(ArchivedRepository archived) throws Exception {
+        String database = "jdbc:hsqldb:file:" + directory.resolve("archive-" + archived.name()) + ";shutdown=true";
+        var signatures = SigningTestKeys.createService(directory.resolve("keys"));
+        String base;
+        String sourceId;
+        String forkId;
+        String copyId;
+        String workspaceHead;
+        String removedHead;
+        String survivingCentral;
+        String survivingHead;
+        String removedId;
+        try (var fixture = new Fixture(database, signatures)) {
+            sourceId = fixture.createSource().getRepositoryId();
+            var source = fixture.git.getCentralRepository(sourceId);
+            base = source.commitDsl(BRANCH, "shared original", OWNER, "Original");
+            var provisioning = new ArchitectureRepositoryProvisioningService(
+                    fixture.catalog, fixture.memberships, fixture.git, namespace -> "meta { language: \"taxdsl\"; }");
+            forkId = fixture.transactions.execute(status -> provisioning.createFork(
+                    sourceId, BRANCH, "Fork", "archive-fork", null, RepositoryVisibility.PRIVATE, OWNER).getRepositoryId());
+            assertEquals(base, fixture.catalog.getRepository(forkId).getForkPointCommit());
+            var copies = new RepositoryWorkspaceService(fixture.rows, fixture.catalog, fixture.git, fixture.memberships);
+            var workingCopy = copies.createWorkingCopy(OWNER, sourceId, BRANCH, "Independent copy", null);
+            copyId = workingCopy.getWorkspaceId();
+            assertEquals(base, workingCopy.getBaseCommit());
+            var target = fixture.git.getCentralRepository(forkId);
+            var workspace = fixture.git.openWorkspaceRepository(copyId);
+            String sourceHead = source.commitDsl(BRANCH, "source only", OWNER, "Source edit");
+            String forkHead = target.commitDsl(BRANCH, "fork only", OWNER, "Fork edit");
+            workspaceHead = workspace.commitDsl("draft", "working copy only", OWNER, "Working copy edit");
+            removedHead = archived == ArchivedRepository.SOURCE ? sourceHead : forkHead;
+            removedId = archived == ArchivedRepository.SOURCE ? sourceId : forkId;
+            survivingCentral = archived == ArchivedRepository.SOURCE ? forkId : sourceId;
+            survivingHead = archived == ArchivedRepository.SOURCE ? forkHead : sourceHead;
+
+            // The central catalogue has a persisted ARCHIVED state. Physical deletion is scoped by its storage owner.
+            fixture.transactions.executeWithoutResult(status -> fixture.catalog.getRepository(removedId)
+                    .setLifecycleState(RepositoryLifecycleState.ARCHIVED));
+            assertEquals(RepositoryLifecycleState.ARCHIVED, fixture.catalog.getRepository(removedId).getLifecycleState());
+            assertEquals(RepositoryLifecycleState.ACTIVE, fixture.catalog.getRepository(survivingCentral).getLifecycleState());
+            assertEquals(survivingHead, fixture.git.getCentralRepository(survivingCentral).getHeadCommit(BRANCH));
+            assertEquals(workspaceHead, workspace.getHeadCommit("draft"));
+            assertTrue(fixture.git.deleteCentralRepository(removedId).deletedAnything());
+        }
+
+        var verifier = new GitCommitSignatureService(SigningTestKeys.verifierProperties(directory.resolve("keys")));
+        try (var fixture = new Fixture(database, verifier)) {
+            var removed = fixture.git.getCentralRepository(removedId);
+            assertNull(removed.getHeadCommit(BRANCH));
+            assertFalse(removed.getGitRepository().getObjectDatabase().has(org.eclipse.jgit.lib.ObjectId.fromString(removedHead)));
+            var central = fixture.git.getCentralRepository(survivingCentral);
+            var workspace = fixture.git.openWorkspaceRepository(copyId);
+            assertEquals(RepositoryLifecycleState.ARCHIVED, fixture.catalog.getRepository(removedId).getLifecycleState());
+            assertEquals(RepositoryLifecycleState.ACTIVE, fixture.catalog.getRepository(survivingCentral).getLifecycleState());
+            assertEquals(survivingHead, central.getHeadCommit(BRANCH));
+            assertEquals(workspaceHead, workspace.getHeadCommit("draft"));
+            assertEquals("working copy only", workspace.getDslAtCommit(workspaceHead));
+            assertEquals(archived == ArchivedRepository.SOURCE ? "fork only" : "source only", central.getDslAtCommit(survivingHead));
+            assertEquals(base, fixture.rows.findByWorkspaceId(copyId).orElseThrow().getBaseCommit());
+            assertTrue(central.isAncestor(base, survivingHead));
+            assertTrue(workspace.isAncestor(base, workspaceHead));
+            assertEquals("shared original", central.getDslAtCommit(base));
+            assertEquals("shared original", workspace.getDslAtCommit(base));
+            assertEquals(SignatureStatus.VERIFIED, central.verifyCommit(survivingHead).status());
+            assertEquals(SignatureStatus.VERIFIED, workspace.verifyCommit(workspaceHead).status());
+            assertEquals(SignatureStatus.VERIFIED, central.verifyCommit(base).status());
+            assertEquals(SignatureStatus.VERIFIED, workspace.verifyCommit(base).status());
         }
     }
 

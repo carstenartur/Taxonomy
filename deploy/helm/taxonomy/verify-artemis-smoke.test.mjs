@@ -91,6 +91,7 @@ for (const [keep, missingCurrent] of [[false, false], [true, false], [false, tru
       writeFileSync(driver, mock, {mode: 0o755});
       for (const name of ['helm', 'kubectl', 'docker', 'kind', 'curl', 'openssl', 'keytool']) symlinkSync(driver, join(binary, name));
       writeFileSync(join(evidence, 'evidence.json'), '{"result":"stale success"}');
+      writeFileSync(join(evidence, 'browser-saved-run.json'), '{"result":"stale browser success"}');
       const result = spawnSync('bash', [script], {
         env: {...process.env, PATH: binary + ':' + process.env.PATH, SOURCE_SHA: '1'.repeat(40),
           EVIDENCE_DIR: evidence, KEEP_RESOURCES: String(keep), SMOKE_TEST_STATE: state,
@@ -99,6 +100,7 @@ for (const [keep, missingCurrent] of [[false, false], [true, false], [false, tru
       });
       assert.equal(result.status, 42, result.stdout + result.stderr + (result.error?.message ?? ''));
       assert.ok(!readdirSync(evidence).includes('evidence.json'));
+      assert.ok(!readdirSync(evidence).includes('browser-saved-run.json'));
       const diagnostics = join(evidence, 'diagnostics');
       const previous = readFileSync(join(diagnostics, 'taxonomy-artemis-worker-cp-1-previous.log'), 'utf8');
       assert.match(previous, /HSEARCH800001/);

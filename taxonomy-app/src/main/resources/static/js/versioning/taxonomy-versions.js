@@ -24,6 +24,11 @@ window.TaxonomyVersions = (function () {
     var currentBranch = 'draft';
     var timelineRequest = 0;
     var branchesRequest = 0;
+    var dismissChangedDialog = null;
+
+    document.addEventListener('taxonomy:repository-context-changed', function () {
+        if (dismissChangedDialog) dismissChangedDialog();
+    });
 
     // ── Initialization ──────────────────────────────────────────────
 
@@ -33,6 +38,7 @@ window.TaxonomyVersions = (function () {
             loadBranches(branchSelect);
             branchSelect.addEventListener('change', function () {
                 currentBranch = this.value;
+                if (dismissChangedDialog) dismissChangedDialog();
                 loadTimeline();
             });
         }
@@ -257,7 +263,7 @@ window.TaxonomyVersions = (function () {
 
         switch (action) {
             case 'view':
-                viewVersion(commitId);
+                viewVersion(commitId, dialogSource(btn));
                 break;
             case 'compare':
                 compareVersion(commitId);
@@ -273,19 +279,20 @@ window.TaxonomyVersions = (function () {
         }
     }
 
-    function viewVersion(commitId) {
+    function viewVersion(commitId, source) {
+        var request = ++comparisonRequest;
         window.TaxonomyVersioningApi.commitById(commitId)
             .then(function (r) { return r.json(); })
             .then(function (data) {
-                if (data.dslText) {
+                if (data.dslText && request === comparisonRequest && source.current()) {
                     showModal('Version ' + commitId.substring(0, 7),
                         '<pre class="bg-light p-3 rounded" style="max-height:60vh;overflow:auto;font-size:0.8rem;white-space:pre-wrap;">' +
-                        escapeHtml(data.dslText) + '</pre>');
+                        escapeHtml(data.dslText) + '</pre>', source);
                 }
             })
             .catch(function (err) {
-                if (ignoredError(err)) return;
-                showModal(t('versions.error'), '<div class="text-danger">' + escapeHtml(err.message) + '</div>');
+                if (ignoredError(err) || request !== comparisonRequest || !source.current()) return;
+                showModal(t('versions.error'), '<div class="text-danger">' + escapeHtml(err.message) + '</div>', source);
             });
     }
 
@@ -294,7 +301,8 @@ window.TaxonomyVersions = (function () {
     async function compareVersion(commitId) {
         var request = ++comparisonRequest;
         var branch = currentBranch;
-        var modal = showModal(t('versions.compare'), '<p class="text-muted">' + escapeHtml(t('compare.loading')) + '</p>');
+        var source = dialogSource(document.activeElement);
+        var modal = showModal(t('versions.compare'), '<p class="text-muted">' + escapeHtml(t('compare.loading')) + '</p>', source);
         modal.addEventListener('hide.bs.modal', function () {
             if (request === comparisonRequest) comparisonRequest++;
         });
@@ -304,12 +312,12 @@ window.TaxonomyVersions = (function () {
             var diff = await window.TaxonomyVersioningApi.diff(commitId, state.headCommit).then(function (r) { return r.json(); });
             var comparison = window.TaxonomyContextCompare.fromDocumentDiff(diff,
                 { branch: branch, commitId: commitId }, { branch: branch, commitId: state.headCommit });
-            if (request !== comparisonRequest || !modal.isConnected) return;
+            if (request !== comparisonRequest || !source.current() || !modal.isConnected) return;
             var body = modal.querySelector('.modal-body');
             body.id = 'versionComparisonResults';
             window.TaxonomyContextCompare.renderComparison(body.id, comparison);
         } catch (error) {
-            if (request === comparisonRequest && modal.isConnected) {
+            if (request === comparisonRequest && source.current() && modal.isConnected) {
                 modal.querySelector('.modal-body').innerHTML = '<p class="text-danger">' + escapeHtml(t('compare.failed')) + '</p>';
             }
         }
@@ -321,9 +329,10 @@ window.TaxonomyVersions = (function () {
     async function restoreVersion(commitId) {
         var request = ++comparisonRequest;
         var branch = currentBranch;
+        var source = dialogSource(document.activeElement);
         var modal = showConfirmModal(t('versions.restore.confirm.title'),
             '<p class="text-muted" role="status">' + escapeHtml(t('compare.loading')) + '</p>',
-            t('versions.restore.confirm.btn'), 'btn-warning', function () { executeRestore(commitId, branch); });
+            t('versions.restore.confirm.btn'), 'btn-warning', function () { executeRestore(commitId, branch); }, source);
         var confirm = modal.querySelector('#versionsConfirmBtn');
         confirm.disabled = true;
         modal.addEventListener('hide.bs.modal', function () {
@@ -336,12 +345,12 @@ window.TaxonomyVersions = (function () {
             var diff = await window.TaxonomyVersioningApi.diff(state.headCommit, commitId).then(function (r) { return r.json(); });
             var comparison = window.TaxonomyContextCompare.fromDocumentDiff(diff,
                 { branch: branch, commitId: state.headCommit }, { branch: branch, commitId: commitId });
-            if (request !== comparisonRequest || !modal.isConnected) return;
+            if (request !== comparisonRequest || !source.current() || !modal.isConnected) return;
             modal.querySelector('.modal-body').innerHTML = restorePreviewHtml(commitId, comparison);
             confirm.disabled = false;
         } catch (error) {
             // A failed preview is not permission to perform a blind restore.
-            if (request === comparisonRequest && modal.isConnected) {
+            if (request === comparisonRequest && source.current() && modal.isConnected) {
                 modal.querySelector('.modal-body').innerHTML = '<p class="text-danger" role="alert">' + escapeHtml(t('compare.failed')) + '</p>';
             }
         }
@@ -571,7 +580,7 @@ window.TaxonomyVersions = (function () {
 
     // ── Confirm modal helper ──────────────────────────────────────────
 
-    function showConfirmModal(title, bodyHtml, confirmLabel, confirmBtnClass, onConfirm) {
+    function showConfirmModal(title, bodyHtml, confirmLabel, confirmBtnClass, onConfirm, source) {
         var existing = document.getElementById('versionsConfirmModal');
         if (existing) existing.remove();
 
@@ -591,23 +600,12 @@ window.TaxonomyVersions = (function () {
 
         document.body.insertAdjacentHTML('beforeend', modalHtml);
         var modalEl = document.getElementById('versionsConfirmModal');
-        var modal = new bootstrap.Modal(modalEl);
-
-        document.getElementById('versionsConfirmBtn').addEventListener('click', function () {
-            if (this.disabled) return;
-            this.disabled = true;
-            modal.hide();
-            if (onConfirm) onConfirm();
-        });
-
-        modal.show();
-        modalEl.addEventListener('hidden.bs.modal', function () { modal.dispose(); modalEl.remove(); });
-        return modalEl;
+        return openVersionDialog(modalEl, onConfirm, source);
     }
 
     // ── Modal helper ────────────────────────────────────────────────
 
-    function showModal(title, bodyHtml) {
+    function showModal(title, bodyHtml, source) {
         var existing = document.getElementById('versionsModal');
         if (existing) existing.remove();
 
@@ -626,9 +624,45 @@ window.TaxonomyVersions = (function () {
 
         document.body.insertAdjacentHTML('beforeend', modalHtml);
         var modalEl = document.getElementById('versionsModal');
+        return openVersionDialog(modalEl, null, source);
+    }
+
+    function dialogSource(opener) {
+        var branch = currentBranch;
+        var generation = window.TaxonomyContextBar?.getSelectionGeneration?.();
+        var workspace = window.__TaxonomyAnalysisSessionContext?.runtime?.workspaceId;
+        return {
+            opener: opener?.matches?.('#versionsTimeline button[data-action]') ? opener : null,
+            current: function () {
+                return branch === currentBranch && generation === window.TaxonomyContextBar?.getSelectionGeneration?.()
+                    && workspace === window.__TaxonomyAnalysisSessionContext?.runtime?.workspaceId;
+            }
+        };
+    }
+
+    function openVersionDialog(modalEl, onConfirm, source) {
+        source = source || dialogSource(document.activeElement);
         var modal = new bootstrap.Modal(modalEl);
+        function dismiss() {
+            if (!source.current()) modal.hide();
+        }
+        dismissChangedDialog = dismiss;
+        modalEl.addEventListener('shown.bs.modal', dismiss, {once:true});
+        if (onConfirm) modalEl.querySelector('#versionsConfirmBtn').addEventListener('click', function () {
+            if (this.disabled) return;
+            this.disabled = true;
+            modal.hide();
+            if (source.current()) onConfirm();
+        });
+        modalEl.addEventListener('hidden.bs.modal', function () {
+            if (dismissChangedDialog === dismiss) dismissChangedDialog = null;
+            modal.dispose();
+            modalEl.remove();
+            if (!source.opener || !source.current() || document.activeElement !== document.body) return;
+            var target = source.opener.isConnected ? source.opener : document.getElementById('versionsRefreshBtn');
+            if (target && !target.disabled && target.getClientRects().length) target.focus({preventScroll:true});
+        }, {once:true});
         modal.show();
-        modalEl.addEventListener('hidden.bs.modal', function () { modal.dispose(); modalEl.remove(); });
         return modalEl;
     }
 

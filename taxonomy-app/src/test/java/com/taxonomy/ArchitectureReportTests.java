@@ -6,17 +6,20 @@ import com.taxonomy.reporting.render.document.ReportRendererRegistry;
 import com.taxonomy.architecture.service.ArchitectureReportService;
 import com.taxonomy.architecture.service.ExplanationTraceService;
 import com.taxonomy.dto.ArchitectureReport;
+import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.dto.ExplanationTrace;
 import com.taxonomy.dto.RecommendedElement;
 import com.taxonomy.extension.api.report.ReportFormatDescriptor;
 import com.taxonomy.extension.api.report.ReportRenderContext;
 import com.taxonomy.extension.api.report.ReportRenderResult;
 import com.taxonomy.extension.api.report.ReportRendererExtension;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -38,11 +41,23 @@ class ArchitectureReportTests {
     @Autowired
     private MockMvc mockMvc;
     @Autowired
+    private MockHttpServletRequest currentRequest;
+    @Autowired
+    private SystemRepositoryService repositories;
+    @Autowired
     private ArchitectureReportService reportService;
     @Autowired
     private ReportRendererRegistry reportRendererRegistry;
     @Autowired
     private ExplanationTraceService traceService;
+
+    @BeforeEach
+    void selectReportSourceForServiceCalls() {
+        var central = repositories.getPrimaryRepository();
+        currentRequest.setParameter("repositoryId", central.getRepositoryId());
+        currentRequest.setParameter("workspaceId", "");
+        currentRequest.setParameter("branch", central.getDefaultBranch());
+    }
 
     @Test
     void reportServicePopulatesSectionsAndHandlesEmptyInput() {

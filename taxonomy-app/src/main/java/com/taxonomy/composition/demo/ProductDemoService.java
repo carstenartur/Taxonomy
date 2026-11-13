@@ -8,6 +8,7 @@ import com.taxonomy.analysis.demo.evaluation.DemoReference;
 import com.taxonomy.analysis.demo.evaluation.DemoReferenceEvaluator;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.identity.StableIdentityHash;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateProjectRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementVersionView;
@@ -145,14 +146,14 @@ public class ProductDemoService {
         DemoScenario scenario = scenarioOf(run);
         List<SnapshotSummary> snapshots = analyses.listRequirementSnapshots(
                 run.getProjectId(), run.getRequirementId(), username, context);
-        Map<Integer, String> texts = new java.util.HashMap<>();
+        Map<Long, RequirementVersionView> versions = new java.util.HashMap<>();
         for (RequirementVersionView version : projects.listRequirementVersions(
                 run.getProjectId(), run.getRequirementId(), username, context))
-            texts.put(version.versionNumber(), version.text());
+            versions.put(version.id(), version);
         var a0 = latest(snapshots, run, 0);
         var a1 = latest(snapshots, run, 1);
-        var report = DemoReferenceEvaluator.evaluate(DemoReference.load(scenario.id()),
-                observation(a0, texts, run, username, context), observation(a1, texts, run, username, context));
+        var report = DemoReferenceEvaluator.evaluate(DemoReference.load(scenario.id()), scenario.r0Text(),
+                observation(a0, versions, run, username, context), observation(a1, versions, run, username, context));
         return new DemoComparison(run.getId(), a0.map(SnapshotSummary::id).orElse(null),
                 a1.map(SnapshotSummary::id).orElse(null), report);
     }
@@ -167,19 +168,29 @@ public class ProductDemoService {
                 .max(Comparator.comparing(SnapshotSummary::createdAt));
     }
 
-    private DemoReferenceEvaluator.Observation observation(Optional<SnapshotSummary> summary, Map<Integer, String> texts,
+    private DemoReferenceEvaluator.Observation observation(Optional<SnapshotSummary> summary, Map<Long, RequirementVersionView> versions,
                                                            ProductDemoRun run, String username,
                                                            WorkspaceContext context) {
         if (summary.isEmpty()) return new DemoReferenceEvaluator.Observation(null, null, Set.of());
-        SnapshotDetail detail = analyses.getSnapshot(run.getProjectId(), summary.get().id(), username, context);
+        SnapshotSummary selected = summary.get();
+        RequirementVersionView version = versions.get(selected.requirementVersionId());
+        if (version == null || version.versionNumber() != selected.requirementVersionNumber()
+                || !run.getProjectId().equals(selected.projectId()) || !run.getRequirementId().equals(selected.requirementId())
+                || version.text() == null || !StableIdentityHash.sha256(version.text()).equals(version.contentHash())) {
+            throw ProductDemoProblems.conflict(ProductDemoProblems.REQUIREMENT_MISMATCH,
+                    "The comparison snapshot does not match the frozen requirement version");
+        }
+        SnapshotDetail detail = analyses.getSnapshot(run.getProjectId(), selected.id(), username, context);
+        if (!selected.equals(detail.summary())) throw ProductDemoProblems.conflict(ProductDemoProblems.REQUIREMENT_MISMATCH,
+                "The comparison snapshot changed while loading its evidence");
         Map<String, Double> scores = detail.analysis() != null ? detail.analysis().getRawScores() : null;
         Set<String> relations = new LinkedHashSet<>();
         if (detail.relationMappings() != null)
             detail.relationMappings().forEach(r -> relations.add(r.sourceCode() + " " + r.relationType() + " " + r.targetCode()));
-        boolean scoringComplete = summary.get().status() == AnalysisStatus.SUCCESS;
+        boolean scoringComplete = selected.status() == AnalysisStatus.SUCCESS;
         var search = detail.analysis() == null ? null : detail.analysis().getRelationSearchReport();
         boolean relationsComplete = search == null ? scoringComplete : search.isSearchExhausted();
-        return new DemoReferenceEvaluator.Observation(texts.get(summary.get().requirementVersionNumber()), scores, relations,
+        return new DemoReferenceEvaluator.Observation(version.text(), scores, relations,
                 detail.analysis() != null && detail.analysis().getAnalysisCoverage() != null
                         ? detail.analysis().getAnalysisCoverage().nodes() : Map.of(), scoringComplete, relationsComplete);
     }

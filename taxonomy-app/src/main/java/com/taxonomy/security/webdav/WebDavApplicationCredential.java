@@ -10,7 +10,7 @@ import java.time.Instant;
 
 /** Stored, revocable WebDAV-only application credential. The plaintext secret is never stored. */
 @Entity
-@Table(name = "webdav_application_credential")
+@Table(name = "webdav_application_credential", indexes = @jakarta.persistence.Index(name = "idx_webdav_grant_owner", columnList = "owner_id"))
 public class WebDavApplicationCredential {
 
     @Id
@@ -19,6 +19,12 @@ public class WebDavApplicationCredential {
 
     @Column(nullable = false, length = 255)
     private String username;
+
+    @Column(name = "owner_id", length = 64)
+    private String ownerId;
+
+    @Column(name = "owner_binding", length = 64)
+    private String ownerBinding;
 
     @Column(nullable = false, length = 160)
     private String description;
@@ -55,6 +61,10 @@ public class WebDavApplicationCredential {
     public void setCredentialId(String credentialId) { this.credentialId = credentialId; }
     public String getUsername() { return username; }
     public void setUsername(String username) { this.username = username; }
+    public String getOwnerId() { return ownerId; }
+    public void setOwnerId(String value) { ownerId = value; }
+    public String getOwnerBinding() { return ownerBinding; }
+    public void setOwnerBinding(String value) { ownerBinding = value; }
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
     public String getSecretHash() { return secretHash; }

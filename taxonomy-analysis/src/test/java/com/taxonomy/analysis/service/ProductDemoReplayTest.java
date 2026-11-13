@@ -11,6 +11,8 @@ import com.taxonomy.analysis.relations.RelationSearchProtocol;
 import com.taxonomy.dto.RelationSearchModel;
 import com.taxonomy.reformulation.*;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.ByteArrayInputStream;
@@ -101,6 +103,47 @@ class ProductDemoReplayTest {
         assertThat(parsed.scores()).containsOnlyKeys(offered).allSatisfy((code, value) -> assertThat(value).isZero());
         assertThat(parsed.reasons()).containsOnlyKeys(offered).allSatisfy((code, reason) -> assertThat(reason).isNotBlank());
         assertThat(iteration.declaredScores().get("CO-1038")).isPositive();
+    }
+
+    @Test void contradictoryScoresInOneAuthoredReplyCannotSelectAnIteration() throws IOException {
+        String file = "demo-scenarios/" + scenario.id() + "/replies.json";
+        String compact;
+        String root;
+        int score;
+        try (var input = getClass().getClassLoader().getResourceAsStream(file)) {
+            var replies = JSON.readTree(Objects.requireNonNull(input));
+            var assessment = replies.at("/iterations/R0/roots/BP");
+            root = JSON.writeValueAsString(assessment);
+            compact = JSON.writeValueAsString(replies);
+            score = assessment.path("score").intValue();
+        }
+        String conflicting = "{\"score\":" + (score == 0 ? 1 : score - 1) + "," + root.substring(1);
+        int start = compact.indexOf(root);
+        assertThat(start).isNotNegative();
+        String modified = compact.substring(0, start) + conflicting + compact.substring(start + root.length());
+        assertThatThrownBy(() -> catalogueWith(file, modified))
+                .isInstanceOf(tools.jackson.core.JacksonException.class)
+                .hasMessageContaining("Duplicate").hasMessageContaining("score");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"demo-scenarios/index.json", "demo-scenarios/time-tracking-v1/scenario.json",
+            "demo-scenarios/time-tracking-v1/replies.json"})
+    void malformedOrMultipleAuthoredDocumentsPreventRegisteringAReplay(String file) throws IOException {
+        String original;
+        try (var input = getClass().getClassLoader().getResourceAsStream(file)) {
+            original = new String(Objects.requireNonNull(input).readAllBytes(), StandardCharsets.UTF_8);
+        }
+        assertThatThrownBy(() -> catalogueWith(file, original.strip().substring(1)))
+                .isInstanceOf(tools.jackson.core.JacksonException.class);
+        assertThatThrownBy(() -> catalogueWith(file, original + "{}"))
+                .isInstanceOf(tools.jackson.core.JacksonException.class);
+    }
+
+    private DemoScenarioCatalog catalogueWith(String file, String replacement) {
+        return new DemoScenarioCatalog(path -> path.equals(file)
+                ? new ByteArrayInputStream(replacement.getBytes(StandardCharsets.UTF_8))
+                : getClass().getClassLoader().getResourceAsStream(path));
     }
 
     @Test void contradictoryUnresolvedDemoRootCannotBecomeNumericZero() throws IOException {

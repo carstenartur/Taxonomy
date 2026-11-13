@@ -8,6 +8,9 @@ import com.taxonomy.workspace.service.RepositoryContext;
 import tools.jackson.databind.json.JsonMapper;
 import org.springframework.test.util.ReflectionTestUtils;
 import java.nio.file.Path;
+import java.util.Set;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @Tag("onnx")
@@ -27,8 +30,8 @@ class BranchGraphVectorOnnxTest {
                     "retained-workbook", "a".repeat(64), model.indexKey(), "b".repeat(64), 2);
             BranchGraphVectorIndex.Archive durable;
             try (var index = new BranchGraphVectorIndex.Builder(source.key())) {
-                index.node("secure-comms", communications, first.embedDocument(communications));
-                index.node("food", food, first.embedDocument(food));
+                index.node("{\"code\":\"secure-comms\"}", communications, first.embedDocument(communications));
+                index.node("{\"code\":\"food\"}", food, first.embedDocument(food));
                 String supports = communications + " supports emergency relief";
                 String supplies = food + " supplies storage facilities";
                 index.relation("secure-comms", "relief", "CP", "SUPPORTS", supports, first.embedDocument(supports));
@@ -44,9 +47,18 @@ class BranchGraphVectorOnnxTest {
             assertThat(second.embeddingIdentity()).isEqualTo(model);
             try (var restored = BranchGraphVectorPersistenceTest.open(databaseDirectory, "validate")) {
                 var stored = restored.store.read(context, source);
-                var hits = BranchGraphVectorIndex.search(stored.index(), second.embedQuery(communications), 1, 1);
-                assertThat(hits.nodes()).containsExactly("secure-comms");
-                assertThat(hits.relations()).containsExactly(new BranchGraphVectorIndex.RelationHit("CP", "SUPPORTS"));
+                var authority = mock(BranchGraphVectorAuthority.class);
+                when(authority.capture(context)).thenReturn(new BranchGraphVectorAuthority.Capture(source, null, Set.of(),
+                        JsonMapper.builder().build().writeValueAsString(model)));
+                var graph = new BranchGraphVectors(restored.store, authority, null, null, second, JsonMapper.builder().build());
+                var response = graph.search(context, source.commit(), communications, 1, 1);
+                assertThat(response.getMatchedNodes()).extracting("code").containsExactly("secure-comms");
+                assertThat(response.getRelationCountByRoot()).containsOnlyKeys("CP");
+                assertThat(response.getTopRelationTypes()).containsEntry("SUPPORTS", 1L);
+                assertThat(response.getSource().sourceCommit()).isEqualTo(source.commit());
+                assertThat(response.getSource().sourceKey()).isEqualTo(source.key());
+                assertThat(response.getSource().modelKey()).isEqualTo(second.embeddingIdentity().indexKey());
+                assertThat(response.getSource().generation()).isEqualTo(stored.id());
             }
         } finally {
             ReflectionTestUtils.invokeMethod(first, "closeModel");

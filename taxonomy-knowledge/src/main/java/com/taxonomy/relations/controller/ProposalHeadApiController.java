@@ -40,7 +40,7 @@ public class ProposalHeadApiController {
     @GetMapping("/head")
     public ResponseEntity<Void> readHead() {
         RepositoryContext context = workspaceResolver
-                .resolveCurrentRepositoryContext();
+                .resolveUnambiguousRepositoryForRead();
         String head = readinessService.readCurrentHead(context);
         if (head == null) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)

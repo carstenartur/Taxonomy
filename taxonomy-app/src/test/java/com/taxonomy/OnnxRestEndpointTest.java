@@ -133,6 +133,10 @@ class OnnxRestEndpointTest {
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.matchedNodes").isArray())
-                .andExpect(jsonPath("$.summary").isString());
+                .andExpect(jsonPath("$.summary").isString())
+                .andExpect(jsonPath("$.source.vectorSource").value("GLOBAL_INDEX"))
+                .andExpect(jsonPath("$.source.modelKey").value(embeddingService.embeddingIndexKey()))
+                .andExpect(jsonPath("$.source.sourceCommit").isString())
+                .andExpect(header().exists("ETag"));
     }
 }

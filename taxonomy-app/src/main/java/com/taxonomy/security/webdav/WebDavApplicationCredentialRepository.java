@@ -14,5 +14,7 @@ public interface WebDavApplicationCredentialRepository
             String credentialId,
             String username);
 
-    List<WebDavApplicationCredential> findAllByUsernameOrderByCreatedAtDesc(String username);
+    Optional<WebDavApplicationCredential> findByCredentialIdAndOwnerId(String credentialId, String ownerId);
+
+    List<WebDavApplicationCredential> findAllByOwnerIdOrderByCreatedAtDesc(String ownerId);
 }

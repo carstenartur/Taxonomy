@@ -229,7 +229,11 @@ public class RepositoryMembershipService {
 
     /** Does not provision, select or disclose a foreign private working copy. */
     public boolean canUseWorkspace(SystemRepository repository, com.taxonomy.workspace.model.UserWorkspace workspace, String username) {
-        return workspace != null && !workspace.isShared() && !workspace.isArchived()
+        // A retained workspace record never grants authority after the source has been
+        // archived or the actor's current repository membership was revoked.
+        return isActive(repository) && username != null && !username.isBlank()
+                && canRead(repository, username)
+                && workspace != null && !workspace.isShared() && !workspace.isArchived()
                 && java.util.Objects.equals(workspace.getSourceRepositoryId(), repository.getRepositoryId())
                 && (java.util.Objects.equals(workspace.getUsername(), username)
                 || (workspace.isCollaborative() && canCollaborate(repository, username)));

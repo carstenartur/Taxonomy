@@ -11,6 +11,7 @@ import jakarta.persistence.EntityManager;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -81,7 +82,13 @@ public class ScopedAnalysisAdapterExecution implements DocumentAnalysisExecution
         }
         if (admission == null) return ResponseEntity.ok(local.get());
         var accepted = admission.operation();
-        BooleanSupplier current = () -> commit.equals(head(handle)) && sourceCurrent.getAsBoolean();
+        BooleanSupplier current = () -> {
+            // A synchronous provider call can outlive its initiating login binding.
+            if (!owner.equals(scope(context))) {
+                throw new AccessDeniedException("Analysis workspace ownership changed");
+            }
+            return commit.equals(head(handle)) && sourceCurrent.getAsBoolean();
+        };
         if (!admission.claimed()) return current.getAsBoolean() && retainedSourceCurrent(accepted) ? response(accepted) : stale(accepted);
         if (!verifySource(current, accepted, "SOURCE_UNAVAILABLE"))
             return response(store.settle(owner, accepted.id(), accepted.revision(), null, "STALE_SOURCE"));
@@ -108,9 +115,9 @@ public class ScopedAnalysisAdapterExecution implements DocumentAnalysisExecution
 
     private AnalysisAdapterStore.Scope scope(RepositoryContext context) {
         var auth = SecurityContextHolder.getContext().getAuthentication();
-        var principal = identities.require(auth);
+        var principal = identities.requireCurrent(auth);
         if (!context.username().equals(auth.getName()))
-            throw new org.springframework.security.access.AccessDeniedException("Analysis workspace ownership changed");
+            throw new AccessDeniedException("Analysis workspace ownership changed");
         return new AnalysisAdapterStore.Scope(principal.value().toString(),context.repositoryId(),context.workspaceId(),context.branch());
     }
 
