@@ -4,6 +4,7 @@ import com.taxonomy.dto.AnalysisMode;
 import com.taxonomy.dto.AnalysisModelBinding;
 import com.taxonomy.dto.AnalysisScope;
 import com.taxonomy.portfolio.service.PortfolioJsonCodec;
+import com.taxonomy.security.service.LegacyOwnershipDatabaseContract;
 import com.taxonomy.workspace.storage.JgitStorageSchemaMigrationConfig;
 
 import io.github.carstenartur.jgit.storage.hibernate.schema.CoreSchemaMigrations;
@@ -41,6 +42,11 @@ class TaxonomySchemaPostgresMigrationIT {
             .withDatabaseName("taxonomy")
             .withUsername("taxonomy")
             .withPassword("taxonomy");
+
+    @Test
+    void verifiedLegacyOwnershipOnAnIsolatedSchema() throws Exception {
+        LegacyOwnershipDatabaseContract.verify(isolatedDataSource("legacy_ownership"), "boolean");
+    }
 
     @Test
     void freshInstallationCreatesLegacyAndPortfolioSchema() throws Exception {
@@ -161,13 +167,34 @@ class TaxonomySchemaPostgresMigrationIT {
         assertClusterAnalysisSchema(dataSource);
         assertProviderBindingSchema(dataSource);
         assertAnalysisReasonLengthSchema(dataSource);
+        assertThat(tableExists(dataSource, "scoped_requirement_coverage")).isTrue();
         assertThat(tableExists(dataSource, TaxonomySchemaMigrationConfig.HISTORY_TABLE)).isTrue();
         assertSelectedFetchSchema(dataSource);
         assertPublicationSchema(dataSource);
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "56");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "57.1");
+    }
+
+    @Test
+    void publicationJournalUpgradesAnInstallationWithRequirementCoverageAlreadyApplied() throws Exception {
+        DataSource dataSource = isolatedDataSource("publication_after_coverage");
+        migrateJgit(dataSource);
+        installApplicationAtVersion(dataSource, "57");
+        List<String> before = successfulVersions(dataSource);
+        assertThat(before).endsWith("55", "57");
+        assertThat(tableExists(dataSource, "scoped_requirement_coverage")).isTrue();
+        assertThat(tableExists(dataSource, "workspace_publication_operation")).isFalse();
+
+        var configuration = Flyway.configure().dataSource(dataSource).load().getConfiguration();
+        TaxonomySchemaMigrationConfig.migrateApplicationSchema(configuration);
+        List<String> upgraded = successfulVersions(dataSource);
+        assertThat(upgraded.subList(0, before.size())).isEqualTo(before);
+        assertThat(upgraded.subList(before.size(), upgraded.size())).contains("57.1");
+        assertPublicationSchema(dataSource);
+        TaxonomySchemaMigrationConfig.migrateApplicationSchema(configuration);
+        assertThat(successfulVersions(dataSource)).isEqualTo(upgraded);
     }
 
     @Test
@@ -244,7 +271,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "56");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "57.1");
         assertIntegrationSchema(dataSource);
         assertInventorySchema(dataSource);
         assertReformulationSchema(dataSource);
@@ -253,6 +280,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertClusterAnalysisSchema(dataSource);
         assertProviderBindingSchema(dataSource);
         assertAnalysisReasonLengthSchema(dataSource);
+        assertThat(tableExists(dataSource, "scoped_requirement_coverage")).isTrue();
     }
 
     @Test

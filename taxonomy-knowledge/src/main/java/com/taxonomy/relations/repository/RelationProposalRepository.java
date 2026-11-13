@@ -162,6 +162,8 @@ public interface RelationProposalRepository extends JpaRepository<RelationPropos
             @Param("relationType") RelationType relationType,
             @Param("workspaceId") String workspaceId);
 
+    long countByRepositoryIdAndWorkspaceId(String repositoryId, String workspaceId);
+
     List<RelationProposal> findByRepositoryIdAndWorkspaceId(
             String repositoryId, String workspaceId);
 

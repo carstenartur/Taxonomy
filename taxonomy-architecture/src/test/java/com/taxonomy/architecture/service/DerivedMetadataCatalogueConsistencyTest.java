@@ -139,9 +139,8 @@ class DerivedMetadataCatalogueConsistencyTest {
             nodes = repositories.getRepository(TaxonomyNodeRepository.class);
             var observedNodes = observe(nodes, TaxonomyNodeRepository.class, "findAll", () -> { }, () -> afterNodeRead.run());
             var relations = observe(repositories.getRepository(TaxonomyRelationRepository.class),
-                    TaxonomyRelationRepository.class, "findAll", () -> beforeRelationRead.run(), () -> { });
-            var target = new DerivedMetadataService(observedNodes, relations,
-                    repositories.getRepository(RequirementCoverageRepository.class), journal);
+                    TaxonomyRelationRepository.class, "findCentralReferenceRelations", () -> beforeRelationRead.run(), () -> { });
+            var target = new DerivedMetadataService(observedNodes, relations, journal);
             var proxy = new ProxyFactory(target);
             proxy.addAdvice(new TransactionInterceptor(transactions, new AnnotationTransactionAttributeSource()));
             service = (DerivedMetadataService) proxy.getProxy();

@@ -23,7 +23,7 @@ public class ProjectProductGapReviewController {
     @Operation(summary = "Read confirmed project product gaps and their review history",
             description = "Lists frozen product evidence and classifications from the authorized project and repository branch.")
     public List<ReviewedFamily> list(@PathVariable Long projectId) {
-        return reviews.list(projectId, workspace.resolveCurrentUsername(), workspace.resolveCurrentContext());
+        return reviews.list(projectId, workspace.resolveCurrentUsername(), workspace.resolveUnambiguousContextForRead());
     }
 
     @PostMapping("/{gapKey}/reviews")

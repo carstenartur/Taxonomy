@@ -27,7 +27,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 @Tag("ci-app-shard-browser")
 @AutoConfigureMockMvc
 @WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
-class DerivedMetadataAndSummaryTests {
+class DerivedMetadataAndSummaryTests extends GraphSnapshotFixtureSupport {
     @org.springframework.beans.factory.annotation.Autowired
     com.taxonomy.workspace.service.WorkspaceResolver workspaceResolver;
 
@@ -79,7 +79,7 @@ class DerivedMetadataAndSummaryTests {
 
     @Test
     void buildSummaryReturnsValidResult() {
-        ArchitectureSummary summary = summaryService.buildSummary(workspaceResolver.resolveCurrentRepositoryContext());
+        ArchitectureSummary summary = summaryService.buildSummary(graphContext);
 
         assertThat(summary).isNotNull();
         assertThat(summary.generatedAt()).isNotNull();
@@ -89,7 +89,7 @@ class DerivedMetadataAndSummaryTests {
 
     @Test
     void summaryNextStepsContainGuidance() {
-        ArchitectureSummary summary = summaryService.buildSummary(workspaceResolver.resolveCurrentRepositoryContext());
+        ArchitectureSummary summary = summaryService.buildSummary(graphContext);
 
         assertThat(summary.nextSteps())
                 .anyMatch(step -> step.action() != null && !step.action().isBlank());
@@ -101,7 +101,7 @@ class DerivedMetadataAndSummaryTests {
 
     @Test
     void summaryEndpointReturnsJson() throws Exception {
-        mockMvc.perform(get("/api/architecture/summary"))
+        mockMvc.perform(graphRequest(get("/api/architecture/summary")))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith("application/json"))
                 .andExpect(jsonPath("$.totalNodes").isNumber())
@@ -126,7 +126,7 @@ class DerivedMetadataAndSummaryTests {
         // Find any existing node code
         TaxonomyNode anyNode = nodeRepository.findAll().get(0);
 
-        mockMvc.perform(get("/api/architecture/metadata/" + anyNode.getCode()))
+        mockMvc.perform(graphRequest(get("/api/architecture/metadata/" + anyNode.getCode())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.nodeCode").value(anyNode.getCode()))
                 .andExpect(jsonPath("$.graphRole").exists());

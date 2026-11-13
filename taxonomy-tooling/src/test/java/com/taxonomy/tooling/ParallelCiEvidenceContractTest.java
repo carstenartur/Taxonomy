@@ -12,6 +12,25 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ParallelCiEvidenceContractTest {
 
     @Test
+    void manualLocalReactorHasItsOwnRunAndRetainsEvidenceWhenMavenFails() throws Exception {
+        String workflow = Files.readString(findRepositoryRoot().resolve(".github/workflows/ci-cd.yml"));
+        String requested = "github.event_name == 'workflow_dispatch' && inputs.verify_test_local";
+        assertThat(workflow).contains("verify_test_local:", "type: boolean\n        default: false",
+                "github.run_id || github.ref", "if: " + requested,
+                "if: github.event_name != 'workflow_dispatch' || !inputs.verify_test_local",
+                "if: always() && (github.event_name != 'workflow_dispatch' || !inputs.verify_test_local)");
+        int start = workflow.indexOf("\n  unfiltered-test-local:");
+        assertThat(start).isGreaterThan(0);
+        String job = workflow.substring(start);
+        assertThat(job).contains("timeout-minutes: 360", "set -o pipefail",
+                "./mvnw -B verify -Ptest-local 2>&1 | tee", "-Dmaven.build.cache.enabled=false",
+                "check-junit-reports", "ProductDemoEndToEndTest-product-demo-isolated.xml", "ProductDemoProcessRecoveryTest.xml",
+                "BrowserSessionIT.xml", "if: always()", "**/target/surefire-reports/TEST-*.xml",
+                "**/target/failsafe-reports/TEST-*.xml", "maven.log", "source.txt")
+                .doesNotContain("-DskipTests", "-DskipITs", "-Dtest=", "-Dit.test=", "continue-on-error:");
+    }
+
+    @Test
     void ciKeepsOneRequiredGateWhileParallelizingIndependentEvidence()
             throws Exception {
         Path root = findRepositoryRoot();

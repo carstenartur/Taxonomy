@@ -106,7 +106,7 @@ public class ProjectAnalysisController {
     public ResponseEntity<AnalysisModelBinding> admittedModel(
             @Parameter(description = "Project containing the analysis job") @PathVariable Long projectId,
             @Parameter(description = "Identifier returned when the analysis was queued") @PathVariable String jobId) {
-        RequestScope scope = scope();
+        RequestScope scope = readScope();
         var model = persistenceService.admittedModel(jobId, projectId, scope.username(), scope.context());
         return model == null ? ResponseEntity.noContent().build() : ResponseEntity.ok(model);
     }
@@ -115,7 +115,7 @@ public class ProjectAnalysisController {
     @Operation(summary = "List project analysis jobs",
             description = "Lists retained analysis jobs and their item states for the authorized project and workspace. Reading the queue does not enqueue or retry work.")
     public List<AnalysisJobView> listJobs(@PathVariable Long projectId) {
-        RequestScope scope = scope();
+        RequestScope scope = readScope();
         return analysisService.listJobs(projectId, scope.username(), scope.context());
     }
 
@@ -124,7 +124,7 @@ public class ProjectAnalysisController {
             description = "Reads one authorized project's analysis job with its queued, running and terminal item states. A successful HTTP read is not a statement that the job itself succeeded.")
     public AnalysisJobView getJob(@PathVariable Long projectId,
                                   @PathVariable String jobId) {
-        RequestScope scope = scope();
+        RequestScope scope = readScope();
         return analysisService.getJob(jobId, projectId, scope.username(), scope.context());
     }
 
@@ -144,7 +144,7 @@ public class ProjectAnalysisController {
             description = "Reads exact-tenant snapshot and continuation revisions without making provider calls. An execution-budget stop in an unchanged, owned local workspace can continue independent remaining work while retaining accepted clarification questions. Failed or unassessed evidence, cancellation and unsupported cluster execution remain ineligible.")
     public AnalysisContinuationView getContinuation(@PathVariable Long projectId,
             @PathVariable String jobId, @PathVariable Long itemId) {
-        RequestScope scope = scope();
+        RequestScope scope = readScope();
         return analysisService.getContinuation(jobId, projectId, itemId, scope.username(), scope.context());
     }
 
@@ -164,7 +164,7 @@ public class ProjectAnalysisController {
             description = "Lists immutable analysis snapshots for the authorized project requirement. Snapshots retain the requirement version and source context of their original run.")
     public List<SnapshotSummary> listSnapshots(@PathVariable Long projectId,
                                                @PathVariable Long requirementId) {
-        RequestScope scope = scope();
+        RequestScope scope = readScope();
         return analysisService.listSnapshots(
                 projectId, requirementId, scope.username(), scope.context());
     }
@@ -174,7 +174,7 @@ public class ProjectAnalysisController {
             description = "Reads one saved analysis snapshot after checking project, requirement and workspace access. Returns recorded evidence rather than recalculating against the current requirement or architecture.")
     public SnapshotDetail getSnapshot(@PathVariable Long projectId,
                                       @PathVariable String snapshotId) {
-        RequestScope scope = scope();
+        RequestScope scope = readScope();
         return analysisService.getSnapshot(projectId, snapshotId, scope.username(), scope.context());
     }
 
@@ -184,7 +184,7 @@ public class ProjectAnalysisController {
     public SnapshotDiff diffSnapshots(@PathVariable Long projectId,
                                       @RequestParam String older,
                                       @RequestParam String newer) {
-        RequestScope scope = scope();
+        RequestScope scope = readScope();
         return analysisService.diffSnapshots(
                 projectId, older, newer, scope.username(), scope.context());
     }
@@ -217,6 +217,10 @@ public class ProjectAnalysisController {
         URI location = PortfolioResourceLocation.forPath(
                 "/api/projects/" + projectId + "/analysis-jobs/" + job.id());
         return ResponseEntity.accepted().location(location).body(job);
+    }
+
+    private RequestScope readScope() {
+        return new RequestScope(workspaceResolver.resolveCurrentUsername(), workspaceResolver.resolveUnambiguousContextForRead());
     }
 
     private RequestScope scope() {

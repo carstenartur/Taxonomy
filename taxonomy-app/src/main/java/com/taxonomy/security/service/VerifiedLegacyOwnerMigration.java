@@ -91,6 +91,36 @@ public final class VerifiedLegacyOwnerMigration {
         });
     }
 
+    public record ReservationStatus(LegacyOwnerMigrationReadiness.Inventory inventory, Preview reservations) { }
+
+    /** Return the readiness counts and a bounded page of disabled reservations to the same operator. */
+    public ReservationStatus reservationStatus(Authentication administrator, int limit) {
+        if (limit < 1 || limit > MAX_PREVIEW) throw new IllegalArgumentException("Invalid preview limit");
+        return transaction.execute(status -> {
+            lockRegistry();
+            requireAdministrator(administrator);
+            return new ReservationStatus(LegacyOwnerMigrationReadiness.inspect(jdbc), snapshot(limit));
+        });
+    }
+
+    /** Reserve observed scopes as disabled principals. This does not link an identity or grant access. */
+    public int reserveMissing(Authentication administrator) {
+        return transaction.execute(status -> {
+            lockRegistry();
+            var actor = requireAdministrator(administrator);
+            var missing = LegacyOwnerMigrationReadiness.missingScopes(jdbc, MAX_APPLY);
+            for (String scope : missing) {
+                var principal = PrincipalId.create();
+                jdbc.update("insert into app_principal (principal_id, scope_key, enabled) values (?, ?, 0)",
+                        principal.value().toString(), scope);
+                jdbc.update("insert into principal_access_audit values (?, ?, ?, ?, ?, ?)",
+                        UUID.randomUUID().toString(), actor.value().toString(), principal.value().toString(),
+                        "RESERVE_LEGACY_OWNER", "Unbound historical ownership", Instant.now().toEpochMilli());
+            }
+            return missing.size();
+        });
+    }
+
     /**
      * Apply a COMPLETE verified plan against the preview revision. Any missing/extra owner,
      * stale preview, reused subject, ambiguous scope or failed audit rolls back every link.
@@ -232,10 +262,19 @@ public final class VerifiedLegacyOwnerMigration {
                     where u.principal_id=? and u.enabled=? and r.name='ROLE_ADMIN'
                     """, Integer.class, actor.value().toString(), true);
             if (current != 1) throw new AccessDeniedException("Current administrator authority required");
-        } else if (!(authentication instanceof PrincipalJwtAuthenticationToken)
-                && !(authentication instanceof OAuth2AuthenticationToken
-                     && authentication.getPrincipal() instanceof PrincipalOidcUser)) {
-            throw new AccessDeniedException("Verified administrator login required");
+        } else {
+            Instant expiresAt;
+            if (authentication instanceof PrincipalJwtAuthenticationToken jwt) {
+                expiresAt = jwt.getToken().getExpiresAt();
+            } else if (authentication instanceof OAuth2AuthenticationToken
+                    && authentication.getPrincipal() instanceof PrincipalOidcUser oidc) {
+                expiresAt = oidc.getIdToken().getExpiresAt();
+            } else {
+                throw new AccessDeniedException("Verified administrator login required");
+            }
+            if (expiresAt == null || !expiresAt.isAfter(Instant.now())) {
+                throw new AccessDeniedException("A fresh administrator login is required");
+            }
         }
         return actor;
     }

@@ -17,6 +17,10 @@ public interface TaxonomyRelationRepository extends JpaRepository<TaxonomyRelati
             + "SELECT repository.repositoryId FROM SystemRepository repository "
             + "WHERE repository.primaryRepo = true)";
 
+    /** Only the primary central catalogue may supply its legacy reference-graph metadata. */
+    @Query("select r from TaxonomyRelation r where" + PRIMARY_SCOPE + " and r.workspaceId is null")
+    List<TaxonomyRelation> findCentralReferenceRelations();
+
     // ── Explicit repository/workspace tenant scope ─────────────────
 
     @Query("""

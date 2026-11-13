@@ -46,6 +46,7 @@ class HypothesisServiceTest {
     @Autowired private com.taxonomy.relations.service.HypothesisReviewStateStore reviewStates;
     @Autowired private com.taxonomy.relations.service.AnalysisHypothesisLinkPort links;
     @Autowired private com.taxonomy.architecture.service.ArchitectureSummaryService summaries;
+    @Autowired private com.taxonomy.relations.service.RelationBranchProjectionRebuildService projections;
 
     private RepositoryContext centralWrite;
     private RepositoryContext alpha;
@@ -143,13 +144,15 @@ class HypothesisServiceTest {
     void visibleCountAndStatusKeepOnlySameBranchCentralBaseline() throws Exception {
         var sameCentral=RepositoryContext.centralWrite(alpha.repositoryId(),alpha.branch(),"system");
         var other=RepositoryContext.workspace(alpha.repositoryId(),alpha.workspaceId(),"summary-other",alpha.username());
+        gitRepositories.resolveRepository(alpha).commitDsl(alpha.branch(), "# coverage summary", alpha.username(), "Summary fixture");
+        projections.rebuild(alpha);
         long before=hypothesisRepository.countVisibleInRepositoryWorkspaceAndBranch(alpha.repositoryId(),alpha.workspaceId(),alpha.branch());
         var baseline=createTestHypothesis("count-baseline",sameCentral);
         var own=createTestHypothesis("count-own",alpha);
         var foreign=createTestHypothesis("count-foreign",other);
         assertThat(summaries.buildSummary(alpha).totalHypotheses()).isEqualTo((int)before+2);
         var resolver=org.mockito.Mockito.mock(com.taxonomy.workspace.service.WorkspaceResolver.class);
-        org.mockito.Mockito.when(resolver.resolveCurrentRepositoryContext()).thenReturn(alpha);
+        org.mockito.Mockito.when(resolver.resolveUnambiguousRepositoryForRead()).thenReturn(alpha);
         var controller=new com.taxonomy.composition.architecture.ArchitectureSummaryApiController(summaries,
                 org.mockito.Mockito.mock(com.taxonomy.architecture.service.DerivedMetadataService.class),
                 org.mockito.Mockito.mock(com.taxonomy.catalog.service.TaxonomyService.class),resolver);

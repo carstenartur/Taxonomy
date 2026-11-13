@@ -55,6 +55,9 @@ public class TaxonomyObservationConfiguration {
             implements BeanPostProcessor, Ordered {
 
         private static final Map<String, TargetDescriptor> TARGETS = Map.ofEntries(
+                Map.entry("com.taxonomy.workspace.service.WorkspaceResolver",
+                        new TargetDescriptor("taxonomy.workspace.resolve", "workspace",
+                                Set.of("resolveUnambiguousRepositoryForRead"))),
                 Map.entry("com.taxonomy.workspace.service.WorkspaceContextResolver",
                         new TargetDescriptor("taxonomy.workspace.resolve", "workspace",
                                 Set.of("resolveCurrentContext", "resolveForUser",

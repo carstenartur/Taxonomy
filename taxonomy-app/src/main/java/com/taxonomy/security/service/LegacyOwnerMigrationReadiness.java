@@ -6,6 +6,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -29,6 +30,9 @@ public final class LegacyOwnerMigrationReadiness {
             new Source("sync_state", "username"),
             new Source("context_history_record", "username"),
             new Source("analysis_working_draft", "username"),
+            new Source("analysis_continuation", "username"),
+            new Source("analysis_cluster_run", "username"),
+            new Source("workspace_branch_sync", "username"),
             new Source("webdav_application_credential", "username"),
             new Source("relation_proposal", "owner_username"),
             new Source("relation_hypothesis", "owner_username"),
@@ -65,7 +69,7 @@ public final class LegacyOwnerMigrationReadiness {
         }
     }
 
-    private static Inventory read(Connection connection) throws SQLException {
+    private static Set<String> observedScopes(Connection connection) throws SQLException {
         if (!hasTable(connection, "app_principal") || !hasTable(connection, "principal_binding")
                 || !hasTable(connection, "principal_access_audit")) {
             throw new IllegalStateException("Stable identity schema must be initialized before mode selection");
@@ -80,30 +84,70 @@ public final class LegacyOwnerMigrationReadiness {
                     && hasColumn(connection, "system_repository", "owner_type")) {
                 condition = " and (owner_type is null or owner_type='USER')";
             }
-            // Both identifiers and the optional predicate are fixed, code-owned schema names.
-            String sql = "select distinct " + source.column() + " from " + source.table()
+            // Preserve exact spellings even on databases with a case-insensitive collation.
+            // Both identifiers and the optional predicate are fixed schema names.
+            String sql = "select " + source.column() + " from " + source.table()
                     + " where " + source.column() + " is not null" + condition;
-            try (var statement = connection.createStatement(); var rows = statement.executeQuery(sql)) {
-                while (rows.next()) {
-                    String scope = rows.getString(1);
-                    if (scope != null && scope.isBlank()) {
-                        // A malformed owner is not proof of an absent historical identity.
-                        // Never silently discard it at the STABLE authority boundary.
-                        throw new IllegalStateException("Historical owner scope is blank; operator repair required");
-                    }
-                    if (scope != null) {
-                        scopes.add(scope);
-                        if (scopes.size() > MAX_SCOPES) {
-                            throw new IllegalStateException("Historical owner inventory exceeds the safe startup bound");
+            try (var statement = connection.createStatement()) {
+                statement.setFetchSize(512);
+                try (var rows = statement.executeQuery(sql)) {
+                    while (rows.next()) {
+                        String scope = rows.getString(1);
+                        if (scope != null && scope.isBlank()) {
+                            // A malformed owner is not proof of an absent historical identity.
+                            // Never silently discard it at the STABLE authority boundary.
+                            throw new IllegalStateException("Historical owner scope is blank; operator repair required");
+                        }
+                        if (scope != null) {
+                            scopes.add(scope);
+                            if (scopes.size() > MAX_SCOPES) {
+                                throw new IllegalStateException("Historical owner inventory exceeds the safe startup bound");
+                            }
                         }
                     }
                 }
             }
         }
+        return scopes;
+    }
+
+    /** The caller holds the installation registry lock throughout discovery and reservation. */
+    static List<String> missingScopes(JdbcTemplate jdbc, int limit) {
+        return jdbc.execute((ConnectionCallback<List<String>>) connection -> {
+            var missing = new ArrayList<String>();
+            var observed = observedScopes(connection);
+            try (var query = connection.prepareStatement("select scope_key from app_principal where scope_key=?")) {
+                for (String scope : observed) {
+                    query.setString(1, scope);
+                    try (var rows = query.executeQuery()) {
+                        if (rows.next()) {
+                            requireExactScope(scope, rows.getString(1));
+                        } else {
+                            if (missing.size() == limit) {
+                                throw new IllegalStateException("Reservation limit exceeded; review the historical inventory");
+                            }
+                            missing.add(scope);
+                        }
+                    }
+                }
+            }
+            missing.sort(String::compareTo);
+            return List.copyOf(missing);
+        });
+    }
+
+    private static void requireExactScope(String observed, String retained) {
+        if (!observed.equals(retained)) {
+            throw new IllegalStateException("Ambiguous historical ownership scope; operator repair required");
+        }
+    }
+
+    private static Inventory read(Connection connection) throws SQLException {
+        var scopes = observedScopes(connection);
         int missing = 0;
         int unverified = 0;
         try (var owners = connection.prepareStatement("""
-                select p.principal_id, p.enabled, b.binding_kind, b.enabled
+                select p.principal_id, p.enabled, b.binding_kind, b.enabled, p.scope_key
                 from app_principal p left join principal_binding b on b.principal_id=p.principal_id
                 where p.scope_key=?
                 """);
@@ -118,6 +162,7 @@ public final class LegacyOwnerMigrationReadiness {
                 Set<HistoricalBinding> historicalBindings = new HashSet<>();
                 try (var rows = owners.executeQuery()) {
                     while (rows.next()) {
+                        requireExactScope(scope, rows.getString(5));
                         found = true;
                         boolean principalEnabled = rows.getInt(2) == 1;
                         boolean bindingEnabled = rows.getInt(4) == 1;

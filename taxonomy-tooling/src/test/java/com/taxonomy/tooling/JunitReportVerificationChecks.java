@@ -13,6 +13,14 @@ final class JunitReportVerificationChecks {
         report(root, "Good", "tests=\"2\" failures=\"0\" errors=\"0\" skipped=\"0\"", "<testcase name=\"a\"/><testcase name=\"b\"/>");
         int result = run(root, "TEST-Good.xml", "2");
         check(result == 0, "Valid executed JUnit suite was rejected; exit=" + result);
+        // Surefire reportNameSuffix decorates the XML suite and its filename differently.
+        report(root, "Good(isolated)", "tests=\"1\" failures=\"0\" errors=\"0\" skipped=\"0\"", "<testcase name=\"a\"/>");
+        Path original = root.resolve("TEST-Good(isolated).xml");
+        Path suffixed = root.resolve("TEST-Good-isolated.xml");
+        Files.move(original, suffixed);
+        check(run(root, suffixed.getFileName().toString(), "1") == 0, "Surefire-suffixed suite rejected");
+        Files.move(suffixed, root.resolve("TEST-Good-other.xml"));
+        check(run(root, "TEST-Good-other.xml", "1") != 0, "A different Surefire suffix was accepted");
     }
 
     static void rejectsMissingOrEmptyEvidence(Path root) throws Exception {

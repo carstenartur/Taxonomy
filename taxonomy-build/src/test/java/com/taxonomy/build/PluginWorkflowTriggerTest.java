@@ -231,7 +231,11 @@ class PluginWorkflowTriggerTest {
         Map<?, ?> verification = map(jobs.get("verify"));
         assertThat(((List<?>) verification.get("needs")).contains("plugin-profile")).isTrue();
         assertThat(((List<?>) verification.get("needs")).contains("change-scope")).isTrue();
-        assertThat(verification.get("if")).isEqualTo("always()");
+        String regularVerification = "github.event_name != 'workflow_dispatch' || !inputs.verify_test_local";
+        assertThat(map(jobs.get("change-scope")).get("if")).isEqualTo(regularVerification);
+        assertThat(verification.get("if")).isEqualTo("always() && (" + regularVerification + ")");
+        assertThat(map(jobs.get("unfiltered-test-local")).get("if"))
+                .isEqualTo("github.event_name == 'workflow_dispatch' && inputs.verify_test_local");
         assertThat(authoritativeLaneGate().get("if")).isEqualTo("needs.change-scope.outputs.scope == 'full'");
         assertThat(map(authoritativeLaneGate().get("env")).get("PLUGIN_PROFILE_RESULT"))
                 .isEqualTo("${{ needs.plugin-profile.result }}");
