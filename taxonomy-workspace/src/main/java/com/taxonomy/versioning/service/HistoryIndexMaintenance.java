@@ -89,7 +89,9 @@ public class HistoryIndexMaintenance {
 
     private Receipt resume(HistoryIndexJournal.Operation row, RepositoryContext context, String actor, boolean explicit) {
         var token = journal.claim(row.receipt().operationId(), actor, explicit);
-        return token == null ? journal.get(context, actor, row.receipt().operationId()).receipt() : run(token, false);
+        return token == null
+                ? journal.inspect(context, actor, row.receipt().operationId(), this::verifyTarget)
+                : run(token, false);
     }
 
     @Scheduled(fixedDelayString = "${taxonomy.history-index.recovery-delay-ms:60000}")

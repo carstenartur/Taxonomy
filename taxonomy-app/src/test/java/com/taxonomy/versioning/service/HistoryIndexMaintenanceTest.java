@@ -60,6 +60,18 @@ class HistoryIndexMaintenanceTest {
     }
 
     @Test
+    void aSettledIdempotentCommandCannotDiscloseItsReceiptAfterRepositoryAccessIsRevoked() throws Exception {
+        try (var f = new Fixture()) {
+            f.git.commitDsl("draft", "model", "owner", "first");
+            var done = f.service.submit(REBUILD, "draft", "settled", null);
+            when(f.members.canContribute(f.catalogueRow, "owner")).thenReturn(false);
+            assertThatThrownBy(() -> f.service.retry(done.operationId())).isInstanceOf(AccessDeniedException.class);
+            assertThatThrownBy(() -> f.service.submit(REBUILD, "draft", "settled", null)).isInstanceOf(AccessDeniedException.class);
+            verify(f.indexRows).save(any());
+        }
+    }
+
+    @Test
     void backgroundRecoveryRechecksTheInitiatingGrantAndSeparatesTheWorker() throws Exception {
         try (var f = new Fixture()) {
             String head = f.git.commitDsl("draft","initial","owner","first");
