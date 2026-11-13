@@ -45,28 +45,32 @@ public class CommitHistoryQueryController {
         this.json = json;
     }
 
-    @Operation(summary = "Search indexed history in the selected repository/workspace")
+    @Operation(summary = "Search indexed history in the selected repository/workspace",
+            description = "Returns full-text matches across indexed branches of the selected Git store, up to maxResults. The ETag identifies the observed result set.")
     @GetMapping("/search")
     public ResponseEntity<?> search(@RequestParam String query, @RequestParam(defaultValue = "50") int maxResults) {
         var selected = workspaces.resolveUnambiguousRepositoryForRead();
         return observed(selected, "search", List.of(query, maxResults), null, index.search(query, maxResults, selected));
     }
 
-    @Operation(summary = "Find indexed commits affecting an element")
+    @Operation(summary = "Find indexed commits affecting an element",
+            description = "Returns indexed commits that mention the given element ID across branches of the selected repository and workspace. Each row identifies its original commit.")
     @GetMapping("/element/{elementId}")
     public ResponseEntity<?> element(@PathVariable String elementId) {
         var selected = workspaces.resolveUnambiguousRepositoryForRead();
         return observed(selected, "element", elementId, null, index.findByElement(elementId, selected));
     }
 
-    @Operation(summary = "Find indexed commits affecting a relation")
+    @Operation(summary = "Find indexed commits affecting a relation",
+            description = "Returns indexed commits that mention the supplied relation key across branches of the selected Git store. An empty list means the index found no match.")
     @GetMapping("/relation")
     public ResponseEntity<?> relation(@RequestParam String key) {
         var selected = workspaces.resolveUnambiguousRepositoryForRead();
         return observed(selected, "relation", key, null, index.findByRelation(key, selected));
     }
 
-    @Operation(summary = "Aggregate the indexed history of an element in the selected repository/workspace")
+    @Operation(summary = "Aggregate the indexed history of an element in the selected repository/workspace",
+            description = "Summarizes indexed changes for the element across the selected Git store. If the element has no history, the response includes the element ID and an explanatory message.")
     @GetMapping("/element/{elementId}/aggregation")
     public ResponseEntity<?> aggregate(@PathVariable String elementId) {
         var selected = workspaces.resolveUnambiguousRepositoryForRead();
