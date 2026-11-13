@@ -52,6 +52,8 @@ In read-only mode, the badge changes to indicate that the workspace is not edita
 
 Navigate to **Versions → Verlauf** (History) to see the timeline of Git checkpoints. Individual accepted edits are listed separately in the [architecture editor history](ARCHITECTURE_EDITOR.md).
 
+The commit search covers the indexed branches of the selected repository or working copy. In versioned search, the current-lineage badge means that Git proved the match is the selected head or one of its ancestors. A commit can appear under several indexed branch names. The API returns the observed head in `X-Taxonomy-Commit`. An optional `commitId` pins the search to that head. A stale pin or an unresolvable match returns HTTP 409 so the caller can refresh the selection or rebuild the selected history index.
+
 ![Version History Timeline](../images/66-versions-timeline.png)
 
 Each timeline entry shows:
