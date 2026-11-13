@@ -6,6 +6,7 @@ import com.taxonomy.workspace.model.RepositoryTopologyMode;
 import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.repository.SystemRepositoryRepository;
+import jakarta.persistence.EntityManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -36,11 +37,11 @@ public class SystemRepositoryService implements RepositoryMutationFence {
 
     private final SystemRepositoryRepository repository;
 
-    @jakarta.persistence.PersistenceContext
-    private jakarta.persistence.EntityManager entities;
+    private final EntityManager entities;
 
-    public SystemRepositoryService(SystemRepositoryRepository repository) {
+    public SystemRepositoryService(SystemRepositoryRepository repository, EntityManager entities) {
         this.repository = repository;
+        this.entities = entities;
     }
 
     /** Keep the existing owner locked until the caller commits; do not change its metadata version. */
