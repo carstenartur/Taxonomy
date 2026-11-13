@@ -32,10 +32,23 @@ class BranchGraphVectorSearchTest {
         when(store.read(context, source)).thenReturn(generation());
         var ready = new BranchGraphVectorStore.Status(BranchGraphVectorStore.State.READY,"gen",HEAD,source.modelKey(),1,1);
         when(store.status(context, source)).thenReturn(ready);
+        var readiness = graph.readiness(context, () -> { throw new AssertionError("Global index consulted for a branch"); });
+        assertThat(readiness.ready()).isTrue();
+        assertThat(readiness.sourceCommit()).isEqualTo(HEAD);
         var response = graph.graphSearch("medic",1, context);
         assertThat(response.getMatchedNodes()).extracting("code").containsExactly("CP-test");
         assertThat(response.getRelationCountByRoot()).containsEntry("CP",1L);
         assertThat(response.getTopRelationTypes()).containsEntry("SUPPORTS",1L);
+        var provenance = response.getSource();
+        assertThat(provenance.repositoryId()).isEqualTo("alpha");
+        assertThat(provenance.workspaceId()).isNull();
+        assertThat(provenance.branch()).isEqualTo("draft");
+        assertThat(provenance.sourceCommit()).isEqualTo(HEAD);
+        assertThat(provenance.vectorSource()).isEqualTo(com.taxonomy.dto.GraphSearchResult.VectorSource.BRANCH_GENERATION);
+        assertThat(provenance.relationReadModel()).isEqualTo("PROJECTION");
+        assertThat(provenance.modelKey()).isEqualTo(source.modelKey());
+        assertThat(provenance.generation()).isEqualTo("gen");
+        assertThat(provenance.sourceKey()).isEqualTo(source.key());
         verify(sourceGate, never()).inspect(any());
     }
 

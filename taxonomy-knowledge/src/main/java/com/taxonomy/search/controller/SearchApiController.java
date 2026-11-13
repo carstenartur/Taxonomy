@@ -2,6 +2,9 @@ package com.taxonomy.search.controller;
 
 import com.taxonomy.dto.GraphSearchResult;
 import com.taxonomy.dto.TaxonomyNodeDto;
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.relations.service.GraphSearchService;
+import com.taxonomy.relations.controller.GitHttpPrecondition;
 import com.taxonomy.search.service.SearchFacade;
 import com.taxonomy.error.SearchUnavailableException;
 import com.taxonomy.workspace.service.RepositoryContext;
@@ -13,7 +16,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.MessageSource;
 import org.springframework.context.i18n.LocaleContextHolder;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import tools.jackson.databind.ObjectMapper;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -37,12 +43,15 @@ public class SearchApiController {
     private final MessageSource messageSource;
     private final WorkspaceResolver workspaceResolver;
 
+    private final ObjectMapper json;
+
     public SearchApiController(SearchFacade searchFacade,
                                MessageSource messageSource,
-                               WorkspaceResolver workspaceResolver) {
+                               WorkspaceResolver workspaceResolver, ObjectMapper json) {
         this.searchFacade = searchFacade;
         this.messageSource = messageSource;
         this.workspaceResolver = workspaceResolver;
+        this.json = json;
     }
 
     @Operation(summary = "Full-text search", description = "Search taxonomy nodes using full-text Lucene search", tags = {"Search"})
@@ -98,15 +107,37 @@ public class SearchApiController {
         return ResponseEntity.ok(searchFacade.getEmbeddingStatus());
     }
 
-    @Operation(summary = "Graph-semantic search", description = "Checks the canonical selected branch source without provisioning workspaces. An unready selected workspace returns 409. Unsupported or unavailable search authority returns 503. graphReady reports global prerequisites only.", tags = {"Search"})
+    @Operation(summary = "Selected graph search readiness", description = "Checks the index used by the selected repository and branch.")
+    @GetMapping("/search/graph/readiness")
+    public ResponseEntity<GraphSearchService.Readiness> graphReadiness() {
+        var status = searchFacade.graphReadiness(currentRepositoryContext());
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(status);
+    }
+
+    @Operation(summary = "Graph-semantic search", description = "Returns the selected repository, branch, commit, and vector provenance. An ambiguous selection or stale commit pin returns 409. Unavailable search authority returns 503. graphReady reports global prerequisites only.", tags = {"Search"})
     @GetMapping("/search/graph")
     public ResponseEntity<GraphSearchResult> graphSearch(
             @Parameter(description = "Natural-language query") @RequestParam String q,
-            @Parameter(description = "Maximum number of node results") @RequestParam(defaultValue = "20") int maxResults) {
+            @Parameter(description = "Maximum number of node results") @RequestParam(defaultValue = "20") int maxResults,
+            @Parameter(description = "Expected current branch commit") @RequestParam(required = false) String commitId) {
         ResponseEntity<GraphSearchResult> guard = checkInitialized();
         if (guard != null) return guard;
         if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();
-        return ResponseEntity.ok(searchFacade.graphSearch(q, maxResults, currentRepositoryContext()));
+        String expected;
+        try {
+            expected = commitId == null ? null : GitHttpPrecondition.commitId(commitId);
+        } catch (IllegalArgumentException invalid) {
+            return ResponseEntity.badRequest().cacheControl(CacheControl.noStore()).build();
+        }
+        GraphSearchResult result = searchFacade.graphSearch(q, maxResults, currentRepositoryContext());
+        String actual = result.getSource().sourceCommit();
+        if (expected != null && !expected.equals(actual)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).cacheControl(CacheControl.noStore())
+                    .header("X-Taxonomy-Source-State", "STALE").header("X-Taxonomy-Commit", actual).build();
+        }
+        String tag = StableIdentityHash.sha256(json.writeValueAsString(result));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).eTag("W/\"" + tag + "\"")
+                .header("X-Taxonomy-Source-State", "READY").header("X-Taxonomy-Commit", actual).body(result);
     }
 
     @SuppressWarnings("unchecked")
@@ -134,7 +165,7 @@ public class SearchApiController {
 
     private RepositoryContext currentRepositoryContext() {
         try {
-            RepositoryContext context = workspaceResolver.resolveCurrentRepositoryContextForRead();
+            RepositoryContext context = workspaceResolver.resolveUnambiguousRepositoryForRead();
             if (context == null) throw new SearchUnavailableException();
             return context;
         } catch (AccessDeniedException | ResponseStatusException error) {

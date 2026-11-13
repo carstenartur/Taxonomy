@@ -12,6 +12,8 @@ function harness() {
         value, disabled: false, get selected() { return select.value === value; }
     }));
     const badge = { classList: { add() {}, remove() {} }, textContent: '', title: '' };
+    let graphResponse;
+    const requests = [];
     let response = { ok: true, json: async () => ({ available: false, graphReady: false }) };
     const window = {};
     const scope = {
@@ -22,7 +24,9 @@ function harness() {
         },
         TaxonomyI18n: { t: key => key },
         TaxonomyUtils: { escapeHtml: value => value },
-        fetch: async () => {
+        fetch: async url => {
+            requests.push(String(url));
+            if (String(url).includes('/api/search/graph/readiness')) return graphResponse;
             if (response instanceof Error) throw response;
             return response;
         }
@@ -30,9 +34,14 @@ function harness() {
     canonical.install(scope, ['api/search-api.js']);
     runInNewContext(source, scope);
     return {
-        select, badge,
+        select, badge, requests,
+        selectRepository() {
+            window.TaxonomyArchitectureWorkspace = {ready: async () => true};
+            window.TaxonomyArchitectureWorkflow = {getScope: () => ({repositoryId:'repo',workspaceId:'',branch:'draft'})};
+        },
         disabled(mode) { return select.options.find(option => option.value === mode).disabled; },
-        async status(data, ok = true) {
+        async status(data, ok = true, selected) {
+            graphResponse = {ok:true, json: async () => selected || {ready: data.graphReady === true}};
             response = data instanceof Error ? data : { ok, json: async () => data };
             window.TaxonomySearch.checkEmbeddingStatus();
             await new Promise(resolve => setImmediate(resolve));
@@ -78,3 +87,16 @@ for (const failure of ['network', 'http']) {
         assert.equal(ui.badge.textContent, 'search.embeddings.unavailable');
     });
 }
+
+test('only selected readiness enables branch graph search when the global index is incomplete', async () => {
+    const ui = harness();
+    ui.selectRepository();
+    await ui.status({available:false,modelAvailable:true,graphReady:false}, true, {ready:true, vectorSource:'BRANCH_GENERATION'});
+    assert.equal(ui.disabled('graph'), false);
+    assert.equal(ui.disabled('semantic'), true);
+    const url = new URL(ui.requests.find(url => url.includes('/graph/readiness')), 'https://example.test');
+    assert.deepEqual(Object.fromEntries(url.searchParams), {repositoryId:'repo',workspaceId:'',branch:'draft'});
+    await ui.status({available:true,graphReady:true}, true, {ready:false});
+    assert.equal(ui.disabled('graph'), true);
+    assert.equal(ui.disabled('semantic'), false);
+});
