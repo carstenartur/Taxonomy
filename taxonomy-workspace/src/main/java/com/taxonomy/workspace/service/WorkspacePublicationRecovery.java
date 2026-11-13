@@ -24,6 +24,11 @@ public class WorkspacePublicationRecovery {
         void execute(WorkspacePublicationOperation row,Runnable currentGrant) throws IOException;
     }
 
+    WorkspacePublicationJournal.View submit(RepositoryContext context, boolean keepWorkspace, String key, String cause,
+            WorkspacePublicationJournal.Snapshot snapshot, PhaseExecutor executor) throws IOException {
+        return submit(context, keepWorkspace, key, cause, snapshot, executor, false);
+    }
+
     WorkspacePublicationJournal.View submit(RepositoryContext context,boolean keepWorkspace,String key,String cause,
             WorkspacePublicationJournal.Snapshot snapshot, PhaseExecutor executor, boolean commandErrors) throws IOException {
         var grant=actors.authorizePublication(context.username());
