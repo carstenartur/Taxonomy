@@ -73,6 +73,118 @@ final class RepositoryHistoryHttpContract implements AutoCloseable {
         }
     }
 
+    void verifyTargetProjections() throws Exception {
+        String sourceId = post("/api/repositories", Map.of("displayName", name, "slug", name,
+                "visibility", "PRIVATE", "defaultBranch", "draft")).required("repositoryId").textValue();
+        Copy source = new Copy(sourceId, "", "draft");
+        String base = readiness(source).required("currentHeadCommit").textValue();
+        Copy writer = copy(sourceId, "projection writer", base);
+        String model = """
+                meta {
+                  language: "taxdsl";
+                  version: "2.0";
+                  namespace: "default";
+                }
+                element CR-1047 type CoreService {
+                  title: "Shared service";
+                }
+                element BP-1327 type Process {
+                  title: "Shared process";
+                }
+                relation CR-1047 SUPPORTS BP-1327 {
+                  status: accepted;
+                }
+                """;
+        String original = publishModel(writer, model);
+        rebuildRelations(source, original, 1);
+        JsonNode forked = post("/api/repositories/" + sourceId + "/forks", Map.of("displayName", name + " fork",
+                "slug", name + "-fork", "visibility", "PRIVATE", "sourceBranch", source.branch));
+        assertThat(forked.required("forkPointCommit").textValue()).isEqualTo(original);
+        assertThat(forked.required("upstreamRepositoryId").textValue()).isEqualTo(sourceId);
+        Copy fork = new Copy(forked.required("repositoryId").textValue(), "", source.branch);
+        Copy witness = copy(sourceId, "projection witness", original);
+
+        for (Copy selected : java.util.List.of(fork, witness)) {
+            JsonNode fresh = readiness(selected);
+            assertThat(fresh.required("currentHeadCommit").textValue()).isEqualTo(original);
+            assertThat(fresh.required("readinessState").textValue()).isEqualTo("NOT_BUILT");
+            rebuildRelations(selected, original, 1);
+        }
+        String advanced = publishModel(writer, model + """
+                element CP-1023 type Capability {
+                  title: "Source only";
+                }
+                relation CP-1023 REALIZES CR-1047 {
+                  status: accepted;
+                }
+                """);
+        assertThat(advanced).isNotEqualTo(original);
+        JsonNode stale = readiness(source);
+        assertThat(stale.required("currentHeadCommit").textValue()).isEqualTo(advanced);
+        assertThat(stale.required("projectedCommit").textValue()).isEqualTo(original);
+        assertThat(stale.required("readinessState").textValue()).isEqualTo("STALE");
+        rebuildRelations(source, advanced, 2);
+        request("POST", "/api/architecture/relations/projection/rebuild", fork, null, null, 412, advanced);
+        assertReady(readiness(fork), original, 1);
+        assertReady(readiness(witness), original, 1);
+
+        String index = "/api/dsl/history/index";
+        for (Copy selected : java.util.List.of(source, witness, fork)) {
+            assertThat(request("PUT", index, selected, null, null, 200).required("indexed").asInt()).isPositive();
+        }
+        String element = "/api/dsl/history/element/CR-1047";
+        JsonNode sourceRows = get(element, source), witnessRows = get(element, witness), forkRows = get(element, fork);
+        assertHistoryContains(sourceRows, source, advanced);
+        assertHistoryContains(witnessRows, witness, original);
+        assertHistoryContains(forkRows, fork, original);
+        assertThat(request("DELETE", index, fork, null, null, 200).required("purged").asInt()).isPositive();
+        assertThat(get(element, fork).size()).isZero();
+        assertThat(get(element, source)).isEqualTo(sourceRows);
+        assertThat(get(element, witness)).isEqualTo(witnessRows);
+        assertReady(readiness(source), advanced, 2);
+        assertReady(readiness(witness), original, 1);
+        assertReady(readiness(fork), original, 1);
+    }
+
+    private String publishModel(Copy copy, String model) throws Exception {
+        var committed = request("POST", "/api/dsl/commit", copy, model, "text/plain;charset=UTF-8", 200);
+        assertThat(committed.required("databaseBacked").booleanValue()).isTrue();
+        assertThat(head(copy)).isEqualTo(committed.required("commitId").textValue());
+        var published = json("POST", "/api/workspace/publish", copy, Map.of());
+        assertThat(published.required("success").booleanValue()).isTrue();
+        return published.required("mergeCommit").textValue();
+    }
+
+    private JsonNode readiness(Copy copy) throws Exception {
+        var state = get("/api/architecture/relations/projection/readiness", copy);
+        assertThat(state.required("repositoryId").textValue()).isEqualTo(copy.repository);
+        assertThat(state.path("workspaceId").textValue()).isEqualTo(copy.workspace.isEmpty() ? null : copy.workspace);
+        assertThat(state.required("branch").textValue()).isEqualTo(copy.branch);
+        return state;
+    }
+
+    private void rebuildRelations(Copy copy, String commit, int count) throws Exception {
+        assertReady(request("POST", "/api/architecture/relations/projection/rebuild", copy, null, null, 200, commit),
+                commit, count);
+        assertReady(readiness(copy), commit, count);
+    }
+
+    private static void assertReady(JsonNode state, String commit, int count) {
+        assertThat(state.required("readinessState").textValue()).isEqualTo("READY");
+        assertThat(state.required("currentHeadCommit").textValue()).isEqualTo(commit);
+        assertThat(state.required("projectedCommit").textValue()).isEqualTo(commit);
+        assertThat(state.required("relationCount").asInt()).isEqualTo(count);
+    }
+
+    private static void assertHistoryContains(JsonNode rows, Copy copy, String commit) {
+        assertThat(rows.isArray()).isTrue();
+        assertThat(rows.values()).anyMatch(row -> commit.equals(row.required("commitId").textValue()))
+                .allSatisfy(row -> {
+                    assertThat(row.required("repositoryId").textValue()).isEqualTo(copy.repository);
+                    assertThat(row.path("workspaceId").textValue()).isEqualTo(copy.workspace.isEmpty() ? null : copy.workspace);
+                });
+    }
+
     private record Copy(String repository, String workspace, String branch) {}
 
     private Copy copy(String repositoryId, String purpose, String expected) throws Exception {
@@ -130,11 +242,17 @@ final class RepositoryHistoryHttpContract implements AutoCloseable {
     }
 
     private JsonNode request(String method, String path, Copy copy, String body, String contentType, int expected) throws Exception {
+        return request(method, path, copy, body, contentType, expected, null);
+    }
+
+    private JsonNode request(String method, String path, Copy copy, String body, String contentType,
+                             int expected, String revision) throws Exception {
         var request = HttpRequest.newBuilder().timeout(Duration.ofSeconds(90))
                 .header("Authorization", authorization).header("Accept", "application/json");
+        if (revision != null) request.header("If-Match", "\"" + revision + "\"");
         if (copy != null) {
             path += "?repositoryId=" + copy.repository + "&workspaceId=" + copy.workspace
-                    + "&workspaceScopeKey=" + copy.workspace + "&branch=" + copy.branch;
+                    + "&workspaceScopeKey=" + (copy.workspace.isEmpty() ? "__shared__" : copy.workspace) + "&branch=" + copy.branch;
             request.header("X-Taxonomy-Workspace-Id", copy.workspace);
         }
         if (contentType != null) request.header("Content-Type", contentType);
