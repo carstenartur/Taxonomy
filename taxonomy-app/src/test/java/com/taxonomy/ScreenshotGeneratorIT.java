@@ -581,6 +581,11 @@ class ScreenshotGeneratorIT {
                                      Map<String, String> headers) {
         Object result = ((JavascriptExecutor) driver).executeAsyncScript(
                 "var url=arguments[0], method=arguments[1], type=arguments[2], body=arguments[3], headers=arguments[4], done=arguments[5];" +
+                "if (!['GET','HEAD','OPTIONS'].includes(method)) {" +
+                "  var token=document.querySelector('meta[name=_csrf]'), name=document.querySelector('meta[name=_csrf_header]');" +
+                "  if (!token || !token.content || !name || !name.content) { done({error:'Missing fixture page CSRF metadata'}); return; }" +
+                "  headers[name.content]=token.content;" +
+                "}" +
                 "var options={method:method,headers:headers};" +
                 "if (body !== null) { options.headers['Content-Type']=type; options.body=body; }" +
                 "fetch(url, options).then(async function(response) {" +
