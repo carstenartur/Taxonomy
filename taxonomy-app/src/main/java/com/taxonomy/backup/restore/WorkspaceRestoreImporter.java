@@ -241,7 +241,7 @@ public final class WorkspaceRestoreImporter {
         for(var row:index) {
             checkpoint.check();var parent=workspaceById.get(row.workspaceId());
             if(row.workspaceId()!=null&&(parent==null||!Objects.equals(parent.repositoryId(),row.repositoryId()))
-                    ||!Objects.equals(com.taxonomy.versioning.model.ArchitectureCommitIndex.scopeKeyFor(row.workspaceId()),row.workspaceScope()))throw invalid();branch(row.branch());
+                    ||!com.taxonomy.versioning.model.ArchitectureCommitIndex.matchesArchivedScope(row.workspaceId(),row.workspaceScope()))throw invalid();branch(row.branch());
             if(row.workspaceId()==null?!activeRepositories.contains(row.repositoryId()):!activeWorkspaces.contains(row.workspaceId())){model.classify("commit-index",row.sourceId().value(),"PRIVATE_QUARANTINE");continue;}
             var target=generation.allocations().get(new BackupRepositoryKey(row.repositoryId(),row.workspaceId()));var targetId=model.numeric(row.sourceId());model.target("commit-index",row.sourceId().value(),"architecture_commit_index","id",targetId,columns(
                     "id",targetId,"repository_id",target.targetKey().repositoryId(),"workspace_id",target.targetKey().workspaceId(),"workspace_scope_key",com.taxonomy.versioning.model.ArchitectureCommitIndex.scopeKeyFor(target.targetKey().workspaceId()),"commit_id",commit(commits,row.sourceId(),Field.INDEX_COMMIT,row.commitId()),"branch",row.branch(),

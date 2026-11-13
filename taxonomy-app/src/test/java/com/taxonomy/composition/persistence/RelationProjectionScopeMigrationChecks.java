@@ -34,7 +34,7 @@ public final class RelationProjectionScopeMigrationChecks {
         assertThat(rows.queryForList("""
                 select id from relation_decision_projection_checkpoint where repository_id=? order by id
                 """, Long.class, REPO)).isEqualTo(originalIds);
-        for (String table : new String[] {"relation_decision_projection", "relation_decision_projection_checkpoint", "relation_projection_recovery"}) {
+        for (String table : new String[] {"relation_decision_projection", "relation_decision_projection_checkpoint", "relation_projection_recovery", "architecture_commit_index"}) {
             assertThat(rows.queryForObject("select workspace_scope_key from " + table + " where repository_id=? and branch='main'",
                     String.class, REPO)).isEmpty();
             assertThat(rows.queryForObject("select workspace_scope_key from " + table + " where repository_id=? and branch='historic'",
@@ -50,6 +50,11 @@ public final class RelationProjectionScopeMigrationChecks {
     }
 
     private static void seed(JdbcTemplate rows, String branch, String workspaceId) {
+        rows.update("""
+                insert into architecture_commit_index (repository_id, workspace_id, workspace_scope_key, branch,
+                    commit_id, author, commit_timestamp, indexed_at)
+                values (?,?,'__shared__',?,?,'original-author',?,?)
+                """, REPO, workspaceId, branch, HEAD, ORIGINAL, ORIGINAL);
         rows.update("""
                 insert into relation_decision_projection (repository_id,workspace_id,workspace_scope_key,branch,
                     source_code,relation_type,target_code,relation_present,authoritative_commit_id,causation_id,updated_at,version)
