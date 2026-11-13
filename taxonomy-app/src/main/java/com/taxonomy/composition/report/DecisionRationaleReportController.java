@@ -21,6 +21,7 @@ import com.taxonomy.extension.api.report.ReportRenderResult;
 import com.taxonomy.extension.api.report.ReportRendererExtension;
 import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -28,6 +29,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -36,8 +38,15 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.io.IOException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -254,7 +263,7 @@ public class DecisionRationaleReportController {
     }
 
     @Operation(summary = "Export hierarchical decision rationale using an installed report format",
-            description = "Renders the authorized snapshot-bound report through the selected installed renderer. "
+            description = "Renders the report for the selected repository and branch through the installed renderer. "
                     + "Retains analysis/data provenance and rejects a renderer whose captured artifact is no longer available.")
     @ApiResponse(responseCode = "200", description = "Report returned with analysis and data provenance")
     @ApiResponse(responseCode = "400", description = "Invalid report input or unknown format")
@@ -270,13 +279,35 @@ public class DecisionRationaleReportController {
         if (!isValid(request)) {
             return ResponseEntity.badRequest().build();
         }
-        DecisionRationaleReport report = generate(request);
+        String expected = expectedCommit();
+        WorkspaceContext selected = workspaceResolver.resolveUnambiguousContextForRead();
+        ViewContext source;
+        try {
+            var head = repositoryStateService.readSelectedViewContext(selected);
+            if (head.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).cacheControl(CacheControl.noStore())
+                        .header("X-Taxonomy-Source-State", "MISSING").build();
+            }
+            source = head.get();
+        } catch (IOException failure) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).cacheControl(CacheControl.noStore())
+                    .header("X-Taxonomy-Source-State", "FAILED").build();
+        }
+        if (expected != null && !expected.equals(source.basedOnCommit())) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).cacheControl(CacheControl.noStore())
+                    .header("X-Taxonomy-Source-State", "STALE").header("X-Taxonomy-Commit", source.basedOnCommit()).build();
+        }
+        DecisionRationaleReport report = generate(request, selected, source);
         ReportRendererExtension renderer = reportRendererRegistry.getRequired(
                 DecisionRationaleReportPlugin.REPORT_TYPE_ID, formatId);
         ReportFormatDescriptor format = renderer.descriptor();
         ReportRenderResult rendered = renderer.render(ReportRenderContext.ofPayload(report));
+        byte[] bytes = rendered.bytes();
         ResponseEntity.BodyBuilder response = ResponseEntity.ok()
+                .eTag(artifactTag(bytes))
                 .cacheControl(CacheControl.noStore())
+                .header("X-Taxonomy-Source-State", "READY")
+                .header("X-Taxonomy-Commit", source.basedOnCommit())
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         "attachment; filename=\""
                                 + DecisionRationaleReportPlugin.BASE_FILENAME + "."
@@ -288,14 +319,29 @@ public class DecisionRationaleReportController {
         DecisionReportTemplateHeaders.apply(response, rendered);
         return response
                 .contentType(MediaType.parseMediaType(format.contentType()))
-                .body(rendered.bytes());
+                .body(bytes);
     }
 
-    private DecisionRationaleReport generate(DecisionReportRequest request) {
-        WorkspaceContext context = workspaceResolver.resolveCurrentContext();
-        String branch = repositoryStateService.resolveWorkspaceBranch(context.username());
-        ViewContext viewContext = repositoryStateService.getViewContext(
-                context.username(), branch, context);
+    private static String artifactTag(byte[] bytes) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+        } catch (NoSuchAlgorithmException unavailable) {
+            throw new IllegalStateException(unavailable);
+        }
+    }
+
+    private static String expectedCommit() {
+        if (!(RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes)) return null;
+        String expected = attributes.getRequest().getParameter("commitId");
+        if (expected == null) return null;
+        try {
+            return WorkspaceDslReadPort.normalizeCommitId(expected);
+        } catch (IllegalArgumentException invalid) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, invalid.getMessage(), invalid);
+        }
+    }
+
+    private DecisionRationaleReport generate(DecisionReportRequest request, WorkspaceContext context, ViewContext viewContext) {
         Locale locale = com.taxonomy.reporting.render.decision.DecisionReportLanguage.resolve(
                 com.taxonomy.reporting.render.decision.DecisionReportLanguage.optionalOverride(request.language()),
                 request.analysisLanguage());

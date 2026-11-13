@@ -4,6 +4,7 @@ import com.taxonomy.dto.AnalysisMode;
 import com.taxonomy.dto.AnalysisModelBinding;
 import com.taxonomy.dto.AnalysisScope;
 import com.taxonomy.portfolio.service.PortfolioJsonCodec;
+import com.taxonomy.security.service.LegacyOwnershipDatabaseContract;
 import com.taxonomy.workspace.storage.JgitStorageSchemaMigrationConfig;
 
 import io.github.carstenartur.jgit.storage.hibernate.schema.CoreSchemaMigrations;
@@ -41,6 +42,11 @@ class TaxonomySchemaPostgresMigrationIT {
             .withDatabaseName("taxonomy")
             .withUsername("taxonomy")
             .withPassword("taxonomy");
+
+    @Test
+    void verifiedLegacyOwnershipOnAnIsolatedSchema() throws Exception {
+        LegacyOwnershipDatabaseContract.verify(isolatedDataSource("legacy_ownership"), "boolean");
+    }
 
     @Test
     void freshInstallationCreatesLegacyAndPortfolioSchema() throws Exception {
@@ -161,11 +167,13 @@ class TaxonomySchemaPostgresMigrationIT {
         assertClusterAnalysisSchema(dataSource);
         assertProviderBindingSchema(dataSource);
         assertAnalysisReasonLengthSchema(dataSource);
+        assertThat(tableExists(dataSource, "scoped_requirement_coverage")).isTrue();
         assertThat(tableExists(dataSource, TaxonomySchemaMigrationConfig.HISTORY_TABLE)).isTrue();
+        assertSelectedFetchSchema(dataSource);
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57");
     }
 
     @Test
@@ -237,10 +245,11 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(columnExists(
                 dataSource, "relation_projection_recovery", "status"))
                 .isTrue();
+        assertSelectedFetchSchema(dataSource);
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57");
         assertIntegrationSchema(dataSource);
         assertInventorySchema(dataSource);
         assertReformulationSchema(dataSource);
@@ -249,6 +258,34 @@ class TaxonomySchemaPostgresMigrationIT {
         assertClusterAnalysisSchema(dataSource);
         assertProviderBindingSchema(dataSource);
         assertAnalysisReasonLengthSchema(dataSource);
+        assertThat(tableExists(dataSource, "scoped_requirement_coverage")).isTrue();
+    }
+
+    @Test
+    void workspaceLeaseUpgradePreservesCapturedCommitsAndGivesOnlyRunningAllocationsAGracePeriod() throws Exception {
+        var dataSource = isolatedDataSource("workspace_provisioning_lease");
+        migrateJgit(dataSource);
+        installApplicationAtVersion(dataSource, "49");
+        execute(dataSource, """
+                insert into user_workspace (workspace_id, username, created_at, current_branch, archived, is_default,
+                    shared, provisioning_status, topology_mode, base_commit)
+                values ('running', 'owner', current_timestamp, 'draft', false, false, false,
+                        'PROVISIONING', 'INTERNAL_SHARED', 'old-source'),
+                       ('ready', 'owner', current_timestamp, 'draft', false, false, false,
+                        'READY', 'INTERNAL_SHARED', 'ready-source')
+                """);
+
+        installApplicationAtVersion(dataSource, "50");
+
+        assertThat(singleString(dataSource, """
+                select base_commit from user_workspace where workspace_id='running' and provisioning_attempt=0
+                and provisioning_lease_owner is null and provisioning_lease_until > current_timestamp
+                and provisioning_lease_until <= current_timestamp + interval '15 minutes'
+                """)).isEqualTo("old-source");
+        assertThat(singleString(dataSource, """
+                select base_commit from user_workspace where workspace_id='ready'
+                and provisioning_attempt=0 and provisioning_lease_until is null
+                """)).isEqualTo("ready-source");
     }
 
     @Test
@@ -506,6 +543,18 @@ class TaxonomySchemaPostgresMigrationIT {
                 "operation_id");
         assertRecoveryIndex(dataSource, "analysis_task_completion", "idx_analysis_completion_operation", true,
                 "operation_id");
+    }
+
+    private static void assertSelectedFetchSchema(DataSource dataSource) throws SQLException {
+        for (String table : List.of("workspace_fetch_operation", "central_fetch_operation")) {
+            for (String column : List.of("selected_tag", "requested_tag_object", "result_tag_object")) {
+                assertThat(columnExists(dataSource, table, column)).as("%s.%s", table, column).isTrue();
+            }
+        }
+        assertRecoveryIndex(dataSource, "central_fetch_operation", "ix_cf_fetch_recovery", true,
+                "phase", "next_attempt_at");
+        assertRecoveryIndex(dataSource, "central_fetch_operation", "ix_cf_fetch_retention", true,
+                "archived_at", "completed_at");
     }
 
     private static void assertRecoveryIndex(DataSource dataSource, String table, String name,

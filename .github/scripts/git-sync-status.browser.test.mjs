@@ -50,6 +50,24 @@ for (const prefix of ['', '/taxonomy']) test(`root-shell reload pins original st
             headers.push(item);
             headerTasks.push(request.allHeaders().then(all => { item.all = all['x-taxonomy-workspace-id'] || null; }));
         });
+        // Drive the two production poll intervals independently of the runner's wall clock.
+        // Startup, reload, requests, response bodies and renderer adoption remain native.
+        await context.addInitScript(() => {
+            const schedule = window.setInterval.bind(window), cancel = window.clearInterval.bind(window);
+            const statusIntervals = new Map();
+            let next = -1;
+            window.setInterval = (callback, delay, ...args) => {
+                if (delay !== 10000) return schedule(callback, delay, ...args);
+                const id = next--;
+                statusIntervals.set(id, () => callback(...args));
+                return id;
+            };
+            window.clearInterval = id => { if (!statusIntervals.delete(id)) cancel(id); };
+            window.__fixturePollStatus = () => {
+                for (const callback of statusIntervals.values()) callback();
+                return statusIntervals.size;
+            };
+        });
         await observer.attach(page, context);
         // The engine signature is a controlled fixture at a real beforeunload.
         // Original HTTP, routing, DTO adoption and document epochs are native Chromium evidence.
@@ -66,6 +84,11 @@ for (const prefix of ['', '/taxonomy']) test(`root-shell reload pins original st
             const target = new URL(route.request().url()), relative = target.pathname.slice(prefix.length);
             if (relative.startsWith('/js/')) return route.fulfill({contentType:'text/javascript',
                 body:await readFile(path.join(resources, 'static', relative), 'utf8')});
+            // This navigation proof requires both original reads to finish. Deliver Git first;
+            // the converse ordering has a separate contract below for the superseded read.
+            if (relative === '/api/context/current') {
+                await page.waitForFunction(() => document.querySelector('.git-sha')?.textContent === 'aaaaaaa');
+            }
             if (relative.startsWith('/api/')) return route.fulfill({contentType:'application/json', body:JSON.stringify(
                 relative === '/api/i18n/en' ? messages : relative === '/api/git/state' ? git : relative === '/api/context/current' ? current : {})});
             return route.fulfill({contentType:'text/html', body:'<!doctype html><html lang="en"><head><meta charset="UTF-8">'
@@ -117,8 +140,6 @@ for (const prefix of ['', '/taxonomy']) test(`root-shell reload pins original st
         assert.ok(observed.reads.every(read => read.finished && read.jsonParsed && read.status === 200));
         assert.equal(observed.navigations[0].oldDocument.url, observed.navigations[0].newDocument.url);
         const proofs = observer.reconciliations();
-        await writeFile(path.resolve('target/native-status-reload-' + (prefix ? 'mounted' : 'root') + '.json'),
-            JSON.stringify({browser:'chromium', nativeEngineCancellationReproduced:false, headers, observed, proofs, pageErrors}, null, 2) + '\n');
         assert.deepEqual(pageErrors, [], 'Actual renderer and script errors remain blocking');
         ledger.reconcile(proofs);
         // A failed cancellation proof must expose the original browser/HTTP
@@ -142,6 +163,29 @@ for (const prefix of ['', '/taxonomy']) test(`root-shell reload pins original st
         }, null, 2) : '';
         assert.deepEqual(errors, [], 'Full native lifecycle and adoption evidence for an unreconciled cancellation: ' + diagnosis);
         assert.deepEqual(reconciled.map(proof => proof.request.payload), [git, current]);
+        // Exercise one complete periodic cycle after both document-start pairs have been verified.
+        const endpoints = ['/api/git/state', '/api/context/current'];
+        const writes = await page.evaluate(() => [__taxonomyPollEvidence.gitWrites, __taxonomyPollEvidence.contextWrites]);
+        const offset = headers.length;
+        const cycle = await Promise.all([
+            ...endpoints.map(endpoint => page.waitForEvent('requestfinished',
+                request => new URL(request.url()).pathname === prefix + endpoint)),
+            page.evaluate(() => window.__fixturePollStatus())
+        ]);
+        assert.equal(cycle.pop(), 2, 'Each status owner schedules exactly one ten-second poll');
+        await page.waitForFunction(([gitBefore, contextBefore]) =>
+            __taxonomyPollEvidence.gitWrites > gitBefore && __taxonomyPollEvidence.contextWrites > contextBefore, writes);
+        await Promise.all(headerTasks);
+        assert.deepEqual(headers.slice(offset).map(read => new URL(read.url).pathname.slice(prefix.length)), endpoints);
+        assert.deepEqual(headers.slice(offset).map(read => [read.immediate, read.all]), endpoints.map(() => [workspaceId, workspaceId]));
+        const responses = await Promise.all(cycle.map(request => request.response()));
+        assert.deepEqual(responses.map(response => response.status()), [200, 200]);
+        assert.deepEqual(await Promise.all(responses.map(response => response.json())), [git, current]);
+        assert.deepEqual(observed.reads.slice(offset).map(read => read.documentEpoch), endpoints.map(() => epochs[1]));
+        assert.deepEqual(pageErrors, []);
+        await writeFile(path.resolve('target/native-status-reload-' + (prefix ? 'mounted' : 'root') + '.json'),
+            JSON.stringify({browser:'chromium', nativeEngineCancellationReproduced:false, headers, observed, proofs, pageErrors}, null, 2) + '\n');
+
     } finally { await context.close(); }
 });
 
@@ -203,6 +247,29 @@ async function gitResponse(page, headCommit = 'abcdef012345') {
     await answer(page, '/api/git/state', {currentBranch: 'draft', headCommit, branches: []});
     await page.waitForFunction(head => document.querySelector('.git-sha')?.textContent === head.slice(0, 7), headCommit);
 }
+
+test('initial context adoption immediately replaces a pending Git read for the default branch', async () => {
+    const page = await fixture();
+    try {
+        await page.evaluate(() => {
+            document.body.insertAdjacentHTML('beforeend', '<div id="contextBar"></div>');
+            window.TaxonomyI18n.formatBranch = branch => branch;
+        });
+        await page.addScriptTag({path: path.join(resources, 'static/js/versioning/taxonomy-context-bar.js')});
+        await page.evaluate(() => { window.initialContext = TaxonomyContextBar.fetchAndRender('contextBar'); });
+        await answer(page, '/api/context/current', {contextId: 'review-1', branch: 'review', mode: 'EDITABLE'});
+        await page.evaluate(() => window.initialContext);
+        await page.waitForFunction(() => window.statusReads.some(read => read.url.includes('branch=review')),
+            null, {timeout: 3000});
+        await answer(page, '/api/git/state', {currentBranch: 'draft', headCommit: '1111111', branches: []});
+        assert.equal(await page.locator('.git-sha').count(), 0);
+        await answer(page, '/api/git/state', {currentBranch: 'review', headCommit: '2222222', branches: []});
+        await page.waitForFunction(() => document.querySelector('.git-sha')?.textContent === '2222222');
+        assert.equal(await page.locator('.git-branch').innerText(), 'review');
+        assert.equal(await page.evaluate(() => window.statusReads.filter(read => read.url.startsWith('/api/git/state')).length), 2);
+        assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+});
 
 for (const order of [['sync', 'git'], ['git', 'sync']]) {
     test('both statuses remain visible when responses arrive: ' + order.join(' then '), async () => {

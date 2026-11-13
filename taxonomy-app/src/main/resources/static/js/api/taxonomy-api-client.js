@@ -521,6 +521,28 @@ window.TaxonomyApiClient = (function () {
     }
 
     function performRequest(url, init, options, consumeResponse) {
+        var workspace = window.TaxonomyArchitectureWorkspace;
+        if (!options?.selectedRepository || !workspace?.ready) return executeRequest(url, init, options, consumeResponse);
+        var page = pageGeneration, authentication = authenticationGeneration;
+        return workspace.ready().then(function (ready) {
+            if (page !== pageGeneration || authentication !== authenticationGeneration || options.signal?.aborted || init?.signal?.aborted) {
+                throw cancelled({url: url, requestId: options.requestId});
+            }
+            var source = window.TaxonomyArchitectureWorkflow?.getScope?.();
+            if (ready === false || !source?.repositoryId || !source.branch || source.workspaceId === undefined) {
+                throw new ApiError('Select an available repository for this request', 409, url, null, {code:'SOURCE_UNAVAILABLE'});
+            }
+            var target = new URL(url, window.location.href);
+            target.searchParams.set('repositoryId', source.repositoryId);
+            target.searchParams.set('workspaceId', source.workspaceId);
+            target.searchParams.set('branch', source.branch);
+            return executeRequest(target.pathname + target.search, init, Object.assign({}, options, {
+                pinnedWorkspaceId: source.workspaceId
+            }), consumeResponse);
+        });
+    }
+
+    function executeRequest(url, init, options, consumeResponse) {
         var requestOptions = Object.assign({}, options || {});
         requestOptions.signals = Array.from(new Set([requestOptions.signal, init?.signal,
             url instanceof Request ? url.signal : undefined].filter(Boolean)));
@@ -593,7 +615,13 @@ window.TaxonomyApiClient = (function () {
     }
 
     function request(url, init, options) {
-        return performRequest(url, init, options);
+        if (!options?.observeResponse) return performRequest(url, init, options);
+        var current = captureContext(options, init);
+        var first = options.observeAdmission ? options.observeAdmission(performRequest, url, init || {}, options, current)
+            : performRequest(url, init, options);
+        return first.then(function (response) {
+            return options.observeResponse(response, url, init || {}, options, current);
+        }).catch(function (error) { throw options.operationError ? options.operationError(error) : error; });
     }
 
     function requestJson(url, init, options) {

@@ -15,12 +15,14 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -203,7 +205,7 @@ public class ArchitectureRepositoryController {
 
     @PutMapping("/{repositoryId}/members/{username}")
     @Operation(summary = "Assign or change a repository membership",
-            description = "Assigns or changes the specified repository member's role after requiring repository OWNER permission. Invalid roles or membership transitions are rejected rather than bypassing ownership constraints.")
+            description = "Requires repository OWNER and an exact expectedVersion from the membership listing. Use -1 only when creating a previously absent membership. Stale versions conflict without applying a role change.")
     public ResponseEntity<?> updateMembership(
             @PathVariable String repositoryId,
             @PathVariable String username,
@@ -216,10 +218,17 @@ public class ArchitectureRepositoryController {
         if (!membershipService.isOwner(repository, user)) {
             return forbidden("Repository OWNER role required");
         }
+        if (request == null || request.expectedVersion() == null) {
+            return ResponseEntity.status(HttpStatus.PRECONDITION_REQUIRED)
+                    .body(Map.of("error", "expectedVersion is required"));
+        }
         try {
             RepositoryMembership membership = membershipService.assignRole(
-                    repository, username, request.role(), user);
+                    repository, username, request.role(), user, request.expectedVersion());
             return ResponseEntity.ok(toMembershipMap(membership));
+        } catch (OptimisticLockingFailureException exception) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("error", "Repository membership changed; reload the latest version"));
         } catch (IllegalArgumentException | IllegalStateException exception) {
             return ResponseEntity.badRequest().body(Map.of("error", safeMessage(exception)));
         } catch (AccessDeniedException exception) {
@@ -229,10 +238,11 @@ public class ArchitectureRepositoryController {
 
     @DeleteMapping("/{repositoryId}/members/{username}")
     @Operation(summary = "Remove a repository membership",
-            description = "Removes the specified member after requiring repository OWNER permission and validating membership invariants. Returns 204; a rejected removal leaves existing membership state unchanged.")
+            description = "Requires OWNER and an expectedVersion query parameter matching the member's current version. Returns 409 for a stale editor and 204 only after successful deletion.")
     public ResponseEntity<?> removeMembership(
             @PathVariable String repositoryId,
-            @PathVariable String username) {
+            @PathVariable String username,
+            @RequestParam(name = "expectedVersion", required = false) Long expectedVersion) {
         String user = workspaceResolver.resolveCurrentUsername();
         SystemRepository repository = visibleRepository(repositoryId, user);
         if (repository == null) {
@@ -241,9 +251,16 @@ public class ArchitectureRepositoryController {
         if (!membershipService.isOwner(repository, user)) {
             return forbidden("Repository OWNER role required");
         }
+        if (expectedVersion == null) {
+            return ResponseEntity.status(HttpStatus.PRECONDITION_REQUIRED)
+                    .body(Map.of("error", "expectedVersion is required"));
+        }
         try {
-            membershipService.removeMembership(repository, username, user);
+            membershipService.removeMembership(repository, username, user, expectedVersion);
             return ResponseEntity.noContent().build();
+        } catch (OptimisticLockingFailureException exception) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("error", "Repository membership changed; reload the latest version"));
         } catch (IllegalArgumentException | IllegalStateException exception) {
             return ResponseEntity.badRequest().body(Map.of("error", safeMessage(exception)));
         } catch (AccessDeniedException exception) {
@@ -273,6 +290,7 @@ public class ArchitectureRepositoryController {
         result.put("defaultBranch", repository.getDefaultBranch());
         result.put("visibility", repository.getVisibility());
         result.put("lifecycleState", repository.getLifecycleState());
+        result.put("version", repository.getVersion());
         result.put("ownerType", repository.getOwnerType());
         result.put("ownerId", repository.getOwnerId());
         result.put("primary", repository.isPrimaryRepo());
@@ -289,6 +307,7 @@ public class ArchitectureRepositoryController {
         LinkedHashMap<String, Object> result = new LinkedHashMap<>();
         result.put("username", membership.getUsername());
         result.put("role", membership.getRole());
+        result.put("version", membership.getVersion());
         result.put("createdAt", membership.getCreatedAt());
         result.put("createdBy", membership.getCreatedBy());
         result.put("updatedAt", membership.getUpdatedAt());
@@ -326,6 +345,6 @@ public class ArchitectureRepositoryController {
             String sourceBranch) {
     }
 
-    public record UpdateMembershipRequest(RepositoryRole role) {
+    public record UpdateMembershipRequest(RepositoryRole role, Long expectedVersion) {
     }
 }

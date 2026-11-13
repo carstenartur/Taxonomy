@@ -16,10 +16,10 @@
     const continuationDecisions = new Map();
     const pollIntervalMs = 1500;
     const storageKey = 'taxonomy.portfolio.analysisJobs.v2';
-    const maximumHistory = 20;
     const maximumRenderedItems = 100;
     const jobs = new Map();
     const jobPolls = new Map();
+    const pendingRetries = new Set();
     let pageActive = true;
     let account = null;
     let locale = 'en';
@@ -33,6 +33,8 @@
             jobsFilteredEmpty: 'No analysis jobs with this status.',
             filterLabel: 'Filter analysis jobs by status',
             filterAll: 'All statuses',
+            jobProject: 'Project',
+            jobResponseInvalid: 'The response belongs to a different job or project.',
             retryFailed: 'Retry failed items',
             continueAnalysis: 'Continue analysis',
             continueHint: 'Continue with saved answers and the remaining total relationship budget. Automatic continuation can extend the initial budget in the same operation. Open domain questions remain open.',
@@ -80,6 +82,8 @@
             jobsFilteredEmpty: 'Keine Analysejobs mit diesem Status.',
             filterLabel: 'Analysejobs nach Status filtern',
             filterAll: 'Alle Status',
+            jobProject: 'Projekt',
+            jobResponseInvalid: 'Die Antwort gehört zu einem anderen Auftrag oder Projekt.',
             retryFailed: 'Fehlgeschlagene Einträge wiederholen',
             continueAnalysis: 'Analyse fortsetzen',
             continueHint: 'Mit gespeicherten Antworten und dem verbleibenden Gesamtbudget der Relationssuche fortsetzen. Automatisches Fortsetzen kann das Startbudget im selben Vorgang erweitern. Offene fachliche Fragen bleiben offen.',
@@ -334,7 +338,12 @@
     }
 
     function durableJobOptions(job, extra) {
-        return Object.assign({contextSensitive: false, pinnedWorkspaceId: job.workspaceId || ''}, extra);
+        const workspaceId = job.workspaceId || '';
+        const options = {contextSensitive: false, pinnedWorkspaceId: workspaceId};
+        if (job.repositoryId && job.branch) {
+            options.scope = {repositoryId: job.repositoryId, workspaceId: workspaceId, branch: job.branch};
+        }
+        return Object.assign(options, extra);
     }
 
     async function loadAccountCapabilities() {
@@ -403,7 +412,7 @@
 
     function registerJob(url, job) {
         if (!job || !job.id) return false;
-        url = window.TaxonomyPortfolioApi.analysisJobUrl(url);
+        url = window.TaxonomyPortfolioApi.analysisJobUrl(url, job.projectId, job.id);
         if (!url) return false;
         const projectMatch = new URL(url).pathname.slice(applicationBasePath.length)
             .match(/^\/api\/projects\/(\d+)\/analysis-jobs\//);
@@ -429,7 +438,7 @@
             if (!Array.isArray(stored)) return;
             stored.forEach(function (entry) {
                 if (!entry || !entry.job || !entry.job.id) return;
-                const url = window.TaxonomyPortfolioApi.analysisJobUrl(entry.url);
+                const url = window.TaxonomyPortfolioApi.analysisJobUrl(entry.url, entry.job.projectId, entry.job.id);
                 if (!url) return;
                 const projectId = Number(new URL(url).pathname.slice(applicationBasePath.length)
                     .match(/^\/api\/projects\/(\d+)\/analysis-jobs\//)[1]);
@@ -452,7 +461,8 @@
         const ordered = Array.from(jobs.values()).sort(function (left, right) {
             return right.updatedAt - left.updatedAt;
         });
-        ordered.slice(maximumHistory).forEach(function (entry) { jobs.delete(entry.url); });
+        const retained = new Set(window.TaxonomyPortfolioApi.retainedAnalysisJobs(ordered, entry => entry.job));
+        ordered.forEach(function (entry) { if (!retained.has(entry)) jobs.delete(entry.url); });
     }
 
     function pollActiveJobs() {
@@ -482,6 +492,10 @@
                 const nextJob = await window.TaxonomyPortfolioApi.getAnalysisJob(current.projectId,
                     current.job.id, durableJobOptions(current.job, {signal: poll.controller.signal}));
                 if (!stillCurrent()) return;
+                if (!nextJob || nextJob.id !== current.job.id
+                        || !window.TaxonomyPortfolioApi.analysisJobUrl(url, nextJob.projectId, nextJob.id)) {
+                    throw new Error(m('jobResponseInvalid'));
+                }
                 const previousStatus = current.job.status;
                 current.job = nextJob;
                 delete current.lastPollError;
@@ -611,6 +625,7 @@
             + escapeHtml(String(job.id).slice(0, 12)) + '</code> · '
             + escapeHtml(statusLabel(job.status)) + '</h3>'
             + '<div class="small text-body-secondary">'
+            + escapeHtml(m('jobProject')) + ' #' + escapeHtml(String(entry.projectId)) + ' · '
             + escapeHtml(formatDate(job.createdAt)) + ' · '
             + escapeHtml(job.provider || '—') + '</div></div>'
             + '<div class="d-flex flex-wrap gap-2">'
@@ -618,7 +633,8 @@
             + 'aria-expanded="' + String(Boolean(entry.expanded)) + '">'
             + escapeHtml(entry.expanded ? m('hideDetails') : m('openDetails')) + '</button>'
             + (Number(job.failedItems || counts.FAILED || 0) > 0
-                ? '<button type="button" class="btn btn-sm btn-outline-primary job-retry">'
+                ? '<button type="button" class="btn btn-sm btn-outline-primary job-retry"'
+                    + (pendingRetries.has(entry.url) ? ' disabled' : '') + '>'
                     + escapeHtml(m('retryFailed')) + '</button>' : '')
             + '</div></div>'
             + '<div class="mt-2">' + statusPills(counts) + '</div>'
@@ -711,10 +727,11 @@
             return;
         }
         const retry = event.target.closest('.job-retry');
-        if (!retry) return;
+        if (!retry || pendingRetries.has(entry.url)) return;
+        pendingRetries.add(entry.url);
         retry.disabled = true;
         try {
-            const response = await window.TaxonomyPortfolioApi.retryAnalysisJob(entry.job.projectId,
+            const response = await window.TaxonomyPortfolioApi.retryAnalysisJob(entry.projectId,
                 entry.job.id, durableJobOptions(entry.job));
             const job = await response.json();
             const location = response.headers.get('Location') || entry.url;
@@ -722,7 +739,8 @@
         } catch (error) {
             showError(error);
         } finally {
-            retry.disabled = false;
+            pendingRetries.delete(entry.url);
+            renderJobs();
         }
     }
 

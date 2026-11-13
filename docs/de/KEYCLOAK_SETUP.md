@@ -174,3 +174,14 @@ Verwenden Sie nach Berechtigungs-/Mapper-Änderungen frische Tokens. Synchronisi
 Verwenden Sie HTTPS, exakte Redirect-/Origin-Freigaben, getrennt verwaltete Client-Secrets sowie einen passend betriebenen IdP-Datenbank- und Backup-/Wiederherstellungsprozess. Prüfen Sie Provider-Verfügbarkeit, TLS, echte Browser-Anmeldung, Rollen, Scopes und Ressourcenbeschränkungen in der Zielumgebung. Ein Startcheck belegt diese Abläufe nicht.
 
 Siehe [Sicherheit](SECURITY.md), [Migration](KEYCLOAK_MIGRATION.md), [Deployment-Checkliste](DEPLOYMENT_CHECKLIST.md) und [Konfigurationsreferenz](CONFIGURATION_REFERENCE.md).
+
+
+**Startsperre für STABLE-Migrationen:** Vor dem Start mit STABLE prüft die Anwendung
+die historischen Eigentümerbereiche gegen reservierte Principals und verifizierte
+Bindungen, einschließlich nach Migration V3 neu geschriebener LEGACY-Eigentümer.
+Fehlende Reservierungen, nicht aufgelöste historische Principals und unbestätigte
+Eigentümerbindungen verhindern den Start. Das ist keine Freigabe für die Umstellung
+einer bestehenden Installation: zunächst alle LEGACY-Schreiber stoppen, die
+Identitätsfreigaben aus EXT-02 einholen sowie weitere benutzernamenbasierte Daten und
+wartende Aufträge in der echten Installation prüfen. Eine neue leere Installation
+kann STABLE verwenden.

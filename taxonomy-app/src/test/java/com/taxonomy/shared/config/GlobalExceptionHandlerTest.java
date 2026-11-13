@@ -41,6 +41,15 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody()).containsEntry("message",failure.getMessage());
     }
 
+    @Test
+    void frameworkPreservesTheTypedExpiredAnalysisCodeWithoutPrivateProperties() {
+        var failure = new org.springframework.web.server.ResponseStatusException(HttpStatus.GONE, "Analysis operation expired");
+        failure.getBody().setProperty("code", "ANALYSIS_EXPIRED");
+        failure.getBody().setProperty("privateContext", "secret-body");
+        var response = handler(SAFE_INTERNAL_MESSAGE).frameworkException(failure, HttpStatus.GONE, request("/api/analysis-runs/operation"));
+        assertThat(responseBody(response)).containsEntry("code", "ANALYSIS_EXPIRED").doesNotContainKey("privateContext");
+    }
+
     @AfterEach
     void resetLocale() {
         LocaleContextHolder.resetLocaleContext();

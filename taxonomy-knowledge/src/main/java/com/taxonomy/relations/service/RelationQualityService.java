@@ -38,7 +38,19 @@ public class RelationQualityService {
     /** Computes the full dashboard from one request-stable visible snapshot. */
     @Transactional(readOnly = true)
     public RelationQualityMetrics calculateMetrics(RepositoryContext context) {
-        List<RelationProposal> proposals = visibleProposals(context);
+        return summarize(visibleProposals(context));
+    }
+
+    public record Dashboard(RelationQualityMetrics metrics, List<TopRejectedProposal> topRejected) {}
+
+    /** All visible counters and examples for this dashboard come from one query result. */
+    @Transactional(readOnly = true)
+    public Dashboard dashboard(int limit, RepositoryContext context) {
+        var rows = visibleProposals(context);
+        return new Dashboard(summarize(rows), topRejected(rows, limit));
+    }
+
+    private static RelationQualityMetrics summarize(List<RelationProposal> proposals) {
         long accepted = countByStatus(proposals, ProposalStatus.ACCEPTED);
         long rejected = countByStatus(proposals, ProposalStatus.REJECTED);
         long pending = countByStatus(proposals, ProposalStatus.PENDING);
@@ -81,15 +93,18 @@ public class RelationQualityService {
         if (limit <= 0) {
             return List.of();
         }
-        return visibleProposalsByStatus(
-                        context, ProposalStatus.REJECTED).stream()
+        return topRejected(visibleProposalsByStatus(context, ProposalStatus.REJECTED), limit);
+    }
+
+    private static List<TopRejectedProposal> topRejected(List<RelationProposal> proposals, int limit) {
+        return proposals.stream().filter(proposal -> proposal.getStatus() == ProposalStatus.REJECTED)
                 .sorted(Comparator
                         .comparingDouble(RelationProposal::getConfidence)
                         .reversed()
                         .thenComparing(
                                 RelationProposal::getId,
                                 Comparator.nullsLast(Long::compareTo)))
-                .limit(limit)
+                .limit(Math.max(0, limit))
                 .map(proposal -> new TopRejectedProposal(
                         proposal.getSourceNode().getCode(),
                         proposal.getSourceNode().getNameEn(),
@@ -116,22 +131,9 @@ public class RelationQualityService {
             RelationType relationType,
             RepositoryContext context) {
         RepositoryContext tenant = requireContext(context);
-        long accepted = proposalRepository.countVisibleReviewHistory(
-                tenant.repositoryId(),
-                tenant.workspaceId(),
-                sourceRoot,
-                targetRoot,
-                relationType,
-                ProposalStatus.ACCEPTED);
-        long rejected = proposalRepository.countVisibleReviewHistory(
-                tenant.repositoryId(),
-                tenant.workspaceId(),
-                sourceRoot,
-                targetRoot,
-                relationType,
-                ProposalStatus.REJECTED);
-        long reviewed = accepted + rejected;
-        return reviewed == 0 ? 0.5 : (double) accepted / reviewed;
+        var tally = proposalRepository.visibleReviewHistory(tenant.repositoryId(), tenant.workspaceId(),
+                sourceRoot, targetRoot, relationType, ProposalStatus.ACCEPTED, ProposalStatus.REJECTED);
+        return tally.getReviewed() == 0 ? 0.5 : (double) tally.getAccepted() / tally.getReviewed();
     }
 
     private List<RelationProposal> visibleProposals(

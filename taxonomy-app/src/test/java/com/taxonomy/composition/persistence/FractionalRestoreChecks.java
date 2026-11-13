@@ -24,7 +24,7 @@ final class FractionalRestoreChecks {
         }
         Long identity;
         try (var factory = RestoreSchemaMigration.openValidatedFactory(active, target, model, () -> {})) {
-            var coverage = new RequirementCoverage("fixture", "Authored storage fixture", "fixture-node", .125, Instant.parse("2026-10-15T00:00:00Z"));
+            var coverage = new RequirementCoverage(new RequirementCoverage.Source("repo", "workspace", "main", "a".repeat(40), "operator"), "fixture", "Authored storage fixture", "fixture-node", .125, Instant.parse("2026-10-15T00:00:00Z"));
             factory.inTransaction(session -> session.persist(coverage));
             identity = coverage.getId();
         }
@@ -35,9 +35,10 @@ final class FractionalRestoreChecks {
             if (reloaded == null || reloaded.getScore() != .125) throw new AssertionError("Hibernate lost the fraction");
         }
         try (var connection = target.getConnection(); var statement = connection.createStatement();
-             var rows = statement.executeQuery("select count(*) from \"restore_business_schema_history\" where \"success\"=true")) {
-            int migrated = rows.next() ? rows.getInt(1) : -1;
-            if (migrated != 18) throw new AssertionError("Expected 18 successful owned restore migrations, found " + migrated);
+             var rows = statement.executeQuery("select \"script\" from \"restore_business_schema_history\" "
+                     + "where \"version\"='8' and \"success\"=true")) {
+            if (!rows.next() || !"V8__Fractional_analysis_percentages.sql".equals(rows.getString(1)) || rows.next())
+                throw new AssertionError("Expected the successful fractional analysis migration in the restored schema");
         }
         try (var connection = active.getConnection(); var statement = connection.createStatement();
              var rows = statement.executeQuery("select id from source_marker")) {

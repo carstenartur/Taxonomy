@@ -418,7 +418,7 @@
                             <span id="docImportSpinner" class="spinner-border spinner-border-sm d-none me-1" role="status"></span>
                             <span th:text="#{docimport.btn.upload}">&#128196; Upload &amp; Extract</span>
                         </button>
-                        <div id="docImportStatus" class="mt-2 small"></div>
+                        <div id="docImportStatus" class="mt-2 small" role="status" aria-live="polite"></div>
                     </div>
                 </details>
 
@@ -1196,6 +1196,19 @@
                     </div>
                 </details>
 
+                <details id="provisionalProductPanel" class="mt-2">
+                    <summary class="fw-semibold" th:text="#{admin.productReview.title}">Provisional Information Product mappings</summary>
+                    <form id="provisionalProductFilter" class="mt-2">
+                        <label class="form-label" for="provisionalProductQuery" th:text="#{admin.productReview.filter}">Product code or title</label>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <input class="form-control w-auto" id="provisionalProductQuery" type="search" maxlength="160">
+                            <button class="btn btn-outline-primary" type="submit" th:text="#{admin.productReview.search}">Search mappings</button>
+                        </div>
+                    </form>
+                    <p id="provisionalProductStatus" class="mt-2" role="status" aria-live="polite"></p>
+                    <div id="provisionalProductResults" class="text-break"></div>
+                </details>
+
                 <!-- Log Viewer -->
                 <details id="logViewerPanel" class="mt-2">
                     <summary class="fw-semibold" style="cursor:pointer;" th:text="#{log.viewer.title}">&#128220; Log Viewer</summary>
@@ -1237,7 +1250,7 @@
                     </div>
                     <div class="mt-1 d-flex gap-2 flex-wrap">
                         <button id="coverageRefreshBtn" class="btn btn-sm btn-outline-secondary" th:text="#{admin.coverage.btn.refresh}">&#128260; Refresh</button>
-                        <button id="coverageRecordBtn" class="btn btn-sm btn-outline-primary" th:text="#{admin.coverage.btn.record}">&#128229; Record Current Analysis</button>
+                        <button id="coverageRecordBtn" disabled class="btn btn-sm btn-outline-primary" th:text="#{admin.coverage.btn.record}">&#128229; Record Current Analysis</button>
                     </div>
                 </details>
 
@@ -1609,9 +1622,11 @@
 <script th:src="@{/js/shared/taxonomy-utils.js}"></script>
 <script th:src="@{/js/shared/architecture-workflow.js}" src="/js/shared/architecture-workflow.js"></script>
 <th:block th:replace="~{fragments/application-chrome :: scripts}"></th:block>
+<script th:src="@{/js/api/analysis-adapter-api.js}" src="/js/api/analysis-adapter-api.js"></script>
 <script th:src="@{/js/api/import-api.js}"></script>
 <script th:src="@{/js/api/analysis-api.js}"></script>
 <script th:src="@{/js/api/reference-api.js}"></script>
+<script th:src="@{/js/core/provisional-product-review.js}"></script>
 <script th:src="@{/js/api/search-api.js}"></script>
 <script th:src="@{/js/api/dsl-api.js}"></script>
 <script th:src="@{/js/api/proposals-api.js}"></script>

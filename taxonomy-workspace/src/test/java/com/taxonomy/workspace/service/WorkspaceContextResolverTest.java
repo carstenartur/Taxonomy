@@ -9,6 +9,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.springframework.http.HttpStatus;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.web.server.ResponseStatusException;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
@@ -133,6 +141,17 @@ class WorkspaceContextResolverTest {
     }
 
     @Test
+    void readingAKnownLegacyPrimaryProvenanceLeavesThePersistedWorkspaceUntouched() {
+        var workspace = workspace("alice", "legacy-ws", "draft");
+        when(workspaceManager.findActiveWorkspace("alice")).thenReturn(workspace);
+        when(systemRepositoryService.getPrimaryRepository()).thenReturn(repository("primary-repo", "draft"));
+
+        assertThat(resolver.resolveRepositoryContextForRead("alice").repositoryId()).isEqualTo("primary-repo");
+        assertThat(workspace.getSourceRepositoryId()).isNull();
+        org.mockito.Mockito.verifyNoInteractions(workspaceRepository);
+    }
+
+    @Test
     void legacyWorkspaceWithoutSourceRepositoryIsBoundAndPersistedToPrimaryRepository() {
         UserWorkspace workspace = workspace("alice", "legacy-ws", "draft");
         SystemRepository primary = repository("primary-repo", "draft");
@@ -170,6 +189,36 @@ class WorkspaceContextResolverTest {
         assertThatThrownBy(() -> resolver.resolveRepositoryContextForUser("alice"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("repositoryId");
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "quality,delivery,false", "__shared__,delivery,false", "delivery,__shared__,false",
+            "delivery,delivery,true", "__shared__,__shared__,true"
+    })
+    void explicitPortfolioScopeMustMatchTheResolvedCentralOrPrivateSelection(
+            String pageScope, String resolvedScope, boolean matches) {
+        var request = new MockHttpServletRequest();
+        request.setParameter("repositoryId", "hospital");
+        request.setParameter("branch", "draft");
+        request.setParameter("workspaceScopeKey", pageScope);
+        var context = "__shared__".equals(resolvedScope)
+                ? RepositoryContext.centralRead("hospital", "draft", "alice")
+                : RepositoryContext.workspace("hospital", resolvedScope, "draft", "alice");
+        var previous = RequestContextHolder.getRequestAttributes();
+        RequestContextHolder.setRequestAttributes(
+                new ServletRequestAttributes(request));
+        try {
+            if (matches) {
+                resolver.verifyReadSelection(context);
+            } else {
+                assertThatThrownBy(() -> resolver.verifyReadSelection(context))
+                        .isInstanceOfSatisfying(ResponseStatusException.class,
+                                ex -> assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
+            }
+        } finally {
+            RequestContextHolder.setRequestAttributes(previous);
+        }
     }
 
     private static UserWorkspace workspace(

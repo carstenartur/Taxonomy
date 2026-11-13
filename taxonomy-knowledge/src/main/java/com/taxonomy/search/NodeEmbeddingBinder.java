@@ -13,11 +13,8 @@ import org.hibernate.search.mapper.pojo.bridge.runtime.TypeBridgeWriteContext;
  * Hibernate Search {@link TypeBinder} that computes a DJL/ONNX embedding vector for
  * a {@link TaxonomyNode} and writes it to an {@code "embedding"} {@code @VectorField}.
  *
- * <p>The enriched text used for embedding includes:
- * <ul>
- *   <li>The node's English name and description.</li>
- *   <li>Outgoing and incoming relation summaries (e.g. "Outgoing: supports X, Y").</li>
- * </ul>
+ * <p>The shared catalogue vector uses the node's English name and description.
+ * Repository and working-copy relations belong to their selected graph generations.
  *
  * <p>Graceful degradation: when the DJL model is unavailable the bridge writes nothing,
  * leaving the document without an embedding vector. KNN queries will not match it, which
@@ -27,13 +24,7 @@ public class NodeEmbeddingBinder implements TypeBinder {
 
     @Override
     public void bind(TypeBindingContext context) {
-        context.dependencies()
-                .use("nameEn")
-                .use("descriptionEn")
-                .use("outgoingRelations.relationType")
-                .use("outgoingRelations.targetNode.nameEn")
-                .use("incomingRelations.relationType")
-                .use("incomingRelations.sourceNode.nameEn");
+        context.dependencies().use("nameEn").use("descriptionEn");
 
         IndexFieldReference<float[]> embeddingField =
                 EmbeddingBridgeSupport.createEmbeddingField(context);
@@ -59,7 +50,7 @@ public class NodeEmbeddingBinder implements TypeBinder {
         }
 
         public static String buildEnrichedText(TaxonomyNode node) {
-            return NodeEmbeddingText.buildEnrichedText(node);
+            return NodeEmbeddingText.globalReferenceText(node);
         }
     }
 }

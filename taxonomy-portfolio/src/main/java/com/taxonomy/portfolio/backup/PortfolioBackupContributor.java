@@ -48,6 +48,7 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
             "com.taxonomy.portfolio.model.RequirementSolutionLink",
             "com.taxonomy.portfolio.model.SolutionProductCandidate",
             "com.taxonomy.portfolio.model.ProjectConflict",
+            "com.taxonomy.portfolio.model.ProductGapReview",
             "com.taxonomy.portfolio.reformulation.ReformulationProposal",
             "com.taxonomy.portfolio.reformulation.ReformulationRevision",
             "com.taxonomy.portfolio.reformulation.ReformulationRun",
@@ -379,6 +380,19 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                     text(r,"updated_by"),
                     instant(r,"updated_at"),text(r,"inventory_comparison_id"),text(r,"inventory_fingerprint"),text(r,"inventory_hard_exclusions"));
         });
+        var gapReviews = query(scope,
+                "select t.*,p.scope_key as project_scope from project_product_gap_review t left join arch_project p on p.id=t.project_id",
+                scope.tenants("t.scope_key"),
+                "not exists (select 1 from project_product_gap_review newer where newer.project_id=t.project_id and newer.scope_key=t.scope_key and newer.gap_key=t.gap_key and newer.review_revision>t.review_revision)",
+                "t.project_id,t.gap_key,t.review_revision");
+        write(scope, sink, "product-gap-review", profile, gapReviews, r -> {
+            requireSameTenant(r, "project_scope");
+            return new ProductGapReviewRecord(reference(r, "portfolio.product-gap-review", "id"),
+                    reference(r, "portfolio.project", "project_id"), text(r, "scope_key"), text(r, "gap_key"),
+                    r.getInt("review_revision"), text(r, "evidence_fingerprint"),
+                    enumeration(r, "classification", com.taxonomy.portfolio.model.ProductGapReview.Classification.class),
+                    text(r, "rationale"), text(r, "reviewer"), instant(r, "reviewed_at"));
+        });
         write(scope,sink,"conflict",profile,query(scope,"select parent.scope_key,ra.scope_key as requirement_a_scope,rb.scope_key as requirement_b_scope,t.id,t.project_id,t.requirement_a_id,t.requirement_b_id,t.conflict_type,t.status,t.fingerprint,t.title,t.evidence,t.confidence,t.resolution_note,t.detected_at,t.reviewed_by,t.reviewed_at from project_conflict t join arch_project parent on parent.id=t.project_id join project_requirement ra on ra.id=t.requirement_a_id and ra.project_id=parent.id and ra.scope_key=parent.scope_key join project_requirement rb on rb.id=t.requirement_b_id and rb.project_id=parent.id and rb.scope_key=parent.scope_key",scope.tenants("parent.scope_key"),"1=1","t.id"),r -> {
             requireSameTenant(r, "requirement_a_scope");
             requireSameTenant(r, "requirement_b_scope");
@@ -591,6 +605,9 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
     public record SolutionTaxonomyCoverageRecord(SourceRecordId sourceId, SourceRecordId solutionId, String nodeCode, int coveragePercent, String evidence, ReviewStatus reviewStatus, String updatedBy, String updatedAt) { }
     public record RequirementSolutionLinkRecord(SourceRecordId sourceId, SourceRecordId projectSolutionId, SourceRecordId requirementId, SourceRecordId snapshotId, double coveragePercent, RequirementSolutionRole role, ReviewStatus reviewStatus, String evidence, String updatedBy, String updatedAt) { }
     public record SolutionProductCandidateRecord(SourceRecordId sourceId, SourceRecordId projectSolutionId, SourceRecordId productId, int coveragePercent, String hardExclusions, String strengths, String weaknesses, String openEvidence, double confidence, ReviewStatus reviewStatus, ProductSelectionStatus selectionStatus, String updatedBy, String updatedAt,String inventoryComparisonId,String inventoryFingerprint,String inventoryHardExclusions) { }
+    public record ProductGapReviewRecord(SourceRecordId sourceId, SourceRecordId projectId, String scopeKey,
+            String gapKey, int revision, String evidenceFingerprint, com.taxonomy.portfolio.model.ProductGapReview.Classification classification,
+            String rationale, String reviewer, String reviewedAt) { }
     public record ProjectConflictRecord(SourceRecordId sourceId, SourceRecordId projectId, SourceRecordId requirementAId, SourceRecordId requirementBId, ConflictType conflictType, ConflictStatus status, String fingerprint, String title, String evidence, double confidence, String resolutionNote, String detectedAt, String reviewedBy, String reviewedAt) { }
     public record ReformulationProposalRecord(SourceRecordId sourceId, String tenant, SourceRecordId projectId, SourceRecordId requirementId, SourceRecordId sourceVersionId, SourceRecordId snapshotId, String baselinePayload, String createdBy, String createdAt, long currentRevision) { }
     public record ReformulationRevisionRecord(SourceRecordId sourceId, SourceRecordId proposalId, String tenant, long number, String payload) { }

@@ -5,8 +5,8 @@ import vm from 'node:vm';
 
 const root = new URL('../../taxonomy-app/src/main/resources/static/js/', import.meta.url);
 const sources = new Map();
-for (const path of ['api/taxonomy-api-client.js', 'api/analysis-api.js', 'api/portfolio-api.js',
-  'api/workspace-api.js', 'versioning/taxonomy-context-bar.js',
+for (const path of ['api/taxonomy-api-client.js', 'api/analysis-adapter-api.js', 'api/analysis-api.js', 'api/portfolio-api.js',
+  'api/workspace-api.js', 'api/search-api.js', 'versioning/taxonomy-context-bar.js',
   'api/import-api.js', 'api/analysis-session-api.js', 'core/taxonomy-analysis-session-core.js',
   'core/taxonomy-analysis-session-transport.js', 'portfolio/taxonomy-portfolio-async.js',
   'core/taxonomy-analysis.js', 'shared/taxonomy-document-import.js', 'shared/taxonomy-import.js', 'api/export-api.js',
@@ -71,7 +71,7 @@ function boot(fetchImpl, {analysis = false, portfolio = false, beforeCanonical =
   const marker = source.indexOf('(function loadAuthenticatedUiSurfaces');
   assert.ok(marker > 0);
   vm.runInContext(source.slice(0, marker), context, {filename: 'taxonomy-api-client.js'});
-  load('api/analysis-api.js'); load('api/portfolio-api.js'); load('api/import-api.js');
+  load('api/analysis-adapter-api.js'); load('api/analysis-api.js'); load('api/portfolio-api.js'); load('api/import-api.js');
   if (workflow && !beforeCanonical) load('shared/architecture-workflow.js');
   if (analysis && !beforeCanonical) load('core/taxonomy-analysis-session-transport.js');
   if (portfolio && !beforeCanonical) load('portfolio/taxonomy-portfolio-async.js');
@@ -214,6 +214,25 @@ test('global database onboarding survives initial workspace hydration without ac
   assert.equal(new Headers(requests[0].init.headers).has('X-Taxonomy-Workspace-Id'),false);
   assert.equal(requests[0].init.signal.aborted,false);
   assert.equal(app.timers.size,0);
+});
+
+test('a report download link retains its repository, working copy and branch behind the application prefix', () => {
+  const {window} = boot(() => { throw new Error('Building the download link must not send a request'); });
+  const selected = {repositoryId:'repo-a', workspaceId:'copy-a', workspaceScopeKey:'copy-a', branch:'review/A'};
+  window.TaxonomyArchitectureWorkflow = {getScope: () => selected};
+  const link = new URL(window.TaxonomyPortfolioApi.reportUrl(41, 'json', {matrix:'taxonomy', requirementId:'7'}), window.location.href);
+  assert.equal(link.pathname, '/taxonomy/api/projects/41/reports/json');
+  assert.deepEqual(Object.fromEntries(link.searchParams), {matrix:'taxonomy', requirementId:'7', repositoryId:'repo-a',
+    workspaceScopeKey:'copy-a', workspaceId:'copy-a', branch:'review/A'});
+  selected.repositoryId = 'central-b';
+  selected.workspaceId = '';
+  selected.workspaceScopeKey = '__shared__';
+  selected.branch = 'release';
+  const central = new URL(window.TaxonomyPortfolioApi.reportUrl(41, 'html'), window.location.href);
+  assert.equal(central.searchParams.get('workspaceId'), '');
+  assert.equal(central.searchParams.get('repositoryId'), 'central-b');
+  assert.equal(central.searchParams.get('branch'), 'release');
+  assert.equal(link.searchParams.get('repositoryId'), 'repo-a');
 });
 
 test('portfolio startup reads the selected source only after lifecycle initialization settles',async()=>{
@@ -594,6 +613,26 @@ test('the named binary export retains bytes and blocks a download body after nav
   assert.match(calls[0].url, /\/taxonomy\/api\/diagram\/current\/pdf/);
   assert.equal(calls[0].init.body, '{"elements":[]}');
 });
+test('an admitted central job still polls its repository after switching between equally named branches', async () => {
+  const calls = [];
+  const job = {id:'job-central-a', projectId:41, status:'RUNNING', workspaceId:null, repositoryId:'central-a', branch:'review'};
+  const app = boot(async (url, init) => {
+    calls.push({url, init});
+    return Response.json({...job, status:'COMPLETED'});
+  }, {portfolio:true});
+  app.window.TaxonomyArchitectureWorkflow = {getScope:()=>({repositoryId:'central-b',workspaceId:'',branch:'review'})};
+  app.window.taxonomyPortfolioRegisterJob('/taxonomy/api/projects/41/analysis-jobs/job-central-a', job);
+  const timer = [...app.timers.values()].find(t => t.delay === 1500);
+  assert.ok(timer);
+  await timer.callback();
+  assert.equal(calls.length, 1);
+  const selected = new URL(calls[0].url, app.window.location.href);
+  assert.equal(selected.searchParams.get('repositoryId'), 'central-a');
+  assert.equal(selected.searchParams.get('branch'), 'review');
+  assert.equal(selected.searchParams.get('workspaceId'), '');
+  assert.equal(new Headers(calls[0].init.headers).get('X-Taxonomy-Workspace-Id'), '');
+});
+
 test('named durable job reads retain their original workspace pin after tab switching', async () => {
   const calls = [];
   const app = boot(async (url, init) => {calls.push({url, init}); return Response.json({id: 'job-1'});});
@@ -726,6 +765,8 @@ test('actual scoring leaf catch cannot release a newer request button or show it
   app.window.TaxonomyBrowse = {showStatus: (...args) => statuses.push(args)};
   app.load('core/taxonomy-scoring.js');
   const button = node(); button.textContent = 'Explain';
+  button.setAttribute = function (key, value) { this[key] = value; };
+  button.removeAttribute = function (key) { delete this[key]; };
   app.window.TaxonomyScoring.requestLeafJustification('BP', button);
   app.runtime.workspaceId = 'workspace-b';
   app.window.TaxonomyScoring.requestLeafJustification('BP', button);
@@ -822,4 +863,136 @@ for(const status of [401,403])test(`long main analysis retains shared authentica
   await assert.rejects(app.window.AnalysisApi.main({businessText:'controlled-long-operation'}),error=>error.status===status);
   assert.equal(app.events.filter(event=>event.type==='taxonomy-api-auth-failure').length,1);
   assert.equal(app.timers.size,0);
+});
+
+test('child observation consumes only a matching terminal native response and never repeats the command', async () => {
+  const id = '10000000-0000-0000-0000-000000000001', commit = 'a'.repeat(40), calls = [];
+  const headers = {'X-Analysis-Operation-Id':id, 'X-Analysis-Source-Commit':commit, 'Retry-After':'1'};
+  const app = boot(async (url, init) => {
+    calls.push({url, init});
+    return calls.length === 1
+      ? Response.json({operationId:id, sourceCommit:commit, state:'RUNNING', sequence:1}, {status:202,headers})
+      : Response.json({nodeCode:'CP', justification:'Retained reason'}, {headers});
+  });
+  let cancel, cleanup = 0;
+  const result = app.window.AnalysisApi.justifyLeaf({nodeCode:'CP',businessText:'controlled'}, {
+    onPending:fn => {cancel = fn; return () => cleanup++;},
+  }).then(response => response.json());
+  await flush(); await flush();
+  assert.equal(typeof cancel, 'function');
+  const delay = [...app.timers].find(([,timer]) => timer.delay === 1000);
+  assert.ok(delay); app.timers.delete(delay[0]); delay[1].callback();
+  assert.deepEqual(await result, {nodeCode:'CP', justification:'Retained reason'});
+  assert.deepEqual(calls.map(call => call.init.method), ['POST','GET']);
+  assert.match(calls[1].url, new RegExp('/api/analysis-adapters/'+id));
+  assert.equal(cleanup,1);
+});
+
+test('child operation refuses regressed observations and never follows an untrusted location', async () => {
+  const id = '10000000-0000-0000-0000-000000000002', commit = 'c'.repeat(40), calls = [];
+  const app = boot(async (url, init) => {
+    calls.push({url,init});
+    return Response.json({operationId:id,sourceCommit:commit,state:'RUNNING',sequence:calls.length === 1 ? 3 : 2},
+      {status:202,headers:{'X-Analysis-Operation-Id':id,'X-Analysis-Source-Commit':commit,
+        'Retry-After':'1','Content-Location':'https://other.invalid/private'}});
+  });
+  const result = app.window.AnalysisApi.analyzeNode({parentCode:'CP',businessText:'controlled'});
+  const rejected = assert.rejects(result,/Invalid analysis observation/);
+  await flush(); await flush();
+  const delay = [...app.timers].find(([,timer]) => timer.delay === 1000);
+  assert.ok(delay); app.timers.delete(delay[0]); delay[1].callback();
+  await rejected;
+  assert.equal(calls.length,2);
+  assert.match(calls[1].url, new RegExp('/api/analysis-adapters/'+id));
+});
+
+test('navigation abandons pending child observation without cancelling shared work', async () => {
+  const id = '10000000-0000-0000-0000-000000000003', commit = 'b'.repeat(40), calls = [];
+  const app = boot(async (url, init) => {
+    calls.push({url,init});
+    return Response.json({operationId:id,sourceCommit:commit,state:'RUNNING',sequence:1}, {status:202,
+      headers:{'X-Analysis-Operation-Id':id,'X-Analysis-Source-Commit':commit,'Retry-After':'1'}});
+  });
+  let cleanup = 0;
+  const result = app.window.AnalysisApi.justifyLeaf({nodeCode:'CP',businessText:'controlled'},
+    {onPending:() => () => cleanup++});
+  const rejected = assert.rejects(result,error => error.code === 'ABORTED');
+  await flush(); await flush();
+  app.runtime.workspaceId='other';
+  const delay = [...app.timers].find(([,timer]) => timer.delay === 1000);
+  assert.ok(delay); app.timers.delete(delay[0]); delay[1].callback();
+  await rejected;
+  assert.equal(calls.length,1);
+  assert.equal(cleanup,1);
+});
+
+test('an expired child keeps its HTTP status and exposes its localized explanation', async () => {
+  const app = boot(async () => Response.json({code:'ANALYSIS_EXPIRED'}, {status:410}));
+  await assert.rejects(app.window.AnalysisApi.analyzeNode({parentCode:'CP',businessText:'controlled'}),
+    error => error.status === 410 && error.responseBody.code === 'ANALYSIS_EXPIRED'
+      && error.message === 'analysis.adapter.expired');
+});
+
+test('the proposal inbox waits for the selected repository and pins the initial central read', async () => {
+  const admitted = deferred();
+  const calls = [];
+  const app = boot(async (url, init) => { calls.push([String(url), init]); return Response.json([]); });
+  app.runtime.workspaceId = undefined;
+  let source = {};
+  app.window.TaxonomyArchitectureWorkspace = {ready: () => admitted.promise};
+  app.window.TaxonomyArchitectureWorkflow = {getScope: () => source};
+  app.load('api/proposals-api.js');
+  const first = app.window.TaxonomyProposalsApi.list('PENDING');
+  await flush();
+  assert.equal(calls.length, 0);
+  source = {repositoryId:'central B', workspaceId:'', branch:'review/B'};
+  admitted.resolve(true);
+  assert.equal((await first).status, 200);
+  const url = new URL(calls[0][0], app.window.location.href);
+  assert.equal(url.pathname, '/taxonomy/api/proposals/pending');
+  assert.deepEqual(Object.fromEntries(url.searchParams), {repositoryId:'central B',workspaceId:'',branch:'review/B'});
+  assert.equal(new Headers(calls[0][1].headers).get('X-Taxonomy-Workspace-Id'), '');
+  source = {repositoryId:'central A',workspaceId:'workspace-a',branch:'review/A'};
+  await app.window.TaxonomyProposalsApi.readHead();
+  const head = new URL(calls[1][0], app.window.location.href);
+  assert.equal(head.searchParams.get('repositoryId'), 'central A');
+  assert.equal(head.searchParams.get('branch'), 'review/A');
+  assert.equal(head.searchParams.get('workspaceId'), 'workspace-a');
+});
+
+test('exporting the current architecture report pins its live proposal inbox and preserves retained reports', async () => {
+  const calls = [];
+  const app = boot(async (url,init) => { calls.push([new URL(url,app.window.location.href),new Headers(init.headers)]); return new Response('report'); });
+  app.load('api/export-api.js');
+  app.window.TaxonomyArchitectureWorkspace = {ready: async () => true};
+  app.window.TaxonomyArchitectureWorkflow = {getScope: () => ({repositoryId:'selected',workspaceId:'',branch:'review'})};
+  await app.window.ExportApi.report('markdown',{scores:{A:80}});
+  await app.window.ExportApi.report('docx',{analysisReference:{workspaceId:'retained'}},{pinnedWorkspaceId:'retained'});
+  assert.deepEqual(Object.fromEntries(calls[0][0].searchParams),{repositoryId:'selected',workspaceId:'',branch:'review'});
+  assert.equal(calls[0][1].get('X-Taxonomy-Workspace-Id'),'');
+  assert.equal(calls[1][0].searchParams.has('repositoryId'),false);
+  assert.equal(calls[1][1].get('X-Taxonomy-Workspace-Id'),'retained');
+});
+
+test('graph search waits for the selected repository and branch without blocking global catalogue reads', async () => {
+  const admitted = deferred(), calls = [];
+  const app = boot(async (url, init) => {
+    calls.push([new URL(url, app.window.location.href), new Headers(init.headers)]);
+    return Response.json([]);
+  });
+  app.load('api/search-api.js');
+  app.runtime.workspaceId = undefined;
+  app.window.TaxonomyArchitectureWorkspace = {ready: () => admitted.promise};
+  app.window.TaxonomyArchitectureWorkflow = {getScope: () => ({repositoryId:'central B',workspaceId:'',branch:'review/B'})};
+  const graph = app.window.TaxonomySearchApi.search('care & treatment', 'graph', 3);
+  await app.window.TaxonomySearchApi.search('care', 'semantic', 2);
+  assert.deepEqual(calls.map(([url]) => url.pathname), ['/taxonomy/api/search/semantic']);
+  admitted.resolve(true);
+  await graph;
+  const [url, headers] = calls[1];
+  assert.equal(url.pathname, '/taxonomy/api/search/graph');
+  assert.deepEqual(Object.fromEntries(url.searchParams), {
+    q:'care & treatment', maxResults:'3', repositoryId:'central B', workspaceId:'', branch:'review/B'
+  });
+  assert.equal(headers.get('X-Taxonomy-Workspace-Id'), '');
 });

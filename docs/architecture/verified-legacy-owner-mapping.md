@@ -1,0 +1,80 @@
+# Verified legacy owner mapping (implementation checkpoint)
+
+This is a controlled-identity **implementation fixture**, not approval to change a real
+installation. Existing Keycloak installations stay in `LEGACY` until their owner mappings
+have been independently established and accepted by the operator (EXT-02).
+
+`VerifiedLegacyOwnerMigration` is an internal, server-owned service, **not** an HTTP
+self-service endpoint. A currently active stable administrator invokes:
+
+1. `preview(authentication, limit)` (limit 1–256) to obtain a bounded ordered set
+   of historical disabled scopes, the full unresolved count and a revision fingerprint.
+   A truncated preview is diagnostic only; it is not a complete migration plan.
+2. Verify **every** historical owner against the target provider's immutable issuer and
+   subject, using an independent privileged source. Retain the approval records outside
+   application logs. Never match by display name, e-mail or `preferred_username`.
+3. Supply a full list of `VerifiedMapping` entries (including the reserved principal
+   IDs and exact scopes) and the preview fingerprint to `linkVerified`. The service
+   rejects partial, stale, duplicate or conflicting mappings; up to 4,096 unresolved
+   identities are supported per all-or-nothing batch. A larger migration needs a
+   separately designed staged, restartable implementation, not blind partial activation.
+4. Check the durable identity and access behavior on the *actual* supported database,
+   across deployments and after restart, before authorizing an installation-wide mode
+   switch. The tests in this change use HSQLDB controlled identities only.
+
+The linking transaction keeps the existing scope, enables its reserved stable principal,
+adds the exact OIDC issuer/subject binding and writes a stable-actor audit record. The
+approval reference is stored only as a SHA-256 digest. No backup capability is granted.
+`unlinkVerified` disables the exact historical principal and binding but retains the
+binding tombstone; a recycled subject cannot silently take over the abandoned scope.
+
+Limitations: this first implementation uses the historical reservations created by the
+V3 principal migration. It does **not** yet inventory ownership inserted later in LEGACY
+mode, expose an authorized operator workflow, gate the STABLE mode startup, migrate all
+remaining username-keyed tables, or prove queued-worker revocation. Do not treat
+`preview.total == 0` as proof of installation migration readiness. These are outstanding
+parts of #785. Actual owner approval and production rollout remain EXT-02.
+
+## Post-V3 ownership drift and startup fence
+
+The read-only `LegacyOwnerMigrationReadiness` inventories the same explicit ownership
+columns as V3 (including user-scoped system repositories). It compares currently
+persisted owner scopes against the stable principal and binding registry, counts
+late LEGACY writes with **no V3 reservation**, unresolved disabled reservations
+and owner rows lacking an active local, verified historical OIDC, or generated STABLE
+binding. It does not expose owner names on the startup failure path. The inventory is
+bounded to 100,000 distinct scopes and fails closed above that limit or if the
+identity schema is unavailable.
+
+Revoking a verified historical link disables both the principal and its binding. A
+subsequent STABLE startup recognizes that tombstone only when both the original
+link and its removal have a committed audit record. A generated STABLE scope retains
+its identity after disablement. Neither case enables the principal or grants access.
+
+`linkVerified` now rejects an otherwise complete approved mapping plan if post-V3
+LEGACY ownership has not been reserved. In the `keycloak` profile, a configured
+`principal-mode=STABLE` checks the inventory after identity-schema initialization
+and rejects startup while it is incomplete. Fresh installations without historical
+ownership remain able to opt in. `LEGACY` is unchanged and never silently promoted.
+
+**Important:** This is a necessary startup fence, **not** a proof of safe rollout.
+It does not migrate later unreserved scopes, coordinate concurrently running LEGACY
+instances, classify every identity-bearing writer, reauthorize queued workers,
+verify all database dialects or replace the installation-specific issuer/subject
+approvals in EXT-02. Stop all LEGACY writers, inventory and migrate the real
+installation, verify the full username-key audit and all retained actors, and
+collect restart/multi-instance evidence before any authorized mode switch.
+Issue #785 remains open.
+
+## Reserving owners written after the initial migration
+
+A current administrator can use `GET /api/admin/users/ownership-reservations?limit=100` to read the inventory, the total number of unresolved disabled reservations, and a page of up to 256 records. The response uses `Cache-Control: no-store`. The inventory includes owners of analysis continuations, clustered analysis runs and per-branch workspace synchronization records.
+
+After quiescing LEGACY writers, `POST /api/admin/users/ownership-reservations` reserves each observed, previously unregistered ownership scope. The response reports the number created. Each new principal is disabled and has no identity bindings or grants. The transaction records the authenticated administrator and reserved principal in the existing audit table. A repeated call returns zero when there are no additional owners. Conflicting scope spellings or more than 4,096 new reservations abort the transaction. The normal administrator permission and browser-session CSRF rules apply.
+
+Read the preview again before preparing a mapping plan. An installation with unverified reservations still fails the STABLE readiness check. Activating a real owner binding requires separate operator verification of its exact issuer and subject under EXT-02.
+
+Administrators can inspect the same bounded inventory in German or English under
+**Administration → Historical ownership** (`/admin/identity/ownership`). Opening
+the page reads the current inventory and up to 100 unresolved reservations.
+The reservation and operator-verified mapping procedures remain separate.

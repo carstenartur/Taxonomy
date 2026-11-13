@@ -10,6 +10,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
@@ -110,6 +113,16 @@ class DocumentTemplateHttpIT {
         }
     }
 
+    // The peer's real materializer evicts as soon as the unrelated control file is read.
+    @TestConfiguration(proxyBeanMethods = false)
+    static class PeerCacheConfiguration {
+        @Bean
+        @Primary
+        DocumentTemplateMaterializationCache peerTemplateCache() {
+            return new DocumentTemplateMaterializationCache(1, 1024 * 1024, null);
+        }
+    }
+
     private static ConfigurableApplicationContext startPeer() {
         var args = new ArrayList<>(NODE_PROPERTIES.entrySet().stream()
                 .map(property -> "--" + property.getKey() + "=" + property.getValue()).toList());
@@ -117,7 +130,7 @@ class DocumentTemplateHttpIT {
         args.add("--server.port=0");
         args.add("--spring.datasource.url=" + databaseUrl());
         args.add("--taxonomy.admin-password=" + PASSWORD);
-        return new SpringApplicationBuilder(TaxonomyApplication.class).registerShutdownHook(false)
+        return new SpringApplicationBuilder(TaxonomyApplication.class, PeerCacheConfiguration.class).registerShutdownHook(false)
                 .run(args.toArray(String[]::new));
     }
 

@@ -26,12 +26,20 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
         if (!scope.selectedVersion()) {
             var repositories = scope.repositoryIds("repository_id"); var workspaces = scope.repositories("source_repository_id", "workspace_id");
             var sync = scope.repositories("w.source_repository_id", "w.workspace_id");
+            var forks = scope.centralTransfer("f.target_repository_id", "f.source_repository_id");
+            queries.add(new Query("select f.target_repository_id as repository_id,cast(null as varchar(255)) as workspace_id,"
+                    + "cast(null as varchar(255)) as linked_workspace_id,0 as repository_only,f.actor_scope as principal_scope "
+                    + centralFetchSources(snapshot.authorization().request().profile()) + " where " + forks.sql() + " order by f.operation_id", forks.parameters()));
             queries.add(new Query("select repository_id,cast(null as varchar(255)) as workspace_id,cast(null as varchar(255)) as linked_workspace_id,1 as repository_only,owner_id as principal_scope from system_repository where "
                     + repositories.sql() + " and (owner_type='USER' or owner_type is null) order by repository_id", repositories.parameters()));
             queries.add(new Query("select repository_id,cast(null as varchar(255)) as workspace_id,cast(null as varchar(255)) as linked_workspace_id,1 as repository_only,username as principal_scope from repository_membership where "
                     + repositories.sql() + " order by id", repositories.parameters()));
             queries.add(new Query("select source_repository_id as repository_id,workspace_id,workspace_id as linked_workspace_id,0 as repository_only,username as principal_scope from user_workspace where "
                     + workspaces.sql() + " order by workspace_id", workspaces.parameters()));
+            var branchProgress = scope.repositories("repository_id", "workspace_id");
+            queries.add(new Query("select repository_id,workspace_id,workspace_id as linked_workspace_id,0 as repository_only,"
+                    + "username as principal_scope from workspace_branch_sync where " + branchProgress.sql()
+                    + " order by scope_key", branchProgress.parameters()));
             queries.add(new Query("select w.source_repository_id as repository_id,w.workspace_id,s.workspace_id as linked_workspace_id,0 as repository_only,s.username as principal_scope from sync_state s join user_workspace w on w.workspace_id=s.workspace_id where "
                     + sync.sql() + " order by s.id", sync.parameters()));
         }
@@ -71,6 +79,8 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
     @Override public Set<String> categories() {
         return Set.of("com.taxonomy.workspace.model.SystemRepository", "com.taxonomy.workspace.model.UserWorkspace",
                 "com.taxonomy.workspace.model.RepositoryMembership", "com.taxonomy.workspace.model.SyncState",
+                "com.taxonomy.workspace.service.WorkspaceFetchOperation", "com.taxonomy.workspace.service.CentralFetchOperation",
+                "com.taxonomy.workspace.model.WorkspaceBranchSyncState",
                 "com.taxonomy.editor.persistence.EditorWorkspace", "com.taxonomy.editor.persistence.EditorOperation",
                 "com.taxonomy.editor.persistence.EditorCheckpoint", "com.taxonomy.versioning.model.ArchitectureCommitIndex",
                 "com.taxonomy.versioning.model.ContextHistoryRecord");
@@ -106,6 +116,46 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
         write(sink,"synchronization",profile,query(scope,false,"select w.source_repository_id as captured_repository_id,w.workspace_id as captured_workspace_id,s.id,s.username,s.workspace_id,s.last_synced_commit_id,s.last_sync_timestamp,s.last_published_commit_id,s.last_publish_timestamp,s.sync_status,s.unpublished_commit_count,s.created_at,s.updated_at from sync_state s join user_workspace w on w.workspace_id=s.workspace_id",sync,"s.id"),
                 scoped(scope,"captured_repository_id","captured_workspace_id",linked("captured_workspace_id","workspace_id",r -> new SyncRecord(reference(r,"workspace.sync","id"),text(r,"username"),text(r,"workspace_id"),text(r,"last_synced_commit_id"),instant(r,"last_sync_timestamp"),
                         text(r,"last_published_commit_id"),instant(r,"last_publish_timestamp"),text(r,"sync_status"),r.getInt("unpublished_commit_count"),instant(r,"created_at"),instant(r,"updated_at")))));
+        var fetchScope = scope.repositories("f.repository_id", "f.workspace_id");
+        var branchProgress = scope.repositories("repository_id", "workspace_id");
+        write(sink, "branch-synchronization", profile, query(scope, false, """
+                select scope_key,username,repository_id,workspace_id,sync_branch,last_synced_commit_id,last_sync_timestamp,
+                       last_published_commit_id,last_publish_timestamp,sync_status,unpublished_commit_count,created_at,updated_at
+                from workspace_branch_sync""", branchProgress, "scope_key"), scoped(scope,"repository_id","workspace_id",r -> {
+            var identity = new com.taxonomy.workspace.model.WorkspaceSyncScope(text(r,"username"), text(r,"repository_id"),
+                    text(r,"workspace_id"), text(r,"sync_branch"));
+            if (!identity.key().equals(text(r,"scope_key"))) throw new IOException("Invalid branch synchronization scope");
+            return new BranchSyncRecord(new SourceRecordId("workspace.branch-sync", identity.key()), identity.username(),
+                    identity.repositoryId(), identity.workspaceId(), identity.branch(), text(r,"last_synced_commit_id"),
+                    instant(r,"last_sync_timestamp"), text(r,"last_published_commit_id"), instant(r,"last_publish_timestamp"),
+                    text(r,"sync_status"), r.getInt("unpublished_commit_count"), instant(r,"created_at"), instant(r,"updated_at"));
+        }));
+        String parentJoin = profile == BackupProfile.INSTALLATION_FULL ? "left join" : "join";
+        write(sink, "fetch-journal", profile, query(scope, false, "select " + FETCH_FIELDS + """
+                , f.repository_id, f.workspace_id, w.workspace_id as parent_workspace,
+                  w.source_repository_id as parent_repository, w.username as parent_owner
+                from workspace_fetch_operation f %s user_workspace w on w.workspace_id=f.workspace_id""".formatted(parentJoin),
+                fetchScope, "f.operation_id"), scoped(scope, "repository_id", "workspace_id", r -> {
+                    boolean detached = text(r,"parent_workspace") == null;
+                    if (!detached && (!Objects.equals(text(r,"workspace_id"),text(r,"parent_workspace"))
+                            || !Objects.equals(text(r,"repository_id"), text(r,"parent_repository"))
+                            || !Objects.equals(text(r,"actor_scope"), text(r,"parent_owner")))) {
+                        throw new IOException("Fetch journal ownership does not match the captured workspace");
+                    }
+                    return fetchRecord(r, "workspace.fetch", text(r,"repository_id"), text(r,"workspace_id"), null, detached);
+                }));
+        var forkScope = scope.centralTransfer("f.target_repository_id", "f.source_repository_id");
+        write(sink, "central-fetch-journal", profile, query(scope, false, "select " + FETCH_FIELDS + """
+                , f.target_repository_id, f.source_repository_id, t.repository_id as current_target, s.repository_id as current_source
+                """ + centralFetchSources(profile),
+                forkScope, "f.operation_id"), r -> {
+                    String target = text(r,"target_repository_id"), source = text(r,"source_repository_id");
+                    if (!scope.includesWorkspace(target, null) || !scope.includesWorkspace(source, null)) {
+                        throw new IOException("Central fetch belongs to a different repository");
+                    }
+                    boolean detached = text(r,"current_target") == null || text(r,"current_source") == null;
+                    return fetchRecord(r, "workspace.central-fetch", target, null, source, detached);
+                });
         var editors = scope.repositories("repository_id","workspace_id");
         write(sink,"working-states",profile,query(scope,false,"select scope_id,repository_id,workspace_id,branch,dsl,semantic_revision,checkpoint_commit,checkpoint_revision,pending_checkpoint from editor_workspace",editors,"scope_id"),
                 scoped(scope,"repository_id","workspace_id",r -> new WorkingStateRecord(reference(r,"workspace.editor","scope_id"),text(r,"repository_id"),text(r,"workspace_id"),text(r,"branch"),document(scope,unframe(text(r,"dsl"))),r.getLong("semantic_revision"),text(r,"checkpoint_commit"),r.getLong("checkpoint_revision"),text(r,"pending_checkpoint"))));
@@ -118,6 +168,32 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                 scoped(scope,"repository_id","workspace_id",r -> new CommitIndexRecord(reference(r,"workspace.commit-index","id"),text(r,"repository_id"),text(r,"workspace_id"),text(r,"workspace_scope_key"),text(r,"commit_id"),text(r,"author"),instant(r,"commit_timestamp"),text(r,"message"),text(r,"changed_files"),text(r,"tokenized_change_text"),text(r,"affected_element_ids"),text(r,"affected_relation_ids"),text(r,"branch"),instant(r,"indexed_at"))));
         write(sink,"context-history",profile,profile == BackupProfile.INSTALLATION_FULL ? new Query("select id,username,from_context_id,to_context_id,from_branch,to_branch,from_commit_id,to_commit_id,reason,origin_context_id,created_at from context_history_record order by id",List.of()) : null,
                 r -> new ContextHistoryRecord(reference(r,"workspace.context-history","id"),text(r,"username"),text(r,"from_context_id"),text(r,"to_context_id"),text(r,"from_branch"),text(r,"to_branch"),text(r,"from_commit_id"),text(r,"to_commit_id"),text(r,"reason"),text(r,"origin_context_id"),instant(r,"created_at")));
+    }
+    private static String centralFetchSources(BackupProfile profile) {
+        String join = profile == BackupProfile.INSTALLATION_FULL ? "left join" : "join";
+        return """
+                from central_fetch_operation f
+                %1$s system_repository t on t.repository_id=f.target_repository_id and t.upstream_repository_id=f.source_repository_id
+                    and t.upstream_branch=f.source_branch and t.fork_point_commit=f.fork_point
+                %1$s system_repository s on s.repository_id=f.source_repository_id""".formatted(join);
+    }
+
+    private static final String FETCH_FIELDS = """
+            f.operation_id, f.actor_id, f.actor_scope, f.local_branch, f.source_branch, f.fork_point,
+            f.requested_commit, f.expected_commit, f.observed_commit, f.result_commit, f.cause_id, f.phase,
+            f.attempts, f.decision_code, f.created_at, f.last_attempt_at, f.completed_at, f.login_kind,
+            f.policy_code, f.archived_at, f.archived_by, f.selected_tag, f.requested_tag_object, f.result_tag_object""";
+
+    private static FetchRecord fetchRecord(ResultSet r, String kind, String repositoryId, String workspaceId,
+                                           String upstreamRepositoryId, boolean detached) throws SQLException, IOException {
+        return new FetchRecord(reference(r,kind,"operation_id"), text(r,"actor_id"), text(r,"actor_scope"),
+                repositoryId, workspaceId, text(r,"local_branch"), text(r,"source_branch"), text(r,"fork_point"),
+                text(r,"requested_commit"), text(r,"expected_commit"), text(r,"observed_commit"), text(r,"result_commit"),
+                text(r,"cause_id"), text(r,"phase"), r.getInt("attempts"), text(r,"decision_code"), r.getLong("created_at"),
+                r.getObject("last_attempt_at",Long.class), r.getObject("completed_at",Long.class), text(r,"login_kind"),
+                text(r,"policy_code"), r.getObject("archived_at",Long.class), text(r,"archived_by"), workspaceId == null ? null : detached,
+                upstreamRepositoryId, text(r,"selected_tag"), text(r,"requested_tag_object"), text(r,"result_tag_object"),
+                workspaceId == null ? detached : null);
     }
     private <T extends Record> void write(ComponentSink sink,String kind,BackupProfile profile,Query query,PortableRows.Mapper<T> mapper) throws IOException { rows.write(sink,"workspace",kind,profile,query,mapper); }
     private static <T extends Record> PortableRows.Mapper<T> scoped(BackupRowScope scope,String repositoryColumn,String workspaceColumn,PortableRows.Mapper<T> mapper) {
@@ -148,6 +224,15 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
         }
     }
     public record MembershipRecord(SourceRecordId sourceId,String repositoryId,String principalScope,RepositoryRole role,String createdAt,String createdBy,String updatedAt) { }
+    public record FetchRecord(SourceRecordId sourceId, String principalId, String principalScope, String repositoryId,
+                              String workspaceId, String branch, String sourceBranch, String forkPoint, String requestedCommit,
+                              String expectedCommit, String observedCommit, String resultCommit, String causationId,
+                              String phase, int attempts, String decisionCode, long createdAt, Long lastAttemptAt, Long completedAt,
+                              String authorizationKind, String requiredPolicy, Long archivedAt, String archivedBy, Boolean detachedWorkspace,
+                              String upstreamRepositoryId, String selectedTag, String requestedTagObject, String resultTagObject, Boolean detachedCentralOrigin) { }
+    public record BranchSyncRecord(SourceRecordId sourceId, String principalScope, String repositoryId, String workspaceId,
+            String branch, String lastSyncedCommit, String lastSyncAt, String lastPublishedCommit, String lastPublishAt,
+            String syncStatus, int unpublishedCommitCount, String createdAt, String updatedAt) { }
     public record SyncRecord(SourceRecordId sourceId,String principalScope,String workspaceId,String lastSyncedCommit,String lastSyncAt,String lastPublishedCommit,String lastPublishAt,String syncStatus,int unpublishedCommitCount,String createdAt,String updatedAt) { }
     public record WorkingStateRecord(SourceRecordId sourceId,String repositoryId,String workspaceId,String branch,String dsl,long semanticRevision,String checkpointCommit,long checkpointRevision,String interruptedCheckpoint) { }
     public record OperationRecord(SourceRecordId sourceId,SourceRecordId editor,String commandId,String actor,String occurredAt,String rationale,String correlationId,String causationId,String kind,String targetOperationId,long previousRevision,long semanticRevision,String fingerprint,int bodyVersion,String beforeDsl,String afterDsl,String affectedIds) { }

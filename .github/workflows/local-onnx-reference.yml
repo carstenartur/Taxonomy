@@ -14,6 +14,8 @@ on:
       - 'taxonomy-app/src/test/java/com/taxonomy/acceptance/OnnxReference*'
       - 'taxonomy-app/src/test/resources/scenarios/local-onnx-reference-v1.json'
       - 'taxonomy-knowledge/src/main/java/com/taxonomy/catalog/service/LocalEmbeddingService.java'
+      - 'taxonomy-knowledge/src/main/java/com/taxonomy/relations/service/BranchGraphVector*.java'
+      - 'taxonomy-knowledge/src/test/java/com/taxonomy/relations/service/BranchGraphVectorOnnxTest.java'
   workflow_dispatch:
 
 permissions:
@@ -65,6 +67,7 @@ jobs:
       - name: Require executed ONNX tests
         run: |
           java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling check-junit-reports \
+            taxonomy-knowledge/target/surefire-reports/TEST-com.taxonomy.relations.service.BranchGraphVectorOnnxTest.xml 1 \
             taxonomy-app/target/surefire-reports/TEST-com.taxonomy.OnnxEmbeddingServiceTest.xml 4 \
             taxonomy-app/target/surefire-reports/TEST-com.taxonomy.OnnxRestEndpointTest.xml 5 \
             taxonomy-app/target/surefire-reports/TEST-com.taxonomy.acceptance.OnnxReferenceCasesTest.xml 11 \

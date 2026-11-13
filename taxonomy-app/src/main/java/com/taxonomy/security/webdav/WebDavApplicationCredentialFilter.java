@@ -3,14 +3,17 @@ package com.taxonomy.security.webdav;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequestWrapper;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.transaction.TransactionException;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
@@ -24,7 +27,9 @@ import java.text.Normalizer;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.Deque;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.Locale;
@@ -127,8 +132,15 @@ public final class WebDavApplicationCredentialFilter extends OncePerRequestFilte
             return;
         }
 
-        Optional<WebDavApplicationCredentialService.CredentialPrincipal> authenticated =
-                credentials.authenticate(supplied.username(), supplied.password());
+        Optional<WebDavApplicationCredentialService.CredentialPrincipal> authenticated;
+        try {
+            authenticated = credentials.authenticate(supplied.username(), supplied.password());
+        } catch (DataAccessException | TransactionException unavailable) {
+            // Storage could not establish an authentication outcome. Leave the peer's failure budget intact.
+            response.setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
+            response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
+            return;
+        }
         if (authenticated.isEmpty()) {
             int failureCount =
                     recordFailure(failureKey, monotonicNanos.getAsLong());
@@ -156,7 +168,7 @@ public final class WebDavApplicationCredentialFilter extends OncePerRequestFilte
                 SecurityContextHolder.createEmptyContext();
         UsernamePasswordAuthenticationToken authentication =
                 UsernamePasswordAuthenticationToken.authenticated(
-                        principal.username(),
+                        principal.ownerId(),
                         "[PROTECTED]",
                         principal.authorities());
         authentication.setDetails(
@@ -165,14 +177,37 @@ public final class WebDavApplicationCredentialFilter extends OncePerRequestFilte
         SecurityContextHolder.setContext(applicationContext);
         try {
             log.debug(
-                    "WebDAV application credential accepted id={} user={} method={}",
+                    "WebDAV application credential accepted id={} actor={} method={}",
                     principal.credentialId(),
-                    principal.username(),
+                    principal.ownerId(),
                     request.getMethod());
-            chain.doFilter(request, response);
+            chain.doFilter(withoutConsumedAuthorization(request), response);
         } finally {
             SecurityContextHolder.setContext(previous);
         }
+    }
+
+    /** The scoped adapter consumed these credentials. A later Basic filter must not try them as a local password. */
+    private static HttpServletRequest withoutConsumedAuthorization(HttpServletRequest request) {
+        return new HttpServletRequestWrapper(request) {
+            @Override
+            public String getHeader(String name) {
+                return HttpHeaders.AUTHORIZATION.equalsIgnoreCase(name) ? null : super.getHeader(name);
+            }
+
+            @Override
+            public Enumeration<String> getHeaders(String name) {
+                return HttpHeaders.AUTHORIZATION.equalsIgnoreCase(name)
+                        ? Collections.emptyEnumeration() : super.getHeaders(name);
+            }
+
+            @Override
+            public Enumeration<String> getHeaderNames() {
+                var names = Collections.list(super.getHeaderNames());
+                names.removeIf(HttpHeaders.AUTHORIZATION::equalsIgnoreCase);
+                return Collections.enumeration(names);
+            }
+        };
     }
 
     private static boolean allowedForMethod(

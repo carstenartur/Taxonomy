@@ -1451,6 +1451,7 @@
         const isCurrent = () => leafRequests.get(btnEl) === token && currentContext();
         btnEl.disabled = true;
         btnEl.textContent = t('scoring.generating');
+        btnEl.setAttribute('aria-busy','true');
 
         return window.AnalysisApi.justifyLeaf({
             nodeCode: nodeCode,
@@ -1460,7 +1461,7 @@
             reasons: S.currentReasons || {},
             provider: S.analysisProviderId || null,
             operationId: S.analysisOperationId || null
-        }).then(r => r.json()).then(data => {
+        }, {isCurrent, onPending: window.AnalysisAdapterApi?.pendingButton(btnEl)}).then(r => r.json()).then(data => {
             if (isCurrent()) showLeafJustificationModal(nodeCode, data.justification || t('scoring.no.justification'));
         }).catch(err => {
             if (isCurrent() && err.code !== 'ABORTED') {
@@ -1469,6 +1470,7 @@
         }).finally(() => {
             if (leafRequests.get(btnEl) === token) {
                 leafRequests.delete(btnEl);
+                btnEl.removeAttribute('aria-busy');
                 btnEl.disabled = false;
                 btnEl.textContent = originalText;
             }

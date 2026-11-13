@@ -10,7 +10,6 @@ import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -33,10 +32,12 @@ public class QualityApiController {
 
     private final RelationQualityService qualityService;
     private final WorkspaceResolver workspaceResolver;
+    private final ProposalInboxResponses inbox;
 
     public QualityApiController(
             RelationQualityService qualityService,
-            WorkspaceResolver workspaceResolver) {
+            WorkspaceResolver workspaceResolver, ProposalInboxResponses inbox) {
+        this.inbox = inbox;
         this.qualityService = qualityService;
         this.workspaceResolver = workspaceResolver;
     }
@@ -48,7 +49,15 @@ public class QualityApiController {
     @GetMapping
     public ResponseEntity<RelationQualityMetrics> getMetrics() {
         RepositoryContext context = currentContext();
-        return noStore(qualityService.calculateMetrics(context));
+        return inbox.read(context, "summary", () -> qualityService.calculateMetrics(context));
+    }
+
+    @Operation(summary = "Review dashboard snapshot",
+            description = "Returns the visible proposal inbox totals, per-type breakdown and rejected examples from one observation. Review history has repository/workspace scope across branches.")
+    @GetMapping("/dashboard")
+    public ResponseEntity<RelationQualityService.Dashboard> dashboard(@RequestParam(defaultValue = "5") int limit) {
+        RepositoryContext context = currentContext();
+        return inbox.read(context, "dashboard", limit, () -> qualityService.dashboard(limit, context));
     }
 
     /** Returns metrics broken down by relation type. */
@@ -58,7 +67,7 @@ public class QualityApiController {
     @GetMapping("/by-type")
     public ResponseEntity<List<RelationTypeMetrics>> getMetricsByType() {
         RepositoryContext context = currentContext();
-        return noStore(qualityService.metricsByRelationType(context));
+        return inbox.read(context, "by-type", () -> qualityService.metricsByRelationType(context));
     }
 
     /** Returns metrics broken down by provenance. */
@@ -68,7 +77,7 @@ public class QualityApiController {
     @GetMapping("/by-provenance")
     public ResponseEntity<List<ProvenanceMetrics>> getMetricsByProvenance() {
         RepositoryContext context = currentContext();
-        return noStore(qualityService.metricsByProvenance(context));
+        return inbox.read(context, "by-provenance", () -> qualityService.metricsByProvenance(context));
     }
 
     /** Returns the highest-confidence rejected proposals in the visible scope. */
@@ -80,16 +89,11 @@ public class QualityApiController {
             @Parameter(description = "Maximum number of results")
             @RequestParam(defaultValue = "10") int limit) {
         RepositoryContext context = currentContext();
-        return noStore(qualityService.topRejected(limit, context));
+        return inbox.read(context, "top-rejected", limit, () -> qualityService.topRejected(limit, context));
     }
 
     private RepositoryContext currentContext() {
-        return workspaceResolver.resolveCurrentRepositoryContext();
+        return workspaceResolver.resolveUnambiguousRepositoryForRead();
     }
 
-    private static <T> ResponseEntity<T> noStore(T body) {
-        return ResponseEntity.ok()
-                .cacheControl(CacheControl.noStore())
-                .body(body);
-    }
 }

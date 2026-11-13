@@ -8,6 +8,7 @@ import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.repository.RepositoryMembershipRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -70,6 +71,21 @@ public class RepositoryMembershipService {
             String username,
             RepositoryRole role,
             String actor) {
+        return assignRole(repository, username, role, actor, null);
+    }
+
+    /**
+     * Version-preconditioned membership update for external callers.
+     * -1 means the member must not exist; a nonnegative value must match the locked row.
+     * Internal migration/bootstrap callers retain the distinct, trusted four-argument API.
+     */
+    @Transactional
+    public RepositoryMembership assignRole(
+            SystemRepository repository,
+            String username,
+            RepositoryRole role,
+            String actor,
+            Long expectedVersion) {
         String repositoryId = requireRepositoryId(repository);
         String member = requireText(username, "username");
         String changedBy = requireText(actor, "actor");
@@ -86,6 +102,7 @@ public class RepositoryMembershipService {
         }
         RepositoryMembership existing = findMembership(lockedMemberships, member)
                 .orElse(null);
+        requireExpectedVersion(existing, expectedVersion);
         if (existing != null
                 && existing.getRole() == RepositoryRole.OWNER
                 && role != RepositoryRole.OWNER
@@ -102,6 +119,16 @@ public class RepositoryMembershipService {
             SystemRepository repository,
             String username,
             String actor) {
+        removeMembership(repository, username, actor, null);
+    }
+
+    /** Version-preconditioned deletion: an outdated editor cannot remove a changed grant. */
+    @Transactional
+    public void removeMembership(
+            SystemRepository repository,
+            String username,
+            String actor,
+            Long expectedVersion) {
         String repositoryId = requireRepositoryId(repository);
         String member = requireText(username, "username");
         requireText(actor, "actor");
@@ -113,9 +140,10 @@ public class RepositoryMembershipService {
             throw new IllegalArgumentException(
                     "The repository catalog owner membership cannot be removed");
         }
-        RepositoryMembership membership = findMembership(lockedMemberships, member)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Repository membership does not exist: " + member));
+        Optional<RepositoryMembership> current = findMembership(lockedMemberships, member);
+        requireExpectedVersion(current.orElse(null), expectedVersion);
+        RepositoryMembership membership = current.orElseThrow(() -> new IllegalArgumentException(
+                "Repository membership does not exist: " + member));
         if (membership.getRole() == RepositoryRole.OWNER
                 && !hasImplicitUserOwner(repository)
                 && ownerCount(lockedMemberships) <= 1) {
@@ -190,7 +218,11 @@ public class RepositoryMembershipService {
 
     /** Does not provision, select or disclose a foreign private working copy. */
     public boolean canUseWorkspace(SystemRepository repository, com.taxonomy.workspace.model.UserWorkspace workspace, String username) {
-        return workspace != null && !workspace.isShared() && !workspace.isArchived()
+        // A retained workspace record never grants authority after the source has been
+        // archived or the actor's current repository membership was revoked.
+        return isActive(repository) && username != null && !username.isBlank()
+                && canRead(repository, username)
+                && workspace != null && !workspace.isShared() && !workspace.isArchived()
                 && java.util.Objects.equals(workspace.getSourceRepositoryId(), repository.getRepositoryId())
                 && (java.util.Objects.equals(workspace.getUsername(), username)
                 || (workspace.isCollaborative() && canCollaborate(repository, username)));
@@ -218,6 +250,21 @@ public class RepositoryMembershipService {
     public long countOwners(String repositoryId) {
         return membershipRepository.countByRepositoryIdAndRole(
                 requireText(repositoryId, "repositoryId"), RepositoryRole.OWNER);
+    }
+
+    private static void requireExpectedVersion(RepositoryMembership existing, Long expectedVersion) {
+        if (expectedVersion == null) {
+            return; // Only trusted internal callers use the unversioned API.
+        }
+        if (expectedVersion < -1) {
+            throw new IllegalArgumentException("expectedVersion must be -1 or nonnegative");
+        }
+        if ((existing == null && expectedVersion != -1)
+                || (existing != null
+                        && (expectedVersion == -1 || existing.getVersion() != expectedVersion))) {
+            throw new OptimisticLockingFailureException(
+                    "Repository membership changed; reload the latest version");
+        }
     }
 
     private RepositoryMembership saveRole(

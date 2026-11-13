@@ -156,6 +156,8 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/jus
 
 ## Search
 
+Full-text, semantic, hybrid and similar-node searches read the shared reference catalogue. Successful results carry `X-Taxonomy-Source-Scope: GLOBAL_REFERENCE` and a representation ETag. The shared node index and the similar-node query embed the English catalogue name and description. Graph search on a selected branch uses its own relation-aware vectors. When upgrading, normal local ONNX index startup rebuilds the shared vectors under the new input-format key.
+
 ### Full-text search
 
 ```bash
@@ -176,10 +178,12 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/search/hyb
 
 ### Graph-semantic search
 
-Graph mode checks the selected repository, scope and exact branch head on each request. Relation similarity is available only for the migration-compatible central default branch while the canonical relation reader permits its legacy fallback. A proven empty branch projection returns global node matches with empty relation statistics. Nonempty branch projections and unready selected scopes return HTTP 503; they do not return partial graph results. The `graphReady` status reports global model/index prerequisites, so a visible Graph option does not guarantee that the selected scope can be searched. Branch semantic indexing remains follow-up work (#741).
+For a branch with projected relations, graph search uses its published node and relation vector generation. The `source` object identifies the repository, workspace, branch, Git commit, relation read model and vector source. A `BRANCH_GENERATION` includes the generation ID, source key and embedding model key. A verified empty projection uses the global node index and returns empty relation statistics. The primary default branch can also use its migration-compatible relation source.
+
+Use `GET /api/search/graph/readiness` with the same repository, workspace and branch to check the selected index. The optional full `commitId` on the search request pins the current revision. A stale pin or an ambiguous repository selection returns HTTP 409. A positive search with an unavailable index returns HTTP 503. Successful responses include the selected commit in `X-Taxonomy-Commit` and a representation `ETag` for conditional reads.
 
 ```bash
-curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/search/graph?q=communications&maxResults=20"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/search/graph?q=communications&maxResults=20&repositoryId=${TAXONOMY_REPOSITORY_ID}&workspaceId=&branch=main"
 ```
 
 ### Find similar nodes
@@ -752,15 +756,23 @@ curl -u alice:password -X POST "http://localhost:8080/api/workspace/publish?user
 curl -u alice:password http://localhost:8080/api/workspace/sync-state
 ```
 
+While the selected working copy is being prepared, the same read returns HTTP 200 with its repository, workspace and branch plus the current lifecycle in `syncStatus` (`NOT_PROVISIONED`, `PROVISIONING` or `FAILED`). Git observations and their timestamps stay empty. Opening the status view does not start provisioning.
+
 **Response:**
 ```json
 {
+  "repositoryId": "architecture",
+  "workspaceId": "alice-workspace",
+  "branch": "feature-x",
+  "observedAt": "2026-03-15T10:03:00Z",
   "syncStatus": "AHEAD",
   "unpublishedCommitCount": 3,
   "lastSyncTimestamp": "2026-03-15T10:00:00Z",
   "lastPublishTimestamp": null
 }
 ```
+
+The response identifies the selected repository, working copy and branch for the authenticated actor. A central branch has a null `workspaceId`. `observedAt` records the most recent stored observation. `lastSyncTimestamp` and `lastPublishTimestamp` record the corresponding operations. Older rows without a recorded branch remain available as historical database evidence.
 
 ### Get Navigation History
 

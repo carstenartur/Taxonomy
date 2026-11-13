@@ -21,10 +21,40 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 import static com.taxonomy.backup.runtime.CurrentStateExportIT.*;
+import static com.taxonomy.relations.service.RequirementCoverageService.recordedSource;
 import static org.assertj.core.api.Assertions.*;
 
 class KnowledgeExportIT {
     static final BackupScope SCOPE = new BackupScope.Workspace("repo-a", "private-a");
+
+    @Test void freshInstallationWithoutALegacyTableStillCapturesAnEmptyLegacySection() throws Exception {
+        try (var f = new Fixture()) {
+            f.rows.jdbc.execute("drop table requirement_coverage");
+            var output = new Contents();
+            f.contributor(Set.of()).write(snapshot(BackupProfile.INSTALLATION_FULL, new BackupScope.Installation()), output);
+            assertThat(records(output, "legacy-coverage")).isEmpty();
+        }
+    }
+
+    @Test void scopedCoverageExportsOnlyEligibleOwnersAndCurrentBranchTips() throws Exception {
+        try (var f = new Fixture()) {
+            var context = com.taxonomy.workspace.service.RepositoryContext.workspace("repo-a", "private-a", "draft", "original-actor");
+            var other = com.taxonomy.workspace.service.RepositoryContext.workspace("repo-b", "private-a", "draft", "other");
+            f.persist(new RequirementCoverage(recordedSource(context, COMMIT), "R", "visible-current", "A", 88, NOW));
+            f.persist(new RequirementCoverage(recordedSource(context, "b".repeat(40)), "R", "visible-history", "A", 64, NOW));
+            f.persist(new RequirementCoverage(recordedSource(other, COMMIT), "R", "foreign-coverage", "A", 91, NOW));
+            f.legacyCoverage("R", "legacy-installation-only");
+            var contributor = f.contributor(Set.of());
+            var current = new Contents();
+            contributor.write(snapshot(BackupProfile.CURRENT_STATE, SCOPE), current);
+            assertThat(current.text()).contains("visible-current", "original-actor")
+                    .doesNotContain("visible-history", "foreign-coverage", "legacy-installation-only");
+            var history = new Contents();
+            contributor.write(snapshot(BackupProfile.REPOSITORY_HISTORY, SCOPE), history);
+            assertThat(history.text()).contains("visible-current", "visible-history")
+                    .doesNotContain("foreign-coverage", "legacy-installation-only");
+        }
+    }
 
     @Test void currentCatalogueClosureKeepsDecisionsWithoutEarlierOrForeignEvidence() throws Exception {
         try (var f = new Fixture()) {
@@ -37,7 +67,7 @@ class KnowledgeExportIT {
             var proposal = new RelationProposal(); proposal.setRepositoryId("repo-a"); proposal.setWorkspaceId("private-a");
             proposal.setSourceNode(f.a); proposal.setTargetNode(f.b); proposal.setRelationType(RelationType.DEPENDS_ON);
             proposal.setStatus(ProposalStatus.REJECTED); proposal.setRationale("CURRENT-REJECTION"); f.persist(proposal);
-            f.persist(new RequirementCoverage("R-SAME", "UNATTRIBUTED-OLD-TEXT", "A", 90, NOW));
+            f.legacyCoverage("R-SAME", "UNATTRIBUTED-OLD-TEXT");
             var contributor = f.contributor(Set.of(new SourceRecordId("knowledge.hypothesis", current.getId().toString())));
             var currentOutput = new Contents(); contributor.write(snapshot(BackupProfile.CURRENT_STATE, SCOPE), currentOutput);
             assertThat(currentOutput.text()).contains("CURRENT-EVIDENCE", "CURRENT-REJECTION", "REJECTED", "Actual imported A", "Parent catalogue")
@@ -96,7 +126,7 @@ class KnowledgeExportIT {
                             row -> row.path("summary").asText())
                     .containsExactlyInAnyOrder(tuple("knowledge.hypothesis", mainId.value(), "MAIN-EVIDENCE"),
                             tuple("knowledge.hypothesis", draftId.value(), "DRAFT-EVIDENCE"));
-            assertThat(contributor.schemaVersion()).isEqualTo(2);
+            assertThat(contributor.schemaVersion()).isEqualTo(3);
 
             var current = new Contents();
             contributor.write(snapshot(BackupProfile.CURRENT_STATE, SCOPE), current);
@@ -128,14 +158,14 @@ class KnowledgeExportIT {
             var output = new Contents();
             new KnowledgeBackupContributor(f.rows.database, context -> { throw new AssertionError("present-day analysis read"); },
                     context -> { throw new AssertionError("present-day selection read"); }).write(snapshot(BackupProfile.SELECTED_VERSION, SCOPE), output);
-            assertThat(output.entries).hasSize(7);
+            assertThat(output.entries).hasSize(8);
             assertThat(output.text()).doesNotContain("Actual imported A", "Parent catalogue");
         }
     }
 
     @Test void installationRetainsCurrentReviewAndPendingRecoveryButDoesNotReactivateWorkers() throws Exception {
         try (var f = new Fixture()) {
-            f.persist(new RequirementCoverage("legacy", "OLD-LEGACY-TEXT", "A", 80, NOW));
+            f.legacyCoverage("legacy", "OLD-LEGACY-TEXT");
             var pending = new RelationProjectionRecovery(); pending.setRepositoryId("repo-a"); pending.setWorkspaceId("private-a");
             pending.setBranch("draft"); pending.setPreviousHeadCommit("b".repeat(40)); pending.setAuthoritativeCommitId(COMMIT);
             pending.setCausationId("pending-operation"); pending.recordFailure(new IllegalStateException("PRIVATE-DIAGNOSTICS")); f.persist(pending);
@@ -169,6 +199,12 @@ class KnowledgeExportIT {
     static final class Fixture implements AutoCloseable {
         final CurrentStateExportIT.Fixture rows;
         final TaxonomyNode a, b;
+        void legacyCoverage(String requirement, String text) throws Exception {
+            try (var connection = rows.database.getConnection(); var statement = connection.prepareStatement(
+                    "insert into requirement_coverage(requirement_id,requirement_text,node_code,score,analyzed_at) values(?,?,'A',80,current_timestamp)")) {
+                statement.setString(1, requirement); statement.setString(2, text); statement.executeUpdate();
+            }
+        }
         Fixture() {
             rows = new CurrentStateExportIT.Fixture(config -> {
                 config.setPhysicalNamingStrategy(new CamelCaseToUnderscoresNamingStrategy());
@@ -177,6 +213,8 @@ class KnowledgeExportIT {
                 config.getProperties().put("hibernate.resource.beans.container", new SpringBeanContainer(beans));
             }, TaxonomyNode.class, TaxonomyRelation.class, RelationHypothesis.class, RelationEvidence.class,
                     RelationProposal.class, RelationProjectionRecovery.class, RequirementCoverage.class);
+            rows.jdbc.execute("create table requirement_coverage(id bigint generated by default as identity primary key, "
+                    + "requirement_id varchar(255), requirement_text varchar(2000), node_code varchar(255), score double, analyzed_at timestamp)");
             node("P", "Parent catalogue", null); a = node("A", "Actual imported A", "P");
             b = node("B", "Actual imported B", null); node("C", "Unrelated imported C", null);
         }

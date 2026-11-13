@@ -82,8 +82,8 @@ class PortfolioAnalysisClaimPersistenceUnitTest {
                 5L);
 
         InOrder order = inOrder(itemRepository, hypothesisService, persistenceService);
-        order.verify(itemRepository).findClaimForUpdate(
-                claim.itemId(), claim.jobId(), claim.projectId(), claim.scopeKey());
+        order.verify(itemRepository).findClaimGenerationForUpdate(
+                claim.itemId(), claim.jobId(), claim.projectId(), claim.scopeKey(), claim.attempt());
         order.verify(hypothesisService).persistFromAnalysisAfterCommit(
                 analysis.getProvisionalRelations(),
                 "portfolio:snapshot-1",
@@ -111,7 +111,9 @@ class PortfolioAnalysisClaimPersistenceUnitTest {
     @Test
     void staleGenerationCannotPersistHypothesesOrSnapshot() {
         PortfolioAnalysisWorkQueue.WorkItem expired = claim(1);
-        stubActiveClaim(expired, 2);
+        when(itemRepository.existsByIdAndJobIdAndProjectIdAndScopeKey(
+                expired.itemId(), expired.jobId(), expired.projectId(), expired.scopeKey()))
+                .thenReturn(true);
 
         assertThatThrownBy(() -> service.persistSnapshot(
                 expired,
@@ -128,20 +130,22 @@ class PortfolioAnalysisClaimPersistenceUnitTest {
                 context.username(),
                 context,
                 5L))
-                .isInstanceOf(PortfolioException.class)
+                .isInstanceOfSatisfying(PortfolioException.class, failure ->
+                        assertThat(failure.getKind()).isEqualTo(PortfolioException.Kind.CONFLICT))
                 .hasMessageContaining("claim is no longer active");
 
-        verifyNoInteractions(hypothesisService, persistenceService);
+        verifyNoInteractions(item, job, hypothesisService, persistenceService);
     }
 
     @Test
     void claimLookupUsesAPessimisticWriteLock() throws Exception {
         Method method = RequirementAnalysisJobItemRepository.class.getMethod(
-                "findClaimForUpdate",
+                "findClaimGenerationForUpdate",
                 Long.class,
                 String.class,
                 Long.class,
-                String.class);
+                String.class,
+                int.class);
 
         Lock lock = method.getAnnotation(Lock.class);
         assertThat(lock).isNotNull();
@@ -150,8 +154,8 @@ class PortfolioAnalysisClaimPersistenceUnitTest {
 
     private void stubActiveClaim(PortfolioAnalysisWorkQueue.WorkItem claim,
                                  int persistedAttempt) {
-        when(itemRepository.findClaimForUpdate(
-                claim.itemId(), claim.jobId(), claim.projectId(), claim.scopeKey()))
+        when(itemRepository.findClaimGenerationForUpdate(
+                claim.itemId(), claim.jobId(), claim.projectId(), claim.scopeKey(), claim.attempt()))
                 .thenReturn(Optional.of(item));
         when(item.getJob()).thenReturn(job);
         when(job.getStatus()).thenReturn(AnalysisStatus.RUNNING);

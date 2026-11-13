@@ -908,7 +908,7 @@ Once accepted, the proposal displays a green **Accepted** badge in the review vi
 
 ![Accepted proposal](../images/36-proposal-accepted.png)
 
-After each accept or reject action, an **Undo toast notification** appears in the bottom-right corner for 8 seconds. Click **↩️ Undo** to revert the proposal back to PENDING status (and, if it was accepted, delete the created relation).
+After each accept or reject action, an **Undo toast notification** appears in the bottom-right corner for 8 seconds. Click **↩️ Undo** to revert the proposal back to PENDING status (and, if it was accepted, delete the created relation). Undo checks the proposal ID, review provenance and decision at the selected Git head. If another edit or branch supplies a different decision for the same relation, reload the review in the branch where it was recorded.
 
 ### Bulk Actions
 
@@ -1153,16 +1153,16 @@ Search-mode illustrations:
 
 Graph Explorer node queries are a separate operation from graph-semantic search.
 
-Graph mode checks the selected repository, scope and exact branch head on each request. Relation similarity is available only for the migration-compatible central default branch while the canonical relation reader permits its legacy fallback. A proven empty branch projection returns global node matches with empty relation statistics. A missing workspace relation projection can return **409 NOT_BUILT**. Nonempty branch projections and other unready selected scopes return HTTP 503; they do not return partial graph results. The `graphReady` status reports global model/index prerequisites, so a visible Graph option does not guarantee that the selected scope can be searched. Branch semantic indexing remains follow-up work (#741).
+Graph mode checks the selected repository, workspace and branch. For a branch with projected relations, the search uses the published node and relation vectors for that branch’s current commit and embedding model. The Graph option becomes available when that index is ready, including while the global index is still being built. When you change branches, the search keeps your query and clears results from the previous source.
 
 ### Embedding Status
 
 The **🧠 Embeddings** badge in the expanded **System status** shows whether semantic embeddings are available:
 
 - **🧠 Embeddings: N nodes** (blue) — embeddings are loaded; mode availability also depends on index readiness, and Graph checks the selected scope on each request.
-- **🧠 Embeddings: unavailable** (grey) — embeddings not loaded; only Full-text search is available.
+- **🧠 Embeddings: unavailable** (grey) — the global semantic index is unavailable. Graph search has its own readiness check for the selected branch.
 
-When embeddings are unavailable, the Semantic, Hybrid, and Graph options are greyed out in the mode selector.
+When the embedding model itself is unavailable, the Semantic, Hybrid, and Graph options are greyed out.
 
 ### Find Similar Nodes
 
@@ -1174,6 +1174,8 @@ Each taxonomy node row includes a **🔍 Similar** button. Clicking it opens the
 ## 11a. Quality Dashboard
 
 The **📊 Quality Dashboard** panel (right column, collapsible) displays metrics about relation proposal quality. Open it by clicking the summary; metrics are loaded automatically.
+
+The dashboard counts the retained proposal inbox for the selected repository. A personal workspace also sees central proposals in that repository. Sibling workspace and other repository reviews are excluded. Other branches in the same workspace see the same inbox history. Totals, type breakdown and rejected examples are calculated from one observation. Accepting or undoing a review targets the selected Git branch and requires its current head. The inbox cannot be retrieved at an old Git commit.
 
 ### Summary Metrics
 

@@ -228,6 +228,13 @@
 
         // Proposal review panel — load on page start
         loadProposals('PENDING');
+        ['taxonomy:entity-context-changed', 'taxonomy:repository-context-changed', 'taxonomy:architecture-source-changed'].forEach(function (event) {
+            document.addEventListener(event, function () {
+                if (!proposalRead || proposalSource === currentProposalSource()) return;
+                document.getElementById('undoToast')?.remove();
+                loadProposals(S.currentProposalFilter);
+            });
+        });
         ['filterPending', 'filterAll', 'filterAccepted', 'filterRejected'].forEach(function (id) {
             const btn = document.getElementById(id);
             if (btn) {
@@ -587,6 +594,7 @@
     var startupPageActive = true;
     var startupRead = null;
     var proposalRead = null;
+    var proposalSource = null;
     var startupRetryTimer = null;
     var taxonomyLoading = false;
 
@@ -1006,6 +1014,7 @@
             };
             var frozenRequest = JSON.parse(JSON.stringify(request));
             var reportModel = S.currentModelBinding ? JSON.parse(JSON.stringify(S.currentModelBinding)) : null;
+            var exportContext = window.TaxonomyApiClient.captureContext();
             window.TaxonomyDecisionExport.open({
                 source: decisionText,
                 language: request.language,
@@ -1014,11 +1023,16 @@
                 analysisLanguage: S.lastAnalysisLanguage,
                 selectedRoots: S.currentView === 'tree' ? [S.currentTreeRoot] : [],
                 submit: async function (selection) {
-                    var report = await window.TaxonomyApiClient.requestBlob('/api/decision-report/' + selection.format, {
+                    var scope = await window.TaxonomyArchitectureWorkspace.analysisScope();
+                    if (!exportContext() || !scope?.repositoryId || !scope.branch || scope.workspaceId === undefined) {
+                        throw new Error(t('sourceLens.unavailable'));
+                    }
+                    var query = new URLSearchParams({repositoryId:scope.repositoryId, workspaceId:scope.workspaceId, branch:scope.branch});
+                    var report = await window.TaxonomyApiClient.requestBlob('/api/decision-report/' + selection.format + '?' + query, {
                         method: 'POST', headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify(Object.assign({}, frozenRequest, {exportOptions: selection.options, language: selection.language,
                             modelBinding: selection.options.showResponsibilities && reportModel ? reportModel : undefined}))
-                    }, { signal: selection.signal });
+                    }, { signal: selection.signal, pinnedWorkspaceId: scope.workspaceId });
                     await window.TaxonomyDecisionExport.download(report.response, selection.format, null, selection.signal, report.blob, selection.descriptor);
                 }
             });
@@ -1038,8 +1052,6 @@
                 reasons: S.currentReasons || {}, analysisLanguage: S.lastAnalysisLanguage || null
             };
             reportRequest.language = window.TaxonomyContentLanguage?.documentLanguage(S.lastAnalysisLanguage);
-            var reportHeaders = { 'Content-Type': 'application/json' };
-            if (reference?.workspaceId) reportHeaders['X-Taxonomy-Workspace-Id'] = reference.workspaceId;
             window.ExportApi.report(format, reportRequest, reference ? {pinnedWorkspaceId:reference.workspaceId} : {})
             .then(function (resp) {
                 if (!resp.ok) return resp.json().catch(function () { return {}; }).then(function (problem) {
@@ -1921,6 +1933,8 @@
             S.evaluatedNodes.delete(parentCode);
             return;
         }
+        const ownsView = window.TaxonomyApiClient.captureContext();
+        wrapper.setAttribute('aria-busy','true');
         wrapper.classList.add('tax-evaluating');
         console.log('[Taxonomy] evaluateNodeChildren: parentCode=' + parentCode
             + ', businessText=' + (S.storedBusinessText ? S.storedBusinessText.substring(0, 80) : ''));
@@ -1929,12 +1943,15 @@
             ? S.currentScores[parentCode] : 100;
         window.AnalysisApi.analyzeNode({parentCode:parentCode, businessText:S.storedBusinessText, parentScore:parentScore,
             analysisLanguage:S.activeAnalysisLanguage || S.lastAnalysisLanguage || window.TaxonomyContentLanguage?.analysis() || document.documentElement.lang,
-            provider:S.analysisProviderId || undefined, operationId:S.analysisOperationId || undefined})
+            provider:S.analysisProviderId || undefined, operationId:S.analysisOperationId || undefined},
+            {isCurrent: ownsView, onPending: window.AnalysisAdapterApi?.pendingButton(wrapper.querySelector('.tax-node-header') || wrapper)})
             .then(r => {
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 return r.json();
             })
             .then(result => {
+                if (!ownsView()) return;
+                wrapper.removeAttribute('aria-busy');
                 console.log('[Taxonomy] analyze-node response for', parentCode, result);
                 if (result.analysisOperationId) S.analysisOperationId = result.analysisOperationId;
                 if (result.analysisProviderId) S.analysisProviderId = result.analysisProviderId;
@@ -2063,8 +2080,10 @@
                 console.log('[Taxonomy] Interactive eval of', parentCode, ':', matched.length, 'matches', scores);
             })
             .catch(err => {
-                if (err?.code === 'ABORTED') return;
+                if (!ownsView()) return;
+                wrapper.removeAttribute('aria-busy');
                 wrapper.classList.remove('tax-evaluating');
+                if (err?.code === 'ABORTED') { S.evaluatedNodes.delete(parentCode); return; }
                 S.evaluatedNodes.delete(parentCode); // allow retry
                 console.error('[Taxonomy] Failed to evaluate', parentCode, err);
                 showStatus('danger', t('browse.eval.failed', parentCode, err.message));
@@ -2179,12 +2198,20 @@
         return startupPageActive && proposalRead === controller && !controller.signal.aborted;
     }
 
+    function currentProposalSource() {
+        const source = window.TaxonomyArchitectureWorkflow?.getScope?.();
+        return JSON.stringify([source?.repositoryId, source?.workspaceId, source?.branch]);
+    }
+
     function loadProposals(statusFilter) {
         const container = document.getElementById('proposalsTableContainer');
         if (!container || !startupPageActive) return;
         if (proposalRead) proposalRead.abort();
         const controller = new AbortController();
         proposalRead = controller;
+        proposalSource = currentProposalSource();
+        const badge = document.getElementById('proposalPendingBadge');
+        if (badge) badge.textContent = '';
         container.innerHTML = '<div class="text-muted small p-2" role="status" aria-live="polite">' + t('browse.proposals.loading') + '</div>';
         // PENDING has a dedicated endpoint; ACCEPTED/REJECTED/ALL need the full list
         window.TaxonomyProposalsApi.list(statusFilter, { signal: controller.signal })
@@ -2204,6 +2231,10 @@
             })
             .catch(function (err) {
                 if (!currentProposalRead(controller) || err?.code === 'ABORTED') return;
+                if (err?.code === 'SOURCE_UNAVAILABLE') {
+                    container.innerHTML = '<div class="text-muted small p-2" role="status">' + t('browse.proposals.repository.required') + '</div>';
+                    return;
+                }
                 console.error('[Taxonomy] Failed to load proposals', err);
                 if (container) {
                     container.innerHTML = '<div class="text-danger small p-2">' + t('browse.proposals.load.failed', escapeHtml(err.message)) + '</div>';

@@ -2,9 +2,13 @@ package com.taxonomy.workspace.controller;
 
 import org.junit.jupiter.api.Tag;
 
+import com.taxonomy.relations.model.RelationDecisionProjectionCheckpoint;
+import com.taxonomy.relations.repository.RelationDecisionProjectionCheckpointRepository;
+import com.taxonomy.relations.service.RelationBranchProjectionRebuildService;
 import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,6 +20,7 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -41,6 +46,15 @@ class WorkspaceScopedEndpointIsolationTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private DslGitRepositoryFactory git;
+
+    @Autowired
+    private RelationBranchProjectionRebuildService projections;
+
+    @Autowired
+    private RelationDecisionProjectionCheckpointRepository checkpoints;
 
     @MockitoBean
     private WorkspaceResolver workspaceResolver;
@@ -77,13 +91,28 @@ class WorkspaceScopedEndpointIsolationTest {
     @Test
     @WithMockUser(username = "architect", roles = "USER")
     void graphSearchUsesTheSelectedContextEvenWhenWorkspaceSetupFails() throws Exception {
-        when(workspaceResolver.resolveCurrentRepositoryContextForRead()).thenReturn(
-                RepositoryContext.workspace("selected-repository", "selected-workspace", "draft", "architect"));
-        mockMvc.perform(get("/api/search/graph")
-                        .queryParam("q", "secure communication")
-                        .queryParam("maxResults", "0"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.matchedNodes").isEmpty());
+        var selected = RepositoryContext.workspace("selected-repository", "selected-workspace", "draft", "architect");
+        when(workspaceResolver.resolveUnambiguousRepositoryForRead()).thenReturn(selected);
+        var repository = git.openWorkspaceRepository(selected.workspaceId());
+        try {
+            String head = repository.commitDsl(selected.branch(), "", selected.username(), "Selected branch");
+            assertThat(projections.rebuild(selected).authoritativeCommitId()).isEqualTo(head);
+            mockMvc.perform(get("/api/search/graph").param("q", "secure communication").param("maxResults", "0"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.matchedNodes").isEmpty())
+                    .andExpect(jsonPath("$.source.workspaceId").value(selected.workspaceId()))
+                    .andExpect(jsonPath("$.source.sourceCommit").value(head));
+
+            repository.commitDsl(selected.branch(), "// next revision\n", selected.username(), "Advance selected branch");
+            mockMvc.perform(get("/api/search/graph").param("q", "secure communication").param("maxResults", "0"))
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.matchedNodes").doesNotExist());
+        } finally {
+            checkpoints.findByRepositoryIdAndWorkspaceScopeKeyAndBranch(selected.repositoryId(),
+                    RelationDecisionProjectionCheckpoint.scopeKeyFor(selected.workspaceId()), selected.branch())
+                    .ifPresent(checkpoints::delete);
+            git.deleteWorkspaceRepository(selected.workspaceId());
+        }
 
         verify(repositoryStateService, never()).ensureWorkspaceState("architect");
         verify(workspaceResolver, never()).resolveCurrentContext();

@@ -10,17 +10,23 @@ on:
     branches: [ main, feat/artemis-execution-base, 'implementation/**' ]
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
+    inputs:
+      verify_test_local:
+        description: Run the complete Maven test-local profile on one runner
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: taxonomy-ci-${{ github.workflow }}-${{ github.ref }}
+  group: taxonomy-ci-${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && inputs.verify_test_local && github.run_id || github.ref }}
   cancel-in-progress: true
 
 jobs:
   change-scope:
     name: Plan Maven verification scope
+    if: github.event_name != 'workflow_dispatch' || !inputs.verify_test_local
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs: { scope: '${{ steps.scope.outputs.scope }}' }
@@ -201,6 +207,9 @@ jobs:
         run: |
           if git diff --quiet "${PR_BASE_SHA}...${PR_HEAD_SHA}" -- \
               Dockerfile \
+              docker-compose.prod.yml \
+              Caddyfile \
+              .github/scripts/verify-compose-https.mjs \
               taxonomy-build/src/test/java/com/taxonomy/build/ProductionImageIT.java \
               taxonomy-build/src/test/java/com/taxonomy/build/ExternalDriverSupport.java \
               .github/ui-verification-pom.xml \
@@ -1035,7 +1044,7 @@ jobs:
   verify:
     name: Maven verification
     needs: [application, production-image, app-test-shards, core, coverage-aggregate, observability, ui-contracts, ui-shards, interoperability-products, plugin-profile, change-scope, documentation]
-    if: always()
+    if: always() && (github.event_name != 'workflow_dispatch' || !inputs.verify_test_local)
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
@@ -1163,3 +1172,60 @@ jobs:
         if: needs.change-scope.outputs.scope == 'documentation'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with: { name: documentation-verification, path: target/documentation-verification, if-no-files-found: error, retention-days: 90, overwrite: true }
+
+  unfiltered-test-local:
+    name: Complete Maven test-local reactor
+    if: github.event_name == 'workflow_dispatch' && inputs.verify_test_local
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false, fetch-depth: 0 }
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          java-version: '25'
+          distribution: temurin
+          cache: maven
+          cache-read-only: true
+          cache-dependency-path: |
+            **/pom.xml
+            .github/ui-verification-pom.xml
+            **/*-pom.xml
+            **/pom-*.xml
+            **/.mvn/wrapper/maven-wrapper.properties
+            **/.mvn/extensions.xml
+            .mvn/dependency-cache-epoch
+      - uses: ./.github/actions/document-rendering
+        with: { variant: writer-draw }
+      - name: Install pinned Helm
+        run: bash .github/scripts/install-helm.sh
+      - name: Run the complete reactor
+        shell: bash
+        # Reserve time for uploading partial reports if the reactor reaches the runner limit.
+        timeout-minutes: 330
+        env:
+          MAVEN_ARGS: -Dmaven.build.cache.enabled=false -DforkCount=1 -DreuseForks=false
+        run: |
+          set -o pipefail
+          mkdir -p target/test-local-evidence
+          git rev-parse HEAD > target/test-local-evidence/source.txt
+          test "$(cat target/test-local-evidence/source.txt)" = "$GITHUB_SHA"
+          ./mvnw -B verify -Ptest-local 2>&1 | tee target/test-local-evidence/maven.log
+      - name: Verify the demo, recovery and browser reports
+        run: |
+          java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling check-junit-reports \
+            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.composition.demo.ProductDemoEndToEndTest-product-demo-isolated.xml 4 \
+            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.ProductDemoProcessRecoveryTest.xml 1 \
+            taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.testsupport.BrowserSessionIT.xml 2
+      - name: Upload source, Maven log and original reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: test-local-reactor-${{ github.sha }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          path: |
+            target/test-local-evidence/
+            **/target/surefire-reports/TEST-*.xml
+            **/target/failsafe-reports/TEST-*.xml
+            **/target/failsafe-reports/failsafe-summary*.xml
+            taxonomy-app/target/scenario-acceptance/

@@ -7,6 +7,7 @@ com.taxonomy.analysis.cluster.ClusterAnalysisRun
 com.taxonomy.analysis.cluster.ClusterAnalysisWork
 com.taxonomy.analysis.dispatch.AnalysisDispatchIntent
 com.taxonomy.analysis.dispatch.AnalysisTaskCompletionRecord
+com.taxonomy.analysis.operation.AnalysisAdapterOperation
 com.taxonomy.analysis.recovery.AnalysisContinuationRun
 com.taxonomy.analysis.recovery.AnalysisQuestionCheckpoint
 com.taxonomy.analysis.session.AnalysisWorkingDraft
@@ -19,6 +20,11 @@ com.taxonomy.catalog.provenance.CatalogueSourceState
 com.taxonomy.editor.persistence.EditorCheckpoint
 com.taxonomy.editor.persistence.EditorOperation
 com.taxonomy.editor.persistence.EditorWorkspace
+com.taxonomy.interop.inventory.InventoryAssertionEntity
+com.taxonomy.interop.inventory.InventoryComparisonEntity
+com.taxonomy.interop.inventory.InventoryMappingEntity
+com.taxonomy.interop.inventory.InventoryObservationEntity
+com.taxonomy.interop.inventory.InventoryReviewEntity
 com.taxonomy.interop.persistence.ExternalIdentityMappingEntity
 com.taxonomy.interop.persistence.IntegrationCheckpointEntity
 com.taxonomy.interop.persistence.IntegrationConnectionEntity
@@ -30,6 +36,7 @@ com.taxonomy.interop.persistence.IntegrationPublishAttemptEntity
 com.taxonomy.interop.persistence.IntegrationPublishItemEntity
 com.taxonomy.portfolio.model.ArchitectureProject
 com.taxonomy.portfolio.model.ProductCatalogEntry
+com.taxonomy.portfolio.model.ProductGapReview
 com.taxonomy.portfolio.model.ProductTaxonomyCoverage
 com.taxonomy.portfolio.model.ProjectConflict
 com.taxonomy.portfolio.model.ProjectRequirement
@@ -38,10 +45,10 @@ com.taxonomy.portfolio.model.ProjectSolution
 com.taxonomy.portfolio.model.RequirementAnalysisJob
 com.taxonomy.portfolio.model.RequirementAnalysisJobItem
 com.taxonomy.portfolio.model.RequirementAnalysisSnapshot
-com.taxonomy.portfolio.model.SnapshotReference
 com.taxonomy.portfolio.model.RequirementElementMapping
 com.taxonomy.portfolio.model.RequirementRelationMapping
 com.taxonomy.portfolio.model.RequirementSolutionLink
+com.taxonomy.portfolio.model.SnapshotReference
 com.taxonomy.portfolio.model.SolutionDefinition
 com.taxonomy.portfolio.model.SolutionProductCandidate
 com.taxonomy.portfolio.model.SolutionTaxonomyCoverage
@@ -64,6 +71,7 @@ com.taxonomy.relations.model.RelationDecisionProjectionCheckpoint
 com.taxonomy.relations.model.RelationEvidence
 com.taxonomy.relations.model.RelationHypothesis
 com.taxonomy.relations.model.RelationProjectionRecovery
+com.taxonomy.relations.service.BranchGraphVectorGeneration
 com.taxonomy.relations.model.RelationProposal
 com.taxonomy.relations.model.RequirementCoverage
 com.taxonomy.security.model.AppRole
@@ -71,14 +79,12 @@ com.taxonomy.security.model.AppUser
 com.taxonomy.security.webdav.WebDavApplicationCredential
 com.taxonomy.versioning.model.ArchitectureCommitIndex
 com.taxonomy.versioning.model.ContextHistoryRecord
-com.taxonomy.workspace.model.RepositoryMembership
 com.taxonomy.workspace.model.GitReflogProvenanceRecord
+com.taxonomy.workspace.model.RepositoryMembership
 com.taxonomy.workspace.model.SyncState
+com.taxonomy.workspace.model.WorkspaceBranchSyncState
 com.taxonomy.workspace.model.SystemRepository
 com.taxonomy.workspace.model.UserWorkspace
 com.taxonomy.workspace.model.WorkspaceProjection
-com.taxonomy.interop.inventory.InventoryComparisonEntity
-com.taxonomy.interop.inventory.InventoryAssertionEntity
-com.taxonomy.interop.inventory.InventoryObservationEntity
-com.taxonomy.interop.inventory.InventoryReviewEntity
-com.taxonomy.interop.inventory.InventoryMappingEntity
+com.taxonomy.workspace.service.CentralFetchOperation
+com.taxonomy.workspace.service.WorkspaceFetchOperation

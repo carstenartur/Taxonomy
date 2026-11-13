@@ -39,6 +39,7 @@ class DocumentTemplateNavigationBrowserIT {
                 new View("document-templates", "/admin/document-templates", "documentTemplateBack", "DOCUMENT_TEMPLATES"),
                 new View("document-template-detail", "/admin/document-templates/sample", "documentTemplateDetailBack", "DOCUMENT_TEMPLATES/template-versions"),
                 new View("document-template-local-edit", "/admin/document-templates/sample/edit-local", "documentTemplateLocalBack", "DOCUMENT_TEMPLATES/template-editing"),
+                new View("document-template-candidate", "/admin/document-templates/sample/candidates", "candidateBack", "DOCUMENT_TEMPLATES/template-versions"),
                 new View("document-template-restore", "/admin/document-templates/sample/restore", "documentTemplateRestoreBack", "DOCUMENT_TEMPLATES/template-versions"),
                 new View("document-template-part-comparison", "/admin/document-templates/sample/compare-part", "partComparisonBack", "DOCUMENT_TEMPLATES/template-versions"),
                 new View("webdav-credentials", "/admin/webdav-credentials", "webDavCredentialsBack", "DOCUMENT_TEMPLATES/template-access"))
@@ -104,6 +105,14 @@ class DocumentTemplateNavigationBrowserIT {
         if (view.template().equals("document-template-restore") || view.template().equals("document-template-part-comparison")) {
             assertThat(page.driver().findElement(By.id(view.retained())).getDomAttribute("href"))
                     .contains("from=" + FROM, "to=" + TO);
+        }
+        if (view.template().equals("document-template-candidate")) {
+            var file = page.driver().findElement(By.id("candidateFile"));
+            file.sendKeys(templateFile.toAbsolutePath().toString());
+            page.driver().executeScript("arguments[0].focus()", file);
+            new org.openqa.selenium.interactions.Actions(page.driver()).sendKeys(org.openqa.selenium.Keys.TAB).perform();
+            assertThat(page.driver().switchTo().activeElement().getText())
+                    .isEqualTo(language.equals("de") ? "Kandidaten prüfen" : "Preflight a candidate");
         }
         if (view.template().equals("document-template-local-edit")) {
             page.driver().findElement(By.id("localTemplateFile")).sendKeys(templateFile.toAbsolutePath().toString());

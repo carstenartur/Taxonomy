@@ -51,20 +51,23 @@ public class WebDavApplicationCredentialService {
     private final PasswordEncoder passwordEncoder;
     private final SecureRandom random;
     private final Clock clock;
+    private final WebDavCredentialAuthority authority;
     private final String dummyHash;
 
     @org.springframework.beans.factory.annotation.Autowired
     public WebDavApplicationCredentialService(
             WebDavApplicationCredentialRepository repository,
-            PasswordEncoder passwordEncoder) {
-        this(repository, passwordEncoder, new SecureRandom(), Clock.systemUTC());
+            PasswordEncoder passwordEncoder, WebDavCredentialAuthority authority) {
+        this(repository, passwordEncoder, authority, new SecureRandom(), Clock.systemUTC());
     }
 
     WebDavApplicationCredentialService(
             WebDavApplicationCredentialRepository repository,
             PasswordEncoder passwordEncoder,
+            WebDavCredentialAuthority authority,
             SecureRandom random,
             Clock clock) {
+        this.authority = Objects.requireNonNull(authority, "authority");
         this.repository = Objects.requireNonNull(repository, "repository");
         this.passwordEncoder = Objects.requireNonNull(passwordEncoder, "passwordEncoder");
         this.random = Objects.requireNonNull(random, "random");
@@ -91,6 +94,11 @@ public class WebDavApplicationCredentialService {
 
         Duration lifetime = requestedLifetime(lifetimeDays);
         Instant now = clock.instant();
+        var identity = currentOwner(owner, now);
+        Instant expires = now.plus(lifetime);
+        if (identity.assertionExpiresAt() != null && identity.assertionExpiresAt().isBefore(expires)) {
+            expires = identity.assertionExpiresAt();
+        }
         String id = randomHex(12);
         // 29 random bytes retain 232 bits of entropy while keeping the complete
         // ASCII token below BCrypt's strict 72-byte input ceiling.
@@ -100,16 +108,18 @@ public class WebDavApplicationCredentialService {
         WebDavApplicationCredential credential = new WebDavApplicationCredential();
         credential.setCredentialId(id);
         credential.setUsername(owner.getName());
+        credential.setOwnerId(identity.actor());
+        credential.setOwnerBinding(identity.binding());
         credential.setDescription(normalizeDescription(description));
         credential.setSecretHash(passwordEncoder.encode(token));
         credential.setReadAllowed(readAllowed || writeAllowed);
         credential.setWriteAllowed(writeAllowed);
         credential.setAuthorities(authorityString(owner.getAuthorities()));
         credential.setCreatedAt(now);
-        credential.setExpiresAt(now.plus(lifetime));
+        credential.setExpiresAt(expires);
         repository.save(credential);
 
-        auditCreatedAfterCommit(id, owner.getName(), credential.isReadAllowed(), writeAllowed,
+        auditCreatedAfterCommit(id, identity.actor(), credential.isReadAllowed(), writeAllowed,
                 credential.getExpiresAt());
         return new CreatedCredential(metadata(credential), token);
     }
@@ -117,7 +127,9 @@ public class WebDavApplicationCredentialService {
     @Transactional(readOnly = true)
     public List<CredentialMetadata> list(Authentication owner) {
         requireAuthenticated(owner);
-        return repository.findAllByUsernameOrderByCreatedAtDesc(owner.getName()).stream()
+        String actor = currentOwner(owner, clock.instant()).actor();
+        return repository.findAllByOwnerIdOrderByCreatedAtDesc(actor).stream()
+                .filter(row -> actor.equals(row.getOwnerId()))
                 .map(WebDavApplicationCredentialService::metadata)
                 .toList();
     }
@@ -125,15 +137,17 @@ public class WebDavApplicationCredentialService {
     @Transactional
     public void revoke(Authentication owner, String credentialId) {
         requireAuthenticated(owner);
+        String actor = currentOwner(owner, clock.instant()).actor();
         WebDavApplicationCredential credential = repository
-                .findByCredentialIdAndUsername(credentialId, owner.getName())
+                .findByCredentialIdAndOwnerId(credentialId, actor)
+                .filter(row -> actor.equals(row.getOwnerId()))
                 .orElseThrow(() -> new IllegalArgumentException(
                         "WebDAV application credential was not found"));
         if (credential.getRevokedAt() == null) {
             credential.setRevokedAt(clock.instant());
             repository.save(credential);
-            log.info("audit.webdav_credential.revoked id={} user={}",
-                    credentialId, owner.getName());
+            auditAfterCommit(() -> log.info("audit.webdav_credential.revoked id={} actor={}",
+                    credentialId, actor));
         }
     }
 
@@ -162,27 +176,40 @@ public class WebDavApplicationCredentialService {
         }
         WebDavApplicationCredential credential = found.orElseThrow();
         Instant now = clock.instant();
-        if (credential.getRevokedAt() != null
+        if (!username.equals(credential.getUsername()) || credential.getRevokedAt() != null
                 || !credential.getExpiresAt().isAfter(now)
                 || !passwordEncoder.matches(token, credential.getSecretHash())) {
             return Optional.empty();
         }
 
+        var granted = parseAuthorities(credential.getAuthorities()).stream().map(GrantedAuthority::getAuthority).toList();
+        var roles = authority.currentRoles(credential, granted);
+        if (roles == null) return Optional.empty();
+        boolean writable = credential.isWriteAllowed() && roles.contains("ROLE_ADMIN");
         updateLastUsedIfNeeded(credential, now);
-        List<GrantedAuthority> authorities = parseAuthorities(credential.getAuthorities());
+        List<GrantedAuthority> authorities = new ArrayList<>();
+        roles.forEach(role -> authorities.add(new SimpleGrantedAuthority(role)));
         authorities.add(new SimpleGrantedAuthority("ROLE_WEBDAV_APPLICATION"));
         if (credential.isReadAllowed()) {
             authorities.add(new SimpleGrantedAuthority("SCOPE_template:read"));
         }
-        if (credential.isWriteAllowed()) {
+        if (writable) {
             authorities.add(new SimpleGrantedAuthority("SCOPE_template:write"));
         }
         return Optional.of(new CredentialPrincipal(
                 credential.getCredentialId(),
-                credential.getUsername(),
+                credential.getOwnerId(),
                 credential.isReadAllowed(),
-                credential.isWriteAllowed(),
+                writable,
                 List.copyOf(authorities)));
+    }
+
+    private WebDavCredentialAuthority.Owner currentOwner(Authentication login, Instant now) {
+        var owner = authority.owner(login);
+        if (owner.assertionExpiresAt() != null && !owner.assertionExpiresAt().isAfter(now)) {
+            throw new org.springframework.security.access.AccessDeniedException("A fresh login is required");
+        }
+        return owner;
     }
 
     public static boolean isApplicationSecret(String value) {
@@ -196,10 +223,13 @@ public class WebDavApplicationCredentialService {
     }
 
     private static void auditCreatedAfterCommit(
-            String id, String username, boolean readAllowed, boolean writeAllowed, Instant expiresAt) {
-        Runnable audit = () -> log.info(
-                "audit.webdav_credential.created id={} user={} read={} write={} expires={}",
-                id, username, readAllowed, writeAllowed, expiresAt);
+            String id, String actor, boolean readAllowed, boolean writeAllowed, Instant expiresAt) {
+        auditAfterCommit(() -> log.info(
+                "audit.webdav_credential.created id={} actor={} read={} write={} expires={}",
+                id, actor, readAllowed, writeAllowed, expiresAt));
+    }
+
+    private static void auditAfterCommit(Runnable audit) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
             audit.run();
             return;
@@ -353,7 +383,7 @@ public class WebDavApplicationCredentialService {
 
     public record CredentialPrincipal(
             String credentialId,
-            String username,
+            String ownerId,
             boolean readAllowed,
             boolean writeAllowed,
             List<GrantedAuthority> authorities) {

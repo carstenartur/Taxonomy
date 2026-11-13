@@ -208,7 +208,20 @@
             const form = new FormData();
             form.append('file', state.currentFile);
             form.append('sourceType', document.getElementById('sourceType').value);
-            const result = await api().extractDocumentWithAi(form);
+            const file = state.currentFile;
+            const current = window.TaxonomyApiClient.captureContext();
+            const owns = () => current() && state.currentFile === file;
+            const result = await api().extractDocumentWithAi(form, owns, cancel => {
+                const button = document.getElementById('cancelAiImport');
+                button.classList.remove('d-none');
+                button.disabled = false;
+                button.onclick = async () => {
+                    button.disabled = true;
+                    try { await cancel(); } catch (error) { if (owns() && error?.responseBody?.code !== 'CANCELLED') { button.disabled = false; showError(error); } }
+                };
+                return () => { button.classList.add('d-none'); button.onclick = null; };
+            });
+            if (!owns()) return;
             (result.aiCandidates || []).forEach(candidate => {
                 if (state.candidates.some(existing => normalize(existing.text) === normalize(candidate.text))) return;
                 addCandidate({
@@ -221,7 +234,7 @@
             enrichDuplicateSuggestions();
             renderReview();
         } catch (error) {
-            showError(error);
+            if (error.code !== 'ABORTED') showError(error);
         } finally {
             setBusy(false);
         }
@@ -421,14 +434,14 @@
     }
 
     function registerAnalysisJob(location, job) {
-        if (!location || !job) return;
-        const url = api().analysisJobUrl(location, projectId);
+        if (!location || !job || (job.projectId != null && Number(job.projectId) !== projectId)) return;
+        const url = api().analysisJobUrl(location, projectId, job.id);
         if (!url) return;
         let entries = [];
         try { entries = JSON.parse(localStorage.getItem(jobStorageKey) || '[]'); } catch (error) { entries = []; }
         entries = entries.filter(entry => entry && entry.url !== url);
         entries.unshift({ url, projectId, createdAt: Date.now(), updatedAt: Date.now(), expanded: false, job });
-        localStorage.setItem(jobStorageKey, JSON.stringify(entries.slice(0, 20)));
+        localStorage.setItem(jobStorageKey, JSON.stringify(api().retainedAnalysisJobs(entries, entry => entry.job)));
     }
 
     function saveDraft() { localStorage.setItem(draftKey, JSON.stringify(serializableState())); showInfo(l('saved')); document.getElementById('restoreDraft').classList.remove('d-none'); }

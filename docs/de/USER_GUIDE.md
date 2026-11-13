@@ -932,7 +932,7 @@ Nach der Annahme zeigt der Vorschlag in der Prüfungsansicht ein grünes **Accep
 
 ![Akzeptierter Vorschlag](../images/36-proposal-accepted.png)
 
-Nach jeder Annahme- oder Ablehnungsaktion erscheint eine **Rückgängig-Toast-Benachrichtigung** in der unteren rechten Ecke für 8 Sekunden. Klicken Sie auf **↩️ Undo**, um den Vorschlag auf den Status PENDING zurückzusetzen (und, falls er akzeptiert wurde, die erstellte Relation zu löschen).
+Nach jeder Annahme- oder Ablehnungsaktion erscheint eine **Rückgängig-Toast-Benachrichtigung** in der unteren rechten Ecke für 8 Sekunden. Klicken Sie auf **↩️ Undo**, um den Vorschlag auf den Status PENDING zurückzusetzen (und, falls er akzeptiert wurde, die erstellte Relation zu löschen). Beim Rückgängigmachen prüft die Anwendung Vorschlags-ID, Herkunft und Entscheidung am ausgewählten Git-Stand. Enthält eine andere Bearbeitung oder ein anderer Branch eine abweichende Entscheidung für dieselbe Relation, öffnen Sie die Prüfung erneut in dem Branch, in dem sie gespeichert wurde.
 
 ### Massenaktionen
 
@@ -1180,16 +1180,16 @@ Darstellungen der Suchmodi:
 
 Knotenabfragen im Graph Explorer und die graph-semantische Suche sind getrennte Operationen.
 
-Der Graph-Modus prüft bei jeder Anfrage das ausgewählte Repository, den Geltungsbereich und den exakten Branch-Head. Beziehungsähnlichkeit ist nur für den zentralen Standardbranch im Migrationsbetrieb verfügbar, solange der kanonische Beziehungsleser seinen Legacy-Fallback erlaubt. Eine nachweislich leere Branch-Projektion liefert globale Knotentreffer mit leeren Beziehungsstatistiken. Eine fehlende Workspace-Relationsprojektion kann **409 NOT_BUILT** liefern. Nichtleere Branch-Projektionen und andere nicht bereite Geltungsbereiche liefern HTTP 503 statt unvollständiger Graph-Ergebnisse. Der Status `graphReady` beschreibt die globalen Modell-/Indexvoraussetzungen; eine sichtbare Graph-Option garantiert daher keine Suche im ausgewählten Geltungsbereich. Semantische Branch-Indizierung bleibt Folgearbeit (#741).
+Der Graph-Modus prüft das ausgewählte Repository, die Arbeitskopie und den Branch. Für einen Branch mit projizierten Beziehungen verwendet die Suche die veröffentlichten Knoten- und Beziehungsvektoren für dessen aktuellen Commit und das verwendete Embedding-Modell. Sobald dieser Index bereit ist, können Sie den Graph-Modus auswählen, auch während der globale Index aufgebaut wird. Beim Branchwechsel bleibt der Suchtext erhalten, und die Treffer der vorherigen Quelle verschwinden.
 
 ### Embedding-Status
 
 Das Badge **🧠 Embeddings** im aufgeklappten **Systemstatus** zeigt an, ob semantische Embeddings verfügbar sind:
 
 - **🧠 Embeddings: N nodes** (blau) — Embeddings sind geladen; die Modusverfügbarkeit hängt zusätzlich vom Indexstatus ab, und Graph prüft bei jeder Anfrage den ausgewählten Geltungsbereich.
-- **🧠 Embeddings: unavailable** (grau) — Embeddings nicht geladen; nur die Volltextsuche ist verfügbar.
+- **🧠 Embeddings: unavailable** (grau) — der globale semantische Index ist nicht verfügbar. Die Graph-Suche prüft die Bereitschaft des ausgewählten Branches separat.
 
-Wenn Embeddings nicht verfügbar sind, sind die Optionen Semantic, Hybrid und Graph im Modusauswahl-Menü ausgegraut.
+Ist das Embedding-Modell selbst nicht verfügbar, sind die Optionen Semantic, Hybrid und Graph ausgegraut.
 
 ### Ähnliche Knoten finden
 
@@ -1202,6 +1202,8 @@ Jede Taxonomie-Knotenzeile enthält eine Schaltfläche **🔍 Similar**. Durch K
 ## 11a. Qualitäts-Dashboard
 
 Das Panel **📊 Quality Dashboard** (rechte Spalte, einklappbar) zeigt Metriken zur Qualität der Relationsvorschläge an. Öffnen Sie es durch Klicken auf die Zusammenfassung; die Metriken werden automatisch geladen.
+
+Das Dashboard zählt die gespeicherten Vorschläge des ausgewählten Repositorys. In einem persönlichen Workspace sind auch zentrale Vorschläge desselben Repositorys sichtbar. Bewertungen anderer Workspaces und Repositorys sind ausgeschlossen. Branches desselben Workspaces teilen sich diesen Prüfverlauf. Gesamtwerte, Aufschlüsselung nach Beziehungstyp und abgelehnte Beispiele stammen aus einer gemeinsamen Abfrage. Eine Annahme oder Rücknahme wirkt auf den ausgewählten Git-Branch und erfordert dessen aktuellen Stand. Für einen früheren Git-Commit lässt sich der Prüfverlauf nicht abrufen.
 
 ### Zusammenfassende Metriken
 

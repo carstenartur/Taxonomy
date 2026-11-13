@@ -35,7 +35,7 @@ The Java agent automatically covers supported technical boundaries such as:
 - workspace resolution and logical repository routing;
 - JGit repository reads, commits, diffs, branches and merges;
 - DSL parsing and materialisation;
-- Hibernate Search queries;
+- Hibernate Search queries, including selected commit-history searches through `CommitIndexService.search`.
 - requirement and child-node analysis;
 - LLM orchestration calls;
 - framework preview/import;
@@ -139,7 +139,7 @@ Taxonomy-owned Micrometer observations add bounded domain timers to the same end
 taxonomy_workspace_resolve_seconds_count
 ```
 
-Only fixed low-cardinality labels are used: `taxonomy.component`, `taxonomy.operation` and the normalized `outcome` (`success` or `error`). Usernames, workspace or repository names, queries, prompts, filenames and exception messages are never metric labels. The live container verification exercises `/api/relations` and requires the workspace-resolution timer with `component=workspace`, `operation=resolveCurrentContext` and `outcome=success`.
+Only fixed low-cardinality labels are used: `taxonomy.component`, `taxonomy.operation` and the normalized `outcome` (`success` or `error`). Usernames, workspace or repository names, queries, prompts, filenames and exception messages are never metric labels. The live container verification exercises `/api/relations` and requires the workspace-resolution timer with `component=workspace`, `operation=resolveUnambiguousRepositoryForRead` and `outcome=success`.
 
 ## Log correlation
 
@@ -154,7 +154,7 @@ Use those identifiers to locate the corresponding trace and span. When no span i
 Taxonomy can additionally emit one bounded DEBUG message at an observed domain boundary:
 
 ```text
-Observed taxonomy operation component=workspace operation=resolveCurrentContext outcome=success
+Observed taxonomy operation component=workspace operation=resolveUnambiguousRepositoryForRead outcome=success
 ```
 
 Enable it only when needed with `LOGGING_LEVEL_COM_TAXONOMY_OBSERVABILITY=DEBUG`. Normal INFO logging is unchanged. The message contains only fixed component/operation names and a normalized outcome; it never includes method arguments, return values, identities, content or exception messages. The live acceptance test requires this line to carry the same `trace_id` as the exported HTTP/domain trace.

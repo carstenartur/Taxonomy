@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.security.access.AccessDeniedException;
 
 import java.io.IOException;
+import java.util.Optional;
 import java.time.Instant;
 import java.util.List;
 import com.taxonomy.dto.WorkspaceInfo;
@@ -96,7 +97,19 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
      * @return the full repository state
      */
     public RepositoryState getState(String username, String branch, WorkspaceContext ctx) {
-        UserWorkspaceState ws = resolveState(username);
+        return readState(username, branch, ctx, resolveState(username));
+    }
+
+    /** Read the selected Git branch and its existing workspace progress without provisioning. */
+    public RepositoryState readSelectedState(WorkspaceContext context) {
+        return readState(context.username(), context.currentBranch(), context, selectedProgress(context));
+    }
+
+    private UserWorkspaceState selectedProgress(WorkspaceContext context) {
+        return context.workspaceId() == null ? null : workspaceManager.getScopedWorkspaceState(context);
+    }
+
+    private RepositoryState readState(String username, String branch, WorkspaceContext ctx, UserWorkspaceState ws) {
         DslGitRepository repo = resolveRepository(ctx);
         try {
             DslCommit headInfo = repo.getHeadCommitInfo(branch);
@@ -176,6 +189,17 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
             log.error("Failed to build view context for user '{}', branch '{}'", username, branch, e);
             return new ViewContext(null, branch, null, true, false, false);
         }
+    }
+
+    /** Read one selected branch head and its metadata without initializing a user's navigation state. */
+    public Optional<ViewContext> readSelectedViewContext(WorkspaceContext context) throws IOException {
+        DslCommit head = resolveRepository(context).getHeadCommitInfo(context.currentBranch());
+        if (head == null) {
+            return Optional.empty();
+        }
+        UserWorkspaceState state = selectedProgress(context);
+        return Optional.of(new ViewContext(head.commitId(), context.currentBranch(), head.timestamp(), true,
+                isProjectionStaleForCommit(state, head.commitId()), isIndexStale(state, head.commitId())));
     }
 
     /**

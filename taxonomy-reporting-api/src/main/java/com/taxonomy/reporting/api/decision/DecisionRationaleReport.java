@@ -61,6 +61,12 @@ public record DecisionRationaleReport(
                 warnings, productCoverageGaps, discrepancies, viewContext, scoreDetails, architecture, null);
     }
 
+    public DecisionRationaleReport withTitle(String displayTitle) {
+        return new DecisionRationaleReport(displayTitle, languageTag, requirement, status, metadata, executiveSummary,
+                chapters, leadingLeaves, warnings, productCoverageGaps, discrepancies, viewContext,
+                scoreDetails, architecture, scope);
+    }
+
     public DecisionRationaleReport withScope(DecisionReportScope selection) {
         return new DecisionRationaleReport(title, languageTag, requirement, status, metadata, executiveSummary,
                 chapters, leadingLeaves, warnings, productCoverageGaps, discrepancies, viewContext,

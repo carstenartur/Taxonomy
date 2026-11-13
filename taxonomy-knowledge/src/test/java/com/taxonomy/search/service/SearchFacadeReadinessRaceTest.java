@@ -47,7 +47,7 @@ class SearchFacadeReadinessRaceTest {
             case "hybrid" -> when(hybrid.hybridSearch("query", 10)).thenAnswer(call -> {
                 nodeReady.set(false); return List.of();
             });
-            case "graph" -> when(graph.graphSearch("query", 10, RepositoryContext.centralRead("fixture-repository", "draft", "system"))).thenAnswer(call -> {
+            case "graph" -> when(graph.searchGlobalSource("query", 10, RepositoryContext.centralRead("fixture-repository", "draft", "system"))).thenAnswer(call -> {
                 state.set(LocalOnnxIndexInitializer.State.PARTIAL);
                 return new GraphSearchResult(List.of(), Map.of(), Map.of(), "completed");
             });
@@ -67,7 +67,7 @@ class SearchFacadeReadinessRaceTest {
             case "semantic" -> verify(embeddings).semanticSearch("query", 10);
             case "similar" -> verify(embeddings).findSimilarNodes("BP", 10);
             case "hybrid" -> verify(hybrid).hybridSearch("query", 10);
-            case "graph" -> verify(graph).graphSearch("query", 10, RepositoryContext.centralRead("fixture-repository", "draft", "system"));
+            case "graph" -> verify(graph).searchGlobalSource("query", 10, RepositoryContext.centralRead("fixture-repository", "draft", "system"));
             default -> throw new AssertionError(mode);
         }
     }

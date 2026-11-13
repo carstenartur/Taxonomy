@@ -1,5 +1,10 @@
 package com.taxonomy.versioning.service;
 
+import com.taxonomy.versioning.controller.GitStateController;
+import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.UserWorkspaceState;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.dto.ProjectionState;
@@ -8,11 +13,17 @@ import com.taxonomy.dto.ViewContext;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.when;
 import com.taxonomy.workspace.service.WorkspaceManager;
 
 /**
@@ -48,6 +59,72 @@ class RepositoryStateServiceTest {
                 mock(com.taxonomy.workspace.service.SystemRepositoryService.class), gitRepo);
         stateService = new RepositoryStateService(factory, workspaceManager,
                 mock(com.taxonomy.workspace.service.SystemRepositoryService.class));
+    }
+
+    @Test
+    void aSelectedViewReadsItsOwnBranchAndWorkspaceProgressWithoutAllocatingState() throws IOException {
+        var factory = mock(DslGitRepositoryFactory.class);
+        var navigation = mock(WorkspaceManager.class);
+        var selected = new com.taxonomy.workspace.service.WorkspaceContext("reader", "work-B", "review", "repo-B");
+        var progress = new com.taxonomy.workspace.service.UserWorkspaceState("reader", 10);
+        String head = gitRepo.commitDsl("review", SAMPLE_DSL, "author", "selected review");
+        progress.recordProjection(head, "review");
+        progress.recordIndexBuild("e".repeat(40));
+        org.mockito.Mockito.when(factory.resolveRepository(selected)).thenReturn(gitRepo);
+        org.mockito.Mockito.when(navigation.getScopedWorkspaceState(selected)).thenReturn(progress);
+        var states = new RepositoryStateService(factory, navigation, mock(com.taxonomy.workspace.service.SystemRepositoryService.class));
+
+        var version = states.readSelectedViewContext(selected).orElseThrow();
+        assertEquals(head, version.basedOnCommit());
+        assertEquals("review", version.basedOnBranch());
+        assertNotNull(version.commitTimestamp());
+        assertFalse(version.projectionStale());
+        assertTrue(version.indexStale());
+        org.mockito.Mockito.verify(navigation).getScopedWorkspaceState(selected);
+        org.mockito.Mockito.verifyNoMoreInteractions(navigation);
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"selected-copy", "uncached-copy"})
+    void pinnedGitStateUsesOnlyProgressFromTheSelectedCopy(String workspaceId) throws IOException {
+        var selected = new WorkspaceContext(USER, workspaceId, "review", "selected-repository");
+        var resolver = mock(WorkspaceResolver.class);
+        when(resolver.hasExplicitSourceSelection()).thenReturn(true);
+        when(resolver.resolveUnambiguousContextForRead()).thenReturn(selected);
+        var factory = mock(DslGitRepositoryFactory.class);
+        when(factory.resolveRepository(selected)).thenReturn(gitRepo);
+        String head = gitRepo.commitDsl("review", SAMPLE_DSL, USER, "selected review");
+
+        var navigation = mock(WorkspaceManager.class);
+        var active = new UserWorkspaceState(USER, 10);
+        active.recordProjection("b".repeat(40), "draft");
+        active.recordIndexBuild("b".repeat(40));
+        active.beginOperation("merge");
+        when(navigation.getOrCreateWorkspace(USER)).thenReturn(active);
+
+        boolean hasProgress = "selected-copy".equals(workspaceId);
+        if (hasProgress) {
+            var progress = new UserWorkspaceState(USER, 10);
+            progress.recordProjection(head, "review");
+            progress.recordIndexBuild(head);
+            when(navigation.getScopedWorkspaceState(selected)).thenReturn(progress);
+        }
+
+        var service = new RepositoryStateService(factory, navigation, mock(SystemRepositoryService.class));
+        var state = new GitStateController(service, resolver).getState("review").getBody();
+
+        assertNotNull(state);
+        assertEquals(head, state.headCommit());
+        assertEquals(hasProgress ? head : null, state.projectionCommit());
+        assertEquals(hasProgress ? "review" : null, state.projectionBranch());
+        assertEquals(hasProgress ? head : null, state.indexCommit());
+        assertFalse(state.operationInProgress());
+        assertNull(state.operationKind());
+        if (workspaceId != null) {
+            verify(navigation).getScopedWorkspaceState(selected);
+        }
+        verifyNoMoreInteractions(navigation);
     }
 
     // ── getState ────────────────────────────────────────────────────

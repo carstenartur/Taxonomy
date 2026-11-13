@@ -20,7 +20,8 @@ spec:
     services: "5"
     secrets: "12"
     configmaps: "8"
-    persistentvolumeclaims: "0"
+    persistentvolumeclaims: "2"
+    requests.storage: 1Gi
 ---
 apiVersion: v1
 kind: LimitRange
@@ -33,6 +34,16 @@ spec:
       defaultRequest: {cpu: 100m, memory: 128Mi}
       default: {cpu: 500m, memory: 512Mi}
       max: {cpu: "1", memory: 1Gi}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: smoke-postgres-data
+  namespace: taxonomy-artemis-smoke
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests: {storage: 512Mi}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -87,7 +98,7 @@ spec:
             - {name: socket, mountPath: /var/run/postgresql}
             - {name: tmp, mountPath: /tmp}
       volumes:
-        - {name: data, emptyDir: {}}
+        - {name: data, persistentVolumeClaim: {claimName: smoke-postgres-data}}
         - {name: socket, emptyDir: {}}
         - {name: tmp, emptyDir: {}}
 ---
@@ -100,6 +111,16 @@ spec:
   type: ClusterIP
   selector: {app.kubernetes.io/name: taxonomy-smoke-postgres}
   ports: [{port: 5432, targetPort: postgres}]
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: smoke-broker-data
+  namespace: taxonomy-artemis-smoke
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests: {storage: 512Mi}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -156,7 +177,7 @@ spec:
             - {name: configuration, mountPath: /var/lib/artemis-instance/etc-override, readOnly: true}
             - {name: tls, mountPath: /etc/artemis/tls, readOnly: true}
       volumes:
-        - {name: data, emptyDir: {}}
+        - {name: data, persistentVolumeClaim: {claimName: smoke-broker-data}}
         - {name: tmp, emptyDir: {}}
         - name: configuration
           secret: {secretName: taxonomy-artemis-broker-config}

@@ -133,7 +133,7 @@ A full Copilot run needs a configured generative provider. `LOCAL_ONNX` supplies
 | `TAXONOMY_ANALYSIS_PRODUCT_MIN_SCORE` | `taxonomy.analysis.product.min-score` | `50` | Independent 0–100 suitability threshold for concrete products. Lower values become explicit zeroes and can create a structured product-coverage gap. |
 | `TAXONOMY_RATE_LIMIT_PER_MINUTE` | repository-backed preference `taxonomy.rate-limit.per-minute` | `10` | Admitted LLM requests per stable authenticated identity and minute; exactly `0` disables, negative values fail closed to `1`. |
 
-The incoming quota runs after authorization. Local users are keyed by canonical username; Keycloak browser and bearer access use the immutable `iss`/`sub` pair and therefore share one budget even when `preferred_username` changes. Forwarding headers and peer addresses are not quota identities. Rejected requests do not allocate state. The bounded in-memory counters expire after inactivity and return HTTP `429` with `Retry-After` and `Cache-Control: no-store`. They are scoped to one application instance, so multi-replica deployments require an outer distributed quota if a cluster-wide budget is required. The same matching contract applies at the root context and below a prefix such as `/taxonomy`.
+The incoming quota runs after authorization. Verified local and STABLE Keycloak logins share one budget per stable principal ID. In LEGACY mode, Keycloak browser and bearer logins share the immutable `iss`/`sub` pair. Forwarding headers and peer addresses are not quota identities. Rejected requests do not allocate state. The bounded in-memory counters expire after inactivity and return HTTP `429` with `Retry-After` and `Cache-Control: no-store`. They are scoped to one application instance, so multi-replica deployments require an outer distributed quota if a cluster-wide budget is required. The same matching contract applies at the root context and below a prefix such as `/taxonomy`.
 
 ## Multi-user analysis admission
 
@@ -279,6 +279,7 @@ Effective policy and readiness can be inspected at `GET /api/ai-automation`. Gen
 |---|---|---|---|
 | `ADMIN_PASSWORD` | `admin.token` | empty | Optional `X-Admin-Token`/Bearer value for sensitive Actuator and legacy admin-token checks. Empty disables this extra token layer; it does not replace role-based login authorization. |
 | `TAXONOMY_ADMIN_PASSWORD` | `taxonomy.admin-password` | empty outside production; required in production | Initial local administrator credential. An empty value in non-production causes Taxonomy to write a one-time random password to an owner-only temporary file and log only its path. |
+| `TAXONOMY_BEARER_MAX_TOKEN_LENGTH` | `taxonomy.security.bearer.max-token-length` | `8192` | Maximum bearer token length in characters for Keycloak API authentication. Longer tokens are rejected before provider authentication. |
 | `TAXONOMY_LOGIN_RATE_LIMIT` | `taxonomy.security.login-rate-limit.enabled` | `true` | Enables failed-login rate limiting by client address. |
 | `TAXONOMY_LOGIN_MAX_ATTEMPTS` | `taxonomy.security.login-rate-limit.max-attempts` | `5` | Failed attempts allowed before lockout. |
 | `TAXONOMY_LOGIN_LOCKOUT_SECONDS` | `taxonomy.security.login-rate-limit.lockout-seconds` | `300` | Lockout duration. |
@@ -398,6 +399,8 @@ backing reduces heap residency but is not a guarantee against out-of-memory erro
 | `TAXONOMY_ANALYSIS_RUNTIME_MAXIMUM_DURATION_SECONDS` | `taxonomy.analysis.runtime.maximum-duration-seconds` | `1800` |
 
 Warning < stop <= 98 percent; at least 1 MiB reserve; nonnegative pressure grace; positive deadline. Limits are checked cooperatively before calls and during rate-limit/retry waits. In-flight HTTP calls retain their configured timeout. Neither native memory nor one large allocation can be guaranteed safe by a heap sample. Completed scores are retained when the next step is stopped. Live telemetry is process-local, owner/workspace/repository/branch-scoped, uses the configurable execution and waiting limits above, with 10-minute terminal retention, 32 call previews and 8192 score entries. Preview text is limited to 8192 characters per prompt/response and loaded separately; omitted entries are counted. Durable portfolio jobs and semantic history remain separate and unchanged.
+
+Artemis cluster operations retain their payload and up to 1,000 progress events for 30 days after their last durable update. An inactive operation then becomes a scoped expiry marker for 90 more days. Within this window, status, result recovery and replay of the operation return HTTP 410 and `ANALYSIS_EXPIRED`. Each minute the coordinator processes up to 64 operations. The marker contains the original source identity, scope, revision and retention times. Saved portfolio snapshots have their own lifecycle.
 
 ### Streaming transport lifetime
 

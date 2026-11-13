@@ -15,6 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class RelationQualityContextArchitectureTest {
 
     private static final Set<String> QUALITY_OPERATIONS = Set.of(
+            "dashboard",
             "calculateMetrics",
             "metricsByRelationType",
             "metricsByProvenance",

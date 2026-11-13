@@ -25,8 +25,22 @@ window.TaxonomyContextBar = (function () {
     var pageGeneration = 0;
     var navigationTail = Promise.resolve();
     var activeContainer = null;
+    var resumeTimer = null;
+    window.addEventListener('beforeunload', function () {
+        if (!pageActive) return;
+        clearInterval(pollTimer); pollTimer = null;
+        if (pendingRead) pendingRead.abort();
+        if (resumeTimer !== null) clearTimeout(resumeTimer);
+        // A cancelled navigation keeps this document and its normal polling cadence.
+        resumeTimer = setTimeout(function () {
+            resumeTimer = null;
+            if (pageActive && activeContainer) init(activeContainer);
+        }, POLL_INTERVAL);
+    });
     window.addEventListener('pagehide', function () {
         pageGeneration++;
+        if (resumeTimer !== null) clearTimeout(resumeTimer);
+        resumeTimer = null;
         pageActive = false; clearInterval(pollTimer); pollTimer = null;
         if (pendingRead) pendingRead.abort();
     });
@@ -55,13 +69,14 @@ window.TaxonomyContextBar = (function () {
      */
     function init(containerId) {
         activeContainer = containerId;
+        if (resumeTimer !== null) return Promise.resolve(null);
         if (pollTimer) clearInterval(pollTimer);
         pollTimer = null;
         var page = pageGeneration;
         // The first repository publication must follow draft/source hydration;
         // publishing it sooner revokes their protected bootstrap responses.
         return Promise.resolve(window.TaxonomyArchitectureWorkspace?.ready?.()).then(function () {
-            if (!pageActive || page !== pageGeneration || activeContainer !== containerId) return null;
+            if (!pageActive || resumeTimer !== null || page !== pageGeneration || activeContainer !== containerId) return null;
             var result = fetchAndRender(containerId, {joinCurrent: true});
             if (pollTimer) clearInterval(pollTimer);
             pollTimer = setInterval(function () {
@@ -77,7 +92,7 @@ window.TaxonomyContextBar = (function () {
      * @param {string} containerId — DOM ID
      */
     function fetchAndRender(containerId, options) {
-        if (!pageActive) return Promise.resolve(null);
+        if (!pageActive || resumeTimer !== null) return Promise.resolve(null);
         if (options?.joinCurrent && pendingResult && pendingContainer === containerId
                 && pendingOwner() && !pendingRead.signal.aborted) return pendingResult;
         if (pendingRead) pendingRead.abort();

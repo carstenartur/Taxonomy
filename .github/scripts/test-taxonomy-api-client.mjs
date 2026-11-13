@@ -592,6 +592,10 @@ test('the comparison dialog reads one authorized workspace and ignores results f
   const {context} = app;
   const {window, document} = context;
   const results = {innerHTML: '', textContent: ''};
+  const lifecycle = new EventTarget();
+  window.addEventListener = lifecycle.addEventListener.bind(lifecycle);
+  const documentEvents = new EventTarget();
+  document.addEventListener = documentEvents.addEventListener.bind(documentEvents);
   const nodes = {contextCompareModal: {querySelector: () => null, addEventListener() {}}, contextCompareResults: results};
   for (const id of ['compareLeftBranch', 'compareRightBranch', 'compareLeftCommit', 'compareRightCommit']) {
     nodes[id] = {value: '', replaceChildren() {}, appendChild() {}, addEventListener() {}};
@@ -837,6 +841,7 @@ test('versioned history search uses the current pin and ignores a superseded res
   assert.doesNotMatch(app.search.innerHTML, /obsolete result/);
 
   const hidden = w.TaxonomyHistorySearch.search('hidden', 'versionedSearch');
+  assert.equal(new URL(reads[2].url, w.location.href).searchParams.has('currentBranch'), false);
   app.lifecycle.dispatchEvent(new Event('pagehide'));
   assert.equal(reads[2].init.signal.aborted, true);
   reads[2].resolve(Response.json([{branch: 'draft', matchedText: 'after departure'}]));
@@ -1065,6 +1070,42 @@ test('the live workspace badge waits for the initial repository context in the s
   assert.equal(new URL(read.url, f.w.location.href).searchParams.get('workspaceId'), 'workspace-A');
   assert.equal(read.init.headers.get('X-Taxonomy-Workspace-Id'), 'workspace-A');
 });
+
+for (const stayed of [false, true]) {
+  test('repository context polling handles beforeunload when the page ' + (stayed ? 'stays open' : 'leaves'), async () => {
+    const f = await loadWorkspaceBadgeStartup();
+    let nextPoll;
+    f.context.setTimeout = (callback, delay) => {
+      if (delay === 10_000) { nextPoll = callback; return 1; }
+      return setTimeout(callback, delay).unref();
+    };
+    f.finishSource(true);
+    await f.settle();
+    const old = f.reads('/api/context/current')[0];
+    f.w.dispatchEvent({type:'beforeunload'});
+    assert.equal(old.init.signal.aborted, true);
+    const whileLeaving = f.w.TaxonomyContextBar.fetchAndRender('contextBar');
+    assert.equal(f.reads('/api/context/current').length, 1);
+    assert.equal(await whileLeaving, null);
+    old.resolve(Response.json({contextId:'old', branch:'draft', mode:'EDITABLE'}));
+    await f.settle();
+    assert.equal(f.w.TaxonomyContextBar.getCurrentContext(), null);
+    if (!stayed) f.w.dispatchEvent({type:'pagehide'});
+    nextPoll();
+    await f.settle();
+    assert.equal(f.reads('/api/context/current').length, stayed ? 2 : 1);
+    // A retained page must also be able to poll after the browser restores it.
+    if (!stayed) {
+      f.w.dispatchEvent({type:'pageshow', persisted:true});
+      await f.settle();
+    }
+    const fresh = f.reads('/api/context/current')[1];
+    assert.equal(fresh.init.signal.aborted, false);
+    fresh.resolve(Response.json({contextId:'new', branch:'draft', mode:'EDITABLE'}));
+    await f.settle();
+    assert.equal(f.w.TaxonomyContextBar.getCurrentContext().contextId, 'new');
+  });
+}
 
 for (const departure of ['workspace', 'pagehide', 'authentication']) {
   test(`the live workspace badge does not start after ${departure} during initial readiness`, async () => {

@@ -558,11 +558,24 @@ class PortfolioUiAcceptanceIT {
         }
     }
 
+    private static WebElement openCatalogueModal(String tab, String modalId) {
+        try {
+            click(By.id(tab + "-tab"));
+            // Bootstrap selects the tab before its incoming pane finishes fading in.
+            String pane = "#" + tab + "Pane.active.show";
+            wait.until(browser -> Boolean.TRUE.equals(javascript().executeScript(
+                    "const pane = document.querySelector(arguments[0]);"
+                            + "return !!pane && getComputedStyle(pane).opacity === '1';", pane)));
+            click(By.cssSelector(pane + " [data-bs-target='#" + modalId + "']"));
+            return wait.until(ExpectedConditions.visibilityOfElementLocated(By.id(modalId)));
+        } catch (RuntimeException failure) {
+            captureModalFailure(modalId, failure);
+            throw failure;
+        }
+    }
+
     private static void createSolution(String solutionKey) {
-        click(By.id("solutions-tab"));
-        click(By.cssSelector("[data-bs-target='#solutionModal']"));
-        WebElement modal = wait.until(
-                ExpectedConditions.visibilityOfElementLocated(By.id("solutionModal")));
+        WebElement modal = openCatalogueModal("solutions", "solutionModal");
         fill(modal, "solutionKey", solutionKey);
         fill(modal, "solutionTitle", "Secure communication service");
         new Select(modal.findElement(By.id("solutionType"))).selectByValue("SERVICE");
@@ -575,10 +588,7 @@ class PortfolioUiAcceptanceIT {
     }
 
     private static void createProduct(String productKey) {
-        click(By.id("products-tab"));
-        click(By.cssSelector("[data-bs-target='#productModal']"));
-        WebElement modal = wait.until(
-                ExpectedConditions.visibilityOfElementLocated(By.id("productModal")));
+        WebElement modal = openCatalogueModal("products", "productModal");
         fill(modal, "productKey", productKey);
         fill(modal, "productManufacturer", "JUnit Vendor");
         fill(modal, "productName", "JUnit Product");

@@ -2,6 +2,8 @@ package com.taxonomy.editor;
 
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.repository.WorkspaceProvisioningFenceImpl;
+import org.springframework.data.repository.core.support.RepositoryComposition.RepositoryFragments;
 import com.taxonomy.workspace.service.RepositoryContext;
 import org.junit.jupiter.api.Test;
 
@@ -126,7 +128,8 @@ class WorkspaceCollaborationServiceTest {
             persistence=new EditorPersistenceFixture("jdbc:hsqldb:mem:sharing-stand-"+java.util.UUID.randomUUID()+";hsqldb.tx=mvcc", UserWorkspace.class);
             transactions=new org.springframework.transaction.support.TransactionTemplate(new org.springframework.orm.jpa.JpaTransactionManager(persistence.factory));
             var entities=org.springframework.orm.jpa.SharedEntityManagerCreator.createSharedEntityManager(persistence.factory);
-            rows=new org.springframework.data.jpa.repository.support.JpaRepositoryFactory(entities).getRepository(UserWorkspaceRepository.class);
+            rows=new org.springframework.data.jpa.repository.support.JpaRepositoryFactory(entities).getRepository(UserWorkspaceRepository.class,
+                    RepositoryFragments.just(new WorkspaceProvisioningFenceImpl(entities)));
             var metadata=workspace(); metadata.setCreatedAt(java.time.Instant.now()); metadata.setCollaborative(true);
             transactions.executeWithoutResult(status -> rows.saveAndFlush(metadata));
             String source="element retained type Component { title: \"Retained\"; }\n";
@@ -158,7 +161,8 @@ class WorkspaceCollaborationServiceTest {
                     new org.springframework.orm.jpa.JpaTransactionManager(persistence.factory));
             var entities = org.springframework.orm.jpa.SharedEntityManagerCreator.createSharedEntityManager(persistence.factory);
             var rows = new org.springframework.data.jpa.repository.support.JpaRepositoryFactory(entities)
-                    .getRepository(UserWorkspaceRepository.class);
+                    .getRepository(UserWorkspaceRepository.class,
+                    RepositoryFragments.just(new WorkspaceProvisioningFenceImpl(entities)));
             var workspace = workspace(); workspace.setCreatedAt(java.time.Instant.now()); workspace.setCollaborative(!enabled);
             transactions.executeWithoutResult(status -> rows.saveAndFlush(workspace));
             var stale = transactions.execute(status -> rows.findByWorkspaceId("copy").orElseThrow());

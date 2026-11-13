@@ -187,9 +187,9 @@ public class DslDocumentApiController {
     public ResponseEntity<Map<String, Object>> getHistory(
             @RequestParam(defaultValue = "draft") String branch) {
 
+        String username = workspaceResolver.resolveCurrentUsername();
+        WorkspaceContext workspaceContext = readContextResolver.resolve(username);
         try {
-            String username = workspaceResolver.resolveCurrentUsername();
-            WorkspaceContext workspaceContext = readContextResolver.resolve(username);
             List<DslCommit> gitHistory = dslOps.getDslHistory(branch, workspaceContext);
             List<Map<String, Object>> history = new ArrayList<>();
             for (DslCommit c : gitHistory) {

@@ -674,7 +674,7 @@ Es gibt keine separaten `/matrices/...`-Endpunkte. Jede Matrix besitzt `rows`, `
 ```text
 GET    /api/projects/git/export
 POST   /api/projects/git/commit
-GET    /api/projects/git/materialize-preview?branch=...
+GET    /api/projects/git/materialize-preview?branch=...&targetBranch=...
 POST   /api/projects/git/materialize
 POST   /api/projects/git/merge?source=...&target=...
 ```
@@ -703,6 +703,8 @@ Materialisierung vor dem Anwenden prüfen:
 curl -u architect:password \
   'http://localhost:8080/api/projects/git/materialize-preview?branch=draft'
 ```
+
+Bei einer expliziten Seitenquelle bezeichnet `branch` den geöffneten Stand und `targetBranch` den für die Vorschau ausgewählten Branch. Beim Anwenden sendet der Browser dieselbe Quelle und dasselbe Ziel in der Abfrage sowie den geprüften Branch und den erwarteten Commit im Request-Body. Ein veralteter Seitenstand erhält HTTP 409. Die Versionierungsseite bindet auch Git-Status, Export, Commit und Merge an das ausgewählte Repository, die Arbeitskopie und den Branch. Beim Anwenden eines expliziten `targetBranch` ist der geprüfte `expectedHead` erforderlich. Fehlt er, antwortet der Server mit HTTP 428. Ältere Clients können bei der Vorschau weiterhin nur `branch` und beim Anwenden den Branch im Body angeben.
 
 Die Antwort enthält exakten Ziel-HEAD, Fingerprints, Zeilenzahlen und begrenzte Vorschauen hinzugekommener/entfallener Zeilen. Clients sollten unmittelbar vor dem Anwenden erneut prüfen und einen veränderten `targetHead` ablehnen.
 

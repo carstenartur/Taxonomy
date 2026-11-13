@@ -6,6 +6,8 @@ import com.taxonomy.catalog.service.LocalEmbeddingService;
 import com.taxonomy.workspace.service.RepositoryContext;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.AfterEach;
+import com.taxonomy.workspace.model.RepositoryVisibility;
+import com.taxonomy.workspace.repository.SystemRepositoryRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
@@ -17,6 +19,7 @@ import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -28,6 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -52,6 +56,7 @@ class GraphSearchTests {
     private LocalEmbeddingService embeddingService;
 
     @Autowired private UserWorkspaceRepository workspaceRows;
+    @Autowired private SystemRepositoryRepository repositoryRows;
     @Autowired private WorkspaceManager workspaceManager;
     @Autowired private SystemRepositoryService repositories;
     @Autowired private WorkspaceContextResolver contexts;
@@ -75,7 +80,7 @@ class GraphSearchTests {
     @Test
     void zeroRequestedResultsRetainAllRequiredGraphFields() {
         GraphSearchResult result = graphSearchService.graphSearch(
-                "business process management", 0, RepositoryContext.centralRead("fixture-repository", "draft", "system"));
+                "business process management", 0, primaryReadContext());
         assertThat(result.getMatchedNodes()).isNotNull();
         assertThat(result.getRelationCountByRoot()).isNotNull();
         assertThat(result.getTopRelationTypes()).isNotNull();
@@ -84,14 +89,14 @@ class GraphSearchTests {
 
     @Test
     void zeroRequestedResultsExplainThatNoSearchWasRequested() {
-        GraphSearchResult result = graphSearchService.graphSearch("anything", 0, RepositoryContext.centralRead("fixture-repository", "draft", "system"));
+        GraphSearchResult result = graphSearchService.graphSearch("anything", 0, primaryReadContext());
         assertThat(result.getSummary()).isEqualTo("No graph search results were requested.");
         assertThat(result.getMatchedNodes()).isEmpty();
     }
 
     @Test
     void negativeRequestedResultsRemainEmptyWithoutInference() {
-        GraphSearchResult result = graphSearchService.graphSearch("network services", -1, RepositoryContext.centralRead("fixture-repository", "draft", "system"));
+        GraphSearchResult result = graphSearchService.graphSearch("network services", -1, primaryReadContext());
         assertThat(result.getMatchedNodes()).isEmpty();
         assertThat(result.getRelationCountByRoot()).isEmpty();
     }
@@ -232,6 +237,55 @@ class GraphSearchTests {
                 .isEqualTo(workspace.getWorkspaceId());
         assertThat(workspace.getProvisioningStatus()).isEqualTo(WorkspaceProvisioningStatus.READY);
         assertThat(workspace.getCurrentCommit()).isNull();
+    }
+
+    @Test
+    @WithMockUser(username = "graph-source-reader", roles = "READER")
+    void graphSearchRequiresAnUnambiguousRepositoryAndValidatesTheSelectedRepresentation() throws Exception {
+        var row = repositories.createCentralRepository("Graph reader repository", "search-" + UUID.randomUUID(),
+                null, RepositoryVisibility.PUBLIC, "graph-source-owner", "main");
+        String id = row.getRepositoryId();
+        try {
+            repositories.markProvisioningReady(id);
+            var primary = repositories.getPrimaryRepository();
+            String head = git.getCentralRepository(primary.getRepositoryId()).getHeadCommit(primary.getDefaultBranch());
+            var selected = get("/api/search/graph").param("q", "care").param("maxResults", "0")
+                    .param("repositoryId", primary.getRepositoryId()).param("workspaceId", "")
+                    .param("branch", primary.getDefaultBranch());
+
+            mockMvc.perform(get("/api/search/graph").param("q", "care").param("maxResults", "0"))
+                    .andExpect(status().isConflict());
+            mockMvc.perform(get("/api/search/graph/readiness")).andExpect(status().isConflict());
+            mockMvc.perform(get("/api/search/graph/readiness").param("repositoryId", primary.getRepositoryId())
+                            .param("workspaceId", "").param("branch", primary.getDefaultBranch()))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.ready").value(false))
+                    .andExpect(jsonPath("$.vectorSource").value("GLOBAL_INDEX")).andExpect(jsonPath("$.sourceCommit").value(head));
+            var response = mockMvc.perform(selected)
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.source.repositoryId").value(primary.getRepositoryId()))
+                    .andExpect(jsonPath("$.source.branch").value(primary.getDefaultBranch())).andExpect(jsonPath("$.source.sourceCommit").value(head))
+                    .andExpect(jsonPath("$.source.vectorSource").value("NO_INFERENCE"))
+                    .andExpect(jsonPath("$.source.generation").doesNotExist())
+                    .andExpect(header().string("X-Taxonomy-Commit", head))
+                    .andExpect(header().string("X-Taxonomy-Source-State", "READY")).andReturn().getResponse();
+            String etag = response.getHeader("ETag");
+            assertThat(etag).isNotBlank();
+            mockMvc.perform(selected.header("If-None-Match", etag)).andExpect(status().isNotModified());
+            mockMvc.perform(get("/api/search/graph").param("q", "care").param("maxResults", "0")
+                            .param("repositoryId", id).param("workspaceId", "").param("branch", "main")
+                            .header("If-None-Match", etag))
+                    .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.matchedNodes").doesNotExist());
+            mockMvc.perform(selected.param("commitId", "0".repeat(40)))
+                    .andExpect(status().isConflict()).andExpect(header().string("X-Taxonomy-Source-State", "STALE"))
+                    .andExpect(header().string("X-Taxonomy-Commit", head)).andExpect(content().string(""));
+            assertThat(workspaceRows.findByUsernameAndSharedFalse("graph-source-reader")).isEmpty();
+        } finally {
+            repositoryRows.deleteById(row.getId());
+        }
+    }
+
+    private RepositoryContext primaryReadContext() {
+        var primary = repositories.getPrimaryRepository();
+        return RepositoryContext.centralRead(primary.getRepositoryId(), primary.getDefaultBranch(), "system");
     }
 
     private void assertNoWorkspaceAllocation(String username) {

@@ -23,6 +23,7 @@ public final class DocumentTemplateMaterializationCache {
 
     static final int DEFAULT_MAX_ENTRIES = 64;
     static final long DEFAULT_MAX_BYTES = 100L * 1024 * 1024;
+    static final int MAX_LENGTH_ENTRIES = 1024;
     private static final String BUILDER_VERSION = "dotx-v1";
 
     private final int maxEntries;
@@ -31,6 +32,9 @@ public final class DocumentTemplateMaterializationCache {
             new LinkedHashMap<>(16, 0.75f, true);
     private final LinkedHashMap<Key, Boolean> validated =
             new LinkedHashMap<>(16, 0.75f, true);
+    // Exact lengths of previously validated, immutable representations stay useful
+    // after the much larger downloadable archives leave their own cache.
+    private final LinkedHashMap<Key, Integer> lengths = new LinkedHashMap<>(16, 0.75f, true);
     private long currentBytes;
 
     private final Counter packHits;
@@ -110,6 +114,21 @@ public final class DocumentTemplateMaterializationCache {
         return produced.clone();
     }
 
+    int packedLength(String templateId, String commitId, IoSupplier<Integer> materializer) throws IOException {
+        Key key = key(templateId, commitId);
+        synchronized (this) {
+            Integer present = lengths.get(key);
+            if (present != null) return present;
+        }
+        // Materialization reads Git and validates the exact revision outside this monitor.
+        int length = materializer.get();
+        synchronized (this) {
+            lengths.put(key, length);
+            if (lengths.size() > MAX_LENGTH_ENTRIES) lengths.pollFirstEntry();
+        }
+        return length;
+    }
+
     public synchronized void validateOnce(
             String templateId,
             String commitId,
@@ -126,6 +145,10 @@ public final class DocumentTemplateMaterializationCache {
             Key eldest = validated.keySet().iterator().next();
             validated.remove(eldest);
         }
+    }
+
+    synchronized int lengthEntries() {
+        return lengths.size();
     }
 
     synchronized int entries() {

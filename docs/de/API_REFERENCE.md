@@ -150,6 +150,8 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/jus
 
 ## Suche
 
+Volltext-, semantische, hybride und Ähnlichkeitssuche lesen den gemeinsamen Referenzkatalog. Erfolgreiche Antworten liefern `X-Taxonomy-Source-Scope: GLOBAL_REFERENCE` und eine ETag für das Ergebnis. Der gemeinsame Knotenindex und die Ähnlichkeitsabfrage verwenden den englischen Katalognamen und die Beschreibung. Die Graphsuche auf einem ausgewählten Branch verwendet dessen eigene Vektoren mit Relationskontext. Beim Upgrade baut der reguläre Start der lokalen ONNX-Indizierung die gemeinsamen Vektoren mit der neuen Kennung des Eingabeformats auf.
+
 ### Volltextsuche
 
 ```bash
@@ -170,10 +172,12 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/search/hyb
 
 ### Graph-semantische Suche
 
-Der Graph-Modus prüft bei jeder Anfrage das ausgewählte Repository, den Geltungsbereich und den exakten Branch-Head. Beziehungsähnlichkeit ist nur für den zentralen Standardbranch im Migrationsbetrieb verfügbar, solange der kanonische Beziehungsleser seinen Legacy-Fallback erlaubt. Eine nachweislich leere Branch-Projektion liefert globale Knotentreffer mit leeren Beziehungsstatistiken. Nichtleere Branch-Projektionen und nicht bereite Geltungsbereiche liefern HTTP 503 statt unvollständiger Graph-Ergebnisse. Der Status `graphReady` beschreibt die globalen Modell-/Indexvoraussetzungen; eine sichtbare Graph-Option garantiert daher keine Suche im ausgewählten Geltungsbereich. Semantische Branch-Indizierung bleibt Folgearbeit (#741).
+Für einen Branch mit projizierten Beziehungen verwendet die Graph-Suche dessen veröffentlichte Vektorgeneration für Knoten und Beziehungen. Das Objekt `source` nennt Repository, Arbeitskopie, Branch, Git-Commit, Lesemodell der Beziehungen und Vektorquelle. Für `BRANCH_GENERATION` enthält es außerdem die Generations-ID, den Quellschlüssel und den Schlüssel des Embedding-Modells. Eine nachweislich leere Projektion verwendet den globalen Knotenindex und liefert leere Beziehungsstatistiken. Der primäre Standardbranch kann im Migrationsbetrieb auch seine bestehende Beziehungsquelle verwenden.
+
+`GET /api/search/graph/readiness` prüft den ausgewählten Index für dasselbe Repository, dieselbe Arbeitskopie und denselben Branch. Die optionale vollständige `commitId` bindet die Suchanfrage an die erwartete aktuelle Revision. Eine veraltete Commit-ID oder eine mehrdeutige Repository-Auswahl führt zu HTTP 409. Ist der Index für eine Suche mit angeforderten Treffern nicht verfügbar, antwortet der Server mit HTTP 503. Erfolgreiche Antworten liefern den aktuellen Commit in `X-Taxonomy-Commit` und einen `ETag` für bedingte Lesezugriffe.
 
 ```bash
-curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/search/graph?q=communications&maxResults=20"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/search/graph?q=communications&maxResults=20&repositoryId=${TAXONOMY_REPOSITORY_ID}&workspaceId=&branch=main"
 ```
 
 ### Ähnliche Knoten finden
@@ -715,15 +719,23 @@ curl -u alice:password -X POST "http://localhost:8080/api/workspace/publish?user
 curl -u alice:password http://localhost:8080/api/workspace/sync-state
 ```
 
+Während der Bereitstellung liefert derselbe Lesezugriff HTTP 200 mit Repository, Arbeitskopie, Branch und dem aktuellen Zustand in `syncStatus` (`NOT_PROVISIONED`, `PROVISIONING` oder `FAILED`). Git-Beobachtungen und deren Zeitstempel bleiben leer. Das Öffnen der Statusansicht löst keine Bereitstellung aus.
+
 **Antwort:**
 ```json
 {
+  "repositoryId": "architecture",
+  "workspaceId": "alice-workspace",
+  "branch": "feature-x",
+  "observedAt": "2026-03-15T10:03:00Z",
   "syncStatus": "AHEAD",
   "unpublishedCommitCount": 3,
   "lastSyncTimestamp": "2026-03-15T10:00:00Z",
   "lastPublishTimestamp": null
 }
 ```
+
+Die Antwort nennt das ausgewählte Repository, die Arbeitskopie und den Branch für den angemeldeten Benutzer. Bei einem zentralen Branch ist `workspaceId` null. `observedAt` bezeichnet die jüngste gespeicherte Beobachtung. `lastSyncTimestamp` und `lastPublishTimestamp` enthalten die Zeitpunkte der jeweiligen Vorgänge. Ältere Zeilen ohne erfassten Branch bleiben als historische Datenbankeinträge erhalten.
 
 ### Navigationsverlauf abrufen
 

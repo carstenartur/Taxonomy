@@ -142,7 +142,60 @@ class DocumentTemplateDetailControllerLocalEditTest {
         }
     }
 
+    @Test
+    void preflightPageAndBinaryAttachmentsAreBoundToOneCandidateInBothLanguages(@TempDir Path directory) throws Exception {
+        String id = DecisionRationaleTemplateContract.TEMPLATE_ID;
+        try (var git = new FileRepositoryBuilder().setGitDir(directory.resolve("active").toFile()).setBare().build();
+             var stage = new FileRepositoryBuilder().setGitDir(directory.resolve("staged").toFile()).setBare().build();
+             var context = new AnnotationConfigApplicationContext()) {
+            git.create(true);
+            stage.create(true);
+            var codec = new OoxmlTemplatePackageCodec();
+            var contract = new DecisionRationaleTemplateContract();
+            var stored = new DocumentTemplateService(new DocumentTemplateGitRepository(git), codec, List.of(contract));
+            context.registerBean(DocumentTemplates.class, () -> stored);
+            context.registerBean(DecisionRationaleTemplateContract.class, () -> contract);
+            context.register(DecisionTemplateConfiguration.class, DecisionRationaleTemplatePreviewService.class,
+                    DecisionRationaleTemplateRenderer.class, DecisionRationaleDocxRenderer.class, DecisionChapterDiagramRenderer.class);
+            context.refresh();
+            var base = uploadBranded(stored, codec, "Candidate branding", null);
+            byte[] submitted = stored.downloadCurrent(id).content();
+            var service = new DocumentTemplateCandidateService(new DocumentTemplateCandidateStore(stage), stored,
+                    List.of(context.getBean(TemplateContribution.class)));
+            var controller = new DocumentTemplateCandidateController(service, stored);
+            var model = new ConcurrentModel();
+            String path = controller.stage(id, "Reviewed", base.headCommit(),
+                    new org.springframework.mock.web.MockMultipartFile("file", submitted), () -> "reviewer",
+                    new MockHttpServletResponse(), model);
+            String version = path.substring(path.lastIndexOf('/') + 1);
+            assertThat(version).matches("[0-9a-f]{40}");
+            for (var locale : List.of(Locale.ENGLISH, Locale.GERMAN)) {
+                String rendered = renderPage(controller.detail(id, version, model), model, locale);
+                assertThat(rendered).contains(base.headCommit(), version, "sample.docx", "original.dotx", "validation.json",
+                        locale.equals(Locale.ENGLISH) ? "Activate this candidate" : "Diesen Kandidaten aktivieren");
+            }
+            assertThat(controller.original(id, version).getBody()).isEqualTo(submitted);
+            try (var doc = new XWPFDocument(new ByteArrayInputStream(controller.sample(id, version).getBody()))) {
+                assertThat(doc.getHeaderList()).singleElement().satisfies(h -> assertThat(h.getText()).contains("Candidate branding"));
+                assertThat(doc.getDocument().xmlText()).doesNotContain("{{taxonomy.", "w:dataBinding");
+                assertThat(doc.getProperties().getCustomProperties().getProperty("Taxonomy.Template.Commit").getLpwstr())
+                        .isEqualTo(version);
+            }
+            var validation = controller.validation(id, version);
+            assertThat(validation.getHeaders().getCacheControl()).contains("no-store");
+            assertThat(validation.getBody()).containsEntry("candidateVersion", version).containsEntry("sample", "PASSED")
+                    .doesNotContainKey("displayName");
+            assertThat(stored.describeCurrent(id).headCommit()).isEqualTo(base.headCommit());
+            controller.activate(id, version, () -> "reviewer", new MockHttpServletResponse(), new ConcurrentModel());
+            assertThat(stored.describeCurrent(id).headCommit()).isNotEqualTo(base.headCommit());
+        }
+    }
+
     private static String renderPage(String page, ConcurrentModel model) {
+        return renderPage(page, model, Locale.ENGLISH);
+    }
+
+    private static String renderPage(String page, ConcurrentModel model, Locale locale) {
         var resolver = new ClassLoaderTemplateResolver();
         resolver.setPrefix("templates/");
         resolver.setSuffix(".html");
@@ -157,7 +210,7 @@ class DocumentTemplateDetailControllerLocalEditTest {
         request.setRequestURI("/taxonomy/admin/document-templates/decision-rationale-report");
         var application = JakartaServletWebApplication.buildApplication(servletContext);
         var exchange = application.buildExchange(request, new MockHttpServletResponse());
-        var context = new WebContext(exchange, Locale.ENGLISH);
+        var context = new WebContext(exchange, locale);
         model.forEach(context::setVariable);
         return engine.process(page, context);
     }

@@ -103,6 +103,8 @@ Erste Nutzung des Standards oder ausdrückliches "Arbeitsbereich vorbereiten"
 | `READY` | Arbeitsbereich ist vollständig bereitgestellt und einsatzbereit |
 | `FAILED` | Bereitstellung fehlgeschlagen; siehe Fehlermeldung für Details |
 
+Während der Bereitstellung liefert `GET /api/workspace/provisioning-status` die Felder `attemptCount`, `attemptStartedAt` und `leaseExpiresAt`. Ein Bereitstellungsversuch reserviert den Arbeitsbereich für 15 Minuten. Nach einem Prozessabbruch kann der Eigentümer `POST /api/workspace/provision` nach Ablauf dieser Frist für denselben Arbeitsbereich wiederholen. Die Wiederaufnahme verwendet den gespeicherten Quell-Commit und prüft die aktuellen Quellrechte. Bei einem noch laufenden Versuch antwortet die API mit HTTP 409. Beim Schema-Upgrade erhalten bereits laufende Bereitstellungen dieselbe Frist.
+
 ## System-Repository
 
 Das System erstellt beim Start automatisch einen primären Repository-Datensatz mit:
@@ -159,6 +161,26 @@ Gibt den Repository-Topologiemodus und Informationen zur gemeinsamen Quelle zur�
   "displayName": "Shared Architecture Repository"
 }
 ```
+
+### Quellhistorie in eine persönliche Arbeitskopie abrufen
+
+Der ausgewählte persönliche Arbeitsbereich muss bereit sein. Sein Eigentümer benötigt weiterhin Mitwirkungsrechte am Quell-Repository. Alle Anfragen beziehen sich auf denselben Arbeitsbereich und dasselbe Repository.
+
+1. `GET /api/workspace/upstream` liefert den Quell-Branch, dessen aktuellen `sourceCommit` und den lokal gespeicherten `trackedCommit`.
+2. `POST /api/workspace/upstream/fetch` erwartet den ermittelten `sourceCommit` und den Wert von `trackedCommit` im Feld `expectedTrackedCommit`. Bei älteren Arbeitskopien kann der erste `trackedCommit` den Wert `null` haben.
+3. Die Antwort nennt den lokal verfügbaren Commit. Seine Eltern, Verzeichnisbäume und Dateien sind jetzt in der Arbeitskopie gespeichert. Der Arbeits-Branch behält seine geprüfte Version bis zu einer gesonderten Integration.
+
+Der Abruf in einer Arbeitskopie liefert die Vorgangskennung im Header `X-Operation-Id`. HTTP 200 enthält den abgerufenen Commit. Bei HTTP 202 ist der Auftrag gespeichert und kann nach einer Unterbrechung fortgesetzt werden. `GET /api/workspace/upstream/operations/{id}` zeigt den angeforderten Commit, das bestätigte Ergebnis und die Entscheidung. Verwenden Sie bei erneutem Senden desselben Auftrags denselben optionalen `Idempotency-Key`, oder rufen Sie `POST /api/workspace/upstream/operations/{id}/retry` auf. Während der Wartezeit liefert derselbe Abruf HTTP 202 und dieselbe Vorgangskennung. Über den ausdrücklichen Wiederholungsendpunkt kann sofort ein neuer Versuch beginnen. Bei einem externen Identitätsanbieter kann eine erneute Anmeldung mit der ursprünglichen Identität erforderlich sein. Ist der angeforderte Commit nachweislich bereits im Verlauf der weitergelaufenen Tracking-Ref enthalten, endet die Wiederherstellung mit `SUPERSEDED`. Bei abweichendem Verlauf ist eine Prüfung erforderlich.
+
+Auch der zentrale Fork und der Abruf eines ausgewählten Tags liefern `X-Operation-Id`. Für den Fork liegen Status, Wiederholung und Archivierung unter `/api/repositories/{repositoryId}/upstream/operations/{id}`. Der Status enthält das Zielrepository, die bestätigte Quelle, den ursprünglichen Fork-Punkt, die Tracking-Ref und bei Tags den gewählten Namen sowie die Objekt-IDs. Der zentrale Fork benötigt weiterhin Schreibrecht und Mitwirkungsberechtigung in Quelle und Ziel. Nach einem Abbruch prüft die Wiederaufnahme die aktuelle Originalbindung und den gespeicherten Git-Stand. Ein bereits passend publiziertes Tag bleibt auch bei später geänderter Quell-Ref wiedererkennbar. Ein Konflikt vor der Veröffentlichung bleibt zur Prüfung gespeichert.
+
+Beim Löschen einer Arbeitskopie werden ihre Fetch-Belege archiviert. Ein ausstehender Fetch endet mit `WORKSPACE_DELETED`. Eine vollständige Installationssicherung erhält auch die Belege bereits entfernter Arbeitskopien. Die isolierte Wiederherstellung bewahrt diese als private Verlaufsdaten unter `DETACHED_SOURCE_QUARANTINE` auf.
+
+Der Eigentümer kann einen abgeschlossenen Vorgang mit `DELETE /api/workspace/upstream/operations/{id}` archivieren. Die automatische Aufbewahrung archiviert abgeschlossene Ergebnisse nach 30 Tagen. Weitere 90 Tage bleiben die Entscheidung und der Löschvermerk für diesen Vorgang erhalten. Wiederholungen erhalten in diesem Zeitraum HTTP 410. Die Fristen gelten für die Vorgangsdaten. Git behält den Verlauf des Repositorys.
+
+Um ein bestimmtes Tag zu übernehmen, rufen Sie nach dem zugehörigen Commit `GET /api/workspace/upstream/tag?name=release-1` ab. Übergeben Sie die zurückgegebenen Felder `name`, `sourceTagObject` und `trackedCommit` an `POST /api/workspace/upstream/fetch-tag`. Leichtgewichtige und annotierte Commit-Tags behalten ihre ursprünglichen Objekt-IDs. Ein bereits vorhandenes identisches Tag kann erneut abgerufen werden. Ein veralteter Stand oder ein abweichendes lokales Tag führt zu HTTP 409. Lesen Sie in diesem Fall den Status erneut, bevor Sie den Abruf wiederholen.
+
+Bei aktivierter Multi-Repository-API verwendet ein zentraler Fork dieselben Anfrage- und Antwortfelder unter `/api/repositories/{forkId}/upstream`. Für den Basis-Endpunkt und `/tag` gilt `GET`, für `/fetch` und `/fetch-tag` gilt `POST`. Der Fork-Katalog legt Quell-Repository und Quell-Branch fest. Das Lesen erfordert aktuelle Contributor-Rechte in beiden Repositories. Für die Veröffentlichung ist zusätzlich die Berechtigung zum Schreiben von Architekturdaten erforderlich. Ein Fork aus einer eingeschränkten Quelle muss auch bei der Veröffentlichung privat sein. Der Abruf aktualisiert die Tracking-Ref des Forks. Sein Standardbranch, unabhängig angelegte Branches und der ursprüngliche Forkpunkt behalten ihre Werte.
 
 ## Benutzerfreundliche Terminologie
 

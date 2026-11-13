@@ -1,5 +1,6 @@
 package com.taxonomy.workspace.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -10,6 +11,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import org.hibernate.annotations.ColumnDefault;
 
 import java.time.Instant;
 
@@ -101,6 +103,23 @@ public class UserWorkspace {
     @Column(name = "provisioned_at")
     private Instant provisionedAt;
 
+    // The bulk claim owns these fields. Ordinary detached metadata saves must not resurrect an old lease.
+    @Column(name = "provisioning_lease_owner", length = 36, updatable = false)
+    private String provisioningLeaseOwner;
+
+    @Column(name = "provisioning_lease_until", updatable = false)
+    private Instant provisioningLeaseUntil;
+
+    @ColumnDefault("0")
+    @Column(name = "provisioning_attempt", nullable = false, updatable = false)
+    private int provisioningAttempt;
+
+    @Column(name = "provisioning_attempt_at", updatable = false)
+    private Instant provisioningAttemptAt;
+
+    @Column(name = "provisioning_sync_base_branch", updatable = false)
+    private String provisioningSyncBaseBranch;
+
     @Column(name = "provisioning_error")
     private String provisioningError;
 
@@ -115,6 +134,24 @@ public class UserWorkspace {
 
     public UserWorkspace() {
     }
+
+    /** First allocation of a newly inserted working copy; retries use the atomic repository claim. */
+    public void startProvisioningLease(String owner, Instant startedAt, Instant expiresAt) {
+        provisioningLeaseOwner = owner;
+        provisioningLeaseUntil = expiresAt;
+        provisioningAttemptAt = startedAt;
+        provisioningAttempt = 1;
+    }
+
+    public String getProvisioningSyncBaseBranch() { return provisioningSyncBaseBranch; }
+    public void setProvisioningSyncBaseBranch(String branch) { provisioningSyncBaseBranch = branch; }
+
+    @JsonIgnore
+    public String getProvisioningLeaseOwner() { return provisioningLeaseOwner; }
+
+    public Instant getProvisioningLeaseUntil() { return provisioningLeaseUntil; }
+    public int getProvisioningAttempt() { return provisioningAttempt; }
+    public Instant getProvisioningAttemptAt() { return provisioningAttemptAt; }
 
     public Long getId() {
         return id;
@@ -263,6 +300,13 @@ public class UserWorkspace {
 
     public void setLastIntegratedCommit(String lastIntegratedCommit) {
         this.lastIntegratedCommit = lastIntegratedCommit;
+    }
+
+    /** The same upstream selection applies to standalone fetch, pull, and publication. */
+    public String resolveUpstreamBranch(SystemRepository sourceRepository) {
+        if (syncTargetBranch != null && !syncTargetBranch.isBlank()) return syncTargetBranch;
+        if (sourceBranch != null && !sourceBranch.isBlank()) return sourceBranch;
+        return sourceRepository.getDefaultBranch();
     }
 
     public String getSyncTargetBranch() {

@@ -168,8 +168,12 @@ async function reportsFixture() {
     for (const selector of ['.skip-link', 'label[for="reportScope"]', 'label[for="reportRequirement"]', 'label[for="matrixType"]', '#reportsBusy span']) selectors.set(selector, d.element());
     selectors.set('#reportPreviewFrame', frame);
     d.document.querySelector = selector => selectors.get(selector) || null;
-    const window = {addEventListener() {}, TaxonomyAppChrome: {updateContext: context => contexts.push(context)}, TaxonomyPortfolioApi: {
-        getProject: async () => ({projectKey: 'P', title: 'Project'}),
+    let sourceGeneration = 0;
+    const window = {addEventListener() {}, TaxonomyApiClient: {captureContext() {
+        const generation = sourceGeneration;
+        return () => generation === sourceGeneration;
+    }}, TaxonomyAppChrome: {updateContext: context => contexts.push(context)}, TaxonomyPortfolioApi: {
+        getProject: async () => ({projectKey: sourceGeneration ? 'P2' : 'P', title: 'Project'}),
         listRequirements: async () => [{id: 1, requirementKey: 'A', title: 'Alpha'}, {id: 2, requirementKey: 'B', title: 'Beta'}],
         fetchReport(...args) {const gate = deferred(); requests.push({args, ...gate}); return gate.promise;},
         reportUrl: () => '/api/report'
@@ -177,9 +181,63 @@ async function reportsFixture() {
     vm.runInNewContext(source('portfolio/portfolio-reports.js'), {window, document: d.document,
         location: {pathname: '/projects/1/reports', search: '?lang=de'}, URLSearchParams, URL: d.urls, AbortController});
     await d.document.fire('DOMContentLoaded');
-    return {...d, requests, prints, frame, contexts};
+    return {...d, requests, prints, frame, contexts, switchSource() { sourceGeneration++; }};
 }
 const reportResponse = () => ({blob: async () => ({size: 10})});
+
+test('a product gap review stays with the source where its evidence was displayed', async () => {
+    const f = dom(), loads = [], submissions = [], reviews = [];
+    const saved = new Map(), retainedRead = deferred();
+    const panel = f.element('details', 'projectProductGaps');
+    const list = f.element('div', 'productGapFamilies');
+    f.element('input', 'productGapFilter');
+    f.element('select', 'productGapClassification').append(f.element('option'));
+    f.element('div', 'productGapStatus'); f.element('button', 'loadProductGaps');
+    let repository = 'A';
+    const family = title => ({familyCode:'F', familyName:title, reviewKey:'same-key', classification:'UNDECIDED',
+        evidenceFingerprint:'controlled', revision:0, history:[], observations:[]});
+    const window = {location:{pathname:'/projects/1/reports'}, addEventListener() {},
+        TaxonomyI18n:{ready:async () => {}, t:key => key},
+        TaxonomyApiClient:{captureContext() {const source=repository; return () => source===repository;}},
+        TaxonomyPortfolioApi:{productGaps() {
+                loads.push(repository);
+                if (loads.length === 2) return retainedRead.promise;
+                return Promise.resolve([saved.get(repository) || family(repository)]);
+            },
+            getAccount:async () => ({architectureMutationAllowed:true}),
+            reviewProductGap() {submissions.push(repository); const done=deferred(); reviews.push(done); return done.promise;}}};
+    vm.runInNewContext(source('portfolio/project-product-gaps.js'), {window,document:f.document,AbortController});
+    panel.open = true; await panel.fire('toggle'); await tick();
+    const old = list.querySelector('form');
+    old.querySelector('textarea').value = 'Reviewed on A';
+    const oldSave = old.fire('submit');
+    await f.document.fire('taxonomy:repository-context-changed', {detail:{selectionChanged:false}}); await tick();
+    assert.deepEqual(loads, ['A']);
+    panel.open = false; await panel.fire('toggle');
+    panel.open = true; await panel.fire('toggle'); await tick();
+    saved.set('A', {...family('Saved on A'), revision:1});
+    reviews[0].resolve(saved.get('A')); await oldSave; await tick();
+    retainedRead.resolve([family('Older read on A')]); await tick();
+    assert.match(list.querySelector('summary').textContent, /Saved on A/);
+    const revised = list.querySelector('form');
+    revised.querySelector('textarea').value = 'Second review on A';
+    const revisedSave = revised.fire('submit');
+    assert.equal(revised.querySelector('button').disabled, true);
+    repository = 'B';
+    await f.document.fire('taxonomy:entity-context-changed'); await tick();
+    const current = list.querySelector('form');
+    assert.notEqual(current, old);
+    assert.equal(current.querySelector('button').disabled, false);
+    await old.fire('submit');
+    assert.deepEqual(submissions, ['A','A']);
+    current.querySelector('textarea').value = 'Reviewed on B';
+    const newSave = current.fire('submit');
+    reviews[1].resolve(family('A')); await revisedSave;
+    assert.equal(current.querySelector('button').disabled, true);
+    reviews[2].resolve(family('B')); await newSave;
+    assert.deepEqual(submissions, ['A','A','B']);
+    assert.deepEqual(loads, ['A','A','A','B']);
+});
 
 test('report navigation publishes its project for the shared navigation and retains versioning', async () => {
     const f = await reportsFixture();
@@ -192,6 +250,35 @@ test('German report scope uses German matrix option labels', async () => {
     const f = await reportsFixture();
     assert.deepEqual(f.document.getElementById('matrixType').options.map(option => option.textContent),
         ['Anforderungen × Taxonomie', 'Anforderungen × Lösungen', 'Lösungen × Produkte']);
+});
+
+test('same-source notifications retain the loaded preview; changing repository clears it before print', async () => {
+    const f = await reportsFixture(), print = f.document.getElementById('printReport');
+    const pending = f.document.getElementById('previewReport').click();
+    f.requests[0].resolve(reportResponse()); await pending; await f.frame.fire('load');
+    await f.document.fire('taxonomy:repository-context-changed', {detail: {selectionChanged: false}});
+    assert.equal(print.disabled, false);
+    f.switchSource();
+    await f.document.fire('taxonomy:entity-context-changed');
+    assert.deepEqual(f.revoked, ['blob:preview-1']);
+    assert.equal(f.frame.src, 'about:blank'); assert.equal(print.disabled, true);
+    await print.click(); assert.deepEqual(f.prints, []);
+    assert.equal(f.contexts.at(-2).project.key, null);
+    assert.equal(f.contexts.at(-2).project.title, null);
+    assert.match(f.document.getElementById('reportsProject').textContent, /P2/);
+});
+
+test('a source switch during response.body cannot install an obsolete report', async () => {
+    const f = await reportsFixture(), body = deferred(), reading = deferred();
+    const pending = f.document.getElementById('previewReport').click();
+    f.requests[0].resolve({blob() {reading.resolve(); return body.promise;}});
+    await reading.promise;
+    f.switchSource();
+    await f.document.fire('taxonomy:repository-context-changed', {detail: {selectionChanged: true}});
+    body.resolve({size: 10}); await pending;
+    assert.equal(f.frame.src, 'about:blank');
+    assert.equal(f.document.getElementById('printReport').disabled, true);
+    assert.equal(f.document.getElementById('reportsError').textContent, '');
 });
 
 test('scope changes invalidate the report preview and discard stale success and failure', async () => {
@@ -304,6 +391,35 @@ test('decision export stays cancellable and cancelled work cannot download after
     await pending; assert.equal(f.downloads.length, 0);
 });
 
+test('leaving the saved snapshot closes the decision dialog and cancels its unfinished body', async () => {
+    const f = decisionFixture(), source = new AbortController(), body = deferred(), reading = deferred();
+    let optionSignal, downloadSignal;
+    const dialog = f.api.openSaved({projectId: 1, snapshotId: 'snapshot', language: 'de', format: 'html', sourceSignal: source.signal, api: {
+        decisionReportOptions(project, snapshot, language, options) {
+            optionSignal = options.signal;
+            return Promise.resolve({roots: [{code: 'CP'}]});
+        },
+        downloadDecisionReport(project, snapshot, format, language, options, request) {
+            downloadSignal = request.signal;
+            const headers = {get(name) { return {
+                'Content-Type': 'text/html', 'X-Taxonomy-Analysis-SHA256': 'hash', 'X-Taxonomy-Snapshot-Id': 'snapshot'
+            }[name]; }};
+            return Promise.resolve({ok:true, headers, blob() { reading.resolve(); return body.promise; }});
+        }
+    }});
+    await tick();
+    const pending = dialog.querySelector('form').fire('submit');
+    await reading.promise;
+    source.abort();
+    body.resolve({size: 42});
+    await pending;
+    assert.equal(optionSignal, source.signal);
+    assert.equal(downloadSignal.aborted, true);
+    assert.equal(dialog.open, false);
+    assert.deepEqual(f.downloads, []);
+    assert.equal(f.api.openSaved({sourceSignal:source.signal}), undefined);
+});
+
 test('Escape also aborts an in-progress decision export', async () => {
     const f = decisionFixture(), gate = deferred(); let signal;
     const dialog = f.api.open({roots: [{code: 'CP'}], submit({signal: value}) {signal = value; return gate.promise;}});
@@ -345,6 +461,28 @@ test('portfolio report adapter forwards cancellation to fetch', async () => {
     assert.equal(seen.signal.aborted, true, 'caller cancellation reaches the composed transport signal');
 });
 
+for (const workspace of ['workspace-A', '']) {
+    test('portfolio Git state and export read the same pinned repository and branch for ' + (workspace || 'central'), async () => {
+        const requests = [];
+        const window = {location: {pathname: '/projects/8/versioning'}, TaxonomyArchitectureWorkflow: {
+            getScope: () => ({repositoryId: 'repository-A', workspaceId: workspace, branch: 'review'})
+        }};
+        const context = {window, document: {querySelector: () => null}, URL, URLSearchParams,
+            fetch: async (url, init) => {requests.push({url, init}); return new Response('{}');}};
+        canonicalFixture.install(context, ['api/portfolio-api.js']);
+        await window.TaxonomyPortfolioApi.getGitState();
+        await window.TaxonomyPortfolioApi.exportPortfolio();
+        assert.equal(requests.length, 2);
+        for (const {url, init} of requests) {
+            const query = new URL(url, window.location.href).searchParams;
+            assert.equal(query.get('repositoryId'), 'repository-A');
+            assert.equal(query.get('workspaceId'), workspace);
+            assert.equal(query.get('branch'), 'review');
+            assert.equal(new Headers(init.headers).get('X-Taxonomy-Workspace-Id'), workspace);
+        }
+    });
+}
+
 test('new requirement writes capture AI language for automatic analysis without leaking it across origins', async () => {
     const f = dom(), requests = [];
     const window = {location: {href: 'http://localhost/app/', origin: 'http://localhost', pathname: '/app/'},
@@ -361,6 +499,9 @@ test('new requirement writes capture AI language for automatic analysis without 
     assert.deepEqual(requests.map(request => request.headers.get('X-Taxonomy-Analysis-Language')), ['de', 'de', null, null, 'en']);
 });
 
+const liveDecisionSource = {repositoryId: 'repo-reports', workspaceId: 'ws-reports', branch: 'review'};
+const liveDecisionPath = '/api/decision-report/docx?repositoryId=repo-reports&workspaceId=ws-reports&branch=review';
+
 test('live-analysis export cancellation reaches the real API client transport', async () => {
     const f = dom();
     f.element('textarea', 'businessText').value = 'Current requirement';
@@ -368,9 +509,11 @@ test('live-analysis export cancellation reaches the real API client transport', 
     const timers = new Set();
     const window = {location: {href: 'http://localhost/', pathname: '/'},
         TaxonomyRoleSurface: {}, TaxonomyUiSemantics: {},
+        TaxonomyArchitectureWorkspace: {analysisScope: async () => liveDecisionSource},
         TaxonomyI18n: {getLocale: () => 'de'},
         fetch(url, init) {
-            assert.equal(url, '/api/decision-report/docx');
+            assert.equal(url, liveDecisionPath);
+            assert.equal(new Headers(init.headers).get('X-Taxonomy-Workspace-Id'), liveDecisionSource.workspaceId);
             assert.equal(init.method, 'POST');
             transportSignal = init.signal;
             return new Promise((resolve, reject) => {
@@ -434,6 +577,7 @@ async function liveReportBodyFixture() {
     f.element('textarea', 'businessText').value = 'Current requirement';
     const window = {location: {href: 'http://localhost/', origin: 'http://localhost', pathname: '/'},
         TaxonomyRoleSurface: {}, TaxonomyUiSemantics: {},
+        TaxonomyArchitectureWorkspace: {analysisScope: async () => liveDecisionSource},
         TaxonomyI18n: {getLocale: () => 'de'}, fetch: transfer.fetch};
     class FixtureURL extends URL {}
     Object.assign(FixtureURL, f.urls);
@@ -850,7 +994,12 @@ test('projection recovery uses current head, pinned context and canonical CSRF t
     f.window.__TaxonomyAnalysisSessionContext.runtime.workspaceId = 'workspace-B';
     f.requests[2].resolve(readinessResponse(fresh)); await tick();
     const rebuild = f.requests[3];
-    assert.match(rebuild.url, /\/projection\/rebuild\?workspaceId=workspace-A$/);
+    for (const request of [f.requests[2], rebuild]) {
+        const target = new URL(request.url, 'https://example.test');
+        assert.equal(target.searchParams.get('repositoryId'), 'repository-A');
+        assert.equal(target.searchParams.get('workspaceId'), 'workspace-A');
+        assert.equal(target.searchParams.get('branch'), 'draft');
+    }
     assert.equal(rebuild.options.headers.get('If-Match'), '"' + fresh.currentHeadCommit + '"');
     assert.equal(rebuild.options.headers.get('X-Taxonomy-Workspace-Id'), 'workspace-A');
     assert.equal(rebuild.options.headers.get('X-CSRF-TOKEN'), 'csrf-fixture');

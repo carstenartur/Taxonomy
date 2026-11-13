@@ -23,6 +23,7 @@ RESOURCE_SELECTOR="app.kubernetes.io/instance=${RELEASE},app.kubernetes.io/name=
 PORT_FORWARD_PID=""
 NAMESPACE_UID=""
 FIXTURE_KUBECONFIG=""
+IMAGE_ARCHIVE=""
 
 fail() {
   echo "::error::$*" >&2
@@ -40,6 +41,7 @@ cleanup() {
     printf '{"apiVersion":"v1","kind":"DeleteOptions","preconditions":{"uid":"%s"}}\n' "${NAMESPACE_UID}" \
       | kubectl delete --request-timeout=10s --raw "/api/v1/namespaces/${NAMESPACE}" -f - >/dev/null 2>&1 || true
   fi
+  if [[ -n "${IMAGE_ARCHIVE}" ]]; then rm -f -- "${IMAGE_ARCHIVE}"; fi
   if [[ -n "${FIXTURE_KUBECONFIG}" ]]; then
     rm -f -- "${FIXTURE_KUBECONFIG}"
   fi
@@ -47,7 +49,7 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p "${EVIDENCE_DIR}"
-rm -f -- "${EVIDENCE_DIR}/evidence.json"
+rm -f -- "${EVIDENCE_DIR}/evidence.json" "${EVIDENCE_DIR}/small-search/evidence.json"
 
 for command in docker kind kubectl helm curl jq od; do
   command -v "${command}" >/dev/null 2>&1 \
@@ -56,8 +58,8 @@ done
 if ! [[ "${SOURCE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
   fail "SOURCE_SHA must be a full 40-character Git commit ID"
 fi
-if ! [[ "${IMAGE_TAG}" =~ ^sha-[0-9a-f]{40}$ ]]; then
-  fail "IMAGE_TAG must use sha-<40 lowercase hex>"
+if [[ "${IMAGE_TAG}" != "sha-${SOURCE_SHA}" ]]; then
+  fail "IMAGE_TAG must identify SOURCE_SHA exactly"
 fi
 if [[ "${KEEP_RESOURCES}" != "true" && "${KEEP_RESOURCES}" != "false" ]]; then
   fail "KEEP_RESOURCES must be true or false"
@@ -79,6 +81,11 @@ fi
 
 STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 SMOKE_START_EPOCH=$(date +%s)
+checkout_sha=$(git -C "${ROOT_DIR}" rev-parse HEAD)
+[[ "${checkout_sha}" == "${SOURCE_SHA}" ]] || fail "SOURCE_SHA must equal the checked-out commit"
+checkout_status=$(git -C "${ROOT_DIR}" status --porcelain=v1 --untracked-files=all)
+[[ -z "${checkout_status}" ]] \
+  || fail "A modified checkout cannot attest the source of the image and chart"
 BUILD_DATE=$(git -C "${ROOT_DIR}" show -s --format=%cI "${SOURCE_SHA}")
 VERSION=$("${ROOT_DIR}/mvnw" -q -f "${ROOT_DIR}/pom.xml" -DforceStdout help:evaluate \
   -Dexpression=project.version)
@@ -96,7 +103,32 @@ if ! [[ "${IMAGE_ID}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
   fail "Docker did not return an immutable local image ID"
 fi
 
-kind load docker-image "${IMAGE_REFERENCE}" --name "${KIND_CLUSTER_NAME}"
+if [[ "${MEASURE_SMALL_SEARCH:-false}" == true ]]; then
+  # Load this exact archive into kind. Its manifest identifies the native OCI
+  # configuration independently of Docker's index ID and containerd's image ID.
+  IMAGE_ARCHIVE=$(mktemp)
+  docker image save --output "${IMAGE_ARCHIVE}" "${IMAGE_REFERENCE}"
+  native_platform=$(docker image inspect "${IMAGE_REFERENCE}" --format '{{.Os}}/{{.Architecture}}')
+  mapfile -t config_paths < <(tar -xOf "${IMAGE_ARCHIVE}" manifest.json | jq -r --arg ref "${IMAGE_REFERENCE}" '
+    [.[] | select(any(.RepoTags[]?; . == $ref or endswith("/" + $ref))) | .Config] | unique[]')
+  native_digests=()
+  for config_path in "${config_paths[@]}"; do
+    [[ "${config_path}" =~ ^(blobs/sha256/[0-9a-f]{64}|[0-9a-f]{64}\.json)$ ]] || fail "Invalid Docker configuration path"
+    if tar -xOf "${IMAGE_ARCHIVE}" "${config_path}" | jq -e --arg platform "${native_platform}" '
+      (.os + "/" + .architecture) == $platform' >/dev/null; then
+      config_hash=$(tar -xOf "${IMAGE_ARCHIVE}" "${config_path}" | sha256sum | cut -d ' ' -f1)
+      native_digests+=("sha256:${config_hash}")
+    fi
+  done
+  [[ "${#native_digests[@]}" == 1 ]] || fail "Expected exactly one configuration for ${IMAGE_REFERENCE} on ${native_platform}"
+  jq -n --arg config "${native_digests[0]}" --arg output "${IMAGE_ID}" --arg platform "${native_platform}" '
+    {configDigest:$config, outputDigest:$output, platform:$platform}' >"${EVIDENCE_DIR}/built-image-digests.json"
+  kind load image-archive "${IMAGE_ARCHIVE}" --name "${KIND_CLUSTER_NAME}"
+  rm -f -- "${IMAGE_ARCHIVE}"
+  IMAGE_ARCHIVE=""
+else
+  kind load docker-image "${IMAGE_REFERENCE}" --name "${KIND_CLUSTER_NAME}"
+fi
 
 kubectl apply -f "${CHART_DIR}/constrained-smoke-prerequisites.yaml"
 kubectl wait --for=jsonpath='{.status.phase}'=Active \
@@ -203,10 +235,12 @@ fi
 grep -Fq 'Created configured administrator account' \
   "${EVIDENCE_DIR}/application.log"
 
+# The parent polls this log immediately after spawning kubectl. Create it before the fork.
+: >"${EVIDENCE_DIR}/port-forward.log"
 command kubectl --kubeconfig "${FIXTURE_KUBECONFIG}" --context "${KUBE_CONTEXT}" \
   port-forward --namespace "${NAMESPACE}" --address 127.0.0.1 \
   "service/${SERVICE}" :80 \
-  >"${EVIDENCE_DIR}/port-forward.log" 2>&1 &
+  >>"${EVIDENCE_DIR}/port-forward.log" 2>&1 &
 PORT_FORWARD_PID=$!
 WEB_READY=false
 for _ in $(seq 1 60); do
@@ -304,3 +338,10 @@ jq -n \
 
 printf 'Constrained Kubernetes smoke passed; deployment reached readiness in %s seconds (total smoke %s seconds). Evidence: %s\n' \
   "${READINESS_SECONDS}" "${TOTAL_SMOKE_SECONDS}" "${EVIDENCE_DIR}/evidence.json"
+
+
+# Reuse the owned namespace and built image for the independently recorded small profile.
+if [[ "${MEASURE_SMALL_SEARCH:-false}" == "true" ]]; then
+  source "${CHART_DIR}/small-search-budget.sh"
+  measure_small_search
+fi

@@ -18,18 +18,35 @@ test('the workbench page loads the shared URL bootstrap before its API and downl
     }
 });
 
-async function boot(prefix, withI18n = true) {
+async function boot(prefix, withI18n = true, documentLanguage = null) {
     const clicks = new Map();
     const downloads = [];
     const requests = [];
     const requestOptions = [];
+    const controller = new AbortController();
+    const anchors = [];
+    const byteRequests = [];
+    const alert = {classList:{ add() {}, remove() {} }};
+    let disposition = "attachment; filename=report.zip; filename*=UTF-8''Architektur%20%C3%84.zip";
+    let received = async () => new Blob(['snapshot']);
     const context = vm.createContext({
-        URL, console, CustomEvent: class {},
+        URL: class extends URL {
+            static createObjectURL() { return 'blob:received'; }
+            static revokeObjectURL() {}
+        }, console, CustomEvent: class {},
         document: {
             currentScript: { src: `https://example.test${prefix}/js/taxonomy-i18n.js` },
             documentElement: { lang: 'en' }, cookie: '', dispatchEvent() {},
-            body: { dataset: { projectId: '42', snapshotId: 'snapshot_7-v1' } },
+            body: {
+                dataset: { projectId: '42', snapshotId: 'snapshot_7-v1' },
+                __architectureSnapshot: { getExportSignal() { return controller.signal; } },
+                appendChild() {}
+            },
+            createElement() {
+                return {click() { anchors.push(this.download); }, remove() {}};
+            },
             getElementById(id) {
+                if (id === 'architectureAlert') return alert;
                 return { addEventListener(event, callback) { clicks.set(id, callback); } };
             }
         },
@@ -39,11 +56,17 @@ async function boot(prefix, withI18n = true) {
             assign(url) { downloads.push(url); }
         },
         async fetch(url, options) {
+            if (/\.(zip|svg|pdf)(\?|$)|\/docx(\?|$)/.test(url)) {
+                byteRequests.push({url, options});
+                return { ok:true, headers:new Headers({'Content-Disposition':disposition}),
+                    blob:received };
+            }
             requests.push(url); requestOptions.push(options);
             return { ok: true, async json() { return {}; } };
         }
     });
     context.window = context;
+    context.TaxonomyContentLanguage = { documentLanguage: () => documentLanguage };
     if (withI18n) {
         vm.runInContext(i18nSource, context);
         await context.TaxonomyI18n.ready();
@@ -52,7 +75,8 @@ async function boot(prefix, withI18n = true) {
     canonicalFixture.install(context);
     vm.runInContext(apiSource, context);
     vm.runInContext(downloadSource, context);
-    return { api: context.ArchitectureWorkbenchApi, clicks, downloads, requests, requestOptions };
+    return { api: context.ArchitectureWorkbenchApi, clicks, downloads, requests, requestOptions,
+        anchors, byteRequests, controller, context, alert, setDisposition(value) { disposition = value; }, setBodyReader(reader) { received = reader; } };
 }
 
 for (const prefix of ['', '/taxonomy', '/teams/blue/taxonomy']) {
@@ -67,9 +91,10 @@ for (const prefix of ['', '/taxonomy', '/teams/blue/taxonomy']) {
         for (const [method, extension] of Object.entries(formats)) {
             assert.equal(app.api[method]('42', 'snapshot_7-v1'), path + extension);
         }
-        app.clicks.get('downloadArchitectureArchiMate')();
-        app.clicks.get('downloadArchitectureVisio')();
-        assert.deepEqual(app.downloads, [path + '.archimate.zip',
+        await app.clicks.get('downloadArchitectureArchiMate')();
+        await app.clicks.get('downloadArchitectureVisio')();
+        assert.deepEqual(app.anchors, ['Architektur Ä.zip', 'Architektur Ä.zip']);
+        assert.deepEqual(app.byteRequests.map(request => request.url), [path + '.archimate.zip',
             path + (app.api.visioBundleUrl ? '.visio.zip' : '.vsdx')]);
         await app.api.load('42', 'snapshot_7-v1');
         assert.deepEqual(app.requests, [path], 'fetch must not duplicate the resolved prefix');
@@ -78,8 +103,8 @@ for (const prefix of ['', '/taxonomy', '/teams/blue/taxonomy']) {
 
 test('root deployment remains usable without the optional i18n URL resolver', async () => {
     const app = await boot('', false);
-    app.clicks.get('downloadArchitectureArchiMate')();
-    assert.deepEqual(app.downloads, ['/api/projects/42/architecture-workbench/snapshot_7-v1.archimate.zip']);
+    await app.clicks.get('downloadArchitectureArchiMate')();
+    assert.deepEqual(app.byteRequests.map(request => request.url), ['/api/projects/42/architecture-workbench/snapshot_7-v1.archimate.zip']);
 });
 
 
@@ -98,4 +123,57 @@ for (const workspace of ['private-A','__shared__']) test(`workbench exact snapsh
         assert.equal(download.searchParams.get('repositoryId'),'repository-A');
         assert.equal(download.searchParams.get('branch'),'review/A');
     }
+});
+
+test('document language follows both diagram and Word downloads while exchange files keep their source scope', async () => {
+    const app = await boot('/teams/blue/taxonomy', true, 'de-CH');
+    const scope = {repositoryId: 'repo / A', workspaceScopeKey: 'workspace-1', branch: 'analysis/a'};
+    for (const [method, expected] of [
+        ['svgUrl', 'de-CH'], ['pdfUrl', 'de-CH'], ['architectureWordUrl', 'de-CH'],
+        ['decisionWordUrl', 'de-CH'], ['archiMateBundleUrl', null], ['visioBundleUrl', null]
+    ]) {
+        const url = new URL(app.api[method](5, 'frozen-A0', scope), 'https://example.test');
+        assert.ok(url.pathname.startsWith('/teams/blue/taxonomy/api/projects/5/'), method);
+        assert.equal(url.searchParams.get('language'), expected, method);
+        assert.equal(url.searchParams.get('repositoryId'), scope.repositoryId, method);
+        assert.equal(url.searchParams.get('branch'), scope.branch, method);
+    }
+});
+
+
+for (const button of ['downloadArchitectureWord', 'downloadArchitectureSvg', 'downloadArchitecturePdf',
+    'downloadArchitectureArchiMate', 'downloadArchitectureVisio']) {
+    test(button + ' discards an unfinished attachment when its source is suspended', async () => {
+        const app = await boot('', false);
+        app.context.TaxonomyArchitectureWorkspace = {getSource: () => ({
+            kind: 'snapshot', projectId: 42, snapshotId: 'original', repositoryId: 'A',
+            workspaceScopeKey: 'private-A', branch: 'draft'
+        })};
+        let started, release;
+        const reading = new Promise(resolve => { started = resolve; });
+        app.setBodyReader(() => { started(); return new Promise(resolve => { release = resolve; }); });
+        const pending = app.clicks.get(button)();
+        assert.equal(app.downloads.length, 0, 'no direct navigation outside the source lifetime');
+        await reading;
+        const {url, options} = app.byteRequests[0];
+        assert.equal(new URL(url, 'https://example.test').searchParams.get('workspaceId'), 'private-A');
+        assert.equal(new Headers(options.headers).get('X-Taxonomy-Workspace-Id'), 'private-A');
+        app.controller.abort();
+        assert.equal(options.signal.aborted, true);
+        release(new Blob(['old attachment']));
+        await pending;
+        assert.deepEqual(app.anchors, []);
+    });
+}
+
+test('missing attachments leave the view usable and the next named report can be downloaded', async () => {
+    const app = await boot('', false);
+    app.setDisposition('inline');
+    await app.clicks.get('downloadArchitectureWord')();
+    assert.match(app.alert.textContent, /named architecture attachment/);
+    assert.deepEqual(app.anchors, []);
+    app.setDisposition('attachment; filename="DEMO-architecture-report-v1.docx"');
+    await app.clicks.get('downloadArchitectureWord')();
+    assert.deepEqual(app.anchors, ['DEMO-architecture-report-v1.docx']);
+    assert.equal(app.alert.textContent, '');
 });

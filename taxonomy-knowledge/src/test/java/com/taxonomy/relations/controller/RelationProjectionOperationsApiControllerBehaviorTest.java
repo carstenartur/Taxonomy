@@ -16,6 +16,11 @@ import com.taxonomy.relations.service.RelationProjectionOperationsService.Recove
 import com.taxonomy.relations.service.RelationProjectionRecoveryService.ReconciliationResult;
 import com.taxonomy.relations.service.RelationProjectionRecoveryService.RecoveryRecord;
 import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
+import com.taxonomy.workspace.service.WorkspaceManager;
 import com.taxonomy.workspace.service.BranchHeadConflictException;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryMembershipService;
@@ -33,6 +38,10 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.AuthorityUtils;
@@ -44,9 +53,11 @@ import java.util.List;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -66,6 +77,7 @@ class RelationProjectionOperationsApiControllerBehaviorTest {
     @Mock private WorkspaceResolver workspaceResolver;
     @Mock private SystemRepositoryService repositoryService;
     @Mock private RepositoryMembershipService membershipService;
+    @Mock private com.taxonomy.relations.service.BranchGraphVectors vectors;
 
     private RelationProjectionOperationsApiController controller;
 
@@ -74,7 +86,81 @@ class RelationProjectionOperationsApiControllerBehaviorTest {
         SecurityContextHolder.clearContext();
         controller = new RelationProjectionOperationsApiController(
                 operationsService, workspaceResolver, repositoryService,
-                membershipService);
+                membershipService, vectors);
+    }
+
+    @Test
+    void vectorOperationsUseOnlyAnExistingSelectedWorkingCopyAndStrongHead() {
+        when(workspaceResolver.resolveUnambiguousRepositoryForRead()).thenReturn(WORKSPACE);
+        var ready = new com.taxonomy.relations.service.BranchGraphVectors.Status("READY", "generation", HEAD, "model", 2, 1);
+        when(vectors.inspect(WORKSPACE)).thenReturn(ready);
+        when(vectors.rebuild(WORKSPACE, HEAD)).thenReturn(ready);
+        var inspected = controller.vectorStatus();
+        assertThat(inspected.getBody()).isEqualTo(ready);
+        assertThat(inspected.getHeaders().getFirst("X-Taxonomy-Repository")).isEqualTo(WORKSPACE.repositoryId());
+        assertThat(inspected.getHeaders().getFirst("X-Taxonomy-Workspace-Id")).isEqualTo(WORKSPACE.workspaceId());
+        assertThat(inspected.getHeaders().getFirst("X-Taxonomy-Branch")).isEqualTo(WORKSPACE.branch());
+        assertThat(controller.rebuildVectors(null).getStatusCode()).isEqualTo(HttpStatus.PRECONDITION_REQUIRED);
+        assertThat(controller.rebuildVectors(ETAG).getHeaders().getETag()).isEqualTo(ETAG);
+        assertThat(controller.purgeVectors(ETAG).getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        verify(vectors).purge(WORKSPACE, HEAD);
+        verify(workspaceResolver, never()).resolveCurrentRepositoryContext();
+    }
+
+    @Test
+    void aChangedOrAmbiguousSelectionStopsEveryProjectionOperationBeforeStorage() {
+        var changed = new ResponseStatusException(HttpStatus.CONFLICT);
+        when(workspaceResolver.resolveUnambiguousRepositoryForRead()).thenThrow(changed);
+        assertThatThrownBy(controller::readiness).isSameAs(changed);
+        assertThatThrownBy(controller::vectorStatus).isSameAs(changed);
+        assertThatThrownBy(() -> controller.rebuild(ETAG, null)).isSameAs(changed);
+        assertThatThrownBy(() -> controller.rebuildVectors(ETAG)).isSameAs(changed);
+        assertThatThrownBy(() -> controller.purgeVectors(ETAG)).isSameAs(changed);
+        verifyNoInteractions(operationsService, vectors, repositoryService, membershipService);
+    }
+
+    @Test
+    void ambiguousCentralInspectionAndMovedWorkspaceRebuildCannotReachEitherProjection() {
+        var primary = new SystemRepository();
+        primary.setRepositoryId("primary");
+        primary.setDefaultBranch("main");
+        var second = new SystemRepository();
+        second.setRepositoryId("another");
+        var manager = mock(WorkspaceManager.class);
+        var resolver = new WorkspaceResolver(new WorkspaceContextResolver(
+                manager, repositoryService, mock(UserWorkspaceRepository.class), membershipService));
+        var endpoint = new RelationProjectionOperationsApiController(
+                operationsService, resolver, repositoryService, membershipService, vectors);
+        authenticate("ROLE_ADMIN");
+        when(repositoryService.getPrimaryRepository()).thenReturn(primary);
+        when(repositoryService.listActiveRepositories()).thenReturn(List.of(primary, second));
+        when(membershipService.canRead(second, "alice")).thenReturn(true);
+        var central = new MockHttpServletRequest();
+        central.addParameter("workspaceId", "");
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(central));
+        try {
+            assertThatThrownBy(endpoint::readiness).isInstanceOfSatisfying(ResponseStatusException.class,
+                    failure -> assertThat(failure.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
+            verifyNoInteractions(manager);
+            var copy = new UserWorkspace();
+            copy.setUsername("alice");
+            copy.setWorkspaceId("copy");
+            copy.setSourceRepositoryId("primary");
+            copy.setCurrentBranch("now-selected");
+            copy.setProvisioningStatus(WorkspaceProvisioningStatus.READY);
+            when(manager.getWorkspaceById("copy")).thenReturn(copy);
+            when(repositoryService.getRepository("primary")).thenReturn(primary);
+            var moved = new MockHttpServletRequest();
+            moved.addParameter("repositoryId", "primary");
+            moved.addParameter("workspaceId", "copy");
+            moved.addParameter("branch", "previously-selected");
+            RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(moved));
+            assertThatThrownBy(() -> endpoint.rebuild(ETAG, null)).isInstanceOfSatisfying(ResponseStatusException.class,
+                    failure -> assertThat(failure.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
+            verifyNoInteractions(operationsService, vectors);
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
     }
 
     @AfterEach
@@ -352,7 +438,7 @@ class RelationProjectionOperationsApiControllerBehaviorTest {
     }
 
     private void select(RepositoryContext context) {
-        when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(context);
+        when(workspaceResolver.resolveUnambiguousRepositoryForRead()).thenReturn(context);
     }
 
     private static void authenticate(String... roles) {

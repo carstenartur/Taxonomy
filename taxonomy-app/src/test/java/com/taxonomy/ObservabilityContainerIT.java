@@ -56,7 +56,7 @@ class ObservabilityContainerIT {
     private static final String DEBUG_EXPORT_START = "ResourceSpans #";
     private static final String SAFE_OPERATION_LOG =
             "Observed taxonomy operation component=workspace "
-                    + "operation=resolveRepositoryContextForUser outcome=success";
+                    + "operation=resolveUnambiguousRepositoryForRead outcome=success";
     private static final String BASIC_AUTH = "Basic "
             + Base64.getEncoder().encodeToString(
                     ("admin:" + ContainerTestUtils.TEST_ADMIN_PASSWORD)
@@ -139,14 +139,14 @@ class ObservabilityContainerIT {
         assertThat(prometheus.body())
                 .contains("taxonomy_workspace_resolve_seconds_count")
                 .contains("taxonomy_component=\"workspace\"")
-                .contains("taxonomy_operation=\"resolveRepositoryContextForUser\"")
+                .contains("taxonomy_operation=\"resolveUnambiguousRepositoryForRead\"")
                 .contains("outcome=\"success\"");
 
         TraceEvidence evidence = awaitCorrelatedTrace();
         assertThat(evidence.spanNames())
                 .anyMatch(name -> name.contains("/api/relations"));
         assertThat(evidence.spanNames())
-                .anyMatch(name -> name.contains("resolveRepositoryContextForUser"));
+                .anyMatch(name -> name.contains("resolveUnambiguousRepositoryForRead"));
         assertThat(evidence.exportedTelemetry())
                 .doesNotContain(
                         "taxonomy.workspace.name",
@@ -201,7 +201,7 @@ class ObservabilityContainerIT {
                 boolean http = trace.getValue().stream()
                         .anyMatch(name -> name.contains("/api/relations"));
                 boolean taxonomy = trace.getValue().stream()
-                        .anyMatch(name -> name.contains("resolveRepositoryContextForUser"));
+                        .anyMatch(name -> name.contains("resolveUnambiguousRepositoryForRead"));
                 if (http && taxonomy) {
                     return new TraceEvidence(
                             trace.getKey(),

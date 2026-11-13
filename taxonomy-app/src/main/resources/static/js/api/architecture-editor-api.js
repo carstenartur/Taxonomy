@@ -54,7 +54,13 @@ window.ArchitectureEditorApi = (function () {
             if (model?.expectedSemanticRevision != null) params.set('expectedSemanticRevision', String(model.expectedSemanticRevision));
             return window.TaxonomyApiClient.getJson(base + '/analysis-brief?' + params, exactPolicy(context));
         },
-        suggest: function (request) { return write('/focus/suggestions', request, request.context, { timeoutMillis: 120000 }); },
+        suggest: function (request, options) { return write('/focus/suggestions', request, request.context, {
+            isCurrent: options?.isCurrent, onPending: options?.onPending, signal: options?.signal,
+            timeoutMillis: 120000, operationError: function (error) { return window.AnalysisAdapterApi?.describe(error) || error; },
+            observationSurface:'editor-focus', observeAdmission: window.AnalysisAdapterApi?.admission, observeResponse: function (response, url, init, options, current) {
+                return response.status === 202 ? window.AnalysisAdapterApi.follow(response, url, init, options, current) : response;
+            }
+        }); },
         previewAdoption: function (request) { return write('/snapshot-adoptions/preview', request, request.context); },
         adoptSnapshot: function (request) { return write('/snapshot-adoptions', request, request.context); },
         preview: function (command) { return write('/preview', command, command.context); },

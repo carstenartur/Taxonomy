@@ -76,10 +76,20 @@ window.ImportApi = (function () {
             {method: 'POST', body: data, headers: headers}, {pinnedWorkspaceId: workspace});
     }
 
+    async function analyzeDocument(path, data, owner, pending) {
+        var action = path.endsWith('/extract-ai') ? 'extract-ai' : 'map-regulation';
+        var pendingReceipt;
+        var response = await window.AnalysisAdapterApi.request(path, {method: 'POST', body: data},
+            {isCurrent: owner, onPending: pending, documentAction:action, onObserver:token => { pendingReceipt = token; }});
+        var result = await response.json();
+        if (pendingReceipt && (!owner || owner())) window.AnalysisAdapterApi.forgetDocument(pendingReceipt);
+        return result;
+    }
+
     return {
         uploadDocument: function (data) { return client.sendFormData('/api/documents/upload', data); },
-        extractDocumentWithAi: function (data) { return client.sendFormData('/api/documents/extract-ai', data); },
-        mapRegulation: function (data) { return client.sendFormData('/api/documents/map-regulation', data); },
+        extractDocumentWithAi: function (data, owner, pending) { return analyzeDocument('/api/documents/extract-ai', data, owner, pending); },
+        mapRegulation: function (data, owner, pending) { return analyzeDocument('/api/documents/map-regulation', data, owner, pending); },
         loadProfiles:    loadProfiles,
         preview:         preview,
         execute:         execute,

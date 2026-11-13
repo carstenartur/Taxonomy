@@ -16,6 +16,7 @@ import com.taxonomy.workspace.service.RepositoryContext;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -72,10 +73,13 @@ public class GitAuthoritativeRelationMutationService {
             String expectedHeadCommit,
             RelationIdentity identity,
             CommandMetadata metadata) throws IOException {
-        return execute(
-                context,
-                expectedHeadCommit,
-                new RemoveRelation(identity, metadata));
+        return removeMatching(context, expectedHeadCommit, identity, metadata, Map.of());
+    }
+
+    /** Removes the selected Git relation only when its documented decision properties still match. */
+    public MutationResult removeMatching(RepositoryContext context, String expectedHeadCommit, RelationIdentity identity,
+                          CommandMetadata metadata, Map<String, String> requiredProperties) throws IOException {
+        return execute(context, expectedHeadCommit, new RemoveRelation(identity, metadata, requiredProperties));
     }
 
     private MutationResult execute(

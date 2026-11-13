@@ -207,10 +207,17 @@ public class AnalysisWorkingDraftService {
         }
 
         SystemRepository sourceRepository = resolveSourceRepository(workspace);
+        // A retained private draft is not an authority grant. Re-evaluate the source
+        // repository on every read and write, including private owner requests.
+        // The compatibility constructor without a policy service must fail closed.
+        if (membership == null
+                || sourceRepository == null
+                || sourceRepository.getLifecycleState() != com.taxonomy.workspace.model.RepositoryLifecycleState.ACTIVE
+                || !membership.canRead(sourceRepository, username)) {
+            throw new AccessDeniedException("Workspace source repository is unavailable");
+        }
         if (workspace.isCollaborative()) {
             actorAccess.requireActive(username);
-            if (sourceRepository.getLifecycleState() != com.taxonomy.workspace.model.RepositoryLifecycleState.ACTIVE)
-                throw new AccessDeniedException("The shared working-copy source repository is unavailable");
         }
         // Sharing the architecture never changes the username of an analysis draft.
         if (!workspace.getUsername().equals(username) && !(workspace.isCollaborative() && membership != null
@@ -241,9 +248,9 @@ public class AnalysisWorkingDraftService {
         try {
             return systemRepositoryService.getRepository(repositoryId);
         } catch (IllegalArgumentException exception) {
-            throw new IllegalStateException(
-                    "Workspace source repository is not available: " + repositoryId,
-                    exception);
+            // An inaccessible or deleted source must not turn a private draft
+            // read into a server error or disclose a registry identifier.
+            throw new AccessDeniedException("Workspace source repository is unavailable");
         }
     }
 

@@ -17,24 +17,64 @@
     }
     function branchQuery(branch) { return '?userBranch=' + encodeURIComponent(branch); }
 
+    var switchGeneration = 0;
+
+    function beginSwitch(id) {
+        var generation = ++switchGeneration;
+        return function (workspace) {
+            if (generation !== switchGeneration) {
+                throw new window.TaxonomyApiClient.ApiError('Workspace switch was superseded', 0, null, null, {code:'ABORTED'});
+            }
+            if (!workspace || workspace.workspaceId !== id) {
+                throw new Error(window.TaxonomyI18n?.t('index.ui.workspaceFailed') || 'Workspace switch was not confirmed');
+            }
+            completeSwitch(workspace, generation);
+            return workspace;
+        };
+    }
+
+    function completeSwitch(workspace, generation) {
+        var id = workspace.workspaceId;
+        var context = window.__TaxonomyAnalysisSessionContext;
+        if (context) context.rememberWorkspaceId(id);
+        else {
+            try { window.sessionStorage.setItem('taxonomy-analysis-workspace-id', id); }
+            catch (ignored) { /* The server also retains the active workspace. */ }
+        }
+        var sources = window.TaxonomyArchitectureWorkspaceController;
+        var current = new URL(window.location.href);
+        var next;
+        if (sources) {
+            var editor = /\/architecture\/(editor|workbench)$/.test(current.pathname);
+            var architecture = editor || current.hash === '#architecture';
+            var source = {kind:architecture ? 'working' : 'analysis'};
+            if (workspace.sourceRepositoryId && workspace.currentBranch) {
+                source.repositoryId = workspace.sourceRepositoryId;
+                source.workspaceId = id;
+                source.workspaceScopeKey = id;
+                source.branch = workspace.currentBranch;
+            }
+            var path = editor ? window.TaxonomyI18n.resolveUrl('/') : current.pathname;
+            next = new URL(sources.urlFor(current, source, path));
+            if (!editor) next.hash = current.hash;
+        }
+        window.setTimeout(function () {
+            if (generation !== switchGeneration) return;
+            if (next && next.href !== current.href) window.location.assign(next.href);
+            else window.location.reload();
+        }, 0);
+    }
+
     window.TaxonomyWorkspaceApi = Object.freeze({
+        beginSwitch: beginSwitch,
         current: function (options) { return get('/api/workspace/current', options); },
         list: function (options) { return get('/api/workspace/list', options); },
         history: function (options) { return get('/api/workspace/history', options); },
         create: function (displayName, options) { return json('/api/workspace/create', { displayName: displayName }, 'POST', options); },
         archive: function (id, options) { return post('/api/workspace/' + encodeURIComponent(id) + '/archive', options); },
         switchWorkspace: function (id, options) {
-            return post('/api/workspace/' + encodeURIComponent(id) + '/switch', options).then(function (workspace) {
-                // Named requests bypass the legacy fetch wrapper. Keep its successful-switch contract here.
-                var context = window.__TaxonomyAnalysisSessionContext;
-                if (context) context.rememberWorkspaceId(id);
-                else {
-                    try { window.sessionStorage.setItem('taxonomy-analysis-workspace-id', id); }
-                    catch (ignored) { /* Reload can still reconcile from the server's active workspace. */ }
-                }
-                window.setTimeout(function () { window.location.reload(); }, 0);
-                return workspace;
-            });
+            var acknowledge = beginSwitch(id);
+            return post('/api/workspace/' + encodeURIComponent(id) + '/switch', options).then(acknowledge);
         },
         syncState: function (options) { return get('/api/workspace/sync-state', options); },
         localChanges: function (branch, options) { return get('/api/workspace/local-changes?branch=' + encodeURIComponent(branch), options); },
@@ -60,7 +100,8 @@
             return get('/api/context/compare?' + query, options);
         },
         searchHistory: function (query, branch, options) {
-            var params = new URLSearchParams({ query: query, currentBranch: branch });
+            var params = new URLSearchParams({query: query});
+            if (branch) params.set('currentBranch', branch);
             return get('/api/dsl/history/search-versioned?' + params, options);
         }
     });

@@ -332,7 +332,7 @@ Worker. Mehrere Web-Replikate bleiben eine gesondert zu prüfende Konfiguration.
 | Eingehendes LLM-Kontingent | `TAXONOMY_RATE_LIMIT_PER_MINUTE` | 10 | Je authentifizierter Identität und Anwendungsinstanz dimensionieren |
 | JDBC-Batch-Größe | `spring.jpa.properties.hibernate.jdbc.batch_size` | 50 | Für die meisten Workloads geeignet |
 
-Das eingehende LLM-Kontingent wird je Anwendungsinstanz im Arbeitsspeicher geführt. Lokale Benutzernamen und unveränderliche Keycloak-Identitäten aus `iss`/`sub` erhalten getrennte Budgets. Bei mehreren Replikaten ist für eine clusterweite Obergrenze ein verteilter Ingress-Begrenzer nötig; andernfalls wächst das Gesamtkontingent mit der Replikazahl.
+Das eingehende LLM-Kontingent wird je Anwendungsinstanz im Arbeitsspeicher geführt. Verifizierte lokale und STABLE-Keycloak-Anmeldungen teilen ein Kontingent je stabiler Principal-ID. Im LEGACY-Modus teilen Keycloak-Browser- und Bearer-Anmeldungen die unveränderliche Issuer/Subject-Identität (`iss`/`sub`). Bei mehreren Replikaten ist für eine clusterweite Obergrenze ein verteilter Ingress-Begrenzer nötig; andernfalls wächst das Gesamtkontingent mit der Replikazahl.
 
 ### Reverse Proxy
 
@@ -391,6 +391,10 @@ server {
 3. Protokolle auf `HSEARCH`-Fehler prüfen
 
 ---
+
+### Quelle für Relations- und Vektorprojektionen wählen
+
+Für Bereitschaftsprüfung, Wiederaufbau der Relationen und Vektoroperationen unter `/api/architecture/relations/projection` gelten die Parameter `repositoryId`, `workspaceId` und `branch`. Für einen zentralen Branch bleibt `workspaceId` leer. Mehrdeutige zentrale Quellen und widersprüchliche Arbeitskopie-/Branch-Angaben ergeben vor der Projektionsverarbeitung HTTP 409. Vektorstatus und erfolgreicher Vektorwiederaufbau geben Repository, Arbeitskopie und Branch in den Antwort-Headern zurück. Der Wiederaufbau braucht zusätzlich den aktuellen Git-Commit als starken `If-Match`-Wert.
 
 ## Weiterführende Dokumentation
 

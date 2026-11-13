@@ -124,7 +124,11 @@ class WorkspaceControllerBranchCoverageTest {
         when(workspaceManager.archiveWorkspace("w1", "alice")).thenReturn(workspace);
         when(workspaceManager.getWorkspaceById("w1")).thenReturn(workspace);
 
-        assertThat(controller.switchWorkspace("w1").getStatusCode()).isEqualTo(HttpStatus.OK);
+        workspace.setSourceRepositoryId("source-repository");
+        var switched = controller.switchWorkspace("w1");
+        assertThat(switched.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(switched.getBody()).containsEntry("sourceRepositoryId", "source-repository")
+                .containsEntry("workspaceId", "w1").containsEntry("currentBranch", "draft");
         assertThat(controller.archiveWorkspace("w1").getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(controller.deleteWorkspace("w1").getBody()).containsEntry("deleted", "w1");
         assertThat(controller.getWorkspaceInfo("w1").getBody()).containsEntry("workspaceId", "w1");
@@ -196,7 +200,8 @@ class WorkspaceControllerBranchCoverageTest {
 
     @Test
     void syncStateDirtyHistoryAndProjectionReturnMappedData() {
-        SyncState state = new SyncState();
+        var scope = new com.taxonomy.workspace.model.WorkspaceSyncScope("alice", "repo-A", "work-A", "review");
+        SyncState state = new com.taxonomy.workspace.model.WorkspaceBranchSyncState(scope).view();
         state.setSyncStatus("AHEAD");
         state.setLastSyncedCommitId("s1");
         state.setLastPublishedCommitId("p1");
@@ -206,6 +211,8 @@ class WorkspaceControllerBranchCoverageTest {
         when(contextHistoryService.getHistory("alice")).thenReturn(List.of());
         when(workspaceProjectionService.getProjectionInfo("alice")).thenReturn(Map.of("status", "READY"));
 
+        assertThat(controller.getSyncState().getBody()).containsEntry("repositoryId", "repo-A")
+                .containsEntry("workspaceId","work-A").containsEntry("branch","review");
         assertThat(controller.getSyncState().getBody())
                 .containsEntry("syncStatus", "AHEAD").containsEntry("unpublishedCommitCount", 2);
         assertThat(controller.isDirty().getBody())
@@ -245,6 +252,14 @@ class WorkspaceControllerBranchCoverageTest {
         when(workspaceManager.findUserWorkspace("alice")).thenReturn(workspace);
         assertThat(controller.getProvisioningStatus().getBody())
                 .containsEntry("status", "READY").containsEntry("topologyMode", "INTERNAL_SHARED");
+
+        var started = java.time.Instant.parse("2026-11-01T10:00:00Z");
+        workspace.startProvisioningLease("internal-worker", started, started.plusSeconds(900));
+        workspace.setProvisioningStatus(com.taxonomy.workspace.model.WorkspaceProvisioningStatus.PROVISIONING);
+        assertThat(controller.getProvisioningStatus().getBody())
+                .containsEntry("attemptCount", 1).containsEntry("attemptStartedAt", started)
+                .containsEntry("leaseExpiresAt", started.plusSeconds(900)).doesNotContainValue("internal-worker");
+        workspace.setProvisioningStatus(com.taxonomy.workspace.model.WorkspaceProvisioningStatus.READY);
 
         when(workspaceManager.provisionWorkspaceRepository("alice")).thenReturn(workspace);
         assertThat(controller.provisionWorkspace().getBody())

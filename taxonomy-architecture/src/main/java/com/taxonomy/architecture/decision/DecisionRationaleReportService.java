@@ -23,6 +23,7 @@ import com.taxonomy.dto.TaxonomyResponsibilityLookup;
 import com.taxonomy.dto.AnalysisCoverage;
 import com.taxonomy.reporting.api.document.DecisionTreeOverview;
 import com.taxonomy.dto.ProductCoverageGap;
+import com.taxonomy.dto.AnalysisPercentages;
 import com.taxonomy.dto.TaxonomyDataFingerprint;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 import com.taxonomy.dto.TaxonomyNodeDto;
@@ -669,7 +670,7 @@ public class DecisionRationaleReportService {
           firstNonBlank(gap.productFamilyName(), family.getName(), familyCode),
           gap.familyScore(),
           candidateCodes,
-          gap.reason().strip());
+          gap.reason().strip(), gap.minimumSuitabilityScore(), gap.assessedProductScores());
   if (validated.putIfAbsent(familyCode, normalizedGap) != null) {
       throw new IllegalArgumentException(
               "Duplicate product coverage gap for family " + familyCode);
@@ -1075,18 +1076,21 @@ public class DecisionRationaleReportService {
                         + String.join(", ", inconsistentBudgets) + ".");
         }
         for (ProductCoverageGap gap : productCoverageGaps) {
-  String candidates = String.join(", ", gap.candidateCodes());
-  warnings.add(german
-          ? "Produktabdeckungslücke für " + gap.productFamilyCode() + " ("
-              + gap.productFamilyName() + ", " + gap.familyScore()
-              + " %): Keines der " + gap.candidateCodes().size()
-              + " vollständig bewerteten Katalogprodukte erreichte den Eignungsschwellenwert. Kandidaten: "
-              + candidates + "."
-          : "Product coverage gap for " + gap.productFamilyCode() + " ("
-              + gap.productFamilyName() + ", " + gap.familyScore()
-              + "%): None of the " + gap.candidateCodes().size()
-              + " fully evaluated catalogue products reached the suitability threshold. Candidates: "
-              + candidates + ".");
+            String candidates = gap.candidateCodes().stream().map(code -> {
+                Double assessed = gap.assessedProductScores().get(code);
+                return assessed == null ? code : code + " (" + AnalysisPercentages.display(assessed) + ")";
+            }).collect(Collectors.joining(", "));
+            String threshold = gap.minimumSuitabilityScore() == null ? ""
+                    : " (" + gap.minimumSuitabilityScore() + " %)";
+            warnings.add(german
+                    ? "Produktabdeckungslücke für " + gap.productFamilyCode() + " (" + gap.productFamilyName()
+                        + ", " + gap.familyScore() + " %): Keines der " + gap.candidateCodes().size()
+                        + " vollständig bewerteten Katalogprodukte erreichte den Eignungsschwellenwert"
+                        + threshold + ". Kandidaten: " + candidates + "."
+                    : "Product coverage gap for " + gap.productFamilyCode() + " (" + gap.productFamilyName()
+                        + ", " + gap.familyScore() + "%): None of the " + gap.candidateCodes().size()
+                        + " fully evaluated catalogue products reached the suitability threshold"
+                        + threshold + ". Candidates: " + candidates + ".");
         }
         if (input.analysisStatus() != null
                 && !"SUCCESS".equalsIgnoreCase(input.analysisStatus())) {
@@ -1360,6 +1364,11 @@ public class DecisionRationaleReportService {
                 updateDigest(digest, "product-gap:" + gap.productFamilyCode(),
                         gap.familyScore() + "|" + String.join(",", gap.candidateCodes())
                                 + "|" + gap.reason());
+                if (gap.minimumSuitabilityScore() != null) {
+                    updateDigest(digest, "product-threshold:" + gap.productFamilyCode(), gap.minimumSuitabilityScore().toString());
+                    gap.assessedProductScores().entrySet().stream().sorted(Map.Entry.comparingByKey())
+                            .forEach(entry -> updateDigest(digest, "product-assessment:" + entry.getKey(), entry.getValue().toString()));
+                }
             }
             return HexFormat.of().formatHex(digest.digest());
         } catch (Exception exception) {

@@ -1,4 +1,5 @@
 # Category	Owner	Rule	Rationale
+com.taxonomy.analysis.operation.AnalysisAdapterOperation	analysis	PORTABLE_PRIMARY	Scoped native outcome and retention marker; restore active receipts as interrupted without dispatch
 com.taxonomy.analysis.cluster.ClusterAnalysisRun	analysis	PORTABLE_PRIMARY	Durable frozen operation authority and terminal result; restore in-flight work interrupted without dispatch
 com.taxonomy.analysis.cluster.ClusterAnalysisWork	analysis	PORTABLE_PRIMARY	Expected tasks and committed effects; restore only settled evidence, never reactivate execution
 com.taxonomy.analysis.cluster.ClusterAnalysisInput	analysis	PORTABLE_PRIMARY	Exact immutable catalogue shard inputs owned by the captured run
@@ -32,6 +33,7 @@ com.taxonomy.catalog.model.TaxonomyNode	knowledge	PORTABLE_PRIMARY	Explicit vers
 com.taxonomy.catalog.model.TaxonomyRelation	knowledge	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.relations.model.RelationDecisionProjection	knowledge	REBUILDABLE	Rebuild using RelationBranchProjectionRebuildService from captured DSL
 com.taxonomy.relations.model.RelationDecisionProjectionCheckpoint	knowledge	REBUILDABLE	Rebuild together with relation projection; never restore stale readiness
+com.taxonomy.relations.service.BranchGraphVectorGeneration	knowledge	REBUILDABLE	Rebuild native node and relation vectors from the restored branch, catalogue and pinned model after relation projection recovery
 com.taxonomy.relations.model.RelationEvidence	knowledge	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.relations.model.RelationHypothesis	knowledge	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.relations.model.RelationProjectionRecovery	knowledge	PORTABLE_PRIMARY	Durable recovery journal with commit provenance and failure history; restore pending work without old worker claims
@@ -39,6 +41,7 @@ com.taxonomy.relations.model.RelationProposal	knowledge	PORTABLE_PRIMARY	Explici
 com.taxonomy.relations.model.RequirementCoverage	knowledge	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.portfolio.model.ArchitectureProject	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.portfolio.model.ProductCatalogEntry	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.portfolio.model.ProductGapReview	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.portfolio.model.ProductTaxonomyCoverage	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.portfolio.model.ProjectConflict	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.portfolio.model.ProjectRequirement	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
@@ -71,10 +74,13 @@ com.taxonomy.versioning.model.ArchitectureCommitIndex	workspace	PORTABLE_PRIMARY
 com.taxonomy.versioning.model.ContextHistoryRecord	workspace	PORTABLE_PRIMARY	History profile includes full records; stand export only selected current content/provenance, never inverse/old payloads
 com.taxonomy.workspace.model.RepositoryMembership	workspace	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.workspace.model.SyncState	workspace	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.workspace.model.WorkspaceBranchSyncState	workspace	PORTABLE_PRIMARY	Branch-scoped actor progress and exact Git observations restored to their mapped owner and source
 com.taxonomy.workspace.model.GitReflogProvenanceRecord	workspace	PORTABLE_PRIMARY	Immutable original imported Git events, preserving order, duplicate events and original time separately from target live audit; history capture includes their referenced objects
 com.taxonomy.workspace.model.SystemRepository	workspace	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.workspace.model.UserWorkspace	workspace	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.workspace.model.WorkspaceProjection	workspace	REBUILDABLE	Rebuild workspace projection from captured DSL and Git; old readiness is invalid
+com.taxonomy.workspace.service.CentralFetchOperation	workspace	PORTABLE_PRIMARY	Central fork transfers and selected tags retain scoped history; an isolated restore imports no lease or credentials
+com.taxonomy.workspace.service.WorkspaceFetchOperation	workspace	PORTABLE_PRIMARY	Exact scoped fetch authority and status; restore active attempts as interrupted without a dispatch lease
 storage.jgit.objects-refs-reflogs	workspace	GIT_PRIMARY	All logical repositories via Git objects/refs plus explicit reflog records; never duplicate physical pack tables
 storage.git.preferences	application	GIT_PRIMARY	Current sanitized preferences or full authorized history; credentials excluded by default
 storage.git.document-templates	templates	GIT_PRIMARY	Template manifests and all OOXML/blob parts from document-template Git repository

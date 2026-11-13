@@ -228,7 +228,9 @@ public class WorkspaceController {
         String user = workspaceResolver.resolveCurrentUsername();
         try {
             UserWorkspace ws = workspaceManager.switchWorkspace(user, id);
-            return ResponseEntity.ok(workspaceToMap(ws));
+            var result = workspaceToMap(ws);
+            result.put("sourceRepositoryId", ws.getSourceRepositoryId());
+            return ResponseEntity.ok(result);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of(
                     "error", e.getMessage()
@@ -378,6 +380,13 @@ public class WorkspaceController {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("username", user);
         result.put("syncStatus", state.getSyncStatus());
+        var scope = state.getObservationScope();
+        if (scope != null) {
+            result.put("repositoryId", scope.repositoryId());
+            result.put("workspaceId", scope.workspaceId());
+            result.put("branch", scope.branch());
+        }
+        result.put("observedAt", state.getUpdatedAt());
         result.put("lastSyncedCommitId", state.getLastSyncedCommitId());
         result.put("lastSyncTimestamp", state.getLastSyncTimestamp());
         result.put("lastPublishedCommitId", state.getLastPublishedCommitId());
@@ -502,6 +511,11 @@ public class WorkspaceController {
             result.put("status", ws.getProvisioningStatus().name());
             result.put("topologyMode", ws.getTopologyMode().name());
             result.put("sourceRepository", ws.getSourceRepositoryId());
+            result.put("attemptCount", ws.getProvisioningAttempt());
+            result.put("attemptStartedAt", ws.getProvisioningAttemptAt());
+            if (ws.getProvisioningStatus() == com.taxonomy.workspace.model.WorkspaceProvisioningStatus.PROVISIONING) {
+                result.put("leaseExpiresAt", ws.getProvisioningLeaseUntil());
+            }
             result.put("error", ws.getProvisioningError());
         }
         return ResponseEntity.ok(result);

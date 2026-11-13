@@ -1,0 +1,156 @@
+package com.taxonomy.workspace.service;
+
+import com.taxonomy.workspace.service.WorkspaceUpstreamService.Request;
+import com.taxonomy.workspace.service.WorkspaceUpstreamService.Status;
+import com.taxonomy.workspace.service.WorkspaceUpstreamService.TagRequest;
+import com.taxonomy.workspace.service.WorkspaceUpstreamService.TagStatus;
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.GitHistoryTransfer;
+import com.taxonomy.workspace.storage.GitSelectedTag;
+import com.taxonomy.workspace.storage.GitUpstreamRef;
+import org.eclipse.jgit.errors.IncorrectObjectTypeException;
+import org.eclipse.jgit.errors.MissingObjectException;
+import org.eclipse.jgit.lib.Constants;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Objects;
+
+/** Exact-source fetch and selected-tag publication shared by working copies and central forks. */
+record GitUpstreamTransfer(GitUpstreamRef upstream, DslGitRepository source, DslGitRepository target,
+                           String forkPoint, String actor, Runnable reauthorize) {
+    void requireOrigin(String repository, String branch, String originalForkPoint) throws IOException {
+        if (!upstream.repositoryId().equals(repository) || !upstream.branch().equals(branch)
+                || !Objects.equals(forkPoint, originalForkPoint)) {
+            throw new BranchHeadConflictException(branch, originalForkPoint, forkPoint, "The recorded upstream changed");
+        }
+    }
+
+    Status inspect() throws IOException {
+        return new Status(upstream.repositoryId(), upstream.branch(), sourceHead(),
+                upstream.name(), upstream.head(target));
+    }
+
+    Status fetch(Request request) throws IOException {
+        return fetch(request, () -> { });
+    }
+
+    Status fetch(Request request, Runnable fence) throws IOException {
+        String incoming = request.sourceCommit();
+        String tracked = upstream.head(target);
+        if (!Objects.equals(tracked, request.expectedTrackedCommit()) && !incoming.equals(tracked)) {
+            throw new BranchHeadConflictException(upstream.name(), request.expectedTrackedCommit(), tracked, "The tracked commit changed");
+        }
+        String head = sourceHead();
+        if (head == null || !reachable(source, incoming, head)) {
+            throw new BranchHeadConflictException(upstream.branch(), incoming, head, "The requested commit is no longer on the source branch");
+        }
+        if (tracked == null) {
+            if (forkPoint == null || !reachable(source, forkPoint, incoming)) {
+                throw new BranchHeadConflictException(upstream.branch(), forkPoint, incoming, "Upstream history diverged from the retained fork point");
+            }
+        }
+        // An identical replay may follow a successful ref update whose acknowledgement was lost.
+        if (!incoming.equals(tracked)) {
+            GitHistoryTransfer.copyCommitClosure(source, target, incoming, tracked == null ? List.of() : List.of(tracked));
+        }
+        reauthorize.run();
+        String currentHead = sourceHead();
+        if (!head.equals(currentHead)) {
+            throw new BranchHeadConflictException(upstream.branch(), head, currentHead, "Source branch changed during transfer");
+        }
+        fence.run();
+        upstream.advance(target, tracked, incoming, actor);
+        return new Status(upstream.repositoryId(), upstream.branch(), head, upstream.name(), incoming);
+    }
+
+    /** A recovery may settle from a retained descendant without moving any ref. */
+    Status recover(Request request, Runnable fence) throws IOException {
+        try {
+            return fetch(request, fence);
+        } catch (BranchHeadConflictException changed) {
+            if (!upstream.name().equals(changed.getBranch())) throw changed;
+            String actual = upstream.head(target);
+            if (actual == null || actual.equals(request.sourceCommit())
+                    || !reachable(target, request.sourceCommit(), actual)) throw changed;
+            reauthorize.run();
+            fence.run();
+            throw new Superseded(actual);
+        }
+    }
+
+    static final class Superseded extends IOException {
+        final String retainedCommit;
+        Superseded(String retainedCommit) {
+            super("The tracking ref already contains the requested commit");
+            this.retainedCommit = retainedCommit;
+        }
+    }
+
+    TagStatus inspectTag(String name) throws IOException {
+        String tracked = upstream.head(target);
+        var tag = selectedTag(name, tracked);
+        return new TagStatus(name, tag == null ? null : tag.objectId(), GitSelectedTag.objectAt(target, name), tracked);
+    }
+
+    TagStatus fetchTag(TagRequest request) throws IOException {
+        return fetchTag(request, false, () -> { });
+    }
+
+    TagStatus fetchTag(TagRequest request, boolean recovering, Runnable fence) throws IOException {
+        String tracked = upstream.head(target);
+        if (recovering && request.sourceTagObject().equals(GitSelectedTag.objectAt(target, request.name()))) {
+            var retained = GitSelectedTag.read(target, request.name());
+            if (retained != null && request.sourceTagObject().equals(retained.objectId())
+                    && tracked != null && reachable(target, retained.commit(), request.trackedCommit())
+                    && reachable(target, request.trackedCommit(), tracked)) {
+                reauthorize.run();
+                fence.run();
+                String current = upstream.head(target);
+                if (current == null || !reachable(target, request.trackedCommit(), current)) {
+                    throw new BranchHeadConflictException(upstream.name(), request.trackedCommit(), current, "Tracking ref changed");
+                }
+                retained.verifyRetained(target);
+                return new TagStatus(request.name(), retained.objectId(), retained.objectId(), request.trackedCommit());
+            }
+        }
+        if (!request.trackedCommit().equals(tracked)) {
+            throw new BranchHeadConflictException(upstream.name(), request.trackedCommit(), tracked, "Tracking ref changed");
+        }
+        var tag = selectedTag(request.name(), tracked);
+        if (tag == null || !request.sourceTagObject().equals(tag.objectId())) {
+            throw new BranchHeadConflictException(request.name(), request.sourceTagObject(), null, "Selected source tag changed");
+        }
+        tag.publish(target, actor, () -> {
+            reauthorize.run();
+            if (!tag.objectId().equals(GitSelectedTag.objectAt(source, request.name()))) {
+                throw new BranchHeadConflictException(request.name(), tag.objectId(), null, "Selected source tag changed");
+            }
+            String current = upstream.head(target);
+            if (!tracked.equals(current)) {
+                throw new BranchHeadConflictException(upstream.name(), tracked, current, "Tracking ref changed");
+            }
+            fence.run();
+        });
+        return new TagStatus(request.name(), tag.objectId(), tag.objectId(), tracked);
+    }
+
+    private String sourceHead() throws IOException {
+        var ref = source.readFreshRef(Constants.R_HEADS + upstream.branch());
+        return ref == null || ref.getObjectId() == null ? null : ref.getObjectId().name();
+    }
+
+    private GitSelectedTag selectedTag(String name, String tracked) throws IOException {
+        var tag = GitSelectedTag.read(source, name);
+        if (tag == null || tracked == null || !reachable(target, tag.commit(), tracked)) return null;
+        return tag;
+    }
+
+    private static boolean reachable(DslGitRepository repository, String ancestor, String tip) throws IOException {
+        try {
+            return repository.isAncestor(ancestor, tip);
+        } catch (MissingObjectException | IncorrectObjectTypeException unavailable) {
+            return false;
+        }
+    }
+}

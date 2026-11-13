@@ -1,8 +1,18 @@
 package com.taxonomy;
 
+import com.taxonomy.backup.PrincipalId;
+import com.taxonomy.security.model.PrincipalUserDetails;
+import com.taxonomy.security.service.PrincipalIdentityService;
+import com.taxonomy.security.service.VerifiedLegacyOwnerMigration;
+import com.taxonomy.security.service.LegacyOwnerMigrationReadiness;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.testcontainers.containers.JdbcDatabaseContainer;
 
 import com.taxonomy.templates.DocumentTemplateWebDavLockManager;
@@ -11,7 +21,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.sql.Timestamp;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.UUID;
 
@@ -21,6 +33,53 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** Adds durable execution acceptance to the existing PostgreSQL, Oracle and SQL Server suites. */
 abstract class AbstractExternalDatabaseContainerIT extends AbstractDatabaseContainerIT {
     protected abstract JdbcDatabaseContainer<?> getDatabaseContainer();
+
+    @Test
+    void currentLocalAdministratorCanPreviewLegacyOwnersOnTheDeployedSchema() {
+        var database = getDatabaseContainer();
+        var source = new DriverManagerDataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword());
+        var jdbc = new JdbcTemplate(source);
+        String adminId = jdbc.queryForObject("select principal_id from app_user where username=?", String.class, "admin");
+        var roles = jdbc.query("""
+                select r.name from app_user u join user_roles ur on ur.user_id=u.id
+                join app_role r on r.id=ur.role_id where u.principal_id=?
+                """, (row, index) -> new SimpleGrantedAuthority(row.getString(1)), adminId);
+        assertThat(roles).contains(new SimpleGrantedAuthority("ROLE_ADMIN"));
+        var admin = new PrincipalUserDetails(new PrincipalId(UUID.fromString(adminId)), "admin", "", true, roles);
+        var authentication = UsernamePasswordAuthenticationToken.authenticated(admin, null, roles);
+        var migration = new VerifiedLegacyOwnerMigration(source, new PrincipalIdentityService(source));
+
+        var preview = migration.preview(authentication, 1);
+
+        assertThat(preview.owners()).hasSizeLessThanOrEqualTo(1);
+        assertThat(preview.fingerprint()).matches("[0-9a-f]{64}");
+    }
+
+    @Test
+    void unreservedOwnerWrittenAfterMigrationBlocksStableStartupOnTheDeployedSchema() {
+        var database = getDatabaseContainer();
+        var source = new DriverManagerDataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword());
+        var jdbc = new JdbcTemplate(source);
+        var transactions = new TransactionTemplate(new DataSourceTransactionManager(source));
+        String owner = "late-owner-" + UUID.randomUUID();
+
+        transactions.executeWithoutResult(transaction -> {
+            var before = LegacyOwnerMigrationReadiness.inspect(source);
+            jdbc.update("insert into context_history_record (username, created_at) values (?, ?)",
+                    owner, Timestamp.from(Instant.now()));
+
+            var after = LegacyOwnerMigrationReadiness.inspect(source);
+            assertThat(after.observedScopes()).isEqualTo(before.observedScopes() + 1);
+            assertThat(after.missingReservations()).isEqualTo(before.missingReservations() + 1);
+            assertThatThrownBy(() -> LegacyOwnerMigrationReadiness.requireReady(source))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("verified migration").hasMessageNotContaining(owner);
+            transaction.setRollbackOnly();
+        });
+
+        assertThat(jdbc.queryForObject("select count(*) from context_history_record where username=?",
+                Integer.class, owner)).isZero();
+    }
 
     private ClusterAnalysisDatabaseContract clusterContract() {
         var database = getDatabaseContainer();
@@ -46,7 +105,27 @@ abstract class AbstractExternalDatabaseContainerIT extends AbstractDatabaseConta
     void clusterOwnerSourceAndRequirementScopeIsAppliedBeforeTheHistoryLimit() {
         try (var contract = clusterContract()) {
             contract.ownerSourceAndRequirementScopeIsAppliedBeforeTheHistoryLimit();
+            contract.scopedExpiryFencesRedeliveryAndPreservesForeignDatabaseRows();
         }
+    }
+
+    @Test @Order(25)
+    void durableDocumentAdapterRetainsItsNativeResultAndFencesLateCompletion() throws Exception {
+        try (var db = clusterContract()) { db.durableDocumentAdapterRetainsItsNativeResultAndFencesLateCompletion(); }
+    }
+
+    @Test @Order(26)
+    void workingCopyFetchClaimsAndScopedReceiptsSurviveIndependentApplicationHandles() throws Exception {
+        var database = getDatabaseContainer();
+        com.taxonomy.workspace.service.WorkspaceFetchDatabaseContractTest.verify(new DriverManagerDataSource(
+                database.getJdbcUrl(), database.getUsername(), database.getPassword()));
+    }
+
+    @Test @Order(27)
+    void branchProgressRetainsIndependentSyncAndPublishObservationsInTheRunningDatabase() throws Exception {
+        var database = getDatabaseContainer();
+        var source = new DriverManagerDataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword());
+        WorkspaceBranchProgressDatabaseContractTest.verify(source);
     }
 
     @Test @Order(24)

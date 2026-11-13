@@ -284,12 +284,17 @@ async function searchFixture(locale = 'de', withArchitecture = false, delayedTra
         document.body.append(left, source.getElementById('tab-graph'));
         document.getElementById('tab-graph').classList.remove('d-none');
         document.getElementById('searchPanel').open = true;
+        window.TaxonomyArchitectureWorkspace = {ready: async () => true};
+        window.TaxonomyArchitectureWorkflow = Object.assign({}, window.TaxonomyArchitectureWorkflow, {
+            getScope: () => ({repositoryId:'fixture-repo', workspaceId:'', branch:'fixture'})
+        });
         window.searchRequests = [];
         window.graphQueries = [];
         window.embeddingStatus = {available: true, graphReady: true};
         window.searchNodes = [{code: 'BP-1000', nameEn: 'Time capture'},
             {code: 'BP-1001', nameEn: 'Safety reporting'}, {code: 'BP-1002', nameEn: 'Outside architecture'}];
         window.__taxonomyFixtureFetch = async url => {
+            if (String(url).startsWith('/api/search/graph/readiness')) return {ok:true, json: async () => ({ready:embeddingStatus.graphReady})};
             if (url === '/api/embedding/status') return {ok: true, json: async () => embeddingStatus};
             searchRequests.push(url);
             return {ok: true, json: async () => searchNodes};
@@ -353,6 +358,51 @@ for (const locale of ['de', 'en']) test(`${locale}: search explains accepted inp
         await page.waitForFunction(() => document.getElementById('searchModeSelect').value === 'fulltext');
         assert.match(await help.textContent(), prompts.fulltext, 'Readiness fallback explains the mode actually selected');
         assert.equal(await page.locator('#searchInput').inputValue(), query);
+    } finally { await finish(page); }
+});
+
+test('selected branch vectors enable graph search independently of the global model index', async () => {
+    const page = await searchFixture('en');
+    try {
+        await page.evaluate(() => {
+            const original = window.__taxonomyFixtureFetch;
+            window.graphScope = {repositoryId:'central-b',workspaceId:'',branch:'review'};
+            window.checkedGraphPaths = [];
+            window.TaxonomyArchitectureWorkflow.getScope = () => graphScope;
+            window.__taxonomyFixtureFetch = async (input, init) => {
+                const url = new URL(input, location.href);
+                if (url.pathname === '/api/embedding/status') return Response.json({available:false,modelAvailable:true,graphReady:false});
+                if (url.pathname.startsWith('/api/search/graph')) {
+                    checkedGraphPaths.push([url.pathname,url.searchParams.get('repositoryId'),url.searchParams.get('branch')]);
+                    if (url.pathname.endsWith('/readiness')) return Response.json({ready:graphScope.branch === 'review'});
+                    return Response.json({matchedNodes:[],summary:'Selected review result'});
+                }
+                return original(input, init);
+            };
+            return TaxonomySearch.checkEmbeddingStatus();
+        });
+        assert.equal(await page.locator('#searchModeSelect option[value="graph"]').isEnabled(), true);
+        assert.equal(await page.locator('#searchModeSelect option[value="semantic"]').isDisabled(), true);
+        await page.locator('#searchModeSelect').selectOption('graph');
+        await page.locator('#searchInput').fill('local query');
+        await page.locator('#searchInput').press('Enter');
+        await page.getByText('Selected review result').waitFor();
+        await page.evaluate(() => document.dispatchEvent(new CustomEvent('taxonomy:repository-context-changed', {
+            detail:{selectionChanged:false}
+        })));
+        assert.equal(await page.getByText('Selected review result').isVisible(), true);
+        await page.evaluate(() => {
+            window.graphScope = {repositoryId:'central-b',workspaceId:'',branch:'main'};
+            document.dispatchEvent(new CustomEvent('taxonomy:repository-context-changed'));
+        });
+        await page.waitForFunction(() => document.querySelector('#searchModeSelect option[value="graph"]').disabled);
+        assert.equal(await page.getByText('Selected review result').count(), 0);
+        assert.equal(await page.locator('#searchInput').inputValue(), 'local query');
+        await page.waitForFunction(() => checkedGraphPaths.some(call => call[2] === 'main'));
+        assert.deepEqual(await page.evaluate(() => checkedGraphPaths), [
+            ['/api/search/graph/readiness','central-b','review'], ['/api/search/graph','central-b','review'],
+            ['/api/search/graph/readiness','central-b','main']
+        ]);
     } finally { await finish(page); }
 });
 
@@ -1087,6 +1137,8 @@ for (const edited of [false,true]) test(`report export ${edited ? 'retains manua
         await page.evaluate(edited=>{
             const C=__TaxonomyAnalysisSessionContext,S=TaxonomyState;
             C.runtime.workspaceId='ws-owned';S.currentReasons={'BP-1000':'Retained rationale'};
+            window.TaxonomyArchitectureWorkspace={ready:async()=>true};
+            window.TaxonomyArchitectureWorkflow={getScope:()=>({repositoryId:'current-repository',workspaceId:'',branch:'review'})};
             S.currentCopilot={schemaVersion:2,state:'COMPLETED',notes:[]};
             S.analysisOperationId='owned-operation';S.analysisRecovery=null;
             C.runtime.analysisReference={workspaceId:'ws-owned',operationId:'owned-operation'};
@@ -1100,8 +1152,9 @@ for (const edited of [false,true]) test(`report export ${edited ? 'retains manua
         const request=await page.evaluate(()=>window.reportRequest);
         const url=new URL(request.url,'http://taxonomy.fixture');
         assert.equal(url.pathname,'/api/report/markdown');
-        assert.deepEqual([...url.searchParams],[['workspaceId','ws-owned']]);
-        assert.equal(request.headers['x-taxonomy-workspace-id'],'ws-owned');
+        assert.deepEqual(Object.fromEntries(url.searchParams), edited
+            ? {repositoryId:'current-repository',workspaceId:'',branch:'review'} : {workspaceId:'ws-owned'});
+        assert.equal(request.headers['x-taxonomy-workspace-id'],edited ? '' : 'ws-owned');
         assert.equal(request.method,'POST');
         if(edited){assert.equal(request.body.analysisReference,undefined);assert.equal(request.body.reasons['BP-1000'],'Manual rationale');}
         else {assert.deepEqual(request.body.analysisReference,{workspaceId:'ws-owned',operationId:'owned-operation'});
@@ -1250,6 +1303,19 @@ test('component template parsing removes mixed-case scripts and links before mou
     } finally { await finish(page); }
 });
 
+async function applicationMessages(locale) {
+    const messages = {};
+    const files = locale === 'de' ? ['messages.properties','messages_de.properties'] : ['messages.properties'];
+    for (const file of files) {
+        const source = await readFile(path.join(resources,'i18n',file),'utf8');
+        for (const line of source.split('\n')) {
+            const entry = line.match(/^([^#!\s][^=]*)=(.*)$/);
+            if (entry) messages[entry[1]] = entry[2];
+        }
+    }
+    return messages;
+}
+
 async function guidanceFixture(locale='de', search='') {
     const page=await fixture(locale);
     page.setDefaultTimeout(5000);
@@ -1258,12 +1324,7 @@ async function guidanceFixture(locale='de', search='') {
         contentType:'text/html',body:'<!doctype html><html><head></head><body></body></html>'}));
     await page.goto('http://taxonomy.test/taxonomy/'+search);
     await mountComponentTemplate(page, template);
-    const dict={};
-    for(const name of ['messages.properties',...(locale==='de'?['messages_de.properties']:[])]){
-        for(const line of (await readFile(path.join(resources,'i18n',name),'utf8')).split('\n')){
-            const match=line.match(/^([^#!\s][^=]*)=(.*)$/);if(match)dict[match[1]]=match[2];
-        }
-    }
+    const dict=await applicationMessages(locale);
     await page.evaluate(({locale,dict})=>{
         document.documentElement.lang=locale;
         window.TaxonomyI18n={getLocale:()=>locale,ready:()=>Promise.resolve(),resolveUrl:p=>'/taxonomy'+p,
@@ -1386,4 +1447,431 @@ test('tree and decision map keep score styling when toggling a responsibility br
         await tree.locator('.tv-node[data-diagram-node="role-a"] .diagram-unit-stripe').waitFor();
         assert.match(await tree.locator('.tv-node[data-diagram-node="role-a"] .tv-label').textContent(), /Headquarters/);
     } finally { await finish(page); }
+});
+
+async function mountDocumentImport(page, locale, deferWorkspace = false) {
+    const template = await readFile(path.join(resources,'templates/index.html'),'utf8');
+    const messages = await applicationMessages(locale);
+    await page.evaluate(({template,locale,messages,deferWorkspace}) => {
+        const source = new DOMParser().parseFromString(template,'text/html');
+        for (const name of ['documentImportPanel','docCandidateReviewPanel','docAiResultPanel','docRegMapResultPanel']) {
+            const element = source.getElementById(name);
+            if (element) document.body.append(element);
+        }
+        document.documentElement.lang = locale;
+        document.getElementById('documentImportPanel').open = true;
+        window.TaxonomyI18n = {t:key=>messages[key] || key,resolveUrl:path=>path};
+        window.__TaxonomyAnalysisSessionContext = {runtime:{workspaceId:deferWorkspace ? null : 'document-workspace'}};
+        if (deferWorkspace) window.TaxonomyAnalysisSessionReady = new Promise(resolve => setTimeout(() => {
+            window.__TaxonomyAnalysisSessionContext.runtime.workspaceId = 'document-workspace';
+            resolve(true);
+        },200));
+    }, {template,locale,messages,deferWorkspace});
+    await installBrowserApiFixture(page, resources);
+    for (const script of ['api/analysis-adapter-api.js','api/import-api.js','shared/taxonomy-document-import.js'])
+        await page.addScriptTag({path:path.join(resources,'static/js',script)});
+}
+
+for (const locale of ['en', 'de']) {
+    test('native document receipt can be recovered and cancelled in ' + locale, async () => {
+        const page = await browser.newPage({locale});
+        const origin = 'http://taxonomy.fixture';
+        const id = '9a93df57-2938-4c75-8056-940ac7cdaaaa', commit = 'a'.repeat(40);
+        const cancelLabel = locale === 'de' ? 'Analyse abbrechen' : 'Cancel analysis';
+        const cancelledLabel = locale === 'de' ? 'Die Analyse wurde abgebrochen.' : 'Analysis was cancelled.';
+        const calls = [];
+        let state = 'RUNNING';
+        try {
+            await page.route(origin + '/**', async route => {
+                const request = route.request(), url = new URL(request.url());
+                if (url.pathname === '/') return route.fulfill({contentType:'text/html', body:'<html><body></body></html>'});
+                calls.push(request.method() + ' ' + url.pathname);
+                const headers = {'Content-Type':'application/json','X-Analysis-Operation-Id':id,'X-Analysis-Source-Commit':commit,'Retry-After':'1'};
+                if (url.pathname === '/api/analysis-adapters/' + id + '/cancel' && request.method() === 'POST') state='CANCELLED';
+                if (url.pathname === '/api/documents/map-regulation' && request.method() === 'POST') state='RUNNING';
+                const status = state === 'RUNNING' ? 202 : state === 'CANCELLED' ? 409 : 200;
+                const body = state === 'COMPLETED' ? {fileName:'notice.pdf',totalPages:1,matches:[{nodeCode:'CP',confidence:0.9}]}
+                    : {operationId:id,sourceCommit:commit,sequence:0,state,code:state};
+                await route.fulfill({status,headers,body:JSON.stringify(body)});
+            });
+            await page.goto(origin);
+            await mountDocumentImport(page,locale);
+            await page.locator('#docImportFile').setInputFiles({name:'notice.pdf',mimeType:'application/pdf',buffer:Buffer.from('controlled input')});
+            await page.locator('input[name="importMode"][value="reg-map"]').check();
+            const button = page.locator('#docImportUploadBtn');
+            const cancel = page.getByRole('button',{name:cancelLabel,exact:true});
+            await button.click();
+            await cancel.waitFor();
+            assert.equal(await page.locator('#docImportStatus').getAttribute('role'),'status');
+            assert.equal(await page.locator('#docImportStatus').getAttribute('aria-live'),'polite');
+            state='COMPLETED';
+            await page.waitForFunction(() => document.querySelector('#docRegMapTableBody')?.textContent.includes('CP'));
+            assert.equal(await cancel.count(),0);
+            await button.click();
+            await cancel.click();
+            await page.waitForFunction(text => document.getElementById('docImportStatus').textContent.includes(text),cancelledLabel);
+            assert.equal(await button.isDisabled(),false);
+            assert.equal(calls.filter(call => call === 'POST /api/documents/map-regulation').length,2);
+            assert.equal(calls.filter(call => call.endsWith('/cancel')).length,1);
+            assert.ok(calls.includes('GET /api/analysis-adapters/' + id));
+        } finally { await page.close(); }
+    });
+}
+
+for (const locale of ['de','en']) {
+    test(locale + ': native document failures and expiry are announced in forced colors', async () => {
+        const page = await browser.newPage({locale, viewport:{width:320,height:680}, forcedColors:'active', reducedMotion:'reduce'});
+        const messages = await applicationMessages(locale);
+        const origin = 'https://taxonomy.fixture';
+        const cases = [
+            {mode:'ai-extract', path:'extract-ai', status:422, body:{error:'AI_EXTRACTION_FAILED',message:'AI-assisted extraction could not be completed'}, key:'failed'},
+            {mode:'reg-map', path:'map-regulation', status:422, body:{error:'REGULATION_MAPPING_FAILED',message:'Regulation mapping could not be completed'}, key:'failed'},
+            {mode:'reg-map', path:'map-regulation', status:410, body:{code:'ANALYSIS_EXPIRED'}, key:'expired'}
+        ];
+        const requests = [];
+        try {
+            await page.route(origin + '/**', async route => {
+                const path = new URL(route.request().url()).pathname;
+                if (path === '/') return route.fulfill({contentType:'text/html',body:'<!doctype html><html><body></body></html>'});
+                const current = cases[requests.length];
+                requests.push([route.request().method(),path]);
+                await route.fulfill({status:current.status,contentType:'application/json',body:JSON.stringify(current.body)});
+            });
+            await page.goto(origin);
+            await mountDocumentImport(page,locale);
+            assert.equal(await page.evaluate(() => matchMedia('(forced-colors: active)').matches),true);
+            await page.locator('#docImportFile').setInputFiles({name:'notice.pdf',mimeType:'application/pdf',buffer:Buffer.from('controlled archive')});
+            const button = page.locator('#docImportUploadBtn');
+            const status = page.locator('#docImportStatus');
+            assert.equal(await status.getAttribute('aria-live'),'polite');
+            for (const current of cases) {
+                await page.locator('input[name="importMode"][value="' + current.mode + '"]').check();
+                await button.focus();
+                await page.keyboard.press('Enter');
+                await page.waitForFunction(() => !document.getElementById('docImportUploadBtn').disabled);
+                assert.equal((await status.textContent()).trim(),'❌ ' + messages['analysis.adapter.' + current.key]);
+                assert.deepEqual(requests.at(-1),['POST','/api/documents/' + current.path]);
+                assert.equal(await page.locator('#docAiResultPanel').isVisible(),false);
+                assert.equal(await page.locator('#docRegMapResultPanel').isVisible(),false);
+            }
+            assert.equal(requests.length,cases.length);
+        } finally { await page.close(); }
+    });
+}
+
+test('reload during the first physical document request discovers the admitted operation using GET only', async () => {
+    const page = await browser.newPage(), origin = 'https://taxonomy.fixture';
+    const id = '8e370454-53d6-4312-b531-05a4bfab1704', source = 'a'.repeat(40);
+    const calls = [];
+    let token, completed = false, release, submitted;
+    const admission = new Promise(resolve => { submitted = resolve; });
+    const original = new Promise(resolve => { release = resolve; });
+    try {
+        await page.route(origin + '/**', async route => {
+            const req = route.request(), path = new URL(req.url()).pathname;
+            if (path === '/') return route.fulfill({contentType:'text/html',body:'<html><body></body></html>'});
+            calls.push(req.method() + ' ' + path);
+            if (req.method() === 'POST') {
+                assert.equal(path,'/api/documents/map-regulation');
+                token = req.headers()['x-analysis-observer'];
+                assert.match(token,/^[0-9a-f-]{36}$/);
+                submitted();
+                await original;
+                return route.abort().catch(() => {});
+            }
+            assert.ok(path === '/api/analysis-adapters/observations/' + token || path === '/api/analysis-adapters/' + id);
+            const status = completed ? 200 : 202;
+            const body = completed ? {fileName:'notice.pdf',totalPages:1,matches:[{nodeCode:'CP',confidence:.91}]}
+                : {operationId:id,sourceCommit:source,sequence:0,state:'RUNNING'};
+            await route.fulfill({status,headers:{'Content-Type':'application/json','Retry-After':'1',
+                'X-Analysis-Operation-Id':id,'X-Analysis-Source-Commit':source},body:JSON.stringify(body)});
+        });
+        await page.goto(origin);
+        await mountDocumentImport(page,'en');
+        await page.locator('#docImportFile').setInputFiles({name:'notice.pdf',mimeType:'application/pdf',buffer:Buffer.from('private source text')});
+        await page.locator('input[name="importMode"][value="reg-map"]').check();
+        await page.locator('#docImportUploadBtn').click();
+        const cancel = page.getByRole('button',{name:'Cancel analysis'});
+        await admission;
+        const saved = await page.evaluate(() => window.AnalysisAdapterApi.savedDocument());
+        assert.deepEqual(Object.keys(saved).sort(),['action','created','token']);
+        assert.equal(saved.token,token);
+        const beforeReload = calls.length;
+        await page.reload();
+        await mountDocumentImport(page,'en',true);
+        await cancel.waitFor();
+        assert.equal(await page.evaluate(() => window.AnalysisAdapterApi.savedDocument().id),id);
+        completed = true;
+        await page.waitForFunction(() => document.querySelector('#docRegMapTableBody')?.textContent.includes('CP'));
+        assert.equal(calls.filter(call => call.startsWith('POST')).length,1);
+        assert.ok(calls.slice(beforeReload).every(call => call.startsWith('GET')));
+        assert.equal(await page.evaluate(() => window.AnalysisAdapterApi.savedDocument()),null);
+    } finally {
+        release();
+        await page.close();
+    }
+});
+
+for (const surface of ['node','leaf','editor-focus','source-focus']) {
+    test('reopening the same ' + surface + ' action after reload uses only its original scoped observation', async () => {
+        const page = await browser.newPage(), origin = 'https://taxonomy.fixture';
+        const id = '04474a8c-3188-4191-871e-c409ee4f0ff7', source = 'b'.repeat(40);
+        const messages = await applicationMessages('de');
+        let token, release, submitted, wrongSource = false;
+        const original = new Promise(resolve => { release = resolve; });
+        const admission = new Promise(resolve => { submitted = resolve; });
+        const calls = [];
+        try {
+            await page.route(origin + '/**', async route => {
+                const request = route.request(), path = new URL(request.url()).pathname;
+                if (path === '/') return route.fulfill({contentType:'text/html',body:'<html><body></body></html>'});
+                calls.push([request.method(),path]);
+                if (!path.startsWith('/api/analysis-adapters/')) {
+                    token = request.headers()['x-analysis-observer']; submitted();
+                    await original;
+                    return route.abort().catch(() => {});
+                }
+                assert.equal(request.method(),'GET');
+                assert.equal(path,wrongSource ? '/api/analysis-adapters/' + id : '/api/analysis-adapters/observations/' + token);
+                await route.fulfill({status:200,headers:{'Content-Type':'application/json',
+                    'X-Analysis-Operation-Id':id,'X-Analysis-Source-Commit':wrongSource ? 'c'.repeat(40) : source},body:JSON.stringify({native:'original result'})});
+            });
+            async function reopen() {
+                await page.evaluate(messages => {
+                    document.documentElement.lang = 'de';
+                    window.TaxonomyI18n = {t:key=>messages[key] || key,resolveUrl:path=>path};
+                },messages);
+                await installBrowserApiFixture(page,resources);
+                for (const file of ['analysis-adapter-api.js','architecture-editor-api.js','architecture-source-focus-api.js'])
+                    await page.addScriptTag({path:path.join(resources,'static/js/api',file)});
+                await page.evaluate(surface => {
+                    const policy = {onPending:() => {}, isCurrent:() => true};
+                    const scope = {repositoryId:'repo',workspaceScopeKey:'test',branch:'main',revision:1};
+                    const payload = {sourceId:'CP',businessText:'private request must not enter sessionStorage'};
+                    const call = surface === 'node' ? window.AnalysisApi.analyzeNode(payload,policy).then(r => r.json())
+                        : surface === 'leaf' ? window.AnalysisApi.justifyLeaf(payload,policy).then(r => r.json())
+                        : surface === 'editor-focus' ? window.ArchitectureEditorApi.suggest({...payload,context:scope},policy)
+                        : window.ArchitectureSourceFocusApi.suggest({...payload,source:scope,useAi:true},policy);
+                    call.then(result => { window.retainedNativeResult = result; }).catch(error => { window.nativeError = error.message; });
+                },surface);
+            }
+            await page.goto(origin);
+            await reopen();
+            await admission;
+            assert.ok(token);
+            assert.doesNotMatch(await page.evaluate(() => JSON.stringify(sessionStorage)),/private request|businessText/);
+            const beforeReload = calls.length;
+            await page.reload();
+            await reopen();
+            await page.waitForFunction(() => window.retainedNativeResult?.native === 'original result',null,{timeout:5000});
+            assert.deepEqual(calls.slice(beforeReload),[['GET','/api/analysis-adapters/observations/' + token]]);
+            if (surface === 'leaf') {
+                wrongSource = true;
+                await page.reload();
+                await reopen();
+                await page.waitForFunction(() => typeof window.nativeError === 'string',null,{timeout:5000});
+                assert.equal(await page.evaluate(() => window.nativeError),messages['analysis.adapter.stale']);
+                assert.equal(await page.evaluate(() => window.retainedNativeResult),undefined);
+                assert.deepEqual(calls.at(-1),['GET','/api/analysis-adapters/' + id]);
+            }
+        } finally {
+            release();
+            await page.close();
+        }
+    });
+}
+
+test('coverage dashboard pins the source and clears departed working-copy data', async () => {
+    const page = await browser.newPage();
+    try {
+        await page.setContent('<base href="https://taxonomy.test/"><div id="coverageDashboardContent"></div><button id="coverageRecordBtn"></button>');
+        await page.evaluate(() => {
+            window.TaxonomyI18n = {t: key => key};
+            window.TaxonomyUtils = {escapeHtml: value => String(value)};
+            window.selection = {repositoryId:'repo-a', workspaceId:'A1', branch:'draft', commit:null};
+            window.TaxonomyAppChrome = {getContext: () => ({architecture:window.selection})};
+            window.TaxonomyArchitectureWorkspace = {ready:async()=>true};
+            window.TaxonomyArchitectureWorkflow = {getScope:()=>window.selection};
+            window._getCurrentScores = () => ({BP:98});
+            window.prompt = () => 'REQ-001';
+            window.alert = message => { window.lastAlert = message; };
+            window.captured = [];
+            window.__taxonomyFixtureFetch = async (input, options) => {
+                const url = new URL(input, document.baseURI);
+                window.captured.push([url.searchParams.get('repositoryId'), url.searchParams.get('workspaceId'),
+                    url.searchParams.get('branch'), url.searchParams.get('commitId'), new Headers(options.headers).get('X-Taxonomy-Workspace-Id')]);
+                if (window.captured.length === 3) {
+                    await new Promise(resolve => { window.releaseCoverageRefresh = resolve; });
+                }
+                const stats = {totalNodes:2,coveredNodes:1,uncoveredNodes:1,coveragePercentage:50,totalRequirements:1,
+                    avgRequirementsPerNode:1,topCovered:[{nodeCode:'only-' + window.selection.workspaceId,requirementCount:1}],gapCandidates:[]};
+                return Response.json(stats, {headers:{'X-Taxonomy-Repository':window.selection.repositoryId,
+                    'X-Taxonomy-Workspace-Id':window.selection.workspaceId, 'X-Taxonomy-Branch':window.selection.branch,
+                    'X-Taxonomy-Commit':window.selection.commit || 'a'.repeat(40), 'X-Taxonomy-Source-State':'READY'}});
+            };
+        });
+        await installBrowserApiFixture(page, resources);
+        await page.addScriptTag({path:path.join(resources, 'static/js/relations/taxonomy-coverage.js')});
+        await page.evaluate(() => document.dispatchEvent(new Event('DOMContentLoaded')));
+        await page.evaluate(() => window.TaxonomyCoverage.loadCoverageDashboard());
+        assert.match(await page.locator('#coverageDashboardContent').innerText(), /only-A1/);
+        await page.locator('#coverageRecordBtn').click();
+        await page.waitForFunction(() => typeof window.releaseCoverageRefresh === 'function');
+        assert.equal(await page.locator('#coverageDashboardContent').innerText(), 'coverage.loading');
+        await page.evaluate(() => window.releaseCoverageRefresh());
+        await page.waitForFunction(() => document.getElementById('coverageDashboardContent').textContent.includes('only-A1'));
+        await page.evaluate(() => document.dispatchEvent(new CustomEvent('taxonomy:repository-context-changed', {detail:{selectionChanged:false}})));
+        assert.match(await page.locator('#coverageDashboardContent').innerText(), /only-A1/);
+        await page.evaluate(() => {
+            window.selection = {repositoryId:'repo-b', workspaceId:'B1', branch:'main', commit:'b'.repeat(40)};
+            document.dispatchEvent(new CustomEvent('taxonomy:repository-context-changed', {detail:{selectionChanged:true}}));
+        });
+        assert.equal(await page.locator('#coverageDashboardContent').innerText(), '');
+        assert.equal(await page.locator('#coverageRecordBtn').isDisabled(), true);
+        await page.evaluate(() => window.TaxonomyCoverage.loadCoverageDashboard());
+        assert.match(await page.locator('#coverageDashboardContent').innerText(), /only-B1/);
+        assert.deepEqual(await page.evaluate(() => window.captured), [
+            ['repo-a','A1','draft',null,'A1'], ['repo-a','A1','draft','a'.repeat(40),'A1'],
+            ['repo-a','A1','draft',null,'A1'], ['repo-b','B1','main','b'.repeat(40),'B1']]);
+    } finally {
+        await page.close();
+    }
+});
+
+test('relation browser pins the selected source and clears departed relations and actions', async () => {
+    const page = await browser.newPage();
+    try {
+        await page.route('http://taxonomy.fixture/', route => route.fulfill({contentType:'text/html', body:
+            '<details id="relationsBrowser" open><div id="relationsTableContainer"></div></details>'}));
+        await page.goto('http://taxonomy.fixture/');
+        await page.evaluate(() => {
+            window.TaxonomyI18n = {t:key=>key};
+            window.TaxonomyUtils = {escapeHtml:String};
+            window.selection = {repositoryId:'repo-a', workspaceId:'A1', branch:'draft'};
+            window.TaxonomyArchitectureWorkspace = {ready:async()=>true};
+            window.TaxonomyArchitectureWorkflow = {getScope:()=>window.selection};
+            window.requests = [];
+            window.__taxonomyFixtureFetch = async (input, options) => {
+                const url = new URL(input, document.baseURI);
+                const source = ['repositoryId','workspaceId','branch'].map(k=>url.searchParams.get(k));
+                window.requests.push([...source, new Headers(options.headers).get('X-Taxonomy-Workspace-Id')]);
+                return Response.json([{id:1, sourceCode:'only-' + window.selection.workspaceId,
+                    targetCode:'shared-endpoint', relationType:'SUPPORTS'}]);
+            };
+        });
+        await installBrowserApiFixture(page, resources);
+        await page.addScriptTag({path:path.join(resources, 'static/js/relations/taxonomy-relations.js')});
+        await page.evaluate(() => window.TaxonomyRelations.loadRelations());
+        assert.match(await page.locator('#relationsTableContainer').innerText(), /only-A1/);
+        await page.evaluate(() => document.dispatchEvent(new CustomEvent('taxonomy:repository-context-changed', {detail:{selectionChanged:false}})));
+        assert.equal(await page.locator('.relation-delete-btn').count(), 1);
+        await page.evaluate(() => {
+            window.selection = {repositoryId:'repo-b', workspaceId:'B1', branch:'main'};
+            document.dispatchEvent(new CustomEvent('taxonomy:repository-context-changed', {detail:{selectionChanged:true}}));
+        });
+        assert.equal(await page.locator('#relationsTableContainer').innerText(), '');
+        assert.equal(await page.locator('.relation-delete-btn').count(), 0);
+        await page.evaluate(() => window.TaxonomyRelations.loadRelations());
+        assert.match(await page.locator('#relationsTableContainer').innerText(), /only-B1/);
+        assert.deepEqual(await page.evaluate(()=>window.requests), [['repo-a','A1','draft','A1'],['repo-b','B1','main','B1']]);
+    } finally {
+        await page.close();
+    }
+});
+
+test('a relation command binds its preflight workspace and ETag and aborts a superseded selection', async () => {
+    const page = await browser.newPage();
+    try {
+        await page.route('http://taxonomy.fixture/', route=>route.fulfill({contentType:'text/html', body:
+            '<meta name="_csrf" content="fixture"><meta name="_csrf_header" content="X-CSRF-TOKEN">' +
+            '<input id="newRelSource" value="A"><input id="newRelTarget" value="B"><input id="newRelType" value="SUPPORTS">' +
+            '<button id="createRelationSubmit">Save</button><div id="createRelationError"></div>'}));
+        await page.goto('http://taxonomy.fixture/');
+        await page.evaluate(() => {
+            window.selection = {repositoryId:'repo-a',workspaceId:'A1',branch:'draft'};
+            window.TaxonomyArchitectureWorkspace = {ready:async()=>true};
+            window.TaxonomyArchitectureWorkflow = {getScope:()=>window.selection};
+            window.TaxonomyI18n = {t:key=>key};
+            window.commandRequests = [];
+            window.__taxonomyFixtureFetch = async (input, options) => {
+                const url = new URL(input, document.baseURI), headers = new Headers(options.headers);
+                if (options.method === 'PUT') {
+                    window.commandRequests.push([url.searchParams.get('repositoryId'),url.searchParams.get('workspaceId'),
+                        url.searchParams.get('branch'),headers.get('X-Taxonomy-Workspace-Id'),headers.get('If-Match')]);
+                    return Response.json({},{headers:{ETag:'"' + 'b'.repeat(40) + '"'}});
+                }
+                if (window.switchDuringPreflight) window.selection = {repositoryId:'repo-b',workspaceId:'B1',branch:'main'};
+                return Response.json([],{headers:{'X-Taxonomy-Repository':'repo-a','X-Taxonomy-Workspace-Id':'A1',
+                    'X-Taxonomy-Branch':'draft',ETag:'"' + 'a'.repeat(40) + '"'}});
+            };
+        });
+        await installBrowserApiFixture(page, resources);
+        await page.addScriptTag({path:path.join(resources, 'static/js/relations/taxonomy-relations-git-commands.js')});
+        await page.locator('#createRelationSubmit').click();
+        await page.waitForFunction(()=>window.commandRequests.length || document.getElementById('createRelationError').textContent);
+        assert.deepEqual(await page.evaluate(()=>window.commandRequests), [['repo-a','A1','draft','A1','"'+ 'a'.repeat(40)+'"']], await page.locator('#createRelationError').innerText());
+        await page.evaluate(()=>{ window.switchDuringPreflight = true; });
+        await page.locator('#createRelationSubmit').click();
+        await page.waitForFunction(()=>document.getElementById('createRelationError').textContent.includes('superseded'));
+        assert.equal(await page.evaluate(()=>window.commandRequests.length), 1);
+    } finally {
+        await page.close();
+    }
+});
+
+test('projection rebuild keeps an admitted central repository and refreshes the newly selected central repository', async () => {
+    const page = await browser.newPage();
+    try {
+        await page.route('http://taxonomy.fixture/', route=>route.fulfill({contentType:'text/html', body:
+            '<meta name="_csrf" content="fixture"><meta name="_csrf_header" content="X-CSRF-TOKEN">' +
+            '<details id="relationsBrowser" open><div id="relationsTableContainer"></div></details>'}));
+        await page.goto('http://taxonomy.fixture/');
+        await page.evaluate(() => {
+            window.TaxonomyI18n = {t:key=>key};
+            window.TaxonomyUtils = {escapeHtml:String};
+            window.selection = {repositoryId:'central-a', workspaceId:'', branch:'release/a'};
+            window.TaxonomyArchitectureWorkspace = {ready:async()=>true};
+            window.TaxonomyArchitectureWorkflow = {getScope:()=>window.selection};
+            window.events = [];
+            const head = 'c'.repeat(40);
+            window.__taxonomyFixtureFetch = async (input, options) => {
+                const url = new URL(input, document.baseURI), headers = new Headers(options.headers);
+                const repository = url.searchParams.get('repositoryId'), branch = url.searchParams.get('branch');
+                const action = url.pathname.split('/').pop();
+                window.events.push([action, repository, branch, url.searchParams.get('workspaceId'),
+                    headers.get('X-Taxonomy-Workspace-Id'), headers.get('If-Match')]);
+                if (action === 'relations') {
+                    if (repository === 'central-b') return Response.json([{id:2, sourceCode:'only-central-b',
+                        targetCode:'endpoint', relationType:'SUPPORTS'}]);
+                    return new Response(null, {status:409, headers:{'X-Taxonomy-Relation-Projection-State':'NOT_BUILT'}});
+                }
+                const status = {operationStatus:action === 'rebuild' ? 'REBUILT' : 'INSPECTED',
+                    readinessState:action === 'rebuild' ? 'READY' : 'NOT_BUILT', currentHeadCommit:head,
+                    repositoryId:repository, workspaceId:null, branch:branch};
+                if (action === 'readiness' && window.events.filter(row=>row[0] === 'readiness').length === 2) {
+                    await new Promise(resolve=>{window.releaseReadiness=resolve;});
+                }
+                return Response.json(status, {headers:{ETag:'"' + head + '"'}});
+            };
+        });
+        await installBrowserApiFixture(page, resources);
+        await page.addScriptTag({path:path.join(resources, 'static/js/relations/taxonomy-relations.js')});
+        await page.evaluate(()=>window.TaxonomyRelations.loadRelations());
+        await page.getByRole('button', {name:'relations.projection.rebuild', exact:true}).click();
+        await page.waitForFunction(()=>typeof window.releaseReadiness === 'function');
+        await page.evaluate(()=>{
+            window.selection = {repositoryId:'central-b', workspaceId:'', branch:'release/b'};
+            document.dispatchEvent(new CustomEvent('taxonomy:repository-context-changed',{detail:{selectionChanged:true}}));
+            window.releaseReadiness();
+        });
+        await page.waitForFunction(()=>document.getElementById('relationsTableContainer').textContent.includes('only-central-b'));
+        const rows = await page.evaluate(()=>window.events);
+        assert.deepEqual(rows.map(row=>row.slice(0,5)), [
+            ['relations','central-a','release/a','',''], ['readiness','central-a','release/a','',''],
+            ['readiness','central-a','release/a','',''], ['rebuild','central-a','release/a','',''],
+            ['relations','central-b','release/b','','']]);
+        assert.equal(rows[3][5], '"' + 'c'.repeat(40) + '"');
+    } finally {
+        await page.close();
+    }
 });

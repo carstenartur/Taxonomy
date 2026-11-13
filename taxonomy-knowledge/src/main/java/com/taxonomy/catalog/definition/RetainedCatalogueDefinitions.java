@@ -4,6 +4,7 @@ import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
 import com.taxonomy.dsl.model.CatalogueDefinition;
 import com.taxonomy.dsl.model.CanonicalArchitectureModel;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -22,7 +23,7 @@ public class RetainedCatalogueDefinitions implements com.taxonomy.dsl.model.Cata
     public RetainedCatalogueDefinitions(CatalogueSourceJournal sources) { this(sources, null); }
 
     @org.springframework.beans.factory.annotation.Autowired
-    public RetainedCatalogueDefinitions(CatalogueSourceJournal sources, CatalogueParentIndex hierarchy) {
+    public RetainedCatalogueDefinitions(CatalogueSourceJournal sources, @Lazy CatalogueParentIndex hierarchy) {
         this.sources = sources;
         this.hierarchy = hierarchy;
     }

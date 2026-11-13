@@ -139,6 +139,16 @@ function clusterSnapshot(sequence = 1, status = 'RUNNING') {
         ] } };
 }
 
+test('an expired operation ends observation and cannot dispatch a late cancel', async () => {
+    const f = fixture(async () => response({ code: 'ANALYSIS_EXPIRED' }, 410));
+    await f.step(0);
+    assert.deepEqual(f.unavailable, ['ANALYSIS_EXPIRED']);
+    assert.equal(f.timers.size, 0);
+    assert.equal(f.streams.length, 0);
+    assert.equal(await f.monitor.cancel(), false);
+    assert.equal(f.calls.length, 1);
+});
+
 test('cluster registration switches to durable SSE without recurring status reads', async () => {
     const f = fixture(async () => response(clusterSnapshot(5)));
     await f.step(0);

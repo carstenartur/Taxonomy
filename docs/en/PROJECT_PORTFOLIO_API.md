@@ -667,7 +667,7 @@ There are no separate `/matrices/...` endpoints. Each matrix contains `rows`, `c
 ```text
 GET    /api/projects/git/export
 POST   /api/projects/git/commit
-GET    /api/projects/git/materialize-preview?branch=...
+GET    /api/projects/git/materialize-preview?branch=...&targetBranch=...
 POST   /api/projects/git/materialize
 POST   /api/projects/git/merge?source=...&target=...
 ```
@@ -697,6 +697,8 @@ Preview materialisation before applying it:
 curl -u architect:password \
   'http://localhost:8080/api/projects/git/materialize-preview?branch=draft'
 ```
+
+For a pinned page, `branch` identifies the page source and `targetBranch` selects the branch to preview. When applying a reviewed target, the browser sends the same source and target query along with the reviewed branch and expected head in the body. A stale page source receives HTTP 409. The versioning page also pins its Git status, export, commit and merge to the selected repository, workspace and branch. Applying an explicit `targetBranch` without its reviewed `expectedHead` returns HTTP 428. Existing clients may continue to use a single `branch` for preview and a body branch for apply.
 
 The preview contains the exact target HEAD, current and target fingerprints, line counts and bounded added/removed previews. Clients should repeat the preview immediately before applying and reject a changed `targetHead`.
 

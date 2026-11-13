@@ -244,6 +244,10 @@
     }
 
     function wireEvents() {
+        document.getElementById('jumpToRequirementText').addEventListener('click', () => {
+            document.getElementById('text-tab').click();
+            document.getElementById('textPane').focus({preventScroll: true});
+        });
         document.getElementById('newVersionForm').addEventListener('submit', createVersion);
         document.getElementById('newVersionForm').addEventListener('input', () => { state.versionFormDirty = true; });
         document.getElementById('newVersionModal').addEventListener('show.bs.modal', () => {

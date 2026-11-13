@@ -141,8 +141,22 @@ public class WorkspaceContextResolver {
                 ? null
                 : resolveWorkspace(user, provisionDefault);
 
+        return repositoryContext(user,workspace,provisionDefault);
+    }
+
+    record SyncObservation(RepositoryContext source, WorkspaceProvisioningStatus lifecycle) { }
+
+    /** The synchronization indicator can report provisioning before any physical repository exists. */
+    SyncObservation resolveSyncObservation(String username) {
+        String user = normalizeUsername(username);
+        var workspace = WorkspaceManager.DEFAULT_USER.equals(user) ? null : selectedWorkspace(user);
+        return new SyncObservation(repositoryContext(user,workspace,false),
+                workspace == null ? WorkspaceProvisioningStatus.READY : workspace.getProvisioningStatus());
+    }
+
+    private RepositoryContext repositoryContext(String user, UserWorkspace workspace, boolean persistLegacySource) {
         if (workspace != null && hasText(workspace.getWorkspaceId())) {
-            SystemRepository repository = resolveWorkspaceSource(workspace);
+            SystemRepository repository = resolveWorkspaceSource(workspace, persistLegacySource);
             String branch = hasText(workspace.getCurrentBranch())
                     ? workspace.getCurrentBranch().strip()
                     : requireBranch(repository);
@@ -193,20 +207,45 @@ public class WorkspaceContextResolver {
         return RepositoryContext.centralRead(requireRepositoryId(repository),selectedBranch,user);
     }
 
-    private UserWorkspace resolveWorkspace(String username, boolean provisionDefault) {
-        UserWorkspace workspace = resolveWorkspaceMetadataForUser(username);
-        // Keep central reads for ineligible users with an unused default.
-        // Only callers permitting provisioning may finish default initialization.
-        if (workspace != null && workspace.isDefault() && requestedWorkspaceId() == null
+    void verifyReadSelection(RepositoryContext selected) {
+        var attributes = RequestContextHolder.getRequestAttributes();
+        if (!(attributes instanceof ServletRequestAttributes servlet)) {
+            throw new IllegalStateException("Read selection requires an HTTP request");
+        }
+        String repository = servlet.getRequest().getParameter("repositoryId");
+        String branch = servlet.getRequest().getParameter("branch");
+        String workspaceScope = servlet.getRequest().getParameter("workspaceScopeKey");
+        if ((repository != null && !repository.equals(selected.repositoryId()))
+                || (branch != null && !branch.equals(selected.branch()))
+                || (workspaceScope != null && !workspaceScope.equals(
+                        com.taxonomy.model.WorkspaceOverlayScope.keyFor(selected.workspaceId())))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Requested source differs from selected source");
+        }
+        if (selected.workspaceId() != null || repository != null) return;
+        boolean ambiguous = systemRepositoryService.listActiveRepositories().stream()
+                .anyMatch(other -> !selected.repositoryId().equals(other.getRepositoryId())
+                        && repositoryMembershipService.canRead(other, selected.username()));
+        if (ambiguous) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Select an explicit repository and branch for this read");
+        }
+    }
+
+    private boolean unusedDefault(UserWorkspace workspace) {
+        return workspace != null && workspace.isDefault() && requestedWorkspaceId() == null
                 && (workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.NOT_PROVISIONED
-                || workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.PROVISIONING)) {
-            if (!workspaceManager.mayProvisionDefaultWorkspace(username)) {
-                return null;
-            }
-            if (provisionDefault) {
-                workspace = workspaceManager.provisionDefaultWorkspaceRepository(
-                        username, workspace.getWorkspaceId());
-            }
+                    || workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.PROVISIONING);
+    }
+
+    private UserWorkspace selectedWorkspace(String username) {
+        var workspace = resolveWorkspaceMetadataForUser(username);
+        return unusedDefault(workspace) && !workspaceManager.mayProvisionDefaultWorkspace(username) ? null : workspace;
+    }
+
+    private UserWorkspace resolveWorkspace(String username, boolean provisionDefault) {
+        var workspace = selectedWorkspace(username);
+        if (provisionDefault && unusedDefault(workspace)) {
+            workspace = workspaceManager.provisionDefaultWorkspaceRepository(username,workspace.getWorkspaceId());
         }
         if (workspace != null
                 && workspace.getProvisioningStatus() != WorkspaceProvisioningStatus.READY) {
@@ -265,13 +304,16 @@ public class WorkspaceContextResolver {
         return workspace != null ? workspace : workspaceManager.findUserWorkspace(username);
     }
 
-    private SystemRepository resolveWorkspaceSource(UserWorkspace workspace) {
+    private SystemRepository resolveWorkspaceSource(UserWorkspace workspace, boolean persistProvenance) {
         if (hasText(workspace.getSourceRepositoryId())) {
             return systemRepositoryService.getRepository(
                     workspace.getSourceRepositoryId().strip());
         }
 
         SystemRepository primary = systemRepositoryService.getPrimaryRepository();
+        // This historical generation could only reference the primary repository.
+        // Reading that source must not update a managed legacy row or allocate workspace state.
+        if (!persistProvenance) return primary;
         String primaryRepositoryId = requireRepositoryId(primary);
         workspace.setSourceRepositoryId(primaryRepositoryId);
         if (workspaceRepository != null) {

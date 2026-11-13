@@ -217,7 +217,7 @@ The custom endpoint defaults to `0`, meaning no outgoing RPM throttle. The Gemin
 
 ### Incoming rate limit
 
-`TAXONOMY_RATE_LIMIT_PER_MINUTE` limits admitted LLM-backed requests per stable authenticated identity. Local accounts use their canonical username; Keycloak browser and bearer access share immutable `iss`/`sub`. Rejected requests, forwarding headers and peer addresses do not define or consume a budget. HTTP `429` includes `Retry-After` and `Cache-Control: no-store`. The in-memory counters are per application instance, not cluster-global.
+`TAXONOMY_RATE_LIMIT_PER_MINUTE` limits admitted LLM-backed requests per stable authenticated identity. Verified local and STABLE Keycloak logins share one budget per stable principal ID. In LEGACY mode, Keycloak browser and bearer logins share the immutable issuer/subject (`iss`/`sub`). Rejected requests, forwarding headers and peer addresses do not define or consume a budget. HTTP `429` includes `Retry-After` and `Cache-Control: no-store`. The in-memory counters are per application instance, not cluster-global.
 
 ---
 
