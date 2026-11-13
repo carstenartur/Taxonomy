@@ -12,14 +12,46 @@ window.TaxonomyRelationsApi = (function () {
         return window.TaxonomyApiClient.request(url, init, Object.assign({acceptedStatuses:[400,404,409,412,422]}, options));
     }
 
-    async function coverageRequest(path, init) {
-        var source = await window.AnalysisApi.captureContext();
-        var workspace = source.workspaceScopeKey === '__shared__' ? '' : source.workspaceScopeKey;
-        var params = new URLSearchParams({repositoryId:source.repositoryId, workspaceId:workspace,
-            branch:source.branch, commitId:source.commit});
+    function coverageSource(response) {
+        var source = {repositoryId:response.headers.get('X-Taxonomy-Repository'),
+            workspaceId:response.headers.get('X-Taxonomy-Workspace-Id'), branch:response.headers.get('X-Taxonomy-Branch'),
+            commit:response.headers.get('X-Taxonomy-Commit')};
+        if (response.headers.get('X-Taxonomy-Source-State') !== 'READY' || !source.repositoryId || source.workspaceId === null
+                || !source.branch || !/^[a-f0-9]{40}$/.test(source.commit || '')) throw new Error('Invalid coverage source');
+        return Object.freeze(source);
+    }
+
+    async function coverageRequest(path, pinned, init) {
+        var workspace = window.TaxonomyArchitectureWorkspace;
+        if (await workspace?.ready?.() === false) throw new Error('Coverage selection unavailable');
+        var selected = window.TaxonomyArchitectureWorkflow?.getScope?.();
+        if (!selected?.repositoryId || typeof selected.workspaceId !== 'string' || !selected.branch)
+            throw new Error('Coverage selection unavailable');
+        var visible = window.TaxonomyAppChrome?.getContext?.()?.architecture;
+        var visibleWorkspace = visible?.workspaceId ?? (visible?.workspaceScopeKey === '__shared__' ? '' : visible?.workspaceScopeKey);
+        if (!visible || visible.repositoryId !== selected.repositoryId || visible.branch !== selected.branch
+                || visibleWorkspace !== selected.workspaceId) throw new Error('Coverage selection changed');
+        if (pinned && (pinned.repositoryId !== selected.repositoryId || pinned.workspaceId !== selected.workspaceId
+                || pinned.branch !== selected.branch || visible.commit && visible.commit !== pinned.commit))
+            throw new Error('Coverage selection changed');
+        var commit = pinned?.commit || visible.commit;
+        var params = new URLSearchParams({repositoryId:selected.repositoryId, workspaceId:selected.workspaceId, branch:selected.branch});
+        if (commit) {
+            if (!/^[a-f0-9]{40}$/.test(commit)) throw new Error('Invalid coverage revision');
+            params.set('commitId', commit);
+        }
+        if (init?.method === 'POST' && !pinned?.commit) throw new Error('Read the coverage source before recording');
         var headers = new Headers(init?.headers);
-        headers.set('X-Taxonomy-Workspace-Id', workspace);
-        return domainRequest(path + '?' + params, Object.assign({}, init, {headers:headers}), {pinnedWorkspaceId:workspace, retries:0});
+        headers.set('X-Taxonomy-Workspace-Id', selected.workspaceId);
+        var response = await domainRequest(path + '?' + params, Object.assign({}, init, {headers:headers}),
+            {pinnedWorkspaceId:selected.workspaceId, retries:0});
+        if (response.ok) {
+            var evidence = coverageSource(response);
+            if (evidence.repositoryId !== selected.repositoryId || evidence.workspaceId !== selected.workspaceId
+                    || evidence.branch !== selected.branch || commit && evidence.commit !== commit)
+                throw new Error('Coverage response source changed');
+        }
+        return response;
     }
 
     function readQualityDashboard() {
@@ -78,9 +110,10 @@ window.TaxonomyRelationsApi = (function () {
         createLegacy: function (payload) { return domainRequest('/api/relations', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); },
         deleteLegacy: function (id) { return domainRequest('/api/relations/' + encodeURIComponent(id), {method:'DELETE'}); },
         impact: function (payload) { return domainRequest('/api/graph/impact', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); },
+        coverageSource: coverageSource,
         coverageStatistics: function () { return coverageRequest('/api/coverage/statistics'); },
-        nodeCoverage: function (code) { return coverageRequest('/api/coverage/node/' + encodeURIComponent(code)); },
-        recordCoverage: function (payload) { return coverageRequest('/api/coverage/record', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); },
+        nodeCoverage: function (code, source) { return coverageRequest('/api/coverage/node/' + encodeURIComponent(code), source); },
+        recordCoverage: function (payload, source) { return coverageRequest('/api/coverage/record', source, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); },
         readQualityDashboard: readQualityDashboard,
         readSnapshot: readSnapshot,
         readProjectionReadiness: readProjectionReadiness,

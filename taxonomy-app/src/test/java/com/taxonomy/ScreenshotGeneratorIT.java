@@ -1460,27 +1460,12 @@ class ScreenshotGeneratorIT {
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", panel);
         openDetails(panel);
 
-        // POST coverage record directly via fetch (avoids window.prompt dialog).
-        // A sentinel variable signals completion; check response.ok to confirm the record was saved.
-        js("window._coverageRecorded = false;" +
-           "fetch('/api/coverage/record', {" +
-           "  method: 'POST'," +
-           "  headers: {'Content-Type': 'application/json'}," +
-           "  body: JSON.stringify({" +
-           "    requirementId: 'REQ-001'," +
-           "    requirementText: arguments[0]," +
-           "    scores: (typeof window._getCurrentScores === 'function' ? window._getCurrentScores() : {})," +
-           "    minScore: 50" +
-           "  })" +
-           "}).then(function(r) { window._coverageRecorded = r.ok; })" +
-           "  .catch(function() { window._coverageRecorded = false; });",
-           REQUIREMENT_TEXT);
-        wait(10).until(d ->
-                (Boolean) ((JavascriptExecutor) d).executeScript("return window._coverageRecorded === true;"));
-
-        // Reload the dashboard so it picks up the newly recorded data
-        js("if (window.TaxonomyCoverage) window.TaxonomyCoverage.loadCoverageDashboard();");
-        waitForResult("coverageDashboardContent", ".coverage-node-link", 10);
+        wait(15).until(ExpectedConditions.elementToBeClickable(By.id("coverageRecordBtn")));
+        safeClick(By.id("coverageRecordBtn"));
+        var prompt = wait(10).until(ExpectedConditions.alertIsPresent());
+        prompt.sendKeys("REQ-001");
+        prompt.accept();
+        waitForResult("coverageDashboardContent", ".coverage-node-link", 15);
 
         saveElementScreenshot(panel, "27-coverage-dashboard-data.png");
     }
