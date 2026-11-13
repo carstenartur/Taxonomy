@@ -12,6 +12,16 @@ window.TaxonomyRelationsApi = (function () {
         return window.TaxonomyApiClient.request(url, init, Object.assign({acceptedStatuses:[400,404,409,412,422]}, options));
     }
 
+    async function coverageRequest(path, init) {
+        var source = await window.AnalysisApi.captureContext();
+        var workspace = source.workspaceScopeKey === '__shared__' ? '' : source.workspaceScopeKey;
+        var params = new URLSearchParams({repositoryId:source.repositoryId, workspaceId:workspace,
+            branch:source.branch, commitId:source.commit});
+        var headers = new Headers(init?.headers);
+        headers.set('X-Taxonomy-Workspace-Id', workspace);
+        return domainRequest(path + '?' + params, Object.assign({}, init, {headers:headers}), {pinnedWorkspaceId:workspace, retries:0});
+    }
+
     function readQualityDashboard() {
         return TaxonomyApiClient.getJson('/api/relations/metrics/dashboard?limit=5', {selectedRepository:true});
     }
@@ -73,9 +83,9 @@ window.TaxonomyRelationsApi = (function () {
         createLegacy: function (payload) { return domainRequest('/api/relations', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); },
         deleteLegacy: function (id) { return domainRequest('/api/relations/' + encodeURIComponent(id), {method:'DELETE'}); },
         impact: function (payload) { return domainRequest('/api/graph/impact', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); },
-        coverageStatistics: function () { return domainRequest('/api/coverage/statistics'); },
-        nodeCoverage: function (code) { return domainRequest('/api/coverage/node/' + encodeURIComponent(code)); },
-        recordCoverage: function (payload) { return domainRequest('/api/coverage/record', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); },
+        coverageStatistics: function () { return coverageRequest('/api/coverage/statistics'); },
+        nodeCoverage: function (code) { return coverageRequest('/api/coverage/node/' + encodeURIComponent(code)); },
+        recordCoverage: function (payload) { return coverageRequest('/api/coverage/record', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); },
         readQualityDashboard: readQualityDashboard,
         readSnapshot: readSnapshot,
         readProjectionReadiness: readProjectionReadiness,

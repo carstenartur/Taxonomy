@@ -24,7 +24,7 @@ final class FractionalRestoreChecks {
         }
         Long identity;
         try (var factory = RestoreSchemaMigration.openValidatedFactory(active, target, model, () -> {})) {
-            var coverage = new RequirementCoverage("fixture", "Authored storage fixture", "fixture-node", .125, Instant.parse("2026-10-15T00:00:00Z"));
+            var coverage = new RequirementCoverage(com.taxonomy.workspace.service.RepositoryContext.workspace("repo", "workspace", "main", "operator"), "a".repeat(40), "fixture", "Authored storage fixture", "fixture-node", .125, Instant.parse("2026-10-15T00:00:00Z"));
             factory.inTransaction(session -> session.persist(coverage));
             identity = coverage.getId();
         }

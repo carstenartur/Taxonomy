@@ -50,7 +50,7 @@ public class ArchitectureSummaryApiController {
             description = "Returns key findings (top capabilities, processes, services, hubs, gaps) " +
                     "and recommended next actions based on the current architecture state.")
     public ResponseEntity<ArchitectureSummary> getSummary() {
-        return ResponseEntity.ok(summaryService.buildSummary(workspaceResolver.resolveCurrentRepositoryContext()));
+        return ResponseEntity.ok(summaryService.buildSummary(workspaceResolver.resolveUnambiguousRepositoryForRead()));
     }
 
     @PostMapping("/metadata/recompute")
@@ -71,14 +71,7 @@ public class ArchitectureSummaryApiController {
     public ResponseEntity<?> getNodeMetadata(@PathVariable String nodeCode) {
         TaxonomyNode node = taxonomyService.getNodeByCode(nodeCode);
         if (node != null) {
-            NodeGraphMetadata metadata = new NodeGraphMetadata(
-                    node.getCode(),
-                    node.getIncomingRelationCount(),
-                    node.getOutgoingRelationCount(),
-                    node.getTotalRelationCount(),
-                    node.getRequirementCoverageCount(),
-                    node.getGraphRole()
-            );
+            var metadata = summaryService.nodeMetadata(workspaceResolver.resolveUnambiguousRepositoryForRead(), nodeCode);
             return ResponseEntity.ok(metadata);
         } else {
             return ResponseEntity.notFound().build();

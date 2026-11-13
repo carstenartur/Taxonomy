@@ -8,6 +8,13 @@
 (function () {
     'use strict';
     var t = TaxonomyI18n.t;
+    var viewGeneration = 0;
+    document.addEventListener('taxonomy:repository-context-changed', function (event) {
+        if (event.detail?.selectionChanged === false) return;
+        viewGeneration += 1;
+        var content = document.getElementById('coverageDashboardContent');
+        if (content) content.replaceChildren();
+    });
 
     /* ------------------------------------------------------------------ */
     /*  Bootstrap on DOMContentLoaded                                      */
@@ -39,11 +46,12 @@
         if (!content) return;
         content.innerHTML = '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm" role="status"></div> ' + t('coverage.loading') + '</div>';
 
-        window.TaxonomyRelationsApi.coverageStatistics()
+        var generation = ++viewGeneration;
+        return window.TaxonomyRelationsApi.coverageStatistics()
             .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
-            .then(function (stats) { renderDashboard(stats); })
+            .then(function (stats) { if (viewGeneration === generation) renderDashboard(stats); })
             .catch(function (error) {
-                if (error?.code === 'ABORTED') return;
+                if (error?.code === 'ABORTED' || generation !== viewGeneration) return;
                 content.innerHTML = '<div class="text-danger small p-2">\u26A0\uFE0F ' + t('coverage.load.failed') + '</div>';
             });
     }
@@ -113,9 +121,11 @@
         if (!content) return;
         content.innerHTML = '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm" role="status"></div> ' + t('coverage.loading.node') + '</div>';
 
-        window.TaxonomyRelationsApi.nodeCoverage(nodeCode)
+        var generation = ++viewGeneration;
+        return window.TaxonomyRelationsApi.nodeCoverage(nodeCode)
             .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
             .then(function (entries) {
+                if (viewGeneration !== generation) return;
                 var html = '<div class="mb-2"><button id="coverageBackBtn" class="btn btn-sm btn-outline-secondary">' + t('coverage.back') + '</button>'
                          + ' <strong>' + escapeHtml(nodeCode) + '</strong> \u2014 ' + t('coverage.node.requirements', entries.length) + '</div>';
                 if (entries.length > 0) {
@@ -137,7 +147,7 @@
                 if (backBtn) backBtn.addEventListener('click', loadCoverageDashboard);
             })
             .catch(function (error) {
-                if (error?.code === 'ABORTED') return;
+                if (error?.code === 'ABORTED' || generation !== viewGeneration) return;
                 content.innerHTML = '<div class="text-danger small p-2">\u26A0\uFE0F ' + t('coverage.load.node.failed') + '</div>';
             });
     }

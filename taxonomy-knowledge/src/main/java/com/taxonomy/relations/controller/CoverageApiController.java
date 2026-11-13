@@ -1,122 +1,123 @@
 package com.taxonomy.relations.controller;
 
-import com.taxonomy.dto.CoverageStatistics;
-import com.taxonomy.relations.model.RequirementCoverage;
+import com.taxonomy.relations.service.CoverageSourceUnavailable;
 import com.taxonomy.relations.service.RequirementCoverageService;
+import com.taxonomy.workspace.service.BranchHeadConflictException;
+import com.taxonomy.workspace.service.RepositoryScope;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
+import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
+import java.io.IOException;
 import java.util.Map;
+import java.util.List;
+import tools.jackson.databind.ObjectMapper;
+import com.taxonomy.identity.StableIdentityHash;
+import java.util.Objects;
+import java.util.function.BiFunction;
+import com.taxonomy.workspace.service.RepositoryContext;
+import static com.taxonomy.relations.service.CoverageSourceUnavailable.State.*;
 
-/**
- * REST API for the Requirement Coverage feature.
- *
- * <p>Endpoints:
- * <ul>
- *   <li>{@code POST /api/coverage/record} — record coverage from an analysis result</li>
- *   <li>{@code GET /api/coverage/node/{code}} — requirements covering a specific node</li>
- *   <li>{@code GET /api/coverage/requirement/{id}} — nodes covered by a requirement</li>
- *   <li>{@code GET /api/coverage/statistics} — overall coverage statistics</li>
- *   <li>{@code GET /api/coverage/density} — requirement density map</li>
- *   <li>{@code DELETE /api/coverage/requirement/{id}} — remove coverage for a requirement</li>
- * </ul>
- */
+/** User-recorded coverage is owned by the repository/workspace, branch and Git revision observed at record time. */
 @RestController
 @RequestMapping("/api/coverage")
 @Tag(name = "Requirement Coverage")
 public class CoverageApiController {
+    private final RequirementCoverageService coverage;
+    private final WorkspaceResolver workspaces;
+    private final WorkspaceDslReadPort git;
 
-    private final RequirementCoverageService coverageService;
+    private final ObjectMapper json;
 
-    public CoverageApiController(RequirementCoverageService coverageService) {
-        this.coverageService = coverageService;
+    public CoverageApiController(RequirementCoverageService coverage, WorkspaceResolver workspaces, WorkspaceDslReadPort git, ObjectMapper json) {
+        this.json = json;
+        this.coverage = coverage;
+        this.workspaces = workspaces;
+        this.git = git;
     }
 
-    /**
-     * Request body for recording coverage from an analysis result.
-     *
-     * @param requirementId   identifier for the requirement (e.g. "REQ-101")
-     * @param requirementText original business text
-     * @param scores          map of nodeCode → score (0–100)
-     * @param minScore        minimum score threshold (inclusive); 0 means use the default (50)
-     */
-    public record RecordCoverageRequest(
-            String requirementId,
-            String requirementText,
-            Map<String, Double> scores,
-            int minScore) {
-    }
+    public record RecordCoverageRequest(String requirementId, String requirementText, Map<String, Double> scores, int minScore) {}
 
-    /**
-     * Records coverage from an analysis result. Scores below {@code minScore} are discarded.
-     */
-    @Operation(summary = "Record coverage",
-               description = "Stores nodeCode→score mappings above the threshold for a requirement")
+    @Operation(summary = "Record requirement coverage at the selected workspace revision")
     @PostMapping("/record")
-    public ResponseEntity<Void> recordCoverage(@RequestBody RecordCoverageRequest request) {
-        coverageService.analyzeCoverage(
-                request.scores() != null ? request.scores() : Map.of(),
-                request.requirementId(),
-                request.requirementText(),
-                request.minScore());
-        return ResponseEntity.ok().build();
+    public ResponseEntity<?> recordCoverage(@RequestBody RecordCoverageRequest request, @RequestParam String commitId) {
+        if (request.requirementId() == null || request.requirementId().isBlank() || request.requirementId().length() > 255
+                || request.requirementText() != null && request.requirementText().length() > 2000) return ResponseEntity.badRequest().build();
+        if (request.scores() != null && request.scores().entrySet().stream().anyMatch(entry ->
+                entry.getKey() == null || entry.getKey().isBlank() || entry.getKey().length() > 255 ||
+                entry.getValue() != null && !com.taxonomy.dto.AnalysisPercentages.valid(entry.getValue()))) {
+            return ResponseEntity.badRequest().build();
+        }
+        return atSource(commitId, "record", true, (context, head) -> {
+            coverage.analyzeCoverage(context, head, Objects.requireNonNullElse(request.scores(), Map.of()),
+                    request.requirementId(), request.requirementText(), request.minScore());
+            return null;
+        });
     }
 
-    /**
-     * Returns all requirements that cover a given taxonomy node code.
-     */
-    @Operation(summary = "Coverage for node",
-               description = "Returns all requirements covering a specific node code")
     @GetMapping("/node/{code}")
-    public ResponseEntity<List<RequirementCoverage>> getCoverageForNode(
-            @Parameter(description = "Taxonomy node code") @PathVariable String code) {
-        return ResponseEntity.ok(coverageService.getCoverageForNode(code));
+    public ResponseEntity<?> forNode(@PathVariable String code, @RequestParam(required = false) String commitId) {
+        return atSource(commitId, "node/" + code, false, (context, head) -> coverage.getCoverageForNode(context, head, code));
     }
 
-    /**
-     * Returns all nodes covered by a specific requirement.
-     */
-    @Operation(summary = "Coverage for requirement",
-               description = "Returns all nodes covered by a specific requirement ID")
     @GetMapping("/requirement/{id}")
-    public ResponseEntity<List<RequirementCoverage>> getCoverageForRequirement(
-            @Parameter(description = "Requirement identifier") @PathVariable String id) {
-        return ResponseEntity.ok(coverageService.getCoverageForRequirement(id));
+    public ResponseEntity<?> forRequirement(@PathVariable String id, @RequestParam(required = false) String commitId) {
+        return atSource(commitId, "requirement/" + id, false, (context, head) -> coverage.getCoverageForRequirement(context, head, id));
     }
 
-    /**
-     * Returns overall coverage statistics for the taxonomy.
-     */
-    @Operation(summary = "Coverage statistics",
-               description = "Returns overall coverage statistics: totals, percentages, top-covered, and gap candidates")
     @GetMapping("/statistics")
-    public ResponseEntity<CoverageStatistics> getCoverageStatistics() {
-        return ResponseEntity.ok(coverageService.getCoverageStatistics());
+    public ResponseEntity<?> statistics(@RequestParam(required = false) String commitId) {
+        return atSource(commitId, "statistics", false, coverage::getCoverageStatistics);
     }
 
-    /**
-     * Returns the requirement density map (nodeCode → requirementCount).
-     */
-    @Operation(summary = "Density map",
-               description = "Returns a map of nodeCode → requirementCount for heatmap visualisation")
     @GetMapping("/density")
-    public ResponseEntity<Map<String, Integer>> getDensityMap() {
-        return ResponseEntity.ok(coverageService.getRequirementDensityMap());
+    public ResponseEntity<?> density(@RequestParam(required = false) String commitId) {
+        return atSource(commitId, "density", false, coverage::getRequirementDensityMap);
     }
 
-    /**
-     * Removes all coverage records for the given requirement ID.
-     */
-    @Operation(summary = "Delete coverage",
-               description = "Removes all coverage records for a given requirement ID")
     @DeleteMapping("/requirement/{id}")
-    public ResponseEntity<Void> deleteCoverage(
-            @Parameter(description = "Requirement identifier") @PathVariable String id) {
-        coverageService.deleteCoverageForRequirement(id);
-        return ResponseEntity.noContent().build();
+    public ResponseEntity<?> delete(@PathVariable String id, @RequestParam String commitId) {
+        var response = atSource(commitId, "delete", true, (context, head) -> {
+            coverage.deleteCoverageForRequirement(context, head, id);
+            return null;
+        });
+        return response.getStatusCode().is2xxSuccessful()
+                ? ResponseEntity.noContent().headers(response.getHeaders()).build() : response;
     }
+
+    private ResponseEntity<?> atSource(String pin, String view, boolean write, BiFunction<RepositoryContext, String, Object> operation) {
+        var context = workspaces.resolveUnambiguousRepositoryForRead();
+        if (write && context.scope() != RepositoryScope.WORKSPACE) return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        String expected;
+        try { expected = pin == null ? null : WorkspaceDslReadPort.normalizeCommitId(pin); }
+        catch (IllegalArgumentException invalid) { return ResponseEntity.badRequest().build(); }
+        try {
+            var read = git.openRead(context);
+            String head = read.currentHead();
+            if (head == null) throw new CoverageSourceUnavailable(MISSING, null);
+            if (expected != null && !expected.equals(head)) throw new CoverageSourceUnavailable(STALE, head);
+            var result = operation.apply(context, head);
+            if (!write) read.verifyExpectedHead(head);
+            var response = ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                    .header("X-Taxonomy-Source-State", "READY").header("X-Taxonomy-Commit", head)
+                    .header("X-Taxonomy-Repository", context.repositoryId()).header("X-Taxonomy-Workspace-Id", Objects.toString(context.workspaceId(), ""))
+                    .header("X-Taxonomy-Branch", context.branch());
+            if (!write) {
+                var identity = List.of("requirement-coverage-v1", context.repositoryId(), Objects.toString(context.workspaceId(), ""),
+                        context.branch(), head, view, result);
+                response.eTag("W/\"" + StableIdentityHash.sha256(json.writeValueAsString(identity)) + "\"");
+            }
+            return response.body(result);
+        } catch (BranchHeadConflictException moved) {
+            throw new CoverageSourceUnavailable(STALE, moved.getActualHeadCommit());
+        } catch (IOException failure) {
+            throw new CoverageSourceUnavailable(FAILED, null);
+        }
+    }
+
 }

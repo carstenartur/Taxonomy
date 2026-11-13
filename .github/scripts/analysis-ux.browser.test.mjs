@@ -1570,3 +1570,42 @@ for (const surface of ['node','leaf','editor-focus','source-focus']) {
         }
     });
 }
+
+test('coverage dashboard pins the source and clears departed working-copy data', async () => {
+    const page = await browser.newPage();
+    try {
+        await page.setContent('<base href="https://taxonomy.test/"><div id="coverageDashboardContent"></div>');
+        await page.evaluate(() => {
+            window.TaxonomyI18n = {t: key => key};
+            window.TaxonomyUtils = {escapeHtml: value => String(value)};
+            window.selection = {repositoryId:'repo-a', workspaceId:'A1', branch:'draft', commit:'a'.repeat(40)};
+            window.TaxonomyAppChrome = {getContext: () => ({architecture:window.selection})};
+            window.captured = [];
+            window.__taxonomyFixtureFetch = async (input, options) => {
+                const url = new URL(input, document.baseURI);
+                window.captured.push([url.searchParams.get('repositoryId'), url.searchParams.get('workspaceId'),
+                    url.searchParams.get('branch'), url.searchParams.get('commitId'), new Headers(options.headers).get('X-Taxonomy-Workspace-Id')]);
+                const stats = {totalNodes:2,coveredNodes:1,uncoveredNodes:1,coveragePercentage:50,totalRequirements:1,
+                    avgRequirementsPerNode:1,topCovered:[{nodeCode:'only-' + window.selection.workspaceId,requirementCount:1}],gapCandidates:[]};
+                return Response.json(stats);
+            };
+        });
+        await installBrowserApiFixture(page, resources);
+        await page.addScriptTag({path:path.join(resources, 'static/js/relations/taxonomy-coverage.js')});
+        await page.evaluate(() => window.TaxonomyCoverage.loadCoverageDashboard());
+        assert.match(await page.locator('#coverageDashboardContent').innerText(), /only-A1/);
+        await page.evaluate(() => document.dispatchEvent(new CustomEvent('taxonomy:repository-context-changed', {detail:{selectionChanged:false}})));
+        assert.match(await page.locator('#coverageDashboardContent').innerText(), /only-A1/);
+        await page.evaluate(() => {
+            window.selection = {repositoryId:'repo-b', workspaceId:'B1', branch:'main', commit:'b'.repeat(40)};
+            document.dispatchEvent(new CustomEvent('taxonomy:repository-context-changed', {detail:{selectionChanged:true}}));
+        });
+        assert.equal(await page.locator('#coverageDashboardContent').innerText(), '');
+        await page.evaluate(() => window.TaxonomyCoverage.loadCoverageDashboard());
+        assert.match(await page.locator('#coverageDashboardContent').innerText(), /only-B1/);
+        assert.deepEqual(await page.evaluate(() => window.captured), [
+            ['repo-a','A1','draft','a'.repeat(40),'A1'], ['repo-b','B1','main','b'.repeat(40),'B1']]);
+    } finally {
+        await page.close();
+    }
+});

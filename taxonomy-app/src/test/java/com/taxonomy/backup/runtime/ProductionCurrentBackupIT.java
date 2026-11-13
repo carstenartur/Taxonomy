@@ -103,7 +103,7 @@ class ProductionCurrentBackupIT {
         Path archive = root.resolve("download-"+suffix+".taxbackup");
         try (var download=jobs.download(id,alice.id()); var output=Files.newOutputStream(archive)) { download.writeTo(output); }
         var versions=new HashMap<BackupComponentId,Integer>(); for(var owner:BackupCoverageInventory.load().categories()) versions.put(owner.owner(),1);
-        versions.put(new BackupComponentId("knowledge"),2);
+        versions.put(new BackupComponentId("knowledge"),3);
         versions.put(new BackupComponentId("capture-proof"),1);
         try(var verified=new BackupArchiveReader(ArchiveProtectionProvider.unprotected(),ArchiveLimits.defaults(),
                 context.getEnvironment().getProperty("info.app.version"),versions,context.getBean(BackupFeaturePrerequisites.class)).verify(archive)) {
