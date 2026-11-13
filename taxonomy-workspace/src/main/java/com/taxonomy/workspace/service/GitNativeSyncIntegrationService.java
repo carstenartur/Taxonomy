@@ -109,25 +109,28 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
 
     private Publication submitPull(WorkspaceContext context,boolean takeSource,String key,String cause) throws IOException {
         var selected=RepositoryContext.workspace(context.repositoryId(),context.workspaceId(),context.currentBranch(),context.username());
-        requireSourceAuthority(context.username(),context,false);
+        var current=publicationMetadata(selected,false,false);
         var operation=publications.submitPull(selected,takeSource,key,cause,() -> {
             var target=publicationTarget(selected,false,false);
             return new WorkspacePublicationJournal.Source(target.branch(),target.owner().getBaseCommit(),
                     freshHead(target.central(),target.branch()),freshHead(target.local(),selected.branch()),
-                    freshHead(target.local(),TRACKING_BRANCH));
+                    freshHead(target.local(),TRACKING_BRANCH),target.owner().getUsername());
         },this::applyPublicationPhase);
+        if (!current.owner().getUsername().equals(operation.workspaceOwner())) throw unavailable();
         return new Publication(operation.resultCommit(),operation);
     }
 
     private Publication submitPublication(WorkspaceContext context,boolean keep,String key,String cause) throws IOException {
         var selected=RepositoryContext.workspace(context.repositoryId(),context.workspaceId(),context.currentBranch(),context.username());
         requireSourceAuthority(context.username(),context,true);
+        var current=publicationMetadata(selected,false,true);
         var operation=publications.submit(selected,keep,key,cause,() -> {
             var target=publicationTarget(selected,false,true);
             return new WorkspacePublicationJournal.Source(target.branch(),target.owner().getBaseCommit(),
                     freshHead(target.central(),target.branch()),freshHead(target.local(),selected.branch()),
-                    freshHead(target.local(),TRACKING_BRANCH));
+                    freshHead(target.local(),TRACKING_BRANCH),target.owner().getUsername());
         },this::applyPublicationPhase);
+        if (!current.owner().getUsername().equals(operation.workspaceOwner())) throw unavailable();
         return new Publication(operation.resultCommit(),operation);
     }
 
@@ -146,9 +149,10 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
     }
 
     public WorkspacePublicationJournal.View publicationStatus(RepositoryContext selected,String id) {
-        var row=publications.get(selected,id);
-        publicationMetadata(selected,false,!row.pull());
-        return row;
+        var receipt=publications.get(selected,id);
+        var metadata=publicationMetadata(selected,false,!receipt.pull());
+        if (!receipt.workspaceOwner().equals(metadata.owner().getUsername())) throw unavailable();
+        return receipt;
     }
 
     public WorkspacePublicationJournal.View retryPublication(RepositoryContext selected,String id) {
@@ -172,13 +176,21 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         if (selected.scope()!=RepositoryScope.WORKSPACE) throw unavailable();
         var owner=(lockWorkspace ? workspaceRepository.findByWorkspaceIdForUpdate(selected.workspaceId())
                 : workspaceRepository.findByWorkspaceId(selected.workspaceId())).orElseThrow(GitNativeSyncIntegrationService::unavailable);
-        if (!selected.username().equals(owner.getUsername()) || owner.isShared()
+        if (owner.isShared()
                 || owner.isArchived() || !selected.repositoryId().equals(owner.getSourceRepositoryId())
                 || owner.getProvisioningStatus()!=com.taxonomy.workspace.model.WorkspaceProvisioningStatus.READY) throw unavailable();
         var source=requireSourceRepository(owner);
-        requireSourceAuthority(selected.username(),source,publish);
+        requireWorkspaceAuthority(selected.username(), source, owner, publish);
         String branch=owner.resolveUpstreamBranch(source);
         return new PublicationMetadata(owner,source,branch);
+    }
+
+    private void requireWorkspaceAuthority(String actor, SystemRepository source, UserWorkspace workspace, boolean publish) {
+        systemRepositoryService.readCurrentAuthorization(requireRepositoryId(source), current -> {
+            if (!sourceMemberships.canUseWorkspace(current, workspace, actor)
+                    || !sourceMemberships.canRead(current, actor)
+                    || publish && !sourceMemberships.canContribute(current, actor)) throw unavailable();
+        });
     }
 
     private PublicationTarget publicationTarget(RepositoryContext selected,boolean lockWorkspace,boolean publish) {
@@ -195,6 +207,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
     void applyPublicationPhase(WorkspacePublicationOperation row,Runnable actor) throws IOException {
         var selected=row.context();
         var target=publicationTarget(selected,row.step!=WorkspacePublicationOperation.Step.PROGRESS,!row.isPull());
+        if (!row.workspaceOwner().equals(target.owner().getUsername())) throw unavailable();
         if (!java.util.Objects.equals(row.sourceBranch,target.branch())
                 || !java.util.Objects.equals(row.forkPoint,target.owner().getBaseCommit())) {
             throw new BranchHeadConflictException(selected.branch(),row.forkPoint,target.owner().getBaseCommit(),"Working copy upstream changed");
@@ -203,7 +216,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
             applyPullPhase(row,target,actor);
             return;
         }
-        Runnable grant=() -> { actor.run(); requireSourceAuthority(row.username,target.source(),true); };
+        Runnable grant=() -> { actor.run(); requireWorkspaceAuthority(row.username,target.source(),target.owner(),true); };
         if (row.step==WorkspacePublicationOperation.Step.PREPARE) {
             target.central().verifyExpectedHead(target.branch(),row.inputSource);
             target.local().verifyExpectedHead(row.localBranch,row.inputLocal);
@@ -288,7 +301,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         if (row.inputSource==null || current==null || !source.isAncestor(row.inputSource,current)) {
             throw new BranchHeadConflictException(row.sourceBranch,row.inputSource,current,"The recorded pull source is no longer in this branch");
         }
-        Runnable authorize=() -> { actor.run(); requireSourceAuthority(row.username,target.source(),false); };
+        Runnable authorize=() -> { actor.run(); requireWorkspaceAuthority(row.username,target.source(),target.owner(),false); };
         if (row.step==WorkspacePublicationOperation.Step.PREPARE) {
             local.verifyExpectedHead(row.localBranch,row.inputLocal);
             local.verifyExpectedHead(TRACKING_BRANCH,row.inputTracking);
@@ -394,9 +407,12 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         // Portfolio materialization fences the catalogue in this transaction. Suspending it
         // to read the same row on a second connection deadlocks on locking databases.
         var source = systemRepositoryService.lockCurrentPublicationSource(operation.repository);
-        boolean allowed=operation.isPull() ? sourceMemberships.canPullLockedSource(source,operation.username)
-                : sourceMemberships.canPublishLockedSource(source,operation.username);
-        if (!allowed) {
+        boolean owner = operation.workspaceOwner().equals(operation.username);
+        boolean authorized = owner
+                ? operation.isPull() ? sourceMemberships.canPullLockedSource(source,operation.username)
+                        : sourceMemberships.canPublishLockedSource(source,operation.username)
+                : sourceMemberships.canCollaborateOnLockedSource(source,operation.username);
+        if (!authorized) {
             throw new org.springframework.security.access.AccessDeniedException(
                     "Current source repository authority is required");
         }
@@ -405,14 +421,18 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
     private void releasePublicationPins(WorkspacePublicationOperation row,Runnable actor) throws IOException {
         if (row.step==WorkspacePublicationOperation.Step.PREPARE) return;
         var source=systemRepositoryService.getRepository(row.repository);
+        var owner=workspaceRepository.findByWorkspaceIdForUpdate(row.workspace);
+        if (owner.isPresent() && (!row.workspaceOwner().equals(owner.get().getUsername())
+                || !row.repository.equals(owner.get().getSourceRepositoryId()))) throw unavailable();
         Runnable authorize=() -> {
             actor.run();
-            requireSourceAuthority(row.username,source,!row.isPull());
+            if (owner.isPresent()) requireWorkspaceAuthority(row.username,source,owner.get(),!row.isPull());
+            else {
+                if (!row.workspaceOwner().equals(row.username)) throw unavailable();
+                requireSourceAuthority(row.username,source,!row.isPull());
+            }
         };
         authorize.run();
-        var owner=workspaceRepository.findByWorkspaceIdForUpdate(row.workspace);
-        if (owner.isPresent() && (!row.username.equals(owner.get().getUsername())
-                || !row.repository.equals(owner.get().getSourceRepositoryId()))) throw unavailable();
         if (!row.isPull()) repositoryFactory.releasePublicationPin(row.repository,null,row.id,row.sourceBranch,row.preparedSource,authorize);
         if (owner.isPresent()) {
             repositoryFactory.releasePublicationPin(row.repository,row.workspace,row.id,row.localBranch,row.preparedLocal,authorize);

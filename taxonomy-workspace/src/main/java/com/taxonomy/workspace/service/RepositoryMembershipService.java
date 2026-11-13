@@ -215,6 +215,11 @@ public class RepositoryMembershipService {
         return canRead(source, username);
     }
 
+    @Transactional(readOnly = true, propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public boolean canCollaborateOnLockedSource(SystemRepository source, String username) {
+        return canCollaborate(source, username);
+    }
+
     public boolean canMaintain(SystemRepository repository, String username) {
         return isActive(repository)
                 && effectiveRole(repository, username)

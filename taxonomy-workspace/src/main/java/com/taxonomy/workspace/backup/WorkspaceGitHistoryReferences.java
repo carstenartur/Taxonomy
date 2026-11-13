@@ -124,11 +124,15 @@ public final class WorkspaceGitHistoryReferences {
                 result.resolve(record, Field.SYNC_LAST_SYNCED, related, text(row, "last_synced_commit_id"));
                 result.resolve(record, Field.SYNC_LAST_PUBLISHED, related, text(row, "last_published_commit_id"));
             });
-            read("select p.operation_id,p.repository_id,p.workspace_id," + WorkspaceBackupContributor.PUBLICATION_COMMITS
+            read("select p.operation_id,p.repository_id,p.workspace_id,p.workspace_owner_scope,p.actor_scope,"
+                            + "w.workspace_id as parent_workspace,w.source_repository_id as parent_repository,w.username as parent_owner,"
+                            + WorkspaceBackupContributor.PUBLICATION_COMMITS
                             + " from workspace_publication_operation p join user_workspace w on w.workspace_id=p.workspace_id"
-                            + " and w.source_repository_id=p.repository_id and w.username=p.actor_scope",
+                            + " and w.source_repository_id=p.repository_id and w.username=coalesce(p.workspace_owner_scope,p.actor_scope)",
                     scope.repositories("p.repository_id","p.workspace_id"), "p.operation_id", checkpoint, row -> {
                 var local = result.key(row, "repository_id", "workspace_id");
+                if (!WorkspaceBackupContributor.samePublicationOwner(row))
+                    throw new IOException("Publication Git evidence belongs to a different working copy");
                 var source = reference(row, "workspace.publication", "operation_id");
                 for (var commit : WorkspaceBackupContributor.publicationCommits(row).recorded().entrySet()) {
                     var candidates = publicationOwners(commit.getKey(), local, result.keys);

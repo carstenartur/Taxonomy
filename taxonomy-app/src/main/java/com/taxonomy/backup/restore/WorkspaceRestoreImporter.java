@@ -326,13 +326,16 @@ public final class WorkspaceRestoreImporter {
             for (var date : Arrays.asList(row.lastAttemptAt(),row.nextAttemptAt(),row.publishedAt(),row.completedAt(),
                     row.archivedAt(),row.sourceObservedAt(),row.pinsReleasedAt(),row.redactedAt())) if (date!=null && date<0) throw invalid();
             var parent = workspaces.get(row.workspaceId());
+            if (row.workspaceOwnerScope()!=null) required(row.workspaceOwnerScope(),255);
+            String workspaceOwner = Objects.requireNonNullElse(row.workspaceOwnerScope(),row.principalScope());
             boolean originalWorkspace = parent!=null && row.repositoryId().equals(parent.repositoryId())
-                    && row.principalScope().equals(parent.ownerScope());
+                    && workspaceOwner.equals(parent.ownerScope());
             if (row.detachedWorkspace()) {
                 if (profile!=BackupProfile.INSTALLATION_FULL || originalWorkspace || parent!=null && row.archivedAt()==null) throw invalid();
             } else if (!originalWorkspace) throw invalid();
 
             boolean legacy = "LEGACY_OIDC".equals(row.authorizationKind());
+            boolean quarantinedActor = legacy;
             if (legacy) sha(row.originalActor());
             else {
                 if (!"LOCAL".equals(row.authorizationKind()) && !"OIDC".equals(row.authorizationKind())) throw invalid();
@@ -340,6 +343,7 @@ public final class WorkspaceRestoreImporter {
                 if (!row.detachedWorkspace()) {
                     var mapped = principals.get(new PrincipalId(UUID.fromString(row.originalActor())));
                     if (mapped==null || !mapped.targetScope().equals(scope(identities,row.principalScope()))) throw invalid();
+                    quarantinedActor = mapped.disposition()==RestorePrincipalAllocation.Disposition.QUARANTINE;
                 }
             }
             if (row.executorId()!=null) publicationActor(row.executorId());
@@ -352,7 +356,7 @@ public final class WorkspaceRestoreImporter {
             };
             String classification;
             if (row.detachedWorkspace()) classification = "DETACHED_SOURCE_QUARANTINE";
-            else if (legacy || !activeWorkspaces.contains(row.workspaceId())) classification = "PRIVATE_QUARANTINE";
+            else if (quarantinedActor || !activeWorkspaces.contains(row.workspaceId())) classification = "PRIVATE_QUARANTINE";
             else classification = pending ? "INTERRUPTED_SOURCE_OPERATION" : "HISTORICAL_SOURCE_OPERATION";
             byId.put(row.sourceId(),row);
             classifications.put(row.sourceId(),classification);

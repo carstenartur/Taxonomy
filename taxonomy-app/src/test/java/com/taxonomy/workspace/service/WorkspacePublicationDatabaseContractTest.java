@@ -76,6 +76,11 @@ public final class WorkspacePublicationDatabaseContractTest {
             var other=journal.admit(neighbor,grant,false,"published-scope",null,() -> snapshot);
             var pull=journal.admit(selected,grant,false,"published-scope",null,() -> snapshot,true);
             var keyless=journal.admit(neighbor,grant,true,null,null,() -> snapshot,true);
+            var contributor=RepositoryContext.workspace(repository,workspace,"main","member-"+workspace);
+            String contributorId=UUID.randomUUID().toString();
+            var contributorGrant=new WorkspaceFetchAuthority.Grant(contributorId,"LOCAL","c".repeat(64));
+            var shared=journal.admit(contributor,contributorGrant,false,"contributor-publication",null,
+                    () -> new WorkspacePublicationJournal.Source("main",null,null,null,null,selected.username()));
             try {
                 assertThat(pull.operationId()).isNotEqualTo(operation.operationId());
                 assertThat(pull.pull()).isTrue();
@@ -117,6 +122,12 @@ public final class WorkspacePublicationDatabaseContractTest {
                 assertThat(restarted.get(neighbor,initiator,keyless.operationId()).status()).isEqualTo("ADMITTED");
                 var archived=journal.get(selected,initiator,operation.operationId());
                 assertThat(archived.status()).isEqualTo("ARCHIVED");
+                var sharedEvidence=restarted.get(contributor,contributorId,shared.operationId());
+                assertThat(sharedEvidence.status()).isEqualTo("ARCHIVED");
+                assertThat(sharedEvidence.originalActor()).isEqualTo(contributorId);
+                assertThat(sharedEvidence.decisionCode()).isEqualTo("WORKSPACE_DELETED");
+                assertThatThrownBy(() -> restarted.get(selected,initiator,shared.operationId()))
+                        .isInstanceOf(ResponseStatusException.class);
                 assertThat(archived.decisionCode()).isEqualTo("WORKSPACE_DELETED");
                 assertThat(archived.originalActor()).isEqualTo(initiator);
                 assertThat(archived.lastExecutor()).isEqualTo("second-worker");
@@ -131,7 +142,7 @@ public final class WorkspacePublicationDatabaseContractTest {
                 }
             } finally {
                 first.inTransaction(session -> {
-                    var ids=List.of(operation.operationId(),other.operationId(),pull.operationId(),keyless.operationId());
+                    var ids=List.of(operation.operationId(),other.operationId(),pull.operationId(),keyless.operationId(),shared.operationId());
                     session.createMutationQuery("delete from WorkspacePublicationDecision d where d.operation in :ids").setParameter("ids",ids).executeUpdate();
                     session.createMutationQuery("delete from WorkspacePublicationOperation p where p.id in :ids").setParameter("ids",ids).executeUpdate();
                     session.createMutationQuery("delete from UserWorkspace w where w.workspaceId=:id").setParameter("id",workspace).executeUpdate();

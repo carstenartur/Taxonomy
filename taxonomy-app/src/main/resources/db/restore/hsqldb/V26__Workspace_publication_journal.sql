@@ -4,6 +4,7 @@ create table workspace_publication_operation (
     causation_id varchar(64) not null,
     actor_id varchar(64) not null,
     actor_scope varchar(255) not null,
+    workspace_owner_scope varchar(255),
     login_kind varchar(12) not null,
     binding_key varchar(64) not null,
     policy_code varchar(48) not null,
