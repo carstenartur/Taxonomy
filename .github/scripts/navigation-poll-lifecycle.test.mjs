@@ -316,6 +316,19 @@ test('proposal body rejection after pagehide cannot report an obsolete error', a
     assert.deepEqual(proposalPresentation(h), retained);
 });
 
+test('a missing selected repository clears the previous proposal count without sending a read', async () => {
+    const h = harness('browse', { proposals: true });
+    h.window.TaxonomyArchitectureWorkspace = { ready: async () => true };
+    h.window.TaxonomyArchitectureWorkflow = { getScope: () => ({}) };
+    h.start();
+    await settle();
+    assert.equal(h.requests('/api/proposals/pending').length, 0);
+    assert.equal(h.nodes.get('proposalPendingBadge').textContent, '');
+    assert.match(h.nodes.get('proposalsTableContainer').innerHTML, /role="status"/);
+    assert.match(h.nodes.get('proposalsTableContainer').innerHTML, /browse.proposals.repository.required/);
+    assert.deepEqual(h.errors, []);
+});
+
 for (const failure of ['http', 'json', 'network']) {
     test(`an active authoritative proposal ${failure} failure remains visible`, async () => {
         const { h, read } = await proposalRead();

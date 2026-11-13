@@ -223,6 +223,7 @@
           "com.taxonomy.acceptance.ReformulationScenarioAcceptanceTest",
           "com.taxonomy.portfolio.reformulation.ReformulationBrowserTest",
           "com.taxonomy.portfolio.reformulation.InventoryComparisonUiIT",
+          "com.taxonomy.relations.controller.ProposalInboxStartupUiIT",
           "com.taxonomy.acceptance.ReformulationAuthoredScenarioTest",
           "com.taxonomy.DerivedMetadataAndSummaryTests",
           "com.taxonomy.CoreUiAcceptanceIT",

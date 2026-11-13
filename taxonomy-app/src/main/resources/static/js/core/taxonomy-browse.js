@@ -2184,6 +2184,12 @@
             })
             .catch(function (err) {
                 if (!currentProposalRead(controller) || err?.code === 'ABORTED') return;
+                if (err?.code === 'SOURCE_UNAVAILABLE') {
+                    const badge = document.getElementById('proposalPendingBadge');
+                    if (badge) badge.textContent = '';
+                    container.innerHTML = '<div class="text-muted small p-2" role="status">' + t('browse.proposals.repository.required') + '</div>';
+                    return;
+                }
                 console.error('[Taxonomy] Failed to load proposals', err);
                 if (container) {
                     container.innerHTML = '<div class="text-danger small p-2">' + t('browse.proposals.load.failed', escapeHtml(err.message)) + '</div>';
