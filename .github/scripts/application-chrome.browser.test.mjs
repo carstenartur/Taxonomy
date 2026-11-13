@@ -34,7 +34,9 @@ async function fixture({mode='requirement',locale='en',width=1200}={}){
     }
     await page.setContent(`<html lang="${locale}"><head></head><body${mode==='editor'?' class="architecture-editor-surface"':mode==='snapshot'?' class="architecture-snapshot-surface"':''}>${navigation}${content}</body></html>`);
     let translations={};
-    for(const name of ['messages.properties',...(locale==='de'?['messages_de.properties']:[])])for(const line of (await readFile(path.join(resources,'i18n',name),'utf8')).split('\n')){const m=line.match(/^([^#!\s][^=]*)=(.*)$/);if(m)translations[m[1]]=m[2].replace(/\\u([0-9a-fA-F]{4})/g,(_,code)=>String.fromCharCode(parseInt(code,16)));}
+    const bundles = ['messages.properties', 'messages_security.properties'];
+    if (locale === 'de') bundles.push('messages_de.properties', 'messages_security_de.properties');
+    for(const name of bundles)for(const line of (await readFile(path.join(resources,'i18n',name),'utf8')).split('\n')){const m=line.match(/^([^#!\s][^=]*)=(.*)$/);if(m)translations[m[1]]=m[2].replace(/\\u([0-9a-fA-F]{4})/g,(_,code)=>String.fromCharCode(parseInt(code,16)));}
     await page.evaluate(translations=>{
         window.TaxonomyI18n={t:key=>translations[key]||key,resolveUrl:p=>p,getLocale:()=>document.documentElement.lang,formatEnum:value=>value,ready:()=>Promise.resolve()};
         document.querySelectorAll('[th\\:text]').forEach(node=>{const key=node.getAttribute('th:text').match(/^#\{(.+)\}$/)?.[1];if(key)node.textContent=TaxonomyI18n.t(key);});
@@ -50,6 +52,32 @@ async function fixture({mode='requirement',locale='en',width=1200}={}){
     }
     return page;
 }
+test('closing the welcome dialog preserves a subsequent account-menu interaction', async () => {
+    const page = await fixture({mode: 'index'});
+    try {
+        const previousFocus = page.locator('#applicationProjectsLink');
+        await previousFocus.focus();
+        await page.addScriptTag({path: path.join(resources, 'static/js/shared/taxonomy-onboarding.js')});
+        const dismiss = page.locator('#onboardingDismiss');
+        await dismiss.waitFor({state: 'visible'});
+        // Select the next command before the dialog's queued focus restoration runs.
+        await page.evaluate(() => {
+            const dialog = document.getElementById('onboardingOverlay');
+            dialog.addEventListener('close', () => {
+                const summary = document.querySelector('#applicationAccount > summary');
+                summary.focus();
+                summary.click();
+            }, {once: true});
+        });
+        await dismiss.click();
+        await page.waitForFunction(() => !document.getElementById('onboardingOverlay'));
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        assert.equal(await page.locator('#applicationLogoutForm button').isVisible(), true);
+        assert.equal(await page.locator('#applicationAccount > summary').evaluate(node => node === document.activeElement), true);
+    } finally {
+        await page.close();
+    }
+});
 for(const mode of ['editor','integrations'])for(const width of [390,1440])test(`${mode}: real standalone actions retain the shared foreground and touch target at ${width}px`,async()=>{
     const page=await fixture({mode,width});try{
         assert.equal(await page.locator('.taxonomy-app-brand').evaluate(node=>getComputedStyle(node).color),
@@ -127,6 +155,7 @@ test('the shared Projects link retains the mounted project and workspace before 
 });
 for(const locale of ['de','en'])for(const width of [320,390,700,768,800,900,1024,1440])test(`${locale}: ${width}px commands and work navigation share one compact row`,async()=>{
     const page=await fixture({mode:'index',locale,width});try{
+        assert.equal(await page.locator('#applicationAccount > summary').innerText(),locale==='de'?'Konto':'Account');
         const geometry=await page.evaluate(()=>{
             const commands=document.getElementById('applicationNavigation').getBoundingClientRect();
             const workspaces=document.getElementById('applicationWorkspaces').getBoundingClientRect();
