@@ -36,8 +36,9 @@ async function ready() {
 async function selectWorkspace(id) {
     await navigateToPage(page, 'versions');
     const manager = page.locator('#workspaceManagerPanel');
+    // Opening the panel loads the list. A second concurrent refresh replaces
+    // the focused button and can discard its native Enter activation.
     if (await manager.getAttribute('open') === null) await manager.locator('summary').press('Enter');
-    await manager.locator('#wsRefreshBtn').press('Enter');
     const activate = manager.locator('.ws-switch-btn').and(page.locator('[data-ws-id="' + id + '"]'));
     await expect(activate).toBeVisible({timeout:45_000});
     const switched = page.waitForResponse(response => new URL(response.url()).pathname === '/api/workspace/' + id + '/switch'
