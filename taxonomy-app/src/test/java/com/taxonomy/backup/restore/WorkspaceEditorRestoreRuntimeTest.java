@@ -11,6 +11,20 @@ import com.taxonomy.editor.persistence.EditorJournal;
 import com.taxonomy.security.backup.IdentityBackupContributor;
 import com.taxonomy.workspace.backup.*;
 import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryMembershipService;
+import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.WorkspaceFetchAuthority;
+import com.taxonomy.workspace.service.WorkspaceFetchJournal;
+import com.taxonomy.workspace.service.WorkspaceFetchRecovery;
+import com.taxonomy.workspace.service.WorkspaceManager;
+import com.taxonomy.workspace.service.WorkspaceUpstreamService;
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.repository.WorkspaceProvisioningFenceImpl;
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import org.springframework.orm.jpa.SharedEntityManagerCreator;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.data.jpa.repository.support.JpaRepositoryFactory;
+import org.springframework.data.repository.core.support.RepositoryComposition.RepositoryFragments;
 import com.taxonomy.workspace.storage.*;
 import io.github.carstenartur.jgit.storage.hibernate.DefaultHibernateRepositoryFactory;
 import org.hsqldb.jdbc.JDBCDataSource;
@@ -23,6 +37,7 @@ import java.nio.file.*;
 import java.time.*;
 import java.util.*;
 import static org.assertj.core.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 /** Real owner journal, history exporter, native ZIP, staged Hibernate Git host and editor application boundary. */
 class WorkspaceEditorRestoreRuntimeTest {
@@ -59,6 +74,102 @@ class WorkspaceEditorRestoreRuntimeTest {
                 assertThat(new JdbcTemplate(fixture.target).queryForObject("select record_json from restore_workspace_evidence where record_kind='operations'",String.class)).contains("\"actor\":\""+SOURCE_SCOPE+"\"");
                 assertThat(new JdbcTemplate(fixture.source).queryForObject("select actor from editor_operation",String.class)).isEqualTo(SOURCE_SCOPE);
                 assertThat(fixture.sourceJournal.read(fixture.sourceContext).state().pendingCheckpoint()).isEqualTo(SAVE);
+                var targetRows = new JdbcTemplate(fixture.target);
+                String evidence = " from restore_workspace_evidence where record_kind='fetch-journal' and record_key=?";
+                assertThat(targetRows.queryForObject("select classification" + evidence, String.class, "f".repeat(64)))
+                        .isEqualTo("INTERRUPTED_SOURCE_OPERATION");
+                assertThat(targetRows.queryForObject("select classification" + evidence, String.class, "e".repeat(64)))
+                        .isEqualTo("PRIVATE_QUARANTINE");
+                assertThat(targetRows.queryForObject("select record_json" + evidence, String.class, "f".repeat(64)))
+                        .contains("requestedCommit", "RUNNING", SOURCE_SCOPE)
+                        .doesNotContain("private-source-worker", "leaseId", "bindingKey");
+                assertThat(targetRows.queryForObject("select count(*) from workspace_fetch_operation", Long.class)).isZero();
+            }
+        }
+    }
+
+    @Test
+    void deletedFetchSurvivesOnlyAsQuarantinedEvidenceInAFullInstallationBackup() throws Exception {
+        try (var f = fixture(SOURCE_SCOPE)) {
+            var actor = f.principals.keySet().iterator().next();
+            var selected = RepositoryContext.workspace(CENTRAL.repositoryId(), "removed-private-copy", "main", SOURCE_SCOPE);
+            var db = new JdbcTemplate(f.source);
+            var metadata = f.sourceFactory.fromTransaction(session -> session.createSelectionQuery(
+                    "from SystemRepository r where r.repositoryId=:id", SystemRepository.class)
+                    .setParameter("id", CENTRAL.repositoryId()).getSingleResult());
+            var catalog = mock(SystemRepositoryService.class);
+            when(catalog.getRepository(selected.repositoryId())).thenReturn(metadata);
+            doCallRealMethod().when(catalog).readCurrentAuthorization(eq(selected.repositoryId()), any());
+            try (var routed = new DslGitRepositoryFactory(new DefaultHibernateRepositoryFactory(f.sourceFactory),catalog)) {
+                String sourceHead = routed.getCentralRepository(selected.repositoryId()).getHeadCommit("main");
+                routed.createWorkspaceRepository(selected.workspaceId(), selected.repositoryId(), "main").commitDsl("main", "private", SOURCE_SCOPE, "Local");
+                db.update("""
+                        insert into user_workspace(workspace_id,username,current_branch,created_at,provisioning_status,topology_mode,
+                        source_repository_id,source_branch,base_commit,archived,is_default,shared) values(?,?,'main',CURRENT_TIMESTAMP,
+                        'READY','INTERNAL_SHARED',?,'main',?,false,false,false)""", selected.workspaceId(), SOURCE_SCOPE, selected.repositoryId(), sourceHead);
+                var em = SharedEntityManagerCreator.createSharedEntityManager(f.sourceFactory);
+                var txManager = new JpaTransactionManager(f.sourceFactory);
+                var repos = new JpaRepositoryFactory(em);
+                var fragments = RepositoryFragments.just(new WorkspaceProvisioningFenceImpl(em));
+                var rows = repos.getRepository(UserWorkspaceRepository.class, fragments);
+                var memberships = mock(RepositoryMembershipService.class);
+                when(memberships.canContribute(metadata,SOURCE_SCOPE)).thenReturn(true);
+                var grant = new WorkspaceFetchAuthority.Grant(actor.value().toString(),"LOCAL","b".repeat(64));
+                var authority = mock(WorkspaceFetchAuthority.class);
+                when(authority.authorize(SOURCE_SCOPE)).thenReturn(grant);
+                String deletingActor=UUID.randomUUID().toString();
+                when(authority.currentActor(SOURCE_SCOPE)).thenReturn(deletingActor);
+                var journal = new WorkspaceFetchJournal(em,txManager);
+                var upstream = new WorkspaceUpstreamService(rows,catalog,memberships,routed);
+                var fetches = new WorkspaceFetchRecovery(journal,upstream,authority);
+                var receipt = fetches.fetch(selected,new WorkspaceUpstreamService.Request(sourceHead,null),"archive-contract",null);
+                assertThat(receipt.result().trackedCommit()).isEqualTo(sourceHead);
+                var retained = journal.admit(selected,grant,upstream.capture(selected),
+                        new WorkspaceUpstreamService.Request(sourceHead,sourceHead),"pending-at-deletion",null);
+                var tx = new TransactionTemplate(txManager);
+                var failingStorage = mock(DslGitRepositoryFactory.class);
+                doThrow(new IllegalStateException("repository still open")).when(failingStorage).deleteWorkspaceRepository(selected.workspaceId());
+                var failedDelete = new WorkspaceManager(rows,10,catalog,failingStorage,journal,authority);
+                assertThatThrownBy(() -> tx.executeWithoutResult(status -> failedDelete.deleteWorkspace(selected.workspaceId(), SOURCE_SCOPE)))
+                        .hasMessageContaining("repository still open");
+                assertThat(journal.status(selected,grant.principalId(),retained.operationId()).phase()).isEqualTo("ADMITTED");
+                var manager = new WorkspaceManager(rows,10,catalog,routed,journal,authority);
+                tx.executeWithoutResult(status -> manager.deleteWorkspace(selected.workspaceId(), SOURCE_SCOPE));
+                assertThat(rows.findByWorkspaceId(selected.workspaceId())).isEmpty();
+                var denied = journal.status(selected,grant.principalId(),retained.operationId());
+                assertThat(denied.phase()).isEqualTo("ARCHIVED");
+                assertThat(denied.outcome()).isEqualTo("DENIED");
+                assertThat(denied.decisionCode()).isEqualTo("WORKSPACE_DELETED");
+                assertThat(denied.originalActor()).isEqualTo(grant.principalId());
+                assertThat(denied.archivedBy()).isEqualTo(deletingActor);
+                try (var after = export(f.source, f.sourceFactory, actor, false)) {
+                    f.restore(after);
+                    var target = new JdbcTemplate(f.target);
+                    String sql = "select classification from restore_workspace_evidence where record_kind='fetch-journal' and record_key=?";
+                    for (String id : List.of(receipt.operationId(),retained.operationId())) {
+                        assertThat(target.queryForObject(sql,String.class,id)).isEqualTo("DETACHED_SOURCE_QUARANTINE");
+                    }
+                    assertThat(target.queryForObject("select count(*) from workspace_fetch_operation", Long.class)).isZero();
+                    assertThat(target.queryForObject(sql,String.class,"f".repeat(64))).isEqualTo("INTERRUPTED_SOURCE_OPERATION");
+                    assertThat(db.queryForObject("select phase from workspace_fetch_operation where operation_id=?", String.class,
+                            receipt.operationId())).isEqualTo("COMPLETED");
+                }
+                var currentRequest = new BackupRequest(BackupProfile.INSTALLATION_CURRENT,new BackupScope.Installation(),
+                        new BackupTime.Current(),GitRepresentation.NONE,SecretsSelection.EXCLUDE);
+                var current = new SnapshotContext(BackupId.create(),f.authority.authorize(actor,currentRequest),
+                        Instant.EPOCH,Instant.EPOCH,1,Map.of(),Map.of(WORKSPACE_OWNER,1));
+                var currentJournal = new ByteArrayOutputStream();
+                var hash = java.security.MessageDigest.getInstance("SHA-256");
+                new WorkspaceBackupContributor(f.source,document -> document).write(current,(path,input) -> {
+                    byte[] content = input.readAllBytes();
+                    if (path.equals("data/workspace/fetch-journal.ndjson")) currentJournal.write(content);
+                    return new BackupEntry(path,content.length,HexFormat.of().formatHex(hash.digest(content)));
+                });
+                assertThat(currentJournal.toString(java.nio.charset.StandardCharsets.UTF_8))
+                        .contains("f".repeat(64)).doesNotContain(receipt.operationId(),retained.operationId());
+                db.update("update workspace_fetch_operation set actor_scope=? where operation_id=?","another-owner","e".repeat(64));
+                assertThatThrownBy(() -> export(f.source,f.sourceFactory,actor,false))
+                        .isInstanceOf(IOException.class).hasMessageContaining("ownership does not match");
             }
         }
     }
@@ -100,6 +211,17 @@ class WorkspaceEditorRestoreRuntimeTest {
         sourceJournal.locked(sourceContext,sourceJournal.read(sourceContext).state(),session->session.prepare(metadata(SAVE),actor,"a".repeat(64)));
         assertThat(accepted.context().revision()).isEqualTo(1);
         assertThat(sourceJournal.read(sourceContext).state().pendingCheckpoint()).isEqualTo(SAVE);
+        for (boolean legacy : List.of(false, true)) {
+            rows.update("""
+                    insert into workspace_fetch_operation(operation_id,fingerprint,cause_id,actor_id,actor_scope,
+                    repository_id,workspace_id,local_branch,source_branch,requested_commit,observed_commit,phase,attempts,
+                    created_at,last_attempt_at,next_attempt_at,lease_id,executor_id,login_kind,binding_key,policy_code)
+                    values(?,?,?,?,?,?,?,?,?,?,?,'RUNNING',1,10,11,80000,?,?,?,?,'ANALYSIS_RUN+CONTRIBUTOR')""",
+                    (legacy ? "e" : "f").repeat(64), "a".repeat(64), "b".repeat(64),
+                    legacy ? "d".repeat(64) : principal.value().toString(), SOURCE_SCOPE, CENTRAL.repositoryId(),
+                    WORKSPACE.workspaceId(), "main", "main", baseline, baseline, UUID.randomUUID().toString(),
+                    "private-source-worker", legacy ? "LEGACY_OIDC" : "LOCAL", "c".repeat(64));
+        }
         if (analysis != null) analysis.seed(sourceFactory,principal,sourceContext,baseline);
         var archive=export(source,sourceFactory,principal,analysis != null);
         RestoreSchemaMigration.bootstrap(source,target,CHECK);
@@ -160,7 +282,8 @@ class WorkspaceEditorRestoreRuntimeTest {
         Fixture(JDBCDataSource source,JDBCDataSource target,org.hibernate.SessionFactory sourceFactory,org.hibernate.SessionFactory targetFactory,DslGitRepositoryFactory sourceRepositories,EditorJournal sourceJournal,RepositoryContext sourceContext,VerifiedBackup archive,RestoreTargetGeneration generation,Map<PrincipalId,RestorePrincipalAllocation> principals,BackupAuthorizationService authority){
             this.source=source;this.target=target;this.sourceFactory=sourceFactory;this.targetFactory=targetFactory;this.sourceRepositories=sourceRepositories;this.sourceJournal=sourceJournal;this.sourceContext=sourceContext;this.archive=archive;this.generation=generation;this.principals=principals;this.authority=authority;
         }
-        RestoredOwners restore()throws IOException {
+        RestoredOwners restore()throws IOException { return restore(archive); }
+        RestoredOwners restore(VerifiedBackup archive)throws IOException {
             var git=new ApplicationGitHistoryRestoreImporter(()->principals.keySet().iterator().next(),authority,temporary.resolve("restore-private"),GitHistoryCapture.Limits.defaults());
             Files.createDirectories(temporary.resolve("restore-private"));
             var proof=git.importGit(archive,generation.allocations(),generation,CHECK);

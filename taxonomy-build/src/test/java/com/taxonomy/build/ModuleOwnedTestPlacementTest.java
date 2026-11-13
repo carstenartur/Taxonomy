@@ -28,6 +28,8 @@ class ModuleOwnedTestPlacementTest {
             "workspace/controller/WorkspaceReadOnlyProvisioningTest.java",
             "workspace/controller/WorkspaceScopedEndpointIsolationTest.java",
             "workspace/service/WorkspaceDataIsolationTest.java",
+            // Runs the app-owned restore migration and the live Testcontainers vendor matrix.
+            "workspace/service/WorkspaceFetchDatabaseContractTest.java",
             "workspace/service/WorkspaceProvisioningClaimIT.java",
             "workspace/service/WorkspaceRestartSelectionIT.java",
             "workspace/storage/DslWorkspaceReadAdapterTest.java",

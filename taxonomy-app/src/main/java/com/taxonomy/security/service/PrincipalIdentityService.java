@@ -125,33 +125,8 @@ public final class PrincipalIdentityService {
         if (authentication instanceof org.springframework.security.authentication.UsernamePasswordAuthenticationToken
                 && authentication.getPrincipal() instanceof PrincipalUserDetails local) {
             PrincipalId principal = local.principalId();
-            String id = principal.value().toString();
-            var currentRoles = jdbc.query("""
-                    select p.principal_id, p.scope_key, p.enabled, b.binding_key, b.principal_id,
-                           b.binding_kind, b.issuer, b.subject_id, b.enabled, i.installation_id,
-                           u.principal_id, u.enabled, r.name, u.username
-                    from app_principal p
-                    join principal_binding b on b.principal_id=p.principal_id and b.binding_kind='LOCAL'
-                    join principal_installation i on i.registry_key='local'
-                         and b.issuer=i.installation_id and b.subject_id=p.principal_id
-                    join app_user u on u.principal_id=p.principal_id
-                    left join user_roles ur on ur.user_id=u.id
-                    left join app_role r on r.id=ur.role_id
-                    where p.principal_id=?
-                    """, (row, number) -> {
-                String installation = row.getString(10);
-                var binding = new IdentityBinding(IdentityBinding.Kind.LOCAL, installation, id);
-                boolean current = id.equals(row.getString(1)) && authentication.getName().equals(row.getString(2))
-                        && row.getInt(3) == 1 && PrincipalBinding.key(binding).equals(row.getString(4))
-                        && id.equals(row.getString(5)) && "LOCAL".equals(row.getString(6))
-                        && installation.equals(row.getString(7)) && id.equals(row.getString(8))
-                        && row.getInt(9) == 1 && id.equals(row.getString(11)) && row.getBoolean(12)
-                        && local.getUsername().equals(row.getString(14));
-                if (!current) throw denied();
-                return row.getString(13);
-            }, id);
-            if (currentRoles.isEmpty() || local.getAuthorities().stream()
-                    .anyMatch(role -> !currentRoles.contains(role.getAuthority()))) throw denied();
+            var current = currentLocalAuthority(principal, authentication.getName());
+            if (local.getAuthorities().stream().anyMatch(role -> !current.roles().contains(role.getAuthority()))) throw denied();
             return principal;
         }
         if (authentication instanceof PrincipalJwtAuthenticationToken jwt) {
@@ -166,6 +141,40 @@ public final class PrincipalIdentityService {
                     oidc.getIssuer().toString(), oidc.getSubject());
         }
         throw denied();
+    }
+
+    public record LocalAuthority(String bindingKey, java.util.List<String> roles) { }
+    private record LocalRole(String bindingKey, String role) { }
+
+    /** Current local account, binding and application roles, including checks used by authenticated requests. */
+    public LocalAuthority currentLocalAuthority(PrincipalId principal, String scope) {
+        String id = principal.value().toString();
+        var rows = jdbc.query("""
+                    select p.principal_id, p.scope_key, p.enabled, b.binding_key, b.principal_id,
+                           b.binding_kind, b.issuer, b.subject_id, b.enabled, i.installation_id,
+                           u.principal_id, u.enabled, r.name, u.username
+                    from app_principal p
+                    join principal_binding b on b.principal_id=p.principal_id and b.binding_kind='LOCAL'
+                    join principal_installation i on i.registry_key='local'
+                         and b.issuer=i.installation_id and b.subject_id=p.principal_id
+                    join app_user u on u.principal_id=p.principal_id
+                    left join user_roles ur on ur.user_id=u.id
+                    left join app_role r on r.id=ur.role_id
+                    where p.principal_id=?
+                    """, (row, number) -> {
+                String installation = row.getString(10);
+                var binding = new IdentityBinding(IdentityBinding.Kind.LOCAL, installation, id);
+                boolean current = id.equals(row.getString(1)) && scope.equals(row.getString(2))
+                        && row.getInt(3) == 1 && PrincipalBinding.key(binding).equals(row.getString(4))
+                        && id.equals(row.getString(5)) && "LOCAL".equals(row.getString(6))
+                        && installation.equals(row.getString(7)) && id.equals(row.getString(8))
+                        && row.getInt(9) == 1 && id.equals(row.getString(11)) && row.getBoolean(12)
+                        && scope.equals(row.getString(14));
+                if (!current) throw denied();
+                return new LocalRole(row.getString(4), row.getString(13));
+            }, id);
+        if (rows.isEmpty()) throw denied();
+        return new LocalAuthority(rows.getFirst().bindingKey(), rows.stream().map(LocalRole::role).filter(java.util.Objects::nonNull).toList());
     }
 
     private PrincipalId requireCurrentOidc(PrincipalId principal, String scope, String issuer, String subject) {

@@ -35,6 +35,14 @@ public class WorkspaceUpstreamService {
         return ObjectId.fromString(value).name();
     }
 
+    record Capture(Status source, String forkPoint) { }
+
+    @Transactional(readOnly = true)
+    public Capture capture(RepositoryContext context) throws IOException {
+        var transfer = open(context, false).transfer();
+        return new Capture(transfer.inspect(), transfer.forkPoint());
+    }
+
     private record WorkingCopy(UserWorkspace workspace, GitUpstreamTransfer transfer) {}
 
     private final UserWorkspaceRepository rows;
@@ -56,9 +64,18 @@ public class WorkspaceUpstreamService {
     }
 
     @Transactional(rollbackFor = IOException.class)
-    public Status fetch(RepositoryContext selected, Request request) throws IOException {
+    Status fetch(RepositoryContext selected, Request request) throws IOException {
+        return fetchRecorded(selected, null, null, request, false, () -> { });
+    }
+
+    @Transactional(rollbackFor = IOException.class)
+    public Status fetchRecorded(RepositoryContext selected, String sourceBranch, String forkPoint, Request request, boolean recovery, Runnable fence) throws IOException {
         var copy = open(selected, true);
-        var status = copy.transfer().fetch(request);
+        if (sourceBranch != null && (!sourceBranch.equals(copy.transfer().upstream().branch())
+                || !java.util.Objects.equals(forkPoint, copy.transfer().forkPoint()))) {
+            throw new BranchHeadConflictException(sourceBranch, request.sourceCommit(), null, "The working copy upstream changed");
+        }
+        var status = recovery ? copy.transfer().recover(request, fence) : copy.transfer().fetch(request, fence);
         copy.workspace().setLastFetchedCommit(status.trackedCommit());
         rows.save(copy.workspace());
         return status;
