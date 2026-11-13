@@ -94,8 +94,7 @@ public class RepositoryMembershipService {
             throw new IllegalArgumentException("role must not be null");
         }
 
-        List<RepositoryMembership> lockedMemberships = membershipRepository
-                .findByRepositoryIdForUpdate(repositoryId);
+        List<RepositoryMembership> lockedMemberships = lockMemberships(repositoryId, repository.getVersion());
         requireOwner(repository, actor, lockedMemberships);
         if (isUserCatalogOwner(repository, member) && role != RepositoryRole.OWNER) {
             throw new IllegalArgumentException(
@@ -134,8 +133,7 @@ public class RepositoryMembershipService {
         String member = requireText(username, "username");
         requireText(actor, "actor");
 
-        List<RepositoryMembership> lockedMemberships = membershipRepository
-                .findByRepositoryIdForUpdate(repositoryId);
+        List<RepositoryMembership> lockedMemberships = lockMemberships(repositoryId, repository.getVersion());
         requireOwner(repository, actor, lockedMemberships);
         if (isUserCatalogOwner(repository, member)) {
             throw new IllegalArgumentException(
@@ -304,6 +302,13 @@ public class RepositoryMembershipService {
         membership.setRole(role);
         membership.setUpdatedAt(now);
         return membershipRepository.save(membership);
+    }
+
+    private List<RepositoryMembership> lockMemberships(String repositoryId, long expectedVersion) {
+        if (membershipRepository.lockCatalogueRevision(repositoryId, expectedVersion) != 1) {
+            throw new OptimisticLockingFailureException("Repository policy changed; reload the repository");
+        }
+        return membershipRepository.findByRepositoryIdForUpdate(repositoryId);
     }
 
     private void requireOwner(

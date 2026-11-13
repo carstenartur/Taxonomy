@@ -22,6 +22,7 @@ class RepositoryGroupGrantTest {
     @BeforeEach
     void setUp() {
         memberships = mock(RepositoryMembershipRepository.class);
+        when(memberships.lockCatalogueRevision("repo-a", 0L)).thenReturn(1);
         when(memberships.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         service = new RepositoryMembershipService(memberships, Optional.of((repositoryId, actor) ->
                 "repo-a".equals(repositoryId) && "alice".equals(actor)
