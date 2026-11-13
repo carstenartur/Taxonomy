@@ -153,6 +153,21 @@ must not re-enable the links until they provide and test a WebDAV-compatible cre
 flow such as a scoped application password. Bearer-capable WebDAV clients can continue
 to use the endpoint directly.
 
+New application passwords belong to the issuing account and login binding. In the local
+profile, each WebDAV request checks the account, its binding and its current roles.
+Removing the administrator role removes write access on the next request. Disabling
+the account also removes read access. A different account with the same name cannot
+manage those credentials.
+
+In Keycloak, the displayed expiry is the earlier of the requested end date and the
+expiry of the verified login assertion used to issue the credential. Sign in again
+and issue a new application password when that time is reached. In STABLE mode each
+use also checks the issuing OIDC binding in the local registry. In LEGACY mode the
+issuer and subject identify the grant. Once that binding is registered for migration,
+the old credential can no longer be used. After upgrading from a username-only
+credential store, sign in and issue replacement credentials. Existing password
+verifiers contain no evidence of the original account binding.
+
 Taxonomy application credentials have one exact 71-character ASCII format. The WebDAV
 filter rejects oversized Basic headers, invalid UTF-8, overlong decoded usernames or
 passwords, and malformed `taxdav_` candidates before repository lookup or BCrypt.

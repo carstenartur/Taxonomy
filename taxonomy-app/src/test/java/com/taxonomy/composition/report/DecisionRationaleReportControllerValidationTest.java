@@ -111,7 +111,7 @@ class DecisionRationaleReportControllerValidationTest {
                         rendererRegistry,
                         repositoryStateService,
                         workspaceResolver);
-        when(workspaceResolver.resolveCurrentContext())
+        when(workspaceResolver.resolveUnambiguousContextForRead())
                 .thenThrow(new IllegalStateException("validation passed"));
 
         assertThatThrownBy(() -> controller.exportJson(request(List.of(
@@ -119,7 +119,7 @@ class DecisionRationaleReportControllerValidationTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("validation passed");
 
-        verify(workspaceResolver).resolveCurrentContext();
+        verify(workspaceResolver).resolveUnambiguousContextForRead();
         verifyNoInteractions(
                 reportService,
                 rendererRegistry,
@@ -141,7 +141,7 @@ class DecisionRationaleReportControllerValidationTest {
                         rendererRegistry,
                         repositoryStateService,
                         workspaceResolver);
-        when(workspaceResolver.resolveCurrentContext())
+        when(workspaceResolver.resolveUnambiguousContextForRead())
                 .thenThrow(new IllegalStateException("validation passed"));
 
         assertThatThrownBy(() -> controller.exportJson(request(
@@ -149,7 +149,7 @@ class DecisionRationaleReportControllerValidationTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("validation passed");
 
-        verify(workspaceResolver).resolveCurrentContext();
+        verify(workspaceResolver).resolveUnambiguousContextForRead();
         verifyNoInteractions(
                 reportService,
                 rendererRegistry,
@@ -177,11 +177,11 @@ class DecisionRationaleReportControllerValidationTest {
     void allowsUnknownZeroAndNonnegativeAnalysisDurations() {
         for (Long duration : new Long[] { null, 0L, 123456L, Long.MAX_VALUE }) {
             var resolver = mock(WorkspaceResolver.class);
-            when(resolver.resolveCurrentContext()).thenThrow(new IllegalStateException("validation passed"));
+            when(resolver.resolveUnambiguousContextForRead()).thenThrow(new IllegalStateException("validation passed"));
             var controller = new DecisionRationaleReportController(null, null, null, resolver);
             assertThatThrownBy(() -> controller.exportJson(timedRequest(duration)))
                     .isInstanceOf(IllegalStateException.class).hasMessage("validation passed");
-            verify(resolver).resolveCurrentContext();
+            verify(resolver).resolveUnambiguousContextForRead();
         }
     }
 

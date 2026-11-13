@@ -280,12 +280,17 @@ async function searchFixture(locale = 'de', withArchitecture = false, delayedTra
         document.body.append(left, source.getElementById('tab-graph'));
         document.getElementById('tab-graph').classList.remove('d-none');
         document.getElementById('searchPanel').open = true;
+        window.TaxonomyArchitectureWorkspace = {ready: async () => true};
+        window.TaxonomyArchitectureWorkflow = Object.assign({}, window.TaxonomyArchitectureWorkflow, {
+            getScope: () => ({repositoryId:'fixture-repo', workspaceId:'', branch:'fixture'})
+        });
         window.searchRequests = [];
         window.graphQueries = [];
         window.embeddingStatus = {available: true, graphReady: true};
         window.searchNodes = [{code: 'BP-1000', nameEn: 'Time capture'},
             {code: 'BP-1001', nameEn: 'Safety reporting'}, {code: 'BP-1002', nameEn: 'Outside architecture'}];
         window.__taxonomyFixtureFetch = async url => {
+            if (String(url).startsWith('/api/search/graph/readiness')) return {ok:true, json: async () => ({ready:embeddingStatus.graphReady})};
             if (url === '/api/embedding/status') return {ok: true, json: async () => embeddingStatus};
             searchRequests.push(url);
             return {ok: true, json: async () => searchNodes};
@@ -349,6 +354,51 @@ for (const locale of ['de', 'en']) test(`${locale}: search explains accepted inp
         await page.waitForFunction(() => document.getElementById('searchModeSelect').value === 'fulltext');
         assert.match(await help.textContent(), prompts.fulltext, 'Readiness fallback explains the mode actually selected');
         assert.equal(await page.locator('#searchInput').inputValue(), query);
+    } finally { await finish(page); }
+});
+
+test('selected branch vectors enable graph search independently of the global model index', async () => {
+    const page = await searchFixture('en');
+    try {
+        await page.evaluate(() => {
+            const original = window.__taxonomyFixtureFetch;
+            window.graphScope = {repositoryId:'central-b',workspaceId:'',branch:'review'};
+            window.checkedGraphPaths = [];
+            window.TaxonomyArchitectureWorkflow.getScope = () => graphScope;
+            window.__taxonomyFixtureFetch = async (input, init) => {
+                const url = new URL(input, location.href);
+                if (url.pathname === '/api/embedding/status') return Response.json({available:false,modelAvailable:true,graphReady:false});
+                if (url.pathname.startsWith('/api/search/graph')) {
+                    checkedGraphPaths.push([url.pathname,url.searchParams.get('repositoryId'),url.searchParams.get('branch')]);
+                    if (url.pathname.endsWith('/readiness')) return Response.json({ready:graphScope.branch === 'review'});
+                    return Response.json({matchedNodes:[],summary:'Selected review result'});
+                }
+                return original(input, init);
+            };
+            return TaxonomySearch.checkEmbeddingStatus();
+        });
+        assert.equal(await page.locator('#searchModeSelect option[value="graph"]').isEnabled(), true);
+        assert.equal(await page.locator('#searchModeSelect option[value="semantic"]').isDisabled(), true);
+        await page.locator('#searchModeSelect').selectOption('graph');
+        await page.locator('#searchInput').fill('local query');
+        await page.locator('#searchInput').press('Enter');
+        await page.getByText('Selected review result').waitFor();
+        await page.evaluate(() => document.dispatchEvent(new CustomEvent('taxonomy:repository-context-changed', {
+            detail:{selectionChanged:false}
+        })));
+        assert.equal(await page.getByText('Selected review result').isVisible(), true);
+        await page.evaluate(() => {
+            window.graphScope = {repositoryId:'central-b',workspaceId:'',branch:'main'};
+            document.dispatchEvent(new CustomEvent('taxonomy:repository-context-changed'));
+        });
+        await page.waitForFunction(() => document.querySelector('#searchModeSelect option[value="graph"]').disabled);
+        assert.equal(await page.getByText('Selected review result').count(), 0);
+        assert.equal(await page.locator('#searchInput').inputValue(), 'local query');
+        await page.waitForFunction(() => checkedGraphPaths.some(call => call[2] === 'main'));
+        assert.deepEqual(await page.evaluate(() => checkedGraphPaths), [
+            ['/api/search/graph/readiness','central-b','review'], ['/api/search/graph','central-b','review'],
+            ['/api/search/graph/readiness','central-b','main']
+        ]);
     } finally { await finish(page); }
 });
 
@@ -1083,6 +1133,8 @@ for (const edited of [false,true]) test(`report export ${edited ? 'retains manua
         await page.evaluate(edited=>{
             const C=__TaxonomyAnalysisSessionContext,S=TaxonomyState;
             C.runtime.workspaceId='ws-owned';S.currentReasons={'BP-1000':'Retained rationale'};
+            window.TaxonomyArchitectureWorkspace={ready:async()=>true};
+            window.TaxonomyArchitectureWorkflow={getScope:()=>({repositoryId:'current-repository',workspaceId:'',branch:'review'})};
             S.currentCopilot={schemaVersion:2,state:'COMPLETED',notes:[]};
             S.analysisOperationId='owned-operation';S.analysisRecovery=null;
             C.runtime.analysisReference={workspaceId:'ws-owned',operationId:'owned-operation'};
@@ -1096,8 +1148,9 @@ for (const edited of [false,true]) test(`report export ${edited ? 'retains manua
         const request=await page.evaluate(()=>window.reportRequest);
         const url=new URL(request.url,'http://taxonomy.fixture');
         assert.equal(url.pathname,'/api/report/markdown');
-        assert.deepEqual([...url.searchParams],[['workspaceId','ws-owned']]);
-        assert.equal(request.headers['x-taxonomy-workspace-id'],'ws-owned');
+        assert.deepEqual(Object.fromEntries(url.searchParams), edited
+            ? {repositoryId:'current-repository',workspaceId:'',branch:'review'} : {workspaceId:'ws-owned'});
+        assert.equal(request.headers['x-taxonomy-workspace-id'],edited ? '' : 'ws-owned');
         assert.equal(request.method,'POST');
         if(edited){assert.equal(request.body.analysisReference,undefined);assert.equal(request.body.reasons['BP-1000'],'Manual rationale');}
         else {assert.deepEqual(request.body.analysisReference,{workspaceId:'ws-owned',operationId:'owned-operation'});

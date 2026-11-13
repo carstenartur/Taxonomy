@@ -85,12 +85,9 @@ class InventoryComparisonUiIT extends ReformulationWorkflowFixture {
             wait.until(d->d.findElement(By.cssSelector("[data-inventory-comparison] [role=status]")).getText().contains("Saved"));
             String id=jdbc.queryForObject("select id from inventory_comparison where scope_key=?",String.class,PortfolioScope.key("architect",context));
             assertThat(jdbc.queryForObject("select count(*) from inventory_review where comparison_id=?",Integer.class,id)).isEqualTo(1);
-            driver.navigate().refresh();wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("[data-inventory-comparison]")));
-            wait.until(d->!d.findElements(By.cssSelector("#inventoryComparison option[value='"+id+"']")).isEmpty());
+            driver.navigate().refresh();
             observeRequests(driver);
-            var retained=driver.findElement(By.xpath("//label[contains(.,'Retained comparisons')]/select"));
-            ((JavascriptExecutor)driver).executeScript("arguments[0].scrollIntoView({behavior:'instant',block:'center'})",retained);
-            wait.until(ExpectedConditions.visibilityOf(retained));new Select(retained).selectByValue(id);
+            selectRetainedComparison(driver,id);
             click(driver,"//div[@id='inventoryComparison']//button[normalize-space()='Open retained comparison']");
             wait.until(d->d.findElement(By.cssSelector("[data-inventory-result]")).getText().contains("CONTRADICTED"));
             click(driver,"//div[@id='inventoryComparison']//summary[normalize-space()='Retained reviews']");
@@ -178,8 +175,8 @@ class InventoryComparisonUiIT extends ReformulationWorkflowFixture {
             String id=jdbc.queryForObject("select id from inventory_comparison where scope_key=?",String.class,PortfolioScope.key("architect",context));
             assertThat(solutionService.listProjectSolutions(project.id(),"architect",context).getFirst().status()).isEqualTo(ProjectSolutionStatus.EVALUATED);
             assertThat(solutionService.listProjectSolutions(project.id(),"architect",context).getFirst().requirements().getFirst().snapshotId()).isEqualTo(snapshot);
-            driver.navigate().refresh();wait.until(d->!d.findElements(By.cssSelector("#inventoryComparison option[value='"+id+"']")).isEmpty());
-            new Select(driver.findElement(By.xpath("//label[contains(.,'Retained comparisons')]/select"))).selectByValue(id);
+            driver.navigate().refresh();
+            selectRetainedComparison(driver,id);
             click(driver,"//div[@id='inventoryComparison']//button[normalize-space()='Open retained comparison']");
             wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("[data-variant-review]")));
             click(driver,"//div[@id='inventoryComparison']//summary[normalize-space()='Retained reviews']");
@@ -236,6 +233,18 @@ class InventoryComparisonUiIT extends ReformulationWorkflowFixture {
             if(path!=null && path.contains("/api/"))observedRequests.add(Map.of("url",path,"method",request.path("method").asText(),"body",request.path("postData").asText("")));
         }
         return List.copyOf(observedRequests);
+    }
+    private void selectRetainedComparison(WebDriver browser, String id) {
+        By retained = By.xpath("//div[@id='inventoryComparison']//label[contains(.,'Retained comparisons')]/select");
+        var wait = new WebDriverWait(browser, Duration.ofSeconds(30));
+        wait.ignoring(StaleElementReferenceException.class).ignoring(ElementNotInteractableException.class).until(driver -> {
+            var control = driver.findElement(retained);
+            if (!control.isDisplayed() || !control.isEnabled()) return false;
+            if (control.findElements(By.cssSelector("option[value='" + id + "']")).isEmpty()) return false;
+            ((JavascriptExecutor) driver).executeScript("arguments[0].scrollIntoView({behavior:'instant',block:'center'})", control);
+            new Select(control).selectByValue(id);
+            return true;
+        });
     }
     private void click(WebDriver driver,String xpath) {
         new WebDriverWait(driver,Duration.ofSeconds(30)).until(d->{

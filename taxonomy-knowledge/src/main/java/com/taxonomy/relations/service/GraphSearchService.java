@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import java.util.function.BooleanSupplier;
 
 /** Graph-semantic search gated by the exact canonical relation source. */
 @Service
@@ -58,6 +59,23 @@ public class GraphSearchService {
         this.authority = authority;
     }
 
+    public record Readiness(boolean ready, GraphSearchResult.VectorSource vectorSource, String sourceCommit) { }
+
+    public Readiness readiness(RepositoryContext context, BooleanSupplier globalReady) {
+        catalogueRuntimePolicy.requireGlobalIndexAllowed();
+        try {
+            var source = authority.inspectForBranchSelection(context);
+            if (source.readModel() == ReadModel.PROJECTION && source.count() > 0) {
+                var index = branchVectors.inspect(context);
+                boolean ready = "READY".equals(index.state()) && source.authoritativeCommitId().equals(index.sourceCommit());
+                return new Readiness(ready, GraphSearchResult.VectorSource.BRANCH_GENERATION, source.authoritativeCommitId());
+            }
+            return new Readiness(globalReady.getAsBoolean(), GraphSearchResult.VectorSource.GLOBAL_INDEX, source.authoritativeCommitId());
+        } catch (IllegalStateException unavailable) {
+            throw new SearchUnavailableException();
+        }
+    }
+
     /** Branch reads have their own complete node and relation index, independent of the global index lifecycle. */
     public Optional<GraphSearchResult> searchBranchIfPresent(String query, int maxResults, RepositoryContext context) {
         if (branchVectors == null) return Optional.empty();
@@ -65,7 +83,7 @@ public class GraphSearchService {
         try {
             var source = authority.inspectForBranchSelection(context);
             String sourceCommit = source.authoritativeCommitId();
-            if (maxResults <= 0) return Optional.of(noResultsRequested());
+            if (maxResults <= 0) return Optional.of(noResultsRequested(context, source));
             if (source.readModel() != ReadModel.PROJECTION || source.count() == 0) return Optional.empty();
             int nodeLimit = Math.min(maxResults, MAX_NODE_RESULTS);
             return Optional.of(branchVectors.search(context, sourceCommit, query, nodeLimit, safeRelationLimit(nodeLimit)));
@@ -89,7 +107,7 @@ public class GraphSearchService {
         catalogueRuntimePolicy.requireGlobalIndexAllowed();
         try {
             var source = authority.inspect(context);
-            if (maxResults <= 0) return noResultsRequested();
+            if (maxResults <= 0) return noResultsRequested(context, source);
             if (!embeddingService.isAvailable()) throw new SearchUnavailableException();
 
             int nodeLimit = Math.min(maxResults, MAX_NODE_RESULTS);
@@ -131,7 +149,10 @@ public class GraphSearchService {
             authority.verifyUnchanged(context, source);
             log.debug("Graph search completed with {} node hits and {} relation hits",
                     nodeHits.size(), relationHits.size());
-            return new GraphSearchResult(matchedNodes, relationCountByRoot, topRelationTypes, summary);
+            var provenance = new GraphSearchResult.Source(context.repositoryId(), context.workspaceId(), context.branch(),
+                    source.authoritativeCommitId(), source.readModel().name(), GraphSearchResult.VectorSource.GLOBAL_INDEX,
+                    indexKey, null, null);
+            return new GraphSearchResult(matchedNodes, relationCountByRoot, topRelationTypes, summary, provenance);
         } catch (Exception | LinkageError error) {
             if (error instanceof InterruptedException) Thread.currentThread().interrupt();
             log.error("Graph search failed (code=GRAPH_SEARCH_FAILED)");
@@ -139,9 +160,12 @@ public class GraphSearchService {
         }
     }
 
-    private static GraphSearchResult noResultsRequested() {
+    private static GraphSearchResult noResultsRequested(RepositoryContext context, RelationProjectionReadService.CountResult source) {
+        var provenance = new GraphSearchResult.Source(context.repositoryId(), context.workspaceId(), context.branch(),
+                source.authoritativeCommitId(), source.readModel().name(), GraphSearchResult.VectorSource.NO_INFERENCE,
+                null, null, null);
         return new GraphSearchResult(Collections.emptyList(), Collections.emptyMap(),
-                Collections.emptyMap(), "No graph search results were requested.");
+                Collections.emptyMap(), "No graph search results were requested.", provenance);
     }
 
     private static int safeRelationLimit(int nodeLimit) {

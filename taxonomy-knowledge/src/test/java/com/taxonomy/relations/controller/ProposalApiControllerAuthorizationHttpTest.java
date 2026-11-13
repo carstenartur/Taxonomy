@@ -81,7 +81,8 @@ class ProposalApiControllerAuthorizationHttpTest {
         when(resolver.resolveCurrentRepositoryContext()).thenReturn(READ);
         var reviews = new GitAuthoritativeProposalReviewService(new ProposalReviewStateStore(proposals), mutations);
         mvc = standaloneSetup(new ProposalApiController(generation, reviews,
-                readiness, resolver, repositories, new RepositoryMembershipService(memberships))).build();
+                readiness, resolver, repositories, new RepositoryMembershipService(memberships), new ProposalInboxResponses(
+                tools.jackson.databind.json.JsonMapper.builder().build()))).build();
     }
 
     @AfterEach
@@ -142,6 +143,10 @@ class ProposalApiControllerAuthorizationHttpTest {
         verify(generation).proposeRelationsInContext("BP", RelationType.RELATED_TO, expected, WRITE);
     }
 
+    private static java.util.Map<String, String> expectedReviewProperties() {
+        return java.util.Map.of("status", "accepted", "provenance", "proposal-review", "x-proposal-id", "42");
+    }
+
     private static String proposalRequest(int limit) {
         return """
                 {"sourceCode":"BP","relationType":"RELATED_TO","limit":"%d"}
@@ -163,7 +168,7 @@ class ProposalApiControllerAuthorizationHttpTest {
         when(proposals.findByIdInRepositoryWorkspaceForUpdate("selected-repo", 42L, null)).thenReturn(Optional.of(own));
         MutationResult effect = effect(action);
         when(mutations.upsert(eq(WRITE), eq(HEAD), any(), any())).thenReturn(effect);
-        when(mutations.remove(eq(WRITE), eq(HEAD), any(), any())).thenReturn(effect);
+        when(mutations.removeMatching(eq(WRITE), eq(HEAD), any(), any(), eq(expectedReviewProperties()))).thenReturn(effect);
 
         mvc.perform(post(endpoint(action, 42L))
                         .header(HttpHeaders.IF_MATCH, '"' + HEAD + '"')
@@ -176,7 +181,7 @@ class ProposalApiControllerAuthorizationHttpTest {
         var order = inOrder(proposals, mutations);
         order.verify(proposals).findByIdInRepositoryWorkspace("selected-repo", 42L, null);
         if ("revert".equals(action)) {
-            order.verify(mutations).remove(eq(WRITE), eq(HEAD), any(), any());
+            order.verify(mutations).removeMatching(eq(WRITE), eq(HEAD), any(), any(), eq(expectedReviewProperties()));
         } else {
             order.verify(mutations).upsert(eq(WRITE), eq(HEAD), any(), any());
         }
@@ -239,7 +244,7 @@ class ProposalApiControllerAuthorizationHttpTest {
         when(proposals.findByIdInRepositoryWorkspace("selected-repo", 42L, null)).thenReturn(Optional.of(own));
         var conflict = new BranchHeadConflictException("selected-branch", HEAD, NEXT, "Head changed");
         when(mutations.upsert(eq(WRITE), eq(HEAD), any(), any())).thenThrow(conflict);
-        when(mutations.remove(eq(WRITE), eq(HEAD), any(), any())).thenThrow(conflict);
+        when(mutations.removeMatching(eq(WRITE), eq(HEAD), any(), any(), eq(expectedReviewProperties()))).thenThrow(conflict);
 
         mvc.perform(post(endpoint(action, 42L)).header(HttpHeaders.IF_MATCH, '"' + HEAD + '"'))
                 .andExpect(status().isPreconditionFailed())

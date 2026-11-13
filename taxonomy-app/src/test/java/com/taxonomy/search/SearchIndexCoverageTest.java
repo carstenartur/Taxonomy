@@ -295,7 +295,7 @@ class SearchIndexCoverageTest {
                 if (failRelationNative) throw new UnsatisfiedLinkError("private-native-path");
                 if (failRelationInterrupted) throw new InterruptedException("private-cancellation-payload");
             }
-            if ((failNode && text.startsWith("Fixture missing vector.\n"))
+            if ((failNode && text.lines().findFirst().filter("Fixture missing vector."::equals).isPresent())
                     || (failRelation && text.contains("private-relation-failure"))) {
                 throw new IllegalStateException("private-inference-payload");
             }

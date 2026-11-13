@@ -6,6 +6,7 @@ import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.json.JsonMapper;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -40,8 +41,21 @@ class SearchApiControllerSemanticReadinessTest {
         controller = new SearchApiController(
                 searchFacade,
                 messageSource,
-                workspaceResolver);
+                workspaceResolver, JsonMapper.builder().build());
         when(searchFacade.isInitialized()).thenReturn(true);
+    }
+
+    @Test
+    void referenceCatalogueRoutesIdentifyTheirSourceWithoutResolvingTenantContent() {
+        when(searchFacade.isSemanticSearchReady()).thenReturn(true);
+        for (var response : java.util.List.of(controller.search("reference", 2),
+                controller.semanticSearch("reference", 2), controller.hybridSearch("reference", 2), controller.findSimilar("global", 2))) {
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(response.getHeaders().getFirst("X-Taxonomy-Source-Scope")).isEqualTo("GLOBAL_REFERENCE");
+            assertThat(response.getHeaders().getFirst("X-Taxonomy-Source-State")).isEqualTo("READY");
+            assertThat(response.getHeaders().getETag()).isNotBlank();
+        }
+        org.mockito.Mockito.verifyNoInteractions(workspaceResolver);
     }
 
     @AfterEach

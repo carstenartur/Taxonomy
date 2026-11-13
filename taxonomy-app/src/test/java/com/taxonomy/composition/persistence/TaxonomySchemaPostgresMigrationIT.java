@@ -162,10 +162,12 @@ class TaxonomySchemaPostgresMigrationIT {
         assertProviderBindingSchema(dataSource);
         assertAnalysisReasonLengthSchema(dataSource);
         assertThat(tableExists(dataSource, TaxonomySchemaMigrationConfig.HISTORY_TABLE)).isTrue();
+        assertSelectedFetchSchema(dataSource);
+        assertPublicationSchema(dataSource);
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "56");
     }
 
     @Test
@@ -237,10 +239,12 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(columnExists(
                 dataSource, "relation_projection_recovery", "status"))
                 .isTrue();
+        assertSelectedFetchSchema(dataSource);
+        assertPublicationSchema(dataSource);
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "56");
         assertIntegrationSchema(dataSource);
         assertInventorySchema(dataSource);
         assertReformulationSchema(dataSource);
@@ -533,6 +537,33 @@ class TaxonomySchemaPostgresMigrationIT {
                 "operation_id");
         assertRecoveryIndex(dataSource, "analysis_task_completion", "idx_analysis_completion_operation", true,
                 "operation_id");
+    }
+
+    private static void assertPublicationSchema(DataSource dataSource) throws SQLException {
+        assertThat(columnExists(dataSource, "workspace_publication_operation", "prepared_source")).isTrue();
+        assertThat(columnExists(dataSource, "workspace_publication_operation", "workspace_owner_scope")).isTrue();
+        assertThat(columnExists(dataSource, "workspace_publication_decision", "original_actor")).isTrue();
+        assertThat(columnExists(dataSource, "workspace_publication_decision", "executor_id")).isTrue();
+        assertRecoveryIndex(dataSource, "workspace_publication_operation", "ix_ws_publish_due", true,
+                "phase", "next_attempt_at");
+        assertRecoveryIndex(dataSource, "workspace_publication_operation", "ix_ws_publish_archive", true,
+                "archived_at", "completed_at");
+        assertRecoveryIndex(dataSource, "workspace_publication_operation", "ix_ws_publish_cleanup", true,
+                "cleanup_due_at", "operation_id");
+        assertRecoveryIndex(dataSource, "workspace_publication_decision", "ix_ws_publish_decision", true,
+                "operation_id", "id");
+    }
+
+    private static void assertSelectedFetchSchema(DataSource dataSource) throws SQLException {
+        for (String table : List.of("workspace_fetch_operation", "central_fetch_operation")) {
+            for (String column : List.of("selected_tag", "requested_tag_object", "result_tag_object")) {
+                assertThat(columnExists(dataSource, table, column)).as("%s.%s", table, column).isTrue();
+            }
+        }
+        assertRecoveryIndex(dataSource, "central_fetch_operation", "ix_cf_fetch_recovery", true,
+                "phase", "next_attempt_at");
+        assertRecoveryIndex(dataSource, "central_fetch_operation", "ix_cf_fetch_retention", true,
+                "archived_at", "completed_at");
     }
 
     private static void assertRecoveryIndex(DataSource dataSource, String table, String name,

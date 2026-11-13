@@ -18,7 +18,7 @@ public class BackupNavigationAdvice {
     public BackupNavigationAdvice(ObjectProvider<BackupCaptureSource> sources,PrincipalIdentityService identities,BackupAccessPolicy access){this.sources=sources;this.identities=identities;this.access=access;}
     @ModelAttribute("portableBackupAvailable") boolean available(Authentication authentication) {
         if(authentication==null || sources.getIfAvailable()==null)return false;
-        try {return access.hasCapability(identities.require(authentication),BackupCapability.EXPORT_CURRENT,new BackupScope.Installation());}
+        try {return access.hasCapability(identities.requireCurrent(authentication),BackupCapability.EXPORT_CURRENT,new BackupScope.Installation());}
         catch(AccessDeniedException denied){return false;}
     }
 }

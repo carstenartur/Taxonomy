@@ -56,7 +56,7 @@ public class SnapshotArchitectureReportController {
                                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
                 .header(
                         HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"taxonomy-architecture-report-v"
+                        "attachment; filename=\"" + source.label().fileName("taxonomy-architecture-report-v")
                                 + evidence.requirementVersionNumber()
                                 + ".docx\"")
                 .header("X-Taxonomy-Snapshot-Id", evidence.snapshotId())

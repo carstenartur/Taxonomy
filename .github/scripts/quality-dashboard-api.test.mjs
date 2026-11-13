@@ -7,8 +7,7 @@ const root = new URL('../../taxonomy-app/src/main/resources/static/js/', import.
 const transportSource = await readFile(new URL('api/taxonomy-api-client.js', root), 'utf8');
 const apiSource = await readFile(new URL('api/relations-api.js', root), 'utf8');
 const uiSource = await readFile(new URL('relations/taxonomy-quality.js', root), 'utf8');
-const endpoints = ['/api/relations/metrics', '/api/relations/metrics/by-type',
-  '/api/relations/metrics/top-rejected?limit=5'];
+const endpoints = ['/api/relations/metrics/dashboard?limit=5'];
 const metrics = { totalProposals: 12, accepted: 6, rejected: 3, pending: 3, acceptanceRate: 0.5 };
 
 function response(body, status = 200) {
@@ -17,15 +16,21 @@ function response(body, status = 200) {
   });
 }
 
-function environment(handler = (_, index) => response(index === 0 ? metrics : [])) {
-  const calls = [], events = [];
-  const content = { innerHTML: '' };
+function snapshot(summary = metrics, topRejected = []) {
+  return { metrics: { byRelationType: [], ...summary }, topRejected };
+}
+
+function environment(handler = () => response(snapshot())) {
+  const calls = [], events = [], listeners = new Map();
+  const content = { innerHTML: '', set textContent(value) {this.innerHTML = value;} };
+  const panel = {open: true, addEventListener() {}};
+  function emit(event) { (listeners.get(event.type) || []).forEach(fn => fn(event)); }
   const document = {
     currentScript: null,
     querySelector: () => null,
-    getElementById: id => id === 'qualityDashboardContent' ? content : null,
-    addEventListener() {},
-    dispatchEvent(event) { events.push(event); }
+    getElementById(id) {return {qualityDashboardContent: content, qualityDashboard: panel}[id];},
+    addEventListener(type, fn) {listeners.set(type, [...(listeners.get(type) || []), fn]);},
+    dispatchEvent(event) {events.push(event); emit(event);}
   };
   const context = vm.createContext({
     console, URL, Headers, Request, Response, AbortController, DOMException, setTimeout, clearTimeout,
@@ -46,7 +51,8 @@ function environment(handler = (_, index) => response(index === 0 ? metrics : []
   vm.runInContext(transportSource, context, { filename: 'taxonomy-api-client.js' });
   vm.runInContext(apiSource, context, { filename: 'relations-api.js' });
   vm.runInContext(uiSource, context, { filename: 'taxonomy-quality.js' });
-  return { context, calls, events, content };
+  emit({type: 'DOMContentLoaded'});
+  return { context, calls, events, content, panel, emit };
 }
 
 function deferred() {
@@ -56,7 +62,7 @@ function deferred() {
 }
 
 // Actual API+canonical transport+UI code executes; HTTP replies are deterministic fixtures.
-test('quality reads use the canonical request policy and preserve the three responses', async () => {
+test('the dashboard renders a single scoped snapshot through the canonical request policy', async () => {
   const e = environment();
   await e.context.TaxonomyQuality.loadQualityDashboard();
   assert.deepEqual(e.calls.map(call => call.input), endpoints);
@@ -72,13 +78,11 @@ test('quality reads use the canonical request policy and preserve the three resp
 
 for (const status of [401, 403, 412, 503]) {
   test(`HTTP ${status} is visible as a failure, never a partial success or empty result`, async () => {
-    const e = environment((_, index) => index === 1
-      ? response({ title: 'private-diagnostic', detail: 'private-diagnostic' }, status)
-      : response(index === 0 ? metrics : []));
+    const e = environment(() => response({ title: 'private-diagnostic', detail: 'private-diagnostic' }, status));
     await e.context.TaxonomyQuality.loadQualityDashboard();
     assert.match(e.content.innerHTML, /quality.load.failed/);
     assert.doesNotMatch(e.content.innerHTML, /quality.total|quality.no.data|private-diagnostic/);
-    assert.equal(e.calls.length, 3, 'no implicit retry');
+    assert.equal(e.calls.length, 1, 'no implicit retry');
     assert.equal(e.events.length, [401, 403].includes(status) ? 1 : 0);
     if (e.events.length) assert.equal(e.events[0].type, 'taxonomy-api-auth-failure');
   });
@@ -107,7 +111,7 @@ test('network failure does not become empty metrics or get retried', async () =>
   await e.context.TaxonomyQuality.loadQualityDashboard();
   assert.match(e.content.innerHTML, /quality.load.failed/);
   assert.doesNotMatch(e.content.innerHTML, /private network detail|quality.no.data/);
-  assert.equal(e.calls.length, 3);
+  assert.equal(e.calls.length, 1);
 });
 
 test('existing asynchronous client readiness is awaited before any request', async () => {
@@ -118,7 +122,7 @@ test('existing asynchronous client readiness is awaited before any request', asy
   assert.equal(e.calls.length, 0);
   ready.resolve(e.context.TaxonomyRelationsApi);
   await loading;
-  assert.equal(e.calls.length, 3);
+  assert.equal(e.calls.length, 1);
 });
 
 test('client loading failure is visible without falling back to direct fetch', async () => {
@@ -135,12 +139,12 @@ for (const oldFails of [false, true]) {
     const e = environment(), old = deferred();
     let count = 0;
     e.context.TaxonomyRelationsApi.readQualityDashboard = () => ++count === 1 ? old.promise
-      : Promise.resolve([{ ...metrics, totalProposals: 99 }, [], []]);
+      : Promise.resolve(snapshot({ ...metrics, totalProposals: 99 }));
     const older = e.context.TaxonomyQuality.loadQualityDashboard();
     await Promise.resolve();
     await e.context.TaxonomyQuality.loadQualityDashboard();
     if (oldFails) old.reject(new Error('stale failure'));
-    else old.resolve([metrics, [], []]);
+    else old.resolve(snapshot());
     await older;
     assert.match(e.content.innerHTML, /quality.total: 99/);
     assert.doesNotMatch(e.content.innerHTML, /quality.load.failed|quality.total: 12/);
@@ -156,7 +160,7 @@ test('quality UI contains neither direct requests nor feature-level API URLs', (
 test('the resolved ready client is used even if the global instance differs', async () => {
   const e = environment();
   const readyClient = { readQualityDashboard: () =>
-    Promise.resolve([{ ...metrics, totalProposals: 77 }, [], []]) };
+    Promise.resolve(snapshot({ ...metrics, totalProposals: 77 })) };
   e.context.TaxonomyRelationsApiReady = Promise.resolve(readyClient);
   e.context.TaxonomyRelationsApi = { readQualityDashboard() {
     throw new Error('must not reread the global after readiness');
@@ -165,4 +169,25 @@ test('the resolved ready client is used even if the global instance differs', as
   assert.match(e.content.innerHTML, /quality.total: 77/);
   assert.doesNotMatch(e.content.innerHTML, /quality.load.failed/);
   assert.equal(e.calls.length, 0);
+});
+
+
+test('a workspace change clears the previous inbox and fences its outstanding load', async () => {
+  const old = deferred(), latest = deferred(), e = environment();
+  let reads = 0;
+  e.context.TaxonomyRelationsApi.readQualityDashboard = () => ++reads === 1 ? old.promise : latest.promise;
+  const first = e.context.TaxonomyQuality.loadQualityDashboard();
+  await Promise.resolve();
+  e.emit({type:'taxonomy:repository-context-changed'});
+  await Promise.resolve();
+  latest.resolve(snapshot({ ...metrics, totalProposals: 98 }));
+  await new Promise(resolve => setImmediate(resolve));
+  old.resolve(snapshot());
+  await first;
+  assert.match(e.content.innerHTML, /quality.total: 98/);
+  assert.doesNotMatch(e.content.innerHTML, /quality.total: 12/);
+  e.panel.open = false;
+  e.emit({type:'taxonomy:entity-context-changed'});
+  assert.equal(e.content.innerHTML, '');
+  assert.equal(reads, 2);
 });

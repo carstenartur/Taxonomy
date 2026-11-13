@@ -595,14 +595,6 @@
         });
     }
 
-    el('downloadArchitectureSvg').addEventListener('click', function () {
-        if (active && projection) window.location.assign(ArchitectureWorkbenchApi.svgUrl(projectId, snapshotId, getSource()));
-    });
-
-    el('downloadArchitecturePdf').addEventListener('click', function () {
-        if (active && projection) window.location.assign(ArchitectureWorkbenchApi.pdfUrl(projectId, snapshotId, getSource()));
-    });
-
     function setExportsEnabled(enabled) {
         // The print adapter observes Fit readiness before cloning the source SVG.
         fitButton.disabled = !enabled;
@@ -654,6 +646,7 @@
         const selectedSource = normalizeSource(source), key = keyForSource(selectedSource);
         if (key === sourceKey && projection && diagramController) {
             active = true;
+            if (request.signal.aborted) request = new AbortController();
             activeSource = selectedSource;
             diagramController.setActive(true);
             setExportsEnabled(true);
@@ -749,6 +742,7 @@
             if (exportOptions) exportOptions.open = false;
         },
         getSource: getSource,
+        getExportSignal: function () { return active && projection ? request.signal : null; },
         getData: function () { return projection; },
         getDiagram: function () { return diagramController; },
         select: function (id) {

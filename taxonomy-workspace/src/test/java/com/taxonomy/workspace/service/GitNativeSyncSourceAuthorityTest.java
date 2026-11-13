@@ -230,6 +230,46 @@ class GitNativeSyncSourceAuthorityTest {
         }
     }
 
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void reconciliationUsesTheCallerContractAfterRecordingThePull(boolean requestReceipt) throws Exception {
+        var grant = new WorkspaceFetchAuthority.Grant(java.util.UUID.randomUUID().toString(), "LOCAL", "a".repeat(64));
+        var actor = mock(WorkspacePublicationAuthority.class);
+        when(actor.authorizePublication("alice")).thenReturn(grant);
+        try (var fixture = new Fixture();
+             var db = publicationDatabase("jdbc:hsqldb:mem:pull-command-" + java.util.UUID.randomUUID(), "create")) {
+            var journal = publicationJournal(db);
+            fixture.service.configurePublications(new WorkspacePublicationRecovery(journal, actor));
+            String sourceHead = fixture.source.commitDsl("draft", dsl("Reviewed source"), "owner", "Review");
+            String localHead = fixture.local.getHeadCommit("main");
+            var conflict = new com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem(
+                    "PORTFOLIO_RECONCILIATION_REQUIRED", "version", "Immutable requirement version 2", java.util.List.of());
+            doThrow(conflict).when(fixture.portfolio).validatePortfolio(anyString(), anyString(), eq("alice"), any());
+
+            if (requestReceipt) {
+                var result = fixture.service.pullWithReceipt("alice", "main", "confirmed-pull", null).operation();
+                assertEquals("MANUAL_REVIEW", result.status());
+                assertEquals("RECONCILIATION_REQUIRED", result.decisionCode());
+                assertNotNull(result.completedAt());
+            } else {
+                assertSame(conflict, assertThrows(com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem.class,
+                        () -> run(fixture.service, Operation.TAKE_SHARED)));
+            }
+
+            try (var session = db.openSession()) {
+                var saved = session.createSelectionQuery("from WorkspacePublicationOperation", WorkspacePublicationOperation.class)
+                        .getSingleResult();
+                assertEquals("MANUAL_REVIEW", saved.phase);
+                assertNotNull(saved.completedAt);
+                assertEquals("RECONCILIATION_REQUIRED", saved.decision);
+                assertTrue(saved.isPull());
+                assertEquals(sourceHead, saved.inputSource);
+            }
+            assertEquals(sourceHead, fixture.source.getHeadCommit("draft"));
+            assertEquals(localHead, fixture.local.getHeadCommit("main"));
+        }
+    }
+
     @ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(booleans = {false,true})
     void interruptedPullCannotResumeAfterLosingTheOriginalReaderOrSourceLineage(boolean replaceSource) throws Exception {
         var context=RepositoryContext.workspace("private-source","old-copy","main","alice");

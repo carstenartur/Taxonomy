@@ -38,7 +38,8 @@ class ProposalProjectionUnavailableHttpTest {
                 mock(RelationBranchProjectionReadinessService.class),
                 workspaceResolver,
                 mock(SystemRepositoryService.class),
-                mock(RepositoryMembershipService.class));
+                mock(RepositoryMembershipService.class), new ProposalInboxResponses(
+                tools.jackson.databind.json.JsonMapper.builder().build()));
     }
 
     @Test

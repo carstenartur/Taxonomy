@@ -96,7 +96,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         if (context.workspaceId() == null || publications == null) {
             return new Publication(publishToShared(username,branch),null);
         }
-        return submitPublication(context,false,key,cause);
+        return submitPublication(context,false,key,cause,false);
     }
 
     @Override
@@ -104,10 +104,10 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         portfolioGitPort.requireAvailable();
         var context = resolveWorkspaceContext(username,branch);
         if (context.workspaceId() == null || publications == null) return new Publication(syncFromShared(username,branch),null);
-        return submitPull(context,false,key,cause);
+        return submitPull(context,false,key,cause,false);
     }
 
-    private Publication submitPull(WorkspaceContext context,boolean takeSource,String key,String cause) throws IOException {
+    private Publication submitPull(WorkspaceContext context,boolean takeSource,String key,String cause,boolean commandErrors) throws IOException {
         var selected=RepositoryContext.workspace(context.repositoryId(),context.workspaceId(),context.currentBranch(),context.username());
         var current=publicationMetadata(selected,false,false);
         var operation=publications.submitPull(selected,takeSource,key,cause,() -> {
@@ -115,12 +115,12 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
             return new WorkspacePublicationJournal.Source(target.branch(),target.owner().getBaseCommit(),
                     freshHead(target.central(),target.branch()),freshHead(target.local(),selected.branch()),
                     freshHead(target.local(),TRACKING_BRANCH),target.owner().getUsername());
-        },this::applyPublicationPhase);
+        },this::applyPublicationPhase,commandErrors);
         if (!current.owner().getUsername().equals(operation.workspaceOwner())) throw unavailable();
         return new Publication(operation.resultCommit(),operation);
     }
 
-    private Publication submitPublication(WorkspaceContext context,boolean keep,String key,String cause) throws IOException {
+    private Publication submitPublication(WorkspaceContext context,boolean keep,String key,String cause,boolean commandErrors) throws IOException {
         var selected=RepositoryContext.workspace(context.repositoryId(),context.workspaceId(),context.currentBranch(),context.username());
         requireSourceAuthority(context.username(),context,true);
         var current=publicationMetadata(selected,false,true);
@@ -129,7 +129,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
             return new WorkspacePublicationJournal.Source(target.branch(),target.owner().getBaseCommit(),
                     freshHead(target.central(),target.branch()),freshHead(target.local(),selected.branch()),
                     freshHead(target.local(),TRACKING_BRANCH),target.owner().getUsername());
-        },this::applyPublicationPhase);
+        },this::applyPublicationPhase,commandErrors);
         if (!current.owner().getUsername().equals(operation.workspaceOwner())) throw unavailable();
         return new Publication(operation.resultCommit(),operation);
     }
@@ -623,7 +623,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                                             WorkspaceContext context,
                                             String userBranch,
                                             boolean takeSource) throws IOException {
-        if (publications!=null) return completedPublication(submitPull(context,takeSource,null,null));
+        if (publications!=null) return completedPublication(submitPull(context,takeSource,null,null,true));
         requireSourceAuthority(username, context, false);
         RepositoryContext selected = RepositoryContext.workspace(
                 context.repositoryId(), context.workspaceId(), userBranch, username);
@@ -698,7 +698,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                                             WorkspaceContext context,
                                             String userBranch,
                                             boolean keepWorkspace) throws IOException {
-        if (publications!=null) return completedPublication(submitPublication(context,keepWorkspace,null,null));
+        if (publications!=null) return completedPublication(submitPublication(context,keepWorkspace,null,null,true));
         requireSourceAuthority(username, context, true);
         RepositoryContext selected = RepositoryContext.workspace(
                 context.repositoryId(), context.workspaceId(), userBranch, username);

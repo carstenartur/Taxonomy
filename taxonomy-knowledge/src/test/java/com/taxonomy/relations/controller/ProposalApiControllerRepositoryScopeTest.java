@@ -70,7 +70,8 @@ class ProposalApiControllerRepositoryScopeTest {
                 readinessService,
                 workspaceResolver,
                 repositoryService,
-                membershipService);
+                membershipService, new ProposalInboxResponses(
+                tools.jackson.databind.json.JsonMapper.builder().build()));
     }
 
     @AfterEach
@@ -82,7 +83,7 @@ class ProposalApiControllerRepositoryScopeTest {
     void readsUseTheExactResolvedRepositoryContext() {
         RepositoryContext context = RepositoryContext.centralRead(
                 "repo-b", "main", "alice");
-        when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(context);
+        when(workspaceResolver.resolveUnambiguousRepositoryForRead()).thenReturn(context);
         when(proposalService.getAllProposalsInContext(context)).thenReturn(List.of());
 
         ResponseEntity<List<RelationProposalDto>> response = controller.getAllProposals();

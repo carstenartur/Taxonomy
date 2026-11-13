@@ -153,8 +153,11 @@ export async function runVersionComparisonWorkflow({ page, role, evidence }) {
     await evidence.saveRequiredViewportState('version-comparison-real-relation-change', '#versionsModal');
     await page.locator('#versionsModal .btn-close').click();
     await page.locator('#versionsModal').waitFor({ state: 'detached' });
+    evidence.assert(await compare.evaluate(button => button === document.activeElement),
+      'Closing the comparison should return focus to its original Git version');
     const preview = page.waitForRequest(request => request.url().includes('/api/dsl/diff/' + versions.right + '/' + versions.left));
-    await page.locator(`[data-action="restore"][data-commit="${versions.left}"]`).click();
+    const restore = page.locator(`[data-action="restore"][data-commit="${versions.left}"]`);
+    await restore.press('Enter');
     await preview;
     await page.locator('#versionsConfirmModal .restore-preview').waitFor();
     evidence.assert((await page.locator('#versionsConfirmModal .restore-preview').innerText()).includes('1'),
@@ -162,6 +165,8 @@ export async function runVersionComparisonWorkflow({ page, role, evidence }) {
     evidence.assert(await page.locator('#versionsConfirmBtn').isEnabled(), 'Valid preview must enable confirmation');
     await page.locator('#versionsConfirmModal .btn-close').click();
     await page.locator('#versionsConfirmModal').waitFor({ state: 'detached' });
+    evidence.assert(await restore.evaluate(button => button === document.activeElement),
+      'Cancelling the restore should return focus to its original Git version');
     // Inject a transport failure only after the genuine success path. No fallback may restore.
     const diffRoute = '**/api/dsl/diff/**';
     const fail = route => route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"QA comparison unavailable"}' });
@@ -178,6 +183,8 @@ export async function runVersionComparisonWorkflow({ page, role, evidence }) {
       evidence.assert(await page.locator('#versionsConfirmBtn').isDisabled(), 'Failed previews must not enable restore');
       await page.locator('#versionsConfirmModal .btn-close').click();
       await page.locator('#versionsConfirmModal').waitFor({ state: 'detached' });
+      evidence.assert(await restore.evaluate(button => button === document.activeElement),
+        'Closing a failed restore preview should return focus to its original Git version');
     } finally {
       await page.unroute(diffRoute, fail);
     }

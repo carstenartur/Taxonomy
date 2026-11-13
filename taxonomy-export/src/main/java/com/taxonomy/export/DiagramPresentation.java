@@ -123,26 +123,30 @@ public final class DiagramPresentation {
 
     /** Counts refer only to this exported scene, not the full catalogue or duplicated detail pages. */
     public static List<String> inventorySummary(DiagramScene scene) {
+        return inventorySummary(scene, DiagramLanguage.ENGLISH);
+    }
+
+    static List<String> inventorySummary(DiagramScene scene, DiagramLanguage language) {
         var nodes = new LinkedHashMap<String, com.taxonomy.diagram.DiagramSceneNode>();
         scene.nodes().forEach(node -> nodes.putIfAbsent(node.id(), node));
         long containers = nodes.values().stream().filter(node -> node.container()).count();
         long relationships = scene.edges().stream().map(edge -> edge.id()).distinct().count();
         Map<String, Integer> taxonomies = new TreeMap<>();
         nodes.values().stream().filter(node -> !node.container()).forEach(node ->
-                taxonomies.merge(node.type() == null ? "Unclassified" : node.type(), 1, Integer::sum));
+                taxonomies.merge(node.type() == null ? language.text("Unclassified", "Nicht klassifiziert") : node.type(), 1, Integer::sum));
         var lines = new ArrayList<String>();
-        lines.add("Exported view | Elements: " + (nodes.size() - containers) + " | Containers: " + containers
-                + " | Relationships: " + relationships);
+        lines.add(language.text("Exported view | Elements: ", "Exportierte Ansicht | Elemente: ") + (nodes.size() - containers) + language.text(" | Containers: ", " | Container: ") + containers
+                + language.text(" | Relationships: ", " | Beziehungen: ") + relationships);
         taxonomies.forEach((type, count) -> lines.add(type + ": " + count));
         Map<String, Integer> statuses = new TreeMap<>();
         var seenEdges = new java.util.HashSet<String>();
         scene.edges().stream().filter(edge -> seenEdges.add(edge.id())).forEach(edge ->
-                statuses.merge(relationshipStatus(edge.metadata()), 1, Integer::sum));
-        statuses.forEach((status, count) -> lines.add("Relationships - " + status + ": " + count));
-        lines.add("Dashed connectors identify AI-proposed relationships; solid connectors do not imply approval.");
-        lines.add("Colors identify taxonomy families; a strong border marks a selection anchor, not approval.");
-        lines.add("Human confirmation is not recorded in this diagram model. AI verification is not human approval.");
-        lines.add("Depth is the recorded taxonomy depth, not the horizontal layout layer.");
+                statuses.merge(relationshipStatus(edge.metadata(), language.german()), 1, Integer::sum));
+        statuses.forEach((status, count) -> lines.add(language.text("Relationships - ", "Beziehungen - ") + status + ": " + count));
+        lines.add(language.text("Dashed connectors identify AI-proposed relationships; solid connectors do not imply approval.", "Gestrichelte Linien zeigen KI-Vorschläge. Durchgezogene Linien belegen keine Freigabe."));
+        lines.add(language.text("Colors identify taxonomy families; a strong border marks a selection anchor, not approval.", "Farben kennzeichnen Taxonomiefamilien. Ein kräftiger Rahmen markiert einen Auswahlanker."));
+        lines.add(language.text("Human confirmation is not recorded in this diagram model. AI verification is not human approval.", "Dieses Diagrammmodell erfasst keine menschliche Bestätigung. Eine KI-Prüfung ist keine menschliche Freigabe."));
+        lines.add(language.text("Depth is the recorded taxonomy depth, not the horizontal layout layer.", "Die Tiefe entspricht der gespeicherten Taxonomietiefe und ist unabhängig von der horizontalen Anordnung."));
         return List.copyOf(lines);
     }
 }

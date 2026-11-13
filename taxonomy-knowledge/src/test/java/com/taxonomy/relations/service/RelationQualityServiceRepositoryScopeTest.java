@@ -84,25 +84,18 @@ class RelationQualityServiceRepositoryScopeTest {
     void feedbackHistoryUsesRepositoryAndExactWorkspaceForBothStatuses() {
         RepositoryContext context = RepositoryContext.workspace(
                 "repo-b", "workspace-b1", "feature/b1", "bob");
-        when(repository.countVisibleReviewHistory(
-                "repo-b", "workspace-b1", "BP", "CP",
-                RelationType.RELATED_TO, ProposalStatus.ACCEPTED))
-                .thenReturn(3L);
-        when(repository.countVisibleReviewHistory(
-                "repo-b", "workspace-b1", "BP", "CP",
-                RelationType.RELATED_TO, ProposalStatus.REJECTED))
-                .thenReturn(1L);
+        var tally = mock(RelationProposalRepository.ReviewTally.class);
+        when(tally.getAccepted()).thenReturn(3L);
+        when(tally.getReviewed()).thenReturn(4L);
+        when(repository.visibleReviewHistory("repo-b", "workspace-b1", "BP", "CP",
+                RelationType.RELATED_TO, ProposalStatus.ACCEPTED, ProposalStatus.REJECTED)).thenReturn(tally);
 
         double weight = service.acceptanceHistoryWeight(
                 "BP", "CP", RelationType.RELATED_TO, context);
 
         assertThat(weight).isEqualTo(0.75);
-        verify(repository).countVisibleReviewHistory(
-                "repo-b", "workspace-b1", "BP", "CP",
-                RelationType.RELATED_TO, ProposalStatus.ACCEPTED);
-        verify(repository).countVisibleReviewHistory(
-                "repo-b", "workspace-b1", "BP", "CP",
-                RelationType.RELATED_TO, ProposalStatus.REJECTED);
+        verify(repository).visibleReviewHistory("repo-b", "workspace-b1", "BP", "CP",
+                RelationType.RELATED_TO, ProposalStatus.ACCEPTED, ProposalStatus.REJECTED);
         verify(repository, never())
                 .countBySourceNodeTaxonomyRootAndTargetNodeTaxonomyRootAndRelationTypeAndStatus(
                         org.mockito.ArgumentMatchers.anyString(),
@@ -155,6 +148,26 @@ class RelationQualityServiceRepositoryScopeTest {
                 "repo-b", ProposalStatus.REJECTED);
         verify(repository, never()).findCentralByRepository(
                 org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void dashboardDerivesAllCountersAndOrderedExamplesFromOneVisibleRead() {
+        var scope = RepositoryContext.workspace("repo-a", "workspace-a1", "feature", "alice");
+        when(repository.findVisibleByRepositoryAndWorkspace("repo-a", "workspace-a1")).thenReturn(List.of(
+                proposal(8L, ProposalStatus.REJECTED, 0.8, RelationType.DEPENDS_ON, "manual", "A", "eight"),
+                proposal(7L, ProposalStatus.REJECTED, 0.8, RelationType.RELATED_TO, "manual", "A", "seven"),
+                proposal(6L, ProposalStatus.ACCEPTED, 1.0, RelationType.RELATED_TO, "manual", "A", "accepted")));
+
+        var dashboard = service.dashboard(1, scope);
+
+        assertThat(dashboard.metrics().accepted()).isOne();
+        assertThat(dashboard.metrics().rejected()).isEqualTo(2);
+        assertThat(dashboard.metrics().byRelationType()).hasSize(2);
+        assertThat(dashboard.topRejected()).singleElement().satisfies(item -> assertThat(item.targetCode()).isEqualTo("seven"));
+        verify(repository).findVisibleByRepositoryAndWorkspace("repo-a", "workspace-a1");
+        org.mockito.Mockito.verifyNoMoreInteractions(repository);
+        assertThat(service.dashboard(0, scope).topRejected()).isEmpty();
+        assertThat(service.dashboard(-1, scope).topRejected()).isEmpty();
     }
 
     private static RelationProposal proposal(

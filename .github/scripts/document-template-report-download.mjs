@@ -460,6 +460,8 @@ async function currentReportRequest(target) {
 }
 
 async function verifyDecisionModel(target, request) {
+  const scope = await target.evaluate(() => window.TaxonomyArchitectureWorkspace.analysisScope());
+  const source = new URLSearchParams({repositoryId: scope.repositoryId, branch: scope.branch, workspaceId: scope.workspaceId});
   const result = await target.evaluate(async ({ url, payload }) => {
     const csrfToken = document.querySelector('meta[name="_csrf"]')?.content;
     const csrfHeader = document.querySelector('meta[name="_csrf_header"]')?.content
@@ -481,7 +483,7 @@ async function verifyDecisionModel(target, request) {
       body: await response.text()
     };
   }, {
-    url: `${baseUrl}/api/decision-report/json`,
+    url: `${baseUrl}/api/decision-report/json?${source}`,
     payload: request
   });
   if (!result.ok) {
@@ -547,6 +549,7 @@ async function downloadDecisionReport(target, reportPath) {
   await roots.first().waitFor({ state: 'visible', timeout: 30_000 });
   for (const root of await roots.all()) await root.check();
   const rootCount = await roots.count();
+  const scope = await target.evaluate(() => window.TaxonomyArchitectureWorkspace.analysisScope());
 
   const [download, response] = await Promise.all([
     target.waitForEvent('download', { timeout: 120_000 }),
@@ -561,6 +564,10 @@ async function downloadDecisionReport(target, reportPath) {
     throw new Error(
       `Decision report download failed with HTTP ${response.status()}: `
         + (await response.text()).slice(0, 1_000));
+  }
+  const query = new URL(response.url()).searchParams;
+  for (const key of ['repositoryId', 'branch', 'workspaceId']) {
+    if (query.get(key) !== scope[key]) throw new Error(`Report source changed for ${key}`);
   }
   const exportOptions = response.request().postDataJSON().exportOptions;
   if (exportOptions?.profile !== 'FULL' || exportOptions.contents !== 'FULL'
@@ -581,6 +588,11 @@ async function downloadDecisionReport(target, reportPath) {
   }
   await download.saveAs(reportPath);
   const bytes = await readFile(reportPath);
+  const digest = createHash('sha256').update(bytes).digest('hex');
+  if (headers.etag !== `"${digest}"` || headers['x-taxonomy-source-state'] !== 'READY'
+      || !/^[a-f0-9]{40}$/.test(headers['x-taxonomy-commit'] || '')) {
+    throw new Error('Downloaded report has incomplete source or byte provenance');
+  }
   if (bytes.length < 10_000 || bytes[0] !== 0x50 || bytes[1] !== 0x4b) {
     throw new Error(`Downloaded report is not a plausible DOCX (${bytes.length} bytes)`);
   }

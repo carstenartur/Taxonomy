@@ -4,6 +4,7 @@ import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.model.TaxonomyRelation;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.search.NodeEmbeddingBinder;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -15,9 +16,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 class NodeEmbeddingTextParityTest {
     @ParameterizedTest
     @MethodSource("legacyTexts")
-    void catalogueFormatterAndSearchBridgePreserveExactText(TaxonomyNode node, String expected) {
+    void selectedSnapshotFormatterPreservesExactText(TaxonomyNode node, String expected) {
         assertThat(NodeEmbeddingText.buildEnrichedText(node)).isEqualTo(expected);
-        assertThat(NodeEmbeddingBinder.Bridge.buildEnrichedText(node)).isEqualTo(expected);
+    }
+
+    @Test
+    void globalNodeInputExcludesOutgoingAndIncomingBusinessRelationsAcrossOwners() {
+        var central = node("Shared capability", "Reference description.");
+        var workspace = relation(RelationType.SUPPORTS, central, node("Private working-copy target", null));
+        workspace.setRepositoryId("repo-a");
+        workspace.setWorkspaceId("workspace-a");
+        var foreign = relation(RelationType.DEPENDS_ON, node("Other repository source", null), central);
+        foreign.setRepositoryId("repo-b");
+        central.getOutgoingRelations().add(workspace);
+        central.getIncomingRelations().add(foreign);
+        assertThat(NodeEmbeddingBinder.Bridge.buildEnrichedText(central)).isEqualTo("Shared capability.\nReference description.");
+        assertThat(NodeEmbeddingText.buildEnrichedText(central)).contains("Private working-copy target", "Other repository source");
     }
 
     private static Stream<Arguments> legacyTexts() {

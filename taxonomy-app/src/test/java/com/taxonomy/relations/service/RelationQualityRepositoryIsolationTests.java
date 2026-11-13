@@ -10,10 +10,13 @@ import com.taxonomy.workspace.model.RepositoryTopologyMode;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.repository.SystemRepositoryRepository;
 import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,6 +24,8 @@ import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
  * Database-backed regression evidence for repository/workspace quality isolation.
@@ -29,6 +34,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * and lifecycle normalization used by every supported database profile.</p>
  */
 @SpringBootTest
+@AutoConfigureMockMvc
 @Transactional
 @WithMockUser(username = "quality-admin", roles = {"USER", "ARCHITECT", "ADMIN"})
 class RelationQualityRepositoryIsolationTests {
@@ -42,12 +48,69 @@ class RelationQualityRepositoryIsolationTests {
     @Autowired private RelationProposalRepository proposalRepository;
     @Autowired private SystemRepositoryRepository systemRepositoryRepository;
     @Autowired private RelationQualityService qualityService;
+    @Autowired private MockMvc mvc;
+    @Autowired private UserWorkspaceRepository workspaces;
 
     @BeforeEach
     void persistReferencedRepositoryCatalogRows() {
         persistRepository(REPOSITORY_A);
         persistRepository(REPOSITORY_B);
         systemRepositoryRepository.flush();
+    }
+
+    @Test
+    void publicInboxAndMetricsReadOneVisibleRepositoryHistoryWithoutSelectingAnArchitectureBranch() throws Exception {
+        var from = node("INBOX-FROM", "CAP");
+        var to = node("INBOX-TO", "APP");
+        nodeRepository.saveAllAndFlush(List.of(from, to));
+        proposalRepository.saveAllAndFlush(List.of(
+                proposal(REPOSITORY_A, null, from, to, ProposalStatus.ACCEPTED, 0.6),
+                proposal(REPOSITORY_A, WORKSPACE_A1, from, to, ProposalStatus.REJECTED, 0.8),
+                proposal(REPOSITORY_B, null, from, to, ProposalStatus.REJECTED, 0.9)));
+        String dashboard = "/api/relations/metrics/dashboard";
+        for (String path : List.of("/api/proposals", "/api/proposals/pending", "/api/node/INBOX-FROM/proposals",
+                "/api/relations/metrics", "/api/relations/metrics/by-type", "/api/relations/metrics/by-provenance",
+                "/api/relations/metrics/top-rejected", dashboard, "/api/proposals/head")) {
+            mvc.perform(get(path)).andExpect(status().isConflict()).andExpect(header().doesNotExist("ETag"));
+        }
+        String tag = mvc.perform(get(dashboard).param("repositoryId", REPOSITORY_A).param("workspaceId", "").param("branch", "main"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.metrics.totalProposals").value(1))
+                .andExpect(jsonPath("$.metrics.accepted").value(1)).andExpect(jsonPath("$.topRejected.length()").value(0))
+                .andExpect(header().string("X-Taxonomy-Relation-Read-Model", "PROPOSAL_REVIEW_HISTORY"))
+                .andExpect(header().string("Content-Location", "?repositoryId=" + REPOSITORY_A + "&workspaceId=&branch=main"))
+                .andExpect(header().string("Cache-Control", "no-store")).andExpect(header().doesNotExist("X-Taxonomy-Commit"))
+                .andReturn().getResponse().getHeader("ETag");
+        assertThat(tag).matches("W/\"[0-9a-f]{64}\"");
+        mvc.perform(get(dashboard).param("repositoryId", REPOSITORY_A).param("workspaceId", "").param("branch", "draft")
+                .header("If-None-Match", tag)).andExpect(status().isNotModified());
+        mvc.perform(get(dashboard).param("repositoryId", REPOSITORY_B).param("workspaceId", "").param("branch", "main")
+                .header("If-None-Match", tag)).andExpect(status().isOk()).andExpect(jsonPath("$.topRejected.length()").value(1))
+                .andExpect(jsonPath("$.metrics.accepted").value(0));
+        mvc.perform(get("/api/proposals").param("repositoryId", REPOSITORY_A).param("workspaceId", "")
+                .param("branch", "draft")).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].status").value("ACCEPTED"))
+                .andExpect(header().string("X-Taxonomy-Relation-Read-Model", "PROPOSAL_REVIEW_HISTORY"));
+        String pendingTag = mvc.perform(get("/api/proposals/pending").param("repositoryId", REPOSITORY_A)
+                .param("workspaceId", "")).andExpect(jsonPath("$.length()").value(0))
+                .andReturn().getResponse().getHeader("ETag");
+        mvc.perform(get("/api/proposals/pending").param("repositoryId", REPOSITORY_B).param("workspaceId", "")
+                .header("If-None-Match", pendingTag)).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0))
+                .andExpect(header().string("ETag", org.hamcrest.Matchers.not(pendingTag)));
+        mvc.perform(get(dashboard).param("repositoryId", REPOSITORY_A).param("workspaceId", "")
+                .param("branch", "main").param("limit", "1")).andExpect(status().isOk())
+                .andExpect(header().string("Content-Location", "?repositoryId=" + REPOSITORY_A + "&workspaceId=&branch=main&limit=1"));
+        for (String path : List.of("/api/proposals", dashboard)) {
+            mvc.perform(get(path).param("repositoryId", REPOSITORY_A).param("workspaceId", "").param("commitId", "a".repeat(40)))
+                    .andExpect(status().isBadRequest()).andExpect(header().doesNotExist("ETag"));
+        }
+        var revised = proposalRepository.findCentralByRepository(REPOSITORY_A).getFirst();
+        revised.setStatus(ProposalStatus.REJECTED);
+        proposalRepository.saveAndFlush(revised);
+        mvc.perform(get(dashboard).param("repositoryId", REPOSITORY_A).param("workspaceId", "").param("branch", "main")
+                .header("If-None-Match", tag)).andExpect(status().isOk())
+                .andExpect(header().string("ETag", org.hamcrest.Matchers.not(tag)))
+                .andExpect(jsonPath("$.metrics.rejected").value(1)).andExpect(jsonPath("$.topRejected.length()").value(1));
+        assertThat(workspaces.findByUsernameAndSharedFalse("quality-admin")).isEmpty();
     }
 
     @Test

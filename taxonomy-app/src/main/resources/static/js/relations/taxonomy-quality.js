@@ -23,25 +23,35 @@
                 if (panel.open) loadQualityDashboard();
             });
         }
+        function selectionChanged() {
+            ++loadVersion;
+            var content = document.getElementById('qualityDashboardContent');
+            if (content) content.textContent = '';
+            if (panel && panel.open) loadQualityDashboard();
+        }
+        ['taxonomy:repository-context-changed', 'taxonomy:entity-context-changed', 'taxonomy:analysis-invalidated'].forEach(function (name) {
+            document.addEventListener(name, selectionChanged);
+        });
     });
 
     /* ------------------------------------------------------------------ */
-    /*  Load all metrics in parallel                                       */
+    /*  Load one visible review history                                    */
     /* ------------------------------------------------------------------ */
     function loadQualityDashboard() {
         var content = document.getElementById('qualityDashboardContent');
         if (!content) return;
         var version = ++loadVersion;
+        var current = window.TaxonomyApiClient.captureContext();
         content.innerHTML = '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm" role="status"></div> ' + t('quality.loading') + '</div>';
 
         // The existing loader also serves the relation command adapters. Wait for
         // that one client instead of issuing a second set of ad-hoc requests.
         var ready = window.TaxonomyRelationsApiReady || window.TaxonomyRelationsApi;
         return Promise.resolve(ready).then(function (api) {
-            return api.readQualityDashboard();
-        }).then(function (results) {
-            if (version !== loadVersion) return;
-            renderDashboard(results[0], results[1], results[2]);
+            if (version === loadVersion && current()) return api.readQualityDashboard();
+        }).then(function (snapshot) {
+            if (version !== loadVersion || !current()) return;
+            renderDashboard(snapshot.metrics, snapshot.metrics.byRelationType, snapshot.topRejected);
         }).catch(function () {
             if (version !== loadVersion) return;
             content.innerHTML = '<div class="text-danger small p-2">\u26A0\uFE0F ' + t('quality.load.failed') + '</div>';
