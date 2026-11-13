@@ -79,8 +79,8 @@ public final class WorkspaceRestoreImporter {
         var branchProgress = RestoreArchiveRecords.declares(archive, OWNER, "data/workspace/branch-synchronization.ndjson")
                 ? read(archive,"branch-synchronization",BranchSyncRecord.class,model,BranchSyncRecord::sourceId,checkpoint)
                 : List.<BranchSyncRecord>of();
-        var fetches = RestoreArchiveRecords.declares(archive, OWNER, "data/workspace/fetch-journal.ndjson")
-                ? read(archive,"fetch-journal",FetchRecord.class,model,FetchRecord::sourceId,checkpoint) : List.<FetchRecord>of();
+        var workspaceFetches = fetches(archive, "fetch-journal", "workspace.fetch", model, checkpoint);
+        var centralFetches = fetches(archive, "central-fetch-journal", "workspace.central-fetch", model, checkpoint);
         var editors=read(archive,"working-states",WorkingStateRecord.class,model,WorkingStateRecord::sourceId,checkpoint);
         var operations=read(archive,"operations",OperationRecord.class,model,OperationRecord::sourceId,checkpoint);
         var checkpoints=read(archive,"checkpoints",CheckpointRecord.class,model,CheckpointRecord::sourceId,checkpoint);
@@ -178,22 +178,45 @@ public final class WorkspaceRestoreImporter {
                             "last_publish_timestamp",timestamp(row.lastPublishAt()),"sync_status","RESTORED_REVIEW_REQUIRED",
                             "unpublished_commit_count",row.unpublishedCommitCount(),"created_at",timestamp(row.createdAt()),"updated_at",timestamp(row.updatedAt())));
         }
+        var capturedRepositories = new HashMap<String,RepositoryRecord>();
+        for (var row : repositories) capturedRepositories.put(row.repositoryId(),row);
+        var fetches = new ArrayList<>(workspaceFetches);
+        fetches.addAll(centralFetches);
         for (var row : fetches) {
             checkpoint.check();
-            var parent = workspaceById.get(row.workspaceId());
-            boolean detached = Boolean.TRUE.equals(row.detachedWorkspace());
-            if (detached) {
-                if (parent != null || archive.manifest().request().profile() != BackupProfile.INSTALLATION_FULL) throw invalid();
-                required(row.repositoryId(),255); required(row.workspaceId(),255); required(row.principalScope(),255);
-            } else if (parent == null || !parent.repositoryId().equals(row.repositoryId())
-                    || !parent.ownerScope().equals(row.principalScope())) throw invalid();
-            if (!"workspace.fetch".equals(row.sourceId().kind()) || !row.sourceId().value().matches("[0-9a-f]{64}")
-                    || row.principalId() == null
+            boolean central = "workspace.central-fetch".equals(row.sourceId().kind());
+            boolean detached = central ? Boolean.TRUE.equals(row.detachedCentralOrigin()) : Boolean.TRUE.equals(row.detachedWorkspace());
+            if (detached && archive.manifest().request().profile() != BackupProfile.INSTALLATION_FULL) throw invalid();
+            if (central) {
+                required(row.repositoryId(),255); required(row.upstreamRepositoryId(),255); required(row.principalScope(),255);
+                if (row.workspaceId() != null || row.detachedWorkspace() != null || row.repositoryId().equals(row.upstreamRepositoryId())
+                        || row.forkPoint() == null || !row.sourceId().value().matches("f-[0-9a-f]{62}")) throw invalid();
+                var fork = capturedRepositories.get(row.repositoryId());
+                boolean currentOrigin = fork != null && capturedRepositories.containsKey(row.upstreamRepositoryId())
+                        && row.upstreamRepositoryId().equals(fork.upstreamRepositoryId())
+                        && Objects.equals(row.sourceBranch(),fork.upstreamBranch()) && Objects.equals(row.forkPoint(),fork.forkPointCommit());
+                if (detached == currentOrigin) throw invalid();
+            } else {
+                var parent = workspaceById.get(row.workspaceId());
+                if (row.upstreamRepositoryId() != null || row.detachedCentralOrigin() != null
+                        || !row.sourceId().value().matches("[0-9a-f]{64}")) throw invalid();
+                if (detached) {
+                    if (parent != null) throw invalid();
+                    required(row.repositoryId(),255); required(row.workspaceId(),255); required(row.principalScope(),255);
+                } else if (parent == null || !parent.repositoryId().equals(row.repositoryId())
+                        || !parent.ownerScope().equals(row.principalScope())) throw invalid();
+            }
+            String policy = central ? "ARCHITECTURE_WRITE+CONTRIBUTOR" : "ANALYSIS_RUN+CONTRIBUTOR";
+            if (row.principalId() == null
                     || row.requestedCommit() == null || !row.requestedCommit().matches("[0-9a-f]{40}")
                     || row.createdAt() < 0 || row.attempts() < 0 || row.attempts() > 6
-                    || row.authorizationKind() == null || !Set.of("LOCAL", "OIDC", "LEGACY_OIDC").contains(row.authorizationKind()) || !"ANALYSIS_RUN+CONTRIBUTOR".equals(row.requiredPolicy())
+                    || row.authorizationKind() == null || !Set.of("LOCAL", "OIDC", "LEGACY_OIDC").contains(row.authorizationKind()) || !policy.equals(row.requiredPolicy())
                     || (row.archivedAt() == null) != (row.archivedBy() == null)) throw invalid();
-            for (var commit : Arrays.asList(row.forkPoint(), row.expectedCommit(), row.observedCommit(), row.resultCommit())) {
+            if (row.selectedTag() == null ? row.requestedTagObject() != null || row.resultTagObject() != null
+                    : !org.eclipse.jgit.lib.Repository.isValidRefName("refs/tags/" + row.selectedTag()) || row.requestedTagObject() == null
+                    || !Objects.equals(row.expectedCommit(),row.requestedCommit())
+                    || row.resultTagObject() != null && !row.resultTagObject().equals(row.requestedTagObject())) throw invalid();
+            for (var commit : Arrays.asList(row.forkPoint(), row.expectedCommit(), row.observedCommit(), row.resultCommit(), row.requestedTagObject(), row.resultTagObject())) {
                 if (commit != null && !commit.matches("[0-9a-f]{40}")) throw invalid();
             }
             boolean legacy = "LEGACY_OIDC".equals(row.authorizationKind());
@@ -209,9 +232,11 @@ public final class WorkspaceRestoreImporter {
             // Source evidence survives an isolated restore; target leases and authorizations are installation-local.
             String classification;
             if (detached) classification = "DETACHED_SOURCE_QUARANTINE";
-            else if (legacy || !activeWorkspaces.contains(row.workspaceId())) classification = "PRIVATE_QUARANTINE";
+            else if (legacy || (central
+                    ? !activeRepositories.contains(row.repositoryId()) || !activeRepositories.contains(row.upstreamRepositoryId())
+                    : !activeWorkspaces.contains(row.workspaceId()))) classification = "PRIVATE_QUARANTINE";
             else classification = active ? "INTERRUPTED_SOURCE_OPERATION" : "HISTORICAL_SOURCE_OPERATION";
-            model.classify("fetch-journal",row.sourceId().value(),classification);
+            model.classify(central ? "central-fetch-journal" : "fetch-journal",row.sourceId().value(),classification);
         }
         for(var row:editors) {
             checkpoint.check();sourceEditorById.put(row.sourceId(),row);if(row.semanticRevision()<0||row.checkpointRevision()<0||row.checkpointRevision()>row.semanticRevision())throw invalid();utf8(row.dsl());canonicalUuidOptional(row.interruptedCheckpoint());
@@ -250,6 +275,14 @@ public final class WorkspaceRestoreImporter {
         for(var row:context) {checkpoint.check();required(row.principalScope(),255);canonicalUuidOptional(row.fromContext());canonicalUuidOptional(row.toContext());canonicalUuidOptional(row.originContext());instant(row.createdAt());model.classify("context-history",row.sourceId().value(),"PRIVATE_HISTORICAL_SOURCE");}
         var principalsSorted=new TreeMap<String,RestorePrincipalAllocation>();principals.forEach((id,allocation)->principalsSorted.put(id.value().toString(),allocation));
         model.planHash=hash(List.of(gitBinding(git,generation.allocations()),principalsSorted,model.targets.values(),model.evidence.values()));checkpoint.check();return model;
+    }
+
+    private static List<FetchRecord> fetches(VerifiedBackup archive, String kind, String sourceKind, Model model,
+                                              BackupCheckpoint checkpoint) throws IOException {
+        if (!RestoreArchiveRecords.declares(archive, OWNER, "data/workspace/" + kind + ".ndjson")) return List.of();
+        var rows = read(archive,kind,FetchRecord.class,model,FetchRecord::sourceId,checkpoint);
+        for (var row : rows) if (!sourceKind.equals(row.sourceId().kind())) throw invalid();
+        return rows;
     }
 
     private static final class Model {

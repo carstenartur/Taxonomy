@@ -45,6 +45,8 @@ class CentralForkUpstreamPolicyTest {
     private String base, incoming, local;
     private CentralForkUpstreamService service;
     private MockMvc mvc;
+    private WorkspaceFetchJournalTest.Database database;
+    private final WorkspaceFetchAuthority actors = mock(WorkspaceFetchAuthority.class);
 
     @BeforeEach
     void setUp() throws Exception {
@@ -69,10 +71,14 @@ class CentralForkUpstreamPolicyTest {
         service = new CentralForkUpstreamService(catalogue, memberships, git);
         var resolver = mock(WorkspaceResolver.class);
         when(resolver.resolveCurrentUsername()).thenReturn(ACTOR);
-        mvc = MockMvcBuilders.standaloneSetup(new CentralForkUpstreamController(service, resolver)).build();
+        database = new WorkspaceFetchJournalTest.Database();
+        when(actors.authorize(ACTOR, RepositoryScope.CENTRAL_WRITE)).thenReturn(WorkspaceFetchJournalTest.GRANT);
+        when(actors.currentActor(ACTOR)).thenReturn(WorkspaceFetchJournalTest.ALICE);
+        var recovery = new WorkspaceFetchRecovery(database.journal, null, actors, service);
+        mvc = MockMvcBuilders.standaloneSetup(new CentralForkUpstreamController(service, resolver, recovery)).build();
     }
 
-    @AfterEach void close() { git.close(); }
+    @AfterEach void close() { if (database != null) database.close(); git.close(); }
 
     enum Change { SOURCE_ROLE, TARGET_ROLE, SOURCE_VISIBILITY, FORK_AUTHORITY }
 
@@ -105,6 +111,78 @@ class CentralForkUpstreamPolicyTest {
         assertThatThrownBy(() -> service.fetchTag("fork", ACTOR, request)).isInstanceOf(AccessDeniedException.class);
         assertThat(target.getGitRepository().exactRef("refs/tags/review")).isNull();
         assertThat(tracking.head(target)).isEqualTo(base);
+    }
+
+    @Test
+    void forkFetchAndSelectedTagHaveScopedDurableReceipts() throws Exception {
+        String fetchBody = "{\"sourceCommit\":\"" + incoming + "\",\"expectedTrackedCommit\":\"" + base + "\"}";
+        var commit = mvc.perform(post(API + "/fetch").contentType(MediaType.APPLICATION_JSON)
+                        .header("Idempotency-Key", "first").content(fetchBody))
+                .andExpect(status().isOk()).andExpect(header().exists("X-Operation-Id")).andReturn();
+        String commitId = commit.getResponse().getHeader("X-Operation-Id");
+        mvc.perform(get(API + "/operations/{id}", commitId)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.phase").value("COMPLETED"))
+                .andExpect(jsonPath("$.repositoryId").value("fork"))
+                .andExpect(jsonPath("$.sourceRepositoryId").value("source"))
+                .andExpect(jsonPath("$.workspaceId").isEmpty())
+                .andExpect(jsonPath("$.originalForkPoint").value(base))
+                .andExpect(jsonPath("$.resultCommit").value(incoming));
+        try (var walk = new RevWalk(source.getGitRepository())) {
+            Git.wrap(source.getGitRepository()).tag().setName("review").setAnnotated(false)
+                    .setObjectId(walk.parseCommit(ObjectId.fromString(base))).call();
+        }
+        String tagBody = "{\"name\":\"review\",\"sourceTagObject\":\"" + base
+                + "\",\"trackedCommit\":\"" + incoming + "\"}";
+        var tagged = mvc.perform(post(API + "/fetch-tag").contentType(MediaType.APPLICATION_JSON)
+                        .header("Idempotency-Key", "selected").content(tagBody))
+                .andExpect(status().isOk()).andExpect(header().exists("X-Operation-Id"))
+                .andExpect(jsonPath("$.destinationTagObject").value(base)).andReturn();
+        String tagId = tagged.getResponse().getHeader("X-Operation-Id");
+        assertThat(tagId).isNotEqualTo(commitId);
+        mvc.perform(get(API + "/operations/{id}", tagId)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.phase").value("COMPLETED"))
+                .andExpect(jsonPath("$.selectedTag").value("review"))
+                .andExpect(jsonPath("$.requestedTagObject").value(base))
+                .andExpect(jsonPath("$.resultTagObject").value(base));
+        mvc.perform(post(API + "/fetch-tag").contentType(MediaType.APPLICATION_JSON)
+                        .header("Idempotency-Key", "selected").content(tagBody))
+                .andExpect(status().isOk()).andExpect(header().string("X-Operation-Id", tagId));
+        assertThat(target.getHeadCommit("main")).isEqualTo(local);
+    }
+
+    @Test
+    void deferredForkFetchReturnsItsExistingReceiptAcrossDuplicatesRetryAndArchive() throws Exception {
+        String request = "{\"sourceCommit\":\"" + incoming + "\",\"expectedTrackedCommit\":\"" + base + "\"}";
+        String cause = java.util.UUID.randomUUID().toString();
+        doThrow(new org.springframework.dao.TransientDataAccessResourceException("Temporary identity store outage"))
+                .doNothing().when(actors).checkPublication(WorkspaceFetchJournalTest.GRANT, ACTOR,
+                        RepositoryScope.CENTRAL_WRITE, false);
+
+        var submitted = mvc.perform(post(API + "/fetch").contentType(MediaType.APPLICATION_JSON)
+                        .header("Idempotency-Key", "retryable-fetch").header("X-Causation-Id", cause).content(request))
+                .andExpect(status().isAccepted()).andExpect(header().exists("X-Operation-Id"))
+                .andExpect(content().string("")).andReturn();
+        String id = submitted.getResponse().getHeader("X-Operation-Id");
+        mvc.perform(get(API + "/operations/{id}", id)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.causationId").value(cause))
+                .andExpect(jsonPath("$.phase").value("RETRYABLE")).andExpect(jsonPath("$.attempts").value(1));
+        mvc.perform(post(API + "/fetch").contentType(MediaType.APPLICATION_JSON)
+                        .header("Idempotency-Key", "retryable-fetch").header("X-Causation-Id", cause).content(request))
+                .andExpect(status().isAccepted()).andExpect(header().string("X-Operation-Id", id))
+                .andExpect(content().string(""));
+        assertThat(tracking.head(target)).isEqualTo(base);
+        mvc.perform(delete(API + "/operations/{id}", id)).andExpect(status().isConflict());
+
+        mvc.perform(post(API + "/operations/{id}/retry", id)).andExpect(status().isOk())
+                .andExpect(header().string("X-Operation-Id", id)).andExpect(jsonPath("$.trackedCommit").value(incoming));
+        mvc.perform(get(API + "/operations/{id}", id)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.phase").value("COMPLETED")).andExpect(jsonPath("$.attempts").value(2));
+        mvc.perform(delete(API + "/operations/{id}", id)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.phase").value("ARCHIVED")).andExpect(jsonPath("$.outcome").value("COMPLETED"))
+                .andExpect(jsonPath("$.archivedBy").value(WorkspaceFetchJournalTest.ALICE));
+        mvc.perform(post(API + "/operations/{id}/retry", id)).andExpect(status().isGone());
+        assertThat(tracking.head(target)).isEqualTo(incoming);
+        assertThat(target.getHeadCommit("main")).isEqualTo(local);
     }
 
     @Test

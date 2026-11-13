@@ -40,6 +40,23 @@ public class CentralForkUpstreamService {
         return open(forkId, actor).fetchTag(request);
     }
 
+    public RepositoryContext context(String forkId, String actor) {
+        var origin = authorizedBinding(forkId, actor);
+        return RepositoryContext.centralWrite(forkId, origin.upstream().branch(), actor);
+    }
+
+    WorkspaceUpstreamService.Capture capture(RepositoryContext selected) throws IOException {
+        var transfer = open(selected.repositoryId(), selected.username());
+        return new WorkspaceUpstreamService.Capture(transfer.inspect(), transfer.forkPoint());
+    }
+
+    GitUpstreamTransfer recorded(RepositoryFetchOperation operation) throws IOException {
+        var selected = operation.context();
+        var transfer = open(selected.repositoryId(), selected.username());
+        transfer.requireOrigin(operation.sourceRepositoryId(), operation.sourceBranch, operation.forkPoint);
+        return transfer;
+    }
+
     private record Binding(GitUpstreamRef upstream, String forkPoint) {}
 
     private GitUpstreamTransfer open(String forkId, String actor) {

@@ -48,7 +48,7 @@ class WorkspaceFetchJournalTest {
                     .setProperty("hibernate.connection.url", url).setProperty("hibernate.connection.username", "SA")
                     .setProperty("hibernate.connection.password", "").setProperty("hibernate.connection.pool_size", "8")
                     .setProperty("hibernate.hbm2ddl.auto", "update").setProperty("hibernate.search.enabled", "false")
-                    .addAnnotatedClass(WorkspaceFetchOperation.class).buildSessionFactory();
+                    .addAnnotatedClass(CentralFetchOperation.class).addAnnotatedClass(WorkspaceFetchOperation.class).buildSessionFactory();
             journal = new WorkspaceFetchJournal(SharedEntityManagerCreator.createSharedEntityManager(factory), new JpaTransactionManager(factory), clock);
         }
         @Override public void close() { factory.close(); }

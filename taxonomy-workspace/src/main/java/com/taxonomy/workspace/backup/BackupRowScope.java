@@ -44,6 +44,19 @@ public final class BackupRowScope {
         var ids = keys().stream().map(BackupRepositoryKey::repositoryId).distinct().sorted().toList();
         return new Query(ids.isEmpty() ? "1=0" : column + " in (" + String.join(",", Collections.nCopies(ids.size(), "?")) + ")", ids);
     }
+    /** A fork transfer discloses Git identities from two central repositories. */
+    Query centralTransfer(String targetColumn, String sourceColumn) {
+        column(targetColumn);
+        column(sourceColumn);
+        if (installation()) return new Query("1=1", List.of());
+        var ids = keys().stream().filter(key -> key.workspaceId() == null).map(BackupRepositoryKey::repositoryId).toList();
+        if (ids.isEmpty()) return new Query("1=0", List.of());
+        String in = " in (" + String.join(",", Collections.nCopies(ids.size(), "?")) + ")";
+        var parameters = new ArrayList<Object>(ids);
+        parameters.addAll(ids);
+        return new Query(targetColumn + in + " and " + sourceColumn + in, parameters);
+    }
+
     public Query tenants(String column) {
         column(column);
         if (installation()) return new Query("1=1", List.of());
