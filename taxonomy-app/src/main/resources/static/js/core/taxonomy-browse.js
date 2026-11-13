@@ -1019,8 +1019,6 @@
                 reasons: S.currentReasons || {}, analysisLanguage: S.lastAnalysisLanguage || null
             };
             reportRequest.language = window.TaxonomyContentLanguage?.documentLanguage(S.lastAnalysisLanguage);
-            var reportHeaders = { 'Content-Type': 'application/json' };
-            if (reference?.workspaceId) reportHeaders['X-Taxonomy-Workspace-Id'] = reference.workspaceId;
             window.ExportApi.report(format, reportRequest, reference ? {pinnedWorkspaceId:reference.workspaceId} : {})
             .then(function (resp) {
                 if (!resp.ok) return resp.json().catch(function () { return {}; }).then(function (problem) {

@@ -5,8 +5,10 @@ window.ExportApi = (function () {
     return {
         report: function (format, payload, options) {
             if (!['markdown', 'html', 'docx'].includes(format)) throw new Error('Unknown report format');
+            // Current reports include the selected proposal inbox. Saved reports retain their own workspace.
+            const sourceOptions = payload.analysisReference ? options : Object.assign({}, options, {selectedRepository: true});
             return client.request('/api/report/' + format, {method: 'POST',
-                headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)}, options);
+                headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)}, sourceOptions);
         },
         scoreExport: function (body) { return client.sendJson('/api/scores/export', body); },
         diagramResponse: function (url, serializedArchitecture) {

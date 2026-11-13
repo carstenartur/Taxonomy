@@ -1083,6 +1083,8 @@ for (const edited of [false,true]) test(`report export ${edited ? 'retains manua
         await page.evaluate(edited=>{
             const C=__TaxonomyAnalysisSessionContext,S=TaxonomyState;
             C.runtime.workspaceId='ws-owned';S.currentReasons={'BP-1000':'Retained rationale'};
+            window.TaxonomyArchitectureWorkspace={ready:async()=>true};
+            window.TaxonomyArchitectureWorkflow={getScope:()=>({repositoryId:'current-repository',workspaceId:'',branch:'review'})};
             S.currentCopilot={schemaVersion:2,state:'COMPLETED',notes:[]};
             S.analysisOperationId='owned-operation';S.analysisRecovery=null;
             C.runtime.analysisReference={workspaceId:'ws-owned',operationId:'owned-operation'};
@@ -1096,8 +1098,9 @@ for (const edited of [false,true]) test(`report export ${edited ? 'retains manua
         const request=await page.evaluate(()=>window.reportRequest);
         const url=new URL(request.url,'http://taxonomy.fixture');
         assert.equal(url.pathname,'/api/report/markdown');
-        assert.deepEqual([...url.searchParams],[['workspaceId','ws-owned']]);
-        assert.equal(request.headers['x-taxonomy-workspace-id'],'ws-owned');
+        assert.deepEqual(Object.fromEntries(url.searchParams), edited
+            ? {repositoryId:'current-repository',workspaceId:'',branch:'review'} : {workspaceId:'ws-owned'});
+        assert.equal(request.headers['x-taxonomy-workspace-id'],edited ? '' : 'ws-owned');
         assert.equal(request.method,'POST');
         if(edited){assert.equal(request.body.analysisReference,undefined);assert.equal(request.body.reasons['BP-1000'],'Manual rationale');}
         else {assert.deepEqual(request.body.analysisReference,{workspaceId:'ws-owned',operationId:'owned-operation'});

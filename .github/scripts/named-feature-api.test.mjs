@@ -920,3 +920,17 @@ test('the proposal inbox waits for the selected repository and pins the initial 
   assert.equal(head.searchParams.get('branch'), 'review/A');
   assert.equal(head.searchParams.get('workspaceId'), 'workspace-a');
 });
+
+test('exporting the current architecture report pins its live proposal inbox and preserves retained reports', async () => {
+  const calls = [];
+  const app = boot(async (url,init) => { calls.push([new URL(url,app.window.location.href),new Headers(init.headers)]); return new Response('report'); });
+  app.load('api/export-api.js');
+  app.window.TaxonomyArchitectureWorkspace = {ready: async () => true};
+  app.window.TaxonomyArchitectureWorkflow = {getScope: () => ({repositoryId:'selected',workspaceId:'',branch:'review'})};
+  await app.window.ExportApi.report('markdown',{scores:{A:80}});
+  await app.window.ExportApi.report('docx',{analysisReference:{workspaceId:'retained'}},{pinnedWorkspaceId:'retained'});
+  assert.deepEqual(Object.fromEntries(calls[0][0].searchParams),{repositoryId:'selected',workspaceId:'',branch:'review'});
+  assert.equal(calls[0][1].get('X-Taxonomy-Workspace-Id'),'');
+  assert.equal(calls[1][0].searchParams.has('repositoryId'),false);
+  assert.equal(calls[1][1].get('X-Taxonomy-Workspace-Id'),'retained');
+});
