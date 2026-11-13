@@ -127,8 +127,9 @@ class GitAuthoritativeProposalReviewServiceTest {
             throws Exception {
         when(stateStore.require(17L, context))
                 .thenReturn(snapshot(ProposalStatus.ACCEPTED));
-        when(mutationService.remove(
-                eq(context), eq(PREVIOUS), any(), eq(metadata)))
+        Map<String, String> expectedDecision = Map.of("status", "accepted", "provenance", "proposal-review", "x-proposal-id", "17");
+        when(mutationService.removeMatching(
+                eq(context), eq(PREVIOUS), any(), eq(metadata), eq(expectedDecision)))
                 .thenReturn(mutation(false));
         when(stateStore.transition(
                 17L, context, ProposalStatus.ACCEPTED, ProposalStatus.PENDING))
@@ -138,8 +139,8 @@ class GitAuthoritativeProposalReviewServiceTest {
 
         ArgumentCaptor<RelationIdentity> identity =
                 ArgumentCaptor.forClass(RelationIdentity.class);
-        verify(mutationService).remove(
-                eq(context), eq(PREVIOUS), identity.capture(), eq(metadata));
+        verify(mutationService).removeMatching(
+                eq(context), eq(PREVIOUS), identity.capture(), eq(metadata), eq(expectedDecision));
         assertThat(identity.getValue())
                 .extracting(
                         RelationIdentity::sourceId,

@@ -111,7 +111,8 @@ class ProposalApiControllerBulkHttpTest {
                 new ProposalReviewStateStore(proposals), mutations);
         var controller = new ProposalApiController(mock(RelationProposalService.class),
                 reviewService, readiness, resolver, mock(SystemRepositoryService.class),
-                mock(RepositoryMembershipService.class));
+                mock(RepositoryMembershipService.class), new ProposalInboxResponses(
+                tools.jackson.databind.json.JsonMapper.builder().build()));
         mvc = standaloneSetup(controller).build();
     }
 

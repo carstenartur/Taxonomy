@@ -782,7 +782,7 @@ test('proposal badge reuses the single authoritative read under each filter with
         const container = {innerHTML:''};
         const sandbox = {
             AbortController, Promise, Array, console,
-            startupPageActive:true, proposalRead:null,
+            startupPageActive:true, proposalRead:null, proposalSource:null,
             document:{getElementById(id) {
                 return id === 'proposalsTableContainer' ? container
                     : id === 'proposalPendingBadge' ? badge : null;

@@ -893,3 +893,44 @@ test('an expired child keeps its HTTP status and exposes its localized explanati
     error => error.status === 410 && error.responseBody.code === 'ANALYSIS_EXPIRED'
       && error.message === 'analysis.adapter.expired');
 });
+
+test('the proposal inbox waits for the selected repository and pins the initial central read', async () => {
+  const admitted = deferred();
+  const calls = [];
+  const app = boot(async (url, init) => { calls.push([String(url), init]); return Response.json([]); });
+  app.runtime.workspaceId = undefined;
+  let source = {};
+  app.window.TaxonomyArchitectureWorkspace = {ready: () => admitted.promise};
+  app.window.TaxonomyArchitectureWorkflow = {getScope: () => source};
+  app.load('api/proposals-api.js');
+  const first = app.window.TaxonomyProposalsApi.list('PENDING');
+  await flush();
+  assert.equal(calls.length, 0);
+  source = {repositoryId:'central B', workspaceId:'', branch:'review/B'};
+  admitted.resolve(true);
+  assert.equal((await first).status, 200);
+  const url = new URL(calls[0][0], app.window.location.href);
+  assert.equal(url.pathname, '/taxonomy/api/proposals/pending');
+  assert.deepEqual(Object.fromEntries(url.searchParams), {repositoryId:'central B',workspaceId:'',branch:'review/B'});
+  assert.equal(new Headers(calls[0][1].headers).get('X-Taxonomy-Workspace-Id'), '');
+  source = {repositoryId:'central A',workspaceId:'workspace-a',branch:'review/A'};
+  await app.window.TaxonomyProposalsApi.readHead();
+  const head = new URL(calls[1][0], app.window.location.href);
+  assert.equal(head.searchParams.get('repositoryId'), 'central A');
+  assert.equal(head.searchParams.get('branch'), 'review/A');
+  assert.equal(head.searchParams.get('workspaceId'), 'workspace-a');
+});
+
+test('exporting the current architecture report pins its live proposal inbox and preserves retained reports', async () => {
+  const calls = [];
+  const app = boot(async (url,init) => { calls.push([new URL(url,app.window.location.href),new Headers(init.headers)]); return new Response('report'); });
+  app.load('api/export-api.js');
+  app.window.TaxonomyArchitectureWorkspace = {ready: async () => true};
+  app.window.TaxonomyArchitectureWorkflow = {getScope: () => ({repositoryId:'selected',workspaceId:'',branch:'review'})};
+  await app.window.ExportApi.report('markdown',{scores:{A:80}});
+  await app.window.ExportApi.report('docx',{analysisReference:{workspaceId:'retained'}},{pinnedWorkspaceId:'retained'});
+  assert.deepEqual(Object.fromEntries(calls[0][0].searchParams),{repositoryId:'selected',workspaceId:'',branch:'review'});
+  assert.equal(calls[0][1].get('X-Taxonomy-Workspace-Id'),'');
+  assert.equal(calls[1][0].searchParams.has('repositoryId'),false);
+  assert.equal(calls[1][1].get('X-Taxonomy-Workspace-Id'),'retained');
+});

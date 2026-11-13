@@ -228,6 +228,13 @@
 
         // Proposal review panel — load on page start
         loadProposals('PENDING');
+        ['taxonomy:entity-context-changed', 'taxonomy:repository-context-changed', 'taxonomy:architecture-source-changed'].forEach(function (event) {
+            document.addEventListener(event, function () {
+                if (!proposalRead || proposalSource === currentProposalSource()) return;
+                document.getElementById('undoToast')?.remove();
+                loadProposals(S.currentProposalFilter);
+            });
+        });
         ['filterPending', 'filterAll', 'filterAccepted', 'filterRejected'].forEach(function (id) {
             const btn = document.getElementById(id);
             if (btn) {
@@ -587,6 +594,7 @@
     var startupPageActive = true;
     var startupRead = null;
     var proposalRead = null;
+    var proposalSource = null;
     var startupRetryTimer = null;
     var taxonomyLoading = false;
 
@@ -1017,8 +1025,6 @@
                 reasons: S.currentReasons || {}, analysisLanguage: S.lastAnalysisLanguage || null
             };
             reportRequest.language = window.TaxonomyContentLanguage?.documentLanguage(S.lastAnalysisLanguage);
-            var reportHeaders = { 'Content-Type': 'application/json' };
-            if (reference?.workspaceId) reportHeaders['X-Taxonomy-Workspace-Id'] = reference.workspaceId;
             window.ExportApi.report(format, reportRequest, reference ? {pinnedWorkspaceId:reference.workspaceId} : {})
             .then(function (resp) {
                 if (!resp.ok) return resp.json().catch(function () { return {}; }).then(function (problem) {
@@ -2165,12 +2171,20 @@
         return startupPageActive && proposalRead === controller && !controller.signal.aborted;
     }
 
+    function currentProposalSource() {
+        const source = window.TaxonomyArchitectureWorkflow?.getScope?.();
+        return JSON.stringify([source?.repositoryId, source?.workspaceId, source?.branch]);
+    }
+
     function loadProposals(statusFilter) {
         const container = document.getElementById('proposalsTableContainer');
         if (!container || !startupPageActive) return;
         if (proposalRead) proposalRead.abort();
         const controller = new AbortController();
         proposalRead = controller;
+        proposalSource = currentProposalSource();
+        const badge = document.getElementById('proposalPendingBadge');
+        if (badge) badge.textContent = '';
         container.innerHTML = '<div class="text-muted small p-2" role="status" aria-live="polite">' + t('browse.proposals.loading') + '</div>';
         // PENDING has a dedicated endpoint; ACCEPTED/REJECTED/ALL need the full list
         window.TaxonomyProposalsApi.list(statusFilter, { signal: controller.signal })
@@ -2190,6 +2204,10 @@
             })
             .catch(function (err) {
                 if (!currentProposalRead(controller) || err?.code === 'ABORTED') return;
+                if (err?.code === 'SOURCE_UNAVAILABLE') {
+                    container.innerHTML = '<div class="text-muted small p-2" role="status">' + t('browse.proposals.repository.required') + '</div>';
+                    return;
+                }
                 console.error('[Taxonomy] Failed to load proposals', err);
                 if (container) {
                     container.innerHTML = '<div class="text-danger small p-2">' + t('browse.proposals.load.failed', escapeHtml(err.message)) + '</div>';

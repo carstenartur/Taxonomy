@@ -56,6 +56,7 @@ public class ProposalApiController {
     private final GitAuthoritativeProposalReviewService reviewService;
     private final RelationBranchProjectionReadinessService readinessService;
     private final WorkspaceResolver workspaceResolver;
+    private final ProposalInboxResponses inbox;
     private final SystemRepositoryService repositoryService;
     private final RepositoryMembershipService membershipService;
 
@@ -65,7 +66,8 @@ public class ProposalApiController {
             RelationBranchProjectionReadinessService readinessService,
             WorkspaceResolver workspaceResolver,
             SystemRepositoryService repositoryService,
-            RepositoryMembershipService membershipService) {
+            RepositoryMembershipService membershipService, ProposalInboxResponses inbox) {
+        this.inbox = inbox;
         this.proposalService = proposalService;
         this.reviewService = reviewService;
         this.readinessService = readinessService;
@@ -115,9 +117,8 @@ public class ProposalApiController {
     @GetMapping("/proposals")
     public ResponseEntity<List<RelationProposalDto>> getAllProposals() {
         RepositoryContext context = workspaceResolver
-                .resolveCurrentRepositoryContext();
-        return ResponseEntity.ok(
-                proposalService.getAllProposalsInContext(context));
+                .resolveUnambiguousRepositoryForRead();
+        return inbox.read(context, "all", () -> proposalService.getAllProposalsInContext(context));
     }
 
     @Operation(summary = "List pending proposals",
@@ -125,20 +126,18 @@ public class ProposalApiController {
     @GetMapping("/proposals/pending")
     public ResponseEntity<List<RelationProposalDto>> getPendingProposals() {
         RepositoryContext context = workspaceResolver
-                .resolveCurrentRepositoryContext();
-        return ResponseEntity.ok(
-                proposalService.getPendingProposalsInContext(context));
+                .resolveUnambiguousRepositoryForRead();
+        return inbox.read(context, "pending", () -> proposalService.getPendingProposalsInContext(context));
     }
 
     @Operation(summary = "List node proposals",
-            description = "Lists retained proposals involving the specified catalogue node in the authenticated repository context. The node code is validated by the underlying scoped catalogue rather than granting cross-repository access.")
+            description = "Lists retained proposals generated for this source node in the selected repository and workspace.")
     @GetMapping("/node/{code}/proposals")
     public ResponseEntity<List<RelationProposalDto>> getProposalsForNode(
             @PathVariable String code) {
         RepositoryContext context = workspaceResolver
-                .resolveCurrentRepositoryContext();
-        return ResponseEntity.ok(
-                proposalService.getProposalsForNodeInContext(code, context));
+                .resolveUnambiguousRepositoryForRead();
+        return inbox.read(context, "node/" + code, () -> proposalService.getProposalsForNodeInContext(code, context));
     }
 
     /** Compatibility overload used by focused unit tests and in-process callers. */

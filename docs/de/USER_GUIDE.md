@@ -932,7 +932,7 @@ Nach der Annahme zeigt der Vorschlag in der Prüfungsansicht ein grünes **Accep
 
 ![Akzeptierter Vorschlag](../images/36-proposal-accepted.png)
 
-Nach jeder Annahme- oder Ablehnungsaktion erscheint eine **Rückgängig-Toast-Benachrichtigung** in der unteren rechten Ecke für 8 Sekunden. Klicken Sie auf **↩️ Undo**, um den Vorschlag auf den Status PENDING zurückzusetzen (und, falls er akzeptiert wurde, die erstellte Relation zu löschen).
+Nach jeder Annahme- oder Ablehnungsaktion erscheint eine **Rückgängig-Toast-Benachrichtigung** in der unteren rechten Ecke für 8 Sekunden. Klicken Sie auf **↩️ Undo**, um den Vorschlag auf den Status PENDING zurückzusetzen (und, falls er akzeptiert wurde, die erstellte Relation zu löschen). Beim Rückgängigmachen prüft die Anwendung Vorschlags-ID, Herkunft und Entscheidung am ausgewählten Git-Stand. Enthält eine andere Bearbeitung oder ein anderer Branch eine abweichende Entscheidung für dieselbe Relation, öffnen Sie die Prüfung erneut in dem Branch, in dem sie gespeichert wurde.
 
 ### Massenaktionen
 
@@ -1202,6 +1202,8 @@ Jede Taxonomie-Knotenzeile enthält eine Schaltfläche **🔍 Similar**. Durch K
 ## 11a. Qualitäts-Dashboard
 
 Das Panel **📊 Quality Dashboard** (rechte Spalte, einklappbar) zeigt Metriken zur Qualität der Relationsvorschläge an. Öffnen Sie es durch Klicken auf die Zusammenfassung; die Metriken werden automatisch geladen.
+
+Das Dashboard zählt die gespeicherten Vorschläge des ausgewählten Repositorys. In einem persönlichen Workspace sind auch zentrale Vorschläge desselben Repositorys sichtbar. Bewertungen anderer Workspaces und Repositorys sind ausgeschlossen. Branches desselben Workspaces teilen sich diesen Prüfverlauf. Gesamtwerte, Aufschlüsselung nach Beziehungstyp und abgelehnte Beispiele stammen aus einer gemeinsamen Abfrage. Eine Annahme oder Rücknahme wirkt auf den ausgewählten Git-Branch und erfordert dessen aktuellen Stand. Für einen früheren Git-Commit lässt sich der Prüfverlauf nicht abrufen.
 
 ### Zusammenfassende Metriken
 

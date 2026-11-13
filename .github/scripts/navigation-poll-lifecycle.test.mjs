@@ -102,6 +102,7 @@ function harness(kind, { translationsPending = false, proposals = false, forms =
     vm.runInNewContext(sources[kind], scope, { filename: `production-${kind}-poll.js` });
     if (!translationsPending) translations.resolve();
     return { window, nodes, reads, state, timers, translations, errors,
+        sourceChanged() { dom.dispatchEvent(new Event('taxonomy:entity-context-changed')); },
         start() { dom.dispatchEvent(new Event('DOMContentLoaded')); },
         hide() { lifecycle.dispatchEvent(Object.assign(new Event('pagehide'), { persisted: true })); },
         beforeUnload() { lifecycle.dispatchEvent(new Event('beforeunload')); },
@@ -314,6 +315,56 @@ test('proposal body rejection after pagehide cannot report an obsolete error', a
     h.hide(); body.reject(new TypeError('controlled body rejection after departure')); await settle();
     assert.deepEqual(h.errors, [], 'Only the current page may report a proposal failure');
     assert.deepEqual(proposalPresentation(h), retained);
+});
+
+test('switching proposal source clears displayed rows and count before accepting the new inbox', async () => {
+    const h = harness('browse', { proposals: true });
+    let selected = {repositoryId:'alpha', workspaceId:'A1', branch:'draft'};
+    h.window.TaxonomyArchitectureWorkspace = { ready: async () => true };
+    h.window.TaxonomyArchitectureWorkflow = { getScope: () => selected };
+    h.start();
+    await settle();
+    const path = '/api/proposals/pending';
+    const original = h.requests(path)[0];
+    original.answer([{id:37, status:'PENDING', sourceCode:'alpha-node', targetCode:'target', relationType:'DEPENDS_ON'}]);
+    await settle();
+    assert.match(proposalPresentation(h).table, /alpha-node/);
+    h.sourceChanged();
+    await settle();
+    assert.equal(h.requests(path).length, 1, 'unchanged selection must not fetch the inbox again');
+    let undoRemoved = false;
+    h.nodes.set('undoToast', {remove() { undoRemoved = true; }});
+    selected = {repositoryId:'beta', workspaceId:'', branch:'main'};
+    h.sourceChanged();
+    assert.equal(undoRemoved, true, 'undo for the prior source is no longer actionable');
+    assert.doesNotMatch(proposalPresentation(h).table, /alpha-node/);
+    assert.equal(proposalPresentation(h).badge, '');
+    await settle();
+    const pending = h.requests(path)[1];
+    assert.equal(new URL(pending.url, h.window.location.href).searchParams.get('repositoryId'), 'beta');
+    selected = {repositoryId:'gamma', workspaceId:'G1', branch:'draft'};
+    h.sourceChanged();
+    await settle();
+    assert.equal(pending.init.signal.aborted, true);
+    pending.answer([{id:7,status:'PENDING',sourceCode:'beta-node'}]);
+    h.requests(path)[2].answer([]);
+    await settle();
+    assert.match(proposalPresentation(h).table, /browse.proposals.none/);
+    assert.equal(proposalPresentation(h).badge, 'browse.proposals.pending 0');
+    assert.deepEqual(h.errors, []);
+});
+
+test('a missing selected repository clears the previous proposal count without sending a read', async () => {
+    const h = harness('browse', { proposals: true });
+    h.window.TaxonomyArchitectureWorkspace = { ready: async () => true };
+    h.window.TaxonomyArchitectureWorkflow = { getScope: () => ({}) };
+    h.start();
+    await settle();
+    assert.equal(h.requests('/api/proposals/pending').length, 0);
+    assert.equal(h.nodes.get('proposalPendingBadge').textContent, '');
+    assert.match(h.nodes.get('proposalsTableContainer').innerHTML, /role="status"/);
+    assert.match(h.nodes.get('proposalsTableContainer').innerHTML, /browse.proposals.repository.required/);
+    assert.deepEqual(h.errors, []);
 });
 
 for (const failure of ['http', 'json', 'network']) {
