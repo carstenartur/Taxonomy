@@ -2,6 +2,7 @@ package com.taxonomy.security;
 
 import com.taxonomy.dsl.command.ArchitectureDslCommands;
 import com.taxonomy.security.service.DatabaseUserDetailsService;
+import com.taxonomy.support.AnalysisCatalogueSourceFixture;
 import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.service.ArchitectureRepositoryProvisioningService;
 import com.taxonomy.workspace.service.RepositoryWorkspaceService;
@@ -33,6 +34,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
+        "spring.datasource.url=jdbc:hsqldb:mem:admin-authorization-regression",
         "embedding.enabled=false",
         "gemini.api.key=",
         "openai.api.key=",
@@ -41,7 +43,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "llama.api.key=",
         "mistral.api.key="
 })
-class AdminAuthorizationRegressionTest {
+class AdminAuthorizationRegressionTest implements AnalysisCatalogueSourceFixture {
 
     @Autowired
     private MockMvc mockMvc;

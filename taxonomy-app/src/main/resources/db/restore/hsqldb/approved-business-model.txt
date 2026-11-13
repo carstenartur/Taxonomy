@@ -71,6 +71,7 @@ com.taxonomy.relations.model.RelationDecisionProjectionCheckpoint
 com.taxonomy.relations.model.RelationEvidence
 com.taxonomy.relations.model.RelationHypothesis
 com.taxonomy.relations.model.RelationProjectionRecovery
+com.taxonomy.relations.service.BranchGraphVectorGeneration
 com.taxonomy.relations.model.RelationProposal
 com.taxonomy.relations.model.RequirementCoverage
 com.taxonomy.security.model.AppRole

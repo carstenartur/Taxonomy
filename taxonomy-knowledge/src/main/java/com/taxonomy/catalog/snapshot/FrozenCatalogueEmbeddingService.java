@@ -42,6 +42,13 @@ public class FrozenCatalogueEmbeddingService {
     public List<RootCatalogueSnapshot> decorate(RepositoryContext context, CatalogueSourceIdentity source,
                                                 List<RootCatalogueSnapshot> capturedRoots,
                                                 Set<String> requiredRoots) {
+        return decorate(context, source, capturedRoots, requiredRoots, null);
+    }
+
+    /** An index builder can also require the exact detached edge set used to build its relation field. */
+    public List<RootCatalogueSnapshot> decorate(RepositoryContext context, CatalogueSourceIdentity source,
+                                                List<RootCatalogueSnapshot> capturedRoots, Set<String> requiredRoots,
+                                                Set<RelationIdentity> expectedRelations) {
         if (TransactionSynchronizationManager.isActualTransactionActive()) {
             throw new IllegalStateException("Frozen embedding preparation requires no database transaction");
         }
@@ -60,6 +67,9 @@ public class FrozenCatalogueEmbeddingService {
         // Validates source, root membership, hierarchy and one retained catalogue generation.
         new FrozenCatalogueView(source, allRoots, capturedRoots);
         IdentitySnapshot before = requireExact(relations.readIdentitySnapshot(context), source);
+        if (expectedRelations != null && !expectedRelations.equals(before.identities())) {
+            throw new IllegalStateException("Relation projection differs from the selected vector generation");
+        }
         Map<String, TaxonomyNode> nodes = new LinkedHashMap<>();
         for (var root : capturedRoots) {
             for (var node : root.nodes()) nodes.put(node.code(), node.detached());
@@ -73,11 +83,12 @@ public class FrozenCatalogueEmbeddingService {
         } catch (Exception failure) {
             throw new IllegalStateException("Frozen embedding model identity is unavailable", failure);
         }
+        var relationNameLocale = expectedRelations == null ? java.util.Locale.getDefault() : java.util.Locale.ROOT;
         List<RootCatalogueSnapshot> result = capturedRoots.stream()
                 .filter(root -> requiredRoots.contains(root.rootCode())).map(root -> {
                     Map<String, String> texts = new LinkedHashMap<>();
                     root.nodes().forEach(node -> texts.put(node.code(),
-                            NodeEmbeddingText.buildEnrichedText(nodes.get(node.code()))));
+                            NodeEmbeddingText.buildEnrichedText(nodes.get(node.code()), relationNameLocale)));
                     return root.withEmbeddings(new RootEmbeddingSnapshot(RootEmbeddingSnapshot.SCHEMA_VERSION,
                             source, root.rootCode(), before.commitId(), RootEmbeddingSnapshot.TEXT_VERSION,
                             model, texts));

@@ -103,10 +103,12 @@ public class SearchFacade {
     public GraphSearchResult graphSearch(String query,
                                          int maxResults,
                                          RepositoryContext repositoryContext) {
+        var scoped = graphSearchService.searchBranchIfPresent(query, maxResults, repositoryContext);
+        if (scoped.isPresent()) return scoped.get();
         if (maxResults > 0 && !isGraphSearchReady()) {
             throw new SearchUnavailableException();
         }
-        var results = graphSearchService.graphSearch(query, maxResults, repositoryContext);
+        var results = graphSearchService.searchGlobalSource(query, maxResults, repositoryContext);
         if (maxResults > 0 && !isGraphSearchReady()) {
             throw new SearchUnavailableException();
         }

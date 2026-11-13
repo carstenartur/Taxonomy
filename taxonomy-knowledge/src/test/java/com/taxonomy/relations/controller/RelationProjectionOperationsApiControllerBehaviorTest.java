@@ -47,6 +47,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -66,6 +67,7 @@ class RelationProjectionOperationsApiControllerBehaviorTest {
     @Mock private WorkspaceResolver workspaceResolver;
     @Mock private SystemRepositoryService repositoryService;
     @Mock private RepositoryMembershipService membershipService;
+    @Mock private com.taxonomy.relations.service.BranchGraphVectors vectors;
 
     private RelationProjectionOperationsApiController controller;
 
@@ -74,7 +76,21 @@ class RelationProjectionOperationsApiControllerBehaviorTest {
         SecurityContextHolder.clearContext();
         controller = new RelationProjectionOperationsApiController(
                 operationsService, workspaceResolver, repositoryService,
-                membershipService);
+                membershipService, vectors);
+    }
+
+    @Test
+    void vectorOperationsUseOnlyAnExistingSelectedWorkingCopyAndStrongHead() {
+        when(workspaceResolver.resolveCurrentRepositoryContextForRead()).thenReturn(WORKSPACE);
+        var ready = new com.taxonomy.relations.service.BranchGraphVectors.Status("READY", "generation", HEAD, "model", 2, 1);
+        when(vectors.inspect(WORKSPACE)).thenReturn(ready);
+        when(vectors.rebuild(WORKSPACE, HEAD)).thenReturn(ready);
+        assertThat(controller.vectorStatus().getBody()).isEqualTo(ready);
+        assertThat(controller.rebuildVectors(null).getStatusCode()).isEqualTo(HttpStatus.PRECONDITION_REQUIRED);
+        assertThat(controller.rebuildVectors(ETAG).getHeaders().getETag()).isEqualTo(ETAG);
+        assertThat(controller.purgeVectors(ETAG).getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        verify(vectors).purge(WORKSPACE, HEAD);
+        verify(workspaceResolver, never()).resolveCurrentRepositoryContext();
     }
 
     @AfterEach
