@@ -3,6 +3,7 @@ package com.taxonomy.security.webdav;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequestWrapper;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,7 +27,9 @@ import java.text.Normalizer;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.Deque;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.Locale;
@@ -178,10 +181,33 @@ public final class WebDavApplicationCredentialFilter extends OncePerRequestFilte
                     principal.credentialId(),
                     principal.ownerId(),
                     request.getMethod());
-            chain.doFilter(request, response);
+            chain.doFilter(withoutConsumedAuthorization(request), response);
         } finally {
             SecurityContextHolder.setContext(previous);
         }
+    }
+
+    /** The scoped adapter consumed these credentials. A later Basic filter must not try them as a local password. */
+    private static HttpServletRequest withoutConsumedAuthorization(HttpServletRequest request) {
+        return new HttpServletRequestWrapper(request) {
+            @Override
+            public String getHeader(String name) {
+                return HttpHeaders.AUTHORIZATION.equalsIgnoreCase(name) ? null : super.getHeader(name);
+            }
+
+            @Override
+            public Enumeration<String> getHeaders(String name) {
+                return HttpHeaders.AUTHORIZATION.equalsIgnoreCase(name)
+                        ? Collections.emptyEnumeration() : super.getHeaders(name);
+            }
+
+            @Override
+            public Enumeration<String> getHeaderNames() {
+                var names = Collections.list(super.getHeaderNames());
+                names.removeIf(HttpHeaders.AUTHORIZATION::equalsIgnoreCase);
+                return Collections.enumeration(names);
+            }
+        };
     }
 
     private static boolean allowedForMethod(

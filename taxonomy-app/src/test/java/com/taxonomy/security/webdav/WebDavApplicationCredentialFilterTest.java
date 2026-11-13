@@ -1,15 +1,19 @@
 package com.taxonomy.security.webdav;
 
 import jakarta.servlet.FilterChain;
+import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
 import org.springframework.transaction.TransactionSystemException;
 
 import java.nio.charset.StandardCharsets;
@@ -79,6 +83,38 @@ class WebDavApplicationCredentialFilterTest {
         assertThat(SecurityContextHolder.getContext().getAuthentication())
                 .isNull();
         verify(service).authenticate("admin", TOKEN);
+    }
+
+    @Test
+    void theLocalBasicFilterDoesNotReauthenticateAnAcceptedWebDavCredential() throws Exception {
+        var service = mock(WebDavApplicationCredentialService.class);
+        when(service.authenticate("admin", TOKEN)).thenReturn(Optional.of(principal("admin", true)));
+        var accountPasswords = mock(AuthenticationManager.class);
+        when(accountPasswords.authenticate(org.mockito.ArgumentMatchers.any()))
+                .thenThrow(new BadCredentialsException("An application credential is not an account password"));
+        var basic = new BasicAuthenticationFilter(accountPasswords, (req, res, problem) -> res.sendError(401));
+        var response = new MockHttpServletResponse();
+        var reached = new AtomicBoolean();
+        var input = request("PROPFIND", "203.0.113.10", "admin", TOKEN);
+        input.addHeader("Depth", "0");
+
+        filter(service).doFilter(input, response, (req, res) ->
+                basic.doFilter(req, res, (davRequest, davResponse) -> {
+                    var http = (HttpServletRequest) davRequest;
+                    assertThat(http.getHeader("Depth")).isEqualTo("0");
+                    assertThat(java.util.Collections.list(http.getHeaders("Depth"))).containsExactly("0");
+                    assertThat(http.getHeader("authorization")).isNull();
+                    assertThat(java.util.Collections.list(http.getHeaders("AUTHORIZATION"))).isEmpty();
+                    assertThat(java.util.Collections.list(http.getHeaderNames()))
+                            .contains("Depth").noneMatch(HttpHeaders.AUTHORIZATION::equalsIgnoreCase);
+                    assertThat(SecurityContextHolder.getContext().getAuthentication().getName())
+                            .isEqualTo(WebDavCredentialTestIdentity.actor("admin"));
+                    reached.set(true);
+                }));
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(reached).isTrue();
+        verifyNoInteractions(accountPasswords);
     }
 
     @Test
