@@ -262,10 +262,19 @@ public final class VerifiedLegacyOwnerMigration {
                     where u.principal_id=? and u.enabled=? and r.name='ROLE_ADMIN'
                     """, Integer.class, actor.value().toString(), true);
             if (current != 1) throw new AccessDeniedException("Current administrator authority required");
-        } else if (!(authentication instanceof PrincipalJwtAuthenticationToken)
-                && !(authentication instanceof OAuth2AuthenticationToken
-                     && authentication.getPrincipal() instanceof PrincipalOidcUser)) {
-            throw new AccessDeniedException("Verified administrator login required");
+        } else {
+            Instant expiresAt;
+            if (authentication instanceof PrincipalJwtAuthenticationToken jwt) {
+                expiresAt = jwt.getToken().getExpiresAt();
+            } else if (authentication instanceof OAuth2AuthenticationToken
+                    && authentication.getPrincipal() instanceof PrincipalOidcUser oidc) {
+                expiresAt = oidc.getIdToken().getExpiresAt();
+            } else {
+                throw new AccessDeniedException("Verified administrator login required");
+            }
+            if (expiresAt == null || !expiresAt.isAfter(Instant.now())) {
+                throw new AccessDeniedException("A fresh administrator login is required");
+            }
         }
         return actor;
     }

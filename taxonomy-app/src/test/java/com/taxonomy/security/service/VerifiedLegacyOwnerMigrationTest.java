@@ -2,20 +2,31 @@ package com.taxonomy.security.service;
 
 import com.taxonomy.backup.PrincipalId;
 import com.taxonomy.security.controller.LegacyOwnerReservationController;
+import com.taxonomy.security.keycloak.PrincipalJwtAuthenticationToken;
+import com.taxonomy.security.keycloak.PrincipalOidcUser;
 import com.taxonomy.security.model.PrincipalUserDetails;
 import com.taxonomy.security.persistence.PrincipalSchemaMigration;
+
 import org.hsqldb.jdbc.JDBCDataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
+import org.springframework.security.oauth2.core.oidc.OidcIdToken;
+import org.springframework.security.oauth2.core.oidc.user.DefaultOidcUser;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
@@ -268,6 +279,40 @@ class VerifiedLegacyOwnerMigrationTest {
                 .andExpect(jsonPath("$.inventory.missingReservations").value(0))
                 .andExpect(jsonPath("$.reservations.total").value(3))
                 .andExpect(jsonPath("$.reservations.truncated").value(true));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void anExpiredVerifiedLoginCannotInspectOrChangeHistoricalOwnership(boolean browser) {
+        String issuer = "https://fixture.invalid/realm";
+        String subject = "controlled-operator";
+        var principal = identities.oidc(issuer, subject);
+        var roles = List.of(new SimpleGrantedAuthority("ROLE_ADMIN"));
+        Instant issued = Instant.now().minusSeconds(120);
+        Instant expires = issued.plusSeconds(60);
+        Authentication expired;
+        if (browser) {
+            var idToken = new OidcIdToken("controlled-id-token", issued, expires, Map.of("iss", issuer, "sub", subject));
+            var user = new PrincipalOidcUser(roles, new DefaultOidcUser(roles, idToken), principal);
+            expired = new OAuth2AuthenticationToken(user, roles, "fixture");
+        } else {
+            var jwt = Jwt.withTokenValue("controlled-access-token").header("alg", "RS256").issuer(issuer)
+                    .subject(subject).issuedAt(issued).expiresAt(expires).build();
+            expired = new PrincipalJwtAuthenticationToken(jwt, roles, principal);
+        }
+        jdbc.update("insert into user_workspace values ('late-owner', 'late-copy')");
+        var currentPlan = migration.preview(admin, 256);
+        assertThatThrownBy(() -> migration.reservationStatus(expired, 1)).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> migration.reserveMissing(expired)).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> migration.preview(expired, 256)).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> migration.linkVerified(expired, currentPlan.fingerprint(), List.of(
+                verified(currentPlan.owners().get(0), "one"), verified(currentPlan.owners().get(1), "two"))))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> migration.unlinkVerified(expired, currentPlan.owners().getFirst().principal(),
+                issuer, subject, "controlled-review")).isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("fresh");
+        assertThat(migration.preview(admin, 256)).isEqualTo(currentPlan);
+        assertThat(jdbc.queryForObject("select count(*) from principal_access_audit", Integer.class)).isZero();
     }
 
     @Test void reservationNeedsACurrentAdminAndRollsBackWhenItsAuditCannotCommit() {
