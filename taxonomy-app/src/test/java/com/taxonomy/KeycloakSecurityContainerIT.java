@@ -295,8 +295,9 @@ class KeycloakSecurityContainerIT {
                 Map.of("Cookie", sessionCookie, csrfHeader, csrfToken));
         assertThat(withCsrf.statusCode()).isEqualTo(400);
 
-        ((JavascriptExecutor) driver).executeScript("window.TaxonomyOnboarding?.dismiss();");
         var wait = new WebDriverWait(driver, Duration.ofSeconds(30));
+        wait.until(ExpectedConditions.elementToBeClickable(By.id("onboardingDismiss"))).click();
+        wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("onboardingOverlay")));
         wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("#applicationAccount > summary"))).click();
         var signOut = wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("#applicationLogoutForm button")));
         assertThat(signOut.getAccessibleName()).isEqualTo("Sign out of single sign-on");

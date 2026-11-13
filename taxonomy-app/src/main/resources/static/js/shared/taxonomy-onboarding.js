@@ -109,7 +109,10 @@
             dialog.remove();
             if (returnFocus && returnFocus.isConnected && typeof returnFocus.focus === 'function') {
                 requestAnimationFrame(function () {
-                    returnFocus.focus({ preventScroll: true });
+                    // A subsequent user action may already have moved focus to another control.
+                    if (document.activeElement === document.body && returnFocus.isConnected) {
+                        returnFocus.focus({ preventScroll: true });
+                    }
                 });
             }
         }, { once: true });
