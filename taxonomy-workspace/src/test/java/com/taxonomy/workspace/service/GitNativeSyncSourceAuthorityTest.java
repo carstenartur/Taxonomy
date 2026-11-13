@@ -474,6 +474,74 @@ class GitNativeSyncSourceAuthorityTest {
         }
     }
 
+    @ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(strings={"active","sharing_revoked","role_revoked","ownership_changed"})
+    void collaborativePublicationRetainsTheInitiatorAndCurrentWorkspaceGrant(String change) throws Exception {
+        var request = new org.springframework.mock.web.MockHttpServletRequest();
+        request.addHeader("X-Taxonomy-Workspace-Id","old-copy");
+        var requestScope = new org.springframework.web.context.request.ServletRequestAttributes(request);
+        org.springframework.web.context.request.RequestContextHolder.setRequestAttributes(requestScope);
+        try (var fixture = new Fixture(true);
+             var database = publicationDatabase("jdbc:hsqldb:mem:collaborator-"+java.util.UUID.randomUUID(),"create")) {
+            var grant = new WorkspaceFetchAuthority.Grant(java.util.UUID.randomUUID().toString(),"LOCAL","a".repeat(64));
+            var authority = mock(WorkspacePublicationAuthority.class);
+            when(authority.authorizePublication("alice")).thenReturn(grant);
+            when(authority.currentActor("alice")).thenReturn(grant.principalId());
+            var journal = publicationJournal(database);
+            fixture.service.configurePublications(new WorkspacePublicationRecovery(journal,authority));
+            fixture.local.commitDsl("main",dsl("Collaborator contribution"),"alice","Contribute");
+            String prior = fixture.source.getHeadCommit("draft");
+            var owner = fixture.rows.findByWorkspaceId("old-copy").orElseThrow();
+            // Interrupt before the central ref is published; local projections and prepared objects remain recoverable.
+            doReturn("b".repeat(64)).doThrow(new org.springframework.dao.TransientDataAccessResourceException("Portfolio temporarily unavailable"))
+                    .doReturn("b".repeat(64)).when(fixture.portfolio).lockedPublicationDigest(eq("shared"),any());
+            var pending = fixture.service.publishWithReceipt("alice","main","shared-contribution",null).operation();
+            assertEquals("RETRYABLE",pending.status(),pending.decisionCode());
+            assertEquals(prior,fixture.source.getHeadCommit("draft"));
+            switch (change) {
+                case "sharing_revoked" -> owner.setCollaborative(false);
+                case "role_revoked" -> {
+                    fixture.sourceMetadata.setPrimaryRepo(true);
+                    fixture.member.setRole(RepositoryRole.READER);
+                }
+                case "ownership_changed" -> owner.setUsername("different-owner");
+                default -> {}
+            }
+            var selected=RepositoryContext.workspace("private-source","old-copy","main","alice");
+            // An unattended run as a different executor still evaluates the initiating contributor.
+            var claim=journal.claim(pending.operationId(),"controlled-worker",true);
+            assertNotNull(claim);
+            if ("active".equals(change)) {
+                var complete=journal.get(selected,grant.principalId(),pending.operationId());
+                for (var phase : WorkspacePublicationOperation.Step.values()) {
+                    if (complete.completedAt()!=null) break;
+                    complete=journal.step(claim,fixture.service::applyPublicationPhase);
+                }
+                assertEquals("COMPLETED",complete.status());
+                assertEquals(grant.principalId(),complete.originalActor());
+                assertEquals("owner",complete.workspaceOwner());
+                when(authority.authorizePublication("alice")).thenReturn(
+                        new WorkspaceFetchAuthority.Grant("d".repeat(64),"LEGACY_OIDC","d".repeat(64)));
+                assertThrows(AccessDeniedException.class,()->fixture.service.publishWithReceipt(
+                        "alice","main","legacy-unbound",null));
+                assertEquals("controlled-worker",complete.lastExecutor());
+                assertEquals(fixture.local.getHeadCommit("main"),fixture.source.getHeadCommit("draft"));
+                assertNotEquals(prior,fixture.source.getHeadCommit("draft"));
+            } else {
+                assertThrows(AccessDeniedException.class,()->journal.step(claim,fixture.service::applyPublicationPhase));
+                assertThrows(AccessDeniedException.class,()->fixture.service.publicationStatus(selected,pending.operationId()));
+                assertEquals(prior,fixture.source.getHeadCommit("draft"));
+            }
+            try (var session=database.openSession()) {
+                var row=session.find(WorkspacePublicationOperation.class,pending.operationId());
+                assertEquals("owner",row.workspaceOwner());
+                assertEquals("alice",row.username);
+                assertEquals(grant.principalId(),row.actor);
+            }
+        } finally {
+            org.springframework.web.context.request.RequestContextHolder.resetRequestAttributes();
+        }
+    }
+
     private static org.hibernate.SessionFactory publicationDatabase(String url,String schema) {
         return new org.hibernate.cfg.Configuration().addAnnotatedClass(WorkspacePublicationOperation.class)
                 .addAnnotatedClass(WorkspacePublicationDecision.class).setProperty("hibernate.connection.url",url)
@@ -498,7 +566,9 @@ class GitNativeSyncSourceAuthorityTest {
         final UserWorkspaceRepository rows = mock(UserWorkspaceRepository.class);
         final WorkspacePortfolioGitPort portfolio = mock(WorkspacePortfolioGitPort.class);
         final GitNativeSyncIntegrationService service;
-        Fixture() throws Exception {
+        Fixture() throws Exception { this(false); }
+
+        Fixture(boolean sharedWithContributor) throws Exception {
             when(portfolio.lockedPublicationDigest(anyString(),any())).thenReturn("b".repeat(64));
             sourceMetadata.setRepositoryId("private-source"); sourceMetadata.setSlug("private-source");
             sourceMetadata.setDefaultBranch("draft"); sourceMetadata.setVisibility(RepositoryVisibility.PRIVATE);
@@ -516,8 +586,19 @@ class GitNativeSyncSourceAuthorityTest {
             when(rows.findByWorkspaceIdForUpdate("old-copy")).thenReturn(Optional.of(workspace));
             var states = mock(SyncStateRepository.class);
             when(states.findByUsername("alice")).thenReturn(Optional.of(new SyncState()));
-            var contexts = mock(WorkspaceContextResolver.class);
-            when(contexts.resolveRepositoryContextForUser("alice")).thenReturn(RepositoryContext.workspace("private-source", "old-copy", "main", "alice"));
+            WorkspaceContextResolver contexts;
+            if (sharedWithContributor) {
+                workspace.setUsername("owner");
+                workspace.setCollaborative(true);
+                var manager = mock(WorkspaceManager.class);
+                when(manager.getWorkspaceById("old-copy")).thenReturn(workspace);
+                contexts = new WorkspaceContextResolver(manager,catalog,rows,memberships);
+                contexts.setActorAccess(name -> assertEquals("alice",name));
+                assertTrue(contexts.resolveRepositoryContextForUser("alice").collaborative());
+            } else {
+                contexts = mock(WorkspaceContextResolver.class);
+                when(contexts.resolveRepositoryContextForUser("alice")).thenReturn(RepositoryContext.workspace("private-source", "old-copy", "main", "alice"));
+            }
             var versions = new WorkspaceArchitectureVersionPort() {
                 public <T> T version(RepositoryContext c, String rationale, GitAction<T> action) throws IOException { return action.run(); }
             };

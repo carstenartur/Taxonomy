@@ -113,6 +113,27 @@ class WorkspaceEditorRestoreRuntimeTest {
     }
 
     @Test
+    void collaboratorReceiptsKeepTheActorAndOriginalWorkspaceOwnerAcrossExportAndRestore() throws Exception {
+        try (var fixture=fixture(SOURCE_SCOPE,null,true,false,true)) {
+            fixture.restore();
+            var target=new JdbcTemplate(fixture.target);
+            String id="5".repeat(64);
+            String filter=" from restore_workspace_evidence where record_kind='publication-journal' and record_key=?";
+            assertThat(target.queryForObject("select classification"+filter,String.class,id)).isEqualTo("PRIVATE_QUARANTINE");
+            var captured=com.taxonomy.exchange.backup.PortableRows.json().readTree(
+                    target.queryForObject("select record_json"+filter,String.class,id));
+            assertThat(captured.get("principalScope").asText()).isEqualTo("archived-collaborator");
+            assertThat(captured.get("workspaceOwnerScope").asText()).isEqualTo(SOURCE_SCOPE);
+            assertThat(captured.get("detachedWorkspace").asBoolean()).isFalse();
+            var personal=new BackupScope.Repositories(Map.of(CENTRAL.repositoryId(),Set.of(WORKSPACE.workspaceId())));
+            assertThat(capturedCurrentRows(fixture,personal,"publication-journal",null)).contains(id);
+            var other=new BackupScope.Repositories(Map.of(CENTRAL.repositoryId(),Set.of()));
+            assertThat(capturedCurrentRows(fixture,other,"publication-journal",null)).doesNotContain(id);
+            assertThat(target.queryForObject("select count(*) from workspace_publication_operation",Long.class)).isZero();
+        }
+    }
+
+    @Test
     void publicationsRestoreAsBoundHistoricalEvidenceWithoutExecutorAuthority() throws Exception {
         try (var f = fixture(SOURCE_SCOPE, null, false, false, true)) {
             var restored = f.restore(f.archive);
@@ -220,6 +241,13 @@ class WorkspaceEditorRestoreRuntimeTest {
         var digest = java.security.MessageDigest.getInstance("SHA-256");
         var contributor = new WorkspaceBackupContributor(f.source,value -> value);
         if (historicalActor != null) assertThat(contributor.principalScopes(snapshot,CHECK)).doesNotContain(historicalActor);
+        if (f.principals.size()>1 && new JdbcTemplate(f.source).queryForObject(
+                "select count(*) from workspace_publication_operation where workspace_owner_scope=?",Long.class,SOURCE_SCOPE)>0) {
+            var actors=contributor.historyActorScopes(snapshot,CHECK);
+            if (captured.containsKey(WORKSPACE)) assertThat(actors).contains("archived-collaborator");
+            else assertThat(actors).doesNotContain("archived-collaborator");
+            assertThat(contributor.principalScopes(snapshot,CHECK)).doesNotContain("archived-collaborator");
+        }
         contributor.write(snapshot,(path,input) -> {
             byte[] bytes = input.readAllBytes();
             if (path.equals("data/workspace/" + kind + ".ndjson")) journal.write(bytes);
@@ -375,7 +403,7 @@ class WorkspaceEditorRestoreRuntimeTest {
             var collaborator = PrincipalId.create();
             rows.update("insert into app_principal(principal_id,scope_key,enabled) values(?,?,1)",collaborator.value().toString(),"archived-collaborator");
             var historical = new WorkspaceSyncScope("archived-collaborator",CENTRAL.repositoryId(),null,"main");
-            sourceProgress.recordSync(historical,centralBaseline,created.toInstant(),true);
+            if (!includePublications) sourceProgress.recordSync(historical,centralBaseline,created.toInstant(),true);
             principals.put(collaborator,new RestorePrincipalAllocation(PrincipalId.create(),"quarantined-collaborator",
                     RestorePrincipalAllocation.Disposition.QUARANTINE));
         }
@@ -426,6 +454,13 @@ class WorkspaceEditorRestoreRuntimeTest {
                     repository_id,workspace_id,local_branch,source_branch,keep_workspace,fork_point,input_source,input_local,
                     phase,operation_step,attempts,created_at,executor_id,lease_id) values(?,?,?,?, 'LOCAL','private-binding-sentinel',
                     'ARCHITECTURE_PUBLISH+CONTRIBUTOR',?,?,'main','main',true,?,?,?,'RUNNING','CANDIDATES',1,1,'system:workspace-publication','private-lease-sentinel')""";
+            if (archivedCollaborator) {
+                String collaborator=rows.queryForObject("select principal_id from app_principal where scope_key='archived-collaborator'",String.class);
+                String id="5".repeat(64);
+                rows.update(operation,id,id,collaborator,"archived-collaborator",CENTRAL.repositoryId(),WORKSPACE.workspaceId(),
+                        baseline,centralBaseline,baseline);
+                rows.update("update workspace_publication_operation set workspace_owner_scope=? where operation_id=?",SOURCE_SCOPE,id);
+            }
             for (var pair : Map.of("1".repeat(64),WORKSPACE.workspaceId(),"2".repeat(64),"removed-publishing-workspace").entrySet()) {
                 rows.update(operation, pair.getKey(),pair.getKey(),principal.value().toString(),SOURCE_SCOPE,CENTRAL.repositoryId(),pair.getValue(),baseline,centralBaseline,baseline);
                 rows.update("insert into workspace_publication_decision(operation_id,original_actor,executor_id,phase_code,decision_code,decision_at) values(?,?,?,'PREPARE','ADMITTED',1)",

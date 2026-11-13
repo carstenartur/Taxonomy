@@ -72,7 +72,7 @@ class WorkspaceGitHistoryReferencesTest {
             String local = f.orphan("ws-private-a","Unpublished workspace candidate");
             f.base.sql("update user_workspace set username='alice'");
             var operation = "1".repeat(64);
-            f.base.sql("insert into workspace_publication_operation values(?,'repo-a','private-a','alice',?,?,?,?,?,?,?,?,?)",
+            f.base.sql("insert into workspace_publication_operation values(?,'repo-a','private-a','contributing-user','alice',?,?,?,?,?,?,?,?,?)",
                     operation,local,source,local,local,local,local,source,local,local);
             var full = f.inspect(repositories());
             var personal = f.inspect(workspace());
@@ -219,7 +219,7 @@ class WorkspaceGitHistoryReferencesTest {
             for (String name : List.of("base_commit", "current_commit", "last_fetched_commit", "last_integrated_commit"))
                 base.sql("alter table user_workspace add column " + name + " varchar(40)");
             base.sql("alter table user_workspace add column username varchar(255)");
-            base.sql("create table workspace_publication_operation(operation_id varchar(64) primary key,repository_id varchar(255),workspace_id varchar(255),actor_scope varchar(255),"
+            base.sql("create table workspace_publication_operation(operation_id varchar(64) primary key,repository_id varchar(255),workspace_id varchar(255),actor_scope varchar(255),workspace_owner_scope varchar(255),"
                     + "fork_point varchar(40),input_source varchar(40),input_local varchar(40),input_tracking varchar(40),"
                     + "expected_local varchar(40),expected_tracking varchar(40),prepared_source varchar(40),prepared_local varchar(40),prepared_tracking varchar(40))");
             base.sql("create table workspace_branch_sync(scope_key varchar(64) primary key,repository_id varchar(255),workspace_id varchar(255),last_synced_commit_id varchar(40),last_published_commit_id varchar(40))");

@@ -43,11 +43,15 @@ public class WorkspacePublicationJournal {
         leases = new RepositoryOperationLeases(entities,transaction,clock,LEASE,MAX_ATTEMPTS);
     }
 
-    record Source(String branch, String forkPoint, String central, String local, String tracking) {}
+    record Source(String branch, String forkPoint, String central, String local, String tracking, String workspaceOwner) {
+        Source(String branch, String forkPoint, String central, String local, String tracking) {
+            this(branch, forkPoint, central, local, tracking, null);
+        }
+    }
     record Claim(RepositoryOperationLeases.Claim lease, String executor) {}
     public record View(String operationId,String causationId,String status,String nextPhase,String originalActor,String lastExecutor,
                 String repositoryId,String workspaceId,String branch,String sourceBranch,String expectedSourceCommit,String expectedLocalCommit,
-                String preparedCommit,String resultCommit,int attempts,String decisionCode,long createdAt,Long lastAttemptAt,Long publishedAt,Long sourceObservedAt,Long completedAt,Long archivedAt,Long pinsReleasedAt,Long redactedAt) {}
+                String preparedCommit,String resultCommit,int attempts,String decisionCode,long createdAt,Long lastAttemptAt,Long publishedAt,Long sourceObservedAt,Long completedAt,Long archivedAt,Long pinsReleasedAt,Long redactedAt,String workspaceOwner) {}
     @FunctionalInterface interface PhaseAction { void run(WorkspacePublicationOperation row,Runnable checkLease) throws IOException; }
     @FunctionalInterface interface Snapshot { Source capture() throws IOException; }
 
@@ -62,12 +66,17 @@ public class WorkspacePublicationJournal {
         var previous = transaction.execute(tx -> entities.find(WorkspacePublicationOperation.class,id));
         if (previous != null) return replay(previous,context,grant.principalId(),keepWorkspace,cause);
         var source = snapshot.capture();
+        if (source.workspaceOwner()!=null && !source.workspaceOwner().equals(context.username())
+                && "LEGACY_OIDC".equals(grant.loginKind())) {
+            throw new org.springframework.security.access.AccessDeniedException("Shared synchronization requires a stable principal");
+        }
         try {
             return transaction.execute(tx -> {
                 var row = new WorkspacePublicationOperation();
                 row.id=id; row.cause=cause == null ? id : UUID.fromString(cause).toString();
                 row.actor=grant.principalId(); row.loginKind=grant.loginKind(); row.binding=grant.bindingKey();
                 row.policy="ARCHITECTURE_PUBLISH+CONTRIBUTOR"; row.username=context.username();
+                row.capturedWorkspaceOwner=source.workspaceOwner();
                 row.repository=context.repositoryId(); row.workspace=context.workspaceId(); row.localBranch=context.branch();
                 row.sourceBranch=source.branch(); row.forkPoint=source.forkPoint(); row.inputSource=source.central();
                 row.inputLocal=source.local(); row.inputTracking=source.tracking(); row.keepWorkspace=keepWorkspace;
@@ -106,14 +115,14 @@ public class WorkspacePublicationJournal {
     public void archiveForWorkspaceRemoval(String workspace,String repository,String owner,java.util.function.Supplier<String> deletingActor) {
         var ids=entities.createQuery("""
                 select p.id from WorkspacePublicationOperation p where p.workspace=:workspace and p.repository=:repository
-                and p.username=:owner and p.archivedAt is null order by p.id""",String.class)
+                and coalesce(p.capturedWorkspaceOwner,p.username)=:owner and p.archivedAt is null order by p.id""",String.class)
                 .setParameter("workspace",workspace).setParameter("repository",repository).setParameter("owner",owner).getResultList();
         if (ids.isEmpty()) return;
         String actor=java.util.Objects.requireNonNull(deletingActor.get(),"Authenticated deleting actor");
         for (String id:ids) {
             if (entities.createQuery("""
                     update WorkspacePublicationOperation p set p.archivedAt=:now,p.archivedBy=:actor
-                    where p.id=:id and p.workspace=:workspace and p.repository=:repository and p.username=:owner
+                    where p.id=:id and p.workspace=:workspace and p.repository=:repository and coalesce(p.capturedWorkspaceOwner,p.username)=:owner
                     and p.archivedAt is null""")
                     .setParameter("id",id).setParameter("workspace",workspace).setParameter("repository",repository)
                     .setParameter("owner",owner).setParameter("now",clock.millis()).setParameter("actor",actor).executeUpdate()!=1) continue;
@@ -288,7 +297,7 @@ public class WorkspacePublicationJournal {
     private static View view(WorkspacePublicationOperation row) {
         return new View(row.id,row.cause,row.archivedAt==null?row.phase:"ARCHIVED",row.step.name(),row.actor,row.executor,
                 row.repository,row.workspace,row.localBranch,row.sourceBranch,row.inputSource,row.inputLocal,row.preparedSource,row.sourceObservedAt==null ? null : row.preparedSource,row.attempts,
-                row.decision,row.createdAt,row.lastAttemptAt,row.publishedAt,row.sourceObservedAt,row.completedAt,row.archivedAt,row.pinsReleasedAt,row.redactedAt);
+                row.decision,row.createdAt,row.lastAttemptAt,row.publishedAt,row.sourceObservedAt,row.completedAt,row.archivedAt,row.pinsReleasedAt,row.redactedAt,row.workspaceOwner());
     }
 
     private static ResponseStatusException missing() { return new ResponseStatusException(HttpStatus.NOT_FOUND,"Publication unavailable"); }
