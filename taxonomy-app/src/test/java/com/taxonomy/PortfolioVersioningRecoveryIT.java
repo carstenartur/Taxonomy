@@ -145,6 +145,51 @@ class PortfolioVersioningRecoveryIT {
         assertThat(driver.executeScript("return window.signatureXss === true")).isEqualTo(false);
     }
 
+    @ParameterizedTest(name = "{0}: a portfolio preview keeps its selected branch separate from the page source")
+    @ValueSource(strings = {"en", "de"})
+    void previewSelectsReviewedBranchInsidePinnedWorkspace(String locale) {
+        open(locale);
+        driver.get(page.origin() + PREFIX + "/projects/42/versioning?lang=" + locale
+                + "&repositoryId=repo-a&workspaceId=shared&branch=main");
+        wait.until(ignored -> text("versioningProject").contains("PORT-42") && hidden("versioningBusy"));
+        edit("materializeBranch", "review");
+        prepareOperation(Operation.MATERIALIZATION);
+        var preview = page.requests().stream().filter(r -> r.path().endsWith("/materialize-preview"))
+                .reduce((first, last) -> last).orElseThrow();
+        assertThat(List.of(preview.query().split("&"))).contains("repositoryId=repo-a", "workspaceId=shared",
+                "branch=main", "targetBranch=review");
+        assertThat(preview.header("X-Taxonomy-Workspace-Id")).isEqualTo("shared");
+        assertThat(responses.mutationCount.get()).isZero();
+    }
+
+    @ParameterizedTest(name = "{0}: switching away and back discards the in-flight materialization preview")
+    @ValueSource(strings = {"en", "de"})
+    void changedBranchDiscardsOldPreviewEvenWhenTheOriginalBranchIsReselected(String locale) throws Exception {
+        prepare(locale);
+        try (ReadGate gate = new ReadGate()) {
+            page.route("GET", PREFIX + "/api/projects/git/materialize-preview", request -> {
+                gate.started.countDown();
+                try {
+                    if (!gate.response.await(20, TimeUnit.SECONDS)) throw new IllegalStateException("Preview timed out");
+                } catch (InterruptedException failure) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(failure);
+                }
+                return PortfolioClientTestPage.json(200, Map.of("branch", "review", "targetHead", "old-head",
+                        "changed", true, "addedLines", 1, "removedLines", 0, "addedPreview", List.of("old preview")));
+            });
+            click(By.id("previewMaterialize"));
+            gate.awaitStarted();
+            edit("materializeBranch", "release");
+            edit("materializeBranch", "review");
+            gate.release();
+            wait.until(ignored -> hidden("versioningBusy"));
+            assertThat(hidden("applyMaterialize")).isTrue();
+            assertThat(text("materializePreview")).isEmpty();
+            assertThat(responses.mutationCount.get()).isZero();
+        }
+    }
+
     @ParameterizedTest(name = "{0}: manual refresh preserves deliberately empty drafts = {1}")
     @MethodSource("localesAndEmpty")
     void manualRefreshPreservesExactMessagesAndIndependentBranches(String locale, boolean empty) {
@@ -344,7 +389,7 @@ class PortfolioVersioningRecoveryIT {
                     : PortfolioClientTestPage.json(503, Map.of("detail", current.readFailure));
         });
         page.route("GET", PREFIX + "/api/projects/git/materialize-preview", request -> PortfolioClientTestPage.json(200,
-                Map.of("targetHead", "review-head-123456789", "changed", true,
+                Map.of("branch", "review", "targetHead", "review-head-123456789", "changed", true,
                         "addedLines", 1, "removedLines", 0, "destructiveChangePossible", false,
                         "addedPreview", List.of("requirement REVIEW"))));
         Map<String, Object> results = Map.of(

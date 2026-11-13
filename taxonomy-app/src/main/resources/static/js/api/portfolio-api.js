@@ -394,7 +394,7 @@ window.TaxonomyPortfolioApi = (function () {
             return getJson('/api/projects/git/export');
         },
         previewMaterialization: function (branch) {
-            return getJson('/api/projects/git/materialize-preview?branch='
+            return getJson('/api/projects/git/materialize-preview?targetBranch='
                 + encodeURIComponent(String(branch || '')));
         },
         commitPortfolio: function (body) {

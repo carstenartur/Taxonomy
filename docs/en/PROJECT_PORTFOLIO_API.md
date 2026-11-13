@@ -667,7 +667,7 @@ There are no separate `/matrices/...` endpoints. Each matrix contains `rows`, `c
 ```text
 GET    /api/projects/git/export
 POST   /api/projects/git/commit
-GET    /api/projects/git/materialize-preview?branch=...
+GET    /api/projects/git/materialize-preview?branch=...&targetBranch=...
 POST   /api/projects/git/materialize
 POST   /api/projects/git/merge?source=...&target=...
 ```
@@ -697,6 +697,8 @@ Preview materialisation before applying it:
 curl -u architect:password \
   'http://localhost:8080/api/projects/git/materialize-preview?branch=draft'
 ```
+
+For a pinned page, `branch` identifies the page source and `targetBranch` selects the branch to preview. Existing clients may continue to send only `branch` as the preview target.
 
 The preview contains the exact target HEAD, current and target fingerprints, line counts and bounded added/removed previews. Clients should repeat the preview immediately before applying and reject a changed `targetHead`.
 

@@ -9,7 +9,10 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import java.time.Instant;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -36,6 +39,14 @@ class PortfolioGitRequestContractTest {
         var response=controller.exportPortfolio(accept);
         assertThat(response.getBody()).isSameAs(value);assertThat(response.getHeaders().getContentType()).hasToString("application/json");
     }
+    @Test void scopedPreviewKeepsItsTargetBranchSeparateFromThePageSource() throws Exception {
+        var mvc = MockMvcBuilders.standaloneSetup(controller).build();
+        mvc.perform(get("/api/projects/git/materialize-preview")
+                        .param("branch", "current").param("targetBranch", "review"))
+                .andExpect(status().isOk());
+        verify(service).previewMaterialize("review", context);
+    }
+
     @Test void requestBranchOverridesQueryAndCurrentBranch() throws Exception {
         controller.commit("query",new CommitPortfolioRequest(" body ","Save"));
         verify(service).commit("body","Save",context);
@@ -48,7 +59,7 @@ class PortfolioGitRequestContractTest {
         controller.commit(" query ",null);verify(service).commit("query",null,context);
         controller.materialize(null,null);verify(service).materialize("current",null,context);
         controller.merge(" source ",null,null);verify(service).merge("source","current",null,context);
-        controller.previewMaterialize("preview");verify(service).previewMaterialize("preview",context);
+        controller.previewMaterialize("preview", null);verify(service).previewMaterialize("preview",context);
     }
     @Test void blankBranchesFallBackToDraftAndMissingSourceRemainsInvalidForService() throws Exception {
         var blank=new WorkspaceContext("alice","ws-a"," ","repo-a");when(resolver.resolveCurrentContext()).thenReturn(blank);

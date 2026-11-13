@@ -85,8 +85,9 @@ public class PortfolioGitController {
             description = "Previews the portfolio represented by the selected Git branch in the current workspace. This read does not apply portfolio changes; materialization requires a separate explicit command with an expected head.")
     @GetMapping("/materialize-preview")
     public MaterializationPreview previewMaterialize(
-            @RequestParam(defaultValue = "draft") String branch) throws IOException {
-        return gitService.previewMaterialize(branch, context().workspaceContext());
+            @RequestParam(defaultValue = "draft") String branch,
+            @RequestParam(required = false) String targetBranch) throws IOException {
+        return gitService.previewMaterialize(targetBranch == null ? branch : targetBranch, context().workspaceContext());
     }
 
     @Operation(summary = "Materialize one reviewed branch HEAD into the portfolio",

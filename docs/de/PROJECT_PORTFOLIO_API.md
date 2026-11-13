@@ -674,7 +674,7 @@ Es gibt keine separaten `/matrices/...`-Endpunkte. Jede Matrix besitzt `rows`, `
 ```text
 GET    /api/projects/git/export
 POST   /api/projects/git/commit
-GET    /api/projects/git/materialize-preview?branch=...
+GET    /api/projects/git/materialize-preview?branch=...&targetBranch=...
 POST   /api/projects/git/materialize
 POST   /api/projects/git/merge?source=...&target=...
 ```
@@ -703,6 +703,8 @@ Materialisierung vor dem Anwenden prüfen:
 curl -u architect:password \
   'http://localhost:8080/api/projects/git/materialize-preview?branch=draft'
 ```
+
+Bei einer expliziten Seitenquelle bezeichnet `branch` den geöffneten Stand und `targetBranch` den für die Vorschau ausgewählten Branch. Ältere Clients können den Vorschau-Branch weiterhin allein mit `branch` angeben.
 
 Die Antwort enthält exakten Ziel-HEAD, Fingerprints, Zeilenzahlen und begrenzte Vorschauen hinzugekommener/entfallener Zeilen. Clients sollten unmittelbar vor dem Anwenden erneut prüfen und einen veränderten `targetHead` ablehnen.
 
