@@ -371,7 +371,7 @@ test('an initial workspace outage is retried when server observation reconnects'
 
 const gitStatusSource = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/workspace/taxonomy-git-status.js', import.meta.url), 'utf8');
-function gitStatusHarness(fetcher) {
+function gitStatusHarness(fetcher, i18n = { t: key => key }) {
   const events = [], authEvents = [], documentListeners = new Map();
   const bar = { innerHTML: '', classList: { remove() {} }, querySelector() { return null; } };
   const document = {
@@ -383,7 +383,7 @@ function gitStatusHarness(fetcher) {
     }
   };
   const window = { addEventListener() {}, TaxonomyUtils: { escapeHtml: String },
-    TaxonomyI18n: { t: key => key } };
+    TaxonomyI18n: i18n };
   const sandbox = { window, document, fetch: fetcher, TaxonomyUtils: window.TaxonomyUtils,
     TaxonomyI18n: window.TaxonomyI18n, AbortController, CustomEvent,
     setInterval() { return 1; }, clearInterval() {} };
@@ -391,6 +391,36 @@ function gitStatusHarness(fetcher) {
   vm.runInContext(gitStatusSource, sandbox);
   return { events, authEvents, bar, refresh: () => { documentListeners.get('DOMContentLoaded')(); }, window };
 }
+
+test('an early Git response renders localized labels after the catalogue arrives', async () => {
+  const language = deferred();
+  let translated = false;
+  const i18n = { ready: () => language.promise, t: key => translated ? `localized ${key}` : key };
+  const h = gitStatusHarness(async () => ({ ok: true, json: async () => ({currentBranch: 'draft',
+    branches: ['draft'], totalCommits: 1}) }), i18n);
+  h.refresh();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.bar.innerHTML, '', 'Pending translations must not be shown as message keys');
+  translated = true;
+  language.resolve();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.match(h.bar.innerHTML, /localized git\.variants\.count/);
+  assert.match(h.bar.innerHTML, /localized git\.versions\.count/);
+});
+
+test('an earlier Git response cannot render when the workspace changed while translations loaded', async () => {
+  const language = deferred();
+  const h = gitStatusHarness(async () => ({ ok: true, json: async () => ({currentBranch: 'draft'}) }),
+    { ready: () => language.promise, t: key => key });
+  h.window.__TaxonomyAnalysisSessionContext = {runtime: {workspaceId: 'old', analysisGeneration: 1}};
+  h.refresh();
+  await new Promise(resolve => setImmediate(resolve));
+  h.window.__TaxonomyAnalysisSessionContext.runtime.workspaceId = 'new';
+  language.resolve();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.bar.innerHTML, '');
+  assert.deepEqual(h.events, []);
+});
 
 test('existing git observation publishes successful and failed server contact without caching', async () => {
   let connected = false;
