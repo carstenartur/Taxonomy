@@ -19,20 +19,24 @@ class ReformulationModelIdentityTest {
             "/proxy/models/v1/models/custom-model:generateContent,custom-model",
             "/gateway/custom-model:generateContent,/gateway/custom-model"})
     void preservesTheConfiguredModelIdentity(String path, String expected) {
-        assertThat(model(path)).isEqualTo(expected);
+        assertThat(model(serviceFor(path))).isEqualTo(expected);
     }
 
     @Test void longProxyPathWithoutModelsSegmentHasBoundedProcessingTime() {
         String path = "/gateway/" + "-".repeat(100_000) + ":generateContent";
-        assertTimeoutPreemptively(Duration.ofSeconds(2), () ->
-                assertThat(model(path)).isEqualTo(path.substring(0, path.indexOf(':'))));
+        var service = serviceFor(path);
+        String identity = assertTimeoutPreemptively(Duration.ofSeconds(2), () -> model(service));
+        assertThat(identity).isEqualTo(path.substring(0, path.indexOf(':')));
     }
 
-    private static String model(String path) {
+    private static ReformulationExecutionService serviceFor(String path) {
         var providers = mock(LlmProviderConfig.class);
         when(providers.getGeminiUrl()).thenReturn("https://provider.example" + path);
-        var service = new ReformulationExecutionService(null, null, null, providers, null,
+        return new ReformulationExecutionService(null, null, null, providers, null,
                 new JsonMapper(), null, null);
+    }
+
+    private static String model(ReformulationExecutionService service) {
         return ReflectionTestUtils.invokeMethod(service, "model", LlmProvider.GEMINI.id());
     }
 }
