@@ -9,7 +9,7 @@
 window.TaxonomyProposalsApi = (function () {
     'use strict';
     function domainRequest(url, init, options) {
-        return window.TaxonomyApiClient.request(url, init, Object.assign({acceptedStatuses:[400,404,409,412,422]}, options));
+        return window.TaxonomyApiClient.request(url, init, Object.assign({selectedRepository:true,acceptedStatuses:[400,404,409,412,422]}, options));
     }
 
     function readHead() {

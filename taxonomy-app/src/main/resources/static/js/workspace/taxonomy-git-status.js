@@ -13,6 +13,8 @@
     var statusBar = null;
     var pollTimer = null;
     var pendingRead = null;
+    var requestedBranch = null;
+    var requestedContext = null;
     var pageActive = true;
     // A hard navigation can start while a periodic poll is due. Stop the timer
     // at beforeunload, ahead of pagehide, so WebKit never starts a fetch in a
@@ -45,6 +47,18 @@
         pollTimer = setInterval(pollGitState, POLL_INTERVAL);
     });
 
+    document.addEventListener('taxonomy:repository-context-changed', function (event) {
+        if (!pageActive || !statusBar) return;
+        var context = window.TaxonomyContextBar?.getCurrentContext?.();
+        if (!context) return;
+        // Initial context hydration can revoke the default-branch request before
+        // its body arrives. Read the selected source immediately with its own guard.
+        if (event.detail?.selectionChanged || context.branch !== requestedBranch
+                || (pendingRead && sourceIdentity(context) !== requestedContext)) {
+            pollGitState();
+        }
+    });
+
     // ── Polling ─────────────────────────────────────────────────────
 
     function pollGitState() {
@@ -58,6 +72,8 @@
         var runtime = window.__TaxonomyAnalysisSessionContext?.runtime;
         var workspace = runtime?.workspaceId, analysis = runtime?.analysisGeneration;
         var contextSource = sourceIdentity(ctx);
+        requestedBranch = branch;
+        requestedContext = contextSource;
         function ownsSource() {
             var currentRuntime = window.__TaxonomyAnalysisSessionContext?.runtime;
             var currentContext = window.TaxonomyContextBar?.getCurrentContext?.();
@@ -73,6 +89,7 @@
             })
             .then(function (state) {
                 if (pageActive && pendingRead === controller && !controller.signal.aborted && ownsSource()) {
+                    pendingRead = null;
                     renderStatusBar(state);
                     document.dispatchEvent(new CustomEvent('taxonomy:server-contact', { detail: { available: true } }));
                 }
@@ -87,6 +104,8 @@
                         detail: { available: false, status: err.status }
                     }));
                 }
+            }).finally(function () {
+                if (pendingRead === controller) pendingRead = null;
             });
     }
 

@@ -405,6 +405,9 @@ public class HypothesisService {
             relation.setStatus(hypothesis.getStatus().name().toLowerCase(Locale.ROOT));
             relation.setConfidence(hypothesis.getConfidence());
             relation.setProvenance("analysis-session:" + sessionId);
+            if (hypothesis.getId() != null) {
+                relation.getExtensions().put("x-hypothesis-id", hypothesis.getId().toString());
+            }
             model.getRelations().add(relation);
         }
 

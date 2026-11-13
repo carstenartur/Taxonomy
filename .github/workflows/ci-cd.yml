@@ -201,6 +201,9 @@ jobs:
         run: |
           if git diff --quiet "${PR_BASE_SHA}...${PR_HEAD_SHA}" -- \
               Dockerfile \
+              docker-compose.prod.yml \
+              Caddyfile \
+              .github/scripts/verify-compose-https.mjs \
               taxonomy-build/src/test/java/com/taxonomy/build/ProductionImageIT.java \
               taxonomy-build/src/test/java/com/taxonomy/build/ExternalDriverSupport.java \
               .github/ui-verification-pom.xml \

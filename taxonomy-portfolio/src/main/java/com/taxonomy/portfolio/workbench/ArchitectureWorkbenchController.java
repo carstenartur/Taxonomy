@@ -1,6 +1,7 @@
 package com.taxonomy.portfolio.workbench;
 
 import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
+import com.taxonomy.dto.DocumentLanguage;
 import com.taxonomy.editor.ArchitectureWorkspaceRedirect;
 import com.taxonomy.model.WorkspaceOverlayScope;
 import com.taxonomy.portfolio.service.PortfolioException;
@@ -146,18 +147,16 @@ public class ArchitectureWorkbenchController {
             description = "Renders the authorized immutable analysis snapshot as a deterministic standalone SVG attachment. No viewport crop, live editor mutation or new model invocation is performed.")
     public ResponseEntity<String> svg(
             @PathVariable Long projectId,
-            @PathVariable String snapshotId) {
+            @PathVariable String snapshotId,
+            @RequestParam(required = false) String language) {
         RequestScope scope = scope();
-        String content = service.renderSvg(
-                projectId,
-                snapshotId,
-                scope.username(),
-                scope.context());
+        var projection = service.load(projectId, snapshotId, scope.username(), scope.context());
+        String content = service.renderSvg(projection, DocumentLanguage.optionalOverride(language));
         return ResponseEntity.ok()
                 .contentType(SVG)
                 .header(
                         HttpHeaders.CONTENT_DISPOSITION,
-                        disposition("architecture", "svg"))
+                        disposition(projection.exportLabel().fileName("architecture.svg")))
                 .body(content);
     }
 
@@ -170,19 +169,17 @@ public class ArchitectureWorkbenchController {
             description = "Renders the authorized immutable analysis snapshot as a downloadable PDF diagram. Uses the saved snapshot and does not rerun its requirement analysis.")
     public ResponseEntity<byte[]> pdf(
             @PathVariable Long projectId,
-            @PathVariable String snapshotId) {
+            @PathVariable String snapshotId,
+            @RequestParam(required = false) String language) {
         RequestScope scope = scope();
-        byte[] content = service.renderPdf(
-                projectId,
-                snapshotId,
-                scope.username(),
-                scope.context());
+        var projection = service.load(projectId, snapshotId, scope.username(), scope.context());
+        byte[] content = service.renderPdf(projection, DocumentLanguage.optionalOverride(language));
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_PDF)
                 .contentLength(content.length)
                 .header(
                         HttpHeaders.CONTENT_DISPOSITION,
-                        disposition("architecture", "pdf"))
+                        disposition(projection.exportLabel().fileName("architecture.pdf")))
                 .body(content);
     }
 
@@ -281,10 +278,6 @@ public class ArchitectureWorkbenchController {
                 .header(ARTIFACT_HEADER, artifact.artifactSha256())
                 .header("X-Content-Type-Options", "nosniff")
                 .body(content);
-    }
-
-    private static String disposition(String name, String extension) {
-        return disposition(name + "." + extension);
     }
 
     private static String disposition(String fileName) {

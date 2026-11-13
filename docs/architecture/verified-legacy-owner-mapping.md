@@ -34,3 +34,34 @@ mode, expose an authorized operator workflow, gate the STABLE mode startup, migr
 remaining username-keyed tables, or prove queued-worker revocation. Do not treat
 `preview.total == 0` as proof of installation migration readiness. These are outstanding
 parts of #785. Actual owner approval and production rollout remain EXT-02.
+
+## Post-V3 ownership drift and startup fence
+
+The read-only `LegacyOwnerMigrationReadiness` inventories the same explicit ownership
+columns as V3 (including user-scoped system repositories). It compares currently
+persisted owner scopes against the stable principal and binding registry, counts
+late LEGACY writes with **no V3 reservation**, unresolved disabled reservations
+and owner rows lacking an active local, verified historical OIDC, or generated STABLE
+binding. It does not expose owner names on the startup failure path. The inventory is
+bounded to 100,000 distinct scopes and fails closed above that limit or if the
+identity schema is unavailable.
+
+Revoking a verified historical link disables both the principal and its binding. A
+subsequent STABLE startup recognizes that tombstone only when both the original
+link and its removal have a committed audit record. A generated STABLE scope retains
+its identity after disablement. Neither case enables the principal or grants access.
+
+`linkVerified` now rejects an otherwise complete approved mapping plan if post-V3
+LEGACY ownership has not been reserved. In the `keycloak` profile, a configured
+`principal-mode=STABLE` checks the inventory after identity-schema initialization
+and rejects startup while it is incomplete. Fresh installations without historical
+ownership remain able to opt in. `LEGACY` is unchanged and never silently promoted.
+
+**Important:** This is a necessary startup fence, **not** a proof of safe rollout.
+It does not migrate later unreserved scopes, coordinate concurrently running LEGACY
+instances, classify every identity-bearing writer, reauthorize queued workers,
+verify all database dialects or replace the installation-specific issuer/subject
+approvals in EXT-02. Stop all LEGACY writers, inventory and migrate the real
+installation, verify the full username-key audit and all retained actors, and
+collect restart/multi-instance evidence before any authorized mode switch.
+Issue #785 remains open.

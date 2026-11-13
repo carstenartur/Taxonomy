@@ -46,8 +46,23 @@ public final class DemoReferenceEvaluator {
     private DemoReferenceEvaluator() { }
 
     public static Report evaluate(DemoReference reference, Observation a0, Observation a1) {
+        return evaluate(reference, null, a0, a1);
+    }
+
+    public static Report evaluate(DemoReference reference, String frozenOriginal, Observation a0, Observation a1) {
         Objects.requireNonNull(reference);
         var checks = new ArrayList<Check>();
+        if (frozenOriginal != null) {
+            Status initial = !executed(a0) ? Status.NOT_EXECUTED
+                    : frozenOriginal.equals(a0.requirementText()) ? Status.PASS : Status.FAIL;
+            checks.add(new Check("source:frozen-original", "FROZEN_SOURCE", "R0", initial,
+                    "exact scenario source", describe(initial)));
+            // The product's revision keeps a verbatim source section alongside the editable reformulation.
+            Status retained = !executed(a1) ? Status.NOT_EXECUTED
+                    : a1.requirementText().contains(frozenOriginal) ? Status.PASS : Status.FAIL;
+            checks.add(new Check("source:retained-original", "FROZEN_SOURCE", "R1", retained,
+                    "original source section retained", describe(retained)));
+        }
         var improvements = new ArrayList<String>();
         for (var aspect : reference.requiredAspects()) {
             Status r0 = textStatus(a0, aspect.anyOf());

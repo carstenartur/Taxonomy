@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -47,6 +48,11 @@ public class ArchitectureRelationGitCommandService {
 
         WorkspaceDslVersionPort.ExactVersion version = versions.openVersion(context, expectedHeadCommit);
         String normalizedExpectedHead = version.expectedHeadCommit();
+        if (command instanceof RemoveRelation removal && !removal.requiredProperties().isEmpty()) {
+            // A stale HTTP precondition takes precedence over a mismatch in the historic document.
+            // The write still compares the branch head atomically when committing the removal.
+            version.verifyExpectedHead();
+        }
         ChangeResult change = apply(version.readDsl(), command);
         if (!change.changed()) {
             String authoritativeHead = version.verifyExpectedHead();
@@ -80,7 +86,7 @@ public class ArchitectureRelationGitCommandService {
             return transformer.upsert(sourceDsl, upsert.definition());
         }
         if (command instanceof RemoveRelation remove) {
-            return transformer.remove(sourceDsl, remove.identity());
+            return transformer.removeMatching(sourceDsl, remove.identity(), remove.requiredProperties());
         }
         throw new IllegalArgumentException(
                 "Unsupported relation command: " + command.getClass().getName());
@@ -151,8 +157,14 @@ public class ArchitectureRelationGitCommandService {
 
     public record RemoveRelation(
             RelationIdentity identity,
-            CommandMetadata metadata) implements RelationCommand {
+            CommandMetadata metadata,
+            Map<String, String> requiredProperties) implements RelationCommand {
+        public RemoveRelation(RelationIdentity identity, CommandMetadata metadata) {
+            this(identity, metadata, Map.of());
+        }
+
         public RemoveRelation {
+            requiredProperties = Map.copyOf(requiredProperties);
             identity = Objects.requireNonNull(identity, "identity");
             metadata = Objects.requireNonNull(metadata, "metadata");
         }

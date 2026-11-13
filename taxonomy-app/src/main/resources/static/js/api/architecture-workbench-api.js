@@ -2,13 +2,13 @@
 window.ArchitectureWorkbenchApi = (function () {
     'use strict';
 
-    function getJson(url, signal, source) {
+    function sourceOptions(signal, source) {
         const options = {signal: signal};
         if (source && (source.workspaceScopeKey !== undefined || source.workspaceId !== undefined)) {
             const workspace = source.workspaceScopeKey || source.workspaceId || '__shared__';
             options.pinnedWorkspaceId = workspace === '__shared__' ? '' : String(workspace);
         }
-        return window.TaxonomyApiClient.getJson(url, options);
+        return options;
     }
 
     function positiveInteger(value, field) {
@@ -37,18 +37,23 @@ window.ArchitectureWorkbenchApi = (function () {
         return window.TaxonomyArchitectureWorkflow?.scopeUrl(path) || path;
     }
 
-    function base(projectId, snapshotId, suffix, source) {
+    function base(projectId, snapshotId, suffix, source, withLanguage) {
         const path = '/api/projects/' + positiveInteger(projectId, 'projectId')
             + '/architecture-workbench/' + snapshot(snapshotId) + (suffix || '');
-        return scoped(window.TaxonomyI18n?.resolveUrl?.(path) || path, source);
+        const url = window.TaxonomyI18n?.resolveUrl?.(path) || path;
+        return scoped(withLanguage ? withDocumentLanguage(url) : url, source);
+    }
+
+    function withDocumentLanguage(url) {
+        const language = window.TaxonomyContentLanguage?.documentLanguage(null);
+        return language ? url + '?language=' + encodeURIComponent(language) : url;
     }
 
     function wordUrl(projectId, snapshotId, report, source) {
         const path = '/api/projects/' + positiveInteger(projectId, 'projectId')
             + '/snapshots/' + snapshot(snapshotId) + '/' + report + '/docx';
         const url = window.TaxonomyI18n?.resolveUrl?.(path) || path;
-        const language = window.TaxonomyContentLanguage?.documentLanguage(null);
-        return scoped(language ? url + '?language=' + encodeURIComponent(language) : url, source);
+        return scoped(withDocumentLanguage(url), source);
     }
 
     return {
@@ -59,13 +64,19 @@ window.ArchitectureWorkbenchApi = (function () {
             return wordUrl(projectId, snapshotId, 'decision-report', source);
         },
         load: function (projectId, snapshotId, source, signal) {
-            return getJson(base(projectId, snapshotId, null, source), signal, source);
+            return window.TaxonomyApiClient.getJson(base(projectId, snapshotId, null, source), sourceOptions(signal, source));
+        },
+        download: function (url, source, signal) {
+            const options = sourceOptions(signal, source);
+            // Large attachments may take longer than an interactive JSON read.
+            options.timeoutMillis = 0;
+            return window.TaxonomyApiClient.requestBlob(url, {method:'GET'}, options);
         },
         svgUrl: function (projectId, snapshotId, source) {
-            return base(projectId, snapshotId, '.svg', source);
+            return base(projectId, snapshotId, '.svg', source, true);
         },
         pdfUrl: function (projectId, snapshotId, source) {
-            return base(projectId, snapshotId, '.pdf', source);
+            return base(projectId, snapshotId, '.pdf', source, true);
         },
         archiMateUrl: function (projectId, snapshotId, source) {
             return base(projectId, snapshotId, '.archimate.xml', source);

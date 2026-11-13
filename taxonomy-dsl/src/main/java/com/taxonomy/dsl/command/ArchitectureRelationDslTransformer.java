@@ -92,6 +92,32 @@ public final class ArchitectureRelationDslTransformer {
         return changed(document, changedBlocks, ChangeKind.REMOVED);
     }
 
+    /**
+     * Remove a reviewed relation only when the selected revision still contains the exact decision.
+     * A missing decision cannot be treated as a successful reversal of the inbox state.
+     */
+    public ChangeResult removeMatching(String sourceDsl, RelationIdentity identity,
+                                       Map<String, String> requiredProperties) {
+        if (requiredProperties.isEmpty()) return remove(sourceDsl, identity);
+        String original = sourceDsl == null ? "" : sourceDsl;
+        var blocks = parser.parse(original, "architecture.taxdsl").getBlocks();
+        var matches = matchingIndexes(blocks, identity);
+        if (matches.size() != 1) throw new IllegalStateException("The selected revision has no unique review decision");
+        BlockAst block = blocks.get(matches.getFirst());
+        requireCanonicalHeader(block, identity);
+        for (var expected : requiredProperties.entrySet()) {
+            if (!block.propertyValues(expected.getKey()).equals(List.of(expected.getValue()))) {
+                throw new IllegalStateException("The selected relation no longer carries this review decision");
+            }
+        }
+        try {
+            // The structural edit also rejects nested or unterminated blocks that the import parser tolerates.
+            return new ChangeResult(ArchitectureSemanticPatch.replace(original, block, null), ChangeKind.REMOVED);
+        } catch (ArchitectureDslCommands.CommandProblem malformed) {
+            throw new IllegalStateException("The selected review decision has invalid block boundaries", malformed);
+        }
+    }
+
     private ChangeResult changed(
             DocumentAst original,
             List<BlockAst> blocks,

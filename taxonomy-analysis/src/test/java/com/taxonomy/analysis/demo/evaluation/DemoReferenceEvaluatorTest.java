@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -37,10 +38,50 @@ class DemoReferenceEvaluatorTest {
     }
 
     @Test void consistentDemoPassesAndReportsImprovements() {
-        var report = DemoReferenceEvaluator.evaluate(reference, a0(), a1());
+        var report = DemoReferenceEvaluator.evaluate(reference, R0, a0(), a1());
         assertThat(report.overall()).isEqualTo(DemoReferenceEvaluator.Overall.PASS);
         assertThat(report.improvements()).contains("aspect:channels", "aspect:privacy", "node:BR-1101",
                 "relation:UA-1605 USES CR-1006");
+    }
+
+    @Test void removingTheOriginalCannotPassEvenWhenEveryR1DecisionAndDirectedRelationStillMatches() {
+        var edited = new DemoReferenceEvaluator.Observation(R1.replace(R0, ""), a1().scores(), a1().relations());
+        var report = DemoReferenceEvaluator.evaluate(reference, R0, a0(), edited);
+        assertThat(report.overall()).isEqualTo(DemoReferenceEvaluator.Overall.FAIL);
+        assertThat(report.checks()).filteredOn(c -> c.status() == DemoReferenceEvaluator.Status.FAIL)
+                .extracting(DemoReferenceEvaluator.Check::id).containsExactly("source:retained-original");
+    }
+
+    @Test void anR1DecisionCannotBeClaimedRetroactivelyAsTheAnalysedR0() {
+        var retroactive = new DemoReferenceEvaluator.Observation(R0 + "\nBuchungen erfolgen nur online.",
+                a0().scores(), a0().relations(), a0().coverage());
+        var report = DemoReferenceEvaluator.evaluate(reference, R0, retroactive, a1());
+        assertThat(report.overall()).isEqualTo(DemoReferenceEvaluator.Overall.FAIL);
+        assertThat(report.checks()).filteredOn(c -> c.status() == DemoReferenceEvaluator.Status.FAIL)
+                .extracting(DemoReferenceEvaluator.Check::id).containsExactly("source:frozen-original");
+    }
+
+    @Test void separateOfflineScenarioAcceptsAParaphraseAndRejectsTheOppositeDecision() {
+        String original = "Prüfberichte müssen auch bei einem Netzausfall erfasst werden.";
+        var offlineReference = new DemoReference("field-inspection", 1,
+                List.of(new DemoReference.Aspect("buffer", Map.of("de", "Lokale Aufbewahrung"),
+                        List.of("lokal zwischengespeichert", "auf dem Gerät gepuffert"))),
+                List.of(new DemoReference.Forbidden("discard", Map.of("de", "Kein Datenverlust"),
+                        "ungesendete Berichte werden verworfen")),
+                List.of(), List.of(), List.of(), List.of());
+        var initial = new DemoReferenceEvaluator.Observation(original, Map.of(), Set.of());
+        var paraphrase = new DemoReferenceEvaluator.Observation("Berichte werden auf dem Gerät gepuffert.\n" + original,
+                Map.of(), Set.of());
+        var passing = DemoReferenceEvaluator.evaluate(offlineReference, original, initial, paraphrase);
+        assertThat(passing.overall()).isEqualTo(DemoReferenceEvaluator.Overall.PASS);
+        assertThat(passing.improvements()).containsExactly("aspect:buffer");
+
+        var contradicting = new DemoReferenceEvaluator.Observation(paraphrase.requirementText()
+                + "\nBei Netzausfall gilt: ungesendete Berichte werden verworfen.", Map.of(), Set.of());
+        var failing = DemoReferenceEvaluator.evaluate(offlineReference, original, initial, contradicting);
+        assertThat(failing.overall()).isEqualTo(DemoReferenceEvaluator.Overall.FAIL);
+        assertThat(failing.checks()).filteredOn(c -> c.status() == DemoReferenceEvaluator.Status.FAIL)
+                .extracting(DemoReferenceEvaluator.Check::id).containsExactly("forbidden-phrase:discard");
     }
 
     @Test void onlineConnectivityCannotPassTheReferenceAsZero() {

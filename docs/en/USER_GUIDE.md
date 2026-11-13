@@ -908,7 +908,7 @@ Once accepted, the proposal displays a green **Accepted** badge in the review vi
 
 ![Accepted proposal](../images/36-proposal-accepted.png)
 
-After each accept or reject action, an **Undo toast notification** appears in the bottom-right corner for 8 seconds. Click **↩️ Undo** to revert the proposal back to PENDING status (and, if it was accepted, delete the created relation).
+After each accept or reject action, an **Undo toast notification** appears in the bottom-right corner for 8 seconds. Click **↩️ Undo** to revert the proposal back to PENDING status (and, if it was accepted, delete the created relation). Undo checks the proposal ID, review provenance and decision at the selected Git head. If another edit or branch supplies a different decision for the same relation, reload the review in the branch where it was recorded.
 
 ### Bulk Actions
 
@@ -1174,6 +1174,8 @@ Each taxonomy node row includes a **🔍 Similar** button. Clicking it opens the
 ## 11a. Quality Dashboard
 
 The **📊 Quality Dashboard** panel (right column, collapsible) displays metrics about relation proposal quality. Open it by clicking the summary; metrics are loaded automatically.
+
+The dashboard counts the retained proposal inbox for the selected repository. A personal workspace also sees central proposals in that repository. Sibling workspace and other repository reviews are excluded. Other branches in the same workspace see the same inbox history. Totals, type breakdown and rejected examples are calculated from one observation. Accepting or undoing a review targets the selected Git branch and requires its current head. The inbox cannot be retrieved at an old Git commit.
 
 ### Summary Metrics
 

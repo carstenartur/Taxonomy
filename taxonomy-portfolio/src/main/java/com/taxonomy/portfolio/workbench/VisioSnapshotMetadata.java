@@ -4,6 +4,7 @@ import com.taxonomy.visio.VisioExportMetadata;
 import com.taxonomy.visio.VisioLoss;
 import com.taxonomy.visio.VisioProperty;
 import com.taxonomy.diagram.DiagramModel;
+import com.taxonomy.portfolio.service.SnapshotExportLabel;
 import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.Projection;
 
 import java.util.ArrayList;
@@ -32,6 +33,9 @@ final class VisioSnapshotMetadata {
         put(properties, "projectKey", projection.projectKey());
         put(properties, "projectTitle", projection.projectTitle());
         put(properties, "snapshotStatus", projection.snapshotStatus());
+        if (projection.exportLabel() == SnapshotExportLabel.DEMO) {
+            put(properties, "analysisProvider", projection.provider());
+        }
         put(properties, "snapshotCreatedAt", projection.snapshotCreatedAt());
         if (projection.snapshotCreatedAt() != null) {
             put(properties, "generatedAt", projection.snapshotCreatedAt());

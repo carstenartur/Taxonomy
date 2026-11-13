@@ -96,6 +96,7 @@ class HypothesisCommitBoundaryTest {
                 List.of(hypothesis), "analysis-1", context);
 
         assertThat(persisted).hasSize(1);
+        persisted.getFirst().setId(19L);
         verify(repositoryFactory, never()).resolveRepository(context);
         verify(workspaceRepository, never()).commitDsl(
                 anyString(), anyString(), anyString(), anyString());
@@ -107,7 +108,11 @@ class HypothesisCommitBoundaryTest {
         verify(repositoryFactory).resolveRepository(context);
         verify(workspaceRepository).commitDsl(
                 org.mockito.ArgumentMatchers.eq("main"),
-                org.mockito.ArgumentMatchers.contains("analysis-session:analysis-1"),
+                org.mockito.ArgumentMatchers.argThat(text -> {
+                    var relation = new com.taxonomy.dsl.parser.TaxDslParser().parse(text).blocksOfKind("relation").getFirst();
+                    return "19".equals(relation.property("x-hypothesis-id"))
+                            && "analysis-session:analysis-1".equals(relation.property("provenance"));
+                }),
                 org.mockito.ArgumentMatchers.eq("alice"),
                 org.mockito.ArgumentMatchers.contains("analysis-1"));
     }

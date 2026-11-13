@@ -1042,7 +1042,7 @@
       "fromPackage": "com.taxonomy.composition.report",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 4
+      "classDependencyCount": 5
     },
     {
       "fromContext": "app-composition",
@@ -1518,7 +1518,7 @@
       "fromPackage": "com.taxonomy.relations.controller",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 42
+      "classDependencyCount": 44
     },
     {
       "fromContext": "knowledge",
@@ -1532,7 +1532,7 @@
       "fromPackage": "com.taxonomy.relations.service",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 59
+      "classDependencyCount": 63
     },
     {
       "fromContext": "knowledge",

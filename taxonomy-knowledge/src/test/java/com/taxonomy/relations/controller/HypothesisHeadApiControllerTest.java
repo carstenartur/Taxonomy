@@ -32,7 +32,7 @@ class HypothesisHeadApiControllerTest {
     void returnsStrongEtagForExactSelectedWorkspaceBranch() {
         RepositoryContext context = RepositoryContext.workspace(
                 "repo-a", "workspace-a", "feature/a", "alice");
-        when(workspaceResolver.resolveCurrentRepositoryContext())
+        when(workspaceResolver.resolveUnambiguousRepositoryForRead())
                 .thenReturn(context);
         when(readinessService.readCurrentHead(context)).thenReturn(HEAD);
 
@@ -50,7 +50,7 @@ class HypothesisHeadApiControllerTest {
     void missingBranchReturnsNotFoundWithoutInventedEtag() {
         RepositoryContext context = RepositoryContext.workspace(
                 "repo-a", "workspace-a", "missing", "alice");
-        when(workspaceResolver.resolveCurrentRepositoryContext())
+        when(workspaceResolver.resolveUnambiguousRepositoryForRead())
                 .thenReturn(context);
         when(readinessService.readCurrentHead(context)).thenReturn(null);
 

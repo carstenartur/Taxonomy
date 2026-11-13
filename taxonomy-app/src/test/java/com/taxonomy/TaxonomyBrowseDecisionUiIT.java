@@ -108,7 +108,7 @@ class TaxonomyBrowseDecisionUiIT {
 
     @SuppressWarnings("unchecked")
     private Map<String, Object> capturedReasonLengthExports() {
-        return (Map<String, Object>) browser.executeAsyncScript("""
+        Map<String, Object> captured = (Map<String, Object>) browser.executeAsyncScript("""
             const done=arguments[arguments.length-1], requests={};
             const routes=window.fixtureApiHandlers;
             const previousScores=routes['/api/scores/export'], previousDecision=routes['/api/decision-report/docx'];
@@ -117,6 +117,8 @@ class TaxonomyBrowseDecisionUiIT {
                 return Response.json(requests.scores);
             };
             routes['/api/decision-report/docx']=async(url,options)=>{
+                requests.scope=new URL(url,location.href).searchParams.toString();
+                requests.workspace=new Headers(options.headers).get('X-Taxonomy-Workspace-Id');
                 requests.decision=JSON.parse(options.body); throw new Error('fixture stops before download');
             };
             window.TaxonomyDecisionExport={open:dialog=>{requests.report=dialog;}};
@@ -125,9 +127,13 @@ class TaxonomyBrowseDecisionUiIT {
             requests.report.submit({format:'docx',options:{}}).catch(()=>{}).finally(()=>{
                 routes['/api/scores/export']=previousScores;
                 routes['/api/decision-report/docx']=previousDecision;
-                done({scores:requests.scores.analysisReasonLength,decision:requests.decision.analysisReasonLength});
+                done({scores:requests.scores?.analysisReasonLength,decision:requests.decision?.analysisReasonLength,
+                      scope:requests.scope,workspace:requests.workspace});
             });
             """);
+        assertThat(captured).containsEntry("scope", "repositoryId=fixture-repository&workspaceId=fixture-workspace&branch=fixture-branch")
+                .containsEntry("workspace", "fixture-workspace");
+        return captured;
     }
 
     @ParameterizedTest @ValueSource(booleans = {true, false})
@@ -641,6 +647,9 @@ class TaxonomyBrowseDecisionUiIT {
                 <script src="/js/api/taxonomy-api-client.js"></script>
                 <script>
                 window.fixtureApiHandlers=Object.create(null);
+                window.TaxonomyArchitectureWorkspace = {analysisScope: async () => ({
+                    repositoryId:'fixture-repository',workspaceId:'fixture-workspace',branch:'fixture-branch'
+                })};
                 TaxonomyApiClient.installTransportAdapter('browse-decision-fixture',nextFetch=>(input,init)=>{
                     const url=new URL(input instanceof Request?input.url:String(input),location.href);
                     const handler=url.origin===location.origin?window.fixtureApiHandlers[url.pathname]:null;

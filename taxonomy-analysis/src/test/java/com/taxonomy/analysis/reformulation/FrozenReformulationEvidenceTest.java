@@ -169,6 +169,37 @@ class FrozenReformulationEvidenceTest {
     }
 
     @Test
+    void secondGenerationRetainsDeferredAndRejectedEvidenceAlongsideANewConflict() {
+        var deferred = question("offline", DecisionQuestion.State.DEFERRED);
+        var rejected = new Statement("tracking", "GPS-Standorte speichern.", List.of(),
+                Statement.Provenance.MODEL_ADDITION, List.of(), List.of(), null, Statement.EditingOrigin.HUMAN, "REJECTED");
+        var section = new Section("@document", null, "Angebot", "Bisher", List.of(), List.of(rejected.id()), List.of(deferred.id()));
+        var before = new ReformulationDocument(ORIGINAL, List.of(section), List.of(rejected), List.of(deferred),
+                new ValidationReport(List.of()), List.of());
+        // Independent counterexample: paraphrasing a deferred question supplies no answer or source authority.
+        var inventedAnswer = new DecisionQuestion(deferred.id(), deferred.key(), "Muss die Buchung ohne Netz möglich sein?",
+                deferred.discoveries(), deferred.affectedStatementIds(), deferred.answerSchema(), deferred.prerequisites(),
+                deferred.dependentQuestionIds(), deferred.consequences(), DecisionQuestion.State.ANSWERED);
+        var relabelled = new Statement(rejected.id(), rejected.wording(), List.of(), Statement.Provenance.ORIGINAL,
+                List.of(), List.of(), null, Statement.EditingOrigin.SOURCE, "ACCEPTED");
+        var conflict = new ValidationReport.Finding(ValidationReport.Kind.CONFLICT, "NEW_CONFLICT",
+                "Ein neues Offline-Angebot widerspricht der geplanten unmittelbaren Freigabe.", List.of(), List.of());
+        var result = engine(input -> new NodeSynthesisResult(input.nodeId(), "Eine neue Frage bleibt offen.",
+                List.of(relabelled), List.of(rejected.id()), List.of(inventedAnswer), List.of(deferred.id()),
+                List.of(), List.of(conflict))).synthesizeAffected(baseline("{}", "[]"), before, List.of(), impact());
+        assertEquals(List.of(deferred), result.questions());
+        assertEquals(List.of(rejected), result.statements());
+        var rebuilt = result.nodeResults().getFirst();
+        assertEquals(List.of(deferred), rebuilt.questionProposals());
+        assertEquals(List.of(rejected), rebuilt.statementProposals());
+        assertTrue(result.validation().findings().contains(conflict));
+        assertTrue(result.text().contains(ORIGINAL));
+        assertFalse(result.text().contains(rejected.wording()));
+        assertEquals(DecisionQuestion.State.DEFERRED, before.questions().getFirst().state());
+        assertTrue(before.validation().findings().isEmpty());
+    }
+
+    @Test
     void identicalRawQuestionReplyDoesNotReopenDeferredDecision() {
         var parser = new ReformulationResponseParser(json);
         var engine = engine(input -> parser.parse(rawQuestionReply(input), input));

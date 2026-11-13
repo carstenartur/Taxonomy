@@ -56,13 +56,18 @@ public class WorkspaceResolver {
         }
 
         RepositoryContext repository = resolveCurrentRepositoryContext();
-        WorkspaceContext resolved = new WorkspaceContext(
-                repository.username(),
-                repository.workspaceId(),
-                repository.branch(),
-                repository.repositoryId());
+        WorkspaceContext resolved = workspaceContext(repository);
         cache(attributes, REQUEST_CONTEXT_ATTRIBUTE, resolved);
         return resolved;
+    }
+
+    /** Compatibility view of the authorized, non-provisioning selection for an observational route. */
+    public WorkspaceContext resolveUnambiguousContextForRead() {
+        return workspaceContext(resolveUnambiguousRepositoryForRead());
+    }
+
+    private static WorkspaceContext workspaceContext(RepositoryContext selected) {
+        return new WorkspaceContext(selected.username(), selected.workspaceId(), selected.branch(), selected.repositoryId());
     }
 
     /**
@@ -77,6 +82,13 @@ public class WorkspaceResolver {
     /** Resolve the authorized repository for a read that must not provision a workspace. */
     public RepositoryContext resolveCurrentRepositoryContextForRead() {
         return resolveCurrentRepositoryContext(false);
+    }
+
+    /** An observational route must not silently choose a primary from multiple readable sources. */
+    public RepositoryContext resolveUnambiguousRepositoryForRead() {
+        RepositoryContext selected = resolveCurrentRepositoryContextForRead();
+        contextResolver.verifyReadSelection(selected);
+        return selected;
     }
 
     private RepositoryContext resolveCurrentRepositoryContext(boolean provisionDefault) {
