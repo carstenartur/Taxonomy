@@ -1640,6 +1640,9 @@ test('coverage dashboard pins the source and clears departed working-copy data',
                 const url = new URL(input, document.baseURI);
                 window.captured.push([url.searchParams.get('repositoryId'), url.searchParams.get('workspaceId'),
                     url.searchParams.get('branch'), url.searchParams.get('commitId'), new Headers(options.headers).get('X-Taxonomy-Workspace-Id')]);
+                if (window.captured.length === 3) {
+                    await new Promise(resolve => { window.releaseCoverageRefresh = resolve; });
+                }
                 const stats = {totalNodes:2,coveredNodes:1,uncoveredNodes:1,coveragePercentage:50,totalRequirements:1,
                     avgRequirementsPerNode:1,topCovered:[{nodeCode:'only-' + window.selection.workspaceId,requirementCount:1}],gapCandidates:[]};
                 return Response.json(stats, {headers:{'X-Taxonomy-Repository':window.selection.repositoryId,
@@ -1653,7 +1656,10 @@ test('coverage dashboard pins the source and clears departed working-copy data',
         await page.evaluate(() => window.TaxonomyCoverage.loadCoverageDashboard());
         assert.match(await page.locator('#coverageDashboardContent').innerText(), /only-A1/);
         await page.locator('#coverageRecordBtn').click();
-        await page.waitForFunction(() => window.captured.length === 3);
+        await page.waitForFunction(() => typeof window.releaseCoverageRefresh === 'function');
+        assert.equal(await page.locator('#coverageDashboardContent').innerText(), 'coverage.loading');
+        await page.evaluate(() => window.releaseCoverageRefresh());
+        await page.waitForFunction(() => document.getElementById('coverageDashboardContent').textContent.includes('only-A1'));
         await page.evaluate(() => document.dispatchEvent(new CustomEvent('taxonomy:repository-context-changed', {detail:{selectionChanged:false}})));
         assert.match(await page.locator('#coverageDashboardContent').innerText(), /only-A1/);
         await page.evaluate(() => {
