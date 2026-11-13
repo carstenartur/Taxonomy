@@ -12,6 +12,7 @@ import com.taxonomy.workspace.service.WorkspaceDslReadPort;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -91,6 +92,22 @@ class DocumentAnalysisOperationHttpTest {
         }
     }
 
+    @Test void revokedLoginCannotPublishOrReplayADocumentResultAfterTheProviderReturns() throws Exception {
+        try (var fixture = new Fixture()) {
+            when(fixture.analysis.mapRegulationToArchitecture(anyString())).thenAnswer(call -> {
+                when(fixture.identities.requireCurrent(any())).thenThrow(new AccessDeniedException("Login revoked"));
+                return List.of();
+            });
+            var upload = multipart("/api/documents/map-regulation").file(fixture.file);
+            var denied = assertThrows(jakarta.servlet.ServletException.class, () -> fixture.mvc.perform(upload));
+            assertInstanceOf(AccessDeniedException.class, denied.getCause());
+            doAnswer(call -> fixture.actor.get()).when(fixture.identities).requireCurrent(any());
+            fixture.mvc.perform(multipart("/api/documents/map-regulation").file(fixture.file))
+                    .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code").value("OUTCOME_UNKNOWN"));
+            verify(fixture.analysis, times(1)).mapRegulationToArchitecture(anyString());
+        }
+    }
+
     @Test void inaccessibleSourceAfterDispatchRetainsUnknownOutcomeAcrossIdenticalRetry() throws Exception {
         try (var fixture = new Fixture()) {
             when(fixture.analysis.mapRegulationToArchitecture(anyString())).thenAnswer(call -> {
@@ -108,17 +125,18 @@ class DocumentAnalysisOperationHttpTest {
         final ClusterAnalysisDatabaseContract db = ClusterAnalysisDatabaseContract.hsql();
         final AtomicReference<PrincipalId> actor = new AtomicReference<>(PrincipalId.create());
         final AtomicReference<String> commit = new AtomicReference<>("a".repeat(40));
+        final PrincipalIdentityService identities = mock(PrincipalIdentityService.class);
         final DocumentAnalysisService analysis = mock(DocumentAnalysisService.class);
         final MockMultipartFile file = new MockMultipartFile("file","notice.pdf","application/pdf",new byte[]{1});
         final org.springframework.test.web.servlet.MockMvc mvc;
 
         Fixture() throws Exception {
             var workspace = mock(WorkspaceResolver.class); var git = mock(WorkspaceDslReadPort.class);
-            var handle = mock(WorkspaceDslReadPort.RepositoryRead.class); var identities = mock(PrincipalIdentityService.class);
+            var handle = mock(WorkspaceDslReadPort.RepositoryRead.class);
             when(workspace.resolveCurrentRepositoryContextForRead()).thenReturn(RepositoryContext.centralRead("repo","main","alice"));
             when(git.openRead(any())).thenReturn(handle);
             when(handle.currentHead()).thenAnswer(call -> commit.get());
-            when(identities.require(any())).thenAnswer(call -> actor.get());
+            when(identities.requireCurrent(any())).thenAnswer(call -> actor.get());
             var operations = db.adapterGateway(workspace,git,identities);
             var parser = mock(DocumentParserService.class); var parsed = new DocumentParseResult();
             parsed.setRawTextPreview("A transport requirement"); parsed.setFileName("notice.pdf"); parsed.setTotalPages(1);

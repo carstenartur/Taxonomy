@@ -351,9 +351,8 @@ secrets, reverse-proxy TLS, and external transport restrictions are described in
 [Security](SECURITY.md) and [Deployment guide](DEPLOYMENT_GUIDE.md).
 
 The incoming LLM quota runs after `AuthorizationFilter`. Its default is
-10 admitted requests per stable authenticated identity per minute. Local accounts
-use their canonical authenticated username; Keycloak browser and bearer requests
-share the immutable `iss`/`sub` pair, not `preferred_username` or a peer address.
+10 admitted requests per stable authenticated identity per minute. Verified local and STABLE Keycloak logins share one budget per stable principal ID.
+In LEGACY mode, Keycloak browser and bearer logins share the immutable issuer/subject (`iss`/`sub`).
 Rejected authentication/authorization requests do not allocate or consume quota state.
 The bounded in-memory counters are per application instance: a multi-replica deployment multiplies the aggregate allowance.
 Use an outer distributed quota when a cluster-wide allowance is required.

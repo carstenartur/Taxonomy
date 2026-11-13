@@ -40,7 +40,7 @@ class RelationProjectionOperationsWorkspaceContractTest {
         var rebuilt = new RebuildResult("repo-a", "workspace-a", "review", HEAD, 0);
         var ready = new Readiness(ReadinessState.READY, HEAD, HEAD, List.of());
         var reconciled = new ReconciliationResult(HEAD, 0, 0, 0);
-        when(rebuild.rebuild(CONTEXT)).thenReturn(rebuilt);
+        when(rebuild.rebuildAtVerifiedHead(CONTEXT, read, HEAD)).thenReturn(rebuilt);
         when(readiness.inspect(CONTEXT)).thenReturn(ready);
         when(recovery.reconcileAfterRebuild(CONTEXT, HEAD)).thenReturn(reconciled);
 
@@ -52,7 +52,7 @@ class RelationProjectionOperationsWorkspaceContractTest {
         var order = inOrder(reads, read, rebuild, readiness, recovery);
         order.verify(reads).openRead(CONTEXT);
         order.verify(read).verifyExpectedHead(HEAD);
-        order.verify(rebuild).rebuild(CONTEXT);
+        order.verify(rebuild).rebuildAtVerifiedHead(CONTEXT, read, HEAD);
         order.verify(readiness).inspect(CONTEXT);
         order.verify(recovery).reconcileAfterRebuild(CONTEXT, HEAD);
         verifyNoMoreInteractions(reads, read, rebuild, readiness, recovery);
@@ -109,7 +109,7 @@ class RelationProjectionOperationsWorkspaceContractTest {
     void concurrentNewerRebuildCannotSatisfyTheOlderRequest() throws Exception {
         when(reads.openRead(CONTEXT)).thenReturn(read);
         when(read.verifyExpectedHead(HEAD)).thenReturn(HEAD);
-        when(rebuild.rebuild(CONTEXT)).thenReturn(new RebuildResult("repo-a", "workspace-a", "review", NEWER, 0));
+        when(rebuild.rebuildAtVerifiedHead(CONTEXT, read, HEAD)).thenReturn(new RebuildResult("repo-a", "workspace-a", "review", NEWER, 0));
 
         assertThatThrownBy(() -> service.rebuild(CONTEXT, HEAD))
                 .isInstanceOfSatisfying(RebuildHeadConflictException.class, error -> {
@@ -123,7 +123,7 @@ class RelationProjectionOperationsWorkspaceContractTest {
     void headMovementDuringReadinessCannotCompleteRecovery() throws Exception {
         when(reads.openRead(CONTEXT)).thenReturn(read);
         when(read.verifyExpectedHead(HEAD)).thenReturn(HEAD);
-        when(rebuild.rebuild(CONTEXT)).thenReturn(new RebuildResult("repo-a", "workspace-a", "review", HEAD, 0));
+        when(rebuild.rebuildAtVerifiedHead(CONTEXT, read, HEAD)).thenReturn(new RebuildResult("repo-a", "workspace-a", "review", HEAD, 0));
         when(readiness.inspect(CONTEXT)).thenReturn(new Readiness(ReadinessState.STALE, NEWER, HEAD, List.of()));
 
         assertThatThrownBy(() -> service.rebuild(CONTEXT, HEAD))

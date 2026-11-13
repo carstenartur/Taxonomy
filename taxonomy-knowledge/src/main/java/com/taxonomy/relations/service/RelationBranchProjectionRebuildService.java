@@ -50,9 +50,22 @@ public class RelationBranchProjectionRebuildService {
         requireMutable(context);
         RepositoryRead repository = reads.openRead(context);
         String head = readHead(repository, context.branch());
+        try {
+            return rebuildAtVerifiedHead(context, repository, head);
+        } catch (IOException error) {
+            throw new BranchProjectionSourceException(
+                    "Selected branch moved during relation projection rebuild", error);
+        }
+    }
+
+    RebuildResult rebuildAtVerifiedHead(RepositoryContext context, RepositoryRead repository, String head)
+            throws IOException {
         String dsl = readDsl(repository, head);
         List<RelationSnapshot> relations = parseRelations(dsl, head);
-        verifyHead(repository, head);
+        if (!head.equals(repository.verifyExpectedHead(head))) {
+            throw new BranchProjectionSourceException(
+                    "Selected branch no longer has the captured projection head");
+        }
         return rebuildWriter.replace(context, head, relations);
     }
 
@@ -86,22 +99,6 @@ public class RelationBranchProjectionRebuildService {
             throw new BranchProjectionSourceException(
                     "Unable to read authoritative relation projection commit "
                             + commitId,
-                    error);
-        }
-    }
-
-    private void verifyHead(
-            RepositoryRead repository,
-            String expectedHead) {
-        try {
-            String verified = repository.verifyExpectedHead(expectedHead);
-            if (!expectedHead.equals(verified)) {
-                throw new BranchProjectionSourceException(
-                        "Selected branch no longer has the captured projection head");
-            }
-        } catch (IOException error) {
-            throw new BranchProjectionSourceException(
-                    "Selected branch moved during relation projection rebuild",
                     error);
         }
     }

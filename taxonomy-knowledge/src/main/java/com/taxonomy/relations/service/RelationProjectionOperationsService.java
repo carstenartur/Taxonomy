@@ -45,11 +45,7 @@ public class RelationProjectionOperationsService {
                 recoveryService.pending(selected));
     }
 
-    /**
-     * Rebuilds only after proving the caller's exact existing branch head. A
-     * benign rebuild of a concurrently newer head is reported as a
-     * precondition conflict rather than silently satisfying the stale request.
-     */
+    /** Rebuilds from the caller's exact existing commit and verifies it again before writing. */
     public RebuildOperation rebuild(
             RepositoryContext context,
             String expectedHeadCommit) throws IOException {
@@ -62,7 +58,7 @@ public class RelationProjectionOperationsService {
                     "Cannot rebuild relation projection for an absent branch");
         }
 
-        RebuildResult rebuilt = rebuildService.rebuild(selected);
+        RebuildResult rebuilt = rebuildService.rebuildAtVerifiedHead(selected, repository, verifiedHead);
         if (!verifiedHead.equals(rebuilt.authoritativeCommitId())) {
             throw new RebuildHeadConflictException(
                     verifiedHead,

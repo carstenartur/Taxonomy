@@ -36,8 +36,9 @@ async function ready() {
 async function selectWorkspace(id) {
     await navigateToPage(page, 'versions');
     const manager = page.locator('#workspaceManagerPanel');
+    // Opening the panel loads the list. A second concurrent refresh replaces
+    // the focused button and can discard its native Enter activation.
     if (await manager.getAttribute('open') === null) await manager.locator('summary').press('Enter');
-    await manager.locator('#wsRefreshBtn').press('Enter');
     const activate = manager.locator('.ws-switch-btn').and(page.locator('[data-ws-id="' + id + '"]'));
     await expect(activate).toBeVisible({timeout:45_000});
     const switched = page.waitForResponse(response => new URL(response.url()).pathname === '/api/workspace/' + id + '/switch'
@@ -111,20 +112,26 @@ try {
         page.waitForRequest(request => pattern(new URL(request.url()))),
         firstButton.press('Enter')
     ]);
-    const confirmed = await selectWorkspace(second.workspaceId);
-    assert.equal(confirmed.sourceRepositoryId, second.sourceRepositoryId);
-    release.resolve();
-    const deliveryError = await delivered.promise;
-    if (deliveryError) throw deliveryError;
-    await navigateToPage(page, 'analyze');
+    // The new document may start and complete the recent-runs GET during the
+    // workspace switch. Its explicit refresh can join that same physical read.
     const [recent] = await Promise.all([
         page.waitForResponse(response => {
             const url = new URL(response.url());
-            return url.pathname === '/api/analysis-runs' && url.searchParams.get('workspaceId') === second.workspaceId;
+            return url.pathname === '/api/analysis-runs' && url.searchParams.get('workspaceId') === second.workspaceId
+                && response.request().method() === 'GET';
         }),
-        page.evaluate(() => window.TaxonomyAnalysisProgress.refreshRecent(true))
+        (async () => {
+            const confirmed = await selectWorkspace(second.workspaceId);
+            assert.equal(confirmed.sourceRepositoryId, second.sourceRepositoryId);
+            release.resolve();
+            const deliveryError = await delivered.promise;
+            if (deliveryError) throw deliveryError;
+            await navigateToPage(page, 'analyze');
+            await page.evaluate(() => window.TaxonomyAnalysisProgress.refreshRecent(true));
+        })()
     ]);
     assert.equal(recent.status(), 200);
+    assert.equal(await recent.request().headerValue('x-taxonomy-workspace-id'), second.workspaceId);
     const runs = await recent.json();
     assert(Array.isArray(runs));
     assert(!runs.some(run => run.operationId === operation));
