@@ -374,6 +374,28 @@ test('portfolio report adapter forwards cancellation to fetch', async () => {
     assert.equal(seen.signal.aborted, true, 'caller cancellation reaches the composed transport signal');
 });
 
+for (const workspace of ['workspace-A', '']) {
+    test('portfolio Git state and export read the same pinned repository and branch for ' + (workspace || 'central'), async () => {
+        const requests = [];
+        const window = {location: {pathname: '/projects/8/versioning'}, TaxonomyArchitectureWorkflow: {
+            getScope: () => ({repositoryId: 'repository-A', workspaceId: workspace, branch: 'review'})
+        }};
+        const context = {window, document: {querySelector: () => null}, URL, URLSearchParams,
+            fetch: async (url, init) => {requests.push({url, init}); return new Response('{}');}};
+        canonicalFixture.install(context, ['api/portfolio-api.js']);
+        await window.TaxonomyPortfolioApi.getGitState();
+        await window.TaxonomyPortfolioApi.exportPortfolio();
+        assert.equal(requests.length, 2);
+        for (const {url, init} of requests) {
+            const query = new URL(url, window.location.href).searchParams;
+            assert.equal(query.get('repositoryId'), 'repository-A');
+            assert.equal(query.get('workspaceId'), workspace);
+            assert.equal(query.get('branch'), 'review');
+            assert.equal(new Headers(init.headers).get('X-Taxonomy-Workspace-Id'), workspace);
+        }
+    });
+}
+
 test('new requirement writes capture AI language for automatic analysis without leaking it across origins', async () => {
     const f = dom(), requests = [];
     const window = {location: {href: 'http://localhost/app/', origin: 'http://localhost', pathname: '/app/'},

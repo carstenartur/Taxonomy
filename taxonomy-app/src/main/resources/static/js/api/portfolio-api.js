@@ -388,7 +388,7 @@ window.TaxonomyPortfolioApi = (function () {
 
         // ── Portfolio Git and repository state ────────────────────────────────
         getGitState: function () {
-            return getJson('/api/git/state');
+            return getJson('/api/git/state', {scope: window.TaxonomyArchitectureWorkflow?.getScope?.()});
         },
         exportPortfolio: function () {
             return getJson('/api/projects/git/export');

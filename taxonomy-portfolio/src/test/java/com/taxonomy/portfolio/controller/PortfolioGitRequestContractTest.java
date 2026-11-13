@@ -77,6 +77,24 @@ class PortfolioGitRequestContractTest {
         verifyNoInteractions(service, repositories);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"export", "commit", "merge"})
+    void stalePageCannotExportCommitOrMergeAfterChangingBranchInAnotherTab(String operation) throws Exception {
+        when(resolver.resolveUnambiguousContextForRead()).thenThrow(new ResponseStatusException(HttpStatus.CONFLICT));
+        when(resolver.hasExplicitSourceSelection()).thenCallRealMethod();
+        when(service.export(context)).thenReturn(exported());
+        var mvc = MockMvcBuilders.standaloneSetup(controller).build();
+        var request = switch (operation) {
+            case "export" -> get("/api/projects/git/export").param("repositoryId", "repo-a");
+            case "commit" -> post("/api/projects/git/commit").param("repositoryId", "repo-a")
+                    .contentType("application/json").content("{\"branch\":\"review\",\"message\":\"Reviewed\"}");
+            default -> post("/api/projects/git/merge").param("workspaceScopeKey", "ws-a")
+                    .contentType("application/json").content("{\"sourceBranch\":\"draft\",\"targetBranch\":\"review\"}");
+        };
+        mvc.perform(request.param("branch", "old-page")).andExpect(status().isConflict());
+        verifyNoInteractions(service, repositories);
+    }
+
     @Test void contradictoryExplicitTargetsCannotApplyAReviewedCommit() throws Exception {
         var mvc = MockMvcBuilders.standaloneSetup(controller).build();
         mvc.perform(post("/api/projects/git/materialize").param("branch", "current").param("targetBranch", "review")
