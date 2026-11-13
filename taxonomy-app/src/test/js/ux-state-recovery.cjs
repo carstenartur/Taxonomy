@@ -361,6 +361,9 @@ test('new requirement writes capture AI language for automatic analysis without 
     assert.deepEqual(requests.map(request => request.headers.get('X-Taxonomy-Analysis-Language')), ['de', 'de', null, null, 'en']);
 });
 
+const liveDecisionSource = {repositoryId: 'repo-reports', workspaceId: 'ws-reports', branch: 'review'};
+const liveDecisionPath = '/api/decision-report/docx?repositoryId=repo-reports&workspaceId=ws-reports&branch=review';
+
 test('live-analysis export cancellation reaches the real API client transport', async () => {
     const f = dom();
     f.element('textarea', 'businessText').value = 'Current requirement';
@@ -368,9 +371,11 @@ test('live-analysis export cancellation reaches the real API client transport', 
     const timers = new Set();
     const window = {location: {href: 'http://localhost/', pathname: '/'},
         TaxonomyRoleSurface: {}, TaxonomyUiSemantics: {},
+        TaxonomyArchitectureWorkspace: {analysisScope: async () => liveDecisionSource},
         TaxonomyI18n: {getLocale: () => 'de'},
         fetch(url, init) {
-            assert.equal(url, '/api/decision-report/docx');
+            assert.equal(url, liveDecisionPath);
+            assert.equal(new Headers(init.headers).get('X-Taxonomy-Workspace-Id'), liveDecisionSource.workspaceId);
             assert.equal(init.method, 'POST');
             transportSignal = init.signal;
             return new Promise((resolve, reject) => {
@@ -434,6 +439,7 @@ async function liveReportBodyFixture() {
     f.element('textarea', 'businessText').value = 'Current requirement';
     const window = {location: {href: 'http://localhost/', origin: 'http://localhost', pathname: '/'},
         TaxonomyRoleSurface: {}, TaxonomyUiSemantics: {},
+        TaxonomyArchitectureWorkspace: {analysisScope: async () => liveDecisionSource},
         TaxonomyI18n: {getLocale: () => 'de'}, fetch: transfer.fetch};
     class FixtureURL extends URL {}
     Object.assign(FixtureURL, f.urls);
