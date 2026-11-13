@@ -75,6 +75,11 @@ final class SchemaContractMigrator {
                                 WORKSPACE_SCOPE_KEY_COLUMNS),
                         REPOSITORY_SCOPE_KEY_COLUMNS);
                 migrateHypothesisUniqueness(connection);
+                TableRef membership = findTable(connection, "repository_membership");
+                if (membership != null) {
+                    ensureColumn(connection, membership, "revoked_at",
+                            isSqlServer(connection) ? "DATETIME2(6)" : "TIMESTAMP(6)");
+                }
                 ensurePasswordChangeColumn(connection);
                 connection.commit();
                 log.info("Verified repository, workspace, hypothesis and account schema contracts");

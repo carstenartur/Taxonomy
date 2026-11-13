@@ -42,7 +42,7 @@ class WorkspaceRestoreImporterTest {
             assertThat(target.queryForObject("select count(*) from app_principal where enabled<>0",Long.class)).isZero();
             assertThat(target.queryForObject("select count(*) from repository_membership",Long.class)).isZero();
             assertThat(target.queryForObject("select count(*) from backup_capability_grant",Long.class)).isZero();
-            assertThat(new JdbcTemplate(fixture.source).queryForObject("select count(*) from repository_membership where username='source-retired'",Long.class)).isZero();
+            assertThat(new JdbcTemplate(fixture.source).queryForObject("select count(*) from repository_membership where username='source-retired' and revoked_at is not null",Long.class)).isOne();
         }
     }
 
@@ -226,7 +226,7 @@ class WorkspaceRestoreImporterTest {
             if (journalActor.equals("source-retired")) {
                 rows.update("insert into app_principal(principal_id,scope_key,enabled) values(?,'source-retired',0)",retiredActor.value().toString());
                 rows.update("insert into repository_membership(repository_id,username,repository_role,created_at,created_by,version) values('source-repository','source-retired','CONTRIBUTOR',?,'source-owner',0)",java.sql.Timestamp.from(Instant.parse(TIME)));
-                rows.update("delete from repository_membership where username='source-retired'");
+                rows.update("update repository_membership set revoked_at=? where username='source-retired'", java.sql.Timestamp.from(Instant.parse(TIME)));
             }
         }
         var captures=new LinkedHashMap<BackupRepositoryKey,GitHistoryCapture>();

@@ -121,14 +121,14 @@ class IdentityExportIT {
     private static void ownershipTables(Fixture f) {
         f.jdbc.execute("create table system_repository(repository_id varchar(255),owner_type varchar(50),owner_id varchar(255))");
         f.jdbc.execute("create table user_workspace(workspace_id varchar(255),source_repository_id varchar(255),username varchar(255))");
-        f.jdbc.execute("create table repository_membership(id integer,repository_id varchar(255),username varchar(255))");
+        f.jdbc.execute("create table repository_membership(id integer,repository_id varchar(255),username varchar(255),revoked_at timestamp)");
         f.jdbc.execute("create table workspace_branch_sync(scope_key varchar(64),repository_id varchar(255),workspace_id varchar(255),username varchar(255))");
         f.jdbc.execute("create table sync_state(id integer,workspace_id varchar(255),username varchar(255))");
         for (String table : List.of("arch_project", "project_requirement", "solution_definition"))
             f.jdbc.execute("create table " + table + "(id integer,scope_key varchar(512),owner_username varchar(255))");
         f.jdbc.update("insert into system_repository values ('repo','USER','alice'),('foreign','USER','bob')");
         f.jdbc.update("insert into user_workspace values ('workspace','repo','retired-owner'),('private-other','repo','bob')");
-        f.jdbc.update("insert into repository_membership values (1,'repo','alice'),(2,'foreign','bob')");
+        f.jdbc.update("insert into repository_membership values (1,'repo','alice',null),(2,'foreign','bob',null),(3,'repo','revoked-member',current_timestamp)");
         f.jdbc.update("insert into sync_state values (1,'workspace','retired-owner'),(2,'private-other','bob')");
         String selected = new RepositoryTenantIdentity("repo", "WORKSPACE:workspace", "draft").scopeKey();
         String foreign = new RepositoryTenantIdentity("repo", "WORKSPACE:private-other", "draft").scopeKey();

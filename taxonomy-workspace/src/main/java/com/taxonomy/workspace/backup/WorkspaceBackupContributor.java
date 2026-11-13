@@ -29,7 +29,7 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
             queries.add(new Query("select repository_id,cast(null as varchar(255)) as workspace_id,cast(null as varchar(255)) as linked_workspace_id,1 as repository_only,owner_id as principal_scope from system_repository where "
                     + repositories.sql() + " and (owner_type='USER' or owner_type is null) order by repository_id", repositories.parameters()));
             queries.add(new Query("select repository_id,cast(null as varchar(255)) as workspace_id,cast(null as varchar(255)) as linked_workspace_id,1 as repository_only,username as principal_scope from repository_membership where "
-                    + repositories.sql() + " order by id", repositories.parameters()));
+                    + "revoked_at is null and (" + repositories.sql() + ") order by id", repositories.parameters()));
             queries.add(new Query("select source_repository_id as repository_id,workspace_id,workspace_id as linked_workspace_id,0 as repository_only,username as principal_scope from user_workspace where "
                     + workspaces.sql() + " order by workspace_id", workspaces.parameters()));
             var branchProgress = scope.repositories("repository_id", "workspace_id");
@@ -105,7 +105,8 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                         enumeration(r,"topology_mode",RepositoryTopologyMode.class),text(r,"source_repository_id"),text(r,"source_branch"),
                         enumeration(r,"relationship_type",WorkspaceRelationshipType.class),text(r,"base_commit"),text(r,"current_commit"),text(r,"last_fetched_commit"),
                         text(r,"last_integrated_commit"),text(r,"sync_target_branch"),instant(r,"provisioned_at"),text(r,"description"),r.getBoolean("archived"),r.getBoolean("is_default"),r.getBoolean("collaborative"))));
-        write(sink,"memberships",profile,query(scope,false,"select id,repository_id,username,repository_role,created_at,created_by,updated_at from repository_membership",repositories,"id"),
+        var activeMemberships = new Query("revoked_at is null and (" + repositories.sql() + ")", repositories.parameters());
+        write(sink,"memberships",profile,query(scope,false,"select id,repository_id,username,repository_role,created_at,created_by,updated_at from repository_membership",activeMemberships,"id"),
                 scoped(scope,"repository_id",null,r -> new MembershipRecord(reference(r,"workspace.membership","id"),text(r,"repository_id"),text(r,"username"),enumeration(r,"repository_role",RepositoryRole.class),instant(r,"created_at"),text(r,"created_by"),instant(r,"updated_at"))));
         var sync = scope.repositories("w.source_repository_id","w.workspace_id");
         write(sink,"synchronization",profile,query(scope,false,"select w.source_repository_id as captured_repository_id,w.workspace_id as captured_workspace_id,s.id,s.username,s.workspace_id,s.last_synced_commit_id,s.last_sync_timestamp,s.last_published_commit_id,s.last_publish_timestamp,s.sync_status,s.unpublished_commit_count,s.created_at,s.updated_at from sync_state s join user_workspace w on w.workspace_id=s.workspace_id",sync,"s.id"),

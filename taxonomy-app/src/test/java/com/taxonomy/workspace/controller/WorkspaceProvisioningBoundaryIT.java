@@ -130,6 +130,30 @@ class WorkspaceProvisioningBoundaryIT {
         source = null;
     }
 
+    @Test
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
+    void removedMembershipVersionCannotChangeOrDeleteItsReplacement() {
+        String member = "revision-" + UUID.randomUUID();
+        var original = memberships.assignRole(source, member, RepositoryRole.READER, USER, -1L);
+        long firstVersion = original.getVersion();
+        memberships.removeMembership(source, member, USER, firstVersion);
+        assertThat(memberships.effectiveRole(source, member)).isEmpty();
+        assertThat(memberships.listMemberships(source, USER))
+                .noneMatch(membership -> member.equals(membership.getUsername()));
+
+        var replacement = memberships.assignRole(source, member, RepositoryRole.CONTRIBUTOR, USER, -1L);
+        assertThat(replacement.getVersion()).isGreaterThan(firstVersion);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                memberships.assignRole(source, member, RepositoryRole.OWNER, USER, firstVersion))
+                .isInstanceOf(org.springframework.dao.OptimisticLockingFailureException.class);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                memberships.removeMembership(source, member, USER, firstVersion))
+                .isInstanceOf(org.springframework.dao.OptimisticLockingFailureException.class);
+        assertThat(memberships.effectiveRole(source, member)).contains(RepositoryRole.CONTRIBUTOR);
+        memberships.removeMembership(source, member, USER, replacement.getVersion());
+        assertThat(memberships.effectiveRole(source, member)).isEmpty();
+    }
+
     @ParameterizedTest
     @EnumSource(value = WorkspaceProvisioningStatus.class,
             names = {"NOT_PROVISIONED", "PROVISIONING", "FAILED"})

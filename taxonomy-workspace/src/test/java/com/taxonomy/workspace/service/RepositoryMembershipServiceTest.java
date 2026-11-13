@@ -309,7 +309,8 @@ class RepositoryMembershipServiceTest {
 
         service.removeMembership(repository, "reader", "owner");
 
-        verify(membershipRepository).delete(reader);
+        assertFalse(reader.isActive());
+        verify(membershipRepository).save(reader);
     }
 
 
@@ -367,7 +368,8 @@ class RepositoryMembershipServiceTest {
                 service.removeMembership(repository, "reader", "owner", 3L));
         verify(membershipRepository, never()).delete(any());
         service.removeMembership(repository, "reader", "owner", 4L);
-        verify(membershipRepository).delete(current);
+        assertFalse(current.isActive());
+        verify(membershipRepository).save(current);
     }
 
     @Test

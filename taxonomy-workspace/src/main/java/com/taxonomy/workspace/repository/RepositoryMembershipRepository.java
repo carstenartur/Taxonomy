@@ -18,7 +18,12 @@ public interface RepositoryMembershipRepository
     Optional<RepositoryMembership> findByRepositoryIdAndUsername(
             String repositoryId, String username);
 
-    List<RepositoryMembership> findByRepositoryIdOrderByUsernameAsc(String repositoryId);
+    @Query("""
+            select m from RepositoryMembership m
+            where m.repositoryId = :repositoryId and m.revokedAt is null
+            order by m.username
+            """)
+    List<RepositoryMembership> findByRepositoryIdOrderByUsernameAsc(@Param("repositoryId") String repositoryId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
@@ -30,5 +35,9 @@ public interface RepositoryMembershipRepository
     List<RepositoryMembership> findByRepositoryIdForUpdate(
             @Param("repositoryId") String repositoryId);
 
-    long countByRepositoryIdAndRole(String repositoryId, RepositoryRole role);
+    @Query("""
+            select count(m) from RepositoryMembership m
+            where m.repositoryId = :repositoryId and m.role = :role and m.revokedAt is null
+            """)
+    long countByRepositoryIdAndRole(@Param("repositoryId") String repositoryId, @Param("role") RepositoryRole role);
 }
