@@ -73,7 +73,8 @@ class RepositoryGroupGrantTest {
                 service.assignRole(repository, "charlie", RepositoryRole.CONTRIBUTOR, "alice").getRole());
         assertEquals(List.of(reader), service.listMemberships(repository, "alice"));
         service.removeMembership(repository, "bob", "alice");
-        verify(memberships).delete(reader);
+        assertFalse(reader.isActive());
+        verify(memberships).save(reader);
     }
 
     @Test
