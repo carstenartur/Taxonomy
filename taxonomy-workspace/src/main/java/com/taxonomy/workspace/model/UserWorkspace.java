@@ -11,6 +11,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import org.hibernate.annotations.ColumnDefault;
 
 import java.time.Instant;
 
@@ -109,6 +110,7 @@ public class UserWorkspace {
     @Column(name = "provisioning_lease_until", updatable = false)
     private Instant provisioningLeaseUntil;
 
+    @ColumnDefault("0")
     @Column(name = "provisioning_attempt", nullable = false, updatable = false)
     private int provisioningAttempt;
 
