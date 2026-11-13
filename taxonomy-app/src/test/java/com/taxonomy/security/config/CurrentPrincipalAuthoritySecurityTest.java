@@ -136,6 +136,26 @@ class CurrentPrincipalAuthoritySecurityTest {
         } finally { SecurityContextHolder.clearContext(); }
     }
 
+    @Test void backgroundFetchRejectsAReassignedLocalAccountName() {
+        start(false, KeycloakPrincipalMode.LEGACY);
+        var principal = identities.local(1);
+        var access = new WorkspaceFetchAuthorityAdapter(identities);
+        WorkspaceFetchAuthority.Grant grant;
+        try {
+            SecurityContextHolder.setContext(new SecurityContextImpl(local(principal)));
+            grant = access.authorize(principal.scopeKey());
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+        access.checkPublication(grant, principal.scopeKey(), true);
+
+        jdbc.update("update app_user set username=? where id=?", "alice-renamed", 1);
+        jdbc.update("insert into app_user (id, username, enabled, principal_id) values (?, ?, ?, ?)",
+                2, "alice", true, UUID.randomUUID().toString());
+        assertThatThrownBy(() -> access.checkPublication(grant, principal.scopeKey(), true))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
     @Test void interactiveRecoveryRequiresTheOriginalVerifiedExternalBinding() {
         start(true, KeycloakPrincipalMode.STABLE);
         var principal = identities.oidc("https://idp.test", "original");
