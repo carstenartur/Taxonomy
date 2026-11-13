@@ -8,7 +8,6 @@ import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
 import com.taxonomy.catalog.snapshot.FrozenCatalogueContext;
 import com.taxonomy.dto.TaxonomyNodeDto;
-import com.taxonomy.search.NodeEmbeddingBinder;
 import com.taxonomy.error.SearchUnavailableException;
 import jakarta.annotation.PreDestroy;
 import jakarta.persistence.EntityManager;
@@ -479,7 +478,7 @@ public class LocalEmbeddingService {
         return queryPrefix == null ? modelProfile.queryPrefix() : queryPrefix;
     }
 
-    public String embeddingIndexKey() throws Exception { return embeddingIdentity().indexKey(); }
+    public String embeddingIndexKey() throws Exception { return embeddingIdentity().globalIndexKey(); }
 
     /** Exact loaded artifact identity. Does not confuse a configured URL with the bytes used for inference. */
     public EmbeddingModelIdentity embeddingIdentity() throws Exception {
@@ -683,7 +682,7 @@ public class LocalEmbeddingService {
                 return Collections.emptyList();
             }
 
-            float[] queryVector = embedDocument(NodeEmbeddingText.buildEnrichedText(node));
+            float[] queryVector = embedDocument(NodeEmbeddingText.globalReferenceText(node));
             String indexKey = embeddingIndexKey();
             SearchSession session = Search.session(entityManager);
             List<TaxonomyNode> hits = session.search(TaxonomyNode.class)
