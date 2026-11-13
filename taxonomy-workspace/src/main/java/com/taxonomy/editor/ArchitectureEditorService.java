@@ -44,6 +44,7 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
     private final DslGitRepositoryFactory repositories;
     private final EditorJournal journal;
     private final ArchitectureCheckpointWriter checkpointWriter;
+    private static final ScopedValue<RepositoryContext> ACTIVE_VERSION = ScopedValue.newInstance();
     private BackupWriteBarrier writeBarrier = BackupWriteBarrier.disabled();
     private ObjectProvider<WorkspacePortfolioGitPort> portfolioGitPort;
 
@@ -369,6 +370,13 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
 
     @Override
     public <T> T version(RepositoryContext context, String rationale, GitAction<T> action) throws IOException {
+        if (ACTIVE_VERSION.isBound()) {
+            if (!ACTIVE_VERSION.get().equals(context)) {
+                throw new IllegalStateException("Nested version action selected a different repository, branch, workspace or actor");
+            }
+            // The outer action holds this editor journal and imports its final Git head.
+            return action.run();
+        }
         if (context.scope() == RepositoryScope.CENTRAL_READ) {
             throw new AccessDeniedException("A central read selection cannot create architecture versions; use a working copy");
         }
@@ -387,7 +395,7 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
                 return journal.locked(context, snapshot.state(), session -> {
                     session.expect(prepared.context().revision());
                     try {
-                        T result = action.run();
+                        T result = ScopedValue.where(ACTIVE_VERSION, context).call(action::run);
                         importVersion(context, session, rationale);
                         return result;
                     } catch (IOException failure) { throw new java.io.UncheckedIOException(failure); }
