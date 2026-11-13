@@ -130,6 +130,10 @@ class WorkspaceRestoreImporterTest {
             BackupCheckpoint lostAck=()->{if(committed.get())throw new InterruptedIOException("lost completion acknowledgement");};
             assertThatThrownBy(()->new WorkspaceRestoreImporter().restore(fixture.archive,commitGeneration,fixture.principals,fixture.git,lostAck)).isInstanceOf(InterruptedIOException.class);
             assertThat(Thread.interrupted()).isTrue();new WorkspaceRestoreImporter().restore(fixture.archive,generation,fixture.principals,fixture.git,()->{});
+            target.update("insert into history_index_purge_target(operation_id,projection_id) values (?,?)", "c".repeat(64), 22L);
+            assertThatThrownBy(() -> new WorkspaceRestoreImporter().restore(fixture.archive,generation,fixture.principals,fixture.git,()->{}))
+                    .isInstanceOf(IOException.class).hasMessageContaining("index journal");
+            target.update("delete from history_index_purge_target");
             target.update("update editor_workspace set dsl='1:changed saved work'");
             assertThatThrownBy(()->new WorkspaceRestoreImporter().restore(fixture.archive,generation,fixture.principals,fixture.git,()->{})).isInstanceOf(IOException.class).hasMessageContaining("proof");
         }

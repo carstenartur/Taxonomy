@@ -97,6 +97,14 @@ class WorkspaceEditorRestoreRuntimeTest {
                         .isEqualTo("PRIVATE_QUARANTINE");
                 assertThat(progress.readScope(new WorkspaceSyncScope("quarantined-collaborator",target.repositoryId(),null,"main"))
                         .getLastPublishedCommitId()).isNull();
+                assertThat(targetRows.queryForObject("select count(*) from history_index_operation", Integer.class)).isZero();
+                assertThat(targetRows.queryForObject("select count(*) from history_index_purge_target", Integer.class)).isZero();
+                assertThat(targetRows.queryForObject("select classification from restore_workspace_evidence where record_kind='index-recovery'", String.class))
+                        .isEqualTo("INTERRUPTED_SOURCE_OPERATION");
+                assertThat(targetRows.queryForObject("select record_json from restore_workspace_evidence where record_kind='index-recovery'", String.class))
+                        .contains("original-cause","system:history-index","RUNNING").doesNotContain("source-worker-lease","source-login-binding","7654321");
+                assertThat(targetRows.queryForObject("select record_json from restore_workspace_evidence where record_kind='index-decisions'", String.class))
+                        .contains("CLAIMED","system:history-index");
                 String evidence = " from restore_workspace_evidence where record_kind='fetch-journal' and record_key=?";
                 assertThat(targetRows.queryForObject("select classification" + evidence, String.class, "f".repeat(64)))
                         .isEqualTo("INTERRUPTED_SOURCE_OPERATION");
@@ -129,6 +137,7 @@ class WorkspaceEditorRestoreRuntimeTest {
                         insert into user_workspace(workspace_id,username,current_branch,created_at,provisioning_status,topology_mode,
                         source_repository_id,source_branch,base_commit,archived,is_default,shared) values(?,?,'main',CURRENT_TIMESTAMP,
                         'READY','INTERNAL_SHARED',?,'main',?,false,false,false)""", selected.workspaceId(), SOURCE_SCOPE, selected.repositoryId(), sourceHead);
+                db.update("update history_index_operation set workspace_id=? where operation_id=?", selected.workspaceId(), "a".repeat(64));
                 var em = SharedEntityManagerCreator.createSharedEntityManager(f.sourceFactory);
                 var txManager = new JpaTransactionManager(f.sourceFactory);
                 var repos = new JpaRepositoryFactory(em);
@@ -172,6 +181,10 @@ class WorkspaceEditorRestoreRuntimeTest {
                 try (var after = export(f.source, f.sourceFactory, actor, false)) {
                     f.restore(after);
                     var target = new JdbcTemplate(f.target);
+                    assertThat(target.queryForObject("select classification from restore_workspace_evidence where record_kind='index-recovery'", String.class))
+                            .isEqualTo("DETACHED_SOURCE_QUARANTINE");
+                    assertThat(target.queryForObject("select classification from restore_workspace_evidence where record_kind='index-decisions'", String.class))
+                            .isEqualTo("DETACHED_SOURCE_QUARANTINE");
                     String sql = "select classification from restore_workspace_evidence where record_kind='fetch-journal' and record_key=?";
                     for (String id : List.of(receipt.operationId(),retained.operationId())) {
                         assertThat(target.queryForObject(sql,String.class,id)).isEqualTo("DETACHED_SOURCE_QUARANTINE");
@@ -207,6 +220,9 @@ class WorkspaceEditorRestoreRuntimeTest {
             for(String table:List.of("editor_workspace","editor_operation","editor_checkpoint"))assertThat(rows.queryForObject("select count(*) from "+table,Long.class)).as(table).isZero();
             assertThat(rows.queryForList("select classification from restore_workspace_evidence where record_kind in ('working-states','operations','checkpoints')",String.class)).containsOnly("PRIVATE_QUARANTINE");
             assertThat(rows.queryForObject("select record_json from restore_workspace_evidence where record_kind='operations'",String.class)).contains("\"actor\":\""+TARGET_SCOPE+"\"");
+            assertThat(rows.queryForList("select classification from restore_workspace_evidence where record_kind in ('index-recovery','index-decisions')",String.class))
+                    .hasSize(2).containsOnly("PRIVATE_QUARANTINE");
+            assertThat(rows.queryForObject("select count(*) from history_index_operation", Integer.class)).isZero();
             assertThat(new JdbcTemplate(fixture.source).queryForObject("select count(*) from editor_operation",Long.class)).isEqualTo(1);
         }
     }
@@ -270,6 +286,16 @@ class WorkspaceEditorRestoreRuntimeTest {
                     WORKSPACE.workspaceId(), "main", "main", baseline, baseline, UUID.randomUUID().toString(),
                     "private-source-worker", legacy ? "LEGACY_OIDC" : "LOCAL", "c".repeat(64));
         }
+        rows.update("""
+                insert into history_index_operation(operation_id,command_kind,cause_id,actor_id,actor_scope,login_kind,binding_key,
+                  repository_id,workspace_id,workspace_owner,repository_scope,collaborative,branch_name,captured_commit,phase,
+                  attempts,executor_id,lease_id,created_at) values (?,?,?,?,?,'LOCAL',?,?,?,?,'WORKSPACE',false,'main',?,'RUNNING',
+                  1,'system:history-index','source-worker-lease',1)
+                """, "a".repeat(64), "REBUILD", "original-cause", SOURCE_SCOPE.equals(actor) ? principal.value().toString() : UUID.randomUUID().toString(), SOURCE_SCOPE,
+                "source-login-binding", CENTRAL.repositoryId(), WORKSPACE.workspaceId(), SOURCE_SCOPE, baseline);
+        rows.update("insert into history_index_decision(decision_id,operation_id,actor_id,decision_code,occurred_at) values (?,?,?,?,?)",
+                UUID.randomUUID().toString(), "a".repeat(64), "system:history-index", "CLAIMED", 2L);
+        rows.update("insert into history_index_purge_target(operation_id,projection_id) values (?,?)", "a".repeat(64), 7654321L);
         if (analysis != null) analysis.seed(sourceFactory,principal,sourceContext,baseline);
         var archive=export(source,sourceFactory,principal,analysis != null);
         RestoreSchemaMigration.bootstrap(source,target,CHECK);

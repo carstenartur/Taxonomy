@@ -14,9 +14,12 @@ import static com.taxonomy.exchange.backup.PortableRows.*;
 
 /** Portable routing, ownership and durable editor schemas. No source storage names, credentials or live locks. */
 public final class WorkspaceBackupContributor implements BackupDataContributor {
+    private static final com.fasterxml.jackson.databind.ObjectReader INDEX_RESULT_READER = PortableRows.json().readerFor(IndexResult.class);
+    private final DataSource database;
     private final PortableRows rows;
     private final BackupDocumentProjector projector;
     public WorkspaceBackupContributor(DataSource database, BackupDocumentProjector projector) {
+        this.database = database;
         rows = new PortableRows(database); this.projector = Objects.requireNonNull(projector);
     }
     @Override public BackupComponentId componentId() { return new BackupComponentId("workspace"); }
@@ -78,7 +81,8 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                 "com.taxonomy.workspace.service.WorkspaceFetchOperation", "com.taxonomy.workspace.model.WorkspaceBranchSyncState",
                 "com.taxonomy.editor.persistence.EditorWorkspace", "com.taxonomy.editor.persistence.EditorOperation",
                 "com.taxonomy.editor.persistence.EditorCheckpoint", "com.taxonomy.versioning.model.ArchitectureCommitIndex",
-                "com.taxonomy.versioning.model.ContextHistoryRecord");
+                "com.taxonomy.versioning.model.ContextHistoryRecord",
+                "com.taxonomy.versioning.service.HistoryIndexOperationRow", "com.taxonomy.versioning.service.HistoryIndexDecisionRow");
     }
     @Override public List<String> omissions(BackupProfile profile) {
         var omissions = new ArrayList<String>();
@@ -157,9 +161,130 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                 scoped(scope,"captured_repository_id","captured_workspace_id",linked("captured_editor_id","scope_id",r -> new CheckpointRecord(reference(r,"workspace.checkpoint","id"),reference(r,"workspace.editor","scope_id"),text(r,"command_id"),text(r,"actor"),text(r,"occurred_at"),text(r,"rationale"),text(r,"fingerprint"),r.getLong("from_revision"),r.getLong("semantic_revision"),text(r,"expected_commit"),unframe(text(r,"dsl")),text(r,"commit_id"),r.getBoolean("completed"),r.getBoolean("commit_created"),text(r,"failure_code"),text(r,"origin")))));
         write(sink,"commit-index",profile,query(scope,true,"select id,repository_id,workspace_id,workspace_scope_key,commit_id,author,commit_timestamp,message,changed_files,tokenized_change_text,affected_element_ids,affected_relation_ids,branch,indexed_at from architecture_commit_index",editors,"id"),
                 scoped(scope,"repository_id","workspace_id",r -> new CommitIndexRecord(reference(r,"workspace.commit-index","id"),text(r,"repository_id"),text(r,"workspace_id"),text(r,"workspace_scope_key"),text(r,"commit_id"),text(r,"author"),instant(r,"commit_timestamp"),text(r,"message"),text(r,"changed_files"),text(r,"tokenized_change_text"),text(r,"affected_element_ids"),text(r,"affected_relation_ids"),text(r,"branch"),instant(r,"indexed_at"))));
+        writeHistoryIndex(scope, profile, sink);
         write(sink,"context-history",profile,profile == BackupProfile.INSTALLATION_FULL ? new Query("select id,username,from_context_id,to_context_id,from_branch,to_branch,from_commit_id,to_commit_id,reason,origin_context_id,created_at from context_history_record order by id",List.of()) : null,
                 r -> new ContextHistoryRecord(reference(r,"workspace.context-history","id"),text(r,"username"),text(r,"from_context_id"),text(r,"to_context_id"),text(r,"from_branch"),text(r,"to_branch"),text(r,"from_commit_id"),text(r,"to_commit_id"),text(r,"reason"),text(r,"origin_context_id"),instant(r,"created_at")));
     }
+    private void writeHistoryIndex(BackupRowScope scope, BackupProfile profile, ComponentSink sink) throws IOException {
+        if (scope.history() && !scope.selectedVersion() && isLegacyStagedIndexSource()) return;
+        var selection = scope.repositories("p.repository_id", "p.workspace_id");
+        boolean full = profile == BackupProfile.INSTALLATION_FULL;
+        String target = """
+                join system_repository s on s.repository_id=p.repository_id
+                left join user_workspace w on w.workspace_id=p.workspace_id
+                """;
+        if (full) target = target.replace("join system_repository", "left join system_repository");
+        else selection = new Query("(" + selection.sql() + ") and (p.workspace_id is null or w.workspace_id is not null)",
+                selection.parameters());
+        String parents = "s.repository_id as related_repository,w.workspace_id as related_workspace,"
+                + "w.source_repository_id as workspace_repository,w.username as current_owner";
+        var operation = "select p.operation_id,p.command_kind,p.cause_id,p.actor_id,p.login_kind,p.collaborative,p.workspace_owner,p.repository_scope,"
+                + "p.repository_id,p.workspace_id,p.branch_name,p.captured_commit,p.projection_source_key,p.captured_generation,"
+                + "p.phase,p.attempts,p.result_count,p.projection_result,p.executor_id,p.reason_code,p.created_at,p.attempted_at,"
+                + "p.completed_at,p.archived_at," + parents + " from history_index_operation p " + target;
+        write(sink, "index-recovery", profile, query(scope, true, operation, selection, "p.operation_id"),
+                scoped(scope, "repository_id", "workspace_id", row -> {
+                    boolean detached = detachedIndexTarget(row, full);
+                    return new IndexRecoveryRecord(reference(row,"workspace.index-recovery","operation_id"),text(row,"command_kind"),
+                            text(row,"cause_id"),text(row,"actor_id"),text(row,"login_kind"),row.getBoolean("collaborative"),
+                            text(row,"repository_id"),text(row,"workspace_id"),
+                            text(row,"workspace_owner"),text(row,"repository_scope"),text(row,"branch_name"),text(row,"captured_commit"),
+                            text(row,"projection_source_key"),text(row,"captured_generation"),text(row,"phase"),row.getInt("attempts"),
+                            row.getObject("result_count", Integer.class), indexResult(text(row,"projection_result",2048)),
+                            text(row,"executor_id"),text(row,"reason_code"),
+                            row.getLong("created_at"),row.getObject("attempted_at",Long.class),row.getObject("completed_at",Long.class),
+                            row.getObject("archived_at",Long.class),detached);
+                }));
+        var decisions = "select d.decision_id,d.operation_id,d.actor_id,d.decision_code,d.occurred_at,"
+                + "p.operation_id as related_operation,p.repository_id,p.workspace_id,p.workspace_owner," + parents
+                + " from history_index_decision d " + (full ? "left join" : "join")
+                + " history_index_operation p on p.operation_id=d.operation_id " + target;
+        write(sink, "index-decisions", profile, query(scope, true, decisions, selection, "d.occurred_at,d.decision_id"),
+                scoped(scope,"repository_id","workspace_id",row -> {
+                    if (!Objects.equals(text(row,"operation_id"),text(row,"related_operation"))) {
+                        throw new IOException("Index decision has a different operation identity");
+                    }
+                    detachedIndexTarget(row, full);
+                    return new IndexDecisionRecord(reference(row,"workspace.index-decision","decision_id"),text(row,"operation_id"),
+                            text(row,"actor_id"),text(row,"decision_code"),row.getLong("occurred_at"));
+                }));
+    }
+
+    /** A verified older staged HSQL database predates both datasets. A damaged current source must fail capture. */
+    private boolean isLegacyStagedIndexSource() throws IOException {
+        try (var connection = database.getConnection()) {
+            var metadata = connection.getMetaData();
+            if (!"HSQL Database Engine".equals(metadata.getDatabaseProductName())) return false;
+            int journals = 0;
+            boolean staged = false;
+            try (var tables = metadata.getTables(connection.getCatalog(), connection.getSchema(), "%", new String[]{"TABLE"})) {
+                while (tables.next()) {
+                    String name = tables.getString("TABLE_NAME").toLowerCase(Locale.ROOT);
+                    if (Set.of("history_index_decision","history_index_operation","history_index_purge_target").contains(name)) journals++;
+                    if ("restore_business_schema_history".equals(name)) staged = true;
+                }
+            }
+            if (journals == 3) return false;
+            if (journals != 0) throw new IOException("Workspace index source schema is incomplete");
+            if (!staged) return false;
+            try (var statement = connection.prepareStatement("""
+                    select "version", "success" from "restore_business_schema_history" where "version" is not null
+                    """); var versions = statement.executeQuery()) {
+                boolean predecessor = false;
+                while (versions.next()) {
+                    String version = versions.getString(1);
+                    if (!versions.getBoolean(2) || !version.matches("[1-9][0-9]?") || Integer.parseInt(version) >= 29) return false;
+                    if ("24".equals(version)) predecessor = true;
+                }
+                return predecessor;
+            }
+        } catch (SQLException failed) {
+            throw new IOException("Workspace index source schema could not be verified");
+        }
+    }
+
+    private static boolean detachedIndexTarget(ResultSet row, boolean full) throws SQLException, IOException {
+        String repository = text(row,"repository_id"), workspace = text(row,"workspace_id");
+        String relatedRepository = text(row,"related_repository"), relatedWorkspace = text(row,"related_workspace");
+        boolean detached = relatedRepository == null || workspace != null && relatedWorkspace == null;
+        if (detached && !full || relatedRepository != null && !repository.equals(relatedRepository)
+                || relatedWorkspace != null && (!relatedWorkspace.equals(workspace)
+                    || !repository.equals(text(row,"workspace_repository"))
+                    || !Objects.equals(text(row,"workspace_owner"),text(row,"current_owner")))) {
+            throw new IOException("Index recovery evidence belongs to a different repository or working copy");
+        }
+        return detached;
+    }
+
+    private static IndexResult indexResult(String stored) throws IOException {
+        if (stored == null) return null;
+        IndexResult result = INDEX_RESULT_READER.readValue(stored);
+        validateIndexResult(result);
+        return result;
+    }
+
+    public record IndexResult(String generation, String model, int nodes, int relations, Integer recovered,
+            Integer superseded, Integer pending, String state, String currentCommit, String projectedCommit) { }
+
+    public static void validateIndexResult(IndexResult result) throws IOException {
+        if (result == null) return;
+        boolean invalid = result.nodes() < 0 || result.relations() < 0
+                || java.util.stream.Stream.of(result.recovered(),result.superseded(),result.pending())
+                    .anyMatch(value -> value != null && value < 0)
+                || java.util.stream.Stream.of(result.currentCommit(), result.projectedCommit())
+                    .anyMatch(commit -> commit != null && !commit.matches("[a-f0-9]{40}"))
+                || result.model() != null && !result.model().matches("[a-f0-9]{64}")
+                || result.generation() != null && !result.generation().matches("[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}")
+                || result.state() != null && !Set.of("READY","NOT_BUILT","STALE","BRANCH_MISSING","CORRUPT").contains(result.state());
+        if (invalid) throw new IOException("Invalid stored index recovery result");
+    }
+
+    public record IndexRecoveryRecord(SourceRecordId sourceId, String kind, String cause, String actor, String loginKind, boolean collaborative,
+            String repository, String workspace, String owner, String scope, String branch, String commit,
+            String projectionSource, String generation, String phase, int attempts, Integer resultCount, IndexResult result, String executor,
+            String reason, long createdAt, Long attemptedAt, Long completedAt, Long archivedAt, boolean detached) { }
+    public record IndexDecisionRecord(SourceRecordId sourceId, String operationId, String actor, String decision, long occurredAt) { }
+
     private <T extends Record> void write(ComponentSink sink,String kind,BackupProfile profile,Query query,PortableRows.Mapper<T> mapper) throws IOException { rows.write(sink,"workspace",kind,profile,query,mapper); }
     private static <T extends Record> PortableRows.Mapper<T> scoped(BackupRowScope scope,String repositoryColumn,String workspaceColumn,PortableRows.Mapper<T> mapper) {
         return row -> {
