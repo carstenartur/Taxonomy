@@ -1,16 +1,17 @@
 package com.taxonomy.relations.controller;
 
-import com.taxonomy.workspace.service.BranchHeadConflictException;
 import com.taxonomy.relations.service.RelationBranchProjectionRebuildService.BranchProjectionSourceException;
 import com.taxonomy.relations.service.RelationProjectionOperationsService;
 import com.taxonomy.relations.service.BranchGraphVectors;
 import com.taxonomy.relations.service.RelationProjectionOperationsService.ProjectionStatus;
 import com.taxonomy.relations.service.RelationProjectionOperationsService.RebuildHeadConflictException;
-import com.taxonomy.relations.service.RelationProjectionOperationsService.RebuildOperation;
 import com.taxonomy.relations.service.RelationProjectionOperationsService.RebuildVerificationException;
 import com.taxonomy.relations.service.RelationProjectionOperationsService.RecoveryReconciliationPendingException;
 import com.taxonomy.relations.service.RelationProjectionRecoveryService.RecoveryRecord;
 import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.versioning.service.HistoryIndexJournal;
+import com.taxonomy.versioning.service.HistoryIndexMaintenance;
+import com.taxonomy.workspace.service.DerivedProjection;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryMembershipService;
 import com.taxonomy.workspace.service.RepositoryScope;
@@ -29,7 +30,6 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
 
@@ -44,12 +44,14 @@ public class RelationProjectionOperationsApiController {
     private final SystemRepositoryService repositoryService;
     private final RepositoryMembershipService membershipService;
     private final BranchGraphVectors vectors;
+    private final HistoryIndexMaintenance maintenance;
 
     public RelationProjectionOperationsApiController(
             RelationProjectionOperationsService operationsService,
             WorkspaceResolver workspaceResolver,
             SystemRepositoryService repositoryService,
-            RepositoryMembershipService membershipService, BranchGraphVectors vectors) {
+            RepositoryMembershipService membershipService, BranchGraphVectors vectors, HistoryIndexMaintenance maintenance) {
+        this.maintenance = maintenance;
         this.vectors = vectors;
         this.operationsService = operationsService;
         this.workspaceResolver = workspaceResolver;
@@ -88,11 +90,14 @@ public class RelationProjectionOperationsApiController {
         if (context == null) return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         try {
             String commit = GitHttpPrecondition.expectedHead(ifMatch, null);
-            if (purge) {
-                vectors.purge(context, commit);
-                return ResponseEntity.noContent().build();
-            }
-            return selectedResponse(context).eTag(GitHttpPrecondition.etag(commit)).body(vectors.rebuild(context, commit));
+            var outcome = submit(context, purge ? DerivedProjection.Kind.VECTOR_PURGE : DerivedProjection.Kind.VECTOR_BUILD, commit);
+            var receipt = outcome.receipt();
+            if (!"COMPLETED".equals(receipt.phase())) return decision(receipt).build();
+            if (purge) return ResponseEntity.noContent().header("X-Taxonomy-Operation-Id", receipt.operationId()).build();
+            var result = outcome.result();
+            return selectedResponse(context).header("X-Taxonomy-Operation-Id", receipt.operationId())
+                    .eTag(GitHttpPrecondition.etag(commit)).body(new BranchGraphVectors.Status("READY", result.generation(),
+                            commit, result.model(), result.nodes(), result.relations()));
         } catch (GitHttpPrecondition.PreconditionRequiredException missing) {
             return ResponseEntity.status(HttpStatus.PRECONDITION_REQUIRED).build();
         } catch (GitHttpPrecondition.InvalidPreconditionException invalid) {
@@ -104,6 +109,47 @@ public class RelationProjectionOperationsApiController {
         } catch (com.taxonomy.error.SearchUnavailableException unavailable) {
             return ResponseEntity.status(HttpStatus.CONFLICT).build();
         }
+    }
+
+    private HistoryIndexMaintenance.ProjectionOutcome submit(RepositoryContext context, DerivedProjection.Kind kind, String commit) {
+        var attributes = org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+        var request = attributes instanceof org.springframework.web.context.request.ServletRequestAttributes servlet ? servlet.getRequest() : null;
+        String key = request == null ? null : request.getHeader("Idempotency-Key");
+        String cause = request == null ? null : request.getHeader("X-Causation-Id");
+        return maintenance.submitProjection(context, kind, commit, key, cause);
+    }
+
+    private static ResponseEntity.BodyBuilder decision(HistoryIndexJournal.Receipt receipt) {
+        HttpStatus status = switch (receipt.phase()) {
+            case "DENIED" -> HttpStatus.FORBIDDEN;
+            case "SUPERSEDED", "MANUAL_REVIEW" -> HttpStatus.CONFLICT;
+            case "AWAITING_AUTHORIZATION" -> HttpStatus.FORBIDDEN;
+            default -> HttpStatus.ACCEPTED;
+        };
+        return ResponseEntity.status(status).header("X-Taxonomy-Operation-Id", receipt.operationId());
+    }
+
+    @GetMapping("/operations/{id}")
+    public ResponseEntity<HistoryIndexJournal.Receipt> operation(@org.springframework.web.bind.annotation.PathVariable String id) {
+        return ResponseEntity.ok(maintenance.projectionStatus(operationScope(), id));
+    }
+
+    @PostMapping("/operations/{id}/retry")
+    public ResponseEntity<HistoryIndexJournal.Receipt> retry(@org.springframework.web.bind.annotation.PathVariable String id) {
+        var receipt = maintenance.retryProjection(operationScope(), id);
+        return "COMPLETED".equals(receipt.phase()) ? ResponseEntity.ok(receipt) : decision(receipt).body(receipt);
+    }
+
+    @org.springframework.web.bind.annotation.DeleteMapping("/operations/{id}")
+    public ResponseEntity<HistoryIndexJournal.Receipt> archive(@org.springframework.web.bind.annotation.PathVariable String id) {
+        return ResponseEntity.ok(maintenance.archiveProjection(operationScope(), id));
+    }
+
+    private RepositoryContext operationScope() {
+        var selected = workspaceResolver.resolveUnambiguousRepositoryForRead();
+        var writable = selected == null ? null : writableContext(selected);
+        if (writable == null) throw new org.springframework.security.access.AccessDeniedException("Projection maintenance permission is unavailable");
+        return writable;
     }
 
     private static ResponseEntity.BodyBuilder selectedResponse(RepositoryContext context) {
@@ -150,22 +196,27 @@ public class RelationProjectionOperationsApiController {
             }
             String expectedHead = GitHttpPrecondition.expectedHead(
                     ifMatch, ifNoneMatch);
-            RebuildOperation operation = operationsService.rebuild(
-                    context, expectedHead);
-            return ResponseEntity.ok()
-                    .header(
-                            HttpHeaders.ETAG,
-                            GitHttpPrecondition.etag(
-                                    operation.rebuild()
-                                            .authoritativeCommitId()))
-                    .body(ProjectionOperationResponse.rebuilt(
-                            context, operation));
+            if (expectedHead == null) return ResponseEntity.badRequest().build();
+            var outcome = submit(context, DerivedProjection.Kind.RELATION, expectedHead);
+            var receipt = outcome.receipt();
+            if (!"COMPLETED".equals(receipt.phase())) {
+                var response = decision(receipt);
+                var evidence = outcome.result();
+                if (evidence == null) return response.build();
+                if (evidence.currentCommit() != null) response.eTag(GitHttpPrecondition.etag(evidence.currentCommit()));
+                String state = "RECONCILIATION_PENDING".equals(receipt.reason()) ? "RECOVERY_RECONCILIATION_PENDING" : receipt.reason();
+                return response.body(new ProjectionOperationResponse(context.repositoryId(), context.workspaceId(), context.branch(),
+                        state, evidence.state(), evidence.currentCommit(), evidence.projectedCommit(), evidence.relations(),
+                        List.of(), null, null, null, null, null));
+            }
+            var result = outcome.result();
+            return ResponseEntity.ok().header("X-Taxonomy-Operation-Id", receipt.operationId())
+                    .eTag(GitHttpPrecondition.etag(expectedHead)).body(new ProjectionOperationResponse(
+                            context.repositoryId(), context.workspaceId(), context.branch(), "REBUILT", "READY",
+                            expectedHead, expectedHead, result.relations(), List.of(), result.recovered(),
+                            result.superseded(), result.pending(), null, null));
         } catch (GitHttpPrecondition.PreconditionRequiredException error) {
             return ResponseEntity.status(HttpStatus.PRECONDITION_REQUIRED).build();
-        } catch (BranchHeadConflictException error) {
-            return preconditionFailed(
-                    error.getExpectedHeadCommit(),
-                    error.getActualHeadCommit());
         } catch (RebuildHeadConflictException error) {
             return preconditionFailed(
                     error.getExpectedHeadCommit(),
@@ -184,12 +235,12 @@ public class RelationProjectionOperationsApiController {
                             error.getRebuild().relationCount()));
         } catch (BranchProjectionSourceException error) {
             return ResponseEntity.status(HttpStatus.CONFLICT).build();
+        } catch (DerivedProjection.SourceUnavailable error) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build();
         } catch (IllegalArgumentException error) {
             return ResponseEntity.badRequest().build();
         } catch (IllegalStateException error) {
             return ResponseEntity.status(HttpStatus.CONFLICT).build();
-        } catch (IOException error) {
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build();
         }
     }
 
@@ -319,26 +370,6 @@ public class RelationProjectionOperationsApiController {
                     null,
                     null,
                     status.pendingRecoveries().size(),
-                    null,
-                    null);
-        }
-
-        static ProjectionOperationResponse rebuilt(
-                RepositoryContext context,
-                RebuildOperation operation) {
-            return new ProjectionOperationResponse(
-                    context.repositoryId(),
-                    context.workspaceId(),
-                    context.branch(),
-                    "REBUILT",
-                    operation.readiness().state().name(),
-                    operation.readiness().currentHeadCommit(),
-                    operation.readiness().projectedCommit(),
-                    operation.rebuild().relationCount(),
-                    List.of(),
-                    operation.reconciliation().recoveredCount(),
-                    operation.reconciliation().supersededCount(),
-                    operation.reconciliation().remainingPendingCount(),
                     null,
                     null);
         }

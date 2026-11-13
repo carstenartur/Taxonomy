@@ -24,17 +24,24 @@ import java.util.function.Supplier;
 
 @Service
 public class HistoryIndexJournal {
-    public enum Kind { INDEX, REBUILD, PURGE }
+    public enum Kind {
+        INDEX, REBUILD, PURGE, RELATION, VECTOR_BUILD, VECTOR_PURGE;
+
+        boolean destructive() { return this == PURGE || this == VECTOR_PURGE; }
+        boolean relationProjection() { return this == RELATION || this == VECTOR_BUILD || this == VECTOR_PURGE; }
+    }
 
     public record Receipt(String operationId, String causationId, Kind kind, String repositoryId,
                           String workspaceId, String branch, String sourceCommit, String actor,
                           String phase, int attempts, Integer count, String executor, String reason,
                           long createdAt, Long attemptedAt, Long completedAt, Long archivedAt) {}
 
-    record Capture(String commit, String owner) {}
+    record Capture(String commit, String owner, String sourceKey, String generation) {
+        Capture(String commit, String owner) { this(commit, owner, null, null); }
+    }
     record Claim(String id, String lease) {}
     record Operation(Receipt receipt, String username, String owner, RepositoryScope scope,
-                     boolean collaborative, Grant grant) {
+                     boolean collaborative, Grant grant, String sourceKey, String generation, String result) {
         RepositoryContext context() {
             return new RepositoryContext(receipt.repositoryId(), receipt.workspaceId(),
                     receipt.branch(), username, scope, collaborative);
@@ -68,7 +75,8 @@ public class HistoryIndexJournal {
                 r.getObject("attempted_at", Long.class), r.getObject("completed_at", Long.class), r.getObject("archived_at", Long.class));
         return new Operation(receipt, r.getString("actor_scope"), r.getString("workspace_owner"),
                 RepositoryScope.valueOf(r.getString("repository_scope")), r.getBoolean("collaborative"),
-                new Grant(actor, r.getString("login_kind"), r.getString("binding_key")));
+                new Grant(actor, r.getString("login_kind"), r.getString("binding_key")),
+                r.getString("projection_source_key"), r.getString("captured_generation"), r.getString("projection_result"));
     };
 
     Operation admit(RepositoryContext selected, String branch, Kind kind, Grant grant, String key, String cause,
@@ -87,10 +95,10 @@ public class HistoryIndexJournal {
                 jdbc.update("""
                         insert into history_index_operation(operation_id,command_kind,cause_id,actor_id,actor_scope,login_kind,
                         binding_key,repository_id,workspace_id,workspace_owner,repository_scope,collaborative,branch_name,
-                        captured_commit,phase,attempts,created_at,due_at) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'ADMITTED',0,?,?)
+                        captured_commit,projection_source_key,captured_generation,phase,attempts,created_at,due_at) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'ADMITTED',0,?,?)
                         """, id, kind.name(), cause == null ? id : cause, grant.principalId(), selected.username(), grant.loginKind(),
                         grant.bindingKey(), selected.repositoryId(), selected.workspaceId(), capture.owner(), selected.scope().name(),
-                        selected.collaborative(), branch, capture.commit(), now, now);
+                        selected.collaborative(), branch, capture.commit(), capture.sourceKey(), capture.generation(), now, now);
                 if (kind == Kind.PURGE) {
                     String tenant = selected.workspaceId() == null ? "workspace_id is null" : "workspace_id = ?";
                     String sql = "insert into history_index_purge_target(operation_id,projection_id) select ?,id from architecture_commit_index where repository_id=? and " + tenant;
@@ -116,6 +124,11 @@ public class HistoryIndexJournal {
         return row;
     }
 
+    void saveProjectionResult(String id, String result) {
+        if (result.length() > 2048) throw new IllegalArgumentException("Projection result exceeds its fixed receipt");
+        jdbc.update("update history_index_operation set projection_result=? where operation_id=? and phase='RUNNING'", result, id);
+    }
+
     Operation get(RepositoryContext selected, String actor, String id) {
         Operation row = lookup(id);
         checkOwner(row, selected, actor);
@@ -123,10 +136,14 @@ public class HistoryIndexJournal {
     }
 
     Receipt inspect(RepositoryContext selected, String actor, String id, java.util.function.Consumer<Operation> authorize) {
+        return inspectOperation(selected, actor, id, authorize).receipt();
+    }
+
+    Operation inspectOperation(RepositoryContext selected, String actor, String id, java.util.function.Consumer<Operation> authorize) {
         return transaction.execute(status -> {
             Operation row = get(selected, actor, id);
             authorize.accept(row);
-            return row.receipt();
+            return row;
         });
     }
 
@@ -138,7 +155,8 @@ public class HistoryIndexJournal {
         if (row == null || !row.receipt.actor().equals(actor) || !row.username.equals(selected.username())
                 || !row.receipt.repositoryId().equals(selected.repositoryId())
                 || !Objects.equals(row.receipt.workspaceId(), selected.workspaceId())
-                || row.scope != selected.scope() || row.collaborative != selected.collaborative()) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+                || row.scope != selected.scope() || row.collaborative != selected.collaborative()
+                || (row.receipt.kind().relationProjection() && !row.receipt.branch().equals(selected.branch()))) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
     }
 
     Claim claim(String id, String executor, boolean explicit) {
@@ -149,7 +167,7 @@ public class HistoryIndexJournal {
         return transaction.execute(status -> {
             String lease = UUID.randomUUID().toString();
             int won = jdbc.update("""
-                    update history_index_operation set phase='RUNNING',attempts=attempts+1,executor_id=?,lease_id=?,attempted_at=?,due_at=?
+                    update history_index_operation set phase='RUNNING',attempts=attempts+1,executor_id=?,lease_id=?,attempted_at=?,due_at=?,projection_result=null
                     where operation_id=? and archived_at is null and attempts < ? and
                     """ + eligible, executor, lease, now, now + LEASE, id, MAX_ATTEMPTS, now);
             if (won == 1) {
@@ -181,8 +199,13 @@ public class HistoryIndexJournal {
     }
 
     Receipt failed(Claim token, String phase, String reason) {
+        return failed(token, phase, reason, null);
+    }
+
+    Receipt failed(Claim token, String phase, String reason, String result) {
         return transaction.execute(status -> {
             Operation row = lock(token);
+            if (result != null) saveProjectionResult(token.id(), result);
             long now = clock.millis();
             boolean retry = phase.equals("RETRYABLE");
             Long due = retry ? now + Duration.ofSeconds(15L << (row.receipt.attempts() - 1)).toMillis() : null;
@@ -235,7 +258,7 @@ public class HistoryIndexJournal {
             transaction.executeWithoutResult(status -> {
                 int expired = jdbc.update("""
                         update history_index_operation set phase='EXPIRED',reason_code='RETENTION_EXPIRED',login_kind='RETIRED',
-                        binding_key='retired',captured_commit=null,result_count=null,due_at=null,lease_id=null
+                        binding_key='retired',captured_commit=null,projection_source_key=null,captured_generation=null,projection_result=null,result_count=null,due_at=null,lease_id=null
                         where operation_id=? and archived_at<=? and phase<>'EXPIRED'
                         """, id, archiveCutoff);
                 if (expired == 1) {

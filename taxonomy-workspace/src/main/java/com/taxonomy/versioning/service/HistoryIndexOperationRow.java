@@ -55,6 +55,15 @@ public class HistoryIndexOperationRow {
     @Column(name = "captured_commit", length = 40)
     String capturedCommit;
 
+    @Column(name = "projection_source_key", length = 64)
+    String projectionSourceKey;
+
+    @Column(name = "captured_generation", length = 36)
+    String capturedGeneration;
+
+    @Column(name = "projection_result", length = 2048)
+    String projectionResult;
+
     @Column(name = "phase", length = 24, nullable = false)
     String phase;
 

@@ -5,6 +5,7 @@ import com.taxonomy.workspace.repository.SystemRepositoryRepository;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryMembershipService;
 import com.taxonomy.workspace.service.HistoryIndexGrant;
+import com.taxonomy.workspace.service.DerivedProjection;
 import com.taxonomy.workspace.service.WorkspaceFetchAuthority.Grant;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import com.taxonomy.workspace.storage.DslGitRepository;
@@ -187,6 +188,96 @@ class HistoryIndexMaintenanceTest {
             assertThatThrownBy(() -> f.service.get(decision.operationId())).isInstanceOf(AccessDeniedException.class);
             when(f.principals.authorizeHistoryIndex("owner", true)).thenReturn(f.grant);
             assertThatThrownBy(() -> f.service.archive(decision.operationId())).isInstanceOf(AccessDeniedException.class);
+        }
+    }
+
+    @Test void projectionReplayRetainsItsResultAndRequiresBothOriginalPreconditionAndCurrentMaintainer() throws Exception {
+        try (var f = new Fixture()) {
+            var port = mock(DerivedProjection.class);
+            f.service.configureDerivedProjection(port);
+            when(f.members.canMaintain(f.catalogueRow, "owner")).thenReturn(true);
+            String head = "a".repeat(40);
+            var original = new DerivedProjection.Source("selected", "first");
+            var result = new DerivedProjection.Result("published", "original-model", 2, 1, null, null, null);
+            when(port.capture(f.scope, DerivedProjection.Kind.VECTOR_BUILD, head)).thenReturn(original);
+            when(port.apply(eq(f.scope), eq(DerivedProjection.Kind.VECTOR_BUILD), eq(head), eq(original), anyString(), any()))
+                    .thenAnswer(call -> { call.getArgument(5, Runnable.class).run(); return result; });
+            when(port.describe(result)).thenReturn("retained-result");
+            when(port.readResult("retained-result")).thenReturn(result);
+            var accepted = f.service.submitProjection(f.scope, DerivedProjection.Kind.VECTOR_BUILD, head, "identity", null);
+            var replay = f.service.submitProjection(f.scope, DerivedProjection.Kind.VECTOR_BUILD, head, "identity", null);
+            assertThat(replay).isEqualTo(accepted);
+            assertThat(replay.result()).isEqualTo(result);
+            String operationId = replay.receipt().operationId();
+            assertThat(f.service.projectionStatus(f.scope, operationId)).isEqualTo(replay.receipt());
+            assertThat(f.service.retryProjection(f.scope, operationId)).isEqualTo(replay.receipt());
+            var other = new RepositoryContext(f.scope.repositoryId(), f.scope.workspaceId(), "another", f.scope.username(), f.scope.scope());
+            assertThatThrownBy(() -> f.service.projectionStatus(other, operationId))
+                    .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+            assertThatThrownBy(() -> f.service.submitProjection(f.scope, DerivedProjection.Kind.VECTOR_BUILD,
+                    "b".repeat(40), "identity", null)).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+            when(f.members.canMaintain(f.catalogueRow, "owner")).thenReturn(false);
+            assertThatThrownBy(() -> f.service.submitProjection(f.scope, DerivedProjection.Kind.VECTOR_BUILD, head,
+                    "identity", null)).isInstanceOf(AccessDeniedException.class);
+            verify(port, times(1)).apply(eq(f.scope), eq(DerivedProjection.Kind.VECTOR_BUILD), eq(head), eq(original), anyString(), any());
+            verify(port, times(1)).capture(f.scope, DerivedProjection.Kind.VECTOR_BUILD, head);
+            assertThatThrownBy(() -> f.service.retryProjection(f.scope, operationId)).isInstanceOf(AccessDeniedException.class);
+            when(f.members.canMaintain(f.catalogueRow, "owner")).thenReturn(true);
+            when(f.principals.authorizeHistoryIndex("owner", true)).thenReturn(f.grant);
+            assertThat(f.service.archiveProjection(f.scope, operationId).archivedAt()).isNotNull();
+        }
+    }
+
+    @Test void derivedRecoveryKeepsTheOriginalSourceAndRejectsAContributorWithoutMaintenanceAuthority() throws Exception {
+        try (var f = new Fixture()) {
+            var port = mock(DerivedProjection.class);
+            f.service.configureDerivedProjection(port);
+            String head = "b".repeat(40);
+            assertThatThrownBy(() -> f.service.submitProjection(f.scope, DerivedProjection.Kind.RELATION, head, "select", null))
+                    .isInstanceOf(AccessDeniedException.class);
+            verifyNoInteractions(port);
+            when(f.members.canMaintain(f.catalogueRow, "owner")).thenReturn(true);
+            var retained = new DerivedProjection.Source("model-A", "original-generation");
+            when(port.capture(f.scope, DerivedProjection.Kind.VECTOR_BUILD, head)).thenReturn(retained);
+            when(port.apply(eq(f.scope), eq(DerivedProjection.Kind.VECTOR_BUILD), eq(head), eq(retained), anyString(), any()))
+                    .thenThrow(new DerivedProjection.SourceUnavailable(new java.io.IOException("interrupted")))
+                    .thenThrow(new DerivedProjection.SourceChanged("replacement generation"));
+            var admission = f.service.submitProjection(f.scope, DerivedProjection.Kind.VECTOR_BUILD, head, "interrupted", null);
+            assertThat(admission.receipt().phase()).isEqualTo("RETRYABLE");
+            f.jdbc.update("update history_index_operation set due_at=0 where operation_id=?", admission.receipt().operationId());
+            f.service.recover();
+            var receipt = f.service.get(admission.receipt().operationId());
+            assertThat(receipt.phase()).isEqualTo("MANUAL_REVIEW");
+            assertThat(receipt.actor()).isEqualTo(f.grant.principalId());
+            assertThat(receipt.executor()).isEqualTo("system:history-index");
+            verify(port).capture(f.scope, DerivedProjection.Kind.VECTOR_BUILD, head);
+        }
+    }
+
+    @Test void failedProjectionDecisionIsDurableAndCannotStarveAnotherDueCommand() throws Exception {
+        try (var f = new Fixture()) {
+            var port = mock(DerivedProjection.class);
+            f.service.configureDerivedProjection(port);
+            String head = "a".repeat(40);
+            when(f.members.canMaintain(f.catalogueRow, "owner")).thenReturn(true);
+            var source = new DerivedProjection.Source(null, null);
+            var evidence = new DerivedProjection.Result(null, null, 0, 3, null, null, null, "CORRUPT", head, head);
+            var completed = new DerivedProjection.Result(null, null, 0, 1, 0, 0, 0);
+            when(port.capture(f.scope, DerivedProjection.Kind.RELATION, head)).thenReturn(source);
+            doThrow(new DerivedProjection.DecisionRequired("VERIFICATION_FAILED", false, evidence, null))
+                    .doReturn(completed).when(port).apply(eq(f.scope), eq(DerivedProjection.Kind.RELATION), eq(head),
+                            eq(source), anyString(), any());
+            when(port.describe(evidence)).thenReturn("retained-verification");
+            when(port.describe(completed)).thenReturn("success");
+            when(port.readResult("retained-verification")).thenReturn(evidence);
+            var first = f.service.submitProjection(f.scope, DerivedProjection.Kind.RELATION, head, "failure", null);
+            assertThat(first.receipt().phase()).isEqualTo("MANUAL_REVIEW");
+            assertThat(first.result()).isEqualTo(evidence);
+            assertThat(f.service.submitProjection(f.scope, DerivedProjection.Kind.RELATION, head, "failure", null)).isEqualTo(first);
+            var next = f.journal.admit(f.scope, f.scope.branch(), HistoryIndexJournal.Kind.RELATION, f.grant, "other", null,
+                    () -> new HistoryIndexJournal.Capture(head, null));
+            f.service.recover();
+            assertThat(f.service.get(next.receipt().operationId()).phase()).isEqualTo("COMPLETED");
         }
     }
 

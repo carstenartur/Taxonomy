@@ -48,6 +48,26 @@ class HistoryIndexGrantAdapterTest {
         assertThatThrownBy(() -> grants.checkHistoryIndex(recorded, "owner", false, true)).isInstanceOf(AccessDeniedException.class);
     }
 
+    @Test void centralAdministratorExceptionIsBoundToTheSameVerifiedLocalAccountAndItsCurrentRole() {
+        var roles = List.of(new SimpleGrantedAuthority("ROLE_ADMIN"), new SimpleGrantedAuthority("ROLE_ARCHITECT"));
+        var user = new PrincipalUserDetails(principal, "owner", "unused", true, roles);
+        var current = UsernamePasswordAuthenticationToken.authenticated(user, null, roles);
+        SecurityContextHolder.getContext().setAuthentication(current);
+        when(identities.requireCurrent(current)).thenReturn(principal);
+        when(identities.currentLocalAuthority(principal, "owner")).thenReturn(
+                new PrincipalIdentityService.LocalAuthority("original", List.of("ROLE_ADMIN", "ROLE_ARCHITECT")));
+        var recorded = grants.authorizeHistoryIndex("owner", true);
+        assertThat(grants.isCurrentAdministrator(recorded, "owner", false)).isTrue();
+        assertThat(grants.isCurrentAdministrator(new Grant("other", "LOCAL", "original"), "owner", false)).isFalse();
+        SecurityContextHolder.clearContext();
+        assertThat(grants.isCurrentAdministrator(recorded, "owner", true)).isTrue();
+        assertThat(grants.isCurrentAdministrator(new Grant(actor, "OIDC", "original"), "owner", true)).isFalse();
+        assertThat(grants.isCurrentAdministrator(new Grant(actor, "LOCAL", "replaced"), "owner", true)).isFalse();
+        when(identities.currentLocalAuthority(principal, "owner")).thenReturn(
+                new PrincipalIdentityService.LocalAuthority("original", List.of("ROLE_ARCHITECT")));
+        assertThat(grants.isCurrentAdministrator(recorded, "owner", true)).isFalse();
+    }
+
     @Test void externalOriginsNeedFreshVerifiedLoginAndCannotFallBackToAnotherEnabledIdentity() {
         var legacy = new Grant("issuer-key", "LEGACY_OIDC", "issuer-key");
         assertThatThrownBy(() -> grants.checkHistoryIndex(legacy, "owner", true, true)).isInstanceOf(WorkspaceFetchAuthority.FreshLoginRequired.class);

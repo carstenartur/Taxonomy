@@ -78,6 +78,17 @@ public class WorkspaceFetchAuthorityAdapter implements WorkspaceFetchAuthority, 
         checkGrant(original, username, historyPermission(purge), unattended);
     }
 
+    @Override public boolean isCurrentAdministrator(Grant recorded, String username, boolean background) {
+        if (!background) {
+            var login = SecurityContextHolder.getContext().getAuthentication();
+            return recorded.principalId().equals(currentActor(username))
+                    && login.getAuthorities().stream().anyMatch(role -> "ROLE_ADMIN".equals(role.getAuthority()));
+        }
+        if (!"LOCAL".equals(recorded.loginKind())) return false;
+        var local = identities.currentLocalAuthority(new PrincipalId(UUID.fromString(recorded.principalId())), username);
+        return recorded.bindingKey().equals(local.bindingKey()) && local.roles().contains("ROLE_ADMIN");
+    }
+
     private static ApiPermission historyPermission(boolean purge) {
         return purge ? ApiPermission.ARCHITECTURE_DELETE : ApiPermission.ARCHITECTURE_WRITE;
     }

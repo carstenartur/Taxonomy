@@ -5,6 +5,7 @@ import com.taxonomy.workspace.service.WorkspaceFetchAuthority.Grant;
 /** Authenticated originator of a history-index maintenance command. */
 public interface HistoryIndexGrant {
     Grant authorizeHistoryIndex(String username, boolean purge);
+    boolean isCurrentAdministrator(Grant recorded, String username, boolean background);
     String currentActor(String username);
     void checkHistoryIndex(Grant recorded, String username, boolean purge, boolean background);
 }
