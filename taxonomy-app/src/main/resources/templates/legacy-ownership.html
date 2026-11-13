@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en" th:lang="${#locale.language}">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title th:text="#{ownership.title} + ' — Taxonomy'">Historical ownership — Taxonomy</title>
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy.css}"/>
+    <th:block th:replace="~{fragments/application-chrome :: styles}"></th:block>
+    <th:block th:replace="~{fragments/customer-stylesheet :: link}"></th:block>
+</head>
+<body class="bg-body-tertiary">
+<a class="skip-link" href="#ownershipMain" th:text="#{ownership.skip}">Skip to report</a>
+<header th:replace="~{fragments/application-chrome :: navigation('admin', ~{}, 'SECURITY', 'user-management')}"></header>
+<main id="ownershipMain" class="container py-4">
+    <h1 th:text="#{ownership.title}">Historical ownership</h1>
+    <p th:text="#{ownership.intro}">Review historical owners before approving an external account mapping.</p>
+    <dl>
+        <dt th:text="#{ownership.observed}">Observed owner scopes</dt><dd th:text="${status.inventory.observedScopes}">0</dd>
+        <dt th:text="#{ownership.missing}">Scopes without a reservation</dt><dd th:text="${status.inventory.missingReservations}">0</dd>
+        <dt th:text="#{ownership.unresolved}">Unresolved reservations</dt><dd th:text="${status.inventory.unresolvedReservations}">0</dd>
+        <dt th:text="#{ownership.unverified}">Scopes without a verified binding</dt><dd th:text="${status.inventory.unverifiedOwnerBindings}">0</dd>
+    </dl>
+    <h2 class="h4" th:text="#{ownership.reservations}">Disabled, unbound reservations</h2>
+    <p th:if="${status.reservations.owners.isEmpty()}" th:text="#{ownership.empty}">There are no unresolved reservations.</p>
+    <p th:if="${status.reservations.truncated}" th:text="#{ownership.truncated(${status.reservations.owners.size()},${status.reservations.total})}">Bounded results</p>
+    <div class="table-responsive" th:unless="${status.reservations.owners.isEmpty()}">
+        <table class="table"><thead><tr>
+            <th scope="col" th:text="#{ownership.scope}">Historical owner scope</th>
+            <th scope="col" th:text="#{ownership.principal}">Reserved principal ID</th>
+        </tr></thead><tbody>
+        <tr th:each="owner : ${status.reservations.owners}">
+            <td class="text-break" th:text="${owner.legacyScope}"></td>
+            <td class="text-break"><code th:text="${owner.principal.value}"></code></td>
+        </tr></tbody></table>
+    </div>
+    <a th:href="@{/(lang=${#locale.language})}" th:text="#{users.back}">Back to application</a>
+</main>
+<script th:src="@{/js/taxonomy-i18n.js}"></script>
+<th:block th:replace="~{fragments/application-chrome :: navigationScript}"></th:block>
+</body>
+</html>

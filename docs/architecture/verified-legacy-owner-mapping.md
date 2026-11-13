@@ -73,3 +73,8 @@ A current administrator can use `GET /api/admin/users/ownership-reservations?lim
 After quiescing LEGACY writers, `POST /api/admin/users/ownership-reservations` reserves each observed, previously unregistered ownership scope. The response reports the number created. Each new principal is disabled and has no identity bindings or grants. The transaction records the authenticated administrator and reserved principal in the existing audit table. A repeated call returns zero when there are no additional owners. Conflicting scope spellings or more than 4,096 new reservations abort the transaction. The normal administrator permission and browser-session CSRF rules apply.
 
 Read the preview again before preparing a mapping plan. An installation with unverified reservations still fails the STABLE readiness check. Activating a real owner binding requires separate operator verification of its exact issuer and subject under EXT-02.
+
+Administrators can inspect the same bounded inventory in German or English under
+**Administration → Historical ownership** (`/admin/identity/ownership`). Opening
+the page reads the current inventory and up to 100 unresolved reservations.
+The reservation and operator-verified mapping procedures remain separate.
