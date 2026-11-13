@@ -87,7 +87,9 @@
                 if (!r.ok) throw Object.assign(new Error('HTTP ' + r.status), { status: r.status });
                 return r.json();
             })
-            .then(function (state) {
+            .then(async function (state) {
+                // Startup may receive Git state before the locale catalogue finishes loading.
+                if (TaxonomyI18n.ready) await TaxonomyI18n.ready();
                 if (pageActive && pendingRead === controller && !controller.signal.aborted && ownsSource()) {
                     pendingRead = null;
                     renderStatusBar(state);
