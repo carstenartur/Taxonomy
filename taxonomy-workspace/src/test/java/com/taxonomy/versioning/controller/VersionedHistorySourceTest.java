@@ -2,6 +2,12 @@ package com.taxonomy.versioning.controller;
 
 import com.taxonomy.versioning.model.ArchitectureCommitIndex;
 import com.taxonomy.versioning.service.CommitIndexService;
+import com.taxonomy.versioning.service.ConflictDetectionService;
+import com.taxonomy.versioning.service.DslOperationsFacade;
+import com.taxonomy.versioning.service.RepositoryStateService;
+import com.taxonomy.workspace.service.RepositoryStateGuard;
+import com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort;
+import com.taxonomy.workspace.storage.DslCommit;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
@@ -16,6 +22,8 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import java.time.Instant;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -51,6 +59,33 @@ class VersionedHistorySourceTest {
                     .andExpect(status().isOk()).andExpect(header().string("ETag", org.hamcrest.Matchers.not(tag)));
             verify(resolver, times(2)).resolveUnambiguousRepositoryForRead();
             verifyNoMoreInteractions(resolver);
+        }
+    }
+
+    @Test
+    void directGitHistoryAndHistoricalContentRemainLocalToTheSelectedStore() throws Exception {
+        var central = RepositoryContext.centralRead("A", selected.branch(), selected.username());
+        try (var factory = new DslGitRepositoryFactory(null)) {
+            var privateGit = factory.resolveRepository(selected);
+            String base = privateGit.commitDsl(selected.branch(), "# retained", "alice", "retained");
+            String current = privateGit.commitDsl(selected.branch(), "# current", "alice", "current");
+            String other = factory.resolveRepository(central).commitDsl(selected.branch(), "# central", "alice", "central");
+            var facade = new DslOperationsFacade(factory, index, mock(ConflictDetectionService.class),
+                    mock(RepositoryStateGuard.class), mock(RepositoryStateService.class),
+                    resolver, mock(WorkspaceArchitectureVersionPort.class));
+
+            when(resolver.resolveCurrentUsername()).thenReturn(selected.username());
+            when(resolver.resolveCurrentRepositoryContext()).thenReturn(selected);
+            assertThat(facade.getDslHistory(selected.branch())).extracting(DslCommit::commitId).containsExactly(current, base);
+            assertThat(facade.getHeadCommit(selected.branch())).isEqualTo(current);
+            assertThat(facade.getDslAtHead(selected.branch())).isEqualTo("# current");
+            assertThat(facade.getDslAtCommit(base)).isEqualTo("# retained");
+
+            when(resolver.resolveCurrentRepositoryContext()).thenReturn(central);
+            assertThat(facade.getDslHistory(central.branch())).extracting(DslCommit::commitId).containsExactly(other);
+            assertThat(facade.getDslAtHead(central.branch())).isEqualTo("# central");
+            assertThatThrownBy(() -> facade.getDslAtCommit(base)).isInstanceOf(org.eclipse.jgit.errors.MissingObjectException.class);
+            verifyNoInteractions(index);
         }
     }
 
