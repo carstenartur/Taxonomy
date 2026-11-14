@@ -260,6 +260,23 @@ public class SystemRepository {
         this.upstreamBranch = upstreamBranch;
     }
 
+    public static String initialForkOperationId(String repositoryId) {
+        return "p-" + com.taxonomy.identity.StableIdentityHash.sha256("initial-central-fork:" + repositoryId).substring(0, 62);
+    }
+
+    /** Stable identity of the original immutable command. Nullable free text is framed separately from its content. */
+    public String forkRequestFingerprint() {
+        var fields = java.util.Arrays.asList(repositoryId, slug, displayName, description, String.valueOf(visibility),
+                String.valueOf(ownerType), ownerId, createdBy, defaultBranch, upstreamRepositoryId, upstreamBranch,
+                forkPointCommit, storageRepositoryName, String.valueOf(topologyMode), Boolean.toString(primaryRepo), forkInitiatorKey);
+        StringBuilder framed = new StringBuilder();
+        for (String field : fields) {
+            if (field == null) framed.append("-:");
+            else framed.append(field.length()).append(':').append(field);
+        }
+        return com.taxonomy.identity.StableIdentityHash.sha256(framed.toString());
+    }
+
     public String getForkInitiatorKey() {
         return forkInitiatorKey;
     }

@@ -18,25 +18,15 @@ For opt-in signatures, trust policy and key rotation in model history, see
 
 Taxonomy consumes public types from `io.github.carstenartur.jgit.storage.hibernate` and public JGit APIs. Application code must not import the library's `repository`, `objects` or `refs` implementation packages. Conversely, the library does not own Taxonomy's tenant, architecture, UI or application-projection semantics.
 
-## Released dependency and anonymous package access
+## JGit storage dependencies on Maven Central
 
-The root POM is the source of truth for both the released dependency and its repository:
-
-```xml
-<jgit-storage-hibernate.version>0.12.1</jgit-storage-hibernate.version>
-```
+The root POM pins the release used by every Taxonomy module. Maven resolves both Core and Smart HTTP from Maven Central using its default configuration.
 
 ```xml
-<repository>
-  <id>jgit-storage-hibernate-releases</id>
-  <name>jgit-storage-hibernate anonymous releases</name>
-  <url>https://raw.githubusercontent.com/carstenartur/jgit-storage-hibernate/maven-repository/</url>
-  <releases><enabled>true</enabled></releases>
-  <snapshots><enabled>false</enabled></snapshots>
-</repository>
+<jgit-storage-hibernate.version>0.12.2</jgit-storage-hibernate.version>
 ```
 
-The application module uses the property rather than repeating the release number:
+The application declares Core using the shared version property.
 
 ```xml
 <dependency>
@@ -46,9 +36,7 @@ The application module uses the property rather than repeating the release numbe
 </dependency>
 ```
 
-The configured release repository is publicly and anonymously readable. A clean consumer build therefore needs no Maven server credentials or package-read token. The repository is not Maven Central; its exact ID, URL and release-only policy remain part of Taxonomy's reproducible dependency contract until distribution changes in a reviewed update.
-
-`JgitStorageDocumentationContractTest` reads the version and repository block from the root POM and compares both language guides with that source. It also rejects the obsolete authenticated-package access model.
+`JgitStorageDocumentationContractTest` checks the version in both guides against the root POM and guards against reintroducing the old repository configuration.
 
 ## Spring-managed persistence context
 
@@ -188,11 +176,11 @@ The integration is covered through normal Maven/JUnit/Failsafe authority:
 - `JgitStoragePostgresMigrationIT` repeats the pre-library adoption against PostgreSQL and verifies the dedicated histories.
 - `TaxonomySchemaMigrationConfigTest` checks primary and qualified strategy composition, Core-first failure behavior, conditional enablement, application-schema classification and final-table validation.
 - The application-schema PostgreSQL migration tests live under `com.taxonomy.composition.persistence` and retain the real database fixtures for upgrade and validate-startup evidence.
-- `JgitStorageDocumentationContractTest` derives dependency/distribution facts from the root POM, keeps the German and English guides aligned, rejects obsolete authenticated access instructions, and verifies the named Core/adoption resources in the resolved artifact.
+- `JgitStorageDocumentationContractTest` checks both guides against the pinned release and verifies the named Core and adoption resources in the resolved artifact.
 
 ### CI Command
 
-A clean verification resolves the pinned `jgit-storage-hibernate-core` release anonymously through the configured release repository. Use the repository's authoritative CI command without adding a second variant:
+A clean build resolves the pinned release from Maven Central. Run the standard CI command from the repository root.
 
 ```bash
 ./mvnw -B verify -Pci -DrunOnnxTests=true
