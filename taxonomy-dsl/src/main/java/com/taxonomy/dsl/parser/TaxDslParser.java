@@ -31,7 +31,7 @@ import java.util.regex.Pattern;
 public class TaxDslParser {
 
     private static final Set<String> KNOWN_BLOCK_TYPES = Set.of(
-            "meta", "element", "relation", "requirement", "mapping", "view", "evidence",
+            "meta", "organization", "element", "relation", "requirement", "mapping", "view", "evidence",
             // Provenance block types (v2.1)
             "source", "sourceVersion", "sourceFragment", "requirementSourceLink", "candidate");
 

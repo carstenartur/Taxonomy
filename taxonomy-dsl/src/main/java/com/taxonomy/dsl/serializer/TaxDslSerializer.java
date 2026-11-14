@@ -31,7 +31,7 @@ public class TaxDslSerializer {
      * Unknown block types sort after all known types.
      */
     private static final List<String> BLOCK_KIND_ORDER = List.of(
-            "element", "relation", "requirement", "mapping", "view", "evidence",
+            "organization", "element", "relation", "requirement", "mapping", "view", "evidence",
             "source", "sourceVersion", "sourceFragment", "requirementSourceLink", "candidate");
 
     /**
@@ -40,6 +40,7 @@ public class TaxDslSerializer {
      * after the listed ones but before extension attributes.
      */
     private static final Map<String, List<String>> PROPERTY_ORDER = Map.ofEntries(
+            Map.entry("organization", List.of("title", "parentId")),
             Map.entry("element", List.of("title", "description", "taxonomy")),
             Map.entry("relation", List.of("status", "confidence", "provenance")),
             Map.entry("requirement", List.of("title", "text")),

@@ -133,7 +133,7 @@
         return typeof value === 'function' ? value.apply(null, args) : value;
     }
 
-    function beginSearchRequest() {
+    function beginSearchRequest(mode) {
         searchGeneration += 1;
         if (activeSearchController) {
             activeSearchController.abort();
@@ -141,19 +141,19 @@
         activeSearchController = typeof AbortController === 'function'
             ? new AbortController()
             : null;
+        // Only graph results come from the selected repository. Reference catalogue
+        // reads still stop on logout, page exit, a new search or an explicit selection change.
+        const options = { contextSensitive: mode === 'graph' };
+        if (activeSearchController) options.signal = activeSearchController.signal;
         return {
-            current: window.TaxonomyApiClient.captureContext(),
-            generation: searchGeneration,
-            signal: activeSearchController ? activeSearchController.signal : null
+            current: window.TaxonomyApiClient.captureContext(options),
+            options: options,
+            generation: searchGeneration
         };
     }
 
     function isCurrentSearch(request) {
         return request.generation === searchGeneration && request.current();
-    }
-
-    function searchFetchOptions(request) {
-        return request.signal ? { signal: request.signal } : undefined;
     }
 
     function shouldIgnoreSearchError(error, request) {
@@ -260,7 +260,7 @@
         if (!query) { clearSearch(); return; }
 
         openSearchWorkspace();
-        var request = beginSearchRequest();
+        var request = beginSearchRequest(mode);
         var area = document.getElementById('searchResultsArea');
         resetResultState();
         area.style.display = 'block';
@@ -269,7 +269,7 @@
             + t('search.searching') + '</div>';
         updateClearControl();
 
-        window.TaxonomySearchApi.search(query, mode, maxResults, searchFetchOptions(request))
+        window.TaxonomySearchApi.search(query, mode, maxResults, request.options)
             .then(function (response) {
                 if (!response.ok) {
                     throw new Error('Search failed (' + response.status + ')');
@@ -767,7 +767,7 @@
     }
 
     function findSimilar(code) {
-        var request = beginSearchRequest();
+        var request = beginSearchRequest('similar');
         var area = document.getElementById('searchResultsArea');
         var panel = openSearchWorkspace();
         if (panel) {
@@ -782,7 +782,7 @@
             updateClearControl();
         }
 
-        window.TaxonomySearchApi.similar(code, 10, searchFetchOptions(request))
+        window.TaxonomySearchApi.similar(code, 10, request.options)
             .then(function (response) {
                 if (!response.ok) throw new Error('Failed (' + response.status + ')');
                 return response.json();

@@ -1,0 +1,22 @@
+<section xmlns:th="http://www.thymeleaf.org" th:fragment="directory" id="editorOrganizationDirectory"
+         aria-labelledby="editorDirectoryHeading">
+    <h2 id="editorDirectoryHeading" data-i18n="editor.directory.title">Organization directory</h2>
+    <p id="editorDirectoryEmpty" data-i18n="editor.directory.empty">No organizational units have been recorded.</p>
+    <label for="editorDirectoryUnits" id="editorDirectoryUnitsLabel" data-i18n="editor.directory.units" hidden>Organizational units</label>
+    <select id="editorDirectoryUnits" size="5" hidden></select>
+    <button id="editorDirectoryNew" type="button" data-i18n="editor.directory.new" hidden>New organizational unit</button>
+    <form id="editorDirectoryForm" hidden>
+        <fieldset id="editorDirectoryFields" disabled>
+            <label for="editorDirectoryName" data-i18n="editor.name">Name</label>
+            <input id="editorDirectoryName" required maxlength="8000" autocomplete="off"/>
+            <label for="editorDirectoryParent" data-i18n="editor.directory.parent">Parent unit</label>
+            <select id="editorDirectoryParent"></select>
+            <label for="editorDirectoryReason" data-i18n="editor.rationale">Reason for the command</label>
+            <input id="editorDirectoryReason" required maxlength="1000"/>
+            <div class="editor-toolbar">
+                <button id="editorDirectorySave" type="submit" data-i18n="editor.preview">Preview change</button>
+                <button id="editorDirectoryDelete" type="button" disabled data-i18n="editor.delete">Preview deletion</button>
+            </div>
+        </fieldset>
+    </form>
+</section>

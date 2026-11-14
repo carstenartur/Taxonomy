@@ -11,13 +11,20 @@ import java.util.*;
  */
 public record DecisionReportOptions(Profile profile,
         @JsonInclude(JsonInclude.Include.NON_EMPTY) Set<String> taxonomyRoots,
-        Contents contents, TreeLayout treeLayout, Set<Section> sections) {
+        Contents contents, TreeLayout treeLayout, Set<Section> sections,
+        @JsonInclude(JsonInclude.Include.NON_DEFAULT) Boolean showResponsibilities) {
+    public DecisionReportOptions(Profile profile, Set<String> taxonomyRoots, Contents contents, TreeLayout treeLayout,
+            Set<Section> sections) {
+        this(profile, taxonomyRoots, contents, treeLayout, sections, false);
+    }
+
     public enum Profile { FULL, STANDARD, COMPACT }
     public enum Contents { NONE, SHORT, FULL }
     public enum TreeLayout { TABLE, AUTO, A4_LANDSCAPE, A3_LANDSCAPE }
     public enum Section { TITLE_PAGE, SUMMARY, TREE, CHAPTERS, ARCHITECTURE, EVIDENCE }
 
     public DecisionReportOptions {
+        showResponsibilities = Boolean.TRUE.equals(showResponsibilities);
         profile = profile == null ? Profile.FULL : profile;
         if (taxonomyRoots != null && taxonomyRoots.isEmpty())
             throw new IllegalArgumentException("An explicit export selection must contain a taxonomy; omit taxonomyRoots for all analysis roots");
