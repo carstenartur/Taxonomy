@@ -165,27 +165,29 @@ public class ContextNavigationService {
         UserWorkspaceState state = resolveState(username, ctx);
         String resolvedCommit = resolveCommit(branch, commitId, ctx);
 
-        ContextRef previous = state.getCurrentContext();
-        ContextRef newCtx = new ContextRef(
-                UUID.randomUUID().toString(),
-                branch,
-                resolvedCommit,
-                Instant.now(),
-                ContextMode.READ_ONLY,
-                previous.contextId(),
-                previous.branch(),
-                previous.commitId(),
-                searchQuery,
-                elementId,
-                false
-        );
+        synchronized (state) {
+            ContextRef previous = state.getCurrentContext();
+            ContextRef newCtx = new ContextRef(
+                    UUID.randomUUID().toString(),
+                    branch,
+                    resolvedCommit,
+                    Instant.now(),
+                    ContextMode.READ_ONLY,
+                    previous.contextId(),
+                    previous.branch(),
+                    previous.commitId(),
+                    searchQuery,
+                    elementId,
+                    false
+            );
 
-        recordNavigation(state, previous.contextId(), newCtx.contextId(),
-                searchQuery != null ? NavigationReason.SEARCH_OPEN : NavigationReason.MANUAL_SWITCH);
-        state.setCurrentContext(newCtx);
-        log.info("User '{}' opened read-only context: branch='{}', commit='{}'",
-                username, branch, abbreviateSha(resolvedCommit));
-        return newCtx;
+            recordNavigation(state, previous.contextId(), newCtx.contextId(),
+                    searchQuery != null ? NavigationReason.SEARCH_OPEN : NavigationReason.MANUAL_SWITCH);
+            state.setCurrentContext(newCtx);
+            log.info("User '{}' opened read-only context: branch='{}', commit='{}'",
+                    username, branch, abbreviateSha(resolvedCommit));
+            return newCtx;
+        }
     }
 
     /**
@@ -217,26 +219,28 @@ public class ContextNavigationService {
         UserWorkspaceState state = resolveState(username, ctx);
         String resolvedCommit = resolveCommit(branch, commitId, ctx);
 
-        ContextRef previous = state.getCurrentContext();
-        ContextRef newCtx = new ContextRef(
-                UUID.randomUUID().toString(),
-                branch,
-                resolvedCommit,
-                Instant.now(),
-                ContextMode.EDITABLE,
-                previous.contextId(),
-                previous.branch(),
-                previous.commitId(),
-                null,
-                null,
-                false
-        );
+        synchronized (state) {
+            ContextRef previous = state.getCurrentContext();
+            ContextRef newCtx = new ContextRef(
+                    UUID.randomUUID().toString(),
+                    branch,
+                    resolvedCommit,
+                    Instant.now(),
+                    ContextMode.EDITABLE,
+                    previous.contextId(),
+                    previous.branch(),
+                    previous.commitId(),
+                    null,
+                    null,
+                    false
+            );
 
-        recordNavigation(state, previous.contextId(), newCtx.contextId(), NavigationReason.MANUAL_SWITCH);
-        state.setCurrentContext(newCtx);
-        log.info("User '{}' switched context: branch='{}', commit='{}'",
-                username, branch, abbreviateSha(resolvedCommit));
-        return newCtx;
+            recordNavigation(state, previous.contextId(), newCtx.contextId(), NavigationReason.MANUAL_SWITCH);
+            state.setCurrentContext(newCtx);
+            log.info("User '{}' switched context: branch='{}', commit='{}'",
+                    username, branch, abbreviateSha(resolvedCommit));
+            return newCtx;
+        }
     }
 
     /**
@@ -250,78 +254,52 @@ public class ContextNavigationService {
     }
 
     public ContextRef returnToOrigin(String username, WorkspaceContext scope) {
-        UserWorkspaceState state = resolveState(username, scope);
-        ContextRef current = state.getCurrentContext();
-        if (current.originContextId() == null) {
-            log.debug("User '{}': no origin context to return to", username);
-            return current;
-        }
-
-        ContextRef origin = new ContextRef(
-                UUID.randomUUID().toString(),
-                current.originBranch() != null ? current.originBranch() : "draft",
-                current.originCommitId(),
-                Instant.now(),
-                ContextMode.EDITABLE,
-                null,
-                null,
-                null,
-                null,
-                null,
-                false
-        );
-
-        recordNavigation(state, current.contextId(), origin.contextId(), NavigationReason.RETURN);
-        state.setCurrentContext(origin);
-        log.info("User '{}' returned to origin: branch='{}'", username, origin.branch());
-        return origin;
+        return returnToOrigin(username, scope, null);
     }
 
-    /**
-     * Go one step back in navigation history for a user.
-     *
-     * @param username the user performing the navigation
-     * @return the previous context, or the current context if history is empty
-     */
+    public ContextRef returnToOrigin(String username, WorkspaceContext scope, String expectedContextId) {
+        UserWorkspaceState state = resolveState(username, scope);
+        synchronized (state) {
+            ContextRef current = requireNavigationSelection(state, expectedContextId);
+            ContextRef restored = state.restorePreviousContext();
+            if (restored != current) {
+                recordNavigation(state, current.contextId(), restored.contextId(), NavigationReason.RETURN);
+                log.info("User '{}' returned to origin: branch='{}'", username, restored.branch());
+            }
+            return restored;
+        }
+    }
+
+    /** Go one step back in navigation history for a user. */
     public ContextRef back(String username) {
         return back(username, WorkspaceContext.SHARED);
     }
 
     public ContextRef back(String username, WorkspaceContext scope) {
+        return back(username, scope, null);
+    }
+
+    public ContextRef back(String username, WorkspaceContext scope, String expectedContextId) {
         UserWorkspaceState state = resolveState(username, scope);
-        if (state.isHistoryEmpty()) {
-            log.debug("User '{}': navigation history is empty — cannot go back", username);
-            return state.getCurrentContext();
+        synchronized (state) {
+            ContextRef current = requireNavigationSelection(state, expectedContextId);
+            if (state.isHistoryEmpty()) return current;
+            ContextRef restored = state.restorePreviousContext();
+            if (restored != current) {
+                state.pollLastHistory();
+                log.info("User '{}' navigated back to: branch='{}'", username, restored.branch());
+            }
+            return restored;
         }
+    }
 
-        ContextHistoryEntry lastEntry = state.peekLastHistory();
-        if (lastEntry == null) {
-            return state.getCurrentContext();
-        }
-
+    private static ContextRef requireNavigationSelection(UserWorkspaceState state, String expectedContextId) {
         ContextRef current = state.getCurrentContext();
-        String targetBranch = current.originBranch() != null
-                ? current.originBranch() : "draft";
-        String targetCommit = current.originCommitId();
-
-        ContextRef backCtx = new ContextRef(
-                UUID.randomUUID().toString(),
-                targetBranch,
-                targetCommit,
-                Instant.now(),
-                ContextMode.EDITABLE,
-                null,
-                null,
-                null,
-                null,
-                null,
-                false
-        );
-
-        state.pollLastHistory();
-        state.setCurrentContext(backCtx);
-        log.info("User '{}' navigated back to: branch='{}'", username, targetBranch);
-        return backCtx;
+        if (expectedContextId != null && !expectedContextId.equals(current.contextId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The navigation context changed. Refresh and try again.");
+        }
+        return current;
     }
 
     /**
@@ -365,32 +343,34 @@ public class ContextNavigationService {
     public ContextRef createVariantFromCurrent(String username, String variantName,
                                                WorkspaceContext ctx) throws IOException {
         UserWorkspaceState state = resolveState(username, ctx);
-        ContextRef current = state.getCurrentContext();
-        String sourceBranch = current.branch();
+        synchronized (state) {
+            ContextRef current = state.getCurrentContext();
+            String sourceBranch = current.branch();
 
-        DslGitRepository repository = resolveRepository(ctx);
-        String newCommitId = current.commitId() == null
-                ? repository.createBranch(variantName, sourceBranch)
-                : repository.createBranchAtVerifiedCommit(variantName, current.commitId());
+            DslGitRepository repository = resolveRepository(ctx);
+            String newCommitId = current.commitId() == null
+                    ? repository.createBranch(variantName, sourceBranch)
+                    : repository.createBranchAtVerifiedCommit(variantName, current.commitId());
 
-        ContextRef variantCtx = new ContextRef(
-                UUID.randomUUID().toString(),
-                variantName,
-                newCommitId,
-                Instant.now(),
-                ContextMode.EDITABLE,
-                current.contextId(),
-                current.branch(),
-                current.commitId(),
-                null,
-                null,
-                false
-        );
+            ContextRef variantCtx = new ContextRef(
+                    UUID.randomUUID().toString(),
+                    variantName,
+                    newCommitId,
+                    Instant.now(),
+                    ContextMode.EDITABLE,
+                    current.contextId(),
+                    current.branch(),
+                    current.commitId(),
+                    null,
+                    null,
+                    false
+            );
 
-        recordNavigation(state, current.contextId(), variantCtx.contextId(), NavigationReason.VARIANT_CREATED);
-        state.setCurrentContext(variantCtx);
-        log.info("User '{}' created variant '{}' from branch '{}'", username, variantName, sourceBranch);
-        return variantCtx;
+            recordNavigation(state, current.contextId(), variantCtx.contextId(), NavigationReason.VARIANT_CREATED);
+            state.setCurrentContext(variantCtx);
+            log.info("User '{}' created variant '{}' from branch '{}'", username, variantName, sourceBranch);
+            return variantCtx;
+        }
     }
 
     /**

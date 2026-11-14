@@ -16,6 +16,9 @@
             body: JSON.stringify(body) }, options);
     }
     function branchQuery(branch) { return '?userBranch=' + encodeURIComponent(branch); }
+    function expectedContextQuery(options) {
+        return options?.expectedContextId ? '?expectedContextId=' + encodeURIComponent(options.expectedContextId) : '';
+    }
 
     var switchGeneration = 0;
 
@@ -95,8 +98,8 @@
             if (commitId != null) query.set('commitId', commitId);
             return post('/api/context/open?' + query, options);
         },
-        back: function (options) { return post('/api/context/back', options); },
-        returnToOrigin: function (options) { return post('/api/context/return-to-origin', options); },
+        back: function (options) { return post('/api/context/back' + expectedContextQuery(options), options); },
+        returnToOrigin: function (options) { return post('/api/context/return-to-origin' + expectedContextQuery(options), options); },
         createVariant: function (name, options) { return post('/api/context/variant?name=' + encodeURIComponent(name), options); },
         listBranches: function (options) { return get('/api/git/branches', options); },
         compare: function (selection, options) {

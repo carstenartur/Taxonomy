@@ -803,6 +803,45 @@ test('back follows a pending context open without showing its superseded variant
   assert.equal(bar.getCurrentContext().branch, 'original-branch');
 });
 
+for (const [action, route] of [['back', 'back'], ['returnToOrigin', 'return-to-origin']]) {
+  test(`${action} submits the context visible when the action was invoked`, async () => {
+    const requests = [];
+    const opened = {contextId:'visible-snapshot', branch:'review', commitId:'7654321', mode:'READ_ONLY'};
+    const app = await loadVersioningFeatures(url => {
+      const target = new URL(url, 'https://taxonomy.example.test');
+      requests.push(target);
+      return Promise.resolve(Response.json(opened));
+    });
+    const bar = app.window.TaxonomyContextBar;
+    await bar.open(opened.branch, opened.commitId, true);
+    await bar[action]();
+    assert.equal(requests.at(-1).pathname, '/taxonomy/api/context/' + route);
+    assert.equal(requests.at(-1).searchParams.get('expectedContextId'), opened.contextId);
+  });
+
+  test(`two queued ${action} commands reconcile the successful transition after a conflict`, async () => {
+    const opened = {contextId:'visible-snapshot', branch:'review', commitId:'7654321', mode:'READ_ONLY'};
+    const restored = {contextId:'new-draft', branch:'draft', commitId:'1234567', mode:'EDITABLE'};
+    const requests = [];
+    const app = await loadVersioningFeatures(url => {
+      const target = new URL(url, 'https://taxonomy.example.test');
+      requests.push(target);
+      if (target.pathname.endsWith('/open')) return Response.json(opened);
+      if (target.pathname.endsWith('/current')) return Response.json(restored);
+      const attempts = requests.filter(request => request.pathname.endsWith('/' + route));
+      return attempts.length === 1 ? Response.json(restored) : Response.json({error:'context changed'}, {status:409});
+    });
+    const bar = app.window.TaxonomyContextBar;
+    await bar.open(opened.branch, opened.commitId, true);
+    await Promise.all([bar[action](), bar[action]()]);
+    const navigation = requests.filter(request => request.pathname.endsWith('/' + route));
+    assert.deepEqual(navigation.map(request => request.searchParams.get('expectedContextId')), [opened.contextId, opened.contextId]);
+    assert.equal(requests.at(-1).pathname, '/taxonomy/api/context/current');
+    assert.equal(bar.getCurrentContext().contextId, restored.contextId);
+    assert.equal(app.errors.length, 1);
+  });
+}
+
 test('a queued context open cannot mutate a different workspace after a pin change', async () => {
   const pending = [];
   const app = await loadVersioningFeatures(() => new Promise(resolve => pending.push(resolve)));

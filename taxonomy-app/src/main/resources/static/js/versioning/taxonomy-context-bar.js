@@ -288,7 +288,7 @@ window.TaxonomyContextBar = (function () {
         return result;
     }
 
-    function navigate(command) {
+    function navigate(command, refreshOnConflict) {
         if (!pageActive) return Promise.resolve(null);
         var generation = ++navigationGeneration;
         return queueNavigation(command)
@@ -299,7 +299,9 @@ window.TaxonomyContextBar = (function () {
                 render(activeContainer || 'contextBar', ctx);
                 return ctx;
             }).catch(function (error) {
-                if (generation === navigationGeneration) showError(error);
+                if (generation !== navigationGeneration) return null;
+                showError(error);
+                if (refreshOnConflict && error.status === 409) return fetchAndRender(activeContainer || 'contextBar');
             });
     }
 
@@ -309,12 +311,14 @@ window.TaxonomyContextBar = (function () {
 
     /** Navigate back one step. */
     function back() {
-        return navigate(window.TaxonomyContextApi.back);
+        var expectedContextId = currentContext?.contextId;
+        return navigate(function () { return window.TaxonomyContextApi.back({ expectedContextId: expectedContextId }); }, true);
     }
 
     /** Return to the origin context. */
     function returnToOrigin() {
-        return navigate(window.TaxonomyContextApi.returnToOrigin);
+        var expectedContextId = currentContext?.contextId;
+        return navigate(function () { return window.TaxonomyContextApi.returnToOrigin({ expectedContextId: expectedContextId }); }, true);
     }
 
     /**
