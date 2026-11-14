@@ -45,6 +45,11 @@ public class ArchitectureRepositoryProvisioningService {
         this.repositoryFactory = repositoryFactory;
     }
 
+    private CentralForkInitialTransfer initialTransfers;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void useInitialTransfers(CentralForkInitialTransfer transfers) { this.initialTransfers = transfers; }
+
     /** Create a new independent central repository with a valid initial DSL commit. */
     public SystemRepository createRepository(
             String displayName,
@@ -132,6 +137,16 @@ public class ArchitectureRepositoryProvisioningService {
                 ? source.getDefaultBranch()
                 : requestedSourceBranch.strip();
 
+        if (initialTransfers != null) {
+            var existing = systemRepositoryService.byCreationSlug(slug, displayName).orElse(null);
+            if (existing != null && initialTransfers.isJournalled(existing.getRepositoryId())) {
+                if (!SystemRepositoryService.matchesForkRequest(existing, sourceRepositoryId, sourceBranch, displayName.strip(),
+                        description, visibility, ownerId)) throw retainedSourceConflict();
+                if (existing.getLifecycleState() == RepositoryLifecycleState.ACTIVE) verifyRetainedFork(existing);
+                return initialTransfers.complete(existing, ownerId);
+            }
+        }
+
         var recovered = systemRepositoryService.acknowledgePublishedFork(sourceRepositoryId, sourceBranch,
                 displayName, slug, description, visibility, ownerId, retained -> {
                     verifyRetainedFork(retained);
@@ -154,6 +169,10 @@ public class ArchitectureRepositoryProvisioningService {
                     "Could not read source repository " + sourceRepositoryId,
                     exception);
         }
+        if (initialTransfers != null) {
+            var fork = initialTransfers.admit(sourceRepositoryId, sourceBranch, sourceCommit, displayName, slug, description, visibility, ownerId);
+            return initialTransfers.complete(fork, ownerId);
+        }
         SystemRepository fork = systemRepositoryService.createForkMetadata(
                 source.getRepositoryId(),
                 sourceBranch,
@@ -167,7 +186,10 @@ public class ArchitectureRepositoryProvisioningService {
     }
 
     private void verifyRetainedFork(SystemRepository fork) {
-        var target = repositoryFactory.getCentralRepository(fork.getRepositoryId());
+        verifyRetainedFork(repositoryFactory.getCentralRepository(fork.getRepositoryId()), fork);
+    }
+
+    static void verifyRetainedFork(DslGitRepository target, SystemRepository fork) {
         String commit = fork.getForkPointCommit();
         var upstream = new GitUpstreamRef(fork.getUpstreamRepositoryId(), fork.getUpstreamBranch());
         try {
@@ -191,7 +213,7 @@ public class ArchitectureRepositoryProvisioningService {
         }
     }
 
-    private static void verifyForkSnapshot(DslGitRepository source, String commit) throws IOException {
+    static void verifyForkSnapshot(DslGitRepository source, String commit) throws IOException {
         source.verifySnapshot(commit);
         var repository = source.getGitRepository();
         try (var walk = new RevWalk(repository)) {

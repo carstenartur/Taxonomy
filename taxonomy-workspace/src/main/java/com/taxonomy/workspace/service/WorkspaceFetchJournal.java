@@ -36,7 +36,7 @@ public class WorkspaceFetchJournal {
 
         static Owner of(String id) {
             // Historical working-copy receipts are full SHA-256 hex IDs. Central IDs have a distinct prefix.
-            return id.startsWith("f-") ? CENTRAL : WORKSPACE;
+            return id.startsWith("f-") || CentralFetchOperation.initialIdFormat(id) ? CENTRAL : WORKSPACE;
         }
     }
 
@@ -71,6 +71,35 @@ public class WorkspaceFetchJournal {
                        String resultTagObject) { }
     @FunctionalInterface interface FetchStep {
         WorkspaceUpstreamService.Status apply(RepositoryFetchOperation operation, Runnable checkLease) throws IOException;
+    }
+
+    /** Join the allocating catalogue transaction. A process cannot leave one side committed without the other. */
+    @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void admitInitialFork(com.taxonomy.workspace.model.SystemRepository fork, WorkspaceFetchAuthority.Grant grant) {
+        var operation = new CentralFetchOperation();
+        operation.id = CentralFetchOperation.initialId(fork.getRepositoryId());
+        operation.targetRepositoryId = fork.getRepositoryId();
+        operation.sourceRepositoryId = fork.getUpstreamRepositoryId();
+        operation.actor = grant.principalId();
+        operation.loginKind = grant.loginKind();
+        operation.bindingKey = grant.bindingKey();
+        operation.username = fork.getOwnerId();
+        operation.branch = fork.getDefaultBranch();
+        operation.sourceBranch = fork.getUpstreamBranch();
+        operation.requested = fork.getForkPointCommit();
+        operation.forkPoint = operation.requested;
+        operation.observed = operation.requested;
+        operation.fingerprint = fork.forkRequestFingerprint();
+        operation.causeId = operation.id;
+        operation.policy = "ARCHITECTURE_WRITE+CONTRIBUTOR";
+        operation.phase = "ADMITTED";
+        operation.createdAt = clock.millis();
+        operation.nextAttemptAt = operation.createdAt;
+        entities.persist(operation);
+    }
+
+    boolean hasInitialFork(String targetId) {
+        return transaction.execute(status -> find(CentralFetchOperation.initialId(targetId)) != null);
     }
 
     public View admit(RepositoryContext selected, WorkspaceFetchAuthority.Grant grant, WorkspaceUpstreamService.Capture capture,
@@ -297,7 +326,7 @@ public class WorkspaceFetchJournal {
             else if (row.attempts >= MAX_ATTEMPTS) row.finish("MANUAL_REVIEW", "ATTEMPTS_EXHAUSTED", now);
             else {
                 row.phase = "RETRYABLE";
-                row.decision = "FETCH_INTERRUPTED";
+                row.decision = row instanceof CentralFetchOperation fork && fork.isInitialFork() ? "FORK_TRANSFER_INTERRUPTED" : "FETCH_INTERRUPTED";
                 row.lease = null;
                 row.nextAttemptAt = now + Duration.ofSeconds(15L << (row.attempts - 1)).toMillis();
             }
