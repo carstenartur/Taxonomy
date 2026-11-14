@@ -317,7 +317,7 @@ class HistoryIndexMaintenanceTest {
         Fixture(RepositoryContext context) throws Exception {
             scope = context;
             var db = new DriverManagerDataSource("jdbc:hsqldb:mem:history-service-" + UUID.randomUUID() + ";hsqldb.tx=mvcc", "sa", "");
-            var migration = new org.springframework.core.io.ClassPathResource("db/restore/hsqldb/V29__history_index_recovery.sql");
+            var migration = new org.springframework.core.io.ClassPathResource("db/restore/hsqldb/V32.3__history_index_recovery.sql");
             new org.springframework.jdbc.datasource.init.ResourceDatabasePopulator(migration).execute(db);
             jdbc = new JdbcTemplate(db);
             journal = new HistoryIndexJournal(jdbc, new DataSourceTransactionManager(db), Clock.systemUTC());
