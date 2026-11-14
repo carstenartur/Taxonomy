@@ -163,6 +163,10 @@ public class SyncIntegrationService {
      */
     public record Publication(String commit, WorkspacePublicationJournal.View operation) { }
 
+    public Publication pullWithReceipt(String username,String branch,String key,String cause) throws IOException {
+        return new Publication(syncFromShared(username,branch),null);
+    }
+
     /** HTTP callers receive the durable receipt with both synchronous and deferred publications. */
     public Publication publishWithReceipt(String username,String branch,String key,String cause) throws IOException {
         return new Publication(publishToShared(username,branch),null);

@@ -112,6 +112,26 @@ class WorkspaceEditorRestoreRuntimeTest {
         }
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"ARCHITECTURE_PUBLISH+READER","ARCHITECTURE_PUBLISH+READER+KEYLESS"})
+    void interruptedPullRestoresItsRecordedSourceAndRemainsUndispatchable(String policy) throws Exception {
+        try (var f=fixture(SOURCE_SCOPE,null,false,false,true)) {
+            String id="1".repeat(64);
+            new JdbcTemplate(f.source).update("""
+                    update workspace_publication_operation set policy_code=?,operation_step='LOCAL_PORTFOLIO',
+                    central_portfolio_digest=null where operation_id=?""",policy,id);
+            try (var archive=export(f.source,f.sourceFactory,f.principals.keySet().iterator().next(),false,Set.of(CENTRAL,WORKSPACE),null)) {
+                f.restore(archive);
+                var target=new JdbcTemplate(f.target);
+                String query=" from restore_workspace_evidence where record_kind='publication-journal' and record_key=?";
+                assertThat(target.queryForObject("select classification"+query,String.class,id)).isEqualTo("INTERRUPTED_SOURCE_OPERATION");
+                assertThat(target.queryForObject("select record_json"+query,String.class,id))
+                        .contains(policy,"LOCAL_PORTFOLIO","inputSource").doesNotContain("private-lease-sentinel","private-binding-sentinel");
+                assertThat(target.queryForObject("select count(*) from workspace_publication_operation",Long.class)).isZero();
+            }
+        }
+    }
+
     @Test
     void collaboratorReceiptsKeepTheActorAndOriginalWorkspaceOwnerAcrossExportAndRestore() throws Exception {
         try (var fixture=fixture(SOURCE_SCOPE,null,true,false,true)) {

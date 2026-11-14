@@ -51,21 +51,45 @@ public class WorkspacePublicationJournal {
     record Claim(RepositoryOperationLeases.Claim lease, String executor) {}
     public record View(String operationId,String causationId,String status,String nextPhase,String originalActor,String lastExecutor,
                 String repositoryId,String workspaceId,String branch,String sourceBranch,String expectedSourceCommit,String expectedLocalCommit,
-                String preparedCommit,String resultCommit,int attempts,String decisionCode,long createdAt,Long lastAttemptAt,Long publishedAt,Long sourceObservedAt,Long completedAt,Long archivedAt,Long pinsReleasedAt,Long redactedAt,String workspaceOwner) {}
+                String preparedCommit,String resultCommit,int attempts,String decisionCode,long createdAt,Long lastAttemptAt,Long publishedAt,Long sourceObservedAt,Long completedAt,Long archivedAt,Long pinsReleasedAt,Long redactedAt,boolean pull,String workspaceOwner) {}
     @FunctionalInterface interface PhaseAction { void run(WorkspacePublicationOperation row,Runnable checkLease) throws IOException; }
     @FunctionalInterface interface Snapshot { Source capture() throws IOException; }
 
     View admit(RepositoryContext context, WorkspaceFetchAuthority.Grant grant, boolean keepWorkspace,
                String key, String cause, Snapshot snapshot) throws IOException {
+        return admit(context,grant,keepWorkspace,key,cause,snapshot,false);
+    }
+
+    View admit(RepositoryContext context, WorkspaceFetchAuthority.Grant grant, boolean keepWorkspace,
+               String key, String cause, Snapshot snapshot, boolean pull) throws IOException {
         if (key != null && !key.matches("[A-Za-z0-9._~:-]{1,128}")) throw invalid("Invalid publication idempotency key");
         if (cause != null && !cause.matches("[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")) throw invalid("Invalid publication causation ID");
-        // A keyless legacy request carries no frozen input. Each submission receives its own recoverable operation.
-        String token = key == null ? "generated:" + UUID.randomUUID() : "provided:" + key;
-        String id = com.taxonomy.identity.StableIdentityHash.sha256(String.join("\u0000","workspace.publish",
+        // Legacy pull clients cannot send a retry ID. Reuse an unfinished original command in this exact scope.
+        if (pull && key == null) {
+            var unresolved = transaction.execute(tx -> entities.createQuery("""
+                    select p from WorkspacePublicationOperation p where p.repository=:repository
+                    and p.workspace=:workspace and p.localBranch=:branch and p.actor=:actor and p.username=:user
+                    and p.policy=:policy and p.keepWorkspace=:takeSource
+                    and p.archivedAt is null and p.completedAt is null order by p.createdAt,p.id
+                    """, WorkspacePublicationOperation.class)
+                    .setParameter("repository",context.repositoryId()).setParameter("workspace",context.workspaceId())
+                    .setParameter("branch",context.branch()).setParameter("actor",grant.principalId())
+                    .setParameter("user",context.username()).setParameter("policy",WorkspacePublicationOperation.LEGACY_PULL_POLICY)
+                    .setParameter("takeSource",keepWorkspace).setMaxResults(1).getResultList());
+            if (!unresolved.isEmpty()) return replay(unresolved.getFirst(),context,grant.principalId(),keepWorkspace,cause);
+        }
+        Source captured = pull && key == null ? snapshot.capture() : null;
+        String token;
+        if (key!=null) token="provided:"+key;
+        else if (captured==null) token="generated:"+UUID.randomUUID();
+        else token=String.join("\u0000","legacy-pull",Boolean.toString(keepWorkspace),captured.branch(),
+                String.valueOf(captured.forkPoint()),String.valueOf(captured.central()),
+                String.valueOf(captured.local()),String.valueOf(captured.tracking()));
+        String id = com.taxonomy.identity.StableIdentityHash.sha256(String.join("\u0000",pull ? "workspace.pull" : "workspace.publish",
                 context.repositoryWorkspaceScopeKey(),grant.principalId(),token));
         var previous = transaction.execute(tx -> entities.find(WorkspacePublicationOperation.class,id));
         if (previous != null) return replay(previous,context,grant.principalId(),keepWorkspace,cause);
-        var source = snapshot.capture();
+        var source = captured == null ? snapshot.capture() : captured;
         if (source.workspaceOwner()!=null && !source.workspaceOwner().equals(context.username())
                 && "LEGACY_OIDC".equals(grant.loginKind())) {
             throw new org.springframework.security.access.AccessDeniedException("Shared synchronization requires a stable principal");
@@ -75,7 +99,8 @@ public class WorkspacePublicationJournal {
                 var row = new WorkspacePublicationOperation();
                 row.id=id; row.cause=cause == null ? id : UUID.fromString(cause).toString();
                 row.actor=grant.principalId(); row.loginKind=grant.loginKind(); row.binding=grant.bindingKey();
-                row.policy="ARCHITECTURE_PUBLISH+CONTRIBUTOR"; row.username=context.username();
+                row.policy=!pull ? WorkspacePublicationOperation.PUBLISH_POLICY
+                        : key == null ? WorkspacePublicationOperation.LEGACY_PULL_POLICY : WorkspacePublicationOperation.PULL_POLICY; row.username=context.username();
                 row.capturedWorkspaceOwner=source.workspaceOwner();
                 row.repository=context.repositoryId(); row.workspace=context.workspaceId(); row.localBranch=context.branch();
                 row.sourceBranch=source.branch(); row.forkPoint=source.forkPoint(); row.inputSource=source.central();
@@ -154,11 +179,11 @@ public class WorkspacePublicationJournal {
                 var row=locked(claim);
                 try { action.run(row,() -> leases.requireCurrent(row,claim.lease())); } catch (IOException failure) { throw new UncheckedIOException(failure); }
                 var applied=row.step;
-                if (applied==Step.SOURCE_REF) {
+                if (applied==Step.SOURCE_REF || row.isPull() && applied==Step.WORKSPACE_REF) {
                     row.sourceObservedAt=clock.millis();
                 }
                 event(row,claim.executor(),"APPLIED");
-                row.step=Step.values()[applied.ordinal()+1];
+                row.step=row.nextStep();
                 if (row.step==Step.COMPLETE) settle(row,COMPLETED,"COMPLETED");
                 else row.nextAttemptAt=clock.millis()+LEASE;
                 return view(row);
@@ -296,8 +321,10 @@ public class WorkspacePublicationJournal {
 
     private static View view(WorkspacePublicationOperation row) {
         return new View(row.id,row.cause,row.archivedAt==null?row.phase:"ARCHIVED",row.step.name(),row.actor,row.executor,
-                row.repository,row.workspace,row.localBranch,row.sourceBranch,row.inputSource,row.inputLocal,row.preparedSource,row.sourceObservedAt==null ? null : row.preparedSource,row.attempts,
-                row.decision,row.createdAt,row.lastAttemptAt,row.publishedAt,row.sourceObservedAt,row.completedAt,row.archivedAt,row.pinsReleasedAt,row.redactedAt,row.workspaceOwner());
+                row.repository,row.workspace,row.localBranch,row.sourceBranch,row.inputSource,row.inputLocal,
+                row.isPull() ? row.preparedLocal : row.preparedSource,
+                row.sourceObservedAt==null ? null : row.isPull() ? row.preparedLocal : row.preparedSource,row.attempts,
+                row.decision,row.createdAt,row.lastAttemptAt,row.publishedAt,row.sourceObservedAt,row.completedAt,row.archivedAt,row.pinsReleasedAt,row.redactedAt,row.isPull(),row.workspaceOwner());
     }
 
     private static ResponseStatusException missing() { return new ResponseStatusException(HttpStatus.NOT_FOUND,"Publication unavailable"); }

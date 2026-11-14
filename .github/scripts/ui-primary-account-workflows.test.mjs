@@ -335,7 +335,8 @@ test('cleanup waits for both the publish response and its rendered sync-state po
   }
 });
 
-test('pending publication retains its key across reload and a different workspace gets its own key', async () => {
+for (const [method, pendingMessage] of [['publish','workspace.sync.publish.pending'],['syncFromShared','workspace.sync.from.pending']]) {
+test(method + ' retains its key across reload and a different workspace gets its own key', async () => {
   const storage = new Map(), calls = [], notices = [];
   const runtime = {workspaceId:'private-A'};
   let status = 'RETRYABLE';
@@ -347,8 +348,12 @@ test('pending publication retains its key across reload and a different workspac
       sessionStorage:{getItem:key => storage.get(key), setItem:(key,value) => storage.set(key,value), removeItem:key => storage.delete(key)},
       __TaxonomyAnalysisSessionContext:{runtime},
       TaxonomyContextBar:{getCurrentContext:() => ({branch:'draft'})},
+      TaxonomyApiClient:{captureContext:() => {
+        const owner = runtime.workspaceId;
+        return () => owner === runtime.workspaceId;
+      }},
       TaxonomyWorkspaceApi:{
-        publish: async (branch,options) => {
+        [method]: async (branch,options) => {
           calls.push([runtime.workspaceId,branch,options.idempotencyKey]);
           return {operationId:'saved-operation',status,success:status === 'COMPLETED'};
         },
@@ -365,19 +370,64 @@ test('pending publication retains its key across reload and a different workspac
       TaxonomyUtils:{escapeHtml:String}});
     return window.TaxonomyWorkspaceSync;
   }
-  await load().publish();
-  await load().publish();
+  await load()[method]();
+  await load()[method]();
   runtime.workspaceId='private-B';
-  await load().publish();
+  await load()[method]();
   runtime.workspaceId='private-A';
   status='COMPLETED';
-  await load().publish();
-  await load().publish();
+  await load()[method]();
+  await load()[method]();
   assert.deepEqual(calls.map(call => call[2]),['publication-1','publication-1','publication-2','publication-1','publication-3']);
-  assert.deepEqual(notices.slice(0,3).map(notice => notice[0]),Array(3).fill('workspace.sync.publish.pending'));
+  assert.deepEqual(notices.slice(0,3).map(notice => notice[0]),Array(3).fill(pendingMessage));
   assert.match(notices[0][1],/saved-operation RETRYABLE/);
   assert.deepEqual(notices.slice(3),['success','success']);
 });
+}
+
+for (const outcome of ['COMPLETED', 'CONFLICT', 'RETRYABLE']) {
+test('a late ' + outcome + ' receipt only settles the originating repository and never repaints the new one', async () => {
+  let repository = 'A';
+  let sequence = 0;
+  const requests = [], notices = [];
+  const window = {
+    addEventListener() {},
+    crypto: {randomUUID: () => 'operation-' + ++sequence},
+    __TaxonomyAnalysisSessionContext: {runtime: {workspaceId: 'shared-workspace'}},
+    TaxonomyContextBar: {getCurrentContext: () => ({branch:'draft'})},
+    TaxonomyArchitectureWorkflow: {getScope: () => ({repositoryId:repository})},
+    TaxonomyApiClient: {captureContext: () => {
+      const original = repository;
+      return () => original === repository;
+    }},
+    TaxonomyWorkspaceApi: {publish: (_, options) => new Promise((resolve, reject) => {
+      requests.push({key:options.idempotencyKey, resolve, reject});
+    })},
+    TaxonomyOperationResult: {
+      showSuccess: () => notices.push('success'), showError: () => notices.push('error'),
+      showWarning: () => notices.push('warning')
+    }
+  };
+  const document = {addEventListener() {}, getElementById: () => null};
+  vm.runInNewContext(syncSource, {window, document, AbortController,
+    TaxonomyI18n:{t:key => key}, TaxonomyUtils:{escapeHtml:String}});
+  const a = window.TaxonomyWorkspaceSync.publish();
+  repository = 'B';
+  const b = window.TaxonomyWorkspaceSync.publish();
+  if (outcome === 'CONFLICT') requests[0].reject({status:409});
+  else requests[0].resolve({operationId:'receipt-A', status:outcome, success:outcome === 'COMPLETED'});
+  await a;
+  assert.deepEqual(notices, []);
+  requests[1].resolve({operationId:'receipt-B', status:'RETRYABLE'});
+  await b;
+  repository = 'A';
+  const retry = window.TaxonomyWorkspaceSync.publish();
+  assert.deepEqual(requests.map(request => request.key), ['operation-1', 'operation-2',
+    outcome === 'RETRYABLE' ? 'operation-1' : 'operation-3']);
+  requests[2].resolve({operationId:'receipt-A',status:'RETRYABLE'});
+  await retry;
+});
+}
 
 test('the synchronization panel reports an unready working copy without announcing a successful sync', async () => {
   const harness = createHarness();

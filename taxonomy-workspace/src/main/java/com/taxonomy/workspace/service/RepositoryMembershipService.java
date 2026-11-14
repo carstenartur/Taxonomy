@@ -209,6 +209,12 @@ public class RepositoryMembershipService {
         return canRead(source, username) && canContribute(source, username);
     }
 
+    /** Read membership after the caller locked and refreshed this source catalogue entry. */
+    @Transactional(readOnly = true, propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public boolean canPullLockedSource(SystemRepository source, String username) {
+        return canRead(source, username);
+    }
+
     @Transactional(readOnly = true, propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public boolean canCollaborateOnLockedSource(SystemRepository source, String username) {
         return canCollaborate(source, username);

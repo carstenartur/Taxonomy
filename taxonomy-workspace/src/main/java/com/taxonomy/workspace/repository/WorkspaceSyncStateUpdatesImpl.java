@@ -36,6 +36,12 @@ public class WorkspaceSyncStateUpdatesImpl implements WorkspaceSyncStateUpdates 
     }
 
     @Override
+    public void recordPull(WorkspaceSyncScope scope,String commit,Instant businessTime,Instant sourceObservedAt,Instant refreshedAt) {
+        var validThrough=businessTime==null || sourceObservedAt.isBefore(businessTime) ? sourceObservedAt : businessTime;
+        record(scope,commit,businessTime,validThrough,refreshedAt,false);
+    }
+
+    @Override
     public void recordPublication(WorkspaceSyncScope scope,String commit,Instant businessTime,Instant sourceObservedAt,Instant refreshedAt) {
         Instant validThrough=businessTime==null || sourceObservedAt.isBefore(businessTime) ? sourceObservedAt : businessTime;
         record(scope,commit,businessTime,validThrough,refreshedAt,true);

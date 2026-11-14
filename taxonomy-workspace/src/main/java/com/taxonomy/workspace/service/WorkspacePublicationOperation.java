@@ -17,6 +17,27 @@ import java.util.Objects;
 public class WorkspacePublicationOperation extends LeasedRepositoryOperation {
     enum Step { PREPARE, CANDIDATES, SOURCE_REF, WORKSPACE_REF, TRACKING_REF, CENTRAL_PORTFOLIO, LOCAL_PORTFOLIO,
         WORKSPACE_METADATA, SOURCE_METADATA, PROGRESS, COMPLETE }
+    static final String PUBLISH_POLICY = "ARCHITECTURE_PUBLISH+CONTRIBUTOR";
+    static final String PULL_POLICY = "ARCHITECTURE_PUBLISH+READER";
+
+    static final String LEGACY_PULL_POLICY = "ARCHITECTURE_PUBLISH+READER+KEYLESS";
+
+    boolean isPull() { return PULL_POLICY.equals(policy) || LEGACY_PULL_POLICY.equals(policy); }
+
+    Step nextStep() {
+        if (!isPull()) return Step.values()[step.ordinal() + 1];
+        return switch (step) {
+            case PREPARE -> Step.CANDIDATES;
+            case CANDIDATES -> Step.WORKSPACE_REF;
+            case WORKSPACE_REF -> Step.TRACKING_REF;
+            case TRACKING_REF -> Step.LOCAL_PORTFOLIO;
+            case LOCAL_PORTFOLIO -> Step.WORKSPACE_METADATA;
+            case WORKSPACE_METADATA -> Step.PROGRESS;
+            case PROGRESS -> Step.COMPLETE;
+            default -> throw new IllegalStateException("Unexpected pull phase: " + step);
+        };
+    }
+
     enum Status { ADMITTED, RUNNING, RETRYABLE, AWAITING_AUTHORIZATION, COMPLETED, SUPERSEDED, MANUAL_REVIEW, DENIED }
 
     @Column(name = "causation_id", nullable = false, length = 64) String cause;
