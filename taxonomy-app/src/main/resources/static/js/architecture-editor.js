@@ -189,7 +189,7 @@
         url.searchParams.set('layout', layout);
         if (layoutRevision !== null && layoutRevision !== undefined) url.searchParams.set('layoutRevision', layoutRevision);
         else url.searchParams.delete('layoutRevision');
-        if (replace) history.replaceState(null, '', url); else history.pushState(null, '', url);
+        if (replace) history.replaceState(history.state, '', url); else history.pushState(history.state, '', url);
     }
     function permissions() {
         var writable = active && view && view.mayEdit && !busy && !loading;

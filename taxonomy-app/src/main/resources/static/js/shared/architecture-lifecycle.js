@@ -126,7 +126,7 @@
         url.searchParams.delete('commit'); url.searchParams.delete('revision');
         if (selected.commit) url.searchParams.set('commit', selected.commit);
         if (selected.revision !== null) url.searchParams.set('revision', selected.revision);
-        window.history.pushState(null, '', url); refresh(undefined, selected);
+        window.history.pushState(window.history.state, '', url); refresh(undefined, selected);
     }
     function captureStand() {
         return {generation:state.generation, context:clone(state.overview?.context), source:state.overview?.source, selection:JSON.stringify(state.selection), subject:subjectKey};
@@ -199,7 +199,7 @@
         if (!context || historicalSelection() || scopeKey(context) !== scopeKey(state.context)
                 || scopeKey(scope()) !== scopeKey(state.context)) return;
         var url = new URL(location.href); url.searchParams.delete('commit'); url.searchParams.delete('revision');
-        window.history.replaceState(null,'',url);
+        window.history.replaceState(window.history.state,'',url);
         window.TaxonomyAppChrome?.refreshNavigation();
         var promise = refresh(context,null);
         publishedStand = {context:clone(context),promise:promise};

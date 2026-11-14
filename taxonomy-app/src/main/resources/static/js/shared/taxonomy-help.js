@@ -83,7 +83,7 @@
 
     function selectTarget(target) {
         requestedTarget = target;
-        history.replaceState(null, '', targetHash(target));
+        history.replaceState(history.state, '', targetHash(target));
         loadToc();
         loadDoc(target);
     }

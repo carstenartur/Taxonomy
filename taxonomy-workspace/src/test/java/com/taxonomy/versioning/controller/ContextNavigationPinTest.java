@@ -25,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -41,6 +42,8 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -157,6 +160,57 @@ class ContextNavigationPinTest {
                 .andExpect(status().isConflict());
         pin("working");
         assertEquals(restored, controller.getCurrentContext().getBody());
+    }
+
+    @Test
+    void browserDocumentsHaveIndependentCursorsAndCanResumeOnlyWithinTheirSession() throws Exception {
+        DslGitRepository repository = workspace("working", USER, "repo-a");
+        String commit = repository.commitDsl("review", TARGET_DSL, USER, "test snapshot");
+        var mvc = MockMvcBuilders.standaloneSetup(controller).build();
+        var session = new MockHttpSession();
+        String a = "87a46d57-b89c-4fd1-bcd8-7561f3efec2b";
+        String b = "a0d563b5-3c5f-4c99-a36e-022a2ba6bdae";
+        String reloaded = "165a80bc-1728-453f-9dbd-cc1f4a379526";
+        String header = "X-Taxonomy-Navigation-Cursor";
+
+        mvc.perform(post("/api/context/open").session(session).header("X-Taxonomy-Workspace-Id", "working")
+                        .header(header, a).param("branch", "review").param("commitId", commit))
+                .andExpect(status().isConflict());
+        mvc.perform(get("/api/context/current").session(session).header("X-Taxonomy-Workspace-Id", "working")
+                        .header(header, a))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.mode").value("EDITABLE"));
+        mvc.perform(post("/api/context/open").session(session).header("X-Taxonomy-Workspace-Id", "working")
+                        .header(header, a).param("branch", "review").param("commitId", commit))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.mode").value("READ_ONLY"));
+        mvc.perform(get("/api/context/current").session(session).header("X-Taxonomy-Workspace-Id", "working")
+                        .header(header, b))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.mode").value("EDITABLE"));
+        mvc.perform(get("/api/context/current").session(session).header("X-Taxonomy-Workspace-Id", "working")
+                        .header(header, reloaded).header("X-Taxonomy-Navigation-Previous", a))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.commitId").value(commit))
+                .andExpect(jsonPath("$.mode").value("READ_ONLY"));
+        mvc.perform(post("/api/context/back").session(session).header("X-Taxonomy-Workspace-Id", "working")
+                        .header(header, reloaded))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.mode").value("EDITABLE"));
+        mvc.perform(get("/api/context/current").session(session).header("X-Taxonomy-Workspace-Id", "working")
+                        .header(header, a))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.commitId").value(commit));
+        var laterSession = new MockHttpSession();
+        mvc.perform(get("/api/context/history").session(laterSession).header("X-Taxonomy-Workspace-Id", "working")
+                        .header(header, reloaded))
+                .andExpect(status().isConflict());
+        mvc.perform(get("/api/context/current").session(laterSession).header("X-Taxonomy-Workspace-Id", "working")
+                        .header(header, reloaded).header("X-Taxonomy-Navigation-Previous", a))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-Taxonomy-Navigation-Reset", "true"))
+                .andExpect(jsonPath("$.mode").value("EDITABLE"));
+        mvc.perform(get("/api/context/current").session(laterSession).header("X-Taxonomy-Workspace-Id", "working")
+                        .header(header, reloaded).header("X-Taxonomy-Navigation-Previous", reloaded))
+                .andExpect(status().isOk())
+                .andExpect(header().doesNotExist("X-Taxonomy-Navigation-Reset"))
+                .andExpect(jsonPath("$.mode").value("EDITABLE"));
+        mvc.perform(get("/api/context/current").session(session).header("X-Taxonomy-Workspace-Id", "working"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.mode").value("EDITABLE"));
     }
 
     @Test

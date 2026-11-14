@@ -437,6 +437,74 @@ test('a source snapshot selection fences a pending body within the same project 
   await assert.rejects(pending, error => error.code === 'ABORTED');
 });
 
+test('normal context calls route a cursor per document and preserve the matching workspace on reload', async () => {
+  const header = 'X-Taxonomy-Navigation-Cursor';
+  const previous = 'X-Taxonomy-Navigation-Previous';
+  const workspace = 'workspace A/1';
+  const calls = [];
+  const history = { state: {existing: 'preserved'}, replaceState(state) { this.state = state; } };
+  let nonce = 0;
+  async function documentApp() {
+    return loadWorkspaceFeatures(async (url, init) => {
+      calls.push({url, headers: init.headers});
+      return Response.json({});
+    }, context => {
+      context.window.history = history;
+      context.crypto.getRandomValues = bytes => bytes.fill(++nonce);
+    });
+  }
+
+  const first = await documentApp();
+  await first.client.request('/api/context/open', {method: 'POST'});
+  assert.match(calls[0].url, /\/api\/context\/current\?/);
+  assert.match(calls[1].url, /\/api\/context\/open\?/);
+  await first.client.request('/api/context/copy-back/apply', {method: 'POST'});
+  await first.client.request('/api/dsl/operation/check');
+  await first.client.request('/api/analyze-stream');
+  await first.client.request('https://outside.example.test/api/context/current');
+  const original = calls[0].headers.get(header);
+  assert.match(original, /^[a-f0-9-]{36}$/);
+  assert.deepEqual(calls.map(call => call.headers.get(header)), [original, original, original, original, null, null]);
+  assert.equal(history.state.existing, 'preserved');
+  assert.equal(history.state.taxonomyNavigation.workspace, workspace);
+  assert.equal(history.state.taxonomyNavigation.cursor, original);
+
+  const second = await documentApp();
+  await second.client.request('/api/context/current', {}, {pinnedWorkspaceId: 'other'});
+  assert.equal(calls.at(-1).headers.get(previous), null);
+  await second.context.window.TaxonomyContextApi.current();
+  const resumed = calls.at(-1).headers;
+  assert.notEqual(resumed.get(header), original);
+  assert.equal(resumed.get(previous), original);
+  assert.equal(history.state.taxonomyNavigation.cursor, resumed.get(header));
+  await second.context.window.TaxonomyContextApi.current();
+  assert.equal(calls.at(-1).headers.get(previous), resumed.get(header));
+});
+
+test('expired navigation emits one warning and replaces the obsolete predecessor', async () => {
+  const prior = '874c1d26-1ef8-454b-8382-faeb24bf5e55';
+  const history = {state: {taxonomyNavigation: {workspace: 'workspace A/1', cursor: prior}},
+    replaceState(state) { this.state = state; }};
+  const calls = [], warnings = [];
+  const app = await loadWorkspaceFeatures(async (_url, init) => {
+    calls.push(init.headers);
+    return Response.json({mode: 'EDITABLE'}, {
+      headers: calls.length === 1 ? {'X-Taxonomy-Navigation-Reset': 'true'} : {}
+    });
+  }, context => {
+    context.window.history = history;
+    context.crypto.getRandomValues = bytes => bytes.fill(1);
+    context.window.TaxonomyI18n = { t: key => key };
+    context.window.TaxonomyOperationResult = { showWarning: (...message) => warnings.push(message) };
+  });
+  await app.context.window.TaxonomyContextApi.current();
+  await app.context.window.TaxonomyContextApi.current();
+  const previous = 'X-Taxonomy-Navigation-Previous';
+  assert.equal(calls[0].get(previous), prior);
+  assert.equal(calls[1].get(previous), history.state.taxonomyNavigation.cursor);
+  assert.equal(warnings.length, 1);
+});
+
 test('actual session routing retains query pins and central scope beneath explicit header and policy pins', async () => {
   const calls = [];
   const app = loadClient(async (url, init) => {calls.push({url,init}); return Response.json({ready:true});});
