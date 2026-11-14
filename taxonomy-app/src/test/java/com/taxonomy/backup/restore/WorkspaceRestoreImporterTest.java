@@ -90,6 +90,10 @@ class WorkspaceRestoreImporterTest {
             assertThat(target.queryForObject("select count(*) from context_history_record",Long.class)).isZero();
             assertThat(target.queryForObject("select record_json from restore_workspace_evidence where record_kind='working-states'",String.class)).contains(SAVE,RAW.replace("\n","\\n"));
             assertThat(target.queryForObject("select classification from restore_workspace_evidence where record_kind='memberships'",String.class)).isEqualTo("INERT_SOURCE_AUTHORITY");
+            var archivedMembership = PortableRows.json().readTree(target.queryForObject(
+                    "select record_json from restore_workspace_evidence where record_kind='memberships'", String.class));
+            assertThat(archivedMembership.path("holderPrincipalId").asText()).isEqualTo(principal.value().toString());
+            assertThat(archivedMembership.path("grantorPrincipalId").asText()).isEqualTo(principal.value().toString());
             assertThat(target.queryForObject("select count(*) from restore_workspace_owner",Long.class)).isEqualTo(1);
             assertThat(new WorkspaceRestoreImporter().restore(fixture.archive,generation,fixture.principals,fixture.git,()->{})).isEqualTo(result);
             assertThat(target.queryForObject("select count(*) from editor_workspace",Long.class)).isEqualTo(1);
@@ -145,7 +149,10 @@ class WorkspaceRestoreImporterTest {
             try (var input = fixture.archive.openEntry("data/workspace/memberships.ndjson")) {
                 var lines = new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).lines().toList();
                 assertThat(lines).hasSize(2);
-                assertThat(PortableRows.json().readTree(lines.get(1)).path("principalScope").textValue()).isEqualTo("source-owner");
+                var member = PortableRows.json().readTree(lines.get(1));
+                assertThat(member.path("principalScope").textValue()).isEqualTo("source-owner");
+                assertThat(member.path("holderPrincipalId").textValue()).isNull();
+                assertThat(member.path("grantorPrincipalId").textValue()).isNull();
             }
             var result=new WorkspaceRestoreImporter().restore(fixture.archive,fixture.generation(),fixture.principals,fixture.git,()->{});
             var target=new JdbcTemplate(fixture.target);
@@ -277,6 +284,8 @@ class WorkspaceRestoreImporterTest {
         rows.update("insert into system_repository(repository_id,slug,display_name,visibility,lifecycle_state,owner_type,owner_id,topology_mode,default_branch,fork_point_commit,last_fetch_commit,primary_repo,created_at,version) values('source-repository','source-slug','Original','PUBLIC','ACTIVE','USER','source-owner','INTERNAL_SHARED','main',?,?,true,?,0)",commit,commit,java.sql.Timestamp.from(Instant.parse(TIME)));
         rows.update("insert into user_workspace(workspace_id,username,display_name,current_branch,base_branch,shared,collaborative,created_at,provisioning_status,topology_mode,source_repository_id,source_branch,relationship_type,base_commit,current_commit,last_fetched_commit,last_integrated_commit,sync_target_branch,archived,is_default) values('source-workspace','source-owner','Original work','main','main',true,true,?,'READY','INTERNAL_SHARED','source-repository','main','WORKING_COPY',?,?,?,?,'main',false,true)",java.sql.Timestamp.from(Instant.parse(TIME)),commit,commit,commit,commit);
         rows.update("insert into repository_membership(repository_id,username,repository_role,created_at,created_by,version) values('source-repository','source-owner','OWNER',?,'source-owner',0)",java.sql.Timestamp.from(Instant.parse(TIME)));
+        if (sourceVersion == null) rows.update("update repository_membership set holder_principal_id=?,grantor_principal_id=?",
+                principal.value().toString(), principal.value().toString());
         rows.update("insert into sync_state(username,workspace_id,last_synced_commit_id,last_published_commit_id,sync_status,unpublished_commit_count,created_at) values('source-owner','source-workspace',?,?,'SYNCED',0,?)",commit,commit,java.sql.Timestamp.from(Instant.parse(TIME)));
         rows.update("insert into editor_workspace values(4,0,7,?,?,?,'source-repository','source-workspace','main',?)",SAVE,commit,editor,"1:"+RAW);
         rows.update("insert into editor_operation(body_version,previous_revision,semantic_revision,causation_id,command_id,correlation_id,occurred_at,fingerprint,scope_id,kind,id,actor,rationale,affected_ids,after_dsl,before_dsl) values(1,6,7,?,?,?,?,'"+"c".repeat(64)+"',?,'CHANGE',?,'source-owner','Original edit','1:[]',?,'1:Original before')",COMMAND,COMMAND,COMMAND,TIME,editor,editor+":"+COMMAND,"1:"+RAW);

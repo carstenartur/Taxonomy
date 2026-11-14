@@ -58,6 +58,23 @@ class TaxonomySchemaPostgresMigrationIT {
     }
 
     @Test
+    void membershipPrincipalsPreserveExistingGrantsOnUpgrade() throws Exception {
+        var database = isolatedDataSource("membership_principals");
+        migrateJgit(database);
+        installApplicationAtVersion(database, "62.4");
+        var jdbc = new org.springframework.jdbc.core.JdbcTemplate(database);
+        jdbc.update("insert into system_repository(repository_id,slug,display_name,visibility,lifecycle_state,owner_type,owner_id,"
+                + "topology_mode,default_branch,primary_repo,created_at,version) values('old','old','Old','PRIVATE','ACTIVE','USER',"
+                + "'former-grantor','INTERNAL_SHARED','main',false,current_timestamp,0)");
+        jdbc.update("insert into repository_membership(repository_id,username,repository_role,created_at,created_by,revoked_at,version)"
+                + " values('old','former-holder','READER',current_timestamp,'former-grantor',current_timestamp,7)");
+        var before = jdbc.queryForMap("select * from repository_membership");
+        TaxonomySchemaMigrationConfig.migrateApplicationSchema(Flyway.configure().dataSource(database).load().getConfiguration());
+        assertThat(jdbc.queryForMap("select * from repository_membership")).containsAllEntriesOf(before)
+                .containsEntry("holder_principal_id", null).containsEntry("grantor_principal_id", null);
+    }
+
+    @Test
     void verifiedLegacyOwnershipOnAnIsolatedSchema() throws Exception {
         LegacyOwnershipDatabaseContract.verify(isolatedDataSource("legacy_ownership"), "boolean");
     }
@@ -191,7 +208,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "62", "62.1", "62.2", "62.3", "62.4");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "62", "62.1", "62.2", "62.3", "62.4", "63");
     }
 
     @Test
@@ -298,7 +315,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "62", "62.1", "62.2", "62.3", "62.4");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "62", "62.1", "62.2", "62.3", "62.4", "63");
         assertIntegrationSchema(dataSource);
         assertInventorySchema(dataSource);
         assertReformulationSchema(dataSource);

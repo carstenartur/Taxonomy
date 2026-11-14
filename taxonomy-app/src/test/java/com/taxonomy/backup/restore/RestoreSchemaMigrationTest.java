@@ -39,7 +39,7 @@ class RestoreSchemaMigrationTest {
         for (String table : List.of("scoped_requirement_coverage", "requirement_coverage", "branch_graph_vector_generation", "source_artifact", "source_version", "source_fragment", "user_workspace", "app_user", "app_principal", "principal_binding", "backup_capability_grant", "git_packs", "workspace_git_reflog_provenance", "workspace_publication_operation", "workspace_publication_decision", "analysis_cluster_call", "analysis_cluster_attempt", "inventory_comparison", "inventory_assertion", "inventory_observation", "inventory_review", "inventory_mapping", "interop_file"))
             assertThat(rows.queryForObject("select count(*) from " + table, Long.class)).as(table).isZero();
         assertThat(rows.queryForObject("select count(*) from principal_installation", Long.class)).isEqualTo(1);
-        assertThat(rows.queryForObject("select count(*) from \"restore_business_schema_history\" where \"success\"=true", Long.class)).isEqualTo(31);
+        assertThat(rows.queryForObject("select count(*) from \"restore_business_schema_history\" where \"success\"=true", Long.class)).isEqualTo(32);
         assertFileExportSchema(target);
         assertReasonLengthColumn(target);
         assertLanguageColumn(target);
@@ -51,6 +51,21 @@ class RestoreSchemaMigrationTest {
         assertThatThrownBy(() -> RestoreSchemaMigration.openValidatedFactory(active, target, model(), () -> {}))
                 .isInstanceOf(IOException.class).hasMessage("Staged restore schema validation failed");
     }
+    @Test void membershipPrincipalMigrationPreservesTheExistingGenerationWithoutInferringItsActors() {
+        var target = database();
+        migrateBusinessSchema(target, "1");
+        PrincipalSchemaMigration.migrate(target);
+        migrateBusinessSchema(target, "32.4");
+        var jdbc = new JdbcTemplate(target);
+        jdbc.update("insert into repository_membership(repository_id,username,repository_role,created_at,created_by,revoked_at,version)"
+                + " values('old','former-holder','READER',current_timestamp,'former-grantor',current_timestamp,7)");
+        var before = jdbc.queryForMap("select * from repository_membership");
+        migrateBusinessSchema(target, "33");
+        var after = jdbc.queryForMap("select * from repository_membership");
+        assertThat(after).containsAllEntriesOf(before).containsEntry("HOLDER_PRINCIPAL_ID", null)
+                .containsEntry("GRANTOR_PRINCIPAL_ID", null);
+    }
+
     @Test void publicationJournalPreservesAnExistingForkAndItsMigrationHistory() throws Exception {
         var target = database();
         migrateBusinessSchema(target, "1");

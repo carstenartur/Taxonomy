@@ -81,7 +81,10 @@ public class WorkspacePublicationRecovery {
             var original=new WorkspaceFetchAuthority.Grant(row.actor,row.loginKind,row.binding);
             Runnable grant=() -> actors.checkPublicationGrant(original,row.username,!requested);
             grant.run();
-            cleaner.release(row,grant);
+            RepositoryMembershipIdentity.RecordedActor.during(row.username, original, () -> {
+                cleaner.release(row, grant);
+                return null;
+            });
         });
     }
 
@@ -103,7 +106,10 @@ public class WorkspacePublicationRecovery {
                         actors.checkPublicationGrant(original,row.username,WORKER.equals(claim.executor()));
                     };
                     authorize.run();
-                    executor.execute(row,authorize);
+                    RepositoryMembershipIdentity.RecordedActor.during(row.username, original, () -> {
+                        executor.execute(row, authorize);
+                        return null;
+                    });
                 });
                 if (state.completedAt()!=null) return state;
             } catch (WorkspaceFetchAuthority.FreshLoginRequired failure) {

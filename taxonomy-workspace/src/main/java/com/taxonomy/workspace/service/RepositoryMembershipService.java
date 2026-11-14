@@ -24,13 +24,21 @@ public class RepositoryMembershipService {
     private final RepositoryMembershipRepository membershipRepository;
     private final Optional<RepositoryRoleGrantProvider> grantProvider;
 
+    private final Optional<RepositoryMembershipIdentity> identities;
+
     public RepositoryMembershipService(RepositoryMembershipRepository membershipRepository) {
         this(membershipRepository, Optional.empty());
     }
 
-    @Autowired
     public RepositoryMembershipService(RepositoryMembershipRepository membershipRepository,
             Optional<RepositoryRoleGrantProvider> grantProvider) {
+        this(membershipRepository, grantProvider, Optional.empty());
+    }
+
+    @Autowired
+    public RepositoryMembershipService(RepositoryMembershipRepository membershipRepository,
+            Optional<RepositoryRoleGrantProvider> grantProvider, Optional<RepositoryMembershipIdentity> identities) {
+        this.identities = identities;
         this.membershipRepository = membershipRepository;
         this.grantProvider = grantProvider;
     }
@@ -61,7 +69,7 @@ public class RepositoryMembershipService {
         RepositoryMembership membership = membershipRepository
                 .findByRepositoryIdAndUsername(repository, member)
                 .orElse(null);
-        return saveRole(repository, member, role, changedBy, membership);
+        return saveRole(repository, member, role, changedBy, membership, null, null);
     }
 
     /** Assign or change a membership after enforcing repository-owner authority. */
@@ -110,20 +118,21 @@ public class RepositoryMembershipService {
                 && ownerCount(lockedMemberships) <= 1) {
             throw new IllegalStateException("A repository must retain at least one OWNER");
         }
-        return saveRole(repositoryId, member, role, changedBy, existing);
+        return saveRole(repositoryId, member, role, changedBy, existing, null, null);
     }
 
     /** Transfer the personal catalogue and both direct memberships under its observed policy revision. */
     @Transactional
     public void transferPersonalOwnership(SystemRepository repository, long expectedVersion,
-                                          String previousOwner, String successor) {
+                                          String previousOwner, String successor, java.util.UUID previousPrincipal, java.util.UUID successorPrincipal) {
         String repositoryId = requireRepositoryId(repository);
         var locked = lockMemberships(repositoryId, expectedVersion);
         if (!isActive(repository) || !isUserCatalogOwner(repository, previousOwner)) {
             throw new AccessDeniedException("The current personal catalogue owner is required");
         }
         if (previousOwner.equals(successor)) throw new IllegalArgumentException("A different owner is required");
-        saveRole(repositoryId, successor, RepositoryRole.OWNER, previousOwner, findMembership(locked, successor).orElse(null));
+        saveRole(repositoryId, successor, RepositoryRole.OWNER, previousOwner, findMembership(locked, successor).orElse(null),
+                previousPrincipal, successorPrincipal);
         Instant now = Instant.now();
         findMembership(locked, previousOwner).filter(RepositoryMembership::isActive)
                 .filter(member -> member.getRole() == RepositoryRole.OWNER).ifPresent(member -> {
@@ -189,6 +198,7 @@ public class RepositoryMembershipService {
         Optional<RepositoryRole> stored = membershipRepository.findByRepositoryIdAndUsername(
                         repository.getRepositoryId(), member)
                 .filter(RepositoryMembership::isActive)
+                .filter(row -> belongsToActor(row, member))
                 .map(RepositoryMembership::getRole);
         Optional<RepositoryRole> granted = trustedRole(repository, username);
         return granted.filter(role -> stored.map(role::grants).orElse(true))
@@ -320,7 +330,7 @@ public class RepositoryMembershipService {
             String username,
             RepositoryRole role,
             String actor,
-            RepositoryMembership existing) {
+            RepositoryMembership existing, java.util.UUID transferActor, java.util.UUID transferHolder) {
         Instant now = Instant.now();
         RepositoryMembership membership = existing;
         if (membership == null) {
@@ -329,10 +339,19 @@ public class RepositoryMembershipService {
             membership.setUsername(username);
         }
         if (existing == null || !membership.isActive()) {
+            var grantor = transferActor != null ? Optional.of(transferActor) : identities.flatMap(i -> i.currentActor(actor));
+            var holder = transferHolder != null ? Optional.of(transferHolder)
+                    : grantor.flatMap(id -> username.equals(actor) ? Optional.of(id) : identities.flatMap(i -> i.activeHolder(username)));
+            if (grantor.isPresent() && holder.isEmpty()) {
+                throw new IllegalArgumentException("A verified current member principal is required for a new grant");
+            }
+            membership.setHolderPrincipalId(holder.map(java.util.UUID::toString).orElse(null));
+            membership.setGrantorPrincipalId(grantor.map(java.util.UUID::toString).orElse(null));
             membership.setCreatedAt(now);
             membership.setCreatedBy(actor);
             membership.setRevokedAt(null);
         }
+        if (transferHolder != null) membership.setHolderPrincipalId(transferHolder.toString());
         membership.setRole(role);
         membership.setUpdatedAt(now);
         return membershipRepository.save(membership);
@@ -356,6 +375,7 @@ public class RepositoryMembershipService {
         boolean owner = isUserCatalogOwner(repository, username)
                 || findMembership(lockedMemberships, username)
                         .filter(RepositoryMembership::isActive)
+                        .filter(row -> belongsToActor(row, username))
                         .map(RepositoryMembership::getRole)
                         .filter(role -> role.grants(RepositoryRole.OWNER))
                         .isPresent()
@@ -365,6 +385,13 @@ public class RepositoryMembershipService {
         if (!owner) {
             throw new AccessDeniedException("Repository OWNER role required");
         }
+    }
+
+    private boolean belongsToActor(RepositoryMembership row, String scope) {
+        if (row.getHolderPrincipalId() == null) return true;
+        return RepositoryMembershipIdentity.RecordedActor.currentPrincipal(scope)
+                .or(() -> identities.flatMap(identity -> identity.currentActor(scope)).map(java.util.UUID::toString))
+                .filter(row.getHolderPrincipalId()::equals).isPresent();
     }
 
     private Optional<RepositoryRole> trustedRole(SystemRepository repository, String actor) {
