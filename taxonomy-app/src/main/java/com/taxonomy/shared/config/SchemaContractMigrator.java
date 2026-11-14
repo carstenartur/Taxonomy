@@ -78,6 +78,8 @@ final class SchemaContractMigrator {
                 if (repositories != null) ensureColumn(connection, repositories, "fork_initiator_key", "VARCHAR(64)");
                 migrateHypothesisUniqueness(connection);
                 migrateProjectionKeys(connection);
+                TableRef membership = findTable(connection, "repository_membership");
+                if (membership != null) ensureMembershipRevocationColumn(connection, membership);
                 ensurePasswordChangeColumn(connection);
                 connection.commit();
                 log.info("Verified repository, workspace, hypothesis and account schema contracts");
@@ -698,6 +700,18 @@ final class SchemaContractMigrator {
                 + qualified(connection, repositoryTable) + " (repository_id)");
         log.info("Created repository foreign key {} on {}",
                 constraintName, logicalTableName);
+    }
+
+    private void ensureMembershipRevocationColumn(Connection connection, TableRef membership) throws SQLException {
+        String definition;
+        if (isSqlServer(connection)) {
+            definition = "DATETIME2(6)";
+        } else if ("PostgreSQL".equals(connection.getMetaData().getDatabaseProductName())) {
+            definition = "TIMESTAMP(6) WITH TIME ZONE";
+        } else {
+            definition = "TIMESTAMP(6)";
+        }
+        ensureColumn(connection, membership, "revoked_at", definition);
     }
 
     private void ensurePasswordChangeColumn(Connection connection) throws SQLException {

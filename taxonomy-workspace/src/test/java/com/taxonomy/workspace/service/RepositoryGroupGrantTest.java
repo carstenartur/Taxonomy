@@ -22,6 +22,7 @@ class RepositoryGroupGrantTest {
     @BeforeEach
     void setUp() {
         memberships = mock(RepositoryMembershipRepository.class);
+        when(memberships.lockCatalogueRevision("repo-a", 0L)).thenReturn(1);
         when(memberships.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         service = new RepositoryMembershipService(memberships, Optional.of((repositoryId, actor) ->
                 "repo-a".equals(repositoryId) && "alice".equals(actor)
@@ -73,7 +74,8 @@ class RepositoryGroupGrantTest {
                 service.assignRole(repository, "charlie", RepositoryRole.CONTRIBUTOR, "alice").getRole());
         assertEquals(List.of(reader), service.listMemberships(repository, "alice"));
         service.removeMembership(repository, "bob", "alice");
-        verify(memberships).delete(reader);
+        assertFalse(reader.isActive());
+        verify(memberships).save(reader);
     }
 
     @Test

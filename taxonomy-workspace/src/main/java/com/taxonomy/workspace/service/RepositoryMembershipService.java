@@ -76,7 +76,8 @@ public class RepositoryMembershipService {
 
     /**
      * Version-preconditioned membership update for external callers.
-     * -1 means the member must not exist; a nonnegative value must match the locked row.
+     * -1 requires that this member has never had a grant. Regranting reuses the locked row and advances
+     * its version so a previously removed grant cannot match the new one.
      * Internal migration/bootstrap callers retain the distinct, trusted four-argument API.
      */
     @Transactional
@@ -93,8 +94,7 @@ public class RepositoryMembershipService {
             throw new IllegalArgumentException("role must not be null");
         }
 
-        List<RepositoryMembership> lockedMemberships = membershipRepository
-                .findByRepositoryIdForUpdate(repositoryId);
+        List<RepositoryMembership> lockedMemberships = lockMemberships(repositoryId, repository.getVersion());
         requireOwner(repository, actor, lockedMemberships);
         if (isUserCatalogOwner(repository, member) && role != RepositoryRole.OWNER) {
             throw new IllegalArgumentException(
@@ -103,7 +103,7 @@ public class RepositoryMembershipService {
         RepositoryMembership existing = findMembership(lockedMemberships, member)
                 .orElse(null);
         requireExpectedVersion(existing, expectedVersion);
-        if (existing != null
+        if (existing != null && existing.isActive()
                 && existing.getRole() == RepositoryRole.OWNER
                 && role != RepositoryRole.OWNER
                 && !hasImplicitUserOwner(repository)
@@ -133,8 +133,7 @@ public class RepositoryMembershipService {
         String member = requireText(username, "username");
         requireText(actor, "actor");
 
-        List<RepositoryMembership> lockedMemberships = membershipRepository
-                .findByRepositoryIdForUpdate(repositoryId);
+        List<RepositoryMembership> lockedMemberships = lockMemberships(repositoryId, repository.getVersion());
         requireOwner(repository, actor, lockedMemberships);
         if (isUserCatalogOwner(repository, member)) {
             throw new IllegalArgumentException(
@@ -142,14 +141,17 @@ public class RepositoryMembershipService {
         }
         Optional<RepositoryMembership> current = findMembership(lockedMemberships, member);
         requireExpectedVersion(current.orElse(null), expectedVersion);
-        RepositoryMembership membership = current.orElseThrow(() -> new IllegalArgumentException(
+        RepositoryMembership membership = current.filter(RepositoryMembership::isActive).orElseThrow(() -> new IllegalArgumentException(
                 "Repository membership does not exist: " + member));
         if (membership.getRole() == RepositoryRole.OWNER
                 && !hasImplicitUserOwner(repository)
                 && ownerCount(lockedMemberships) <= 1) {
             throw new IllegalStateException("A repository must retain at least one OWNER");
         }
-        membershipRepository.delete(membership);
+        Instant revokedAt = Instant.now();
+        membership.setRevokedAt(revokedAt);
+        membership.setUpdatedAt(revokedAt);
+        membershipRepository.save(membership);
     }
 
     public Optional<RepositoryRole> effectiveRole(
@@ -163,6 +165,7 @@ public class RepositoryMembershipService {
         }
         Optional<RepositoryRole> stored = membershipRepository.findByRepositoryIdAndUsername(
                         repository.getRepositoryId(), member)
+                .filter(RepositoryMembership::isActive)
                 .map(RepositoryMembership::getRole);
         Optional<RepositoryRole> granted = trustedRole(repository, username);
         return granted.filter(role -> stored.map(role::grants).orElse(true))
@@ -258,6 +261,18 @@ public class RepositoryMembershipService {
         return listMemberships(repository.getRepositoryId());
     }
 
+    public record MembershipRevision(boolean active, long version) {}
+
+    /** Read the version needed for an owner's next grant, regrant or role change. */
+    @Transactional(readOnly = true)
+    public MembershipRevision membershipRevision(SystemRepository repository, String username, String actor) {
+        requireOwner(repository, actor);
+        return membershipRepository.findByRepositoryIdAndUsername(
+                        requireRepositoryId(repository), requireText(username, "username"))
+                .map(member -> new MembershipRevision(member.isActive(), member.getVersion()))
+                .orElse(new MembershipRevision(false, -1L));
+    }
+
     public long countOwners(String repositoryId) {
         return membershipRepository.countByRepositoryIdAndRole(
                 requireText(repositoryId, "repositoryId"), RepositoryRole.OWNER);
@@ -270,9 +285,8 @@ public class RepositoryMembershipService {
         if (expectedVersion < -1) {
             throw new IllegalArgumentException("expectedVersion must be -1 or nonnegative");
         }
-        if ((existing == null && expectedVersion != -1)
-                || (existing != null
-                        && (expectedVersion == -1 || existing.getVersion() != expectedVersion))) {
+        long currentVersion = existing == null ? -1L : existing.getVersion();
+        if (currentVersion != expectedVersion) {
             throw new OptimisticLockingFailureException(
                     "Repository membership changed; reload the latest version");
         }
@@ -290,12 +304,22 @@ public class RepositoryMembershipService {
             membership = new RepositoryMembership();
             membership.setRepositoryId(repositoryId);
             membership.setUsername(username);
+        }
+        if (existing == null || !membership.isActive()) {
             membership.setCreatedAt(now);
             membership.setCreatedBy(actor);
+            membership.setRevokedAt(null);
         }
         membership.setRole(role);
         membership.setUpdatedAt(now);
         return membershipRepository.save(membership);
+    }
+
+    private List<RepositoryMembership> lockMemberships(String repositoryId, long expectedVersion) {
+        if (membershipRepository.lockCatalogueRevision(repositoryId, expectedVersion) != 1) {
+            throw new OptimisticLockingFailureException("Repository policy changed; reload the repository");
+        }
+        return membershipRepository.findByRepositoryIdForUpdate(repositoryId);
     }
 
     private void requireOwner(
@@ -308,6 +332,7 @@ public class RepositoryMembershipService {
         String username = requireText(actor, "actor");
         boolean owner = isUserCatalogOwner(repository, username)
                 || findMembership(lockedMemberships, username)
+                        .filter(RepositoryMembership::isActive)
                         .map(RepositoryMembership::getRole)
                         .filter(role -> role.grants(RepositoryRole.OWNER))
                         .isPresent()
@@ -339,6 +364,7 @@ public class RepositoryMembershipService {
 
     private static long ownerCount(List<RepositoryMembership> memberships) {
         return memberships.stream()
+                .filter(RepositoryMembership::isActive)
                 .map(RepositoryMembership::getRole)
                 .filter(RepositoryRole.OWNER::equals)
                 .count();

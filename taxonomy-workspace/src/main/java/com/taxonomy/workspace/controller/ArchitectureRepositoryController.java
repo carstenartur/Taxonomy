@@ -203,9 +203,23 @@ public class ArchitectureRepositoryController {
                 .toList());
     }
 
+    @GetMapping("/{repositoryId}/members/{username}/revision")
+    @Operation(summary = "Read the current revision for one repository membership",
+            description = "Requires repository OWNER. Returns the current revision and whether the grant is active. "
+                    + "A never-granted member has version -1. A revoked member retains its latest revision.")
+    public ResponseEntity<?> membershipRevision(@PathVariable String repositoryId, @PathVariable String username) {
+        String actor = workspaceResolver.resolveCurrentUsername();
+        SystemRepository repository = visibleRepository(repositoryId, actor);
+        if (repository == null) return ResponseEntity.notFound().build();
+        if (!membershipService.isOwner(repository, actor)) return forbidden("Repository OWNER role required");
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(membershipService.membershipRevision(repository, username, actor));
+    }
+
     @PutMapping("/{repositoryId}/members/{username}")
     @Operation(summary = "Assign or change a repository membership",
-            description = "Requires repository OWNER and an exact expectedVersion from the membership listing. Use -1 only when creating a previously absent membership. Stale versions conflict without applying a role change.")
+            description = "Requires repository OWNER and an exact expectedVersion. Read the individual member revision "
+                    + "before regranting a revoked role. Use -1 only for the first grant. A stale version returns 409.")
     public ResponseEntity<?> updateMembership(
             @PathVariable String repositoryId,
             @PathVariable String username,
