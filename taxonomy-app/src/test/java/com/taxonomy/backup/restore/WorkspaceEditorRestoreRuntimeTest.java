@@ -203,6 +203,9 @@ class WorkspaceEditorRestoreRuntimeTest {
             var target = new JdbcTemplate(f.target);
             String sql = " from restore_workspace_evidence where record_kind='central-fetch-journal' and record_key=?";
             String liveId = "f-" + "a".repeat(62), deletedId = "f-" + "b".repeat(62);
+            String initialId = initialTransferId();
+            assertThat(target.queryForObject("select classification" + sql,String.class,initialId)).isEqualTo("INTERRUPTED_SOURCE_OPERATION");
+            assertThat(target.queryForObject("select record_json" + sql,String.class,initialId)).contains("RUNNING", FORK.repositoryId()).doesNotContain("bindingKey","leaseId");
             assertThat(target.queryForObject("select classification" + sql,String.class,liveId))
                     .isEqualTo("INTERRUPTED_SOURCE_OPERATION");
             assertThat(target.queryForObject("select classification" + sql,String.class,deletedId))
@@ -220,6 +223,10 @@ class WorkspaceEditorRestoreRuntimeTest {
             assertThat(target.queryForObject("select count(*) from central_fetch_operation",Long.class)).isZero();
             assertThat(target.queryForObject("select count(*) from workspace_fetch_operation",Long.class)).isZero();
         }
+    }
+
+    private static String initialTransferId() {
+        return "p-" + com.taxonomy.identity.StableIdentityHash.sha256("initial-central-fork:" + FORK.repositoryId()).substring(0,62);
     }
 
     private static String capturedCentralFetches(Fixture f, BackupScope scope, String historicalActor) throws Exception {
@@ -447,6 +454,13 @@ class WorkspaceEditorRestoreRuntimeTest {
                         SOURCE_SCOPE,detached ? "removed-private-fork" : FORK.repositoryId(),CENTRAL.repositoryId(),
                         forkPoint,forkPoint,forkPoint,forkPoint,forkPoint,UUID.randomUUID().toString(),"private-source-worker","c".repeat(64));
             }
+            rows.update("""
+                    insert into central_fetch_operation(operation_id,fingerprint,cause_id,actor_id,actor_scope,target_repository_id,
+                    source_repository_id,local_branch,source_branch,fork_point,requested_commit,observed_commit,phase,attempts,
+                    created_at,login_kind,binding_key,policy_code)
+                    values(?,?,?,?,?,?,?,'main','main',?,?,?,'RUNNING',1,10,'LOCAL',?,'ARCHITECTURE_WRITE+CONTRIBUTOR')""",
+                    initialTransferId(),"a".repeat(64),initialTransferId(),principal.value().toString(),SOURCE_SCOPE,FORK.repositoryId(),
+                    CENTRAL.repositoryId(),forkPoint,forkPoint,forkPoint,"c".repeat(64));
         }
         if (includePublications) {
             var operation = """

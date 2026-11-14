@@ -309,7 +309,9 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                               String expectedCommit, String observedCommit, String resultCommit, String causationId,
                               String phase, int attempts, String decisionCode, long createdAt, Long lastAttemptAt, Long completedAt,
                               String authorizationKind, String requiredPolicy, Long archivedAt, String archivedBy, Boolean detachedWorkspace,
-                              String upstreamRepositoryId, String selectedTag, String requestedTagObject, String resultTagObject, Boolean detachedCentralOrigin) { }
+                              String upstreamRepositoryId, String selectedTag, String requestedTagObject, String resultTagObject, Boolean detachedCentralOrigin) {
+        public String initialForkOperationId() { return SystemRepository.initialForkOperationId(repositoryId); }
+    }
     public record PublicationRecord(SourceRecordId sourceId,String causationId,String originalActor,String principalScope,
             String authorizationKind,String requiredPolicy,String repositoryId,String workspaceId,String localBranch,String sourceBranch,
             boolean keepWorkspace,PublicationCommits commits,String mergedDigest,String centralPortfolioDigest,String localPortfolioDigest,

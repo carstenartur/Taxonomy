@@ -26,6 +26,11 @@ public class WorkspaceFetchRecovery {
         this.forks = forks;
     }
 
+    private CentralForkInitialTransfer initialTransfers;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void useInitialTransfers(CentralForkInitialTransfer transfers) { this.initialTransfers = transfers; }
+
     public record Receipt(String operationId, WorkspaceUpstreamService.Status result, WorkspaceUpstreamService.TagStatus tag) {
         public Object response() { return tag == null ? result : tag; }
     }
@@ -34,7 +39,17 @@ public class WorkspaceFetchRecovery {
         return context.scope() == RepositoryScope.CENTRAL_WRITE ? forks.capture(context) : upstream.capture(context);
     }
 
-    private void inspect(RepositoryContext context) throws IOException {
+    public RepositoryContext centralOperationContext(String repositoryId, String username, String id) {
+        if (CentralFetchOperation.initialIdFormat(id)) return initialTransfers.operationContext(repositoryId, username, id);
+        return forks.context(repositoryId, username);
+    }
+
+    private void inspect(RepositoryContext context, String id) throws IOException {
+        if (context.scope() == RepositoryScope.CENTRAL_WRITE && CentralFetchOperation.initialIdFormat(id)) {
+            if (!context.equals(initialTransfers.operationContext(context.repositoryId(), context.username(), id)))
+                throw WorkspaceFetchJournal.missing();
+            return;
+        }
         if (context.scope() == RepositoryScope.CENTRAL_WRITE) forks.inspect(context.repositoryId(), context.username());
         else upstream.inspect(context);
     }
@@ -57,19 +72,19 @@ public class WorkspaceFetchRecovery {
 
     public WorkspaceFetchJournal.View status(RepositoryContext context, String id) throws IOException {
         String principal = actors.currentActor(context.username());
-        inspect(context);
+        inspect(context, id);
         return journal.status(context, principal, id);
     }
 
     public Receipt retry(RepositoryContext context, String id) throws IOException {
         String principal = actors.authorize(context.username(), context.scope()).principalId();
-        inspect(context);
+        inspect(context, id);
         return complete(context, principal, journal.status(context, principal, id), false);
     }
 
     public WorkspaceFetchJournal.View archive(RepositoryContext context, String id) throws IOException {
         String principal = actors.authorize(context.username(), context.scope()).principalId();
-        inspect(context);
+        inspect(context, id);
         return journal.archive(context, principal, id);
     }
 
@@ -128,6 +143,10 @@ public class WorkspaceFetchRecovery {
             checkLease.run();
         };
         authorize.run();
+        if (operation instanceof CentralFetchOperation central && CentralFetchOperation.initialIdFormat(operation.id)) {
+            if (!central.isInitialFork()) throw new AccessDeniedException("Invalid initial fork operation");
+            return initialTransfers.apply(central, authorize);
+        }
         boolean recovering = operation.attempts > 1;
         var context = operation.context();
         var fork = operation instanceof CentralFetchOperation ? forks.recorded(operation) : null;
