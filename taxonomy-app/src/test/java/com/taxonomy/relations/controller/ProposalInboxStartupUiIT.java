@@ -18,6 +18,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.interactions.Actions;
 import org.openqa.selenium.logging.LogType;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
@@ -129,9 +131,7 @@ class ProposalInboxStartupUiIT {
                     return scope?.repositoryId === arguments[0] && scope.workspaceId === arguments[1]
                             && scope.branch === arguments[2] && navigation?.mode === 'EDITABLE';
                     """, repositoryId, workspaceId, draft)));
-            wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector(
-                    "#architectureSubTabs [data-subtab='arch-relations']"))).click();
-            wait.until(ExpectedConditions.elementToBeClickable(By.id("filterAccepted"))).click();
+            openAcceptedProposals(wait, driver, detail);
             var available = wait.until(ExpectedConditions.visibilityOfElementLocated(
                     By.cssSelector(detail + "[data-state='AVAILABLE']")));
             assertThat(available.getText()).contains("Auf main angenommen", draft,
@@ -150,13 +150,21 @@ class ProposalInboxStartupUiIT {
             assertThat(draftGit.getDslAtCommit(adopted)).contains("proposal-adoption", sourceCommit);
             // Reopen the inbox after a full reload to read the persisted Git outcome.
             driver.navigate().refresh();
-            wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector(
-                    "#architectureSubTabs [data-subtab='arch-relations']"))).click();
-            wait.until(ExpectedConditions.elementToBeClickable(By.id("filterAccepted"))).click();
+            openAcceptedProposals(wait, driver, detail);
             var present = wait.until(ExpectedConditions.visibilityOfElementLocated(
                     By.cssSelector(detail + "[data-state='ALREADY_PRESENT']")));
             assertThat(present.findElements(By.cssSelector(".proposal-adoption-apply"))).isEmpty();
             assertThat(draftGit.getHeadCommit(draft)).isEqualTo(adopted);
         }
+    }
+
+    private static void openAcceptedProposals(WebDriverWait wait, WebDriver driver, String detail) {
+        wait.until(ExpectedConditions.elementToBeClickable(By.id("applicationArchitectureLink"))).click();
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureWorkingSource")));
+        wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("#workingProposalInbox #filterAccepted"))).click();
+        var rowControl = wait.until(ExpectedConditions.presenceOfElementLocated(
+                By.cssSelector("button[aria-controls='" + detail.substring(1) + "']")));
+        new Actions(driver).scrollToElement(rowControl).perform();
+        wait.withMessage(() -> driver.findElement(By.id("proposalsTableContainer")).getText());
     }
 }

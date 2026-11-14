@@ -582,21 +582,23 @@
                 <div id="tab-relations">
 
                 <!-- Relation Proposals Panel -->
-                <div id="proposalsPanel" class="mb-3">
-                    <div class="card shadow-sm">
-                        <div class="card-header d-flex justify-content-between align-items-center">
-                            <span class="fw-semibold" th:text="#{browse.proposals.panel.title}">&#128269; Relation Proposals</span>
-                            <span id="proposalPendingBadge" class="badge bg-warning text-dark proposal-pending-badge" th:text="#{browse.proposals.pending(0)}">0 pending</span>
-                        </div>
-                        <div class="card-body p-2">
-                            <div class="btn-group btn-group-sm mb-2 proposal-filter-group" role="group" th:attr="aria-label=#{ui.aria.proposal_status_filter}" aria-label="Proposal status filter">
-                                <button id="filterPending"  class="btn btn-warning"          data-filter="PENDING"  aria-pressed="true" th:text="#{quality.pending}">Pending</button>
-                                <button id="filterAll"      class="btn btn-outline-secondary" data-filter="ALL"      aria-pressed="false" th:text="#{compare.filter.all}">All</button>
-                                <button id="filterAccepted" class="btn btn-outline-success"  data-filter="ACCEPTED" aria-pressed="false" th:text="#{browse.proposals.adoption.filter}">Accepted / check adoption</button>
-                                <button id="filterRejected" class="btn btn-outline-danger"   data-filter="REJECTED" aria-pressed="false" th:text="#{quality.rejected}">Rejected</button>
+                <div id="analysisProposalInbox">
+                    <div id="proposalsPanel" class="mb-3">
+                        <div class="card shadow-sm">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <span class="fw-semibold" th:text="#{browse.proposals.panel.title}">&#128269; Relation Proposals</span>
+                                <span id="proposalPendingBadge" class="badge bg-warning text-dark proposal-pending-badge" th:text="#{browse.proposals.pending(0)}">0 pending</span>
                             </div>
-                            <div id="proposalsTableContainer" class="table-responsive" tabindex="0" role="region" th:attr="aria-label=#{ui.aria.scrollable_data_table}" aria-label="Scrollable data table">
-                                <div class="text-muted small p-2" th:text="#{proposals.loading.text}">Loading proposals&hellip;</div>
+                            <div class="card-body p-2">
+                                <div class="btn-group btn-group-sm mb-2 proposal-filter-group" role="group" th:attr="aria-label=#{ui.aria.proposal_status_filter}" aria-label="Proposal status filter">
+                                    <button id="filterPending"  class="btn btn-warning"          data-filter="PENDING"  aria-pressed="true" th:text="#{quality.pending}">Pending</button>
+                                    <button id="filterAll"      class="btn btn-outline-secondary" data-filter="ALL"      aria-pressed="false" th:text="#{compare.filter.all}">All</button>
+                                    <button id="filterAccepted" class="btn btn-outline-success"  data-filter="ACCEPTED" aria-pressed="false" th:text="#{browse.proposals.adoption.filter}">Accepted / check adoption</button>
+                                    <button id="filterRejected" class="btn btn-outline-danger"   data-filter="REJECTED" aria-pressed="false" th:text="#{quality.rejected}">Rejected</button>
+                                </div>
+                                <div id="proposalsTableContainer" class="table-responsive" tabindex="0" role="region" th:attr="aria-label=#{ui.aria.scrollable_data_table}" aria-label="Scrollable data table">
+                                    <div class="text-muted small p-2" th:text="#{proposals.loading.text}">Loading proposals&hellip;</div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -766,6 +768,7 @@
                     </section>
                     <section id="architectureWorkingSource" class="architecture-editor-surface" hidden>
                         <div class="architecture-source-actions"><a th:href="@{/integrations(lang=${#locale.language})}" href="/integrations" th:text="#{integration.title}">Tool integrations</a></div>
+                        <div id="workingProposalInbox"></div>
                         <section th:replace="~{architecture-editor :: surface}"></section>
                     </section>
                     <section th:replace="~{fragments/architecture-source-lens :: panel('architectureSourceLens')}"></section>
