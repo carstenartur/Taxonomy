@@ -74,6 +74,8 @@ final class SchemaContractMigrator {
                                 RELATION_WORKSPACE_NULLABLE_COLUMNS,
                                 WORKSPACE_SCOPE_KEY_COLUMNS),
                         REPOSITORY_SCOPE_KEY_COLUMNS);
+                TableRef repositories = findTable(connection, "system_repository");
+                if (repositories != null) ensureColumn(connection, repositories, "fork_initiator_key", "VARCHAR(64)");
                 migrateHypothesisUniqueness(connection);
                 ensurePasswordChangeColumn(connection);
                 connection.commit();

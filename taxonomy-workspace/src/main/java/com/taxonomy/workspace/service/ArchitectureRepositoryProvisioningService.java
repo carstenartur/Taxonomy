@@ -3,6 +3,7 @@ package com.taxonomy.workspace.service;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.storage.GitHistoryTransfer;
+import com.taxonomy.workspace.storage.GitUpstreamRef;
 import com.taxonomy.workspace.model.RepositoryLifecycleState;
 import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.model.SystemRepository;
@@ -13,6 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.revwalk.ObjectWalk;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.treewalk.TreeWalk;
 
@@ -130,6 +132,16 @@ public class ArchitectureRepositoryProvisioningService {
                 ? source.getDefaultBranch()
                 : requestedSourceBranch.strip();
 
+        var recovered = systemRepositoryService.acknowledgePublishedFork(sourceRepositoryId, sourceBranch,
+                displayName, slug, description, visibility, ownerId, retained -> {
+                    verifyRetainedFork(retained);
+                    systemRepositoryService.readCurrentAuthorization(sourceRepositoryId, current -> {
+                        if (current.getLifecycleState() != RepositoryLifecycleState.ACTIVE) throw retainedSourceConflict();
+                        requireForkSource(current, ownerId, retained.getVisibility());
+                    });
+                });
+        if (recovered != null) return recovered;
+
         DslGitRepository sourceGit;
         String sourceCommit;
         try {
@@ -152,6 +164,31 @@ public class ArchitectureRepositoryProvisioningService {
                 visibility,
                 ownerId);
         return provisionFork(fork, sourceGit, ownerId);
+    }
+
+    private void verifyRetainedFork(SystemRepository fork) {
+        var target = repositoryFactory.getCentralRepository(fork.getRepositoryId());
+        String commit = fork.getForkPointCommit();
+        var upstream = new GitUpstreamRef(fork.getUpstreamRepositoryId(), fork.getUpstreamBranch());
+        try {
+            String branch = Constants.R_HEADS + fork.getDefaultBranch();
+            var git = target.getGitRepository();
+            target.readFreshRef(branch);
+            var refs = git.getRefDatabase().getRefsByPrefix(Constants.R_REFS);
+            if (refs.size() != 2 || refs.stream().anyMatch(ref -> ref.isSymbolic() || ref.getObjectId() == null
+                    || !commit.equals(ref.getObjectId().name()) || !(branch.equals(ref.getName()) || upstream.name().equals(ref.getName()))))
+                throw retainedSourceConflict();
+            verifyForkSnapshot(target, commit);
+            try (var objects = new ObjectWalk(git)) {
+                objects.markStart(objects.parseCommit(ObjectId.fromString(commit)));
+                objects.checkConnectivity();
+            }
+            target.verifyIncoming(commit, null);
+            target.verifyExpectedHead(fork.getDefaultBranch(), commit);
+            if (!commit.equals(upstream.head(target))) throw retainedSourceConflict();
+        } catch (IOException failure) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The retained fork cannot be verified", failure);
+        }
     }
 
     private static void verifyForkSnapshot(DslGitRepository source, String commit) throws IOException {

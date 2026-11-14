@@ -8,6 +8,7 @@ import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.repository.SystemRepositoryRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -18,6 +19,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -35,9 +37,16 @@ public class SystemRepositoryService implements RepositoryMutationFence {
     private static final int MAX_PROVISIONING_ERROR_LENGTH = 2000;
 
     private final SystemRepositoryRepository repository;
+    private final WorkspaceFetchAuthority forkActors;
 
     public SystemRepositoryService(SystemRepositoryRepository repository) {
+        this(repository, Optional.empty());
+    }
+
+    @Autowired
+    public SystemRepositoryService(SystemRepositoryRepository repository, Optional<WorkspaceFetchAuthority> forkActors) {
         this.repository = repository;
+        this.forkActors = forkActors.orElse(null);
     }
 
     /** Keep the existing owner locked until the caller commits; do not change its metadata version. */
@@ -279,8 +288,46 @@ public class SystemRepositoryService implements RepositoryMutationFence {
         fork.setUpstreamRepositoryId(source.getRepositoryId());
         fork.setUpstreamBranch(branch);
         fork.setForkPointCommit(forkPointCommit);
+        if (forkActors != null) fork.setForkInitiatorKey(forkActors.currentActor(ownerId));
         fork.setUpdatedAt(Instant.now());
         return repository.save(fork);
+    }
+
+    /** A retry may only acknowledge its already published Git refs. It never recreates them. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public SystemRepository acknowledgePublishedFork(String sourceId, String branch, String displayName,
+            String requestedSlug, String description, RepositoryVisibility visibility, String actor,
+            Consumer<SystemRepository> verifyPublication) {
+        String name = requireText(displayName, "displayName");
+        String slug = normalizeSlug(requestedSlug == null || requestedSlug.isBlank() ? name : requestedSlug);
+        var existing = repository.findBySlug(slug).orElse(null);
+        if (existing == null) return null;
+        if (forkActors == null || existing.getForkInitiatorKey() == null
+                || !existing.getForkInitiatorKey().equals(forkActors.currentActor(actor))
+                || !matchesForkRequest(existing, sourceId, branch, name, description, visibility, actor)) {
+            throw creationConflict();
+        }
+
+        verifyPublication.accept(existing);
+        if (!existing.getForkInitiatorKey().equals(forkActors.currentActor(actor))) throw creationConflict();
+        // A guarded update serializes the receipt across connections and fences any intervening policy/lifecycle write.
+        if (existing.getLifecycleState() == RepositoryLifecycleState.ACTIVE) return existing;
+        if (repository.acknowledgePublishedFork(existing.getRepositoryId(), existing.getVersion(),
+                existing.getLifecycleState(), RepositoryLifecycleState.ACTIVE, Instant.now()) != 1) throw creationConflict();
+        return getRepository(existing.getRepositoryId());
+    }
+
+    private static boolean matchesForkRequest(SystemRepository fork, String source, String branch, String name,
+            String description, RepositoryVisibility visibility, String actor) {
+        var state = fork.getLifecycleState();
+        boolean eligible = state == RepositoryLifecycleState.FAILED || state == RepositoryLifecycleState.PROVISIONING
+                || state == RepositoryLifecycleState.ACTIVE;
+        return eligible && source.equals(fork.getUpstreamRepositoryId()) && branch.equals(fork.getUpstreamBranch())
+                && branch.equals(fork.getDefaultBranch()) && fork.getOwnerType() == RepositoryOwnerType.USER
+                && actor.equals(fork.getOwnerId()) && actor.equals(fork.getCreatedBy()) && name.equals(fork.getDisplayName())
+                && Objects.equals(description, fork.getDescription()) && fork.getVisibility() == (visibility == null ? RepositoryVisibility.PRIVATE : visibility)
+                && !fork.isPrimaryRepo() && fork.getTopologyMode() == RepositoryTopologyMode.INTERNAL_SHARED
+                && ("central-" + fork.getRepositoryId()).equals(fork.getStorageRepositoryName()) && fork.getForkPointCommit() != null;
     }
 
     static void requirePermittedForkVisibility(SystemRepository source, RepositoryVisibility visibility) {
