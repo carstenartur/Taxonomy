@@ -1,5 +1,6 @@
 package com.taxonomy.security.config;
 
+import com.taxonomy.security.model.StablePrincipal;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -23,9 +24,15 @@ public class SecurityAuditListener {
 
     @EventListener
     public void onSuccess(AuthenticationSuccessEvent event) {
-        String username = event.getAuthentication().getName();
-        String ip = extractIp(event.getAuthentication().getDetails());
-        log.info("LOGIN_SUCCESS user={} ip={}", username, ip);
+        var authentication = event.getAuthentication();
+        String username = authentication.getName();
+        String ip = extractIp(authentication.getDetails());
+        Object actor = authentication instanceof StablePrincipal ? authentication : authentication.getPrincipal();
+        if (authentication.isAuthenticated() && actor instanceof StablePrincipal stable) {
+            log.info("LOGIN_SUCCESS user={} ip={} principalId={}", username, ip, stable.principalId().value());
+        } else {
+            log.info("LOGIN_SUCCESS user={} ip={}", username, ip);
+        }
     }
 
     @EventListener
