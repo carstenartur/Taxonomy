@@ -20,6 +20,13 @@ final class ForeignKeyMetadata {
     static boolean matches(Connection connection, String sourceCatalog, String sourceSchema,
             String sourceTable, String targetSchema, String targetTable,
             List<String> sourceColumns, List<String> targetColumns) throws SQLException {
+        return !matchingNames(connection, sourceCatalog, sourceSchema, sourceTable, targetSchema, targetTable,
+                sourceColumns, targetColumns).isEmpty();
+    }
+
+    static List<String> matchingNames(Connection connection, String sourceCatalog, String sourceSchema,
+            String sourceTable, String targetSchema, String targetTable,
+            List<String> sourceColumns, List<String> targetColumns) throws SQLException {
         Map<String, Map<Short, String>> keys = new LinkedHashMap<>();
         if (connection.getMetaData().getDatabaseProductName().toLowerCase(Locale.ROOT).contains("oracle")) {
             // Oracle JDBC imported-key metadata filters parent constraints to P,
@@ -60,7 +67,9 @@ final class ForeignKeyMetadata {
         for (int i = 0; i < sourceColumns.size(); i++) expected.add(sourceColumns.get(i) + ":" + targetColumns.get(i));
         // Hibernate may order equivalent pairs differently. Retain the complete
         // mapping, cardinality, referenced owner and each source/target pairing.
-        return keys.values().stream().anyMatch(key -> key.size() == expected.size()
-                && new LinkedHashSet<>(key.values()).equals(new LinkedHashSet<>(expected)));
+        return keys.entrySet().stream()
+                .filter(entry -> entry.getValue().size() == expected.size()
+                        && new LinkedHashSet<>(entry.getValue().values()).equals(new LinkedHashSet<>(expected)))
+                .map(Map.Entry::getKey).toList();
     }
 }

@@ -7,6 +7,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class WorkspaceOverlayScopeTest {
 
     @Test
+    void storedScopeDistinguishesTheCentralOwnerFromEveryNonblankWorkingCopyId() {
+        assertEquals(" central", WorkspaceOverlayScope.storageKeyFor(null));
+        assertEquals("central", WorkspaceOverlayScope.storageKeyFor(" central"));
+        assertEquals("__shared__", WorkspaceOverlayScope.storageKeyFor("__shared__"));
+        assertEquals("a:b", WorkspaceOverlayScope.storageKeyFor(" a:b "));
+    }
+
+    @Test
     void centralStateUsesStableSharedScope() {
         assertEquals(WorkspaceOverlayScope.CENTRAL_SCOPE_KEY, WorkspaceOverlayScope.keyFor(null));
         assertEquals(WorkspaceOverlayScope.CENTRAL_SCOPE_KEY, WorkspaceOverlayScope.keyFor("   "));

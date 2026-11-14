@@ -134,8 +134,10 @@ class WorkspaceRestoreImporterTest {
             assertThatThrownBy(()->new WorkspaceRestoreImporter().restore(fixture.archive,generation,fixture.principals,fixture.git,()->{})).isInstanceOf(IOException.class).hasMessageContaining("proof");
         }
     }
-    @Test void centralIndexUsesItsReviewedSharedScopeWithoutInventingAWorkspaceOrPrincipal()throws Exception {
-        try(var fixture=fixture(true)) {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"27", "32"})
+    void centralIndexUsesItsReviewedSharedScopeWithoutInventingAWorkspaceOrPrincipal(String sourceVersion)throws Exception {
+        try(var fixture=fixture(true, false, false, null, sourceVersion)) {
             var result=new WorkspaceRestoreImporter().restore(fixture.archive,fixture.generation(),fixture.principals,fixture.git,()->{});
             var target=new JdbcTemplate(fixture.target);
             assertThat(target.queryForObject("select count(*) from architecture_commit_index",Long.class)).isEqualTo(2);
@@ -203,10 +205,27 @@ class WorkspaceRestoreImporterTest {
         return fixture(centralIndex,systemOwner,historicalUnknownPrincipal,null);
     }
     private Fixture fixture(boolean centralIndex,boolean systemOwner,boolean historicalUnknownPrincipal,String journalActor)throws Exception {
+        return fixture(centralIndex, systemOwner, historicalUnknownPrincipal, journalActor, null);
+    }
+    private Fixture fixture(boolean centralIndex, boolean systemOwner, boolean historicalUnknownPrincipal,
+            String journalActor, String sourceVersion) throws Exception {
         Path nativeSource=root.resolve(UUID.randomUUID()+"-source");Files.createDirectories(nativeSource);
         var git=Git.init().setDirectory(nativeSource.toFile()).setInitialBranch("main").call();Files.writeString(nativeSource.resolve("architecture.taxdsl"),"architecture Original {}");git.add().addFilepattern(".").call();
         String commit=git.commit().setMessage("Original source history").setAuthor(new PersonIdent("Original","source@example.test",Date.from(Instant.parse(TIME)),TimeZone.getTimeZone("UTC"))).setCommitter(new PersonIdent("Original","source@example.test",Date.from(Instant.parse(TIME)),TimeZone.getTimeZone("UTC"))).call().name();
-        var source=database();RestoreSchemaMigration.bootstrap(database(),source,()->{});var rows=new JdbcTemplate(source);
+        var source = database();
+        if (centralIndex) {
+            // Restore sources from both released pre-journal schemas.
+            var business = org.flywaydb.core.Flyway.configure().dataSource(source)
+                    .table("restore_business_schema_history").locations("classpath:db/restore/hsqldb");
+            business.target("1").load().migrate();
+            com.taxonomy.security.persistence.PrincipalSchemaMigration.migrate(source);
+            business.target(sourceVersion).load().migrate();
+            com.taxonomy.composition.persistence.CatalogueSourceSchemaMigration.migrate(source);
+            com.taxonomy.workspace.storage.StagedJgitSchemaMigration.migrate(source, () -> {});
+        } else {
+            RestoreSchemaMigration.bootstrap(database(), source, () -> {});
+        }
+        var rows = new JdbcTemplate(source);
         rows.update("insert into app_principal(principal_id,scope_key,enabled) values(?,'source-owner',1)",principal.value().toString());
         rows.update("insert into system_repository(repository_id,slug,display_name,visibility,lifecycle_state,owner_type,owner_id,topology_mode,default_branch,fork_point_commit,last_fetch_commit,primary_repo,created_at,version) values('source-repository','source-slug','Original','PUBLIC','ACTIVE','USER','source-owner','INTERNAL_SHARED','main',?,?,true,?,0)",commit,commit,java.sql.Timestamp.from(Instant.parse(TIME)));
         rows.update("insert into user_workspace(workspace_id,username,display_name,current_branch,base_branch,shared,collaborative,created_at,provisioning_status,topology_mode,source_repository_id,source_branch,relationship_type,base_commit,current_commit,last_fetched_commit,last_integrated_commit,sync_target_branch,archived,is_default) values('source-workspace','source-owner','Original work','main','main',true,true,?,'READY','INTERNAL_SHARED','source-repository','main','WORKING_COPY',?,?,?,?,'main',false,true)",java.sql.Timestamp.from(Instant.parse(TIME)),commit,commit,commit,commit);
