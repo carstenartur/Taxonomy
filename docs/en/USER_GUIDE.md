@@ -897,6 +897,8 @@ The Proposal Review Queue shows all proposals with filtering by status. Use the 
 
 ![Proposal Review Queue — all proposals](../images/28-proposal-review-queue.png)
 
+Open the working architecture for the target branch. In the relation proposals above the editor, select **Accepted / check adoption**. When viewing the current analysis, you can find the same list under **Architecture → Relations**. For each visible proposal, the preview shows the evidence on the default branch and the selected target revision. If the proposal was accepted on `main` and its relation is missing on `draft`, you can adopt that relation on `draft`. The preview also shows when the target already contains the decision or has a conflicting relation. The shared inbox counts the original acceptance once.
+
 ### Accepting or Rejecting a Proposal
 
 For each row in the proposals table:

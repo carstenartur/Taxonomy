@@ -996,3 +996,28 @@ test('graph search waits for the selected repository and branch without blocking
   });
   assert.equal(headers.get('X-Taxonomy-Workspace-Id'), '');
 });
+
+test('proposal adoption pins the exact preview target in the URL, workspace header and compare-and-set command', async () => {
+  const calls = [];
+  const app = boot(async (url, init) => { calls.push([new URL(url,app.window.location.href),init]); return Response.json({}); });
+  app.load('api/proposals-api.js');
+  const api = app.window.TaxonomyProposalsApi;
+  const selection = {repositoryId:'repo A',workspaceId:'',branch:'draft/A'};
+  const preview = {proposalId:17, sourceBranch:'main', sourceCommit:'a'.repeat(40), targetRepositoryId:'repo A',
+    targetWorkspaceId:null,targetBranch:'draft/A',targetCommit:'b'.repeat(40),state:'AVAILABLE',writable:true};
+  await api.previewAdoption(17, selection);
+  app.window.TaxonomyArchitectureWorkflow = {getScope: () => ({repositoryId:'other',workspaceId:'other',branch:'draft/A'})};
+  await api.adopt(preview, 'action-key');
+  assert.deepEqual(calls.map(([,init])=>init.method), ['GET','POST']);
+  for (const [url, init] of calls) {
+    assert.equal(url.pathname,'/taxonomy/api/proposals/17/adoption');
+    assert.deepEqual(Object.fromEntries(url.searchParams), selection);
+    assert.equal(new Headers(init.headers).get('X-Taxonomy-Workspace-Id'),'');
+  }
+  const headers = new Headers(calls[1][1].headers);
+  assert.equal(headers.get('If-Match'), '"' + preview.targetCommit + '"');
+  assert.equal(headers.get('Idempotency-Key'),'action-key');
+  assert.equal(headers.get('X-CSRF-TOKEN'),'csrf-fixture');
+  assert.deepEqual(JSON.parse(calls[1][1].body), {sourceBranch:'main',sourceCommit:preview.sourceCommit,
+    targetRepositoryId:'repo A',targetWorkspaceId:null,targetBranch:'draft/A'});
+});

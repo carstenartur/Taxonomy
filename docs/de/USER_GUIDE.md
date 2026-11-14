@@ -921,6 +921,8 @@ Die Vorschlags-Überprüfungswarteschlange zeigt alle Vorschläge mit Filterung 
 
 ![Vorschlags-Überprüfungswarteschlange — alle Vorschläge](../images/28-proposal-review-queue.png)
 
+Öffnen Sie die Arbeitsarchitektur des Zielbranches. Oberhalb des Editors finden Sie die Beziehungsvorschläge. Wählen Sie **Angenommen / Übernahme prüfen**. In der aktuellen Analyse finden Sie dieselbe Liste unter **Architektur → Beziehungen**. Für die sichtbaren Vorschläge zeigt die Ansicht den belegten Stand des Standardbranches und den geprüften Zielstand. Wurde der Vorschlag auf `main` angenommen und fehlt die Relation auf `entwurf`, übernimmt **Auf entwurf übernehmen** diese einzelne Relation. Die Vorschau zeigt auch, ob das Ziel die Entscheidung schon enthält oder eine abweichende Relation vorliegt. Die gemeinsame Inbox zählt die ursprüngliche Annahme einmal.
+
 ### Annehmen oder Ablehnen eines Vorschlags
 
 Für jede Zeile in der Vorschlagstabelle:
