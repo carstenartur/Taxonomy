@@ -134,7 +134,7 @@ public class WorkspaceFetchRecovery {
         if (operation.selectedTag != null) {
             var request = new WorkspaceUpstreamService.TagRequest(operation.selectedTag, operation.requestedTagObject, operation.expected);
             var tag = fork == null
-                    ? upstream.fetchRecordedTag(context, operation.sourceBranch, operation.forkPoint, request, recovering, authorize)
+                    ? upstream.fetchRecordedTag(context, operation.sourceBranch, operation.forkPoint, request, recovering, authorize, operation.actor)
                     : fork.fetchTag(request, recovering, authorize);
             operation.resultTagObject = tag.destinationTagObject();
             var tracking = new GitUpstreamRef(operation.sourceRepositoryId(), operation.sourceBranch);
@@ -143,6 +143,6 @@ public class WorkspaceFetchRecovery {
         }
         var request = new WorkspaceUpstreamService.Request(operation.requested, operation.expected);
         if (fork != null) return recovering ? fork.recover(request, authorize) : fork.fetch(request, authorize);
-        return upstream.fetchRecorded(context, operation.sourceBranch, operation.forkPoint, request, recovering, authorize);
+        return upstream.fetchRecorded(context, operation.sourceBranch, operation.forkPoint, request, recovering, authorize, operation.actor);
     }
 }

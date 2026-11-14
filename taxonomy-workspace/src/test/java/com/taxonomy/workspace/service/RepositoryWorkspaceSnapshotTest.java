@@ -37,6 +37,7 @@ class RepositoryWorkspaceSnapshotTest {
             }).when(catalog).readCurrentAuthorization(eq("source"), any());
             WorkspaceProvisioningTestClaims.enable(rows);
             var service = new RepositoryWorkspaceService(rows, catalog, factory, memberships);
+            service.configureActorAccess(WorkspaceProvisioningTestClaims.fixtureOwners());
             var result = service.createWorkingCopy("owner", "source", "approved", "Working copy", null);
             var destination = factory.openWorkspaceRepository(result.getWorkspaceId());
             assertEquals(captured, result.getBaseCommit());

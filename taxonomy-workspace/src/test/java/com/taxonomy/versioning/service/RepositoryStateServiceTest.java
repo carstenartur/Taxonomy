@@ -57,6 +57,7 @@ class RepositoryStateServiceTest {
         UserWorkspaceRepository wsRepo = mock(UserWorkspaceRepository.class);
         workspaceManager = new WorkspaceManager(wsRepo, 50,
                 mock(com.taxonomy.workspace.service.SystemRepositoryService.class), gitRepo);
+        com.taxonomy.workspace.service.WorkspaceProvisioningTestClaims.withOwners(workspaceManager);
         stateService = new RepositoryStateService(factory, workspaceManager,
                 mock(com.taxonomy.workspace.service.SystemRepositoryService.class));
     }
@@ -80,7 +81,8 @@ class RepositoryStateServiceTest {
         assertNotNull(version.commitTimestamp());
         assertFalse(version.projectionStale());
         assertTrue(version.indexStale());
-        org.mockito.Mockito.verify(navigation).getScopedWorkspaceState(selected);
+        assertEquals(version, states.getViewContext(selected.username(), selected.currentBranch(), selected));
+        org.mockito.Mockito.verify(navigation, org.mockito.Mockito.times(2)).getScopedWorkspaceState(selected);
         org.mockito.Mockito.verifyNoMoreInteractions(navigation);
     }
 

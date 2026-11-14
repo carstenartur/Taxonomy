@@ -48,6 +48,13 @@ public class WorkspaceUpstreamService {
 
     private record WorkingCopy(UserWorkspace workspace, GitUpstreamTransfer transfer) {}
 
+    private WorkspaceActorAccess actors = WorkspaceActorAccess.unavailable();
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void configureWorkspaceActors(WorkspaceActorAccess actors) {
+        this.actors = java.util.Objects.requireNonNull(actors);
+    }
+
     private final UserWorkspaceRepository rows;
     private final SystemRepositoryService catalogue;
     private final RepositoryMembershipService memberships;
@@ -68,12 +75,20 @@ public class WorkspaceUpstreamService {
 
     @Transactional(rollbackFor = IOException.class)
     Status fetch(RepositoryContext selected, Request request) throws IOException {
-        return fetchRecorded(selected, null, null, request, false, () -> { });
+        return fetchRecorded(selected, null, null, request, false, () -> { }, null);
     }
 
     @Transactional(rollbackFor = IOException.class)
-    public Status fetchRecorded(RepositoryContext selected, String sourceBranch, String forkPoint, Request request, boolean recovery, Runnable fence) throws IOException {
-        var copy = open(selected, true);
+    public Status fetchRecorded(RepositoryContext selected, String sourceBranch, String forkPoint,
+                                Request request, boolean recovery, Runnable fence) throws IOException {
+        return fetchRecorded(selected, sourceBranch, forkPoint, request, recovery, fence, null);
+    }
+
+    @Transactional(rollbackFor = IOException.class)
+    public Status fetchRecorded(RepositoryContext selected, String sourceBranch, String forkPoint,
+                                Request request, boolean recovery, Runnable fence, String originalActor) throws IOException {
+        fence.run();
+        var copy = open(selected, true, originalActor);
         if (sourceBranch != null && (!sourceBranch.equals(copy.transfer().upstream().branch())
                 || !java.util.Objects.equals(forkPoint, copy.transfer().forkPoint()))) {
             throw new BranchHeadConflictException(sourceBranch, request.sourceCommit(), null, "The working copy upstream changed");
@@ -97,16 +112,29 @@ public class WorkspaceUpstreamService {
     @Transactional(rollbackFor = IOException.class)
     public TagStatus fetchRecordedTag(RepositoryContext selected, String sourceBranch, String forkPoint,
                                       TagRequest request, boolean recovering, Runnable fence) throws IOException {
-        var transfer = open(selected, true).transfer();
+        return fetchRecordedTag(selected, sourceBranch, forkPoint, request, recovering, fence, null);
+    }
+
+    @Transactional(rollbackFor = IOException.class)
+    public TagStatus fetchRecordedTag(RepositoryContext selected, String sourceBranch, String forkPoint,
+                                      TagRequest request, boolean recovering, Runnable fence, String originalActor) throws IOException {
+        fence.run();
+        var transfer = open(selected, true, originalActor).transfer();
         transfer.requireOrigin(selected.repositoryId(), sourceBranch, forkPoint);
         return transfer.fetchTag(request, recovering, fence);
     }
 
     private WorkingCopy open(RepositoryContext selected, boolean forUpdate) {
+        return open(selected, forUpdate, null);
+    }
+
+    private WorkingCopy open(RepositoryContext selected, boolean forUpdate, String originalActor) {
         if (selected.scope() != RepositoryScope.WORKSPACE) throw unavailable();
         var workspace = (forUpdate ? rows.findByWorkspaceIdForUpdate(selected.workspaceId())
                 : rows.findByWorkspaceId(selected.workspaceId())).orElseThrow(WorkspaceUpstreamService::unavailable);
-        if (!selected.username().equals(workspace.getUsername()) || workspace.isArchived() || workspace.isShared()
+        boolean owner = originalActor == null ? actors.owns(selected.username(), workspace)
+                : workspace.matchesOwner(selected.username(), originalActor);
+        if (!owner || workspace.isArchived() || workspace.isShared()
                 || workspace.getProvisioningStatus() != WorkspaceProvisioningStatus.READY
                 || !selected.repositoryId().equals(workspace.getSourceRepositoryId())) throw unavailable();
         requireSource(selected.repositoryId(), selected.username());

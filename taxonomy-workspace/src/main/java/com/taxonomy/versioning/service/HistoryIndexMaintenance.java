@@ -65,7 +65,7 @@ public class HistoryIndexMaintenance {
         var grant = actors.authorizeHistoryIndex(context.username(), kind.destructive());
         String branch = kind == Kind.PURGE ? context.branch() : checkedBranch(requestedBranch);
         var row = journal.admit(context, branch, kind, grant, key, cause, () -> {
-            String owner = authorizeTarget(context);
+            String owner = authorizeTarget(context, false, false, grant.principalId());
             if (kind == Kind.PURGE) return new HistoryIndexJournal.Capture(null, owner);
             try {
                 String head = repositories.resolveRepository(context).getHeadCommit(branch);
@@ -246,7 +246,7 @@ public class HistoryIndexMaintenance {
     private void verifyTarget(HistoryIndexJournal.Operation row) {
         if (row.receipt().kind().relationProjection()) {
             verifyProjectionTarget(row, false);
-        } else if (!Objects.equals(row.owner(), authorizeTarget(row.context()))) throw denied();
+        } else if (!Objects.equals(row.owner(), authorizeTarget(row.context(), false, false, row.grant().principalId()))) throw denied();
     }
 
     private void verifyProjectionTarget(HistoryIndexJournal.Operation row, boolean background) {
@@ -254,15 +254,11 @@ public class HistoryIndexMaintenance {
     }
 
     private String authorizeProjectionTarget(RepositoryContext context, WorkspaceFetchAuthority.Grant grant, boolean background) {
-        return authorizeTarget(context, true, actors.isCurrentAdministrator(grant, context.username(), background));
+        return authorizeTarget(context, true, actors.isCurrentAdministrator(grant, context.username(), background), grant.principalId());
     }
 
     /** Use physical row writes for HSQL MVCC as well as PostgreSQL before testing target policy. */
-    private String authorizeTarget(RepositoryContext context) {
-        return authorizeTarget(context, false, false);
-    }
-
-    private String authorizeTarget(RepositoryContext context, boolean projection, boolean administrator) {
+    private String authorizeTarget(RepositoryContext context, boolean projection, boolean administrator, String verifiedActor) {
         if (catalogue.lockForMutation(context.repositoryId()) != 1) throw denied();
         // Role updates and revocations mutate these same membership rows. A physical write
         // also holds the fence on HSQL MVCC, where SELECT FOR UPDATE alone is insufficient.
@@ -278,7 +274,7 @@ public class HistoryIndexMaintenance {
                 .setParameter("id", context.workspaceId()).executeUpdate() != 1) throw denied();
         var work = entities.createQuery("select w from UserWorkspace w where w.workspaceId=:id", UserWorkspace.class)
                 .setParameter("id", context.workspaceId()).getSingleResult();
-        if (!membership.canUseWorkspace(repo, work, context.username()) || work.getProvisioningStatus() != WorkspaceProvisioningStatus.READY) throw denied();
+        if (!membership.canUseWorkspace(repo, work, context.username(), verifiedActor) || work.getProvisioningStatus() != WorkspaceProvisioningStatus.READY) throw denied();
         if (!work.getUsername().equals(context.username()) && (!context.collaborative() || !work.isCollaborative())) throw denied();
         return work.getUsername();
     }

@@ -45,7 +45,8 @@ class WorkspaceFetchRecoveryRestartTest {
             String base = source.commitDsl("main", "base", "alice", "base");
             original = source.commitDsl("main", "reviewed", "alice", "incoming");
             local = target.commitDsl("draft", "unpublished", "alice", "local");
-            process.createWorkspace(base, local);
+            process.createWorkspace(base, local, java.util.UUID.fromString(ALICE));
+            process.loginAsWorkspaceOwner();
             process.failBookkeeping.set(true);
             var receipt = process.recovery.fetch(CONTEXT, new WorkspaceUpstreamService.Request(original, null), "review", null);
             assertThat(receipt.result()).isNull();
@@ -62,7 +63,9 @@ class WorkspaceFetchRecoveryRestartTest {
             var target = restarted.persistence.repositories.openWorkspaceRepository("w1");
             String later = source.commitDsl("main", "advanced", "alice", "after crash");
             assertThat(restarted.journal.due()).containsExactly(operation);
+            // The scheduler runs without a request login. Only the fenced original journal actor is present.
             restarted.recovery.recoverDue();
+            restarted.loginAsWorkspaceOwner();
             var status = restarted.recovery.status(CONTEXT, operation);
             assertThat(status.phase()).isEqualTo("COMPLETED");
             assertThat(status.attempts()).isEqualTo(2);
@@ -279,8 +282,19 @@ class WorkspaceFetchRecoveryRestartTest {
             forks = new CentralForkUpstreamService(catalogue,memberships,persistence.repositories);
             recovery = new WorkspaceFetchRecovery(journal, upstream, actors, forks);
         }
+        void loginAsWorkspaceOwner() {
+            var identity = mock(WorkspaceActorAccess.class, CALLS_REAL_METHODS);
+            doReturn(Optional.of(java.util.UUID.fromString(ALICE))).when(identity).currentOwnerPrincipal("alice");
+            upstream.configureWorkspaceActors(identity);
+        }
+
         void createWorkspace(String base, String local) {
+            createWorkspace(base, local, null);
+        }
+
+        void createWorkspace(String base, String local, java.util.UUID principalId) {
             var workspace = new UserWorkspace();
+            if (principalId != null) workspace.assignOwnerPrincipal(principalId);
             workspace.setWorkspaceId("w1"); workspace.setUsername("alice"); workspace.setCreatedAt(Instant.now());
             workspace.setSourceRepositoryId("source"); workspace.setSourceBranch("main");
             workspace.setBaseCommit(base); workspace.setCurrentCommit(local); workspace.setLastIntegratedCommit(base);

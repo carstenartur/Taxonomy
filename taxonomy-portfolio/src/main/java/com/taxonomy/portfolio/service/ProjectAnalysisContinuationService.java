@@ -16,6 +16,7 @@ import com.taxonomy.portfolio.repository.ProjectRequirementRepository;
 import com.taxonomy.portfolio.repository.RequirementAnalysisJobItemRepository;
 import com.taxonomy.portfolio.repository.RequirementAnalysisJobRepository;
 import com.taxonomy.portfolio.repository.RequirementAnalysisSnapshotRepository;
+import com.taxonomy.workspace.service.WorkspaceActorAccess.AnalysisOwner;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceManager;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,6 +35,14 @@ import java.util.UUID;
  */
 @Service
 public class ProjectAnalysisContinuationService {
+    private com.taxonomy.workspace.service.WorkspaceActorAccess workspaceActors =
+            com.taxonomy.workspace.service.WorkspaceActorAccess.unavailable();
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void configureWorkspaceActors(com.taxonomy.workspace.service.WorkspaceActorAccess actors) {
+        this.workspaceActors = java.util.Objects.requireNonNull(actors);
+    }
+
     private static final Set<String> BUDGETS = Set.of("CALL_BUDGET", "TOTAL_CALL_BUDGET", "SOURCE_LIMIT", "WORK_LIMIT");
 
     private final AnalysisContinuationService continuations;
@@ -98,14 +107,34 @@ public class ProjectAnalysisContinuationService {
         item.getJob().markPending();
     }
 
+    /** Capture before the request returns; background execution has no interactive login. */
+    AnalysisOwner admitOwner(String username, WorkspaceContext context) {
+        if (context == null || context.workspaceId() == null || !Objects.equals(username, context.username()))
+            return null;
+        var workspace = workspaces.getWorkspaceById(context.workspaceId());
+        if (workspace == null || workspace.isShared() || workspace.isArchived() || !Objects.equals(username, workspace.getUsername()))
+            return null;
+        return workspaceActors.admitAnalysisOwner(username, workspace);
+    }
+
+    void checkOwner(AnalysisOwner owner, String username, WorkspaceContext context) {
+        if (owner == null) return;
+        var workspace = workspaces.getWorkspaceById(context.workspaceId());
+        if (workspace == null || workspace.isArchived() || workspace.isShared() || !owner.owns(username, workspace)) {
+            throw PortfolioException.notFound("Analysis workspace not found");
+        }
+    }
+
     /**
      * Local only: opening a local session would otherwise bypass the configured
      * cluster executor. Existing Artemis analyses remain on their original path.
      */
     @Transactional
     public AnalysisContinuationService.Execution begin(PortfolioAnalysisWorkQueue.WorkItem work,
-            AnalysisJobView job, String username, WorkspaceContext context, com.taxonomy.dto.AnalysisModelBinding admittedModel) {
-        String limitation = scopeLimitation(username, context);
+            AnalysisJobView job, String username, WorkspaceContext context, com.taxonomy.dto.AnalysisModelBinding admittedModel,
+            AnalysisOwner owner) {
+        checkOwner(owner, username, context);
+        String limitation = scopeLimitation(context, owner != null);
         if (work.continuationSnapshotId() == null && limitation != null) return null;
         if (limitation != null) throw PortfolioException.conflict(limitation);
 
@@ -143,7 +172,7 @@ public class ProjectAnalysisContinuationService {
                 throw PortfolioException.conflict("The requirement version or continuation snapshot changed");
             }
             String problem = budgetProblem(saved);
-            if (problem == null) problem = questionProblem(saved.getRecovery(), username, context);
+            if (problem == null) problem = questionProblem(saved.getRecovery(), username, context, owner);
             if (problem != null) throw PortfolioException.conflict(problem);
             requireProviderBinding(item, username, context);
             rejectCancelledOperation(item);
@@ -151,7 +180,7 @@ public class ProjectAnalysisContinuationService {
             request.setContinuationVersion(saved.getRecovery().version());
             request.setContinuationAction("CONTINUE");
         }
-        return continuations.beginPortfolio(request, username, context, job.maxArchitectureNodes(), admittedModel);
+        return continuations.beginPortfolio(request, username, context, job.maxArchitectureNodes(), admittedModel, owner);
     }
 
     private AnalysisContinuationView view(AnalysisContinuationReadRow item, String username, WorkspaceContext context) {
@@ -248,20 +277,27 @@ public class ProjectAnalysisContinuationService {
     }
 
     private String questionProblem(AnalysisRecoveryView recovery, String username, WorkspaceContext context) {
-        return continuations.hasBlockingBudgetQuestions(recovery.id(), username, context)
+        return questionProblem(recovery, username, context, workspaceActors::owns);
+    }
+
+    private String questionProblem(AnalysisRecoveryView recovery, String username, WorkspaceContext context, AnalysisOwner owner) {
+        return continuations.hasBlockingBudgetQuestions(recovery.id(), username, context, owner)
                 ? "Failed, unassessed or uncertain provider questions require their own decision" : null;
     }
 
     private String scopeLimitation(String username, WorkspaceContext context) {
+        var workspace = context == null || context.workspaceId() == null ? null : workspaces.getWorkspaceById(context.workspaceId());
+        boolean owned = workspace != null && !workspace.isShared() && !workspace.isArchived()
+                && Objects.equals(username, context.username()) && workspaceActors.owns(username, workspace);
+        return scopeLimitation(context, owned);
+    }
+
+    private String scopeLimitation(WorkspaceContext context, boolean owned) {
         if (!"local".equalsIgnoreCase(transport))
             return "Budget continuation is available only for local execution; Artemis continuation is not supported on this project path";
-        if (context == null || context.workspaceId() == null || !Objects.equals(username, context.username()))
+        if (context == null || context.workspaceId() == null)
             return "Budget continuation requires an owned workspace";
-        var workspace = workspaces.getWorkspaceById(context.workspaceId());
-        if (workspace == null || workspace.isShared() || workspace.isArchived()
-                || !Objects.equals(username, workspace.getUsername()))
-            return "Budget continuation requires the original owned, active workspace";
-        return null;
+        return owned ? null : "Budget continuation requires the original owned, active workspace";
     }
 
     /** Execution limits can advance while accepted clarifications remain open and unchanged. */

@@ -41,7 +41,7 @@ public class WorkspaceCollaborationService {
         if (context.scope() != RepositoryScope.WORKSPACE) return new Status(false, false);
         var workspace = workspaces.findByWorkspaceId(context.workspaceId()).orElseThrow(WorkspaceCollaborationService::unavailable);
         requireScope(context, workspace);
-        return new Status(workspace.isCollaborative(), Objects.equals(context.username(), workspace.getUsername()));
+        return new Status(workspace.isCollaborative(), actorAccess.owns(context.username(), workspace));
     }
 
     @Transactional(rollbackFor = IOException.class)
@@ -57,7 +57,7 @@ public class WorkspaceCollaborationService {
             // The journal lock is already held and joins this transaction through its commit/rollback.
             var workspace = workspaces.findByWorkspaceIdForUpdate(context.workspaceId()).orElseThrow(WorkspaceCollaborationService::unavailable);
             requireScope(context, workspace);
-            if (!Objects.equals(context.username(), workspace.getUsername())
+            if (!actorAccess.owns(context.username(), workspace)
                     || context.collaborative() != workspace.isCollaborative()) throw unavailable();
             if (current.context().revision() != expected.revision()) throw new RevisionConflict(expected.revision(), current.context().revision());
             if (!Objects.equals(current.context().commit(), expected.commit()))

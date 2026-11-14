@@ -179,6 +179,128 @@ class CurrentPrincipalAuthoritySecurityTest {
         } finally { SecurityContextHolder.clearContext(); }
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"local", "oidc", "bearer"})
+    void queuedAnalysisRechecksTheExactWorkspaceAndAdmittedBinding(String kind) throws Exception {
+        boolean external = !"local".equals(kind);
+        start(external, external ? KeycloakPrincipalMode.STABLE : KeycloakPrincipalMode.LEGACY);
+        var actor = external ? identities.oidc("https://idp.test", "owner") : identities.local(1);
+        var access = new SharedWorkspaceActorAccess(identities,
+                external ? java.util.Optional.of(KeycloakPrincipalMode.STABLE) : java.util.Optional.empty());
+        var workspace = new com.taxonomy.workspace.model.UserWorkspace();
+        workspace.setWorkspaceId("owned");
+        workspace.setUsername(actor.scopeKey());
+        workspace.assignOwnerPrincipal(actor.id().value());
+        var login = external ? oidc(actor, "https://idp.test", "owner", true) : local(actor);
+        if ("bearer".equals(kind)) {
+            Instant now = Instant.now();
+            var token = org.springframework.security.oauth2.jwt.Jwt.withTokenValue("controlled")
+                    .header("alg", "RS256").subject("owner").issuer("https://idp.test")
+                    .issuedAt(now.minusSeconds(60)).expiresAt(now.plusSeconds(600)).build();
+            var authorities = List.of(new SimpleGrantedAuthority("ROLE_ARCHITECT"),
+                    new SimpleGrantedAuthority("SCOPE_analysis:run"));
+            login = new com.taxonomy.security.keycloak.PrincipalJwtAuthenticationToken(token, authorities, actor);
+        }
+        try (var worker = java.util.concurrent.Executors.newSingleThreadExecutor()) {
+            SecurityContextHolder.setContext(new SecurityContextImpl(login));
+            var owner = access.admitAnalysisOwner(actor.scopeKey(), workspace);
+            SecurityContextHolder.clearContext();
+            assertThat(worker.submit(() -> owner.owns(actor.scopeKey(), workspace)).get()).isTrue();
+            var other = new com.taxonomy.workspace.model.UserWorkspace();
+            other.setWorkspaceId(workspace.getWorkspaceId());
+            other.setUsername(actor.scopeKey());
+            other.assignOwnerPrincipal(java.util.UUID.randomUUID());
+            assertThat(owner.owns(actor.scopeKey(), other)).isFalse();
+            workspace.setWorkspaceId("another-workspace");
+            assertThat(owner.owns(actor.scopeKey(), workspace)).isFalse();
+            workspace.setWorkspaceId("owned");
+            if (!external) {
+                jdbc.update("insert into app_role values (3, 'ROLE_USER')");
+                jdbc.update("update user_roles set role_id=3 where user_id=1 and role_id=1");
+                assertThat(owner.owns(actor.scopeKey(), workspace)).isTrue();
+                jdbc.update("update user_roles set role_id=2 where user_id=1 and role_id=3");
+                assertThatThrownBy(() -> owner.owns(actor.scopeKey(), workspace)).isInstanceOf(AccessDeniedException.class);
+                jdbc.update("update user_roles set role_id=3 where user_id=1 and role_id=2");
+            }
+            addBinding(actor, "https://other.test", "still-enabled");
+            String statement = external
+                    ? "update principal_binding set enabled=0 where principal_id=? and subject_id='owner'"
+                    : "update principal_binding set enabled=0 where principal_id=? and binding_kind='LOCAL'";
+            jdbc.update(statement, actor.id().value().toString());
+            assertThat(identities.isEnabled(actor.id())).isTrue();
+            assertThatThrownBy(() -> worker.submit(() -> owner.owns(actor.scopeKey(), workspace)).get())
+                    .hasRootCauseInstanceOf(AccessDeniedException.class);
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+    }
+
+    @Test void personalWorkspaceOwnerComesFromTheCurrentLocalAccount() {
+        start(false, KeycloakPrincipalMode.LEGACY);
+        var actor = identities.local(1);
+        var access = new SharedWorkspaceActorAccess(identities);
+        try {
+            SecurityContextHolder.setContext(new SecurityContextImpl(local(actor)));
+            assertThat(access.currentOwnerPrincipal(actor.scopeKey())).contains(actor.id().value());
+            assertThatThrownBy(() -> access.currentOwnerPrincipal("another-owner")).isInstanceOf(AccessDeniedException.class);
+            jdbc.update("update app_user set enabled=false where id=1");
+            assertThatThrownBy(() -> access.currentOwnerPrincipal(actor.scopeKey())).isInstanceOf(AccessDeniedException.class);
+        } finally { SecurityContextHolder.clearContext(); }
+    }
+
+    @Test void personalWorkspaceOwnerUsesTheVerifiedOidcBindingOfThisRequest() {
+        start(true, KeycloakPrincipalMode.STABLE);
+        var actor = identities.oidc("https://idp.test", "owner");
+        addBinding(actor, "https://idp.test", "separate");
+        var access = new SharedWorkspaceActorAccess(identities, java.util.Optional.of(KeycloakPrincipalMode.STABLE));
+        try {
+            SecurityContextHolder.setContext(new SecurityContextImpl(oidc(actor, "https://idp.test", "owner", true)));
+            assertThat(access.currentOwnerPrincipal(actor.scopeKey())).contains(actor.id().value());
+            jdbc.update("update principal_binding set enabled=0 where principal_id=? and subject_id=?",
+                    actor.id().value().toString(), "owner");
+            assertThatThrownBy(() -> access.currentOwnerPrincipal(actor.scopeKey())).isInstanceOf(AccessDeniedException.class);
+            SecurityContextHolder.setContext(new SecurityContextImpl(oidc(actor, "https://idp.test", "separate", true)));
+            assertThat(access.currentOwnerPrincipal(actor.scopeKey())).contains(actor.id().value());
+        } finally { SecurityContextHolder.clearContext(); }
+    }
+
+    @Test void personalWorkspaceBearerOwnerUsesItsOriginalUnexpiredVerifiedToken() {
+        start(true, KeycloakPrincipalMode.STABLE);
+        var actor = identities.oidc("https://idp.test", "owner");
+        var access = new SharedWorkspaceActorAccess(identities, java.util.Optional.of(KeycloakPrincipalMode.STABLE));
+        Instant now = Instant.now();
+        try {
+            var current = org.springframework.security.oauth2.jwt.Jwt.withTokenValue("controlled")
+                    .header("alg", "RS256").subject("owner").issuer("https://idp.test")
+                    .issuedAt(now.minusSeconds(60)).expiresAt(now.plusSeconds(60)).build();
+            var login = new com.taxonomy.security.keycloak.PrincipalJwtAuthenticationToken(current, ROLES, actor);
+            SecurityContextHolder.setContext(new SecurityContextImpl(login));
+            assertThat(access.currentOwnerPrincipal(actor.scopeKey())).contains(actor.id().value());
+
+            var expired = org.springframework.security.oauth2.jwt.Jwt.withTokenValue("controlled")
+                    .header("alg", "RS256").subject("owner").issuer("https://idp.test")
+                    .issuedAt(now.minusSeconds(120)).expiresAt(now.minusSeconds(60)).build();
+            SecurityContextHolder.setContext(new SecurityContextImpl(
+                    new com.taxonomy.security.keycloak.PrincipalJwtAuthenticationToken(expired, ROLES, actor)));
+            assertThatThrownBy(() -> access.currentOwnerPrincipal(actor.scopeKey())).isInstanceOf(AccessDeniedException.class);
+        } finally { SecurityContextHolder.clearContext(); }
+    }
+
+    @Test void onlyAnUnregisteredVerifiedExternalLoginCanKeepTheLegacyOwnerScope() {
+        start(true, KeycloakPrincipalMode.LEGACY);
+        var legacy = new SharedWorkspaceActorAccess(identities, java.util.Optional.of(KeycloakPrincipalMode.LEGACY));
+        var stable = new SharedWorkspaceActorAccess(identities, java.util.Optional.of(KeycloakPrincipalMode.STABLE));
+        try {
+            SecurityContextHolder.setContext(new SecurityContextImpl(oidc(null, "https://idp.test", "legacy", false)));
+            assertThat(legacy.currentOwnerPrincipal("alice")).isEmpty();
+            assertThatThrownBy(() -> stable.currentOwnerPrincipal("alice")).isInstanceOf(AccessDeniedException.class);
+            identities.oidc("https://idp.test", "legacy");
+            assertThatThrownBy(() -> legacy.currentOwnerPrincipal("alice")).isInstanceOf(AccessDeniedException.class);
+            SecurityContextHolder.clearContext();
+            assertThatThrownBy(() -> legacy.currentOwnerPrincipal("alice")).isInstanceOf(AccessDeniedException.class);
+        } finally { SecurityContextHolder.clearContext(); }
+    }
+
     @Test void sharedEditingRequiresTheOriginalOidcLoginEvenWhenAnotherBindingIsEnabled() {
         start(true, KeycloakPrincipalMode.STABLE);
         var principal = identities.oidc("https://idp.test", "original");

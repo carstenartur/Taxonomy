@@ -171,7 +171,7 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
      * @return the view context metadata
      */
     public ViewContext getViewContext(String username, String branch, WorkspaceContext ctx) {
-        UserWorkspaceState ws = resolveState(username);
+        UserWorkspaceState ws = ctx == null || ctx.workspaceId() == null ? resolveState(username) : selectedProgress(ctx);
         DslGitRepository repo = resolveRepository(ctx);
         try {
             DslCommit headInfo = repo.getHeadCommitInfo(branch);

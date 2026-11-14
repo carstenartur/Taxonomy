@@ -63,6 +63,68 @@ class ProjectAnalysisBudgetContinuationTest {
     @TempDir Path database;
 
     @Test
+    void queuedBoundWorkspaceRetainsItsOwnerForOneAuthorizedBudgetCycle() throws Exception {
+        var actor = UUID.randomUUID();
+        var requestThread = Thread.currentThread();
+        var enabled = new java.util.concurrent.atomic.AtomicBoolean(true);
+        var access = new WorkspaceActorAccess() {
+            @Override public void requireActive(String username) { }
+            @Override public Optional<UUID> currentOwnerPrincipal(String username) {
+                if (Thread.currentThread() != requestThread) throw new AssertionError("Worker consulted the request login");
+                return Optional.of(actor);
+            }
+            @Override public AnalysisOwner admitAnalysisOwner(String username, UserWorkspace workspace) {
+                UUID admitted = currentOwnerPrincipal(username).orElseThrow();
+                assertThat(workspace.getOwnerPrincipalId()).isEqualTo(admitted.toString());
+                return AnalysisOwner.forWorkspace(username, workspace.getWorkspaceId(), admitted, () -> {
+                    if (!enabled.get()) throw new org.springframework.security.access.AccessDeniedException("Owner disabled");
+                });
+            }
+        };
+        try (var f = new Fixture(database, null, actor, access);
+             var worker = java.util.concurrent.Executors.newSingleThreadExecutor()) {
+            var pending = f.service.enqueueProject(f.projectId, new AnalyzeProjectRequest(
+                    List.of(f.requirementId), false, "CUSTOM_OPENAI", 100, "bound-worker"), "owner", f.scope);
+            worker.submit(f::runQueued).get();
+            var partial = f.current(pending);
+            assertThat(partial.status()).as(partial.errorSummary()).isEqualTo(AnalysisStatus.PARTIAL);
+            var decision = f.eligibility(partial);
+            assertThat(decision.available()).as(decision.reason()).isTrue();
+            f.continueWith(partial, new ContinueAnalysisRequest(decision.snapshotId(), decision.continuationVersion()));
+            worker.submit(f::runQueued).get();
+            var completed = f.current(pending);
+            assertThat(completed.status()).as(completed.errorSummary()).isEqualTo(AnalysisStatus.SUCCESS);
+            assertThat(f.snapshot(completed).analysis().getRecovery().id()).isEqualTo(decision.continuationId());
+
+            var admitted = f.service.admitOwner("owner", f.scope);
+            var verification = new CopilotOperationKey(false, "a".repeat(64), 2, 2,
+                    com.taxonomy.portfolio.model.AnalysisAutomationProfile.EXHAUSTIVE, true, true);
+            var firstPass = new CopilotOperationKey(false, verification.operationId(), 1, 2,
+                    verification.profile(), true, true);
+            var first = worker.submit(() -> f.service.enqueueAdmittedPass(f.projectId, f.requirementId,
+                    firstPass, "CUSTOM_OPENAI", 100, "owner", f.scope, admitted)).get();
+            worker.submit(f::runQueued).get();
+            var second = worker.submit(() -> f.service.enqueueAdmittedPass(f.projectId, f.requirementId,
+                    verification, "CUSTOM_OPENAI", 100, "owner", f.scope, admitted)).get();
+            worker.submit(f::runQueued).get();
+            assertThat(f.current(second).items().getFirst().snapshotId()).isNotNull();
+            assertThat(first.id()).isNotEqualTo(second.id());
+
+            int calls = f.prompts.size();
+            var revoked = f.service.enqueueProject(f.projectId, new AnalyzeProjectRequest(
+                    List.of(f.requirementId), false, "CUSTOM_OPENAI", 100, "revoked-worker"), "owner", f.scope);
+            enabled.set(false);
+            assertThatThrownBy(() -> worker.submit(() -> f.service.enqueueAdmittedPass(f.projectId, f.requirementId,
+                    verification, "CUSTOM_OPENAI", 100, "owner", f.scope, admitted)).get())
+                    .hasCauseInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+            worker.submit(f::runQueued).get();
+            assertThat(f.current(revoked).status()).isEqualTo(AnalysisStatus.FAILED);
+            assertThat(f.prompts).hasSize(calls);
+            assertThat(f.current(revoked).items().getFirst().snapshotId()).isNull();
+        }
+    }
+
+    @Test
     void continuationReadChecksExactIdentityWithoutHydratingUnusedPayloads() throws Exception {
         try (var f = new Fixture(database)) {
             String note = "Unused continuation enrichment evidence Ä水😀. ".repeat(160);
@@ -637,13 +699,21 @@ class ProjectAnalysisBudgetContinuationTest {
         Long requirementId;
 
         final AnalysisModelBinding binding;
+        final UUID boundOwner;
+        final WorkspaceActorAccess workspaceActors;
 
         Fixture(Path directory) throws Exception {
             this(directory, null);
         }
 
         Fixture(Path directory, AnalysisModelBinding binding) throws Exception {
+            this(directory, binding, null, WorkspaceActorAccess.unavailable());
+        }
+
+        Fixture(Path directory, AnalysisModelBinding binding, UUID boundOwner, WorkspaceActorAccess workspaceActors) throws Exception {
             this.binding = binding;
+            this.boundOwner = boundOwner;
+            this.workspaceActors = workspaceActors;
             url = "jdbc:hsqldb:file:" + directory.resolve("continuation");
             node("BP", "BP", null); node("IP", "IP", null); node("IP-record", "IP", "IP");
             for (int i = 0; i < 33; i++) {
@@ -709,7 +779,7 @@ class ProjectAnalysisBudgetContinuationTest {
                     ProjectRequirementVersion.class, RequirementAnalysisJob.class, RequirementAnalysisJobItem.class,
                     RequirementAnalysisSnapshot.class, SnapshotReference.class,
                     RequirementElementMapping.class, RequirementRelationMapping.class,
-                    AnalysisContinuationRun.class, AnalysisQuestionCheckpoint.class)) configuration.addAnnotatedClass(entity);
+                    AnalysisContinuationRun.class, AnalysisQuestionCheckpoint.class, UserWorkspace.class)) configuration.addAnnotatedClass(entity);
             factory = configuration.setProperty("hibernate.connection.driver_class", "org.hsqldb.jdbc.JDBCDriver")
                     .setProperty("hibernate.connection.url", url).setProperty("hibernate.hbm2ddl.auto", create ? "create" : "validate")
                     .setProperty("hibernate.search.enabled", "false").buildSessionFactory();
@@ -750,14 +820,26 @@ class ProjectAnalysisBudgetContinuationTest {
             ReflectionTestUtils.setField(relations, "budgetSettings", relationBudgets);
             ReflectionTestUtils.setField(relations, "batchSize", 3);
             ReflectionTestUtils.setField(relations, "maxPromptCharacters", 16_000);
-            var workspace = new UserWorkspace(); workspace.setUsername("owner"); workspace.setWorkspaceId(scope.workspaceId());
+            if (create) transaction(em -> {
+                var workspace = new UserWorkspace();
+                workspace.setUsername("owner");
+                workspace.setWorkspaceId(scope.workspaceId());
+                workspace.setCreatedAt(Instant.now());
+                if (boundOwner != null) workspace.assignOwnerPrincipal(boundOwner);
+                em.persist(workspace);
+            });
             var workspaces = mock(WorkspaceManager.class);
-            when(workspaces.getWorkspaceById(scope.workspaceId())).thenReturn(workspace);
+            when(workspaces.getWorkspaceById(scope.workspaceId())).thenAnswer(call -> shared.createQuery(
+                    "from UserWorkspace where workspaceId = :id", UserWorkspace.class)
+                    .setParameter("id", scope.workspaceId()).getSingleResult());
             var continuation = new AnalysisContinuationService(proxied(new AnalysisContinuationStore(shared, json)),
                     catalogue, llm, workspaces, json);
             ReflectionTestUtils.setField(continuation, "relations", relations);
-            var local = proxied(new ProjectAnalysisContinuationService(continuation, workspaces, projectService, persistence, jobs, items,
-                    requirements, snapshots, new PortfolioSnapshotEvidenceReader(shared, codec), transport));
+            ReflectionTestUtils.setField(continuation, "workspaceActors", workspaceActors);
+            var portfolio = new ProjectAnalysisContinuationService(continuation, workspaces, projectService, persistence, jobs, items,
+                    requirements, snapshots, new PortfolioSnapshotEvidenceReader(shared, codec), transport);
+            portfolio.configureWorkspaceActors(workspaceActors);
+            var local = proxied(portfolio);
             var projection = new RequirementArchitectureViewService(new com.taxonomy.architecture.pipeline.ArchitectureViewPipeline(
                     null, new com.taxonomy.architecture.pipeline.ArchitecturePipelineInvariantValidator()));
             var useCase = new AnalyzeRequirementUseCase(llm, budget, projection,

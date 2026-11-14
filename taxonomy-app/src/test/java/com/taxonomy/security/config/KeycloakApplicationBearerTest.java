@@ -84,6 +84,117 @@ class KeycloakApplicationBearerTest {
                     .path("username").asText()).isNotEqualTo(account.path("username").asText());
         }
     }
+    @Test void creatingAPersonalWorkspacePersistsItsVerifiedBearerPrincipal() throws Exception {
+        String token = System.getProperty("taxonomy.keycloak.test.issuer") == null
+                ? ISSUER.scopedToken(applicationAudience, List.of("ROLE_ARCHITECT"), "analysis:run")
+                : passwordToken("taxonomy-app", "taxonomy-test-secret", "architect");
+        try (var client = HttpClient.newHttpClient()) {
+            var request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/workspace/create"))
+                    .header("Authorization", "Bearer " + token)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString("{\"displayName\":\"Verified personal workspace\"}"))
+                    .build();
+            var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            assertThat(response.statusCode()).isEqualTo(200);
+            var workspace = JsonMapper.builder().build().readTree(response.body());
+            var verified = decoder.decode(token);
+            String id = jdbc.queryForObject("select principal_id from principal_binding where issuer=? and subject_id=?",
+                    String.class, verified.getIssuer().toString(), verified.getSubject());
+            assertThat(jdbc.queryForObject("select owner_principal_id from user_workspace where workspace_id=?",
+                    String.class, workspace.path("workspaceId").asText())).isEqualTo(id);
+            assertThat(workspace.has("ownerPrincipalId")).isFalse();
+        }
+    }
+
+    @Test void metadataAndRenameRequireTheOriginalStableWorkspaceOwner() throws Exception {
+        String token = System.getProperty("taxonomy.keycloak.test.issuer") == null
+                ? ISSUER.scopedToken(applicationAudience, List.of("ROLE_ARCHITECT"), "analysis:run architecture:read")
+                : passwordToken("taxonomy-app", "taxonomy-test-secret", "architect");
+        var currentScope = account(token).path("username").asText();
+        var originalId = UUID.randomUUID().toString();
+        var workspaceId = UUID.randomUUID().toString();
+        jdbc.update("insert into app_principal(principal_id,scope_key,enabled) values(?,?,1)",originalId,"reserved-" + originalId);
+        jdbc.update("""
+                insert into user_workspace(workspace_id,username,owner_principal_id,display_name,created_at,current_branch,
+                  archived,is_default,shared,provisioning_status,topology_mode)
+                values(?,?,?,'Original private workspace',current_timestamp,'draft',false,false,false,'READY','INTERNAL_SHARED')
+                """,workspaceId,currentScope,originalId);
+        try (var client = HttpClient.newHttpClient()) {
+            String base = "http://localhost:" + port + "/api/workspace";
+            var list = client.send(HttpRequest.newBuilder(URI.create(base + "/list"))
+                    .header("Authorization","Bearer " + token).GET().build(),HttpResponse.BodyHandlers.ofString());
+            assertThat(list.statusCode()).isEqualTo(200);
+            assertThat(list.body()).doesNotContain(workspaceId, "Original private workspace");
+            var info = client.send(HttpRequest.newBuilder(URI.create(base + "/" + workspaceId + "/info"))
+                    .header("Authorization", "Bearer " + token).GET().build(), HttpResponse.BodyHandlers.discarding());
+            assertThat(info.statusCode()).isEqualTo(404);
+            var rename = client.send(HttpRequest.newBuilder(URI.create(base + "/" + workspaceId + "/rename"))
+                    .header("Authorization","Bearer " + token).header("Content-Type","application/json")
+                    .PUT(HttpRequest.BodyPublishers.ofString("{\"displayName\":\"New private workspace\"}"))
+                    .build(),HttpResponse.BodyHandlers.discarding());
+            assertThat(rename.statusCode()).isIn(400, 403, 404);
+            assertThat(jdbc.queryForObject("select display_name from user_workspace where workspace_id=?",
+                    String.class,workspaceId)).isEqualTo("Original private workspace");
+        } finally {
+            jdbc.update("delete from user_workspace where workspace_id=?", workspaceId);
+            jdbc.update("delete from app_principal where principal_id=?", originalId);
+        }
+    }
+
+    @Test void projectionMetadataRequiresTheOwnerOfItsPersistedWorkspace() throws Exception {
+        String token = System.getProperty("taxonomy.keycloak.test.issuer") == null
+                ? ISSUER.scopedToken(applicationAudience, List.of("ROLE_ARCHITECT"), "analysis:run architecture:read")
+                : passwordToken("taxonomy-app", "taxonomy-test-secret", "architect");
+        String scope = account(token).path("username").asText();
+        var verified = decoder.decode(token);
+        String principal = jdbc.queryForObject("select principal_id from principal_binding where issuer=? and subject_id=?",
+                String.class, verified.getIssuer().toString(), verified.getSubject());
+        String previous = UUID.randomUUID().toString();
+        String previousWorkspace = UUID.randomUUID().toString();
+        String ownedWorkspace = UUID.randomUUID().toString();
+        String base = "http://localhost:" + port + "/api/workspace";
+        String insertWorkspace = """
+                insert into user_workspace (workspace_id, username, owner_principal_id, display_name, created_at,
+                    current_branch, archived, is_default, shared, provisioning_status, topology_mode)
+                values (?, ?, ?, ?, current_timestamp, 'draft', false, false, false, 'READY', 'INTERNAL_SHARED')
+                """;
+        String insertProjection = """
+                insert into workspace_projection (username, workspace_id, projection_commit_id, projection_branch,
+                    index_commit_id, stale, created_at)
+                values (?, ?, ?, 'draft', ?, false, current_timestamp)
+                """;
+        jdbc.update("insert into app_principal(principal_id, scope_key, enabled) values(?,?,1)", previous, "reserved-" + previous);
+        try (var client = HttpClient.newHttpClient()) {
+            jdbc.update(insertWorkspace, ownedWorkspace, scope, principal, "Current projection workspace");
+            jdbc.update(insertWorkspace, previousWorkspace, scope, previous, "Previous projection workspace");
+            var select = HttpRequest.newBuilder(URI.create(base + "/" + ownedWorkspace + "/switch"))
+                    .header("Authorization", "Bearer " + token).POST(HttpRequest.BodyPublishers.noBody()).build();
+            assertThat(client.send(select, HttpResponse.BodyHandlers.discarding()).statusCode()).isEqualTo(200);
+            jdbc.update(insertProjection, scope, previousWorkspace, "previous-commit", "previous-index");
+            var get = HttpRequest.newBuilder(URI.create(base + "/projection"))
+                    .header("Authorization", "Bearer " + token).GET().build();
+            var hidden = client.send(get, HttpResponse.BodyHandlers.ofString());
+            assertThat(hidden.statusCode()).isEqualTo(200);
+            var projection = JsonMapper.builder().build().readTree(hidden.body());
+            assertThat(projection.path("persistedProjectionCommit").isNull()).isTrue();
+            assertThat(projection.path("persistedIndexCommit").isNull()).isTrue();
+            assertThat(jdbc.queryForObject("select index_commit_id from workspace_projection where workspace_id=?",
+                    String.class, previousWorkspace)).isEqualTo("previous-index");
+
+            jdbc.update("delete from workspace_projection where workspace_id=?", previousWorkspace);
+            jdbc.update(insertProjection, scope, ownedWorkspace, "owned-commit", "owned-index");
+            var visible = client.send(get, HttpResponse.BodyHandlers.ofString());
+            assertThat(visible.statusCode()).isEqualTo(200);
+            var mine = JsonMapper.builder().build().readTree(visible.body());
+            assertThat(mine.path("persistedProjectionCommit").asText()).isEqualTo("owned-commit");
+            assertThat(mine.path("persistedIndexCommit").asText()).isEqualTo("owned-index");
+        } finally {
+            jdbc.update("delete from workspace_projection where workspace_id in (?, ?)", previousWorkspace, ownedWorkspace);
+            jdbc.update("delete from user_workspace where workspace_id in (?, ?)", previousWorkspace, ownedWorkspace);
+            jdbc.update("delete from app_principal where principal_id=?", previous);
+        }
+    }
+
     @Test void verifiedBearerCanReadPrivateApiDocumentation() throws Exception {
         assertThat(request("/v3/api-docs", token(ISSUER.origin()))).isEqualTo(200);
     }

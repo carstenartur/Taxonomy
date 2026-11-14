@@ -61,6 +61,7 @@ class WorkspaceOriginalHistoryTest {
             parent = git.commitDsl(BRANCH, "first architecture", OWNER, "Parent");
             captured = git.commitDsl(BRANCH, "second architecture", OWNER, "Selected");
             var copies = new RepositoryWorkspaceService(fixture.rows, fixture.catalog, fixture.git, fixture.memberships);
+            copies.configureActorAccess(WorkspaceProvisioningTestClaims.fixtureOwners());
             workspaceId = copies.createWorkingCopy(OWNER, sourceId, BRANCH, "Working copy", null).getWorkspaceId();
             try (var walk = new org.eclipse.jgit.revwalk.RevWalk(git.getGitRepository())) {
                 var tag = org.eclipse.jgit.api.Git.wrap(git.getGitRepository()).tag().setName("reviewed/v1")
@@ -70,6 +71,7 @@ class WorkspaceOriginalHistoryTest {
             }
             annotation = git.getGitRepository().open(tagId).getBytes();
             var upstream = new WorkspaceUpstreamService(fixture.rows, fixture.catalog, fixture.memberships, fixture.git);
+            upstream.configureWorkspaceActors(WorkspaceProvisioningTestClaims.fixtureOwners());
             var selected = RepositoryContext.workspace(sourceId, workspaceId, "draft", OWNER);
             upstream.fetchTag(selected, new WorkspaceUpstreamService.TagRequest("reviewed/v1", tagId.name(), captured));
             fixture.git.deleteCentralRepository(sourceId);
@@ -121,6 +123,7 @@ class WorkspaceOriginalHistoryTest {
                     sourceId, BRANCH, "Fork", "archive-fork", null, RepositoryVisibility.PRIVATE, OWNER).getRepositoryId());
             assertEquals(base, fixture.catalog.getRepository(forkId).getForkPointCommit());
             var copies = new RepositoryWorkspaceService(fixture.rows, fixture.catalog, fixture.git, fixture.memberships);
+            copies.configureActorAccess(WorkspaceProvisioningTestClaims.fixtureOwners());
             var workingCopy = copies.createWorkingCopy(OWNER, sourceId, BRANCH, "Independent copy", null);
             copyId = workingCopy.getWorkspaceId();
             assertEquals(base, workingCopy.getBaseCommit());
@@ -316,6 +319,7 @@ class WorkspaceOriginalHistoryTest {
                 return call.callRealMethod();
             }).when(paused).openWorkspaceRepository(anyString());
             var copies = new RepositoryWorkspaceService(fixture.rows, fixture.catalog, paused, fixture.memberships);
+            copies.configureActorAccess(WorkspaceProvisioningTestClaims.fixtureOwners());
             var original = pool.submit(() -> copies.createWorkingCopy(OWNER, sourceId, BRANCH, "Concurrent copy", null));
             String id = entered.get(30, java.util.concurrent.TimeUnit.SECONDS);
             try {
@@ -367,6 +371,7 @@ class WorkspaceOriginalHistoryTest {
                 return saved;
             }).when(interrupted).save(any(UserWorkspace.class));
             var creator = new RepositoryWorkspaceService(interrupted, fixture.catalog, fixture.git, fixture.memberships);
+            creator.configureActorAccess(WorkspaceProvisioningTestClaims.fixtureOwners());
             assertThrows(IllegalStateException.class,
                     () -> creator.createWorkingCopy(OWNER, sourceId, BRANCH, "Lost acknowledgment", null));
             var retained = fixture.rows.findByWorkspaceId(id.get()).orElseThrow();
@@ -463,6 +468,7 @@ class WorkspaceOriginalHistoryTest {
 
         WorkspaceManager manager(DslGitRepositoryFactory repositories) {
             var manager = new WorkspaceManager(rows, 50, catalog, repositories);
+            manager.configureActorAccess(WorkspaceProvisioningTestClaims.fixtureOwners());
             manager.configureSourceMemberships(memberships);
             return manager;
         }
