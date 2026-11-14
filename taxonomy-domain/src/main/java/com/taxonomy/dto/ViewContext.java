@@ -14,6 +14,8 @@ import java.time.Instant;
  * @param includesProvisionalRelations whether the data includes provisional (unreviewed) relations
  * @param projectionStale            true if the DB projection is behind HEAD
  * @param indexStale                 true if the search index is behind HEAD
+ * @param projectionReadiness     evidence for the selected projection
+ * @param indexReadiness          evidence for the selected index
  */
 public record ViewContext(
     String basedOnCommit,
@@ -21,5 +23,13 @@ public record ViewContext(
     Instant commitTimestamp,
     boolean includesProvisionalRelations,
     boolean projectionStale,
-    boolean indexStale
-) {}
+    boolean indexStale,
+    RepositoryReadiness projectionReadiness,
+    RepositoryReadiness indexReadiness
+) {
+    public ViewContext(String basedOnCommit, String basedOnBranch, Instant commitTimestamp,
+                       boolean includesProvisionalRelations, boolean projectionStale, boolean indexStale) {
+        this(basedOnCommit, basedOnBranch, commitTimestamp, includesProvisionalRelations,
+                projectionStale, indexStale, null, null);
+    }
+}

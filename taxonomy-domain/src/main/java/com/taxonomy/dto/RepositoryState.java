@@ -26,6 +26,8 @@ import java.util.List;
  * @param indexStale           true if the search index is behind HEAD
  * @param totalCommits         number of commits on the current branch
  * @param databaseBacked       true if using HibernateRepository (persistent)
+ * @param projectionReadiness evidence for the selected projection
+ * @param indexReadiness      evidence for the selected index
  */
 public record RepositoryState(
     String currentBranch,
@@ -43,5 +45,17 @@ public record RepositoryState(
     String indexCommit,
     boolean indexStale,
     int totalCommits,
-    boolean databaseBacked
-) {}
+    boolean databaseBacked,
+    RepositoryReadiness projectionReadiness,
+    RepositoryReadiness indexReadiness
+) {
+    public RepositoryState(String currentBranch, String headCommit, Instant headTimestamp, String headAuthor,
+                           String headMessage, List<String> branches, boolean operationInProgress,
+                           String operationKind, String projectionCommit, String projectionBranch,
+                           Instant projectionTimestamp, boolean projectionStale, String indexCommit,
+                           boolean indexStale, int totalCommits, boolean databaseBacked) {
+        this(currentBranch, headCommit, headTimestamp, headAuthor, headMessage, branches, operationInProgress,
+                operationKind, projectionCommit, projectionBranch, projectionTimestamp, projectionStale, indexCommit,
+                indexStale, totalCommits, databaseBacked, null, null);
+    }
+}
