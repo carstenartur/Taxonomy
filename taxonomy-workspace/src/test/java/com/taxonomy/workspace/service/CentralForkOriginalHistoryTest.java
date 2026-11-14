@@ -275,6 +275,124 @@ class CentralForkOriginalHistoryTest {
         }
     }
 
+    enum LostForkScenario { MATCH, UNATTESTED, TARGET_MOVED, TRACKING_MOVED, ACCESS_REVOKED, CONCURRENT, PROCESS_LOSS, RESPONSE_LOSS }
+
+    @ParameterizedTest
+    @EnumSource(LostForkScenario.class)
+    void onlyTheOriginalAuthenticatedForkCanAcknowledgeItsPublishedRefsAfterRestart(LostForkScenario scenario) throws Exception {
+        String database = "jdbc:hsqldb:file:" + directory.resolve("replay") + ";shutdown=true";
+        String sourceId, targetId, published;
+        String actor = "fork-contributor";
+        var actors = mock(WorkspaceFetchAuthority.class);
+        String principal = java.util.UUID.randomUUID().toString();
+        when(actors.currentActor(actor)).thenReturn(principal);
+        try (var fixture = new Fixture(database, GitCommitSignatureService.disabled(), actors)) {
+            var source = fixture.createSource(RepositoryVisibility.PRIVATE);
+            fixture.memberships.assignRole(source.getRepositoryId(), actor, com.taxonomy.workspace.model.RepositoryRole.CONTRIBUTOR, OWNER);
+            sourceId = source.getRepositoryId();
+            var sourceGit = fixture.git.getCentralRepository(sourceId);
+            published = sourceGit.commitDsl("main", "original architecture", OWNER, "Selected source");
+            var failing = mock(SystemRepositoryService.class, delegatesTo(fixture.catalog));
+            if (scenario == LostForkScenario.PROCESS_LOSS) {
+                doThrow(new AssertionError("Simulated process loss at the published-ref boundary"))
+                        .when(failing).markProvisioningReady(anyString());
+            } else if (scenario == LostForkScenario.RESPONSE_LOSS) {
+                doAnswer(call -> {
+                    fixture.catalog.markProvisioningReady(call.getArgument(0));
+                    throw new IllegalStateException("Response lost after catalog commit");
+                }).when(failing).markProvisioningReady(anyString());
+            } else {
+                doThrow(new IllegalStateException("Lost catalogue completion")).when(failing).markProvisioningReady(anyString());
+            }
+            var service = new ArchitectureRepositoryProvisioningService(failing, fixture.memberships, fixture.git, ns -> "");
+            var exception = assertThrows(Throwable.class,
+                    () -> service.createFork(sourceId, "main", "Fork", "replay", null, null, actor));
+            if (scenario == LostForkScenario.PROCESS_LOSS) assertInstanceOf(AssertionError.class, exception);
+            else assertInstanceOf(IllegalStateException.class, exception);
+            var row = fixture.rows.findBySlug("replay").orElseThrow();
+            targetId = row.getRepositoryId();
+            assertEquals(principal, row.getForkInitiatorKey());
+            if (scenario == LostForkScenario.UNATTESTED) {
+                row.setForkInitiatorKey(null);
+                fixture.catalog.save(row);
+            }
+            var expectedState = switch (scenario) {
+                case PROCESS_LOSS -> RepositoryLifecycleState.PROVISIONING;
+                case RESPONSE_LOSS -> RepositoryLifecycleState.ACTIVE;
+                default -> RepositoryLifecycleState.FAILED;
+            };
+            assertEquals(expectedState, row.getLifecycleState());
+            assertEquals(published, fixture.git.getCentralRepository(targetId).getHeadCommit("main"));
+            assertNotEquals(published, sourceGit.commitDsl("main", "later source", OWNER, "Advance source"));
+        }
+        try (var fixture = new Fixture(database, GitCommitSignatureService.disabled(), actors)) {
+            var target = fixture.git.getCentralRepository(targetId);
+            var tracking = new GitUpstreamRef(sourceId, "main");
+            assertEquals(published, tracking.head(target));
+            when(actors.currentActor(actor)).thenReturn(java.util.UUID.randomUUID().toString());
+            assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                    () -> fixture.service.createFork(sourceId, "main", "Fork", "replay", null, null, actor));
+            when(actors.currentActor(actor)).thenReturn(principal);
+            assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                    () -> fixture.service.createFork(sourceId, "main", "Different", "replay", null, null, actor));
+            if (scenario == LostForkScenario.ACCESS_REVOKED) {
+                fixture.memberships.removeMembership(fixture.catalog.getRepository(sourceId), actor, OWNER);
+                assertThrows(org.springframework.security.access.AccessDeniedException.class,
+                        () -> fixture.service.createFork(sourceId, "main", "Fork", "replay", null, null, actor));
+                assertEquals(RepositoryLifecycleState.FAILED, fixture.catalog.getRepository(targetId).getLifecycleState());
+                return;
+            }
+            if (scenario == LostForkScenario.TARGET_MOVED || scenario == LostForkScenario.TRACKING_MOVED) {
+                target.createBranchAtCommit("temporary", published);
+                String advanced = target.commitDsl("temporary", "foreign change", OWNER, "New commit");
+                if (scenario == LostForkScenario.TARGET_MOVED)
+                    target.fastForwardIfHeadMatches("main", published, advanced, OWNER, "Intervening writer");
+                else tracking.advance(target, published, advanced, OWNER);
+                org.eclipse.jgit.api.Git.wrap(target.getGitRepository()).branchDelete().setBranchNames("temporary").setForce(true).call();
+                assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                        () -> fixture.service.createFork(sourceId, "main", "Fork", "replay", null, null, actor));
+                assertEquals(RepositoryLifecycleState.FAILED, fixture.catalog.getRepository(targetId).getLifecycleState());
+                assertEquals(scenario == LostForkScenario.TARGET_MOVED ? advanced : published, target.getHeadCommit("main"));
+                assertEquals(scenario == LostForkScenario.TRACKING_MOVED ? advanced : published, tracking.head(target));
+                return;
+            }
+            if (scenario == LostForkScenario.UNATTESTED) {
+                assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                        () -> fixture.service.createFork(sourceId, "main", "Fork", "replay", null, null, actor));
+                assertEquals(RepositoryLifecycleState.FAILED, fixture.catalog.getRepository(targetId).getLifecycleState());
+                return;
+            }
+            if (scenario == LostForkScenario.CONCURRENT) {
+                try (var second = new Fixture(database, GitCommitSignatureService.disabled(), actors);
+                     var threads = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+                    var start = new java.util.concurrent.CountDownLatch(1);
+                    var attempts = java.util.stream.Stream.of(fixture, second).map(f -> threads.submit(() -> {
+                        start.await();
+                        try {
+                            return f.service.createFork(sourceId, "main", "Fork", "replay", null, null, actor).getRepositoryId();
+                        } catch (org.springframework.web.server.ResponseStatusException conflict) {
+                            assertEquals(409, conflict.getStatusCode().value());
+                            return "";
+                        }
+                    })).toList();
+                    start.countDown();
+                    var completed = new java.util.ArrayList<String>();
+                    for (var attempt : attempts) completed.add(attempt.get(30, java.util.concurrent.TimeUnit.SECONDS));
+                    assertTrue(completed.contains(targetId));
+                    assertTrue(completed.stream().allMatch(id -> id.isEmpty() || id.equals(targetId)));
+                }
+            } else {
+                fixture.service.createFork(sourceId, "main", "Fork", "replay", null, null, actor);
+            }
+            var ready = fixture.catalog.getRepository(targetId);
+            assertEquals(targetId, ready.getRepositoryId());
+            assertEquals(RepositoryLifecycleState.ACTIVE, ready.getLifecycleState());
+            assertEquals(published, ready.getForkPointCommit());
+            assertEquals(published, target.getHeadCommit("main"));
+            assertEquals(published, tracking.head(target));
+        }
+    }
+
     static final class Fixture implements AutoCloseable {
         final EditorPersistenceFixture persistence;
         final SystemRepositoryRepository rows;
@@ -284,13 +402,18 @@ class CentralForkOriginalHistoryTest {
         final ArchitectureRepositoryProvisioningService service;
 
         Fixture(String database, GitCommitSignatureService signatures) {
+            this(database, signatures, null);
+        }
+
+        Fixture(String database, GitCommitSignatureService signatures, WorkspaceFetchAuthority actors) {
             persistence = new EditorPersistenceFixture(database, SystemRepository.class, RepositoryMembership.class);
             var transactionManager = new JpaTransactionManager(persistence.factory);
             var entities = SharedEntityManagerCreator.createSharedEntityManager(persistence.factory);
             var repositories = new JpaRepositoryFactory(entities);
             var transactions = new TransactionInterceptor(transactionManager, new AnnotationTransactionAttributeSource());
             rows = repositories.getRepository(SystemRepositoryRepository.class);
-            catalog = transactional(new SystemRepositoryService(rows, entities), SystemRepositoryService.class, transactions);
+            catalog = transactional(new SystemRepositoryService(rows, entities, java.util.Optional.ofNullable(actors)),
+                    SystemRepositoryService.class, transactions);
             memberships = transactional(new RepositoryMembershipService(repositories.getRepository(RepositoryMembershipRepository.class)),
                     RepositoryMembershipService.class, transactions);
             git = new DslGitRepositoryFactory(new DefaultHibernateRepositoryFactory(persistence.factory), catalog, signatures);
