@@ -108,7 +108,7 @@ EXTERNAL_DEPENDENCY must appear in the manifest if required and not captured.
 | `storage.schema-migrations` | application | REBUILDABLE | `—` | Run versioned target migrations; SQL schema and sequences are target-owned |
 | `storage.security.user-roles` | application | PORTABLE_PRIMARY | `—` | Join table user_roles included in explicit identity export; role mapping requires approval |
 | `storage.security.principals` | application | PORTABLE_PRIMARY | `app_principal`, `principal_binding`, `principal_installation` | Stable identities and verified provider bindings; historical unresolved owners remain disabled |
-| `storage.security.backup-grants` | application | PORTABLE_PRIMARY | `backup_capability_grant`, `backup_version_grant`, `principal_access_audit` | Explicit grants and stable-actor audit; target privileges require a separate decision |
+| `storage.security.backup-grants` | application | PORTABLE_PRIMARY | `backup_capability_grant`, `backup_version_grant`, `principal_access_audit`, `legacy_repository_role_audit` | Explicit grants, stable-principal decisions and verified legacy OIDC binding evidence; target privileges require a separate decision |
 | `configuration.application` | application | PORTABLE_PRIMARY | `—` | Versioned non-secret business settings; operational endpoints require explicit target mapping |
 | `configuration.deployment` | application | EXTERNAL_DEPENDENCY | `—` | Deployment manifests, database credentials, hostnames, TLS and external file paths inventoried; not blindly applied |
 | `external.identity-providers` | application | EXTERNAL_DEPENDENCY | `—` | AD/OIDC/Keycloak provider backups remain operator-owned; issuer/subject bindings must be verified |

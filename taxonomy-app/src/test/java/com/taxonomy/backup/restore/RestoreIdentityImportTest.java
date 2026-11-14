@@ -32,12 +32,21 @@ class RestoreIdentityImportTest {
         try (var factory = RestoreSchemaMigration.openValidatedFactory(source, staged, model(), () -> {});
              var archive = export(source, BackupProfile.INSTALLATION_FULL)) {
             var generation = RestoreTargetGeneration.verified(UUID.randomUUID(), source, staged, factory, Map.of(), () -> {});
-            new RestoreIdentityImporter().restore(archive, generation, allocations, () -> {});
+            var importer = new RestoreIdentityImporter();
             var rows = new JdbcTemplate(staged);
+            String unrelated = UUID.randomUUID().toString();
+            rows.update("insert into legacy_repository_role_audit values (?,?,?,?)", unrelated, binding, "unrelated target history", 1);
+            assertThatThrownBy(() -> importer.restore(archive, generation, allocations, () -> {})).isInstanceOf(IOException.class);
+            assertThat(rows.queryForObject("select count(*) from restore_identity_owner", Long.class)).isZero();
+            rows.update("delete from legacy_repository_role_audit where audit_id=?", unrelated);
+            importer.restore(archive, generation, allocations, () -> {});
             assertThat(rows.queryForObject("select record_json from restore_identity_evidence where classification='HISTORICAL_EVIDENCE' and record_kind='access-audit'", String.class))
                     .contains(binding, "LEGACY_REPOSITORY_MEMBERSHIP");
             assertThat(rows.queryForObject("select count(*) from legacy_repository_role_audit", Long.class)).isZero();
             assertThat(rows.queryForObject("select count(*) from principal_access_audit", Long.class)).isZero();
+            rows.update("insert into legacy_repository_role_audit values (?,?,?,?)", unrelated, binding, "later target history", 2);
+            assertThatThrownBy(() -> importer.restore(archive, generation, allocations, () -> {})).isInstanceOf(IOException.class);
+            assertThat(rows.queryForObject("select count(*) from legacy_repository_role_audit", Long.class)).isOne();
         }
     }
 
