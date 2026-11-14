@@ -367,6 +367,7 @@ test('changing the selected Git context clears previous sync state and actions b
         await page.evaluate(() => {
             document.body.insertAdjacentHTML('beforeend', '<div id="contextBar"></div><div id="localChangesPanel"></div>');
             window.TaxonomyI18n.formatBranch = branch => branch;
+            window.TaxonomyArchitectureWorkflow = {getScope: () => ({repositoryId:'previous-repo'})};
         });
         await page.evaluate(html => {
             const template = new DOMParser().parseFromString(html, 'text/html');
@@ -458,3 +459,34 @@ test('changing the selected Git context clears previous sync state and actions b
         assert.deepEqual(page.errors, []);
     } finally { await page.close(); }
 });
+
+test('initial repository discovery preserves a pending read and later repository switches invalidate it', async () => {
+    const page = await fixture();
+    const current = {contextId:'context-1', branch:'draft', commitId:null, mode:'EDITABLE'};
+    try {
+        await page.addScriptTag({path: path.join(resources, 'static/js/shared/architecture-workflow.js')});
+        await page.addScriptTag({path: path.join(resources, 'static/js/versioning/taxonomy-context-bar.js')});
+        async function refresh() {
+            await page.evaluate(() => { window.contextRead = TaxonomyContextBar.fetchAndRender('contextBar'); });
+            await answer(page, '/api/context/current', current);
+            await page.evaluate(() => window.contextRead);
+            return page.evaluate(() => TaxonomyContextBar.getSelectionGeneration());
+        }
+
+        assert.equal(await refresh(), 0);
+        await page.evaluate(() => {
+            TaxonomyArchitectureWorkflow.setScope({repositoryId:'repository-a'});
+            window.firstRepositoryRead = TaxonomyApiClient.captureContext();
+        });
+        assert.equal(await refresh(), 0);
+        assert.equal(await page.evaluate(() => firstRepositoryRead()), true);
+
+        await page.evaluate(() => TaxonomyArchitectureWorkflow.setScope({repositoryId:'repository-b'}));
+        assert.equal(await refresh(), 1);
+        await page.evaluate(() => TaxonomyArchitectureWorkflow.setScope({repositoryId:'repository-a'}));
+        assert.equal(await refresh(), 2);
+        assert.equal(await page.evaluate(() => firstRepositoryRead()), false);
+        assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+});
+

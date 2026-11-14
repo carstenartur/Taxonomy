@@ -52,7 +52,8 @@ window.TaxonomyContextBar = (function () {
     function acceptContext(context) {
         var workspace = workspaceId();
         var repository = window.TaxonomyArchitectureWorkflow?.getScope?.()?.repositoryId;
-        var changed = currentContext !== null && (workspace !== selectedWorkspace || repository !== selectedRepository
+        var repositoryChanged = selectedRepository != null && repository !== selectedRepository;
+        var changed = currentContext !== null && (workspace !== selectedWorkspace || repositoryChanged
             || context.contextId !== currentContext.contextId || context.branch !== currentContext.branch
             || context.commitId !== currentContext.commitId || context.mode !== currentContext.mode);
         if (changed) selectionGeneration++;
