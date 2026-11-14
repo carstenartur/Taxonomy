@@ -14,6 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
 @ConditionalOnFeature(value = "portfolio", present = false)
 final class AbsentPortfolioGitAdapter implements WorkspacePortfolioGitPort, VersioningPortfolioGitPort {
     @Override public void requireAvailable() { throw unavailable(); }
+    @Override public String lockedPublicationDigest(String username, WorkspaceContext context) { throw unavailable(); }
     @Override public String commitPortfolio(String branch, String message, String username, WorkspaceContext context) {
         throw unavailable();
     }

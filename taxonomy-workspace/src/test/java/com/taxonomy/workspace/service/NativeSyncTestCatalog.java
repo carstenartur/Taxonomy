@@ -12,6 +12,8 @@ final class NativeSyncTestCatalog {
     static SystemRepositoryService create() {
         var catalog = mock(SystemRepositoryService.class);
         doCallRealMethod().when(catalog).readCurrentAuthorization(anyString(), any());
+        org.mockito.Mockito.when(catalog.lockCurrentPublicationSource(anyString()))
+                .thenAnswer(call -> catalog.getRepository(call.getArgument(0, String.class)));
         return catalog;
     }
 }

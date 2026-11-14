@@ -25,7 +25,7 @@ public final class RepositoryMutationFenceFixture {
         });
         var repository = new org.springframework.data.jpa.repository.support.JpaRepositoryFactory(em)
                 .getRepository(com.taxonomy.workspace.repository.SystemRepositoryRepository.class);
-        var service = new com.taxonomy.workspace.service.SystemRepositoryService(repository);
+        var service = new com.taxonomy.workspace.service.SystemRepositoryService(repository, em);
         var proxy = new org.springframework.aop.framework.ProxyFactory(service);
         proxy.addAdvice(new org.springframework.transaction.interceptor.TransactionInterceptor(transactions,
                 new org.springframework.transaction.annotation.AnnotationTransactionAttributeSource()));

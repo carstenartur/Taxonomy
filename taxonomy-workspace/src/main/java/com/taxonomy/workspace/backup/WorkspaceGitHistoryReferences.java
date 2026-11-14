@@ -26,7 +26,10 @@ public final class WorkspaceGitHistoryReferences {
         REPOSITORY_FORK_POINT, REPOSITORY_LAST_FETCH,
         WORKSPACE_BASE, WORKSPACE_CURRENT, WORKSPACE_LAST_FETCHED, WORKSPACE_LAST_INTEGRATED,
         SYNC_LAST_SYNCED, SYNC_LAST_PUBLISHED, EDITOR_CHECKPOINT,
-        CHECKPOINT_EXPECTED, CHECKPOINT_COMMIT, INDEX_COMMIT, CONTEXT_FROM, CONTEXT_TO
+        CHECKPOINT_EXPECTED, CHECKPOINT_COMMIT, INDEX_COMMIT, CONTEXT_FROM, CONTEXT_TO,
+        PUBLICATION_FORK_POINT, PUBLICATION_INPUT_SOURCE, PUBLICATION_INPUT_LOCAL, PUBLICATION_INPUT_TRACKING,
+        PUBLICATION_EXPECTED_LOCAL, PUBLICATION_EXPECTED_TRACKING, PUBLICATION_PREPARED_SOURCE,
+        PUBLICATION_PREPARED_LOCAL, PUBLICATION_PREPARED_TRACKING
     }
     public record CommitReference(SourceRecordId sourceId, Field field, BackupRepositoryKey repository, String commit) {
         public CommitReference {
@@ -121,6 +124,21 @@ public final class WorkspaceGitHistoryReferences {
                 result.resolve(record, Field.SYNC_LAST_SYNCED, related, text(row, "last_synced_commit_id"));
                 result.resolve(record, Field.SYNC_LAST_PUBLISHED, related, text(row, "last_published_commit_id"));
             });
+            read("select p.operation_id,p.repository_id,p.workspace_id,p.workspace_owner_scope,p.actor_scope,"
+                            + "w.workspace_id as parent_workspace,w.source_repository_id as parent_repository,w.username as parent_owner,"
+                            + WorkspaceBackupContributor.PUBLICATION_COMMITS
+                            + " from workspace_publication_operation p join user_workspace w on w.workspace_id=p.workspace_id"
+                            + " and w.source_repository_id=p.repository_id and w.username=coalesce(p.workspace_owner_scope,p.actor_scope)",
+                    scope.repositories("p.repository_id","p.workspace_id"), "p.operation_id", checkpoint, row -> {
+                var local = result.key(row, "repository_id", "workspace_id");
+                if (!WorkspaceBackupContributor.samePublicationOwner(row))
+                    throw new IOException("Publication Git evidence belongs to a different working copy");
+                var source = reference(row, "workspace.publication", "operation_id");
+                for (var commit : WorkspaceBackupContributor.publicationCommits(row).recorded().entrySet()) {
+                    var candidates = publicationOwners(commit.getKey(), local, result.keys);
+                    if (!candidates.isEmpty()) result.resolve(source, commit.getKey(), candidates, commit.getValue());
+                }
+            });
             read("select scope_id,repository_id,workspace_id,branch,semantic_revision,checkpoint_commit,checkpoint_revision,dsl,pending_checkpoint from editor_workspace",
                     scope.repositories("repository_id", "workspace_id"), "scope_id", checkpoint, row -> {
                 var key = result.key(row, "repository_id", "workspace_id");
@@ -159,6 +177,18 @@ public final class WorkspaceGitHistoryReferences {
             }
             checkpoint.check(); return result.finish();
         } catch (IOException | RuntimeException problem) { throw sanitized(problem); }
+    }
+    /** Only the selected physical owners can prove a publication's original Git observations. */
+    public static List<BackupRepositoryKey> publicationOwners(Field field, BackupRepositoryKey workspace, Set<BackupRepositoryKey> selected) {
+        var central = new BackupRepositoryKey(workspace.repositoryId(), null);
+        var candidates = switch (field) {
+            case PUBLICATION_INPUT_SOURCE, PUBLICATION_PREPARED_SOURCE -> List.of(central);
+            case PUBLICATION_FORK_POINT -> List.of(workspace, central);
+            case PUBLICATION_INPUT_LOCAL, PUBLICATION_INPUT_TRACKING, PUBLICATION_EXPECTED_LOCAL, PUBLICATION_EXPECTED_TRACKING,
+                 PUBLICATION_PREPARED_LOCAL, PUBLICATION_PREPARED_TRACKING -> List.of(workspace);
+            default -> throw new IllegalArgumentException("Not a publication commit field");
+        };
+        return candidates.stream().filter(selected::contains).toList();
     }
     private void read(String select, Query predicate, String order, BackupCheckpoint checkpoint, RowRead action) throws IOException {
         rows.visit(new Query(select + " where " + predicate.sql() + " order by " + order, predicate.parameters()), row -> {

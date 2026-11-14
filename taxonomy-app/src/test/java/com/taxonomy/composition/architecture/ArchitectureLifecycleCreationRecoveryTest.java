@@ -50,6 +50,7 @@ class ArchitectureLifecycleCreationRecoveryTest {
     @Autowired UserWorkspaceRepository workspaces;
     @Autowired DslGitRepositoryFactory git;
     @Autowired PlatformTransactionManager transactions;
+    @jakarta.persistence.PersistenceContext jakarta.persistence.EntityManager entities;
 
     @Test
     void failedInitialGitWriteRetriesTheSameOwnedCreationWithoutAllocatingAnotherIdentity() throws Exception {
@@ -120,7 +121,7 @@ class ArchitectureLifecycleCreationRecoveryTest {
             return git.createCentralRepository(call.getArgument(0), call.getArgument(1));
         }).when(gated).createCentralRepository(eq(failed.getRepositoryId()), eq(failed.getStorageRepositoryName()));
         var first = controller(catalog, gated, USER);
-        var independentCatalog = new ProxyFactory(new SystemRepositoryService(rows));
+        var independentCatalog = new ProxyFactory(new SystemRepositoryService(rows, entities));
         independentCatalog.setProxyTargetClass(true);
         independentCatalog.addAdvice(new TransactionInterceptor(transactions, new AnnotationTransactionAttributeSource()));
         var second = controller((SystemRepositoryService) independentCatalog.getProxy(), gated, USER);

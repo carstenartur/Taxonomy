@@ -2,6 +2,7 @@ package com.taxonomy.security;
 
 import com.taxonomy.security.controller.UserManagementPageController;
 import com.taxonomy.security.service.UserManagementService;
+import com.taxonomy.security.service.UserManagementService.AuditActor;
 import com.taxonomy.shared.config.I18nConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -46,6 +47,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("local-user-management")
 @Import({UserManagementPageController.class, I18nConfig.class, UserManagementPageTest.Security.class})
 class UserManagementPageTest {
+    private static final AuditActor OPERATOR = new AuditActor("operator", null);
     private static final String PASSWORD = "Temporary-test-password-123";
     private static final Map<String, Object> ACCOUNT = Map.of(
             "id", 7L, "username", "alice", "displayName", "Alice", "email", "alice@example.test",
@@ -96,16 +98,16 @@ class UserManagementPageTest {
     @Test
     @WithMockUser(username = "operator", roles = "ADMIN")
     void createsAnAccountThroughTheExistingServiceAndRedirectsWithoutSecrets() throws Exception {
-        when(service.createUser(any(), eq(PASSWORD), eq("operator"))).thenReturn(ACCOUNT);
+        when(service.createUserAs(any(), eq(PASSWORD), eq(OPERATOR))).thenReturn(ACCOUNT);
         var result = mvc.perform(post("/admin/users").with(csrf())
                         .param("username", "alice").param("displayName", "Alice")
                         .param("email", "alice@example.test").param("roles", "ROLE_USER")
                         .param("newPassword", PASSWORD).param("confirmPassword", PASSWORD))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(flash().attribute("successKey", "users.created")).andReturn();
-        verify(service).createUser(Map.of("username", "alice", "displayName", "Alice",
-                "email", "alice@example.test", "roles", List.of("ROLE_USER")), PASSWORD, "operator");
-        verify(service, never()).createUser(any(), any());
+        verify(service).createUserAs(Map.of("username", "alice", "displayName", "Alice",
+                "email", "alice@example.test", "roles", List.of("ROLE_USER")), PASSWORD, OPERATOR);
+        verify(service, never()).createUserAs(any(), any());
         assertThat(result.getFlashMap().toString()).doesNotContain(PASSWORD);
     }
 
@@ -135,7 +137,7 @@ class UserManagementPageTest {
     @Test
     @WithMockUser(roles = "ADMIN")
     void duplicateUserIsAVisibleConflictWithoutEchoingPasswords() throws Exception {
-        when(service.createUser(any(), any(), any())).thenThrow(
+        when(service.createUserAs(any(), any(), any())).thenThrow(
                 new UserManagementService.ConflictException("Username already exists."));
         mvc.perform(post("/admin/users").with(csrf()).param("username", "alice")
                         .param("roles", "ROLE_USER").param("newPassword", PASSWORD)
@@ -166,8 +168,8 @@ class UserManagementPageTest {
                         .param("displayName", "Alice Updated").param("email", "new@example.test")
                         .param("roles", "ROLE_USER", "ROLE_ARCHITECT"))
                 .andExpect(status().is3xxRedirection());
-        verify(service).updateUser(7L, Map.of("displayName", "Alice Updated",
-                "email", "new@example.test", "roles", List.of("ROLE_USER", "ROLE_ARCHITECT")), "operator");
+        verify(service).updateUserAs(7L, Map.of("displayName", "Alice Updated",
+                "email", "new@example.test", "roles", List.of("ROLE_USER", "ROLE_ARCHITECT")), OPERATOR);
     }
 
     @Test
@@ -177,7 +179,7 @@ class UserManagementPageTest {
                         .param("newPassword", PASSWORD).param("confirmPassword", PASSWORD))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(flash().attribute("successKey", "users.passwordChanged"));
-        verify(service).changePassword(7L, PASSWORD, "operator");
+        verify(service).changePasswordAs(7L, PASSWORD, OPERATOR);
     }
 
     @Test
@@ -186,15 +188,15 @@ class UserManagementPageTest {
         when(service.getUser(7L)).thenReturn(Optional.of(ACCOUNT));
         mvc.perform(get("/admin/users/7/status").param("enabled", "false"))
                 .andExpect(status().isOk()).andExpect(view().name("user-management-status"));
-        verify(service, never()).disableUser(any(), any());
-        verify(service, never()).updateUser(any(), any(), any());
+        verify(service, never()).disableUserAs(any(), any());
+        verify(service, never()).updateUserAs(any(), any(), any());
     }
 
     @Test
     @WithMockUser(roles = "ADMIN")
     void lastAdministratorProtectionRemainsServerSide() throws Exception {
         when(service.getUser(7L)).thenReturn(Optional.of(ACCOUNT));
-        when(service.disableUser(eq(7L), any())).thenThrow(
+        when(service.disableUserAs(eq(7L), any())).thenThrow(
                 new UserManagementService.ValidationException("Cannot disable the last admin user."));
         mvc.perform(post("/admin/users/7/status").with(csrf()).param("enabled", "false"))
                 .andExpect(status().isBadRequest())
@@ -213,10 +215,10 @@ class UserManagementPageTest {
     void enablingAndDisablingUseExplicitPostActions() throws Exception {
         mvc.perform(post("/admin/users/7/status").with(csrf()).param("enabled", "true"))
                 .andExpect(status().is3xxRedirection()).andExpect(flash().attribute("successKey", "users.enabled"));
-        verify(service).updateUser(7L, Map.of("enabled", true), "operator");
+        verify(service).updateUserAs(7L, Map.of("enabled", true), OPERATOR);
         mvc.perform(post("/admin/users/7/status").with(csrf()).param("enabled", "false"))
                 .andExpect(status().is3xxRedirection()).andExpect(flash().attribute("successKey", "users.disabled"));
-        verify(service).disableUser(7L, "operator");
+        verify(service).disableUserAs(7L, OPERATOR);
     }
 
     @Test
@@ -226,14 +228,14 @@ class UserManagementPageTest {
         mvc.perform(post("/admin/users/7").with(csrf()).param("username", "alice")
                         .param("roles", "ROLE_USER").param("email", "invalid-email"))
                 .andExpect(status().isBadRequest()).andExpect(model().attribute("errorKey", "users.error.profile"));
-        verify(service, never()).updateUser(any(), any(), any());
+        verify(service, never()).updateUserAs(any(), any(), any());
     }
 
     @Test
     @WithMockUser(roles = "ADMIN")
     void lastAdministratorCannotBeDemotedThroughTheEditForm() throws Exception {
         when(service.getUser(7L)).thenReturn(Optional.of(ACCOUNT));
-        when(service.updateUser(eq(7L), any(), any())).thenThrow(new UserManagementService.ValidationException("Last admin"));
+        when(service.updateUserAs(eq(7L), any(), any())).thenThrow(new UserManagementService.ValidationException("Last admin"));
         mvc.perform(post("/admin/users/7").with(csrf()).param("username", "alice").param("roles", "ROLE_USER"))
                 .andExpect(status().isBadRequest()).andExpect(model().attribute("errorKey", "users.error.lastAdmin"));
     }
@@ -250,13 +252,13 @@ class UserManagementPageTest {
             mvc.perform(post("/admin/users/7/password").with(csrf()).param("newPassword", value).param("confirmPassword", value))
                     .andExpect(status().isBadRequest()).andExpect(model().attribute("errorKey", "users.error.passwordLength"));
         }
-        verify(service, never()).changePassword(any(), any(), any());
+        verify(service, never()).changePasswordAs(any(), any(), any());
     }
 
     @Test
     @WithMockUser(roles = "ADMIN")
     void serviceValidationOnCreationIsVisibleWithoutSecrets() throws Exception {
-        when(service.createUser(any(), any(), any())).thenThrow(new UserManagementService.ValidationException("Invalid account"));
+        when(service.createUserAs(any(), any(), any())).thenThrow(new UserManagementService.ValidationException("Invalid account"));
         mvc.perform(post("/admin/users").with(csrf()).param("username", "alice").param("roles", "ROLE_USER")
                         .param("newPassword", PASSWORD).param("confirmPassword", PASSWORD))
                 .andExpect(status().isBadRequest()).andExpect(model().attribute("errorKey", "users.error.profile"))
@@ -267,7 +269,7 @@ class UserManagementPageTest {
     @WithMockUser(roles = "ADMIN")
     void serviceValidationOnResetIsVisibleWithoutSecrets() throws Exception {
         when(service.getUser(7L)).thenReturn(Optional.of(ACCOUNT));
-        doThrow(new UserManagementService.ValidationException("Invalid password")).when(service).changePassword(eq(7L), any(), any());
+        doThrow(new UserManagementService.ValidationException("Invalid password")).when(service).changePasswordAs(eq(7L), any(), any());
         mvc.perform(post("/admin/users/7/password").with(csrf()).param("newPassword", PASSWORD).param("confirmPassword", PASSWORD))
                 .andExpect(status().isBadRequest()).andExpect(model().attribute("errorKey", "users.error.passwordLength"))
                 .andExpect(content().string(not(containsString(PASSWORD))));
@@ -277,9 +279,9 @@ class UserManagementPageTest {
     @WithMockUser(roles = "ADMIN")
     void missingAccountAtMutationTimeIsNotReportedAsSuccess() throws Exception {
         when(service.getUser(7L)).thenReturn(Optional.of(ACCOUNT));
-        when(service.updateUser(eq(7L), any(), any())).thenThrow(new UserManagementService.NotFoundException("Missing"));
-        doThrow(new UserManagementService.NotFoundException("Missing")).when(service).changePassword(eq(7L), any(), any());
-        when(service.disableUser(eq(7L), any())).thenThrow(new UserManagementService.NotFoundException("Missing"));
+        when(service.updateUserAs(eq(7L), any(), any())).thenThrow(new UserManagementService.NotFoundException("Missing"));
+        doThrow(new UserManagementService.NotFoundException("Missing")).when(service).changePasswordAs(eq(7L), any(), any());
+        when(service.disableUserAs(eq(7L), any())).thenThrow(new UserManagementService.NotFoundException("Missing"));
         mvc.perform(post("/admin/users/7").with(csrf()).param("username", "alice").param("roles", "ROLE_USER"))
                 .andExpect(status().isNotFound());
         mvc.perform(post("/admin/users/7/password").with(csrf()).param("newPassword", PASSWORD).param("confirmPassword", PASSWORD))
@@ -329,13 +331,13 @@ class UserManagementPageTest {
     @Test
     @WithMockUser(username = "operator", roles = "ADMIN")
     void acceptsReaderAccountCreationWithoutAddingBusinessRoles() throws Exception {
-        when(service.createUser(any(), eq(PASSWORD), eq("operator"))).thenReturn(ACCOUNT);
+        when(service.createUserAs(any(), eq(PASSWORD), eq(OPERATOR))).thenReturn(ACCOUNT);
         mvc.perform(post("/admin/users").with(csrf()).param("username", "reader")
                         .param("roles", "ROLE_READER").param("newPassword", PASSWORD)
                         .param("confirmPassword", PASSWORD))
                 .andExpect(status().is3xxRedirection());
-        verify(service).createUser(Map.of("username", "reader", "displayName", "", "email", "",
-                "roles", List.of("ROLE_READER")), PASSWORD, "operator");
+        verify(service).createUserAs(Map.of("username", "reader", "displayName", "", "email", "",
+                "roles", List.of("ROLE_READER")), PASSWORD, OPERATOR);
     }
 
     @Configuration(proxyBeanMethods = false)

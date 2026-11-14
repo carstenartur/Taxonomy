@@ -7,4 +7,10 @@ public interface WorkspaceArchitectureVersionPort {
     @FunctionalInterface
     interface GitAction<T> { T run() throws IOException; }
     <T> T version(RepositoryContext context, String rationale, GitAction<T> action) throws IOException;
+
+    /** Apply an already prepared version under the editor journal lock, preserving edits accepted after preparation. */
+    default <T> T applyPreparedVersion(RepositoryContext context, String expectedHead, String candidate, String rationale,
+                                       GitAction<T> action) throws IOException {
+        return action.run();
+    }
 }

@@ -29,9 +29,13 @@ public interface SystemRepositoryRepository extends JpaRepository<SystemReposito
 
     /** Touch only publication metadata; retain concurrent catalogue policy and creation state. */
     @Modifying
-    @Query("update SystemRepository repository set repository.lastPushAt = :publishedAt, "
-            + "repository.updatedAt = :publishedAt, repository.version = repository.version + 1 "
-            + "where repository.repositoryId = :repositoryId")
+    @Query("""
+            update SystemRepository repository set
+                repository.lastPushAt = case when repository.lastPushAt is null or repository.lastPushAt < :publishedAt
+                    then :publishedAt else repository.lastPushAt end,
+                repository.updatedAt = case when repository.updatedAt is null or repository.updatedAt < :publishedAt
+                    then :publishedAt else repository.updatedAt end,
+                repository.version = repository.version + 1 where repository.repositoryId = :repositoryId""")
     int recordLastPush(@Param("repositoryId") String repositoryId, @Param("publishedAt") Instant publishedAt);
 
     // HSQL MVCC does not retain a SELECT FOR UPDATE fence. An actual no-op write
@@ -39,6 +43,13 @@ public interface SystemRepositoryRepository extends JpaRepository<SystemReposito
     @Modifying
     @Query("update SystemRepository repository set repository.version = repository.version where repository.repositoryId = :repositoryId")
     int lockForMutation(@Param("repositoryId") String repositoryId);
+
+    @Modifying(clearAutomatically = true)
+    @Query("update SystemRepository r set r.lifecycleState = :ready, r.provisioningError = null, r.updatedAt = :now, "
+            + "r.version = r.version + 1 where r.repositoryId = :id and r.lifecycleState = :expectedState and r.version = :version")
+    int acknowledgePublishedFork(@Param("id") String id, @Param("version") long version,
+            @Param("expectedState") RepositoryLifecycleState expectedState, @Param("ready") RepositoryLifecycleState ready,
+            @Param("now") Instant now);
 
     Optional<SystemRepository> findBySlug(String slug);
 

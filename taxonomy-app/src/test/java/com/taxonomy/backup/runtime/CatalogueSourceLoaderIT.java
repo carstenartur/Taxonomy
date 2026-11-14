@@ -222,7 +222,7 @@ class CatalogueSourceLoaderIT {
             em = SharedEntityManagerCreator.createSharedEntityManager(factory); jdbc = new JdbcTemplate(database);
             transactionManager = new JpaTransactionManager(factory); tx = new TransactionTemplate(transactionManager); journal = new CatalogueSourceJournal(factory);
             var repositories = new JpaRepositoryFactory(em); nodes = repositories.getRepository(TaxonomyNodeRepository.class); relations = repositories.getRepository(TaxonomyRelationRepository.class);
-            var systems = new SystemRepositoryService(repositories.getRepository(SystemRepositoryRepository.class)); beans.registerSingleton("systems", systems);
+            var systems = new SystemRepositoryService(repositories.getRepository(SystemRepositoryRepository.class), em); beans.registerSingleton("systems", systems);
             tx.executeWithoutResult(s -> systems.ensureSystemRepository());
         }
         AppInitializationStateService start(boolean overlayEnabled, boolean reload) {

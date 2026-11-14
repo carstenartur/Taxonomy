@@ -40,6 +40,7 @@ public class DslGitRepositoryFactory implements AutoCloseable {
     private final HibernateRepositoryFactory storageFactory;
     private final SystemRepositoryService systemRepositoryService;
     private final GitCommitSignatureService signatures;
+    private final io.github.carstenartur.jgit.storage.hibernate.SecuredHibernateRepositoryFactory<PinCleanup> existingPins;
     private final ConcurrentMap<String, DslGitRepository> cache = new ConcurrentHashMap<>();
 
     /** Legacy/in-memory constructor retained for tests. */
@@ -58,9 +59,26 @@ public class DslGitRepositoryFactory implements AutoCloseable {
             HibernateRepositoryFactory storageFactory,
             SystemRepositoryService systemRepositoryService,
             GitCommitSignatureService signatures) {
+        this(storageFactory,systemRepositoryService,signatures,null);
+    }
+
+    DslGitRepositoryFactory(HibernateRepositoryFactory storageFactory, SystemRepositoryService systemRepositoryService,
+                            GitCommitSignatureService signatures, org.hibernate.SessionFactory sessions) {
         this.storageFactory = storageFactory;
         this.systemRepositoryService = systemRepositoryService;
         this.signatures = java.util.Objects.requireNonNull(signatures, "signatures");
+        this.existingPins = sessions == null ? null :
+                new io.github.carstenartur.jgit.storage.hibernate.SecuredHibernateRepositoryFactory<>(sessions,(access,request) -> {
+                    if (!access.name().equals(request.repositoryName())) throw new SecurityException("Mismatched publication storage");
+                    switch (request.operation()) {
+                        case DISCOVER, READ -> { }
+                        case DELETE_REF -> {
+                            if (access.ref()==null || !access.ref().equals(request.refName())) throw new SecurityException("Mismatched publication pin");
+                            access.authorize().run();
+                        }
+                        default -> throw new SecurityException("Publication cleanup only releases its own private ref");
+                    }
+                });
     }
 
     /**
@@ -76,6 +94,60 @@ public class DslGitRepositoryFactory implements AutoCloseable {
     /** Isolated administrative evidence, outside selectable model and workspace repositories. */
     public DslGitRepository getCatalogueReviewRepository() {
         return cache.computeIfAbsent("administrative-catalogue-reviews", this::createRepository);
+    }
+
+    private record PinCleanup(RepositoryName name,String ref,Runnable authorize) { }
+
+    /** Reopen existing storage without creating it, then conditionally remove the exact private pin. */
+    public void releasePublicationPin(String repositoryId,String workspaceId,String operationId,String branch,
+                                      String recordedCandidate,Runnable authorize) throws IOException {
+        authorize.run();
+        String name = workspaceId == null ? storageNameFor(repositoryId) : workspaceRepositoryName(workspaceId);
+        var committer = new ExpectedHeadDslCommitter();
+        if (existingPins != null) {
+            var access = new PinCleanup(new RepositoryName(name),ExpectedHeadDslCommitter.pinRef(operationId,branch),authorize);
+            try (var existing = existingPins.open(access.name(),access)) {
+                releasePin(committer,existing.repository(),operationId,branch,recordedCandidate,authorize);
+            } catch (io.github.carstenartur.jgit.storage.hibernate.RepositoryDoesNotExistException missing) {
+                throw new IOException("The recorded publication storage is unavailable",missing);
+            } catch (IOException storage) {
+                // JGit wraps policy exceptions raised during its final conditional DELETE_REF in an IOException.
+                for (Throwable cause=storage.getCause(); cause!=null; cause=cause.getCause()) {
+                    if (cause instanceof org.springframework.security.access.AccessDeniedException denial) throw denial;
+                    if (cause instanceof com.taxonomy.workspace.service.WorkspaceFetchAuthority.FreshLoginRequired fresh) throw fresh;
+                }
+                throw storage;
+            }
+            return;
+        }
+        // A caller-supplied factory has no existing-only reopen contract. Prevent cleanup from allocating a repository.
+        DslGitRepository opened=cache.get(name);
+        if (opened != null) releasePin(committer,opened.getGitRepository(),operationId,branch,recordedCandidate,authorize);
+        else if (storageFactory != null) throw new IOException("An existing repository handle is required for publication cleanup");
+    }
+
+    /** A missing owner does not prove its physical storage has disappeared. Never inspect or alter orphaned Git refs. */
+    public void requireRemovedWorkspaceStorage(String workspaceId,Runnable authorize) throws IOException {
+        authorize.run();
+        String name=workspaceRepositoryName(workspaceId);
+        if (existingPins!=null) {
+            var routing=new PinCleanup(new RepositoryName(name),null,authorize);
+            try (var existing=existingPins.open(routing.name(),routing)) {
+                throw new IOException("The removed working copy still has physical storage");
+            } catch (io.github.carstenartur.jgit.storage.hibernate.RepositoryDoesNotExistException gone) {
+                return;
+            }
+        }
+        if (cache.containsKey(name) || storageFactory!=null) throw new IOException("Cannot confirm removal of the recorded working copy storage");
+    }
+
+    private static void releasePin(ExpectedHeadDslCommitter committer, org.eclipse.jgit.lib.Repository repository,
+                                   String operation,String branch,String recordedCandidate,Runnable authorize) throws IOException {
+        String retained = committer.findPrepared(repository,operation,branch);
+        if (retained==null) return;
+        if (recordedCandidate!=null && !recordedCandidate.equals(retained)) throw new IOException("Publication pin differs from its recorded candidate");
+        authorize.run();
+        committer.release(repository,operation,branch,retained);
     }
 
     /** Return one explicitly selected central architecture repository. */

@@ -32,6 +32,12 @@ final class RepositoryOperationLeases {
     }
 
     Claim claim(Class<? extends LeasedRepositoryOperation> type, String id, String executor, boolean respectBackoff) {
+        return claim(type,id,executor,respectBackoff,row -> {});
+    }
+
+    /** Publish the limit decision inside the same transaction that retires the last abandoned lease. */
+    <T extends LeasedRepositoryOperation> Claim claim(Class<T> type, String id, String executor, boolean respectBackoff,
+                                                       java.util.function.Consumer<T> exhausted) {
         long now = clock.millis();
         String eligible = respectBackoff
                 ? "(f.phase in ('ADMITTED','RUNNING','RETRYABLE') and f.nextAttemptAt <= :now)"
@@ -47,11 +53,16 @@ final class RepositoryOperationLeases {
                     .setParameter("now", now).setParameter("until", now + leaseMillis)
                     .setParameter("limit", attemptLimit).executeUpdate();
             if (changed == 1) return new Claim(id, lease);
-            entities.createQuery("""
+            int retired = entities.createQuery("""
                     update %s f set f.phase='MANUAL_REVIEW', f.decision='ATTEMPTS_EXHAUSTED',
                     f.completedAt=:now, f.nextAttemptAt=null, f.lease=null
                     where f.id=:id and f.archivedAt is null and f.attempts >= :limit and %s""".formatted(entity, eligible))
                     .setParameter("id", id).setParameter("now", now).setParameter("limit", attemptLimit).executeUpdate();
+            if (retired==1) {
+                var row=entities.find(type,id);
+                entities.refresh(row);
+                exhausted.accept(row);
+            }
             return null;
         });
     }

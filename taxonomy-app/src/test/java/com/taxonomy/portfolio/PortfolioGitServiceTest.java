@@ -36,6 +36,24 @@ class PortfolioGitServiceTest {
     private PortablePortfolioGitService portablePortfolioGitService;
 
     @Test
+    void publicationDigestObservesARealDatabaseOnlyEditInItsOriginalPortfolioScope() {
+        String repo=systemRepositoryService.getPrimaryRepository().getRepositoryId();
+        String id=java.util.UUID.randomUUID().toString();
+        var alice=new WorkspaceContext("alice","reviewed-"+id,"main",repo);
+        var bob=new WorkspaceContext("bob","unrelated-"+id,"main",repo);
+        var transactions=new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+        var port=portablePortfolioGitService;
+        String initial=transactions.execute(status -> port.lockedPublicationDigest("alice",alice));
+        String unrelated=transactions.execute(status -> port.lockedPublicationDigest("bob",bob));
+        assertThat(initial).hasSize(64);
+        projectService.createProject(new CreateProjectRequest("REVIEWED","Later database-only edit",null,null,null,null,null,null),"alice",alice);
+        assertThat(transactions.execute(status -> port.lockedPublicationDigest("alice",alice)).toString()).isNotEqualTo(initial);
+        assertThat(transactions.execute(status -> port.lockedPublicationDigest("bob",bob)).toString()).isEqualTo(unrelated);
+    }
+
+    @Autowired private org.springframework.transaction.PlatformTransactionManager transactionManager;
+
+    @Test
     void unrelatedRequirementSaveRetainsProjectRequirementAndImmutableVersionSourceAnnotations() {
         String repository=systemRepositoryService.getPrimaryRepository().getRepositoryId();
         var context=new WorkspaceContext("alice","source-annotations-"+java.util.UUID.randomUUID(),"draft",repository);

@@ -1504,3 +1504,17 @@ test('rerunning the full API client never duplicates pending or loaded surface s
   assertSurfaces(app);
   assert.equal(app.scripts.length, 2);
 });
+
+test('the named publication request transmits its recorded idempotency key without another admission', async () => {
+  const requests=[];
+  const app=await loadWorkspaceFeatures(async (url,init) => {
+    requests.push({url,method:init.method,key:new Headers(init.headers).get('Idempotency-Key')});
+    return Response.json({operationId:'publication-one',status:'RETRYABLE'},{status:202});
+  });
+  const receipt=await app.context.window.TaxonomyWorkspaceApi.publish('draft/A',{idempotencyKey:'recorded-publish-key'});
+  assert.equal(receipt.operationId,'publication-one');
+  assert.equal(requests.length,1);
+  assert.equal(requests[0].key,'recorded-publish-key');
+  assert.equal(requests[0].method,'POST');
+  assert.equal(new URL(requests[0].url,'https://taxonomy.example').searchParams.get('userBranch'),'draft/A');
+});

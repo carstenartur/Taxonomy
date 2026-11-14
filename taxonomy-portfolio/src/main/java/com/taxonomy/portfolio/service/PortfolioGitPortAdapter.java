@@ -36,6 +36,11 @@ public class PortfolioGitPortAdapter
     }
 
     @Override
+    public String lockedPublicationDigest(String username, WorkspaceContext context) {
+        return portfolioGitService.lockedPublicationDigest(username, context);
+    }
+
+    @Override
     public String commitPortfolio(String branch,
                                   String message,
                                   String username,

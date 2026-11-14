@@ -444,7 +444,7 @@ class WorkspaceOriginalHistoryTest {
             transactions = new TransactionTemplate(transactionManager);
             var entities = SharedEntityManagerCreator.createSharedEntityManager(persistence.factory);
             var repositories = new JpaRepositoryFactory(entities);
-            catalog = new SystemRepositoryService(repositories.getRepository(SystemRepositoryRepository.class));
+            catalog = new SystemRepositoryService(repositories.getRepository(SystemRepositoryRepository.class), entities);
             memberships = new RepositoryMembershipService(repositories.getRepository(RepositoryMembershipRepository.class));
             git = new DslGitRepositoryFactory(new DefaultHibernateRepositoryFactory(persistence.factory), catalog, signatures);
             var proxy = new ProxyFactory(repositories.getRepository(UserWorkspaceRepository.class,

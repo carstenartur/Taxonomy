@@ -38,8 +38,9 @@ public class DslStorageConfig {
     public DslGitRepositoryFactory dslGitRepositoryFactory(
             HibernateRepositoryFactory hibernateRepositoryFactory,
             SystemRepositoryService systemRepositoryService,
-            GitCommitSignatureService signatures) {
+            GitCommitSignatureService signatures, EntityManagerFactory entityManagerFactory) {
         log.info("Creating DslGitRepositoryFactory backed by jgit-storage-hibernate-core");
-        return new DslGitRepositoryFactory(hibernateRepositoryFactory, systemRepositoryService, signatures);
+        return new DslGitRepositoryFactory(hibernateRepositoryFactory, systemRepositoryService, signatures,
+                entityManagerFactory.unwrap(SessionFactory.class));
     }
 }

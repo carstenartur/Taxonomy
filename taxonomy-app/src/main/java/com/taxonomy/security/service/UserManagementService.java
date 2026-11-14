@@ -2,6 +2,7 @@ package com.taxonomy.security.service;
 
 import com.taxonomy.security.model.AppRole;
 import com.taxonomy.security.model.AppUser;
+import com.taxonomy.security.model.PrincipalUserDetails;
 import com.taxonomy.security.repository.RoleRepository;
 import com.taxonomy.security.repository.UserRepository;
 import org.slf4j.Logger;
@@ -9,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 
 /** Application service for local user and role administration. */
 @Service
@@ -47,6 +50,21 @@ public class UserManagementService {
         this.passwordEncoder = passwordEncoder;
     }
 
+    /** The local security chain verifies the authenticated principal before dispatching either administration route. */
+    public record AuditActor(String name, UUID principalId) {
+        public static AuditActor from(Authentication authentication) {
+            if (authentication == null) return new AuditActor("system", null);
+            UUID id = authentication.isAuthenticated() && authentication.getPrincipal() instanceof PrincipalUserDetails local
+                    ? local.principalId().value() : null;
+            return new AuditActor(authentication.getName(), id);
+        }
+
+        String stableFields(AppUser target) {
+            String targetField = target.getPrincipalId() == null ? "" : " targetPrincipalId=" + target.getPrincipalId();
+            return principalId == null ? targetField : targetField + " actorPrincipalId=" + principalId;
+        }
+    }
+
     @Transactional(readOnly = true)
     public List<Map<String, Object>> listUsers() {
         return userRepository.findAll().stream().map(this::toUserMap).toList();
@@ -62,12 +80,20 @@ public class UserManagementService {
         return createUser(body, stringValue(body.get("password")), actor);
     }
 
+    public Map<String, Object> createUserAs(Map<String, Object> body, AuditActor actor) {
+        return createUserAs(body, stringValue(body.get("password")), actor);
+    }
+
     /**
      * Creates an account with the credential passed separately from profile data.
      * HTML adapters must not mix plaintext passwords into their profile/model maps.
      * The password is used only for validation and hashing, never for audit output.
      */
     public Map<String, Object> createUser(Map<String, Object> profile, String password, String actor) {
+        return createUserAs(profile, password, new AuditActor(actor, null));
+    }
+
+    public Map<String, Object> createUserAs(Map<String, Object> profile, String password, AuditActor actor) {
         String username = stringValue(profile.get("username"));
         String displayName = stringValue(profile.get("displayName"));
         String email = stringValue(profile.get("email"));
@@ -90,13 +116,17 @@ public class UserManagementService {
         user.setEmail(email);
         user.setRoles(resolveRoles(roles));
         AppUser saved = userRepository.save(user);
-        log.info("USER_CREATED user={} roles={} passwordChangeRequired={} by={}", username,
+        log.info("USER_CREATED user={} roles={} passwordChangeRequired={} by={}{}", saved.getUsername(),
                 saved.getRoles().stream().map(AppRole::getName).sorted().toList(),
-                saved.isMustChangePassword(), actor);
+                saved.isMustChangePassword(), actor.name(), actor.stableFields(saved));
         return toUserMap(saved);
     }
 
     public Map<String, Object> updateUser(Long id, Map<String, Object> body, String actor) {
+        return updateUserAs(id, body, new AuditActor(actor, null));
+    }
+
+    public Map<String, Object> updateUserAs(Long id, Map<String, Object> body, AuditActor actor) {
         AppUser user = requireUser(id);
 
         if (body.containsKey("displayName")) {
@@ -123,28 +153,36 @@ public class UserManagementService {
         }
 
         AppUser saved = userRepository.save(user);
-        log.info("USER_UPDATED user={} by={}", saved.getUsername(), actor);
+        log.info("USER_UPDATED user={} by={}{}", saved.getUsername(), actor.name(), actor.stableFields(saved));
         return toUserMap(saved);
     }
 
     public void changePassword(Long id, String newPassword, String actor) {
+        changePasswordAs(id, newPassword, new AuditActor(actor, null));
+    }
+
+    public void changePasswordAs(Long id, String newPassword, AuditActor actor) {
         validatePassword(newPassword);
         AppUser user = requireUser(id);
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         user.setMustChangePassword(requirePasswordChange);
         userRepository.save(user);
-        log.info("USER_PASSWORD_CHANGED user={} temporary={} by={}",
-                user.getUsername(), user.isMustChangePassword(), actor);
+        log.info("USER_PASSWORD_CHANGED user={} temporary={} by={}{}",
+                user.getUsername(), user.isMustChangePassword(), actor.name(), actor.stableFields(user));
     }
 
     public String disableUser(Long id, String actor) {
+        return disableUserAs(id, new AuditActor(actor, null));
+    }
+
+    public String disableUserAs(Long id, AuditActor actor) {
         AppUser user = requireUser(id);
         if (isLastAdmin(user)) {
             throw new ValidationException("Cannot disable the last admin user.");
         }
         user.setEnabled(false);
         userRepository.save(user);
-        log.info("USER_DISABLED user={} by={}", user.getUsername(), actor);
+        log.info("USER_DISABLED user={} by={}{}", user.getUsername(), actor.name(), actor.stableFields(user));
         return user.getUsername();
     }
 

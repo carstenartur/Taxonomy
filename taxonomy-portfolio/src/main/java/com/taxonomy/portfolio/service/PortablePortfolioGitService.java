@@ -76,6 +76,13 @@ public class PortablePortfolioGitService extends PortfolioGitService {
         this.reformulationEvidence = reformulationEvidence;
     }
 
+    /** The caller holds this transaction through its conditional Git or portfolio publication. */
+    @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public String lockedPublicationDigest(String username, WorkspaceContext context) {
+        decisionContributor.lockForMaterialization(username,context);
+        return com.taxonomy.identity.StableIdentityHash.sha256(exportPortfolio(username,context));
+    }
+
     @Override
     @Transactional(readOnly = true)
     public String exportPortfolio(String username, WorkspaceContext context) {

@@ -44,17 +44,18 @@ class JgitStorageDocumentationContractTest {
             "V2__normalize_legacy_sandbox_column_types.sql");
 
     @Test
-    void guidesFollowTheReleasedDependencyAndAnonymousRepositoryFromTheRootPom()
+    void guidesFollowThePinnedMavenCentralRelease()
             throws IOException {
         Path root = findRepositoryRoot();
         String pom = read(root.resolve("pom.xml"));
-        Distribution distribution = distributionFrom(pom);
+        String version = requiredTagValue(pom, "jgit-storage-hibernate.version");
         String authoritativeCiCommand = authoritativeCiCommand(read(
                 root.resolve(".github/copilot-instructions.md")));
 
-        assertThat(distribution.repositoryBlock())
-                .contains("<releases><enabled>true</enabled></releases>")
-                .contains("<snapshots><enabled>false</enabled></snapshots>");
+        assertThat(pom).doesNotContain(
+                "jgit-storage-hibernate-releases",
+                "githubusercontent.com/carstenartur/jgit-storage-hibernate/",
+                "maven.pkg.github.com/carstenartur/jgit-storage-hibernate");
 
         for (String guidePath : GUIDE_PATHS) {
             String guide = read(root.resolve(guidePath));
@@ -63,17 +64,19 @@ class JgitStorageDocumentationContractTest {
                     .as(guidePath)
                     .contains(
                             "<jgit-storage-hibernate.version>"
-                                    + distribution.version()
+                                    + version
                                     + "</jgit-storage-hibernate.version>",
-                            "<id>" + distribution.repositoryId() + "</id>",
-                            "<url>" + distribution.repositoryUrl() + "</url>",
-                            "<releases><enabled>true</enabled></releases>",
-                            "<snapshots><enabled>false</enabled></snapshots>",
+                            "Maven Central",
+                            "<groupId>io.github.carstenartur</groupId>",
                             "<artifactId>jgit-storage-hibernate-core</artifactId>",
+                            "<version>${jgit-storage-hibernate.version}</version>",
                             "```bash\n" + authoritativeCiCommand + "\n```")
                     .doesNotContain(
                             "<jgit-storage-hibernate.version>0.1.13"
                                     + "</jgit-storage-hibernate.version>",
+                            "<repository>",
+                            "jgit-storage-hibernate-releases",
+                            "githubusercontent.com/carstenartur/jgit-storage-hibernate/",
                             "maven.pkg.github.com",
                             "GITHUB_ACTOR",
                             "GITHUB_TOKEN",
@@ -81,13 +84,13 @@ class JgitStorageDocumentationContractTest {
                             "packages: read",
                             "<id>github</id>");
 
-            assertThat(countOccurrences(guide, distribution.version()))
+            assertThat(countOccurrences(guide, version))
                     .as("released dependency version occurrences in %s", guidePath)
                     .isEqualTo(1);
             assertThat(countOccurrences(guide, "./mvnw"))
                     .as("canonical Maven command occurrences in %s", guidePath)
                     .isEqualTo(1);
-            assertThat(allowedSemanticVersions(distribution.version()))
+            assertThat(allowedSemanticVersions(version))
                     .as("all semantic versions named by %s", guidePath)
                     .containsAll(semanticVersions(guide));
         }
@@ -242,44 +245,13 @@ class JgitStorageDocumentationContractTest {
         return matcher.group(1).trim();
     }
 
-    private static Distribution distributionFrom(String pom) {
-        String version = requiredTagValue(pom, "jgit-storage-hibernate.version");
-        Matcher repositories = Pattern.compile(
-                        "<repository>(.*?)</repository>",
-                        Pattern.DOTALL)
-                .matcher(pom);
-
-        while (repositories.find()) {
-            String block = repositories.group(1);
-            String repositoryUrl = firstTagValue(block, "url");
-            if (repositoryUrl == null || !repositoryUrl.contains("jgit-storage-hibernate")) {
-                continue;
-            }
-            return new Distribution(
-                    version,
-                    requiredTagValue(block, "id"),
-                    requiredTagValue(block, "url"),
-                    block);
-        }
-
-        throw new AssertionError(
-                "Root POM has no jgit-storage-hibernate release repository");
-    }
-
     private static String requiredTagValue(String xml, String tagName) {
-        String value = firstTagValue(xml, tagName);
-        assertThat(value)
-                .as("POM tag <%s>", tagName)
-                .isNotNull();
-        return value;
-    }
-
-    private static String firstTagValue(String xml, String tagName) {
         Matcher matcher = Pattern.compile(
                         "<" + Pattern.quote(tagName) + ">\\s*([^<]+?)\\s*</"
                                 + Pattern.quote(tagName) + ">")
                 .matcher(xml);
-        return matcher.find() ? matcher.group(1).trim() : null;
+        assertThat(matcher.find()).as("POM tag <%s>", tagName).isTrue();
+        return matcher.group(1).trim();
     }
 
     private static String read(Path path) throws IOException {
@@ -296,12 +268,5 @@ class JgitStorageDocumentationContractTest {
             current = current.getParent();
         }
         throw new IllegalStateException("Could not locate Taxonomy repository root");
-    }
-
-    private record Distribution(
-            String version,
-            String repositoryId,
-            String repositoryUrl,
-            String repositoryBlock) {
     }
 }

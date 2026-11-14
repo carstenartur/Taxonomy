@@ -61,8 +61,20 @@ class KeycloakApplicationBearerTest {
     @AfterEach void restorePublicKeys() { ISSUER.publish(ISSUER.key()); }
     @Test void verifiedBearerCanReadItsAccountInTheFullApplication() throws Exception {
         String bearer = token(ISSUER.origin());
-        JsonNode account = account(bearer);
-        assertThat(account.path("username").asText()).startsWith("principal-");
+        JsonNode account;
+        try (var audit = new AuditCapture()) {
+            account = account(bearer);
+            String scope = account.path("username").asText();
+            assertThat(scope).startsWith("principal-");
+            String id = jdbc.queryForObject("select principal_id from app_principal where scope_key = ?",
+                    String.class, scope);
+            assertThat(id).isNotBlank();
+            assertThat(audit.events.list.stream()
+                    .filter(event -> event.getLoggerName().equals(SecurityAuditListener.class.getName()))
+                    .map(ch.qos.logback.classic.spi.ILoggingEvent::getFormattedMessage))
+                    .anySatisfy(message -> assertThat(message).startsWith("LOGIN_SUCCESS user=" + scope + " ip=")
+                            .endsWith(" principalId=" + id).doesNotContain(bearer));
+        }
         if (System.getProperty("taxonomy.keycloak.test.issuer") != null) {
             assertThat(account(passwordToken("taxonomy-missing-claims", "taxonomy-missing-secret", "user"))
                     .path("username").asText()).isEqualTo(account.path("username").asText());

@@ -175,8 +175,10 @@ class WorkspaceControllerBranchCoverageTest {
     @Test
     void syncPublishAndLocalChangesCoverExplicitFallbackAndIoErrors() throws Exception {
         when(workspaceManager.getWorkspaceInfo("alice")).thenReturn(info("feature"));
-        when(syncIntegrationService.syncFromShared("alice", "feature")).thenReturn("merge-1");
-        when(syncIntegrationService.publishToShared("alice", "explicit")).thenReturn("merge-2");
+        when(syncIntegrationService.pullWithReceipt("alice", "feature", null, null))
+                .thenReturn(new SyncIntegrationService.Publication("merge-1",null));
+        when(syncIntegrationService.publishWithReceipt("alice", "explicit", null, null))
+                .thenReturn(new SyncIntegrationService.Publication("merge-2",null));
         when(syncIntegrationService.getLocalChanges("alice", "feature")).thenReturn(2);
 
         assertThat(controller.syncFromShared(null).getBody())
@@ -190,8 +192,8 @@ class WorkspaceControllerBranchCoverageTest {
         when(syncIntegrationService.getLocalChanges("alice", "draft")).thenReturn(0);
         assertThat(controller.getLocalChanges(" ").getBody()).containsEntry("branch", "draft");
 
-        when(syncIntegrationService.syncFromShared("alice", "bad")).thenThrow(new IOException("sync io"));
-        when(syncIntegrationService.publishToShared("alice", "bad")).thenThrow(new IOException("publish io"));
+        when(syncIntegrationService.pullWithReceipt("alice", "bad", null, null)).thenThrow(new IOException("sync io"));
+        when(syncIntegrationService.publishWithReceipt("alice", "bad", null, null)).thenThrow(new IOException("publish io"));
         when(syncIntegrationService.getLocalChanges("alice", "bad")).thenThrow(new IOException("count io"));
         assertThat(controller.syncFromShared("bad").getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
         assertThat(controller.publish("bad").getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);

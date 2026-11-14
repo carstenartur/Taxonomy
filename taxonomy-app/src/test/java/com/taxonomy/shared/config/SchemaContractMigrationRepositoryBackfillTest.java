@@ -15,6 +15,21 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class SchemaContractMigrationRepositoryBackfillTest {
     @Test
+    void existingRepositoriesNeverAcquireForkAuthorityFromTheirSavedNames() throws Exception {
+        var database = createLegacySchema();
+        insertRepositories(database);
+        var migration = new SchemaContractMigration(database);
+        migration.migrate();
+        migration.migrate();
+        try (var connection = database.getConnection(); var statement = connection.createStatement();
+             var rows = statement.executeQuery("select count(*), count(fork_initiator_key) from system_repository")) {
+            assertThat(rows.next()).isTrue();
+            assertThat(rows.getInt(1)).isPositive();
+            assertThat(rows.getInt(2)).isZero();
+        }
+    }
+
+    @Test
     void aForeignSchemaRepositoryKeyCannotReplaceTheSelectedRepositoryAuthority() throws Exception {
         var database = createLegacySchema();
         insertRepositories(database);

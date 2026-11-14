@@ -2,6 +2,7 @@ package com.taxonomy.security.controller;
 
 import com.taxonomy.security.config.LocalUserManagementAccess;
 import com.taxonomy.security.service.UserManagementService;
+import com.taxonomy.security.service.UserManagementService.AuditActor;
 import com.taxonomy.security.service.PasswordChangeService;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -93,7 +94,7 @@ public class UserManagementPageController {
         body.put("username", form.username());
         // Keep the credential out of the profile map and all view/audit data.
         try {
-            users.createUser(body, newPassword, authentication.getName());
+            users.createUserAs(body, newPassword, AuditActor.from(authentication));
             return redirect(redirect, locale, "users.created", "/admin/users");
         } catch (UserManagementService.ConflictException exception) {
             return failure(model, response, HttpStatus.CONFLICT, "users.error.duplicate", "user-management-form");
@@ -114,7 +115,7 @@ public class UserManagementPageController {
         }
         try {
             // Username and enabled are deliberately not accepted by this form.
-            users.updateUser(id, form.profile(), authentication.getName());
+            users.updateUserAs(id, form.profile(), AuditActor.from(authentication));
             return redirect(redirect, locale, "users.saved", "/admin/users/" + id);
         } catch (UserManagementService.NotFoundException exception) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
@@ -135,7 +136,7 @@ public class UserManagementPageController {
             return failure(model, response, HttpStatus.BAD_REQUEST, passwordError, "user-management-form");
         }
         try {
-            users.changePassword(id, newPassword, authentication.getName());
+            users.changePasswordAs(id, newPassword, AuditActor.from(authentication));
             return redirect(redirect, locale, "users.passwordChanged", "/admin/users/" + id);
         } catch (UserManagementService.NotFoundException exception) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
@@ -158,9 +159,9 @@ public class UserManagementPageController {
             RedirectAttributes redirect, Locale locale) {
         try {
             if (enabled) {
-                users.updateUser(id, Map.of("enabled", true), authentication.getName());
+                users.updateUserAs(id, Map.of("enabled", true), AuditActor.from(authentication));
             } else {
-                users.disableUser(id, authentication.getName());
+                users.disableUserAs(id, AuditActor.from(authentication));
             }
             return redirect(redirect, locale, enabled ? "users.enabled" : "users.disabled", "/admin/users");
         } catch (UserManagementService.NotFoundException exception) {

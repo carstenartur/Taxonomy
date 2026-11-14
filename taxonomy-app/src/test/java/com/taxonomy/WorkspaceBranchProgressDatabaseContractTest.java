@@ -60,6 +60,18 @@ final class WorkspaceBranchProgressDatabaseContractTest {
                 assertThat(actual.getUnpublishedCommitCount()).isEqualTo(3);
                 assertThat(actual.getSyncStatus()).isEqualTo("DIVERGED");
                 assertThat(b.readScope(other).getLastPublishedCommitId()).isNull();
+                b.recordPublication(scope,"d".repeat(40),time.plusSeconds(3),time.plusSeconds(4),time.plusSeconds(70));
+                var refreshed=a.readScope(scope);
+                assertThat(refreshed.getLastPublishTimestamp()).isEqualTo(time.plusSeconds(3));
+                assertThat(refreshed.getUpdatedAt()).isEqualTo(time.plusSeconds(70));
+                a.recordLocalChanges(scope,4,0,time.plusSeconds(72));
+                a.recordPublication(scope,"e".repeat(40),null,time.plusSeconds(71),time.plusSeconds(80));
+                var withoutMovement=b.readScope(scope);
+                assertThat(withoutMovement.getLastPublishedCommitId()).isEqualTo("d".repeat(40));
+                assertThat(withoutMovement.getLastPublishTimestamp()).isEqualTo(time.plusSeconds(3));
+                assertThat(withoutMovement.getUpdatedAt()).isEqualTo(time.plusSeconds(72));
+                assertThat(withoutMovement.getUnpublishedCommitCount()).isEqualTo(4);
+
             } finally {
                 first.inTransaction(session -> session.createMutationQuery("delete from UserWorkspace w where w.workspaceId=:id")
                         .setParameter("id", scope.workspaceId()).executeUpdate());
