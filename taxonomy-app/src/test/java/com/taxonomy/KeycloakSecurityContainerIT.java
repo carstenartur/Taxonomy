@@ -11,7 +11,6 @@ import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
-import org.openqa.selenium.Keys;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.ui.ExpectedConditions;
@@ -64,6 +63,7 @@ class KeycloakSecurityContainerIT {
     private static final String ISSUER = KEYCLOAK_ORIGIN + "/realms/" + REALM;
     private static final String CLIENT_ID = "taxonomy-app";
     private static final String CLIENT_SECRET = "taxonomy-test-secret";
+    private static final String PROJECTS_PATH = "/projects";
     private static final String GIT_PROPOSAL_REVIEW_PATH =
             "/api/architecture/proposals/1/accept";
     private static final String KEYCLOAK_IMAGE = System.getProperty(
@@ -103,7 +103,7 @@ class KeycloakSecurityContainerIT {
         malformedRoleClaimToken = passwordToken(
                 "taxonomy-malformed-claims", "taxonomy-malformed-secret", "user", "user");
 
-        browserSession = ContainerTestUtils.startBrowser(network);
+        browserSession = ContainerTestUtils.startBrowser(network, "--headless=new");
         driver = browserSession.driver();
         driver.manage().window().setSize(new org.openqa.selenium.Dimension(1400, 900));
     }
@@ -297,18 +297,10 @@ class KeycloakSecurityContainerIT {
         assertThat(withCsrf.statusCode()).isEqualTo(400);
 
         var wait = new WebDriverWait(driver, Duration.ofSeconds(30));
-        var welcomeWait = new WebDriverWait(driver, Duration.ofSeconds(30))
-                .withMessage(() -> ((JavascriptExecutor) driver).executeScript("""
-                        const dialog = document.getElementById('onboardingOverlay');
-                        return {open: dialog?.open === true, activeControl: document.activeElement?.id,
-                                openDialogs: [...document.querySelectorAll('dialog[open]')].map(item => item.id)};
-                        """).toString());
-        var welcomeAction = welcomeWait.until(ExpectedConditions.elementToBeClickable(By.id("onboardingDismiss")));
-        welcomeWait.until(current -> welcomeAction.equals(current.switchTo().activeElement()));
-        welcomeAction.sendKeys(Keys.ENTER);
-        welcomeWait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("onboardingOverlay")));
         wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("#applicationAccount > summary"))).click();
         var signOut = wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("#applicationLogoutForm button")));
+        assertThat(driver.findElement(By.id("applicationLogoutForm")).getDomAttribute("action"))
+                .isEqualTo("/logout");
         assertThat(signOut.getAccessibleName()).isEqualTo("Sign out of single sign-on");
         assertThat(driver.findElement(By.id("applicationLogoutScope")).isDisplayed()).isTrue();
         signOut.click();
@@ -460,17 +452,17 @@ class KeycloakSecurityContainerIT {
     }
 
     private void loginBrowser(String username, String password) {
-        driver.get(ContainerTestUtils.APP_ORIGIN
-                + "/oauth2/authorization/keycloak");
+        // The Projects page exercises the same account menu without the analysis welcome dialog.
+        driver.get(ContainerTestUtils.APP_ORIGIN + PROJECTS_PATH);
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(30));
         WebElement usernameField = wait.until(
                 ExpectedConditions.visibilityOfElementLocated(By.id("username")));
         usernameField.sendKeys(username);
         driver.findElement(By.id("password")).sendKeys(password);
         driver.findElement(By.id("kc-login")).click();
-        wait.until(currentDriver -> currentDriver.getCurrentUrl()
-                .startsWith(ContainerTestUtils.APP_ORIGIN));
-        wait.until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("projectListHeading")));
+        assertThat(driver.getCurrentUrl()).startsWith(ContainerTestUtils.APP_ORIGIN);
+        assertThat(URI.create(driver.getCurrentUrl()).getPath()).isEqualTo(PROJECTS_PATH);
     }
 
     private String browserMeta(String name, String fallback) {
