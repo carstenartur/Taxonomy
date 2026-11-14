@@ -88,6 +88,24 @@ class WorkspaceBranchSyncStateTest {
     }
 
     @Test
+    void latePullBookkeepingRetainsTheOriginalBusinessTimeAndANewerObservedDivergence(@TempDir Path directory) {
+        String db="jdbc:hsqldb:file:"+directory.resolve("pulled")+";shutdown=true;hsqldb.tx=mvcc";
+        try (var factory=application(db,true)) {
+            createWorkspace(factory,FIRST);
+            var progress=handle(factory);
+            progress.recordSync(FIRST,"last-publication",AT.minusSeconds(3),true);
+            progress.recordLocalChanges(FIRST,2,1,AT.plusSeconds(2));
+            progress.recordPull(FIRST,"original-source",AT,AT.plusSeconds(1),AT.plusSeconds(30));
+            var state=progress.readScope(FIRST);
+            assertThat(state.getLastSyncedCommitId()).isEqualTo("original-source");
+            assertThat(state.getLastSyncTimestamp()).isEqualTo(AT);
+            assertThat(state.getLastPublishedCommitId()).isEqualTo("last-publication");
+            assertThat(state.getSyncStatus()).isEqualTo("DIVERGED");
+            assertThat(state.getUnpublishedCommitCount()).isEqualTo(2);
+        }
+    }
+
+    @Test
     void deletedWorkingCopyCannotBeRecreatedByALateObserverAndLeavesCentralProgressAlone(@TempDir Path directory) {
         String db = "jdbc:hsqldb:file:" + directory.resolve("delete") + ";shutdown=true;hsqldb.tx=mvcc";
         var central = new WorkspaceSyncScope(FIRST.username(), FIRST.repositoryId(), null, FIRST.branch());

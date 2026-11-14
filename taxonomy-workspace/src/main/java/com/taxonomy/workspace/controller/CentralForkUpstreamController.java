@@ -75,20 +75,24 @@ public class CentralForkUpstreamController {
     @GetMapping("/operations/{id}")
     @Operation(summary = "Read a central fork's transfer receipt", description = "Requires current access to the recorded source and destination.")
     public WorkspaceFetchJournal.View status(@PathVariable String repositoryId, @PathVariable String id) throws IOException {
-        return recovery.status(context(repositoryId), id);
+        return recovery.status(operationContext(repositoryId, id), id);
     }
 
     @PostMapping("/operations/{id}/retry")
     @Operation(summary = "Retry an exact central fork transfer", description = "Rechecks the original source, fork and actor before reconciling the recorded Git ref.")
     public ResponseEntity<?> retry(@PathVariable String repositoryId, @PathVariable String id) throws IOException {
-        var receipt = recovery.retry(context(repositoryId), id);
+        var receipt = recovery.retry(operationContext(repositoryId, id), id);
         return response(receipt.operationId(), receipt.response());
     }
 
     @DeleteMapping("/operations/{id}")
     @Operation(summary = "Archive a settled central fork transfer", description = "Retains the scoped outcome for the idempotency period.")
     public WorkspaceFetchJournal.View archive(@PathVariable String repositoryId, @PathVariable String id) throws IOException {
-        return recovery.archive(context(repositoryId), id);
+        return recovery.archive(operationContext(repositoryId, id), id);
+    }
+
+    private RepositoryContext operationContext(String repositoryId, String id) {
+        return recovery.centralOperationContext(repositoryId, resolver.resolveCurrentUsername(), id);
     }
 
     private RepositoryContext context(String repositoryId) {

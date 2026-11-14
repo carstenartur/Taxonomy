@@ -26,21 +26,14 @@ packaged application.
 
 ## Distribution integrity
 
-Taxonomy consumes `jgit-storage-hibernate` from its anonymous, immutable release
-repository. A version is eligible for use only when the upstream release contains:
-
-- Maven POM and binary/source/Javadoc artifacts for every public module;
-- SHA-1 sidecars required by Maven Resolver compatibility;
-- canonical SHA-256 and SHA-512 sidecars;
-- a `releases/<version>.json` manifest recording every file, size and digest;
-- successful anonymous local and remote resolution in the upstream release state
-  machine before the tag is created.
-
-Do not republish or mutate an already consumed version to repair missing metadata.
-Publish a new release and update the centrally managed
-`jgit-storage-hibernate.version` property instead. Taxonomy CI resolves the release
-on a clean hosted runner, so missing POMs, binaries or checksum metadata are visible
-in the canonical Maven evidence rather than hidden by a developer cache.
+Taxonomy resolves `jgit-storage-hibernate-core` and
+`jgit-storage-hibernate-smart-http` from Maven Central. The root POM pins both
+to the same published release through `jgit-storage-hibernate.version`.
+When updating the property, verify that Central serves the release POMs,
+binaries, source and Javadoc JARs, signatures and checksums. The upstream
+[publication guide](https://github.com/carstenartur/jgit-storage-hibernate/blob/main/docs/maven-central.md)
+describes how releases are signed and published. Corrections require a new
+release version.
 
 Generated WebJar metadata is managed explicitly when an aggregate package points to
 an incomplete artifact version. The root `dependencyManagement` section must pin a
