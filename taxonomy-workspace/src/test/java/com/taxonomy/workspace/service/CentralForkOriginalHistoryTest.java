@@ -393,6 +393,21 @@ class CentralForkOriginalHistoryTest {
         }
     }
 
+    @Test
+    void existingRepositoryHandleObservesBranchPublishedByIndependentWriter() throws Exception {
+        String database = "jdbc:hsqldb:file:" + directory.resolve("published-branch") + ";shutdown=true";
+        try (var reader = new Fixture(database, GitCommitSignatureService.disabled())) {
+            var source = reader.createSource(RepositoryVisibility.PRIVATE);
+            var existingHandle = reader.git.getCentralRepository(source.getRepositoryId());
+            assertNull(existingHandle.getHeadCommit("main"));
+            try (var writer = new Fixture(database, GitCommitSignatureService.disabled())) {
+                var writerHandle = writer.git.getCentralRepository(source.getRepositoryId());
+                String published = writerHandle.commitDsl("main", "original", OWNER, "Original");
+                assertEquals(published, existingHandle.getHeadCommit("main"));
+            }
+        }
+    }
+
     enum InitialLoss { BEFORE_TRACKING, BEFORE_BRANCH, DENIED, OTHER_IDENTITY, FOREIGN_REF, WORKER, RACING_WORKERS, SOURCE_REWRITTEN }
 
     @ParameterizedTest

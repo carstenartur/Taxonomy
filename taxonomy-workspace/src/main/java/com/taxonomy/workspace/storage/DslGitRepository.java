@@ -866,9 +866,9 @@ public class DslGitRepository implements AutoCloseable {
 
     // ── State query helpers ─────────────────────────────────────────
 
-    /** Return the HEAD SHA for a branch, or {@code null}. */
+    /** Read the current branch head, including updates published through another repository handle. */
     public String getHeadCommit(String branch) throws IOException {
-        Ref ref = gitRepo.getRefDatabase().exactRef(Constants.R_HEADS + branch);
+        Ref ref = readFreshRef(Constants.R_HEADS + branch);
         return ref != null && ref.getObjectId() != null ? ref.getObjectId().name() : null;
     }
 
