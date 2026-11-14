@@ -67,7 +67,7 @@ export function comparisonDocuments(original, branch) {
 }
 
 /** Runs both directly in contract tests and inside the real authenticated browser. */
-export async function removeComparisonBranch(name, api = window.TaxonomyApiClient) {
+export async function removeComparisonBranch(name, api = window.TaxonomyApiClient, variants = window.TaxonomyVersioningApi) {
   const inventory = async () => {
     const data = await api.getJson('/api/git/branches', { retries: 0 });
     const branches = data?.branches || data;
@@ -76,21 +76,30 @@ export async function removeComparisonBranch(name, api = window.TaxonomyApiClien
   };
   // A setup failure before the first commit has no ref to delete; do not manufacture an HTTP error.
   if ((await inventory()).includes(name)) {
-    await api.request('/api/dsl/branch?name=' + encodeURIComponent(name), { method: 'DELETE' });
+    const preview = await variants.reviewBranchDeletion(name);
+    if (!preview.ok) throw new Error('HTTP ' + preview.status);
+    const {branch, head, etag} = await preview.json();
+    if (branch !== name || !/^[0-9a-f]{40}$/.test(head) || !etag || etag !== preview.headers.get('ETag')) {
+      throw new Error('Invalid comparison branch deletion preview');
+    }
+    const deleted = await variants.deleteBranch(name, etag);
+    if (!deleted.ok) throw new Error('HTTP ' + deleted.status);
   }
   if ((await inventory()).includes(name)) throw new Error('QA branch cleanup was not confirmed');
 }
 
 /** Full application acceptance. The happy path compares real Git versions; no LLM calls. */
-export async function runVersionComparisonWorkflow({ page, role, evidence }) {
+export async function runVersionComparisonWorkflow({ page, role, evidence, sourceBranch, workspaceId }) {
   if (role !== 'ADMIN') return;
-  // Returning from the graph fixture reloads the application. The API client
-  // invalidates outstanding Git requests while the initial selection is published.
-  await page.waitForFunction(() => window.TaxonomyAnalysisSession?.state?.().ready === true);
+  // The comparison starts after navigation to the exact owned working copy.
+  await page.waitForFunction(expectedWorkspace => {
+    const state = window.TaxonomyAnalysisSession?.state?.();
+    return state?.ready === true && state.workspaceId === expectedWorkspace;
+  }, workspaceId);
   let previousBranch;
   await usingComparisonBranch(async branch => {
     const fixture = comparisonDocuments('', branch);
-    const versions = await page.evaluate(async ({ branch, fixture }) => {
+    const versions = await page.evaluate(async ({ branch, fixture, sourceBranch }) => {
       const api = window.TaxonomyApiClient;
       // Preserve the failed phase without logging a DSL, URL or response body.
       async function requestStep(phase, operation) {
@@ -102,7 +111,7 @@ export async function runVersionComparisonWorkflow({ page, role, evidence }) {
         }
       }
       const head = await requestStep('draft head read',
-        () => api.getJson('/api/dsl/git/head?branch=draft'));
+        () => api.getJson('/api/dsl/git/head?branch=' + encodeURIComponent(sourceBranch)));
       const original = head?.dslText;
       if (!original) throw new Error('A real DSL baseline is required');
       if (original.includes(fixture.sourceId) || original.includes(fixture.targetId)) throw new Error('Comparison fixture identity already exists');
@@ -124,10 +133,10 @@ export async function runVersionComparisonWorkflow({ page, role, evidence }) {
         () => api.getJson('/api/dsl/diff/' + left + '/' + right));
       if (diff.changedRelations !== 1 || diff.totalChanges !== 1) throw new Error('Expected exactly one changed relation');
       const unchanged = await requestStep('draft isolation verification',
-        () => api.getJson('/api/dsl/git/head?branch=draft'));
+        () => api.getJson('/api/dsl/git/head?branch=' + encodeURIComponent(sourceBranch)));
       if (unchanged.dslText !== original) throw new Error('Comparison commits changed the active draft');
       return { branch, left, right, before, after, description: diff.semanticChanges[0].description };
-    }, { branch, fixture });
+    }, { branch, fixture, sourceBranch });
     await navigateToPage(page,'versions');
     await page.evaluate(() => window.TaxonomyVersions.loadTimeline());
     await page.locator(`#versionsBranchSelect option[value="${versions.branch}"]`).waitFor({ state: 'attached' });

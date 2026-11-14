@@ -47,6 +47,12 @@ function harness(kind, { translationsPending = false, proposals = false, forms =
                 }
             };
         }
+        querySelectorAll(selector) {
+            return this.children.flatMap(child => [
+                ...(child.classList.contains(selector.slice(1)) ? [child] : []),
+                ...child.querySelectorAll(selector)
+            ]);
+        }
         appendChild(child) { this.children.push(child); child.parentElement = this; if (child.id) nodes.set(child.id, child); }
         remove() {
             if (this.parentElement) this.parentElement.children = this.parentElement.children.filter(child => child !== this);
@@ -56,7 +62,7 @@ function harness(kind, { translationsPending = false, proposals = false, forms =
     for (const id of ['systemStatusBar', 'gitStatusBar', 'syncStatePanel', 'analyzeBtn',
         'startupBanner', 'startupBannerStatus', 'taxonomyTree', 'expandAll', 'collapseAll',
         ...(forms ? ['testLlmConnection', 'proposeRelationsSubmit', 'proposeSpinner', 'proposeRelationType'] : []),
-        ...(proposals ? ['proposalsTableContainer', 'proposalPendingBadge'] : [])]) {
+        ...(proposals ? ['proposalsTableContainer', 'proposalPendingBadge', 'proposalAdoptionSection', 'proposalAdoptionTable'] : [])]) {
         const node = new Element(); node.id = id; nodes.set(id, node);
     }
     nodes.get('systemStatusBar').textContent = 'retained system status';
@@ -351,6 +357,47 @@ test('switching proposal source clears displayed rows and count before accepting
     await settle();
     assert.match(proposalPresentation(h).table, /browse.proposals.none/);
     assert.equal(proposalPresentation(h).badge, 'browse.proposals.pending 0');
+    assert.deepEqual(h.errors, []);
+});
+
+test('the working inbox preserves pending rows and shows central acceptances once under Pending and All', async () => {
+    const h = harness('browse', { proposals: true });
+    let selected = {repositoryId:'alpha', workspaceId:'A1', branch:'entwurf'};
+    h.window.TaxonomyArchitectureWorkspace = {ready:async () => true, getSource:() => ({kind:'working'})};
+    h.window.TaxonomyArchitectureWorkflow = {getScope:() => selected};
+    h.start(); await settle();
+    const path = '/api/proposals';
+    const pendingTable = h.nodes.get('proposalsTableContainer');
+    const adoptionSection = h.nodes.get('proposalAdoptionSection');
+    const adoptionTable = h.nodes.get('proposalAdoptionTable');
+    const rows = [
+        {id:11,status:'PENDING',central:false,sourceCode:'pending-alpha'},
+        {id:12,status:'ACCEPTED',central:true,sourceCode:'accepted-main'},
+        {id:13,status:'ACCEPTED',central:false,sourceCode:'accepted-local'}
+    ];
+    assert.equal(h.requests('/api/proposals/pending').length, 0);
+    assert.equal(h.requests(path).length, 1);
+    h.requests(path)[0].answer(rows); await settle();
+    assert.match(pendingTable.innerHTML, /pending-alpha/);
+    assert.doesNotMatch(pendingTable.innerHTML, /accepted-main|accepted-local/);
+    assert.equal(h.nodes.get('proposalPendingBadge').textContent, 'browse.proposals.pending 1');
+    assert.equal(adoptionSection.hidden, false);
+    assert.match(adoptionTable.innerHTML, /data-proposal-id="12" data-status="ACCEPTED"/);
+    assert.match(adoptionTable.innerHTML, /accepted-main/);
+    assert.doesNotMatch(adoptionTable.innerHTML, /proposal-select|accepted-local/);
+
+    selected = {repositoryId:'beta', workspaceId:'B1', branch:'main'};
+    h.state.currentProposalFilter = 'ALL';
+    h.sourceChanged();
+    assert.equal(adoptionSection.hidden, true);
+    assert.equal(adoptionTable.textContent, '');
+    await settle();
+    assert.equal(h.requests(path).length, 2);
+    assert.equal(new URL(h.requests(path)[1].url, h.window.location.href).searchParams.get('repositoryId'), 'beta');
+    h.requests(path)[1].answer(rows); await settle();
+    assert.equal(adoptionSection.hidden, true);
+    assert.match(pendingTable.innerHTML, /pending-alpha.*accepted-main.*accepted-local/);
+    assert.equal(h.nodes.get('proposalPendingBadge').textContent, 'browse.proposals.pending 1');
     assert.deepEqual(h.errors, []);
 });
 

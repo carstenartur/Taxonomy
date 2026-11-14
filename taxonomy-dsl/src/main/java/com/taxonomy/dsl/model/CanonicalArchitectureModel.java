@@ -17,6 +17,9 @@ public class CanonicalArchitectureModel {
     public String getComparisonCatalogueRevision() { return comparisonCatalogueRevision; }
     public void setComparisonCatalogueRevision(String value) { comparisonCatalogueRevision = value; }
 
+    private final List<ArchitectureOrganization> organizations = new ArrayList<>();
+    public List<ArchitectureOrganization> getOrganizations() { return organizations; }
+
     private final List<ArchitecturePackage> packages = new ArrayList<>();
     public List<ArchitecturePackage> getPackages() { return packages; }
 

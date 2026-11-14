@@ -86,7 +86,9 @@ class GitAuthoritativeProposalReviewServiceTest {
         assertThat(definition.getValue().provenance())
                 .isEqualTo("proposal-review");
         assertThat(definition.getValue().extensions())
-                .isEqualTo(Map.of("x-proposal-id", "17"));
+                .containsEntry("x-proposal-id", "17")
+                .containsEntry("x-proposal-review-branch", "review");
+        assertThat(definition.getValue().extensions().get("x-proposal-review-scope")).matches("[0-9a-f]{64}");
         assertThat(result.proposalStatus()).isEqualTo(ProposalStatus.ACCEPTED);
         assertThat(result.mutation().authority().authoritativeCommitId())
                 .isEqualTo(AUTHORITY);
@@ -129,7 +131,7 @@ class GitAuthoritativeProposalReviewServiceTest {
                 .thenReturn(snapshot(ProposalStatus.ACCEPTED));
         Map<String, String> expectedDecision = Map.of("status", "accepted", "provenance", "proposal-review", "x-proposal-id", "17");
         when(mutationService.removeMatching(
-                eq(context), eq(PREVIOUS), any(), eq(metadata), eq(expectedDecision)))
+                eq(context), eq(PREVIOUS), any(), eq(metadata), eq(expectedDecision), eq(ProposalBranchAdoptionService.reviewOrigin(context))))
                 .thenReturn(mutation(false));
         when(stateStore.transition(
                 17L, context, ProposalStatus.ACCEPTED, ProposalStatus.PENDING))
@@ -140,7 +142,7 @@ class GitAuthoritativeProposalReviewServiceTest {
         ArgumentCaptor<RelationIdentity> identity =
                 ArgumentCaptor.forClass(RelationIdentity.class);
         verify(mutationService).removeMatching(
-                eq(context), eq(PREVIOUS), identity.capture(), eq(metadata), eq(expectedDecision));
+                eq(context), eq(PREVIOUS), identity.capture(), eq(metadata), eq(expectedDecision), eq(ProposalBranchAdoptionService.reviewOrigin(context)));
         assertThat(identity.getValue())
                 .extracting(
                         RelationIdentity::sourceId,

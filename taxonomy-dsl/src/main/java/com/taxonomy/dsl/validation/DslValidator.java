@@ -59,6 +59,7 @@ public class DslValidator {
         validateRelations(model.getRelations(), allIds, elementTypeMap, catalogues.forModel(model), result);
         validateMappings(model.getMappings(), requirementIds, elementIds, result);
         validateElements(model.getElements(), result);
+        ArchitectureOrganization.validate(model, (code, message) -> result.addError(code + ": " + message));
         ArchitecturePackageHierarchy.validate(model, (code, message) -> result.addError(code + ": " + message));
 
         return result;

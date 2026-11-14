@@ -69,6 +69,11 @@ public sealed interface ArchitectureCommand {
         }
     }
     record DeleteArchitecturePackage(String id) implements ArchitectureCommand {}
+
+    record UpsertOrganization(String id, Map<String, String> properties) implements ArchitectureCommand {
+        public UpsertOrganization { properties = copyProperties(properties); }
+    }
+    record DeleteOrganization(String id) implements ArchitectureCommand {}
     record UpsertRequirementMapping(String requirementIdentity, String elementId, String rationale,
                                     Map<String, String> exchangeProperties) implements ArchitectureCommand {
         public UpsertRequirementMapping { exchangeProperties = copyProperties(exchangeProperties); }

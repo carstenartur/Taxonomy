@@ -155,7 +155,8 @@ class DslMaterializeWorkspaceCommitReproductionTest {
         // branch consistently in the response and all committed projections.
         assertThat(body.path("viewContext")).isEqualTo(JSON.readTree("""
                 {"basedOnCommit":"%s","basedOnBranch":"main","commitTimestamp":"%s",
-                 "includesProvisionalRelations":true,"projectionStale":false,"indexStale":false}
+                 "includesProvisionalRelations":true,"projectionStale":false,"indexStale":false,
+                 "projectionReadiness":"MISSING","indexReadiness":"MISSING"}
                 """.formatted(selectedHead.commitId(), selectedHead.timestamp())));
         long documentId = body.path("documentId").asLong();
         assertThat(documents.findById(documentId)).hasValueSatisfying(document -> {

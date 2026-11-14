@@ -313,9 +313,6 @@
 #docImportStatus .text-danger {
     color: #b02a37 !important;
 }
-.vc-fresh {
-    color: #146c43 !important;
-}
 .legend-box[style*="rgba(0,128,0,0.75)"] {
     background: #2f7532 !important;
     color: #fff !important;
