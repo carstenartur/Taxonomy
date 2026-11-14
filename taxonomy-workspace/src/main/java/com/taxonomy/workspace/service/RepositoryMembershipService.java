@@ -37,6 +37,11 @@ public class RepositoryMembershipService {
 
     @Autowired
     public RepositoryMembershipService(RepositoryMembershipRepository membershipRepository,
+            Optional<RepositoryRoleGrantProvider> grantProvider, RepositoryMembershipIdentity identities) {
+        this(membershipRepository, grantProvider, Optional.of(identities));
+    }
+
+    public RepositoryMembershipService(RepositoryMembershipRepository membershipRepository,
             Optional<RepositoryRoleGrantProvider> grantProvider, Optional<RepositoryMembershipIdentity> identities) {
         this.identities = identities;
         this.membershipRepository = membershipRepository;
