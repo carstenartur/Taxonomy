@@ -1,5 +1,6 @@
 package com.taxonomy.relations.command;
 
+import com.taxonomy.dsl.ast.BlockAst;
 import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer;
 import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.ChangeKind;
 import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.ChangeResult;
@@ -85,8 +86,11 @@ public class ArchitectureRelationGitCommandService {
         if (command instanceof UpsertRelation upsert) {
             return transformer.upsert(sourceDsl, upsert.definition());
         }
+        if (command instanceof AdoptRelation adoption) {
+            return transformer.insertAbsent(sourceDsl, adoption.identity(), adoption.acceptance());
+        }
         if (command instanceof RemoveRelation remove) {
-            return transformer.removeMatching(sourceDsl, remove.identity(), remove.requiredProperties());
+            return transformer.removeMatching(sourceDsl, remove.identity(), remove.requiredProperties(), remove.recordedOrigin());
         }
         throw new IllegalArgumentException(
                 "Unsupported relation command: " + command.getClass().getName());
@@ -136,7 +140,7 @@ public class ArchitectureRelationGitCommandService {
     }
 
     public sealed interface RelationCommand
-            permits UpsertRelation, RemoveRelation {
+            permits UpsertRelation, RemoveRelation, AdoptRelation {
         RelationIdentity identity();
         CommandMetadata metadata();
     }
@@ -155,16 +159,32 @@ public class ArchitectureRelationGitCommandService {
         }
     }
 
+    /** Copies the one verified decision into an absent slot at the expected target head. */
+    public record AdoptRelation(RelationIdentity identity, BlockAst acceptance,
+                                CommandMetadata metadata) implements RelationCommand {
+        public AdoptRelation {
+            Objects.requireNonNull(identity);
+            Objects.requireNonNull(acceptance);
+            Objects.requireNonNull(metadata);
+        }
+    }
+
     public record RemoveRelation(
             RelationIdentity identity,
             CommandMetadata metadata,
-            Map<String, String> requiredProperties) implements RelationCommand {
+            Map<String, String> requiredProperties,
+            Map<String, String> recordedOrigin) implements RelationCommand {
+        public RemoveRelation(RelationIdentity identity, CommandMetadata metadata, Map<String, String> requiredProperties) {
+            this(identity, metadata, requiredProperties, Map.of());
+        }
+
         public RemoveRelation(RelationIdentity identity, CommandMetadata metadata) {
             this(identity, metadata, Map.of());
         }
 
         public RemoveRelation {
             requiredProperties = Map.copyOf(requiredProperties);
+            recordedOrigin = Map.copyOf(recordedOrigin);
             identity = Objects.requireNonNull(identity, "identity");
             metadata = Objects.requireNonNull(metadata, "metadata");
         }

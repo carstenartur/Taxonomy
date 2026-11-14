@@ -192,7 +192,7 @@ function harness({ view = 'list', data = catalogue(), scores = null, interactive
     if (relevance) vm.runInContext(viewsSource, context);
     // Exercise the real expand/collapse commands without adding a production API.
     vm.runInContext(sources[1].replace('window.TaxonomyBrowse = {',
-        'window.TaxonomyBrowse = { expandAllForTest: expandAll, collapseAllForTest: collapseAll,'), context);
+        'window.TaxonomyBrowse = { expandAllForTest: expandAll, collapseAllForTest: collapseAll, bindPreviewsForTest: typeof bindProposalAdoptionPreviews === "function" ? bindProposalAdoptionPreviews : null, previewAdoptionForTest: typeof previewProposalAdoption === "function" ? previewProposalAdoption : null,'), context);
     vm.runInContext(sources[2], context);
     const browse = window.TaxonomyBrowse;
     browse.renderView(data, scores);
@@ -769,7 +769,7 @@ test('an unconfirmed session lets users browse an unevaluated area without start
 test('proposal badge reuses the single authoritative read under each filter without a second navigation-sensitive fetch', async () => {
     const browseSource = sources[1];
     const begin = browseSource.indexOf('    function currentProposalRead(controller) {');
-    const finish = browseSource.indexOf('    function renderProposalTable(proposals) {', begin);
+    const finish = browseSource.indexOf('    function renderProposalTable(', begin);
     const badgeBegin = browseSource.indexOf('    function updateProposalBadge(proposals, statusFilter) {');
     const badgeEnd = browseSource.indexOf('    // Expose accept/reject as global helpers', badgeBegin);
     assert.ok(begin >= 0 && finish > begin && badgeBegin > finish && badgeEnd > badgeBegin);
@@ -797,7 +797,9 @@ test('proposal badge reuses the single authoritative read under each filter with
                 pending() { secondaryRequests++; throw new Error('Redundant badge fetch'); }
             }},
             t: (key,n)=>key + ':' + n,
-            renderProposalTable(proposals) {
+            renderProposalTable(proposals, statusFilter, signal) {
+                assert.equal(statusFilter,filter);
+                assert.ok(signal instanceof AbortSignal);
                 renderCount++;
                 assert.equal(proposals.length,filter==='ALL'?4:filter==='PENDING'?2:1);
             }
@@ -809,5 +811,246 @@ test('proposal badge reuses the single authoritative read under each filter with
         assert.equal(renderCount,1,'The filtered table is rendered for ' + filter);
         assert.equal(badge.textContent,'browse.proposals.pending:2');
         assert.match(badge.className,/bg-warning/);
+    }
+});
+
+const sourceCommit = 'a'.repeat(40);
+const targetCommit = 'b'.repeat(40);
+function adoptionFixture(overrides = {}, mode = 'EDITABLE') {
+    const h = harness();
+    const scope = {repositoryId:'repo-a',workspaceId:'',branch:'entwurf'};
+    const preview = {proposalId:17,sourceBranch:'main',sourceCommit,targetRepositoryId:'repo-a',
+        targetWorkspaceId:null,targetBranch:'entwurf',targetCommit,state:'AVAILABLE',writable:true,
+        reviewedOnSourceBranch:true,...overrides};
+    const calls = [];
+    h.window.TaxonomyArchitectureWorkflow = {getScope:() => scope};
+    h.window.TaxonomyContextBar = {getCurrentContext:() => ({mode})};
+    h.window.TaxonomyProposalsApi = {
+        async previewAdoption(id, selected) {
+            calls.push(['GET', id, selected.branch]);
+            return Response.json(preview);
+        },
+        async adopt(confirmed, key) {
+            calls.push(['POST', confirmed, key]);
+            return Response.json({...confirmed,state:'ALREADY_PRESENT', targetCommit:'c'.repeat(40)});
+        }
+    };
+    const cell = h.document.createElement('td');
+    h.document.body.appendChild(cell);
+    const button = h.document.createElement('button');
+    cell.appendChild(button);
+    const details = h.document.createElement('div');
+    cell.appendChild(details);
+    return {...h, scope, calls, preview, button, details,
+        inspect: () => h.browse.previewAdoptionForTest(17, button, details)};
+}
+const settleAdoption = () => new Promise(resolve => setImmediate(resolve));
+
+test('accepted proposal shows proven source and target then adopts only on separate confirmation', async () => {
+    const h = adoptionFixture();
+    await h.inspect();
+    assert.deepEqual(h.calls, [['GET',17,'entwurf']]);
+    assert.match(h.details.textContent,/reviewed.*main.*aaaaaaaa/i);
+    assert.match(h.details.textContent,/entwurf.*bbbbbbbb/);
+    const apply = h.details.querySelector('button');
+    assert.ok(apply);
+    apply.click(); apply.click();
+    await settleAdoption();
+    assert.equal(h.calls.filter(entry => entry[0] === 'POST').length,1);
+    assert.equal(h.calls[1][1].sourceCommit,sourceCommit);
+    assert.equal(h.calls[1][1].targetCommit,targetCommit);
+    assert.match(h.details.textContent,/present|adopted/i);
+});
+
+for (const [state, writable, mode] of [
+    ['ALREADY_PRESENT',true,'EDITABLE'], ['CONFLICT',true,'EDITABLE'], ['UNVERIFIED_SOURCE',true,'EDITABLE'],
+    ['AVAILABLE',false,'EDITABLE'], ['AVAILABLE',true,'READ_ONLY']
+]) {
+    test('proposal adoption stays read-only for ' + [state,writable,mode].join('/'), async () => {
+        const h = adoptionFixture({state,writable,reviewedOnSourceBranch:false},mode);
+        await h.inspect();
+        assert.equal(h.details.querySelector('button'),null);
+        assert.equal(h.calls.length,1);
+        assert.doesNotMatch(h.details.textContent,/adoption.reviewed/);
+        if (state === 'UNVERIFIED_SOURCE') assert.doesNotMatch(h.details.textContent,/aaaaaaaa/);
+    });
+}
+
+test('stale or mismatched proposal adoption preview and confirmation never write', async () => {
+    const mismatch = adoptionFixture({targetWorkspaceId:'other'});
+    await mismatch.inspect();
+    assert.equal(mismatch.details.querySelector('button'),null);
+    const h = adoptionFixture();
+    await h.inspect();
+    const apply = h.details.querySelector('button');
+    h.scope.repositoryId = 'another';
+    apply.click();
+    await settleAdoption();
+    assert.equal(h.calls.length,1);
+
+    const gone = adoptionFixture();
+    let finish;
+    gone.window.TaxonomyProposalsApi.previewAdoption = () => new Promise(resolve => {finish = resolve;});
+    const pending = gone.inspect();
+    gone.details.remove();
+    finish(Response.json(gone.preview));
+    await pending;
+    assert.equal(gone.details.querySelector('button'),null);
+    assert.doesNotMatch(gone.details.textContent,/main|aaaaaaaa/);
+});
+
+test('stale-target rejection clears confirmation and requires a fresh preview', async () => {
+    const h = adoptionFixture();
+    h.window.TaxonomyProposalsApi.adopt = async () => new Response(null, {status:412});
+    await h.inspect();
+    h.details.querySelector('button').click();
+    await settleAdoption();
+    assert.equal(h.details.dataset.state,undefined);
+    assert.match(h.details.textContent,/changed/);
+    assert.equal(h.details.querySelector('button'),null);
+    assert.equal(h.button.disabled,false);
+});
+
+test('pending projection is distinguished from an already projected adoption', async () => {
+    const h = adoptionFixture();
+    h.window.TaxonomyProposalsApi.adopt = async () => new Response(null,{status:202});
+    await h.inspect();
+    h.details.querySelector('button').click();
+    await settleAdoption();
+    assert.match(h.details.textContent,/pending/);
+    assert.doesNotMatch(h.details.textContent,/adopted/);
+    assert.equal(h.details.querySelector('button'),null);
+});
+
+test('loss of the signed-in session clears the accepted source and previous confirmation', async () => {
+    const h = adoptionFixture();
+    await h.inspect();
+    h.window.TaxonomyProposalsApi.adopt = async () => {
+        h.window.__TaxonomyAnalysisSessionContext = {runtime:{workspaceId:'signed-out'}};
+        throw Object.assign(new Error('Authorization expired'), {status:403});
+    };
+    h.details.querySelector('button').click();
+    await settleAdoption();
+    assert.equal(h.details.dataset.state,undefined);
+    assert.equal(h.details.querySelector('button'),null);
+    assert.doesNotMatch(h.details.textContent,/aaaaaaaa|bbbbbbbb/);
+});
+
+test('historical source evidence is identified separately from an original branch attribution', async () => {
+    const h = adoptionFixture({reviewedOnSourceBranch:false});
+    await h.inspect();
+    assert.match(h.details.textContent,/adoption.recorded.*main/);
+    assert.doesNotMatch(h.details.textContent,/adoption.reviewed/);
+    assert.ok(h.details.querySelector('button'));
+});
+
+test('an immutable architecture snapshot never offers to mutate its backing branch', async () => {
+    const h = adoptionFixture();
+    h.window.TaxonomyArchitectureWorkspace = {getSource: () => ({kind:'snapshot',snapshotId:'retained'})};
+    await h.inspect();
+    assert.equal(h.details.querySelector('button'), null);
+    assert.doesNotMatch(h.details.textContent, /adoption.apply/);
+    assert.equal(h.calls.filter(entry => entry[0] === 'POST').length, 0);
+});
+
+test('a target without a head preserves the verified acceptance and names the absent draft', async () => {
+    const h = adoptionFixture({state:'CONFLICT',targetCommit:null});
+    await h.inspect();
+    assert.equal(h.details.dataset.state,'CONFLICT');
+    assert.match(h.details.textContent,/adoption.reviewed.*main.*aaaaaaaa/);
+    assert.match(h.details.textContent,/adoption.missingHead.*entwurf/);
+    assert.doesNotMatch(h.details.textContent,/adoption.conflict/);
+    assert.equal(h.details.querySelector('button'),null);
+});
+
+test('a missing target commit cannot enable an available or already present result', async () => {
+    for (const state of ['AVAILABLE','ALREADY_PRESENT']) {
+        const h = adoptionFixture({state,targetCommit:null});
+        await h.inspect();
+        assert.equal(h.details.dataset.state,undefined);
+        assert.match(h.details.textContent,/adoption.failed/);
+        assert.equal(h.details.querySelector('button'),null);
+    }
+});
+
+test('the source hash is labelled as the verified revision in both interface languages', () => {
+    for (const [lang, caption] of [['en','verified source revision'], ['de','geprüfter Quellstand']]) {
+        const file = '../../taxonomy-app/src/main/resources/i18n/messages' + (lang === 'de' ? '_de' : '') + '.properties';
+        const messages = readFileSync(new URL(file,import.meta.url),'utf8').replace(/\\u([0-9a-fA-F]{4})/g,
+            (_, hex) => String.fromCharCode(parseInt(hex,16)));
+        const line = messages.split('\n').find(entry => entry.startsWith('browse.proposals.adoption.reviewed='));
+        assert.ok(line.includes(caption + ' {1}'), line);
+    }
+});
+
+function acceptedRowsFixture(count) {
+    const h = adoptionFixture();
+    const buttons = [], details = [], requests = [];
+    for (let index = 0; index < count; index++) {
+        const button = h.document.createElement('button');
+        button.dataset.id = String(index + 1);
+        const status = h.document.createElement('div');
+        status.id = 'adoption-' + button.dataset.id;
+        button.setAttribute('aria-controls', status.id);
+        h.document.body.append(button, status);
+        buttons.push(button);
+        details.push(status);
+    }
+    let notify, disconnected = false;
+    const observed = new Set(), controller = new AbortController();
+    h.window.IntersectionObserver = class {
+        constructor(callback) { notify = callback; }
+        observe(button) { observed.add(button); }
+        unobserve(button) { observed.delete(button); }
+        disconnect() { disconnected = true; observed.clear(); }
+    };
+    h.window.TaxonomyProposalsApi.previewAdoption = (id, scope, options) => new Promise(resolve => {
+        requests.push({id, signal:options.signal, resolve:() => resolve(Response.json({...h.preview,proposalId:id}))});
+    });
+    return {...h, buttons, details, requests, observed, controller,
+        bind: filter => h.browse.bindPreviewsForTest(buttons, filter, controller.signal),
+        visibility: (indexes, visible) => notify(indexes.map(index => ({target:buttons[index],isIntersecting:visible}))),
+        disconnected: () => disconnected};
+}
+
+test('the accepted filter reads only visible rows and offers adoption without another click or focus change', async () => {
+    const h = acceptedRowsFixture(6);
+    h.bind('ACCEPTED');
+    assert.equal(h.requests.length,0);
+    assert.equal(h.observed.size,6);
+    h.buttons[0].focus();
+    h.visibility([0,1,2,3,4],true);
+    assert.equal(h.requests.length,3);
+    h.visibility([3],false);
+    h.requests[0].resolve();
+    await settleAdoption();
+    assert.equal(h.details[0].dataset.state,'AVAILABLE');
+    assert.match(h.details[0].textContent,/reviewed.*main.*apply.*entwurf/);
+    assert.ok(h.document.activeElement === h.buttons[0]);
+    assert.deepEqual(h.requests.map(r => r.id),[1,2,3,5]);
+    assert.equal(h.calls.length,0,'only the explicit adoption action may POST');
+    h.visibility([5],true);
+    h.controller.abort();
+    for (const request of h.requests.slice(1)) request.resolve();
+    await settleAdoption();
+    assert.ok(h.disconnected());
+    assert.deepEqual(h.requests.map(r => r.id),[1,2,3,5], 'a filter or context change drops all queued reads');
+    assert.equal(h.details[1].dataset.state,undefined,'old responses never write to the replacement view');
+    assert.ok(h.requests.every(request => request.signal === h.controller.signal));
+});
+
+test('pending, all and rejected lists spend no preview requests and a manual fallback still works', async () => {
+    for (const filter of ['PENDING','ALL','REJECTED','ACCEPTED']) {
+        const h = acceptedRowsFixture(1);
+        if (filter === 'ACCEPTED') delete h.window.IntersectionObserver;
+        h.bind(filter);
+        assert.equal(h.observed.size,0);
+        assert.equal(h.requests.length,0);
+        h.buttons[0].click();
+        assert.equal(h.requests.length,1);
+        h.requests[0].resolve();
+        await settleAdoption();
+        assert.equal(h.details[0].dataset.state,'AVAILABLE');
+        assert.equal(h.calls.length,0);
     }
 });
