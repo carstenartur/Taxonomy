@@ -1,5 +1,8 @@
 package com.taxonomy.security.config;
 
+import com.taxonomy.catalog.controller.TaxonomyController;
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.security.controller.AccountMenuAdvice;
 import com.taxonomy.security.service.PasswordChangeService;
 import com.taxonomy.security.controller.LocalLoginController;
 import com.taxonomy.shared.config.I18nConfig;
@@ -9,6 +12,8 @@ import com.taxonomy.workspace.service.ExplicitWorkspacePinValidationInterceptor;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Bean;
@@ -31,22 +36,25 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.context.WebApplicationContext;
 
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.mockito.Mockito.mock;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@WebMvcTest(LocalLoginController.class)
-@Import({LocalLoginController.class, I18nConfig.class, WebMvcConfig.class, LocalLoginFlowTest.Security.class,
-        LocalLoginFlowTest.ProtectedPage.class})
+@WebMvcTest({LocalLoginController.class, TaxonomyController.class})
+@Import({LocalLoginController.class, TaxonomyController.class, AccountMenuAdvice.class, I18nConfig.class, WebMvcConfig.class,
+        LocalLoginFlowTest.Security.class, LocalLoginFlowTest.ProtectedPage.class})
 class LocalLoginFlowTest {
     @Autowired WebApplicationContext context;
+    @MockitoBean TaxonomyService taxonomyService;
     @MockitoBean ExplicitWorkspacePinValidationInterceptor pinInterceptor;
     @MockitoBean DslWorkspacePreResolutionInterceptor dslInterceptor;
     private MockMvc mvc;
@@ -87,6 +95,18 @@ class LocalLoginFlowTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("action=\"/taxonomy/login\"")))
                 .andExpect(content().string(containsString("name=\"_csrf\"")));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "/taxonomy", "/apps/taxonomy"})
+    void loginDeclaresAFaviconAvailableBeforeAuthentication(String prefix) throws Exception {
+        String icon = prefix + "/images/favicon.png";
+        mvc.perform(get(prefix + "/login").contextPath(prefix))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("rel=\"icon\" href=\"" + icon + "\"")));
+        mvc.perform(get(icon).contextPath(prefix))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("image/png"));
     }
 
     @Test
@@ -169,6 +189,37 @@ class LocalLoginFlowTest {
         assertThat(session.isInvalid()).isTrue();
     }
 
+    @Test
+    void accountMenuSubmitsAContextRelativeLogoutWithCsrf() throws Exception {
+        var session = signIn("/taxonomy");
+        var page = mvc.perform(get("/taxonomy/").contextPath("/taxonomy").session(session).param("lang", "de"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(page).contains("id=\"applicationAccount\"", ">Konto</summary>", ">qa-user</span>");
+        var form = Pattern.compile("<form\\b[^>]*\\bid=\"applicationLogoutForm\"[^>]*>.*?</form>", Pattern.DOTALL)
+                .matcher(page);
+        assertThat(form.find()).as("the authenticated navigation offers sign-out").isTrue();
+        assertThat(form.group()).contains("method=\"post\" action=\"/taxonomy/logout\"", ">Abmelden</button>");
+        assertThat(page).contains("rel=\"icon\" href=\"/taxonomy/images/favicon.png\"")
+                .doesNotContain("id=\"applicationLogoutScope\"");
+
+        mvc.perform(post("/taxonomy/logout").contextPath("/taxonomy").session(session)
+                        .accept("text/html").param("_csrf", formCsrf(form.group())))
+                .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/taxonomy/login?logout"));
+        assertThat(session.isInvalid()).isTrue();
+    }
+
+    @Test
+    void oidcAccountMenuIdentifiesTheSingleSignOnLogout() throws Exception {
+        mvc.perform(get("/taxonomy/").contextPath("/taxonomy").param("lang", "de")
+                        .with(oidcLogin().idToken(token -> token.claim("preferred_username", "sso-user"))))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("id=\"applicationAccount\"")))
+                .andExpect(content().string(containsString(">sso-user</span>")))
+                .andExpect(content().string(containsString(">SSO-Sitzung beenden</button>")))
+                .andExpect(content().string(containsString("aria-describedby=\"applicationLogoutScope\"")))
+                .andExpect(content().string(containsString("id=\"applicationLogoutScope\"")));
+    }
+
     private MockHttpSession signIn(String prefix) throws Exception {
         var result = mvc.perform(post(prefix + "/login").contextPath(prefix).with(csrf())
                         .param("username", "qa-user").param("password", "qa-password"))
@@ -179,10 +230,10 @@ class LocalLoginFlowTest {
     }
 
     private static String formCsrf(String html) {
-        var token = java.util.regex.Pattern.compile(
+        var token = Pattern.compile(
                 "<input\\b(?=[^>]*\\bname=\"_csrf\")(?=[^>]*\\bvalue=\"([^\"]+)\")[^>]*>")
                 .matcher(html);
-        assertThat(token.find()).as("actual logout confirmation supplies its CSRF token").isTrue();
+        assertThat(token.find()).as("the rendered logout form supplies its CSRF token").isTrue();
         return token.group(1);
     }
 

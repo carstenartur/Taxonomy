@@ -11,6 +11,7 @@ import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.Keys;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.ui.ExpectedConditions;
@@ -295,21 +296,23 @@ class KeycloakSecurityContainerIT {
                 Map.of("Cookie", sessionCookie, csrfHeader, csrfToken));
         assertThat(withCsrf.statusCode()).isEqualTo(400);
 
-        ((JavascriptExecutor) driver).executeScript("""
-                const form = document.createElement('form');
-                form.method = 'post';
-                form.action = '/logout';
-                const csrf = document.createElement('input');
-                csrf.type = 'hidden';
-                csrf.name = '_csrf';
-                csrf.value = arguments[0];
-                form.appendChild(csrf);
-                document.body.appendChild(form);
-                form.submit();
-                """, csrfToken);
-
-        new WebDriverWait(driver, Duration.ofSeconds(30))
-                .until(ExpectedConditions.visibilityOfElementLocated(By.id("username")));
+        var wait = new WebDriverWait(driver, Duration.ofSeconds(30));
+        var welcomeWait = new WebDriverWait(driver, Duration.ofSeconds(30))
+                .withMessage(() -> ((JavascriptExecutor) driver).executeScript("""
+                        const dialog = document.getElementById('onboardingOverlay');
+                        return {open: dialog?.open === true, activeControl: document.activeElement?.id,
+                                openDialogs: [...document.querySelectorAll('dialog[open]')].map(item => item.id)};
+                        """).toString());
+        var welcomeAction = welcomeWait.until(ExpectedConditions.elementToBeClickable(By.id("onboardingDismiss")));
+        welcomeWait.until(current -> welcomeAction.equals(current.switchTo().activeElement()));
+        welcomeAction.sendKeys(Keys.ENTER);
+        welcomeWait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("onboardingOverlay")));
+        wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("#applicationAccount > summary"))).click();
+        var signOut = wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("#applicationLogoutForm button")));
+        assertThat(signOut.getAccessibleName()).isEqualTo("Sign out of single sign-on");
+        assertThat(driver.findElement(By.id("applicationLogoutScope")).isDisplayed()).isTrue();
+        signOut.click();
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("username")));
         assertThat(driver.getCurrentUrl()).startsWith(KEYCLOAK_ORIGIN);
 
         HttpResponse<String> staleSession = appRequest(
