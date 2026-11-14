@@ -101,7 +101,7 @@
         <hibernate-search.version>8.4.1.Final</hibernate-search.version>
         <hibernate-search-backend.version>${hibernate-search.version}</hibernate-search-backend.version>
         <jgit.version>7.8.1.202611041320-r</jgit.version>
-        <jgit-storage-hibernate.version>0.12.1</jgit-storage-hibernate.version>
+        <jgit-storage-hibernate.version>0.12.2</jgit-storage-hibernate.version>
         <tink.version>1.24.0</tink.version>
         <commons-compress.version>1.28.0</commons-compress.version>
         <!-- Test-only transitive dependencies still need the patched versions. -->
@@ -165,16 +165,6 @@
         <taxonomy.ui.profile.filter></taxonomy.ui.profile.filter>
         <taxonomy.playwright.install.arguments>exec -- playwright install --with-deps chromium firefox webkit</taxonomy.playwright.install.arguments>
     </properties>
-
-    <repositories>
-        <repository>
-            <id>jgit-storage-hibernate-releases</id>
-            <name>jgit-storage-hibernate anonymous releases</name>
-            <url>https://raw.githubusercontent.com/carstenartur/jgit-storage-hibernate/maven-repository/</url>
-            <releases><enabled>true</enabled></releases>
-            <snapshots><enabled>false</enabled></snapshots>
-        </repository>
-    </repositories>
 
     <dependencyManagement>
         <dependencies>

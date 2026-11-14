@@ -123,7 +123,7 @@ class UiApplicationPackagingRecoveryTest {
                 if [[ "$PACKAGING_SCENARIO" == missing-artifact ]]; then
                   echo '[ERROR] Could not transfer artifact: status code: 404'
                 else
-                  echo '[ERROR] org.webjars.npm:d3:jar:7.9.0 was not found in https://raw.githubusercontent.com/carstenartur/jgit-storage-hibernate/maven-repository/ during a previous attempt.'
+                  echo '[ERROR] org.webjars.npm:d3:jar:7.9.0 was not found in https://repository.example.invalid/releases/ during a previous attempt.'
                   echo '[ERROR] Failure was cached in the local repository. Original error: Could not transfer artifact org.webjars.npm:d3:jar:7.9.0 from/to central: status code: 502, reason phrase: Bad Gateway (502)'
                 fi
                 if [[ "$PACKAGING_SCENARIO" == mixed-502-404 ]]; then

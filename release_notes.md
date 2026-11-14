@@ -4,7 +4,7 @@ Graph exploration, gap assessments and reports now use the repository, working
 copy, branch and commit selected by the user. Relation discovery, the DSL
 validator and the architecture editor share the rules for permitted relations.
 The application also verifies ADMBw and Sparx QEA exchange and uses
-jgit-storage-hibernate 0.12.1.
+jgit-storage-hibernate 0.12.2 from Maven Central.
 
 ## Earlier changes in the 1.5.3 source
 
