@@ -336,6 +336,7 @@ class ProductDemoEndToEndTest {
 
         // Closing the demo stops further replay admission.
         demos.close(run.id(), USER, context);
+        LocalTestLogin.login(applicationContext, USER, "ARCHITECT");
         assertThatThrownBy(() -> analysis.analyzeRequirement(run.projectId(), run.requirementId(), null, 25,
                 UUID.randomUUID().toString(), USER, context)).isInstanceOf(PortfolioException.class)
                 .extracting(e -> ((PortfolioException) e).getCode()).isEqualTo(ProductDemoProblems.RUN_CLOSED);
