@@ -128,6 +128,10 @@ public final class ApiAccessPolicy {
                     PathPatternParser.defaultInstance.parse(path), List.of(ADMIN_CONFIGURATION), List.of(), List.of()));
         }
         add(rules, "PUT", ADMIN_CONFIGURATION, "/api/workspace/external/configure");
+        for (String method : List.of("GET","DELETE")) {
+            rules.add(rule(method,"/api/workspace/publications/*",Access.PERMISSION,ARCHITECTURE_PUBLISH,CONTRIBUTOR));
+        }
+        rules.add(rule("POST","/api/workspace/publications/*/retry",Access.PERMISSION,ARCHITECTURE_PUBLISH,CONTRIBUTOR));
         add(rules, "POST", ARCHITECTURE_PUBLISH, "/api/workspace/sync-from-shared", "/api/workspace/publish", "/api/workspace/resolve-diverged");
         add(rules, "POST", ADMIN_CONFIGURATION, "/api/workspace/evict");
         add(rules, "POST", ANALYSIS_RUN, "/api/workspace/create", "/api/workspace/*/archive");

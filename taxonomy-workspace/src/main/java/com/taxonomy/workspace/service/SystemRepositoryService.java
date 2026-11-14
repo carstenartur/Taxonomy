@@ -6,6 +6,7 @@ import com.taxonomy.workspace.model.RepositoryTopologyMode;
 import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.repository.SystemRepositoryRepository;
+import jakarta.persistence.EntityManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,16 +39,18 @@ public class SystemRepositoryService implements RepositoryMutationFence {
 
     private final SystemRepositoryRepository repository;
     private final WorkspaceFetchAuthority forkActors;
-    @jakarta.persistence.PersistenceContext
-    private jakarta.persistence.EntityManager entities;
 
-    public SystemRepositoryService(SystemRepositoryRepository repository) {
-        this(repository, Optional.empty());
+    private final EntityManager entities;
+
+    public SystemRepositoryService(SystemRepositoryRepository repository, EntityManager entities) {
+        this(repository, entities, Optional.empty());
     }
 
     @Autowired
-    public SystemRepositoryService(SystemRepositoryRepository repository, Optional<WorkspaceFetchAuthority> forkActors) {
+    public SystemRepositoryService(SystemRepositoryRepository repository, EntityManager entities,
+            Optional<WorkspaceFetchAuthority> forkActors) {
         this.repository = repository;
+        this.entities = entities;
         this.forkActors = forkActors.orElse(null);
     }
 

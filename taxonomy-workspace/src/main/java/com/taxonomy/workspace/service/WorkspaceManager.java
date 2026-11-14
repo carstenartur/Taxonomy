@@ -79,6 +79,13 @@ public class WorkspaceManager {
                 TransactionDefinition.PROPAGATION_NOT_SUPPORTED);
     }
 
+    private WorkspacePublicationJournal publicationJournal;
+
+    @Autowired
+    void configurePublicationJournal(WorkspacePublicationJournal journal) {
+        this.publicationJournal = journal;
+    }
+
     @Autowired
     void configureSourceMemberships(RepositoryMembershipService sourceMemberships) {
         this.sourceMemberships = sourceMemberships;
@@ -416,6 +423,10 @@ public class WorkspaceManager {
         // A storage error rolls this transaction back and leaves the original receipts available for retry.
         if (fetchJournal != null) {
             fetchJournal.archiveForWorkspaceRemoval(workspaceId,workspace.getSourceRepositoryId(),username,
+                    () -> fetchActors.currentActor(username));
+        }
+        if (publicationJournal != null) {
+            publicationJournal.archiveForWorkspaceRemoval(workspaceId,workspace.getSourceRepositoryId(),username,
                     () -> fetchActors.currentActor(username));
         }
         if (repositoryFactory != null) {

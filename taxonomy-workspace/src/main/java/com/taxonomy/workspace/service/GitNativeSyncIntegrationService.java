@@ -82,6 +82,343 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         this.sourceMemberships = sourceMemberships;
     }
 
+    private WorkspacePublicationRecovery publications;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void configurePublications(WorkspacePublicationRecovery publications) {
+        this.publications = java.util.Objects.requireNonNull(publications);
+    }
+
+    @Override
+    public Publication publishWithReceipt(String username,String branch,String key,String cause) throws IOException {
+        portfolioGitPort.requireAvailable();
+        var context = resolveWorkspaceContext(username,branch);
+        if (context.workspaceId() == null || publications == null) {
+            return new Publication(publishToShared(username,branch),null);
+        }
+        return submitPublication(context,false,key,cause,false);
+    }
+
+    private Publication submitPublication(WorkspaceContext context,boolean keep,String key,String cause,boolean commandErrors) throws IOException {
+        var selected=RepositoryContext.workspace(context.repositoryId(),context.workspaceId(),context.currentBranch(),context.username());
+        requireSourceAuthority(context.username(),context,true);
+        var current=publicationMetadata(selected,false);
+        var operation=publications.submit(selected,keep,key,cause,() -> {
+            var target=publicationTarget(selected,false);
+            return new WorkspacePublicationJournal.Source(target.branch(),target.owner().getBaseCommit(),
+                    freshHead(target.central(),target.branch()),freshHead(target.local(),selected.branch()),
+                    freshHead(target.local(),TRACKING_BRANCH),target.owner().getUsername());
+        },this::applyPublicationPhase,commandErrors);
+        if (!current.owner().getUsername().equals(operation.workspaceOwner())) throw unavailable();
+        return new Publication(operation.resultCommit(),operation);
+    }
+
+    private static String completedPublication(Publication publication) {
+        String status=publication.operation().status();
+        if ("COMPLETED".equals(status) || "SUPERSEDED".equals(status)) return publication.commit();
+        var response="DENIED".equals(status) ? org.springframework.http.HttpStatus.FORBIDDEN :
+                "MANUAL_REVIEW".equals(status) ? org.springframework.http.HttpStatus.CONFLICT : org.springframework.http.HttpStatus.ACCEPTED;
+        throw new org.springframework.web.server.ResponseStatusException(response,"Publication " + publication.operation().operationId() + ": " + status);
+    }
+
+    @org.springframework.scheduling.annotation.Scheduled(fixedDelayString="${taxonomy.workspace.publication-recovery-poll:30000}")
+    public void recoverDuePublications() {
+        publications.recoverDue(this::applyPublicationPhase);
+        publications.cleanDue(this::releasePublicationPins);
+    }
+
+    public WorkspacePublicationJournal.View publicationStatus(RepositoryContext selected,String id) {
+        var receipt=publications.get(selected,id);
+        var metadata=publicationMetadata(selected,false);
+        if (!receipt.workspaceOwner().equals(metadata.owner().getUsername())) throw unavailable();
+        return receipt;
+    }
+
+    public WorkspacePublicationJournal.View retryPublication(RepositoryContext selected,String id) {
+        publicationStatus(selected,id);
+        return publications.retry(selected,id,this::applyPublicationPhase);
+    }
+
+    public WorkspacePublicationJournal.View archivePublication(RepositoryContext selected,String id) {
+        publicationStatus(selected,id);
+        publications.archive(selected,id);
+        publications.cleanArchived(selected,id,this::releasePublicationPins);
+        return publications.get(selected,id);
+    }
+
+    private record PublicationTarget(UserWorkspace owner,SystemRepository source,String branch,
+            DslGitRepository central,DslGitRepository local,WorkspaceContext workspace,WorkspaceContext centralContext) {}
+
+    private record PublicationMetadata(UserWorkspace owner,SystemRepository source,String branch) {}
+
+    private PublicationMetadata publicationMetadata(RepositoryContext selected,boolean lockWorkspace) {
+        if (selected.scope()!=RepositoryScope.WORKSPACE) throw unavailable();
+        var owner=(lockWorkspace ? workspaceRepository.findByWorkspaceIdForUpdate(selected.workspaceId())
+                : workspaceRepository.findByWorkspaceId(selected.workspaceId())).orElseThrow(GitNativeSyncIntegrationService::unavailable);
+        if (owner.isShared()
+                || owner.isArchived() || !selected.repositoryId().equals(owner.getSourceRepositoryId())
+                || owner.getProvisioningStatus()!=com.taxonomy.workspace.model.WorkspaceProvisioningStatus.READY) throw unavailable();
+        var source=requireSourceRepository(owner);
+        requireWorkspaceAuthority(selected.username(), source, owner);
+        String branch=owner.resolveUpstreamBranch(source);
+        return new PublicationMetadata(owner,source,branch);
+    }
+
+    private void requireWorkspaceAuthority(String actor, SystemRepository source, UserWorkspace workspace) {
+        systemRepositoryService.readCurrentAuthorization(requireRepositoryId(source), current -> {
+            if (!sourceMemberships.canUseWorkspace(current, workspace, actor)
+                    || !sourceMemberships.canRead(current, actor)
+                    || !sourceMemberships.canContribute(current, actor)) throw unavailable();
+        });
+    }
+
+    private PublicationTarget publicationTarget(RepositoryContext selected,boolean lockWorkspace) {
+        var metadata=publicationMetadata(selected,lockWorkspace);
+        var owner=metadata.owner();
+        var source=metadata.source();
+        String branch=metadata.branch();
+        var workspace=new WorkspaceContext(selected.username(),selected.workspaceId(),selected.branch(),selected.repositoryId());
+        var central=new WorkspaceContext("shared",null,branch,selected.repositoryId());
+        return new PublicationTarget(owner,source,branch,repositoryFactory.getCentralRepository(selected.repositoryId()),
+                repositoryFactory.openWorkspaceRepository(selected.workspaceId()),workspace,central);
+    }
+
+    void applyPublicationPhase(WorkspacePublicationOperation row,Runnable actor) throws IOException {
+        var selected=row.context();
+        var target=publicationTarget(selected,row.step!=WorkspacePublicationOperation.Step.PROGRESS);
+        if (!row.workspaceOwner().equals(target.owner().getUsername())) throw unavailable();
+        if (!java.util.Objects.equals(row.sourceBranch,target.branch())
+                || !java.util.Objects.equals(row.forkPoint,target.owner().getBaseCommit())) {
+            throw new BranchHeadConflictException(selected.branch(),row.forkPoint,target.owner().getBaseCommit(),"Working copy upstream changed");
+        }
+        Runnable grant=() -> { actor.run(); requireWorkspaceAuthority(row.username,target.source(),target.owner()); };
+        if (row.step==WorkspacePublicationOperation.Step.PREPARE) {
+            target.central().verifyExpectedHead(target.branch(),row.inputSource);
+            target.local().verifyExpectedHead(row.localBranch,row.inputLocal);
+            target.local().verifyExpectedHead(TRACKING_BRANCH,row.inputTracking);
+            if (row.attempts>1) {
+                throw new BranchHeadConflictException(row.localBranch,row.inputLocal,row.inputLocal,
+                        "Interrupted preparation requires review of the original editor and portfolio projections");
+            }
+            editorVersions.version(selected,"Publish architecture workspace",() -> { preparePublication(row,target,grant); return null; });
+            return;
+        }
+        if (row.step==WorkspacePublicationOperation.Step.CANDIDATES) {
+            target.central().verifyExpectedHead(row.sourceBranch,row.inputSource);
+            target.local().verifyExpectedHead(row.localBranch,row.expectedLocal);
+            target.local().verifyExpectedHead(TRACKING_BRANCH,row.expectedTracking);
+            prepareCandidates(row,target,grant);
+            return;
+        }
+        grant.run();
+        exactPublicationSource(target.central(),row,row.step==WorkspacePublicationOperation.Step.SOURCE_REF);
+        exactPublicationRef(target.local(),row.localBranch,row.expectedLocal,row.preparedLocal,
+                row.step.ordinal()<=WorkspacePublicationOperation.Step.WORKSPACE_REF.ordinal(),false);
+        if (!row.localBranch.equals(TRACKING_BRANCH)) {
+            exactPublicationRef(target.local(),TRACKING_BRANCH,row.expectedTracking,row.preparedTracking,
+                    row.step.ordinal()<=WorkspacePublicationOperation.Step.TRACKING_REF.ordinal(),false);
+        }
+        grant.run();
+        switch (row.step) {
+            case SOURCE_REF -> {
+                boolean alreadyPublished=java.util.Objects.equals(row.preparedSource,freshHead(target.central(),row.sourceBranch));
+                if (!alreadyPublished) {
+                    requireReviewedPortfolio(row.centralPortfolioDigest,"shared",target.centralContext());
+                    requireReviewedPortfolio(row.localPortfolioDigest,row.username,target.workspace());
+                }
+                requireLockedPublicationAuthority(row, actor);
+                target.central().publishPreparedDslCommit(row.id,row.sourceBranch,row.inputSource,row.preparedSource);
+                var proof=target.central().preparedPublicationTime(row.id,row.sourceBranch,row.inputSource,row.preparedSource);
+                if (proof!=null) row.publishedAt=proof.toEpochMilli();
+                else if (!alreadyPublished) row.publishedAt=Instant.now().toEpochMilli();
+            }
+            case WORKSPACE_REF -> editorVersions.applyPreparedVersion(selected, row.expectedLocal, row.preparedLocal,
+                    "Publish prepared architecture workspace", () -> {
+                        if (!java.util.Objects.equals(row.preparedLocal,freshHead(target.local(),row.localBranch)))
+                            requireReviewedPortfolio(row.localPortfolioDigest,row.username,target.workspace());
+                        requireLockedPublicationAuthority(row, actor);
+                        return target.local().publishPreparedDslCommit(row.id,row.localBranch,row.expectedLocal,row.preparedLocal);
+                    });
+            case TRACKING_REF -> {
+                if (!row.localBranch.equals(TRACKING_BRANCH)) target.local().publishPreparedDslCommit(row.id,TRACKING_BRANCH,row.expectedTracking,row.preparedTracking);
+            }
+            case CENTRAL_PORTFOLIO, LOCAL_PORTFOLIO -> {
+                boolean central=row.step==WorkspacePublicationOperation.Step.CENTRAL_PORTFOLIO;
+                String content=target.central().getDslAtCommit(row.preparedSource);
+                String owner=central ? "shared" : row.username;
+                var scope=central ? target.centralContext() : target.workspace();
+                requireReviewedPortfolio(central ? row.centralPortfolioDigest : row.localPortfolioDigest,owner,scope);
+                portfolioGitPort.materializePortfolio(content,owner,scope);
+                requireLockedPublicationAuthority(row, actor);
+                exactPublicationSource(target.central(),row,false);
+            }
+            case WORKSPACE_METADATA -> {
+                var owner=target.owner();
+                var tracked=target.local().recordIntegratedUpstream(row.repository,row.sourceBranch,row.preparedSource,row.username);
+                owner.setLastFetchedCommit(tracked);
+                owner.setLastIntegratedCommit(row.preparedSource);
+                owner.setCurrentCommit(row.preparedLocal);
+                workspaceRepository.save(owner);
+            }
+            case SOURCE_METADATA -> {
+                if (row.publishedAt!=null) systemRepositoryService.recordLastPush(row.repository,Instant.ofEpochMilli(row.publishedAt));
+            }
+            case PROGRESS -> syncStateRepository.recordPublication(new WorkspaceSyncScope(row.username,row.repository,row.workspace,row.localBranch),
+                    row.preparedSource,row.publishedAt==null ? null : Instant.ofEpochMilli(row.publishedAt),Instant.ofEpochMilli(row.sourceObservedAt),Instant.now());
+            default -> throw new IllegalStateException("Unsupported publication phase: " + row.step);
+        }
+    }
+
+    private void requireLockedPublicationAuthority(WorkspacePublicationOperation operation, Runnable actor) {
+        actor.run();
+        // Portfolio materialization fences the catalogue in this transaction. Suspending it
+        // to read the same row on a second connection deadlocks on locking databases.
+        var source = systemRepositoryService.lockCurrentPublicationSource(operation.repository);
+        boolean owner = operation.workspaceOwner().equals(operation.username);
+        boolean authorized = owner ? sourceMemberships.canPublishLockedSource(source, operation.username)
+                : sourceMemberships.canCollaborateOnLockedSource(source, operation.username);
+        if (!authorized) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Current source repository CONTRIBUTOR role is required");
+        }
+    }
+
+    private void releasePublicationPins(WorkspacePublicationOperation row,Runnable actor) throws IOException {
+        if (row.step==WorkspacePublicationOperation.Step.PREPARE) return;
+        var source=systemRepositoryService.getRepository(row.repository);
+        var owner=workspaceRepository.findByWorkspaceIdForUpdate(row.workspace);
+        if (owner.isPresent() && (!row.workspaceOwner().equals(owner.get().getUsername())
+                || !row.repository.equals(owner.get().getSourceRepositoryId()))) throw unavailable();
+        Runnable authorize=() -> {
+            actor.run();
+            if (owner.isPresent()) requireWorkspaceAuthority(row.username,source,owner.get());
+            else {
+                if (!row.workspaceOwner().equals(row.username)) throw unavailable();
+                requireSourceAuthority(row.username,source,true);
+            }
+        };
+        authorize.run();
+        repositoryFactory.releasePublicationPin(row.repository,null,row.id,row.sourceBranch,row.preparedSource,authorize);
+        if (owner.isPresent()) {
+            repositoryFactory.releasePublicationPin(row.repository,row.workspace,row.id,row.localBranch,row.preparedLocal,authorize);
+            if (!row.localBranch.equals(TRACKING_BRANCH)) {
+                repositoryFactory.releasePublicationPin(row.repository,row.workspace,row.id,TRACKING_BRANCH,row.preparedTracking,authorize);
+            }
+        } else {
+            repositoryFactory.requireRemovedWorkspaceStorage(row.workspace,authorize);
+        }
+    }
+
+    private static void exactPublicationSource(DslGitRepository source,WorkspacePublicationOperation row,boolean allowExpected)
+            throws IOException {
+        try {
+            exactPublicationRef(source,row.sourceBranch,row.inputSource,row.preparedSource,allowExpected,true);
+        } catch (WorkspacePublicationRecovery.Superseded later) {
+            var when=source.preparedPublicationTime(row.id,row.sourceBranch,row.inputSource,row.preparedSource);
+            throw new WorkspacePublicationRecovery.Superseded(true,when);
+        }
+    }
+
+    private static void exactPublicationRef(DslGitRepository repository,String branch,String expected,String candidate,boolean allowExpected,boolean source)
+            throws IOException {
+        String head=freshHead(repository,branch);
+        if (java.util.Objects.equals(candidate,head) || allowExpected && java.util.Objects.equals(expected,head)) return;
+        if (head!=null && repository.isAncestor(candidate,head)) throw new WorkspacePublicationRecovery.Superseded(source);
+        throw new BranchHeadConflictException(branch,candidate,head,"Branch differs from recorded publication");
+    }
+
+    private static String freshHead(DslGitRepository repository,String branch) throws IOException {
+        var ref=repository.readFreshRef(org.eclipse.jgit.lib.Constants.R_HEADS + branch);
+        return ref==null || ref.getObjectId()==null ? null : ref.getObjectId().name();
+    }
+
+    private void requireReviewedPortfolio(String reviewed,String owner,WorkspaceContext context) throws IOException {
+        if (reviewed==null || !reviewed.equals(portfolioGitPort.lockedPublicationDigest(owner,context)))
+            throw new WorkspacePublicationRecovery.SemanticConflict("The reviewed portfolio changed before publication");
+    }
+
+    private void preparePublication(WorkspacePublicationOperation row, PublicationTarget target,Runnable grant) throws IOException {
+        String user=row.username;
+        var central=target.central();
+        var local=target.local();
+        var source=snapshot(central,row.sourceBranch);
+        central.verifyExpectedHead(row.sourceBranch,row.inputSource);
+        local.verifyUpstreamLineage(central,row.repository,row.sourceBranch,source.head());
+        snapshot(local,row.localBranch);
+        grant.run();
+        WorkspaceMergeState state=row.keepWorkspace ? trackingState(local) : initialiseWorkspaceMergeBase(local,central,
+                source.dsl(),user,row.localBranch,row.forkPoint);
+        grant.run();
+        portfolioGitPort.commitPortfolio(row.localBranch,"Project requirements before push",user,target.workspace());
+        var working=snapshot(local,row.localBranch);
+        String localDsl=requiredSnapshot(working,"Workspace branch has no content: " + row.localBranch);
+        var merge=row.keepWorkspace ? new TaxDslMergeResult(localDsl,java.util.List.of())
+                : semanticMergeService.mergeContent(state.baseDsl(),source.dsl(),localDsl);
+        requireSuccess("Publish to source",merge);
+        String merged=merge.mergedText();
+        architectureCommands.validateReconciledSource(merged);
+        portfolioGitPort.validatePortfolio(source.dsl(),merged,"shared",target.centralContext());
+        portfolioGitPort.validatePortfolio(localDsl,merged,user,target.workspace());
+        grant.run();
+        local.verifyExpectedHead(TRACKING_BRANCH,state.baseHead());
+        local.verifyExpectedHead(row.localBranch,working.head());
+        central.verifyExpectedHead(row.sourceBranch,source.head());
+        row.centralPortfolioDigest=portfolioGitPort.lockedPublicationDigest("shared",target.centralContext());
+        row.localPortfolioDigest=portfolioGitPort.lockedPublicationDigest(user,target.workspace());
+        row.expectedLocal=working.head();
+        row.expectedTracking=state.baseHead();
+        row.mergedDigest=com.taxonomy.identity.StableIdentityHash.sha256(merged);
+    }
+
+    private void prepareCandidates(WorkspacePublicationOperation row,PublicationTarget target,Runnable grant) throws IOException {
+        var local=target.local();
+        var central=target.central();
+        String user=row.username;
+        String localDsl=local.getDslAtCommit(row.expectedLocal);
+        String sourceDsl=row.inputSource==null ? "" : central.getDslAtCommit(row.inputSource);
+        String baseDsl=row.expectedTracking==null ? "" : local.getDslAtCommit(row.expectedTracking);
+        var merge=row.keepWorkspace ? new TaxDslMergeResult(localDsl,java.util.List.of())
+                : semanticMergeService.mergeContent(baseDsl,sourceDsl,localDsl);
+        requireSuccess("Recover reviewed publication",merge);
+        String merged=merge.mergedText();
+        if (!row.mergedDigest.equals(com.taxonomy.identity.StableIdentityHash.sha256(merged))) {
+            throw new BranchHeadConflictException(row.localBranch,row.expectedLocal,row.expectedLocal,"Reviewed merge evidence changed");
+        }
+        var provenance=CommitProvenance.capture("publish",local,"workspace:"+row.workspace,row.localBranch,row.expectedLocal,integrationBase(target.owner()));
+        row.preparedSource=prepareIntegration(row.id,local,row.expectedLocal,central,row.sourceBranch,row.inputSource,
+                merged,sourceDsl,localDsl,user,"Semantic publish from workspace " + row.workspace,provenance,grant);
+        var published=CommitProvenance.capture("pull",central,row.repository,row.sourceBranch,row.preparedSource,integrationBase(target.owner()));
+        row.preparedLocal=prepareIntegration(row.id,central,row.preparedSource,local,row.localBranch,row.expectedLocal,
+                merged,localDsl,merged,user,"Integrate source changes after publish",published,grant);
+        grant.run();
+        if (row.localBranch.equals(TRACKING_BRANCH)) row.preparedTracking=row.preparedLocal;
+        else if (row.expectedTracking!=null && valueOrEmpty(merged).equals(valueOrEmpty(baseDsl))) {
+            row.preparedTracking=local.pinExistingDslCommit(row.id,TRACKING_BRANCH,row.expectedTracking,row.expectedTracking);
+        } else {
+            row.preparedTracking=local.prepareDslCommit(row.id,TRACKING_BRANCH,row.expectedTracking,null,merged,user,
+                    "Update semantic synchronization base",null);
+        }
+    }
+
+    private static String prepareIntegration(String operation,DslGitRepository incoming,String incomingHead,DslGitRepository destination,
+            String branch,String expected,String merged,String prior,String incomingText,String user,String message,
+            CommitProvenance provenance,Runnable authorize) throws IOException {
+        GitHistoryTransfer.copyCommitClosure(incoming,destination,incomingHead,expected==null ? java.util.List.of() : java.util.List.of(expected));
+        authorize.run();
+        if (expected!=null && destination.isAncestor(incomingHead,expected)) {
+            if (valueOrEmpty(merged).equals(valueOrEmpty(prior))) return destination.pinExistingDslCommit(operation,branch,expected,expected);
+            return destination.prepareDslCommit(operation,branch,expected,null,merged,user,message,provenance);
+        }
+        if ((expected==null || destination.isAncestor(expected,incomingHead)) && valueOrEmpty(merged).equals(valueOrEmpty(incomingText))) {
+            return destination.pinExistingDslCommit(operation,branch,expected,incomingHead);
+        }
+        return destination.prepareDslCommit(operation,branch,expected,incomingHead,merged,user,message,provenance);
+    }
+
+    private static org.springframework.security.access.AccessDeniedException unavailable() {
+        return new org.springframework.security.access.AccessDeniedException("The selected publication source or working copy is unavailable");
+    }
+
     @Override
     public String syncFromShared(String username, String userBranch) throws IOException {
         portfolioGitPort.requireAvailable();
@@ -225,6 +562,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                                             WorkspaceContext context,
                                             String userBranch,
                                             boolean keepWorkspace) throws IOException {
+        if (publications!=null) return completedPublication(submitPublication(context,keepWorkspace,null,null,true));
         requireSourceAuthority(username, context, true);
         RepositoryContext selected = RepositoryContext.workspace(
                 context.repositoryId(), context.workspaceId(), userBranch, username);
@@ -674,7 +1012,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                                        SemanticGitMergeService.MergeOutcome outcome)
             throws IOException {
         if (!outcome.success()) {
-            throw new IOException(operation + " has semantic conflicts: "
+            throw new WorkspacePublicationRecovery.SemanticConflict(operation + " has semantic conflicts: "
                     + String.join(", ", outcome.conflicts()));
         }
     }
@@ -682,7 +1020,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
     private static void requireSuccess(String operation,
                                        TaxDslMergeResult result) throws IOException {
         if (!result.isSuccessful()) {
-            throw new IOException(operation + " has semantic conflicts: "
+            throw new WorkspacePublicationRecovery.SemanticConflict(operation + " has semantic conflicts: "
                     + String.join(", ", result.conflictIdentifiers()));
         }
     }

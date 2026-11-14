@@ -103,6 +103,47 @@ class ArchitectureEditorVersionContextTest {
         }
     }
 
+    @Test void nestedPortfolioGitActionReusesTheSameLockedEditorScopeAndRetainsTheOuterRevision() throws Exception {
+        try (var data = fixture()) {
+            var created = data.service.execute(context, create());
+            var repository = data.repositories.resolveRepository(context);
+            String commit = org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(java.time.Duration.ofSeconds(8), () ->
+                    data.service.version(context, "Integrate captured working copy", () ->
+                            data.service.version(context, "Project reviewed portfolio", () ->
+                                    repository.commitDsl("draft", model("Selected contribution"), "alice", "Apply reviewed contribution"))));
+            assertThat(repository.getHeadCommit("draft")).isEqualTo(commit);
+            assertThat(data.service.read(context, null).dsl()).contains("Selected contribution");
+            assertThat(data.journal.read(context).state().revision()).isGreaterThan(created.context().revision());
+        }
+    }
+
+    @Test void nestedVersionAuthorityCannotBeCarriedToAnotherActorBranchRepositoryOrWorkingCopy() throws Exception {
+        try (var data = fixture()) {
+            data.service.execute(context, create());
+            var executed = new java.util.concurrent.atomic.AtomicBoolean();
+            data.service.version(context, "Lock selected editor", () -> {
+                var others = java.util.List.of(
+                        RepositoryContext.workspace(context.repositoryId(), context.workspaceId(), context.branch(), "other"),
+                        RepositoryContext.workspace(context.repositoryId(), context.workspaceId(), "other", context.username()),
+                        RepositoryContext.workspace("other", context.workspaceId(), context.branch(), context.username()),
+                        RepositoryContext.workspace(context.repositoryId(), "other", context.branch(), context.username()),
+                        RepositoryContext.collaborativeWorkspace(context.repositoryId(), context.workspaceId(), context.branch(), context.username()));
+                for (var other : others) {
+                    assertThatThrownBy(() -> data.service.version(other, "Different selection", () -> {
+                        executed.set(true); return null;
+                    })).isInstanceOf(IllegalStateException.class);
+                }
+                return null;
+            });
+            assertThat(executed.get()).isFalse();
+            assertThatThrownBy(() -> data.service.version(context, "Interrupted write", () -> {
+                throw new java.io.IOException("Interrupted");
+            })).isInstanceOf(java.io.IOException.class);
+            data.service.version(context, "Independent later write", () -> { executed.set(true); return null; });
+            assertThat(executed.get()).isTrue();
+        }
+    }
+
     @ParameterizedTest
     @EnumSource(value = RepositoryScope.class, names = {"CENTRAL_WRITE", "FORK"})
     void gitVersionActionsOutsideAWorkspaceDoNotReadAWorkspaceJournal(RepositoryScope scope) throws Exception {

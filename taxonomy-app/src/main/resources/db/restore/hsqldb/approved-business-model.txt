@@ -88,3 +88,5 @@ com.taxonomy.workspace.model.UserWorkspace
 com.taxonomy.workspace.model.WorkspaceProjection
 com.taxonomy.workspace.service.CentralFetchOperation
 com.taxonomy.workspace.service.WorkspaceFetchOperation
+com.taxonomy.workspace.service.WorkspacePublicationDecision
+com.taxonomy.workspace.service.WorkspacePublicationOperation

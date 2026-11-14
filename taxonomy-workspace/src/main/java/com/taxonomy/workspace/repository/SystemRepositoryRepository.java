@@ -29,9 +29,13 @@ public interface SystemRepositoryRepository extends JpaRepository<SystemReposito
 
     /** Touch only publication metadata; retain concurrent catalogue policy and creation state. */
     @Modifying
-    @Query("update SystemRepository repository set repository.lastPushAt = :publishedAt, "
-            + "repository.updatedAt = :publishedAt, repository.version = repository.version + 1 "
-            + "where repository.repositoryId = :repositoryId")
+    @Query("""
+            update SystemRepository repository set
+                repository.lastPushAt = case when repository.lastPushAt is null or repository.lastPushAt < :publishedAt
+                    then :publishedAt else repository.lastPushAt end,
+                repository.updatedAt = case when repository.updatedAt is null or repository.updatedAt < :publishedAt
+                    then :publishedAt else repository.updatedAt end,
+                repository.version = repository.version + 1 where repository.repositoryId = :repositoryId""")
     int recordLastPush(@Param("repositoryId") String repositoryId, @Param("publishedAt") Instant publishedAt);
 
     // HSQL MVCC does not retain a SELECT FOR UPDATE fence. An actual no-op write

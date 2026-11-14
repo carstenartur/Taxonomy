@@ -2,6 +2,7 @@ package com.taxonomy.security;
 
 import com.taxonomy.dsl.command.ArchitectureDslCommands;
 import com.taxonomy.security.service.DatabaseUserDetailsService;
+import com.taxonomy.security.service.UserManagementService;
 import com.taxonomy.support.AnalysisCatalogueSourceFixture;
 import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.service.ArchitectureRepositoryProvisioningService;
@@ -22,10 +23,13 @@ import org.springframework.security.web.context.HttpSessionSecurityContextReposi
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -50,6 +54,9 @@ class AdminAuthorizationRegressionTest implements AnalysisCatalogueSourceFixture
 
     @Autowired
     private DatabaseUserDetailsService users;
+
+    @Autowired
+    private UserManagementService accounts;
 
     @Autowired
     private ArchitectureRepositoryProvisioningService repositoryProvisioning;
@@ -87,8 +94,11 @@ class AdminAuthorizationRegressionTest implements AnalysisCatalogueSourceFixture
     }
 
     @Test
-    @WithMockUser(username = "architect", roles = "ARCHITECT")
     void architectCanReachWorkspacePullAndPublishOperations() throws Exception {
+        String architect = "publication-architect-" + UUID.randomUUID();
+        accounts.createUser(Map.of("username", architect, "roles", List.of("ARCHITECT")),
+                UUID.randomUUID().toString(), "test");
+        var principal = users.loadUserByUsername(architect);
         String sourceDsl = """
                 element authorization-capability type Capability {
                   title: "Authorization capability";
@@ -109,11 +119,11 @@ class AdminAuthorizationRegressionTest implements AnalysisCatalogueSourceFixture
         // Authorization must reach valid backend work, independent of the shared test Git history.
         var source = repositoryProvisioning.createRepository(
                 "Authorization regression", "authorization-" + UUID.randomUUID(),
-                "Isolated authorization fixture", RepositoryVisibility.PRIVATE, "architect", "draft");
+                "Isolated authorization fixture", RepositoryVisibility.PRIVATE, architect, "draft");
         var sourceGit = gitRepositories.getCentralRepository(source.getRepositoryId());
-        sourceGit.commitDsl(source.getDefaultBranch(), sourceDsl, "architect", "Valid authorization source");
+        sourceGit.commitDsl(source.getDefaultBranch(), sourceDsl, architect, "Valid authorization source");
         var workspace = repositoryWorkspaces.createWorkingCopy(
-                "architect", source.getRepositoryId(), source.getDefaultBranch(),
+                architect, source.getRepositoryId(), source.getDefaultBranch(),
                 "Authorization working copy", "Isolated authorization fixture");
         var workspaceGit = gitRepositories.openWorkspaceRepository(workspace.getWorkspaceId());
         String branch = workspace.getCurrentBranch();
@@ -121,7 +131,7 @@ class AdminAuthorizationRegressionTest implements AnalysisCatalogueSourceFixture
         var pull = mockMvc.perform(post("/api/workspace/sync-from-shared")
                         .header(WorkspaceContextResolver.WORKSPACE_HEADER, workspace.getWorkspaceId())
                         .param("userBranch", branch)
-                        .with(csrf()))
+                        .with(user(principal)).with(csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.branch").value(branch));
@@ -133,7 +143,7 @@ class AdminAuthorizationRegressionTest implements AnalysisCatalogueSourceFixture
         var publish = mockMvc.perform(post("/api/workspace/publish")
                         .header(WorkspaceContextResolver.WORKSPACE_HEADER, workspace.getWorkspaceId())
                         .param("userBranch", branch)
-                        .with(csrf()))
+                        .with(user(principal)).with(csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.branch").value(branch));
