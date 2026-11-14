@@ -1510,8 +1510,29 @@
       "fromContext": "knowledge",
       "fromPackage": "com.taxonomy.relations.controller",
       "toContext": "workspace",
+      "toPackage": "com.taxonomy.editor",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "knowledge",
+      "fromPackage": "com.taxonomy.relations.controller",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.versioning.service",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "knowledge",
+      "fromPackage": "com.taxonomy.relations.controller",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.model",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "knowledge",
+      "fromPackage": "com.taxonomy.relations.controller",
+      "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 53
+      "classDependencyCount": 61
     },
     {
       "fromContext": "knowledge",
@@ -1525,7 +1546,7 @@
       "fromPackage": "com.taxonomy.relations.service",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 68
+      "classDependencyCount": 73
     },
     {
       "fromContext": "knowledge",

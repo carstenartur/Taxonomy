@@ -28,6 +28,28 @@ window.TaxonomyProposalsApi = (function () {
         });
     }
 
+    function adoptionRequest(id, target, init, options) {
+        const query = new URLSearchParams({repositoryId: target.repositoryId,
+            workspaceId: target.workspaceId || '', branch: target.branch});
+        return domainRequest('/api/proposals/' + encodeURIComponent(id) + '/adoption?' + query, init,
+            Object.assign({}, options, {selectedRepository: false, pinnedWorkspaceId: target.workspaceId || ''}));
+    }
+
+    function previewAdoption(id, target, options) {
+        return adoptionRequest(id, target, {method: 'GET', cache: 'no-store'}, options);
+    }
+
+    function adopt(preview, key, options) {
+        const {sourceBranch, sourceCommit, targetRepositoryId, targetWorkspaceId, targetBranch} = preview;
+        return adoptionRequest(preview.proposalId,
+            {repositoryId: targetRepositoryId, workspaceId: targetWorkspaceId, branch: targetBranch}, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'If-Match': '"' + preview.targetCommit + '"',
+                    'Idempotency-Key': key},
+                body: JSON.stringify({sourceBranch, sourceCommit, targetRepositoryId, targetWorkspaceId, targetBranch})
+            }, options);
+    }
+
     function post(path, payload, options) { return domainRequest('/api/proposals' + path, {
         method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
     }, options); }
@@ -37,6 +59,8 @@ window.TaxonomyProposalsApi = (function () {
         propose: function (payload) { return post('/propose', payload); },
         list: function (status, options) { return domainRequest('/api/proposals' + (status === 'PENDING' ? '/pending' : ''), undefined, options); },
         pending: function (options) { return domainRequest('/api/proposals/pending', undefined, options); },
+        previewAdoption: previewAdoption,
+        adopt: adopt,
         readHead: readHead,
         review: review
     };

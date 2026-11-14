@@ -2200,7 +2200,9 @@
 
     function currentProposalSource() {
         const source = window.TaxonomyArchitectureWorkflow?.getScope?.();
-        return JSON.stringify([source?.repositoryId, source?.workspaceId, source?.branch]);
+        const displayed = window.TaxonomyArchitectureWorkspace?.getSource?.();
+        return JSON.stringify([source?.repositoryId, source?.workspaceId, source?.branch, displayed?.kind, displayed?.snapshotId,
+            window.TaxonomyContextBar?.getSelectionGeneration?.(), window.TaxonomyContextBar?.getCurrentContext?.()?.mode]);
     }
 
     function loadProposals(statusFilter) {
@@ -2211,10 +2213,19 @@
         proposalRead = controller;
         proposalSource = currentProposalSource();
         const badge = document.getElementById('proposalPendingBadge');
+        const adoptionSection = document.getElementById('proposalAdoptionSection');
+        const adoptionTable = document.getElementById('proposalAdoptionTable');
+        const working = window.TaxonomyArchitectureWorkspace?.getSource?.()?.kind === 'working';
+        const showCentralAcceptances = working && statusFilter === 'PENDING' && adoptionSection && adoptionTable;
+        const listFilter = showCentralAcceptances ? 'ALL' : statusFilter;
         if (badge) badge.textContent = '';
+        if (adoptionSection && adoptionTable) {
+            adoptionSection.hidden = true;
+            adoptionTable.textContent = '';
+        }
         container.innerHTML = '<div class="text-muted small p-2" role="status" aria-live="polite">' + t('browse.proposals.loading') + '</div>';
-        // PENDING has a dedicated endpoint; ACCEPTED/REJECTED/ALL need the full list
-        window.TaxonomyProposalsApi.list(statusFilter, { signal: controller.signal })
+        // The working inbox uses the same authorized list for pending decisions and central acceptances.
+        window.TaxonomyProposalsApi.list(listFilter, { signal: controller.signal })
             .then(function (r) {
                 if (!currentProposalRead(controller)) return null;
                 if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -2223,11 +2234,21 @@
             .then(function (proposals) {
                 if (!currentProposalRead(controller)) return;
                 let filtered = proposals;
-                if (statusFilter !== 'ALL' && statusFilter !== 'PENDING') {
+                if (statusFilter !== 'ALL') {
                     filtered = proposals.filter(function (p) { return p.status === statusFilter; });
                 }
-                renderProposalTable(filtered);
-                updateProposalBadge(proposals, statusFilter);
+                let autoPreview = null;
+                if (statusFilter === 'ACCEPTED') autoPreview = 'all';
+                else if (working && statusFilter === 'ALL') autoPreview = 'central';
+                renderProposalTable(filtered, autoPreview, controller.signal, container);
+                if (showCentralAcceptances) {
+                    const accepted = proposals.filter(p => p.central === true && p.status === 'ACCEPTED');
+                    if (accepted.length) {
+                        adoptionSection.hidden = false;
+                        renderProposalTable(accepted, 'all', controller.signal, adoptionTable);
+                    }
+                }
+                updateProposalBadge(proposals, listFilter);
             })
             .catch(function (err) {
                 if (!currentProposalRead(controller) || err?.code === 'ABORTED') return;
@@ -2242,10 +2263,7 @@
             });
     }
 
-    function renderProposalTable(proposals) {
-        const container = document.getElementById('proposalsTableContainer');
-        if (!container) return;
-
+    function renderProposalTable(proposals, autoPreview, signal, container) {
         if (!proposals || proposals.length === 0) {
             container.innerHTML = '<div class="text-muted small p-2">' + t('browse.proposals.none') + '</div>';
             return;
@@ -2310,10 +2328,15 @@
                   '<button class="btn btn-reject btn-sm" ' +
                     'aria-label="Reject proposal ' + p.id + '" ' +
                     'onclick="window._proposalReject(' + p.id + ')">&#10060; Reject</button>'
-                : '<span class="badge ' + (p.status === 'ACCEPTED' ? 'bg-success' : 'bg-secondary') + '">' +
-                    escapeHtml(p.status) + '</span>';
+                : p.status === 'ACCEPTED' && Number.isSafeInteger(p.id) && p.id > 0
+                    ? '<span class="badge bg-success proposal-accepted-status">' + t('quality.accepted') + '</span> ' +
+                        '<button type="button" class="btn btn-sm btn-outline-primary proposal-adoption-preview" data-id="' +
+                        p.id + '"' + (p.central ? ' data-central="true"' : '') + ' aria-controls="proposal-adoption-' + p.id + '">' +
+                        t('browse.proposals.adoption.inspect') + '</button><div class="text-wrap small" role="status" id="proposal-adoption-' +
+                        p.id + '"></div>'
+                    : '<span class="badge bg-secondary">' + escapeHtml(p.status) + '</span>';
 
-            html += '<tr>';
+            html += '<tr data-proposal-id="' + escapeHtml(String(p.id)) + '" data-status="' + escapeHtml(p.status) + '">';
 
             if (hasPending) {
                 html += '<td>';
@@ -2336,9 +2359,155 @@
         html += '</tbody></table>';
         container.innerHTML = html;
 
+        bindProposalAdoptionPreviews(container.querySelectorAll('.proposal-adoption-preview'), autoPreview, signal);
+
         // Attach bulk action event listeners
         if (hasPending) {
             attachBulkListeners();
+        }
+    }
+
+    function bindProposalAdoptionPreviews(buttons, autoPreview, signal) {
+        if (!buttons.length) return;
+        const selected = window.TaxonomyApiClient.captureContext();
+        const visible = new Set();
+        let observer;
+        let active = 0;
+        function inspect(button, moveFocus) {
+            observer?.unobserve(button);
+            visible.delete(button);
+            if (signal.aborted || !selected() || !button.isConnected) return;
+            const details = document.getElementById(button.getAttribute('aria-controls'));
+            return previewProposalAdoption(Number(button.dataset.id), button, details, {signal, moveFocus});
+        }
+        function readVisibleRows() {
+            while (active < 3 && visible.size && !signal.aborted && selected()) {
+                const button = visible.values().next().value;
+                active++;
+                Promise.resolve(inspect(button, false)).finally(() => {
+                    active--;
+                    readVisibleRows();
+                });
+            }
+        }
+        if (autoPreview && window.IntersectionObserver) {
+            observer = new window.IntersectionObserver(entries => {
+                for (const entry of entries) {
+                    if (entry.isIntersecting) visible.add(entry.target);
+                    else visible.delete(entry.target);
+                }
+                readVisibleRows();
+            });
+            signal.addEventListener('abort', () => {
+                observer.disconnect();
+                visible.clear();
+            }, {once: true});
+        }
+        buttons.forEach(button => {
+            if (autoPreview === 'all' || button.dataset.central === 'true') observer?.observe(button);
+            button.addEventListener('click', () => inspect(button, true));
+        });
+    }
+
+    async function previewProposalAdoption(id, button, details, {signal = proposalRead?.signal, moveFocus = true} = {}) {
+        if (button.disabled || button.getAttribute('aria-busy') === 'true' || !details) return;
+        const scope = window.TaxonomyArchitectureWorkflow?.getScope?.();
+        if (!scope?.repositoryId || !scope.branch || scope.workspaceId === undefined) return;
+        const current = window.TaxonomyApiClient.captureContext();
+        const stillSelected = () => details.isConnected && !signal?.aborted && current();
+        const readOnly = () => window.TaxonomyContextBar?.getCurrentContext?.()?.mode === 'READ_ONLY'
+            || window.TaxonomyArchitectureWorkspace?.getSource?.()?.kind === 'snapshot';
+        const validCommit = value => typeof value === 'string' && /^[0-9a-f]{40}$/.test(value);
+        const sameTarget = value => value?.proposalId === id && value.targetRepositoryId === scope.repositoryId
+            && value.targetBranch === scope.branch && (value.targetWorkspaceId || '') === (scope.workspaceId || '');
+        function failure(error) {
+            if (!details.isConnected || signal?.aborted || error?.code === 'ABORTED') return;
+            // Authentication changes invalidate captureContext even for the request that observed the denial.
+            if (!current() && ![401, 403].includes(error.status)) return;
+            const key = [409, 412, 428].includes(error.status) ? 'changed'
+                : [401, 403, 404].includes(error.status) ? 'unavailable' : 'failed';
+            details.textContent = t('browse.proposals.adoption.' + key);
+            delete details.dataset.state;
+        }
+        button.setAttribute('aria-busy', 'true');
+        details.textContent = t('browse.proposals.adoption.loading');
+        delete details.dataset.state;
+        try {
+            const response = await window.TaxonomyProposalsApi.previewAdoption(id, scope, {signal});
+            if (!response.ok) throw response;
+            const preview = await response.json();
+            if (!stillSelected()) return;
+            const state = preview.state;
+            const missingTarget = state === 'CONFLICT' && preview.targetCommit === null;
+            if (!sameTarget(preview) || !['UNVERIFIED_SOURCE', 'CONFLICT', 'AVAILABLE', 'ALREADY_PRESENT'].includes(state)
+                    || state !== 'UNVERIFIED_SOURCE' && (!preview.sourceBranch || !validCommit(preview.sourceCommit)
+                        || (!missingTarget && !validCommit(preview.targetCommit)))) throw new Error('Invalid proposal preview');
+
+            details.dataset.state = state;
+            if (state === 'UNVERIFIED_SOURCE') {
+                details.textContent = t('browse.proposals.adoption.unverified', scope.branch);
+                return;
+            }
+            const source = document.createElement('div');
+            source.textContent = t(preview.reviewedOnSourceBranch === true
+                ? 'browse.proposals.adoption.reviewed' : 'browse.proposals.adoption.recorded',
+                preview.sourceBranch, preview.sourceCommit.slice(0, 8));
+            source.title = preview.sourceCommit;
+            const target = document.createElement('div');
+            if (missingTarget) {
+                target.textContent = t('browse.proposals.adoption.missingHead', preview.targetBranch);
+            } else {
+                target.textContent = t('browse.proposals.adoption.target', preview.targetBranch, preview.targetCommit.slice(0, 8));
+                target.title = preview.targetCommit;
+            }
+            details.textContent = '';
+            details.append(source, target);
+            if (missingTarget) return;
+            const canApply = state === 'AVAILABLE' && preview.writable === true && !readOnly();
+            if (!canApply) {
+                const status = document.createElement('div');
+                const reason = state === 'ALREADY_PRESENT' ? 'present' : state === 'CONFLICT' ? 'conflict' : 'readOnly';
+                status.textContent = t('browse.proposals.adoption.' + reason);
+                details.appendChild(status);
+                return;
+            }
+            const apply = document.createElement('button');
+            apply.type = 'button';
+            apply.className = 'btn btn-sm btn-primary proposal-adoption-apply';
+            apply.textContent = t('browse.proposals.adoption.apply', preview.targetBranch);
+            details.appendChild(apply);
+            apply.addEventListener('click', async function () {
+                if (apply.disabled || !apply.isConnected || !stillSelected() || readOnly()) return;
+                apply.disabled = button.disabled = true;
+                try {
+                    const key = window.crypto?.randomUUID?.()
+                        || 'adopt-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+                    const result = await window.TaxonomyProposalsApi.adopt(preview, key, {signal});
+                    if (!result.ok) throw result;
+                    if (!stillSelected()) return;
+                    const pending = result.status === 202;
+                    if (!pending) {
+                        const receipt = await result.json();
+                        if (!stillSelected()) return;
+                        if (!sameTarget(receipt) || receipt.state !== 'ALREADY_PRESENT'
+                                || receipt.sourceCommit !== preview.sourceCommit || receipt.sourceBranch !== preview.sourceBranch
+                                || !validCommit(receipt.targetCommit)) throw new Error('Invalid adoption receipt');
+                    }
+                    const message = t('browse.proposals.adoption.' + (pending ? 'pending' : 'adopted'), preview.targetBranch);
+                    details.textContent = message;
+                    showStatus(pending ? 'warning' : 'success', message);
+                    loadProposals(S.currentProposalFilter);
+                } catch (error) {
+                    failure(error);
+                } finally {
+                    if (stillSelected()) button.disabled = false;
+                }
+            });
+            if (moveFocus && document.activeElement === button) apply.focus();
+        } catch (error) {
+            failure(error);
+        } finally {
+            button.removeAttribute('aria-busy');
         }
     }
 

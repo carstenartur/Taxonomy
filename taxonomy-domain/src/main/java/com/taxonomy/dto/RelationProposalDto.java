@@ -14,6 +14,7 @@ public class RelationProposalDto {
     private String targetName;
     private String relationType;
     private String status;
+    private boolean central;
     private double confidence;
     private String rationale;
     private String provenance;
@@ -45,6 +46,10 @@ public class RelationProposalDto {
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+
+    /** Stored in the shared repository rather than an individual workspace. */
+    public boolean isCentral() { return central; }
+    public void setCentral(boolean central) { this.central = central; }
 
     public double getConfidence() { return confidence; }
     public void setConfidence(double confidence) { this.confidence = confidence; }
