@@ -8,17 +8,19 @@ alter table relation_decision_projection add constraint ck_rel_decision_workspac
     check ((workspace_id is null and workspace_scope_key = ' central')
         or (workspace_id is not null and trim(workspace_id) <> '' and workspace_scope_key = trim(workspace_id)));
 
+-- Checkpoints and recovery already permit exact legacy owner keys. Preserve those
+-- pairs verbatim, while keeping the new central key exclusive to rows without an owner.
 alter table relation_decision_projection_checkpoint drop constraint if exists ck_rel_projection_checkpoint_scope;
 update relation_decision_projection_checkpoint set workspace_scope_key = ' central' where workspace_id is null;
 alter table relation_decision_projection_checkpoint add constraint ck_rel_projection_checkpoint_scope
     check ((workspace_id is null and workspace_scope_key = ' central')
-        or (workspace_id is not null and trim(workspace_id) <> '' and workspace_scope_key = trim(workspace_id)));
+        or (workspace_id is not null and workspace_scope_key = workspace_id and workspace_scope_key <> ' central'));
 
 alter table relation_projection_recovery drop constraint if exists ck_rel_projection_recovery_scope;
 update relation_projection_recovery set workspace_scope_key = ' central' where workspace_id is null;
 alter table relation_projection_recovery add constraint ck_rel_projection_recovery_scope
     check ((workspace_id is null and workspace_scope_key = ' central')
-        or (workspace_id is not null and trim(workspace_id) <> '' and workspace_scope_key = trim(workspace_id)));
+        or (workspace_id is not null and workspace_scope_key = workspace_id and workspace_scope_key <> ' central'));
 
 alter table relation_decision_projection alter column workspace_scope_key set default ' central';
 
