@@ -71,6 +71,7 @@ class WorkspaceOriginalHistoryTest {
             }
             annotation = git.getGitRepository().open(tagId).getBytes();
             var upstream = new WorkspaceUpstreamService(fixture.rows, fixture.catalog, fixture.memberships, fixture.git);
+            upstream.configureWorkspaceActors(WorkspaceProvisioningTestClaims.fixtureOwners());
             var selected = RepositoryContext.workspace(sourceId, workspaceId, "draft", OWNER);
             upstream.fetchTag(selected, new WorkspaceUpstreamService.TagRequest("reviewed/v1", tagId.name(), captured));
             fixture.git.deleteCentralRepository(sourceId);

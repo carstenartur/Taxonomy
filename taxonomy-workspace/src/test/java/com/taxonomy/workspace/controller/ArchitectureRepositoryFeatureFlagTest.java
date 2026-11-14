@@ -4,6 +4,7 @@ import com.taxonomy.workspace.service.ArchitectureRepositoryProvisioningService;
 import com.taxonomy.workspace.service.RepositoryMembershipService;
 import com.taxonomy.workspace.service.RepositoryWorkspaceService;
 import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.WorkspaceActorAccess;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -66,6 +67,11 @@ class ArchitectureRepositoryFeatureFlagTest {
         @Bean
         RepositoryMembershipService repositoryMembershipService() {
             return mock(RepositoryMembershipService.class);
+        }
+
+        @Bean
+        WorkspaceActorAccess workspaceActorAccess() {
+            return WorkspaceActorAccess.unavailable();
         }
 
         @Bean
