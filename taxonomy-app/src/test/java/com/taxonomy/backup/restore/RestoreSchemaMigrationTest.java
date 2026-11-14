@@ -30,7 +30,7 @@ class RestoreSchemaMigrationTest {
         for (String table : List.of("scoped_requirement_coverage", "requirement_coverage", "branch_graph_vector_generation", "source_artifact", "source_version", "source_fragment", "user_workspace", "app_user", "app_principal", "principal_binding", "backup_capability_grant", "git_packs", "workspace_git_reflog_provenance", "workspace_publication_operation", "workspace_publication_decision", "analysis_cluster_call", "analysis_cluster_attempt", "inventory_comparison", "inventory_assertion", "inventory_observation", "inventory_review", "inventory_mapping", "interop_file"))
             assertThat(rows.queryForObject("select count(*) from " + table, Long.class)).as(table).isZero();
         assertThat(rows.queryForObject("select count(*) from principal_installation", Long.class)).isEqualTo(1);
-        assertThat(rows.queryForObject("select count(*) from \"restore_business_schema_history\" where \"success\"=true", Long.class)).isEqualTo(27);
+        assertThat(rows.queryForObject("select count(*) from \"restore_business_schema_history\" where \"success\"=true", Long.class)).isEqualTo(28);
         assertFileExportSchema(target);
         assertReasonLengthColumn(target);
         assertLanguageColumn(target);
@@ -42,6 +42,37 @@ class RestoreSchemaMigrationTest {
         assertThatThrownBy(() -> RestoreSchemaMigration.openValidatedFactory(active, target, model(), () -> {}))
                 .isInstanceOf(IOException.class).hasMessage("Staged restore schema validation failed");
     }
+    @Test void publicationJournalPreservesAnExistingForkAndItsMigrationHistory() throws Exception {
+        var target = database();
+        migrateBusinessSchema(target, "1");
+        PrincipalSchemaMigration.migrate(target);
+        migrateBusinessSchema(target, "32");
+        var rows = new JdbcTemplate(target);
+        var historyQuery = "select \"version\", \"checksum\", \"installed_rank\" from \"restore_business_schema_history\" order by \"installed_rank\"";
+        var before = rows.queryForList(historyQuery);
+        assertThat(tableNames(target)).doesNotContain("WORKSPACE_PUBLICATION_OPERATION");
+        rows.execute("""
+                insert into system_repository (repository_id, slug, storage_repository_name, owner_id, created_by,
+                    default_branch, version, primary_repo, topology_mode, lifecycle_state, created_at, updated_at,
+                    visibility, owner_type, display_name, fork_initiator_key)
+                values ('journal-upgrade', 'journal-upgrade', 'central-journal-upgrade', 'owner', 'owner',
+                    'draft', 3, false, 'INTERNAL_SHARED', 'FAILED', current_timestamp, current_timestamp,
+                    'PRIVATE', 'USER', 'Retained fork', 'original-actor')
+                """);
+
+        migrateBusinessSchema(target, "32.1");
+        var upgraded = rows.queryForList(historyQuery);
+        assertThat(upgraded).hasSize(before.size() + 1);
+        assertThat(upgraded.subList(0, before.size())).isEqualTo(before);
+        assertThat(rows.queryForObject("select \"version\" from \"restore_business_schema_history\" order by \"installed_rank\" desc fetch first row only", String.class))
+                .isEqualTo("32.1");
+        assertThat(tableNames(target)).contains("WORKSPACE_PUBLICATION_OPERATION", "WORKSPACE_PUBLICATION_DECISION");
+        assertThat(rows.queryForObject("select fork_initiator_key from system_repository where repository_id = 'journal-upgrade' and version = 3", String.class))
+                .isEqualTo("original-actor");
+        migrateBusinessSchema(target, "32.1");
+        assertThat(rows.queryForList(historyQuery)).isEqualTo(upgraded);
+    }
+
     @Test void additiveFileExportMigrationPreservesLegacyOperationsAndDoesNotInventRetainedFiles() throws Exception {
         var target = database();
         migrateBusinessSchema(target, "1");

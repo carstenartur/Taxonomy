@@ -1,6 +1,7 @@
 package com.taxonomy.security.controller;
 
 import com.taxonomy.security.service.UserManagementService;
+import com.taxonomy.security.service.UserManagementService.AuditActor;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -59,7 +60,7 @@ public class UserManagementController {
                                               Authentication authentication) {
         try {
             return ResponseEntity.status(HttpStatus.CREATED)
-                    .body(userManagementService.createUser(body, actor(authentication)));
+                    .body(userManagementService.createUserAs(body, AuditActor.from(authentication)));
         } catch (UserManagementService.ConflictException exception) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body(Map.of("error", exception.getMessage()));
@@ -75,7 +76,7 @@ public class UserManagementController {
                                               @RequestBody Map<String, Object> body,
                                               Authentication authentication) {
         try {
-            return ResponseEntity.ok(userManagementService.updateUser(id, body, actor(authentication)));
+            return ResponseEntity.ok(userManagementService.updateUserAs(id, body, AuditActor.from(authentication)));
         } catch (UserManagementService.NotFoundException exception) {
             return ResponseEntity.notFound().build();
         } catch (UserManagementService.ValidationException exception) {
@@ -90,7 +91,7 @@ public class UserManagementController {
                                                   @RequestBody Map<String, String> body,
                                                   Authentication authentication) {
         try {
-            userManagementService.changePassword(id, body.get("password"), actor(authentication));
+            userManagementService.changePasswordAs(id, body.get("password"), AuditActor.from(authentication));
             return ResponseEntity.ok(Map.of("message", "Password changed successfully."));
         } catch (UserManagementService.NotFoundException exception) {
             return ResponseEntity.notFound().build();
@@ -105,7 +106,7 @@ public class UserManagementController {
     public ResponseEntity<Object> disableUser(@PathVariable Long id,
                                                Authentication authentication) {
         try {
-            String username = userManagementService.disableUser(id, actor(authentication));
+            String username = userManagementService.disableUserAs(id, AuditActor.from(authentication));
             return ResponseEntity.ok(Map.of(
                     "message", "User '" + username + "' has been disabled."));
         } catch (UserManagementService.NotFoundException exception) {
@@ -113,10 +114,6 @@ public class UserManagementController {
         } catch (UserManagementService.ValidationException exception) {
             return badRequest(exception.getMessage());
         }
-    }
-
-    private String actor(Authentication authentication) {
-        return authentication != null ? authentication.getName() : "system";
     }
 
     private ResponseEntity<Object> badRequest(String message) {

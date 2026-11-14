@@ -110,7 +110,7 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
         if (!profile.includesHistory()) omissions.add("workspace: editor operations, publication decisions, checkpoint bodies, commit index and context history are excluded");
         if (profile == BackupProfile.SELECTED_VERSION) omissions.add("workspace: current unversioned working copies and routing metadata are excluded; selected Git state is authoritative");
         if (profile != BackupProfile.INSTALLATION_FULL) omissions.add("workspace: cross-context navigation history is outside the selected scope");
-        omissions.add("workspace: physical storage names, runtime row versions, provisioning errors and remote credentials are target-owned");
+        omissions.add("workspace: physical storage names, runtime row versions, provisioning errors, fork acknowledgement authority and remote credentials are target-owned");
         return List.copyOf(omissions);
     }
     @Override public void write(SnapshotContext snapshot, ComponentSink sink) throws IOException {
