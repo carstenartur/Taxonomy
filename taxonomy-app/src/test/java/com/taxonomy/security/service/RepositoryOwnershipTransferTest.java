@@ -55,7 +55,7 @@ class RepositoryOwnershipTransferTest {
         var repoFactory = new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(factory));
         repositories = repoFactory.getRepository(SystemRepositoryRepository.class);
         memberships = new RepositoryMembershipService(repoFactory.getRepository(RepositoryMembershipRepository.class), java.util.Optional.empty(),
-                java.util.Optional.of(new com.taxonomy.composition.architecture.RepositoryGrantIdentity(identities, java.util.Optional.empty())));
+                java.util.Optional.of(new com.taxonomy.composition.architecture.RepositoryGrantIdentity(identities, java.util.Optional.empty(), new com.taxonomy.security.access.WorkspaceFetchAuthorityAdapter(identities), jdbc)));
         transfer = new RepositoryOwnershipTransfer(identities, repositories, memberships, jdbc);
         revision = transaction.execute(s -> {
             var repo = new SystemRepository(); repo.setRepositoryId("project"); repo.setOwnerId("owner");
@@ -231,6 +231,56 @@ class RepositoryOwnershipTransferTest {
                 .isEqualTo(handoff.newOwner().toString());
         assertThat(jdbc.queryForObject("select grantor_principal_id from repository_membership where username='alice'", String.class))
                 .isEqualTo(bobId);
+    }
+
+    @Test void removingAHistoricalMembershipAuditsTheOwnerDecisionAndRollsBackIfEvidenceCannotCommit() {
+        var repo = repositories.findByRepositoryId("project").orElseThrow();
+        transaction.executeWithoutResult(s -> memberships.assignRole("project", "retired", RepositoryRole.READER, "old-label"));
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(auth(1));
+        var actorId = identities.local(1).id().value().toString();
+        jdbc.execute("alter table principal_access_audit add constraint reject_role_change check (decision_kind <> 'REPOSITORY_MEMBERSHIP')");
+        assertThatThrownBy(() -> transaction.executeWithoutResult(s -> memberships.removeMembership(repo, "retired", "owner", 0L)))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class);
+        assertThat(jdbc.queryForObject("select count(*) from repository_membership where username='retired' and revoked_at is null and version=0", Integer.class)).isOne();
+        jdbc.execute("alter table principal_access_audit drop constraint reject_role_change");
+        transaction.executeWithoutResult(s -> memberships.removeMembership(repo, "retired", "owner", 0L));
+        var row = jdbc.queryForMap("select actor_principal,target_principal,detail from principal_access_audit where decision_kind='REPOSITORY_MEMBERSHIP'");
+        assertThat(row.get("actor_principal")).isEqualTo(actorId);
+        assertThat(row.get("target_principal")).isEqualTo(actorId);
+        var detail = tools.jackson.databind.json.JsonMapper.builder().build().readTree((String) row.get("detail"));
+        assertThat(detail.path("subject").asString()).isEqualTo("AUTHORIZING_PRINCIPAL");
+        assertThat(detail.path("membershipId").asLong()).isPositive();
+        assertThat(detail.path("holderPrincipalId").isNull()).isTrue();
+        assertThat(detail.path("rationale").asString()).isEqualTo("OWNER_REQUESTED_REVOCATION");
+        assertThat(detail.path("before").path("role").asString()).isEqualTo("READER");
+        assertThat(detail.path("after").path("active").asBoolean()).isFalse();
+        assertThat(detail.path("after").path("version").asLong()).isOne();
+    }
+
+    @Test void versionedRoleChangesRetainTheirOwnRationaleAndLegacyOidcAuditHasNoRegistryPrincipal() {
+        var repo = repositories.findByRepositoryId("project").orElseThrow();
+        var security = org.springframework.security.core.context.SecurityContextHolder.getContext();
+        security.setAuthentication(auth(1));
+        var grant = transaction.execute(s -> memberships.assignRole(repo, "alice", RepositoryRole.READER,
+                "owner", -1L, "Read the approved architecture"));
+        var changed = transaction.execute(s -> memberships.assignRole(repo, "alice", RepositoryRole.CONTRIBUTOR,
+                "owner", grant.getVersion(), "Review the repository"));
+        assertThat(jdbc.queryForList("select detail from principal_access_audit where decision_kind='REPOSITORY_MEMBERSHIP'", String.class))
+                .hasSize(2).anyMatch(detail -> detail.contains("Read the approved architecture"))
+                .anyMatch(detail -> detail.contains("Review the repository"));
+        assertThatThrownBy(() -> transaction.executeWithoutResult(s -> memberships.removeMembership(repo, "alice", "owner", changed.getVersion(), "  ")))
+                .isInstanceOf(IllegalArgumentException.class);
+        var now = Instant.now();
+        var jwt = org.springframework.security.oauth2.jwt.Jwt.withTokenValue("private-test-token").header("alg", "none")
+                .issuer("https://issuer.example.test").subject("legacy-owner").issuedAt(now).expiresAt(now.plusSeconds(120)).build();
+        security.setAuthentication(new org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken(jwt, List.of(), "owner"));
+        transaction.executeWithoutResult(s -> memberships.removeMembership(repo, "alice", "owner", changed.getVersion(), "Access period ended"));
+        var receipt = jdbc.queryForMap("select actor_binding,detail from legacy_repository_role_audit");
+        assertThat(receipt.get("actor_binding")).isEqualTo(com.taxonomy.security.model.PrincipalBinding.key(
+                new com.taxonomy.backup.IdentityBinding(com.taxonomy.backup.IdentityBinding.Kind.OIDC, "https://issuer.example.test", "legacy-owner")));
+        assertThat((String) receipt.get("detail")).contains("Access period ended", grant.getHolderPrincipalId())
+                .doesNotContain("private-test-token", "legacy-owner");
+        assertThat(jdbc.queryForObject("select count(*) from app_principal", Integer.class)).isEqualTo(3);
     }
 
     @Test void aHistoricalGrantRetainsUnknownOriginalActorsAndAnUnboundTargetIsNotInferred() {

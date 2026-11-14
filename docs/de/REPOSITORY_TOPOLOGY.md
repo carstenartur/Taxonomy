@@ -188,6 +188,8 @@ Bei aktivierter Multi-Repository-API verwendet ein zentraler Fork dieselben Anfr
 
 Der Nachfolger erhält eine explizite `OWNER`-Mitgliedschaft. In derselben Transaktion wird die direkte `OWNER`-Mitgliedschaft des bisherigen Eigentümers widerrufen. Unabhängige Rollenzuweisungen gelten weiterhin. Eine veraltete Revision führt zu HTTP 409. Für Organisations- und System-Repositories gelten die jeweiligen Eigentumsregeln.
 
+Bei einem erfolgreichen versionierten `PUT` oder `DELETE` einer Mitgliedschaft werden Rollenänderung und Audit-Eintrag gemeinsam festgeschrieben. Ein `PUT` akzeptiert im JSON-Feld `rationale` eine Begründung, ein `DELETE` im Header `X-Audit-Rationale`. Eine angegebene Begründung umfasst 1–256 druckbare Zeichen. Fehlt sie, wird `OWNER_REQUESTED_ROLE_ASSIGNMENT` oder `OWNER_REQUESTED_REVOCATION` dokumentiert. Der Nachweis enthält Repository, ID des Mitgliedschaftsdatensatzes, aktive Rolle und Revision vor und nach der Änderung sowie das Ergebnis. Subjekt der Entscheidung ist der autorisierende Principal. Die betroffene Mitgliedschaft enthält ihre gesonderte, gegebenenfalls unbekannte Holder-UUID. Alte ungebundene Mitgliedschaften bleiben widerrufbar. Für einen LEGACY-OIDC-Entscheider wird der Bindungshash aus geprüftem Aussteller und Subjekt ohne Registry-UUID gespeichert. Vollständige Installationssicherungen enthalten diese Entscheidungen als private historische Nachweise.
+
 ## Benutzerfreundliche Terminologie
 
 Die folgende Terminologie wird in der Benutzeroberfläche verwendet, um

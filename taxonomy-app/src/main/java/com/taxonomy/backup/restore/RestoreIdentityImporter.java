@@ -94,7 +94,12 @@ public final class RestoreIdentityImporter {
             model.evidence("version-grants",StableIdentityHash.sha256(JSON.writeValueAsString(record)),record,"INERT_SOURCE_AUTHORITY");
         });
         read(archive,"access-audit",AccessAudit.class,checkpoint,record->{
-            id(record.sourceId(),"identity-audit");if(!model.principals.containsKey(record.actor())||!model.principals.containsKey(record.target()))throw invalid();
+            id(record.sourceId(),"identity-audit");
+            if ("LEGACY_REPOSITORY_MEMBERSHIP".equals(record.decision())) {
+                if (record.actor() != null || record.target() != null || record.legacyActorBinding() == null
+                        || !record.legacyActorBinding().matches("[0-9a-f]{64}")) throw invalid();
+            } else if (record.legacyActorBinding() != null || !model.principals.containsKey(record.actor())
+                    || !model.principals.containsKey(record.target())) throw invalid();
             required(record.decision(),40);text(record.detail(),2048);instant(record.occurredAt());model.evidence("access-audit",record.sourceId().value(),record,"HISTORICAL_EVIDENCE");
         });
         var installation=RestoreArchiveRecords.document(archive,OWNER,"identities/installation.json",InstallationRecord.class,checkpoint);
@@ -175,7 +180,7 @@ public final class RestoreIdentityImporter {
         }
     }
     private static void requireEmpty(Connection connection,BackupCheckpoint checkpoint)throws SQLException,IOException {
-        for(String table:List.of("app_principal","principal_binding","app_user","app_role","user_roles","backup_capability_grant","backup_version_grant","principal_access_audit","restore_identity_owner","restore_identity_mapping","restore_identity_evidence")) {
+        for(String table:List.of("app_principal","principal_binding","app_user","app_role","user_roles","backup_capability_grant","backup_version_grant","principal_access_audit","legacy_repository_role_audit","restore_identity_owner","restore_identity_mapping","restore_identity_evidence")) {
             checkpoint.check();if(count(connection,table)!=0)throw new IOException("Unjournaled identity target is not empty");
         }
     }
@@ -203,7 +208,7 @@ public final class RestoreIdentityImporter {
             }
         }
         if(!evidence.equals(model.evidence.keySet()))throw new IOException("Staged identity private evidence inventory proof changed");
-        for(String table:List.of("principal_binding","app_user","app_role","user_roles","backup_capability_grant","backup_version_grant","principal_access_audit")) {
+        for(String table:List.of("principal_binding","app_user","app_role","user_roles","backup_capability_grant","backup_version_grant","principal_access_audit","legacy_repository_role_audit")) {
             checkpoint.check();if(count(connection,table)!=0)throw new IOException("Staged identity authority proof changed");
         }
     }

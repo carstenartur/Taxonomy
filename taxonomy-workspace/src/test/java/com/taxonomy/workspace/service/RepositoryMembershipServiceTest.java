@@ -47,6 +47,23 @@ class RepositoryMembershipServiceTest {
     }
 
     @Test
+    void productionContextRequiresTheAuditCollaboratorBeforeServingRoleChanges() {
+        try (var context = new org.springframework.context.annotation.AnnotationConfigApplicationContext()) {
+            context.getBeanFactory().registerSingleton("membershipRepository", membershipRepository);
+            context.register(RepositoryMembershipService.class);
+            var failure = assertThrows(org.springframework.beans.factory.UnsatisfiedDependencyException.class, context::refresh);
+            assertTrue(failure.getMessage().contains(RepositoryMembershipIdentity.class.getName()));
+        }
+        try (var context = new org.springframework.context.annotation.AnnotationConfigApplicationContext()) {
+            context.getBeanFactory().registerSingleton("membershipRepository", membershipRepository);
+            context.getBeanFactory().registerSingleton("identity", mock(RepositoryMembershipIdentity.class));
+            context.register(RepositoryMembershipService.class);
+            context.refresh();
+            assertNotNull(context.getBean(RepositoryMembershipService.class));
+        }
+    }
+
+    @Test
     void collaborativeDraftsRequireExplicitContributorAuthorityEvenForThePrimaryRepository() {
         var primary = repository(RepositoryVisibility.PUBLIC, RepositoryLifecycleState.ACTIVE, true);
         assertTrue(service.canContribute(primary, "outsider"));

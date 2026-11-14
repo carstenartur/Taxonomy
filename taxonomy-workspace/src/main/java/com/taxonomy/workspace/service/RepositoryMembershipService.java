@@ -37,6 +37,11 @@ public class RepositoryMembershipService {
 
     @Autowired
     public RepositoryMembershipService(RepositoryMembershipRepository membershipRepository,
+            Optional<RepositoryRoleGrantProvider> grantProvider, RepositoryMembershipIdentity identities) {
+        this(membershipRepository, grantProvider, Optional.of(identities));
+    }
+
+    public RepositoryMembershipService(RepositoryMembershipRepository membershipRepository,
             Optional<RepositoryRoleGrantProvider> grantProvider, Optional<RepositoryMembershipIdentity> identities) {
         this.identities = identities;
         this.membershipRepository = membershipRepository;
@@ -95,6 +100,12 @@ public class RepositoryMembershipService {
             RepositoryRole role,
             String actor,
             Long expectedVersion) {
+        return assignRole(repository, username, role, actor, expectedVersion, null);
+    }
+
+    @Transactional
+    public RepositoryMembership assignRole(SystemRepository repository, String username, RepositoryRole role,
+                                           String actor, Long expectedVersion, String rationale) {
         String repositoryId = requireRepositoryId(repository);
         String member = requireText(username, "username");
         String changedBy = requireText(actor, "actor");
@@ -118,7 +129,10 @@ public class RepositoryMembershipService {
                 && ownerCount(lockedMemberships) <= 1) {
             throw new IllegalStateException("A repository must retain at least one OWNER");
         }
-        return saveRole(repositoryId, member, role, changedBy, existing, null, null);
+        var before = RepositoryMembershipIdentity.State.of(existing);
+        var saved = saveRole(repositoryId, member, role, changedBy, existing, null, null);
+        auditRole(expectedVersion, changedBy, before, saved, rationale, "OWNER_REQUESTED_ROLE_ASSIGNMENT");
+        return saved;
     }
 
     /** Transfer the personal catalogue and both direct memberships under its observed policy revision. */
@@ -161,6 +175,12 @@ public class RepositoryMembershipService {
             String username,
             String actor,
             Long expectedVersion) {
+        removeMembership(repository, username, actor, expectedVersion, null);
+    }
+
+    @Transactional
+    public void removeMembership(SystemRepository repository, String username, String actor, Long expectedVersion,
+                                 String rationale) {
         String repositoryId = requireRepositoryId(repository);
         String member = requireText(username, "username");
         requireText(actor, "actor");
@@ -180,10 +200,27 @@ public class RepositoryMembershipService {
                 && ownerCount(lockedMemberships) <= 1) {
             throw new IllegalStateException("A repository must retain at least one OWNER");
         }
+        var before = RepositoryMembershipIdentity.State.of(membership);
         Instant revokedAt = Instant.now();
         membership.setRevokedAt(revokedAt);
         membership.setUpdatedAt(revokedAt);
         membershipRepository.save(membership);
+        auditRole(expectedVersion, actor, before, membership, rationale, "OWNER_REQUESTED_REVOCATION");
+    }
+
+    private void auditRole(Long expectedVersion, String actor, RepositoryMembershipIdentity.State before,
+                           RepositoryMembership membership, String rationale, String defaultReason) {
+        if (expectedVersion == null || identities.isEmpty()) return;
+        String reason = rationale == null ? defaultReason : rationale.strip();
+        if (reason.isBlank() || reason.length() > 256
+                || (rationale != null && rationale.codePoints().anyMatch(Character::isISOControl))) {
+            throw new IllegalArgumentException("Membership rationale must contain 1 to 256 printable characters");
+        }
+        membershipRepository.flush();
+        var decision = new RepositoryMembershipIdentity.RoleDecision(membership.getRepositoryId(), membership.getId(),
+                membership.getHolderPrincipalId(), before, RepositoryMembershipIdentity.State.of(membership), reason,
+                "APPLIED", "AUTHORIZING_PRINCIPAL");
+        identities.orElseThrow().recordRoleDecision(actor, decision);
     }
 
     public Optional<RepositoryRole> effectiveRole(
