@@ -202,7 +202,8 @@ class WorkspaceReadOnlyProvisioningTest {
     @Test
     void currentActorsCreationCapabilityCannotBeBorrowedForAnotherUser() {
         LocalTestLogin.login(applicationContext, "analyst-wrong-target", "USER");
-        assertThat(manager.getWorkspaceInfo("other-provision-target")).isNull();
+        assertThatThrownBy(() -> manager.getWorkspaceInfo("other-provision-target"))
+                .isInstanceOf(AccessDeniedException.class);
         assertThat(rows.findByUsernameAndSharedFalse("other-provision-target")).isEmpty();
     }
 
