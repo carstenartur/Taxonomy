@@ -15,6 +15,7 @@ import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,6 +25,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 
@@ -52,7 +54,7 @@ public class PortfolioGitController {
     public ResponseEntity<?> exportPortfolio(
             @RequestHeader(name = HttpHeaders.ACCEPT, required = false) String accept)
             throws IOException {
-        ExportedPortfolioDsl exported = gitService.export(context().workspaceContext());
+        ExportedPortfolioDsl exported = gitService.export(context());
         if (explicitlyRequestsJson(accept)) {
             return ResponseEntity.ok()
                     .contentType(MediaType.APPLICATION_JSON)
@@ -69,24 +71,28 @@ public class PortfolioGitController {
     public PortfolioCommitResult commit(
             @RequestParam(required = false) String branch,
             @RequestBody(required = false) CommitPortfolioRequest request) throws IOException {
-        RequestContext current = context();
+        WorkspaceContext current = context();
         String effectiveBranch = firstNonBlank(
                 request != null ? request.branch() : null,
                 branch,
-                current.workspaceContext().currentBranch(),
+                current.currentBranch(),
                 "draft");
         return gitService.commit(
                 effectiveBranch,
                 request != null ? request.message() : null,
-                current.workspaceContext());
+                current);
     }
 
     @Operation(summary = "Preview branch materialization without changing portfolio data",
             description = "Previews the portfolio represented by the selected Git branch in the current workspace. This read does not apply portfolio changes; materialization requires a separate explicit command with an expected head.")
     @GetMapping("/materialize-preview")
     public MaterializationPreview previewMaterialize(
-            @RequestParam(defaultValue = "draft") String branch) throws IOException {
-        return gitService.previewMaterialize(branch, context().workspaceContext());
+            @RequestParam(defaultValue = "draft") String branch,
+            @RequestParam(required = false) String targetBranch) throws IOException {
+        if (targetBranch == null) {
+            return gitService.previewMaterialize(branch, context());
+        }
+        return gitService.previewMaterialize(targetBranch, workspaceResolver.resolveUnambiguousContextForRead());
     }
 
     @Operation(summary = "Materialize one reviewed branch HEAD into the portfolio",
@@ -94,17 +100,21 @@ public class PortfolioGitController {
     @PostMapping("/materialize")
     public MaterializePortfolioResult materialize(
             @RequestParam(required = false) String branch,
+            @RequestParam(required = false) String targetBranch,
             @RequestBody(required = false) MaterializePortfolioRequest request) throws IOException {
-        RequestContext current = context();
-        String effectiveBranch = firstNonBlank(
-                request != null ? request.branch() : null,
-                branch,
-                current.workspaceContext().currentBranch(),
-                "draft");
-        return gitService.materialize(
-                effectiveBranch,
-                request != null ? request.expectedHead() : null,
-                current.workspaceContext());
+        String bodyBranch = request != null ? request.branch() : null;
+        if (targetBranch != null && bodyBranch != null && !bodyBranch.isBlank()
+                && !targetBranch.equals(bodyBranch)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Conflicting materialization targets");
+        }
+        WorkspaceContext selected = targetBranch == null ? context()
+                : workspaceResolver.resolveUnambiguousContextForRead();
+        String effectiveBranch = firstNonBlank(targetBranch, bodyBranch, branch, selected.currentBranch(), "draft");
+        String expectedHead = request != null ? request.expectedHead() : null;
+        if (targetBranch != null && (expectedHead == null || expectedHead.isBlank())) {
+            throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED, "The reviewed target head is required");
+        }
+        return gitService.materialize(effectiveBranch, expectedHead, selected);
     }
 
     @Operation(summary = "Semantically merge two branches and materialize the target portfolio",
@@ -114,27 +124,28 @@ public class PortfolioGitController {
             @RequestParam(required = false) String source,
             @RequestParam(required = false) String target,
             @RequestBody(required = false) MergePortfolioRequest request) throws IOException {
-        RequestContext current = context();
+        WorkspaceContext current = context();
         String effectiveSource = firstNonBlank(
                 request != null ? request.sourceBranch() : null,
                 source);
         String effectiveTarget = firstNonBlank(
                 request != null ? request.targetBranch() : null,
                 target,
-                current.workspaceContext().currentBranch(),
+                current.currentBranch(),
                 "draft");
         return gitService.merge(
                 effectiveSource,
                 effectiveTarget,
                 request != null ? request.message() : null,
-                current.workspaceContext());
+                current);
     }
 
-    /** Resolve the authenticated workspace once and fail closed on provisioning errors. */
-    private RequestContext context() {
-        String username = workspaceResolver.resolveCurrentUsername();
-        repositoryStateService.ensureWorkspaceState(username);
-        return new RequestContext(username, workspaceResolver.resolveCurrentContext());
+    private WorkspaceContext context() {
+        if (workspaceResolver.hasExplicitSourceSelection()) {
+            return workspaceResolver.resolveUnambiguousContextForRead();
+        }
+        repositoryStateService.ensureWorkspaceState(workspaceResolver.resolveCurrentUsername());
+        return workspaceResolver.resolveCurrentContext();
     }
 
     private static boolean explicitlyRequestsJson(String accept) {
@@ -158,6 +169,4 @@ public class PortfolioGitController {
         return null;
     }
 
-    private record RequestContext(String username, WorkspaceContext workspaceContext) {
-    }
 }

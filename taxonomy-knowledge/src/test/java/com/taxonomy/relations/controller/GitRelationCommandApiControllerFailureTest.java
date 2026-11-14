@@ -17,16 +17,22 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -109,6 +115,26 @@ class GitRelationCommandApiControllerFailureTest {
         assertThat(controller.remove("BP", "INVALID", "CP", '"' + PREVIOUS + '"', null, "request")
                 .getStatusCode().value()).isEqualTo(400);
         verifyNoInteractions(mutation);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void pinnedCommandsRejectChangedBranchesBeforeMutation(boolean remove) {
+        var request = new MockHttpServletRequest();
+        request.addHeader("X-Taxonomy-Workspace-Id", "workspace-a");
+        request.setParameter("repositoryId", "repo-a");
+        request.setParameter("branch", "draft");
+        var attributes = new ServletRequestAttributes(request);
+        RequestContextHolder.setRequestAttributes(attributes);
+        try {
+            var moved = new ResponseStatusException(HttpStatus.CONFLICT);
+            when(resolver.resolveUnambiguousRepositoryForRead()).thenThrow(moved);
+            assertThatThrownBy(() -> mutate(remove)).isSameAs(moved);
+            verifyNoInteractions(mutation);
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+            attributes.requestCompleted();
+        }
     }
 
     @ParameterizedTest

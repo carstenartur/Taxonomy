@@ -4,6 +4,9 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
+import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.observation.DefaultMeterObservationHandler;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -23,6 +26,27 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TaxonomyObservationConfigurationTest {
+
+    @Test
+    void authorizedReadSelectionEmitsOneWorkspaceTimer() {
+        var meters = new SimpleMeterRegistry();
+        var registry = ObservationRegistry.create();
+        registry.observationConfig().observationHandler(new DefaultMeterObservationHandler(meters));
+
+        var selection = RepositoryContext.centralRead("retained-repository", "review", "reader");
+        var contexts = org.mockito.Mockito.mock(WorkspaceContextResolver.class,
+                invocation -> invocation.getMethod().getReturnType() == RepositoryContext.class
+                        ? selection : org.mockito.Answers.RETURNS_DEFAULTS.answer(invocation));
+        var processor = new TaxonomyObservationConfiguration.TaxonomyObservationBeanPostProcessor(() -> registry);
+        var resolver = (WorkspaceResolver) processor.postProcessAfterInitialization(
+                new WorkspaceResolver(contexts), "workspaceResolver");
+
+        assertEquals(selection, resolver.resolveUnambiguousRepositoryForRead());
+        Timer timer = meters.get("taxonomy.workspace.resolve")
+                .tags("taxonomy.component", "workspace", "taxonomy.operation", "resolveUnambiguousRepositoryForRead",
+                        "outcome", "success").timer();
+        assertEquals(1, timer.count());
+    }
 
     @Test
     void recordsSuccessfulOperationWithBoundedTags() throws Throwable {

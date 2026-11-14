@@ -613,7 +613,7 @@ class CopilotAutomationServiceCoverageTest {
     }
 
     @Test
-    void queuedCoordinatorExecutesPersistedPassAndObservesTerminalJob() {
+    void queuedCoordinatorObservesTheDispatchedFirstPassWithoutAdmittingItAgain() {
         Fixture fixture = new Fixture();
         CopilotRunRequest request = request();
         RequirementView requirement = requirement(version(), null);
@@ -666,7 +666,7 @@ class CopilotAutomationServiceCoverageTest {
                 PROJECT_ID, initial.operationId(), context.username(), context);
 
         assertThat(completed.status()).isEqualTo(AnalysisStatus.SUCCESS);
-        verify(fixture.analysisService, times(2)).enqueueRequirement(
+        verify(fixture.analysisService).enqueueRequirement(
                 eq(PROJECT_ID), eq(REQUIREMENT_ID), eq("CUSTOM_OPENAI"), eq(50),
                 anyString(), eq(context.username()), eq(context));
         verify(fixture.analysisService).getJob(
@@ -994,7 +994,7 @@ class CopilotAutomationServiceCoverageTest {
         String operation = "9".repeat(64);
         var persisted = new java.util.LinkedHashMap<String, AnalysisJobView>();
         var first = withLanguage(job("job-1", operation, 1, 2, REQUIREMENT_ID,
-                AnalysisStatus.SUCCESS, null, Instant.now()), recorded);
+                AnalysisStatus.PENDING, null, Instant.now()), recorded);
         persisted.put(first.idempotencyKey(), first);
         when(fixture.policy.costPolicy()).thenReturn(AiCostPolicy.METERED);
         when(fixture.policy.maximumRuntime()).thenReturn(Duration.ofSeconds(5));
@@ -1006,7 +1006,11 @@ class CopilotAutomationServiceCoverageTest {
                 anyString(), eq(context.username()), eq(context))).thenAnswer(call -> {
             assertThat(com.taxonomy.analysis.service.AnalysisLanguageContext.resolveCurrentRequest(null))
                     .isEqualTo(recorded);
-            return persisted.get(call.getArgument(4, String.class));
+            assertThat(call.getArgument(4, String.class)).isEqualTo(first.idempotencyKey());
+            var completed = withLanguage(job("job-1", operation, 1, 2, REQUIREMENT_ID,
+                    AnalysisStatus.SUCCESS, null, Instant.now()), recorded);
+            persisted.put(first.idempotencyKey(), completed);
+            return completed;
         });
         stubVerificationPass(fixture, persisted);
         when(fixture.analysisService.getJob(anyString(), eq(PROJECT_ID), eq(context.username()), eq(context)))
@@ -1019,6 +1023,8 @@ class CopilotAutomationServiceCoverageTest {
             fixture.service.resumeOperation(PROJECT_ID, operation, context.username(), context);
             org.springframework.context.i18n.LocaleContextHolder.setLocale(java.util.Locale.ENGLISH);
             captured(fixture).run();
+            verify(fixture.analysisService).enqueueRequirement(PROJECT_ID, REQUIREMENT_ID, "CUSTOM_OPENAI",
+                    50, first.idempotencyKey(), context.username(), context);
             assertThat(persisted.values()).hasSize(2).allSatisfy(job -> assertThat(job.analysisLanguage()).isEqualTo(recorded));
         } finally { org.springframework.context.i18n.LocaleContextHolder.setLocaleContext(previous); }
         assertThat(com.taxonomy.analysis.service.AnalysisLanguageContext.current()).isNull();

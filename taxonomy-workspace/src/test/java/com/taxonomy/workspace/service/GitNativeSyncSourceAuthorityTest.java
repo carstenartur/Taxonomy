@@ -2,8 +2,13 @@ package com.taxonomy.workspace.service;
 
 import com.taxonomy.versioning.service.SemanticGitMergeService;
 import com.taxonomy.workspace.controller.WorkspaceController;
+import com.taxonomy.workspace.controller.WorkspacePublicationController;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import com.taxonomy.workspace.model.*;
 import com.taxonomy.workspace.repository.*;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
@@ -719,6 +724,116 @@ class GitNativeSyncSourceAuthorityTest {
             }
         } finally {
             org.springframework.web.context.request.RequestContextHolder.resetRequestAttributes();
+        }
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+            "ADMITTED,202", "DENIED,403", "MANUAL_REVIEW,409", "COMPLETED,200"
+    })
+    void receiptRoutesReturnTheDecisionOfTheSelectedWorkingCopy(String scenario, int expectedStatus) throws Exception {
+        var selected = RepositoryContext.workspace("private-source", "old-copy", "main", "alice");
+        var grant = new WorkspaceFetchAuthority.Grant(java.util.UUID.randomUUID().toString(), "LOCAL", "a".repeat(64));
+        var authority = mock(WorkspacePublicationAuthority.class);
+        when(authority.authorizePublication("alice")).thenReturn(grant);
+        when(authority.currentActor("alice")).thenReturn(grant.principalId());
+
+        try (var fixture = new Fixture();
+             var factory = publicationDatabase("jdbc:hsqldb:mem:receipt-" + java.util.UUID.randomUUID(), "create")) {
+            var journal = publicationJournal(factory);
+            var recovery = new WorkspacePublicationRecovery(journal, authority);
+            fixture.service.configurePublications(recovery);
+            var resolver = mock(WorkspaceResolver.class);
+            when(resolver.resolveCurrentRepositoryContextForRead()).thenReturn(selected);
+            var http = MockMvcBuilders.standaloneSetup(new WorkspacePublicationController(resolver, fixture.service)).build();
+            String reviewed = fixture.local.commitDsl("main", dsl("Reviewed receipt"), "alice", "Review");
+            String original = fixture.source.getHeadCommit("draft");
+            var admitted = journal.admit(selected, grant, false, "http-receipt", null,
+                    () -> new WorkspacePublicationJournal.Source("draft", original, original, reviewed,
+                            fixture.local.getHeadCommit("sync-base")));
+            String id = admitted.operationId();
+            switch (scenario) {
+                case "ADMITTED" -> assertNotNull(journal.claim(id, "another-worker", false));
+                case "DENIED" -> {
+                    doThrow(new AccessDeniedException("grant revoked")).when(authority)
+                            .checkPublicationGrant(grant, "alice", false);
+                }
+                case "MANUAL_REVIEW" -> recovery.retry(selected, id, (row, authorize) -> {
+                    throw new WorkspacePublicationRecovery.SemanticConflict("conflicting architecture");
+                });
+                case "COMPLETED" -> { }
+                default -> throw new AssertionError(scenario);
+            }
+
+            var response = http.perform(post("/api/workspace/publications/{id}/retry", id)).andReturn().getResponse();
+            assertEquals(expectedStatus, response.getStatus(), response.getContentAsString());
+            assertEquals(id, response.getHeader("X-Operation-Id"));
+            String expectedPhase = scenario.equals("ADMITTED") ? "RUNNING" : scenario;
+            var persisted = journal.get(selected, grant.principalId(), id);
+            assertEquals(expectedPhase, persisted.status());
+            assertEquals(grant.principalId(), persisted.originalActor());
+            http.perform(get("/api/workspace/publications/{id}", id)).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.operationId").value(id)).andExpect(jsonPath("$.status").value(expectedPhase));
+
+            var neighbor = RepositoryContext.workspace("private-source", "old-copy", "neighbor", "alice");
+            when(resolver.resolveCurrentRepositoryContextForRead()).thenReturn(neighbor);
+            http.perform(get("/api/workspace/publications/{id}", id)).andExpect(status().isNotFound());
+            http.perform(post("/api/workspace/publications/{id}/retry", id)).andExpect(status().isNotFound());
+            http.perform(delete("/api/workspace/publications/{id}", id)).andExpect(status().isNotFound());
+
+            when(resolver.resolveCurrentRepositoryContextForRead()).thenReturn(selected);
+            if (persisted.completedAt() == null) {
+                http.perform(delete("/api/workspace/publications/{id}", id)).andExpect(status().isConflict());
+            } else {
+                http.perform(delete("/api/workspace/publications/{id}", id)).andExpect(status().isOk())
+                        .andExpect(jsonPath("$.status").value("ARCHIVED"));
+                http.perform(post("/api/workspace/publications/{id}/retry", id)).andExpect(status().isGone());
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+            "disconnected,RETRYABLE,PUBLICATION_INTERRUPTED",
+            "reauthenticate,AWAITING_AUTHORIZATION,FRESH_LOGIN_REQUIRED",
+            "descendant,SUPERSEDED,RETAINED_DESCENDANT",
+            "reconciliation,MANUAL_REVIEW,RECONCILIATION_REQUIRED",
+            "changed,MANUAL_REVIEW,AUTHORITY_CHANGED"
+    })
+    void recoveryPersistsTheDecisionAtTheInterruptedPhase(String cause, String status, String decision) throws Exception {
+        var selected = RepositoryContext.workspace("repository", "copy", "draft", "alice");
+        var grant = new WorkspaceFetchAuthority.Grant(java.util.UUID.randomUUID().toString(), "LOCAL", "a".repeat(64));
+        var authority = mock(WorkspacePublicationAuthority.class);
+        when(authority.authorizePublication("alice")).thenReturn(grant);
+        try (var factory = publicationDatabase("jdbc:hsqldb:mem:decisions-" + java.util.UUID.randomUUID(), "create")) {
+            var journal = publicationJournal(factory);
+            var recovery = new WorkspacePublicationRecovery(journal, authority);
+            var interrupted = recovery.submit(selected, false, "decision", null,
+                    () -> new WorkspacePublicationJournal.Source("main", null, null, null, null), (row, authorize) -> {
+                        authorize.run();
+                        switch (cause) {
+                            case "disconnected" -> throw new IOException("storage interrupted");
+                            case "reauthenticate" -> throw new WorkspaceFetchAuthority.FreshLoginRequired();
+                            case "descendant" -> throw new WorkspacePublicationRecovery.Superseded(true);
+                            case "reconciliation" -> throw new com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem(
+                                    "CONFLICT", "element", "manual reconciliation", java.util.List.of());
+                            case "changed" -> throw new BranchHeadConflictException("main", null, "a".repeat(40), "head moved");
+                            default -> throw new AssertionError(cause);
+                        }
+                    });
+            var retained = publicationJournal(factory).get(selected, grant.principalId(), interrupted.operationId());
+            assertEquals(status, retained.status());
+            assertEquals(decision, retained.decisionCode());
+            assertEquals(grant.principalId(), retained.originalActor());
+            assertEquals(1, retained.attempts());
+            if (retained.completedAt() == null) {
+                var finished = recovery.retry(selected, retained.operationId(), (row, authorize) -> authorize.run());
+                assertEquals("COMPLETED", finished.status());
+                assertEquals(2, finished.attempts());
+            } else {
+                assertEquals(retained, recovery.retry(selected, retained.operationId(),
+                        (row, authorize) -> fail("A terminal receipt must not repeat a phase")));
+            }
         }
     }
 

@@ -17,6 +17,7 @@ import com.taxonomy.workspace.service.RepositoryMembershipService;
 import com.taxonomy.workspace.service.RepositoryScope;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceResolver;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpHeaders;
@@ -81,8 +82,7 @@ public class GitRelationCommandApiController {
             String causationId,
             @RequestBody(required = false) MutationBody body) {
         try {
-            RepositoryContext context = writableContext(
-                    workspaceResolver.resolveCurrentRepositoryContext());
+            RepositoryContext context = writableContext(commandSelection());
             if (context == null) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
             }
@@ -136,8 +136,7 @@ public class GitRelationCommandApiController {
             @RequestHeader(value = IDEMPOTENCY_KEY, required = true)
             String causationId) {
         try {
-            RepositoryContext context = writableContext(
-                    workspaceResolver.resolveCurrentRepositoryContext());
+            RepositoryContext context = writableContext(commandSelection());
             if (context == null) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
             }
@@ -206,6 +205,14 @@ public class GitRelationCommandApiController {
                             error.getActualHeadCommit()));
         }
         return response.body(MutationResponse.conflict(error));
+    }
+
+    private RepositoryContext commandSelection() {
+        // An explicit workspace (including the empty central pin) belongs to the snapshot used as the precondition.
+        if (WorkspaceContextResolver.requestedWorkspaceId() != null) {
+            return workspaceResolver.resolveUnambiguousRepositoryForRead();
+        }
+        return workspaceResolver.resolveCurrentRepositoryContext();
     }
 
     /** Preserve isolated write scopes; authorize central reads before upgrading. */

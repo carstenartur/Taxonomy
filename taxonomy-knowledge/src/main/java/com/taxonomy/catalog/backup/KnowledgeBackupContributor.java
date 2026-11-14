@@ -20,8 +20,9 @@ import static com.taxonomy.exchange.backup.PortableRows.*;
 /** Explicit catalogue and review schemas, selected before any payload or archive entry is read. */
 public final class KnowledgeBackupContributor implements BackupDataContributor {
     /** Complete knowledge owner version, shared by its capture delegates. */
-    public static final int SCHEMA_VERSION = 2;
+    public static final int SCHEMA_VERSION = 3;
     private static final int MAX_IDENTITIES = 100_000;
+    private final DataSource database;
     private final PortableRows rows;
     private final BackupAnalysisReference.Selector analyses;
     private final SelectionReader selections;
@@ -39,6 +40,7 @@ public final class KnowledgeBackupContributor implements BackupDataContributor {
     }
     @FunctionalInterface public interface SelectionReader { Selection select(SnapshotContext context) throws IOException; }
     public KnowledgeBackupContributor(DataSource database, BackupAnalysisReference.Selector analyses, SelectionReader selections) {
+        this.database = Objects.requireNonNull(database);
         rows = new PortableRows(database); this.analyses = Objects.requireNonNull(analyses); this.selections = Objects.requireNonNull(selections);
     }
     @Override public BackupComponentId componentId() { return new BackupComponentId("knowledge"); }
@@ -53,6 +55,7 @@ public final class KnowledgeBackupContributor implements BackupDataContributor {
         result.add("knowledge: original catalogue input bytes are not inferred from shipped resources; a retained-input adapter is required separately");
         if (profile == BackupProfile.SELECTED_VERSION) result.add("knowledge: unversioned present-day catalogue/review rows are excluded; selected Git is authoritative");
         else if (!profile.includesHistory()) result.add("knowledge: earlier analysis hypotheses/evidence, completed recovery and legacy coverage text are excluded");
+        if (profile == BackupProfile.SELECTED_VERSION) result.add("knowledge: mutable requirement coverage is branch-owned and excluded from immutable Git versions");
         if (!profile.isInstallation()) result.add("knowledge: unattributed global legacy coverage is excluded from scoped exports");
         return List.copyOf(result);
     }
@@ -62,12 +65,13 @@ public final class KnowledgeBackupContributor implements BackupDataContributor {
         Selection selection = scope.selectedVersion() ? new Selection(Set.of(),Set.of()) : Objects.requireNonNull(selections.select(snapshot));
         Set<String> hypotheses = scope.selectedVersion() ? Set.of() : hypotheses(snapshot,scope,selection);
         Set<String> codes = new TreeSet<>(selection.catalogueCodes());
+        boolean captureLegacyCoverage = scope.installation() && hasLegacyCoverageTable();
         if (!scope.selectedVersion()) {
             endpoints(scope,"taxonomy_relation",codes); endpoints(scope,"relation_proposal",codes);
             rows.visit(hypothesisQuery(scope), r -> new HypothesisEndpoint(r.getString("id"),text(r,"source_node_id"),text(r,"target_node_id")), h -> {
                 if (hypotheses.contains(h.id())) { addCode(codes,h.source()); addCode(codes,h.target()); }
             });
-            if (scope.installation()) rows.requireEmpty(new Query("select 1 from requirement_coverage c left join taxonomy_node n on n.code=c.node_code where n.id is null",List.of()));
+            if (captureLegacyCoverage) rows.requireEmpty(new Query("select 1 from requirement_coverage c left join taxonomy_node n on n.code=c.node_code where n.id is null",List.of()));
         }
         Map<String,NodeIdentity> catalogue = scope.selectedVersion() ? Map.of() : catalogueClosure(scope,codes);
         rows.writeBatches(sink,"knowledge","node",profile,nodeQueries(scope,catalogue.keySet()), r -> new NodeRecord(
@@ -104,10 +108,61 @@ public final class KnowledgeBackupContributor implements BackupDataContributor {
                 r -> new RecoveryRecord(reference(r,"knowledge.projection-recovery","id"),text(r,"repository_id"),text(r,"workspace_id"),text(r,"branch"),
                         scope.history() ? text(r,"previous_head_commit") : null,text(r,"authoritative_commit_id"),text(r,"causation_id"),
                         enumeration(r,"status",RecoveryStatus.class),ResumePolicy.REBUILD_FROM_CAPTURE,instant(r,"first_observed_at"),instant(r,"last_observed_at"),instant(r,"completed_at")));
-        rows.write(sink,"knowledge","legacy-coverage",profile,scope.selectedVersion() || !scope.installation() ? null
+        rows.writeBatches(sink, "knowledge", "requirement-coverage", profile, coverageQueries(snapshot, scope), r ->
+                new ScopedCoverageRecord(reference(r, "knowledge.requirement-coverage", "id"),
+                        text(r, "repository_id"), text(r, "workspace_id"), text(r, "branch_name"), text(r, "source_commit"),
+                        text(r, "requirement_id"), text(r, "requirement_text"), text(r, "node_code"),
+                        com.taxonomy.dto.AnalysisPercentages.require((Number) r.getObject("score")), text(r, "recorded_by"), instant(r, "analyzed_at")));
+        rows.write(sink,"knowledge","legacy-coverage",profile,!captureLegacyCoverage ? null
                 : new Query("select id,requirement_id,"+(scope.history()?"requirement_text":"cast(null as varchar(2000)) as requirement_text")
                 + ",node_code,score,analyzed_at from requirement_coverage order by id",List.of()), r -> new CoverageRecord(
                 reference(r,"knowledge.legacy-coverage","id"),text(r,"requirement_id"),text(r,"requirement_text"),text(r,"node_code"),r.getObject("score") == null ? null : com.taxonomy.dto.AnalysisPercentages.require((Number) r.getObject("score")),instant(r,"analyzed_at")));
+    }
+
+    private boolean hasLegacyCoverageTable() throws IOException {
+        try (var connection = database.getConnection()) {
+            var metadata = connection.getMetaData();
+            String schema = connection.getSchema();
+            String table = metadata.storesUpperCaseIdentifiers() ? "REQUIREMENT_COVERAGE" : "requirement_coverage";
+            try (var matches = metadata.getTables(connection.getCatalog(), schema, table, new String[]{"TABLE"})) {
+                while (matches.next()) {
+                    if (table.equals(matches.getString("TABLE_NAME")) && Objects.equals(schema, matches.getString("TABLE_SCHEM"))) return true;
+                }
+                return false;
+            }
+        } catch (SQLException failure) {
+            throw new IOException("Could not verify legacy coverage storage", failure);
+        }
+    }
+
+    private List<Query> coverageQueries(SnapshotContext snapshot, BackupRowScope scope) {
+        String select = "select id, repository_id, workspace_id, branch_name, source_commit, requirement_id, "
+                + "requirement_text, node_code, score, recorded_by, analyzed_at from scoped_requirement_coverage where ";
+        // A commit alone does not identify mutable, branch-specific observations at the time of a Git version.
+        if (scope.selectedVersion()) return List.of();
+        if (scope.history()) {
+            var tenant = scope.repositories("repository_id", "workspace_id");
+            return List.of(new Query(select + tenant.sql() + " order by id", tenant.parameters()));
+        }
+        // The backup owner already captured these refs under its fence. Use only the exact branch tips.
+        var queries = new ArrayList<Query>();
+        for (var entry : snapshot.repositories().entrySet().stream()
+                .sorted(Map.Entry.comparingByKey(Comparator.comparing(BackupRepositoryKey::repositoryId)
+                        .thenComparing(BackupRepositoryKey::workspaceId, Comparator.nullsFirst(Comparator.naturalOrder())))).toList()) {
+            var key = entry.getKey();
+            String owner = "repository_id=? and " + (key.workspaceId() == null ? "workspace_id is null" : "workspace_id=?");
+            var parameters = new ArrayList<Object>();
+            parameters.add(key.repositoryId());
+            if (key.workspaceId() != null) parameters.add(key.workspaceId());
+            for (var ref : new TreeMap<>(entry.getValue().refs()).entrySet()) {
+                if (!ref.getKey().startsWith("refs/heads/")) continue;
+                var values = new ArrayList<>(parameters);
+                values.add(ref.getKey().substring("refs/heads/".length()));
+                values.add(ref.getValue());
+                queries.add(new Query(select + owner + " and branch_name=? and source_commit=? order by id", values));
+            }
+        }
+        return queries;
     }
 
     private Set<String> hypotheses(SnapshotContext snapshot,BackupRowScope scope,Selection selection) throws IOException {
@@ -237,5 +292,8 @@ public final class KnowledgeBackupContributor implements BackupDataContributor {
                                  RelationType relationType,ProposalStatus status,String confidence,String rationale,String provenance,String createdAt,String reviewedAt) { }
     public record RecoveryRecord(SourceRecordId sourceId,String repositoryId,String workspaceId,String branch,String previousHead,String authoritativeCommit,String causationId,RecoveryStatus status,
                                  ResumePolicy resumePolicy,String firstObservedAt,String lastObservedAt,String completedAt) { }
+    public record ScopedCoverageRecord(SourceRecordId sourceId, String repositoryId, String workspaceId, String branch,
+                                       String sourceCommit, String requirementId, String requirementText, String nodeCode,
+                                       double score, String recordedBy, String analyzedAt) {}
     public record CoverageRecord(SourceRecordId sourceId,String legacyRequirementId,String requirementText,String nodeCode,Double score,String analyzedAt) { }
 }

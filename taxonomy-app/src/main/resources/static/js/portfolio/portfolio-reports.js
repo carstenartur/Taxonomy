@@ -8,7 +8,7 @@
     const projectId = Number(match[1]);
     const locale = (new URLSearchParams(location.search).get('lang') || document.documentElement.lang || 'en').toLowerCase().startsWith('de') ? 'de' : 'en';
     const state = { project: null, requirements: [], previewUrl: null, previewGeneration: 0,
-        previewController: null, previewSelection: null, previewLoaded: false };
+        previewController: null, previewSelection: null, previewLoaded: false, currentSource: null };
     const labels = {
         en: { title: 'Portfolio reports', versioning: 'Versioning', heading: 'Project and requirement reports', options: 'Report scope', scope: 'Scope', project: 'Entire project', requirement: 'Single requirement', requirementLabel: 'Requirement', matrix: 'CSV matrix', preview: 'Preview HTML report', previewHeading: 'Report preview', empty: 'Generate a preview to inspect the exact report baseline before export.', rendering: 'Rendering report…', baseline: 'Preview generated from the current project and snapshot baseline.', failed: 'The report could not be generated.' },
         de: { title: 'Portfolio-Berichte', versioning: 'Versionierung', heading: 'Projekt- und Anforderungsberichte', options: 'Berichtsumfang', scope: 'Umfang', project: 'Gesamtes Projekt', requirement: 'Einzelne Anforderung', requirementLabel: 'Anforderung', matrix: 'CSV-Matrix', preview: 'HTML-Bericht prüfen', previewHeading: 'Berichtsvorschau', empty: 'Erzeugen Sie eine Vorschau, um die exakte Berichtsbaseline vor dem Export zu prüfen.', rendering: 'Bericht wird erzeugt…', baseline: 'Die Vorschau wurde aus dem aktuellen Projekt- und Snapshotstand erzeugt.', failed: 'Der Bericht konnte nicht erzeugt werden.' }
@@ -27,14 +27,50 @@
     function l(k){return labels[locale][k]||labels.en[k]||k;}
     async function initialize() {
         window.TaxonomyAppChrome?.updateContext({project: {id: projectId}});
-        translate(); wire(); busy(true);
-        try {
-            [state.project, state.requirements] = await Promise.all([api().getProject(projectId), api().listRequirements(projectId)]);
-            window.TaxonomyAppChrome?.updateContext({project: {id: projectId, key: state.project.projectKey, title: state.project.title}});
-            render();
-        } catch (error) { showError(error); }
-        finally { busy(false); }
+        translate();
+        wire();
+        const reloadChangedSource = () => {
+            if (state.currentSource && !state.currentSource()) return loadSource();
+        };
+        for (const event of ['taxonomy:repository-context-changed', 'taxonomy:entity-context-changed',
+                'taxonomy:architecture-source-changed']) {
+            document.addEventListener(event, reloadChangedSource);
+        }
+        await loadSource();
     }
+
+    async function loadSource() {
+        const current = window.TaxonomyApiClient.captureContext();
+        state.currentSource = current;
+        state.project = null;
+        state.requirements = [];
+        window.TaxonomyAppChrome?.updateContext({project: {id: projectId, key: null, title: null}});
+        document.getElementById('reportsProject').textContent = '';
+        document.getElementById('reportRequirement').textContent = '';
+        invalidatePreview(l('empty'));
+        allowReportActions(false);
+        busy(true);
+        try {
+            const [project, requirements] = await Promise.all([api().getProject(projectId), api().listRequirements(projectId)]);
+            if (state.currentSource !== current || !current()) return;
+            state.project = project;
+            state.requirements = requirements;
+            window.TaxonomyAppChrome?.updateContext({project: {id: projectId, key: project.projectKey, title: project.title}});
+            if (state.currentSource !== current || !current()) return;
+            render();
+            allowReportActions(true);
+        } catch (error) {
+            if (state.currentSource === current && current()) showError(error);
+        } finally {
+            if (state.currentSource === current) busy(false);
+        }
+    }
+
+    function allowReportActions(allowed) {
+        document.getElementById('previewReport').disabled = !allowed;
+        document.querySelectorAll('.report-download').forEach(button => { button.disabled = !allowed; });
+    }
+
     function translate() {
         document.documentElement.lang = locale;
         document.title = `${l('title')} — Taxonomy`;
@@ -69,12 +105,12 @@
         document.getElementById('reportRequirement').addEventListener('change',()=>invalidatePreview(l('stale')));
         document.getElementById('previewReport').addEventListener('click',preview);
         print.addEventListener('click',()=>{
-            if (!state.previewLoaded || !state.previewUrl || state.previewSelection !== selectionKey()) return;
+            if (!state.currentSource?.() || !state.previewLoaded || !state.previewUrl || state.previewSelection !== selectionKey()) return;
             frame.contentWindow.focus();
             frame.contentWindow.print();
         });
         frame.addEventListener('load',()=>{
-            if (!state.previewUrl || state.previewSelection !== selectionKey()) return;
+            if (!state.currentSource?.() || !state.previewUrl || state.previewSelection !== selectionKey()) return;
             // A late load from about:blank or an older blob must not authorize printing.
             if (frame.contentWindow.location.href !== state.previewUrl) return;
             state.previewLoaded = true;
@@ -110,6 +146,7 @@
         busy(false);
     }
     async function preview(){
+        if (!state.project || !state.currentSource()) return;
         invalidatePreview(l('rendering'));
         const generation=state.previewGeneration;
         const parameters=reportParameters('html');
@@ -120,7 +157,7 @@
         try{
             const response=await api().fetchReport(projectId,'html',parameters,'text/html',{signal:controller.signal});
             const blob=await response.blob();
-            if(generation!==state.previewGeneration || controller.signal.aborted || key!==selectionKey()) return;
+            if(!state.currentSource() || generation!==state.previewGeneration || controller.signal.aborted || key!==selectionKey()) return;
             state.previewUrl=URL.createObjectURL(blob);
             state.previewSelection=key;
             const frame=document.getElementById('reportPreviewFrame');
@@ -128,14 +165,23 @@
             frame.classList.remove('d-none');
             document.getElementById('emptyPreview').classList.add('d-none');
         }catch(e){
-            if(generation!==state.previewGeneration || controller.signal.aborted) return;
+            if(!state.currentSource() || generation!==state.previewGeneration || controller.signal.aborted) return;
             document.getElementById('emptyPreview').textContent=l('failed');
             showError(e);
         }finally{
             if(generation===state.previewGeneration){state.previewController=null;busy(false);}
         }
     }
-    function download(format){const link=document.createElement('a');link.href=endpoint(format);link.hidden=true;document.body.appendChild(link);link.click();link.remove();document.getElementById('reportsLive').textContent=`${format.toUpperCase()} ${l('exportStarted')}`;}
+    function download(format) {
+        if (!state.project || !state.currentSource()) return;
+        const link = document.createElement('a');
+        link.href = endpoint(format);
+        link.hidden = true;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        document.getElementById('reportsLive').textContent = `${format.toUpperCase()} ${l('exportStarted')}`;
+    }
     function api(){if(!window.TaxonomyPortfolioApi)throw new Error('Portfolio API boundary is not available');return window.TaxonomyPortfolioApi;}
     function busy(active){document.getElementById('reportsBusy').classList.toggle('d-none',!active);}
     function showError(e){const t=document.getElementById('reportsError');t.textContent=e?.message||l('failed');t.classList.remove('d-none');t.focus();document.getElementById('reportsLive').textContent=t.textContent;}

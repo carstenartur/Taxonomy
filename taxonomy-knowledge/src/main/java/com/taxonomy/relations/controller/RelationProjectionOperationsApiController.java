@@ -61,9 +61,9 @@ public class RelationProjectionOperationsApiController {
             description = "Checks the retained node and relation index against the authorized branch, current commit, catalogue and embedding model.")
     @GetMapping("/vectors")
     public ResponseEntity<BranchGraphVectors.Status> vectorStatus() {
-        var context = workspaceResolver.resolveCurrentRepositoryContextForRead();
+        var context = workspaceResolver.resolveUnambiguousRepositoryForRead();
         if (context == null) return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        return ResponseEntity.ok(vectors.inspect(context));
+        return selectedResponse(context).body(vectors.inspect(context));
     }
 
     @Operation(summary = "Rebuild the selected branch vector generation",
@@ -83,7 +83,7 @@ public class RelationProjectionOperationsApiController {
     }
 
     private ResponseEntity<BranchGraphVectors.Status> changeVectors(String ifMatch, boolean purge) {
-        var selected = workspaceResolver.resolveCurrentRepositoryContextForRead();
+        var selected = workspaceResolver.resolveUnambiguousRepositoryForRead();
         var context = selected == null ? null : writableContext(selected);
         if (context == null) return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         try {
@@ -92,7 +92,7 @@ public class RelationProjectionOperationsApiController {
                 vectors.purge(context, commit);
                 return ResponseEntity.noContent().build();
             }
-            return ResponseEntity.ok().eTag(GitHttpPrecondition.etag(commit)).body(vectors.rebuild(context, commit));
+            return selectedResponse(context).eTag(GitHttpPrecondition.etag(commit)).body(vectors.rebuild(context, commit));
         } catch (GitHttpPrecondition.PreconditionRequiredException missing) {
             return ResponseEntity.status(HttpStatus.PRECONDITION_REQUIRED).build();
         } catch (GitHttpPrecondition.InvalidPreconditionException invalid) {
@@ -106,12 +106,19 @@ public class RelationProjectionOperationsApiController {
         }
     }
 
+    private static ResponseEntity.BodyBuilder selectedResponse(RepositoryContext context) {
+        return ResponseEntity.ok()
+                .header("X-Taxonomy-Repository", context.repositoryId())
+                .header("X-Taxonomy-Workspace-Id", java.util.Objects.toString(context.workspaceId(), ""))
+                .header("X-Taxonomy-Branch", context.branch());
+    }
+
     @Operation(summary = "Inspect exact-branch projection readiness and recovery",
             description = "Inspects relation projection/index readiness against the current Git head in a writable repository context. Returns the head ETag when present and does not trigger a rebuild.")
     @GetMapping("/readiness")
     public ResponseEntity<ProjectionOperationResponse> readiness() {
         RepositoryContext context = writableContext(
-                workspaceResolver.resolveCurrentRepositoryContext());
+                workspaceResolver.resolveUnambiguousRepositoryForRead());
         if (context == null) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
@@ -137,7 +144,7 @@ public class RelationProjectionOperationsApiController {
             String ifNoneMatch) {
         try {
             RepositoryContext context = writableContext(
-                    workspaceResolver.resolveCurrentRepositoryContext());
+                    workspaceResolver.resolveUnambiguousRepositoryForRead());
             if (context == null) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
             }

@@ -52,6 +52,8 @@ Im Nur-Lesen-Modus ändert sich das Badge, um anzuzeigen, dass der Arbeitsbereic
 
 Navigieren Sie zu **Versionen → Verlauf**, um die Zeitleiste der Git-Checkpoints zu sehen. Einzelne akzeptierte Bearbeitungen stehen getrennt im [Verlauf des Architektureditors](ARCHITECTURE_EDITOR.md).
 
+Die Commit-Suche umfasst die indizierten Branches des ausgewählten Repositorys oder der Arbeitskopie. Die Kennzeichnung der aktuellen Abstammung in der versionierten Suche setzt einen Git-Nachweis voraus: Der Treffer muss der ausgewählte Head oder einer seiner Vorfahren sein. Ein Commit kann unter mehreren indizierten Branchnamen erscheinen. Die API liefert den beobachteten Head in `X-Taxonomy-Commit`. Der optionale Parameter `commitId` bindet die Suche an diesen Stand. Bei einem veralteten Stand oder einem nicht auflösbaren Treffer liefert die API HTTP 409. Dann kann der Aufrufer die Auswahl aktualisieren oder den ausgewählten Historienindex neu aufbauen.
+
 ![Versionsverlauf-Zeitleiste](../images/66-versions-timeline.png)
 
 Jeder Zeitleisteneintrag zeigt:

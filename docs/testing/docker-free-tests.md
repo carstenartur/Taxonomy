@@ -18,6 +18,8 @@ nicht erforderlich. Der erste Download benötigt Internetzugang.
 ./mvnw -B verify -Ptest-local
 ```
 
+Für einen vollständigen Lauf auf einem einzelnen GitHub-Runner unter **Actions → CI / CD → Run workflow** den gewünschten Branch und **Run the complete Maven test-local profile on one runner** auswählen. Der Job sichert den ausgecheckten Commit, das Maven-Log, originale Surefire-/Failsafe-Berichte und die vorhandenen Szenarioartefakte auch bei einem fehlgeschlagenen Build. Das Standardprofil für manuelle CI-Läufe bleibt über die voreingestellte leere Auswahl erreichbar.
+
 Die Werkzeuge liegen unter `target/test-runtime/`. Unter Linux muss das
 Betriebssystem die vom Browser benötigten Systembibliotheken bereitstellen.
 Fehlende Bibliotheken oder fehlgeschlagene Downloads brechen die Browsertests ab;

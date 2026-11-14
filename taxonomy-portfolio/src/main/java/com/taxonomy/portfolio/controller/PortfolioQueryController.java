@@ -40,7 +40,7 @@ public class PortfolioQueryController {
     @Operation(summary = "Build the consolidated requirement/solution/product portfolio",
             description = "Builds the authorized project portfolio view, optionally narrowed by the supplied query filters. The response combines recorded requirements, mappings and coverage; it does not run a new model analysis.")
     public ProjectPortfolioView portfolio(@PathVariable Long projectId) {
-        RequestScope scope = scope();
+        RequestScope scope = readScope();
         return aggregationService.build(projectId, scope.username(), scope.context());
     }
 
@@ -56,7 +56,7 @@ public class PortfolioQueryController {
     @Operation(summary = "List project conflict hypotheses and decisions",
             description = "Lists retained conflict candidates and their review decisions for the authorized project. An unreviewed candidate is not a confirmed inconsistency.")
     public List<ConflictView> listConflicts(@PathVariable Long projectId) {
-        RequestScope scope = scope();
+        RequestScope scope = readScope();
         return conflictService.list(projectId, scope.username(), scope.context());
     }
 
@@ -69,6 +69,10 @@ public class PortfolioQueryController {
         RequestScope scope = scope();
         return conflictService.review(
                 projectId, conflictId, request, scope.username(), scope.context());
+    }
+
+    private RequestScope readScope() {
+        return new RequestScope(workspaceResolver.resolveCurrentUsername(), workspaceResolver.resolveUnambiguousContextForRead());
     }
 
     private RequestScope scope() {

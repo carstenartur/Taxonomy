@@ -1,8 +1,10 @@
 package com.taxonomy.setup;
 
+import com.taxonomy.security.service.LegacyOwnershipDatabaseContract;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.oracle.OracleContainer;
@@ -35,6 +37,19 @@ class OracleProvisioningServiceIT {
         try (var connection = DriverManager.getConnection(server.getJdbcUrl(), sys); var sql = connection.createStatement()) {
             sql.execute("GRANT EXECUTE ON SYS.DBMS_LOCK TO SYSTEM");
         }
+    }
+
+    @Test void verifiedLegacyOwnershipOnAProvisionedSchema() throws Exception {
+        String user = "OWNER_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase(java.util.Locale.ROOT);
+        String password = "Tx9-" + UUID.randomUUID().toString().substring(0, 24);
+        var settings = input(user, password);
+        var service = new DatabaseProvisioningService(new OracleProvisioningService());
+        try {
+            var provisioned = service.provision(reviewed(settings, service.inspect(settings)));
+            assertEquals(Outcome.COMPLETE, provisioned.outcome(), provisioned.toString());
+            LegacyOwnershipDatabaseContract.verify(new DriverManagerDataSource(
+                    server.getJdbcUrl(), user, password), "boolean");
+        } finally { cleanup(user); }
     }
 
     @Test void createsAndReusesLocalUserWithFiniteQuotaAndNoAdministrativeGrants() throws Exception {

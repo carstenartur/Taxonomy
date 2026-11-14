@@ -392,6 +392,10 @@ server {
 
 ---
 
+### Quelle für Relations- und Vektorprojektionen wählen
+
+Für Bereitschaftsprüfung, Wiederaufbau der Relationen und Vektoroperationen unter `/api/architecture/relations/projection` gelten die Parameter `repositoryId`, `workspaceId` und `branch`. Für einen zentralen Branch bleibt `workspaceId` leer. Mehrdeutige zentrale Quellen und widersprüchliche Arbeitskopie-/Branch-Angaben ergeben vor der Projektionsverarbeitung HTTP 409. Vektorstatus und erfolgreicher Vektorwiederaufbau geben Repository, Arbeitskopie und Branch in den Antwort-Headern zurück. Der Wiederaufbau braucht zusätzlich den aktuellen Git-Commit als starken `If-Match`-Wert.
+
 ## Weiterführende Dokumentation
 
 - [Deployment-Leitfaden](DEPLOYMENT_GUIDE.md) — Erstinstallationsanweisungen

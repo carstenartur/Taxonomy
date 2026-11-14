@@ -20,7 +20,16 @@ import static org.mockito.Mockito.*;
 
 /** Explicit routing table: every listed endpoint preserves request identity, actor and workspace. */
 class PortfolioControllerDelegationContractTest {
-    record Route(Class<?> controller, String endpoint, String service, int status, String location) {}
+    record Route(Class<?> controller, String endpoint, String service, int status, String location,
+                 boolean readsSelectedContext) {
+        Route(Class<?> controller, String endpoint, String service, int status, String location) {
+            this(controller, endpoint, service, status, location, false);
+        }
+
+        static Route selectedRead(Class<?> controller, String endpoint, String service) {
+            return new Route(controller, endpoint, service, 200, null, true);
+        }
+    }
     static Stream<Route> routes() {
         return Stream.of(
             new Route(ProductCatalogController.class,"create","createProduct",201,"/api/products/73"),
@@ -40,25 +49,25 @@ class PortfolioControllerDelegationContractTest {
             new Route(ProjectSolutionController.class,"propose","proposeFromCurrentMappings",200,null),
             new Route(ProjectSolutionController.class,"update","updateProjectSolution",200,null),
             new Route(ProjectSolutionController.class,"linkRequirement","linkRequirement",200,null),
-            new Route(PortfolioQueryController.class,"portfolio","build",200,null),
+            Route.selectedRead(PortfolioQueryController.class,"portfolio","build"),
             new Route(PortfolioQueryController.class,"detectConflicts","detect",200,null),
-            new Route(PortfolioQueryController.class,"listConflicts","list",200,null),
+            Route.selectedRead(PortfolioQueryController.class,"listConflicts","list"),
             new Route(PortfolioQueryController.class,"reviewConflict","review",200,null),
             new Route(ProjectPortfolioController.class,"createProject","createProject",201,"/api/projects/73"),
-            new Route(ProjectPortfolioController.class,"listProjects","listProjects",200,null),
-            new Route(ProjectPortfolioController.class,"getProject","getProject",200,null),
+            Route.selectedRead(ProjectPortfolioController.class,"listProjects","listProjects"),
+            Route.selectedRead(ProjectPortfolioController.class,"getProject","getProject"),
             new Route(ProjectPortfolioController.class,"updateProject","updateProject",200,null),
             new Route(ProjectPortfolioController.class,"createRequirement","createRequirement",201,"/api/projects/101/requirements/73"),
-            new Route(ProjectPortfolioController.class,"listRequirements","listRequirements",200,null),
-            new Route(ProjectPortfolioController.class,"getRequirement","getRequirement",200,null),
+            Route.selectedRead(ProjectPortfolioController.class,"listRequirements","listRequirements"),
+            Route.selectedRead(ProjectPortfolioController.class,"getRequirement","getRequirement"),
             new Route(ProjectPortfolioController.class,"updateRequirement","updateRequirement",200,null),
             new Route(ProjectPortfolioController.class,"addRequirementVersion","addRequirementVersion",201,"/api/projects/101/requirements/102/versions/73"),
-            new Route(ProjectPortfolioController.class,"listRequirementVersions","listRequirementVersions",200,null),
+            Route.selectedRead(ProjectPortfolioController.class,"listRequirementVersions","listRequirementVersions"),
             new Route(ProjectAnalysisController.class,"analyzeProject","enqueueProject",202,"/api/projects/101/analysis-jobs/job-73"),
-            new Route(ProjectAnalysisController.class,"listJobs","listJobs",200,null),
-            new Route(ProjectAnalysisController.class,"listSnapshots","listSnapshots",200,null),
-            new Route(ProjectAnalysisController.class,"getSnapshot","getSnapshot",200,null),
-            new Route(ProjectAnalysisController.class,"diffSnapshots","diffSnapshots",200,null),
+            Route.selectedRead(ProjectAnalysisController.class,"listJobs","listJobs"),
+            Route.selectedRead(ProjectAnalysisController.class,"listSnapshots","listSnapshots"),
+            Route.selectedRead(ProjectAnalysisController.class,"getSnapshot","getSnapshot"),
+            Route.selectedRead(ProjectAnalysisController.class,"diffSnapshots","diffSnapshots"),
             new Route(ProjectAnalysisController.class,"reviewElementMapping","reviewElementMapping",200,null),
             new Route(ProjectAnalysisController.class,"reviewRelationMapping","reviewRelationMapping",200,null)
         );
@@ -80,9 +89,11 @@ class PortfolioControllerDelegationContractTest {
         request.setContextPath(contextPath);
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
         var context=new WorkspaceContext("alice","workspace-a","review","repository-a");
+        var selected = new WorkspaceContext("alice", "workspace-b", "selected-review", "repository-b");
         var resolver=mock(WorkspaceResolver.class);
         when(resolver.resolveCurrentUsername()).thenReturn("alice");
         when(resolver.resolveCurrentContext()).thenReturn(context);
+        when(resolver.resolveUnambiguousContextForRead()).thenReturn(selected);
         var services=new ArrayList<Object>();
         var returned=new AtomicReference<Object>();
         Constructor<?> constructor=route.controller().getConstructors()[0];
@@ -114,7 +125,9 @@ class PortfolioControllerDelegationContractTest {
         assertThat(calls).as("one backend operation, no secondary mutation").hasSize(1);
         Invocation call=calls.getFirst();
         assertThat(call.getMethod().getName()).isEqualTo(route.service());
-        var expected=new ArrayList<>(Arrays.asList(args)); expected.add("alice");expected.add(context);
+        var expected=new ArrayList<>(Arrays.asList(args));
+        expected.add("alice");
+        expected.add(route.readsSelectedContext() ? selected : context);
         assertThat(call.getArguments()).containsExactly(expected.toArray());
         if(response instanceof ResponseEntity<?> entity) {
             assertThat(entity.getStatusCode().value()).isEqualTo(route.status());
@@ -122,7 +135,12 @@ class PortfolioControllerDelegationContractTest {
             if(route.location()!=null) assertThat(entity.getHeaders().getLocation()).hasToString(contextPath + route.location());
         } else assertThat(response).isSameAs(returned.get());
         verify(resolver,times(1)).resolveCurrentUsername();
-        verify(resolver,times(1)).resolveCurrentContext();
+        if (route.readsSelectedContext()) {
+            verify(resolver).resolveUnambiguousContextForRead();
+        } else {
+            verify(resolver).resolveCurrentContext();
+        }
+        verifyNoMoreInteractions(resolver);
     }
     private static Object responseValue(Method method) {
         Class<?> type=method.getReturnType();

@@ -11,7 +11,8 @@
     const status = document.getElementById('productGapStatus');
     const results = document.getElementById('productGapFamilies');
     const classes = ['CREATE', 'PROCURE', 'CHANGE', 'UNDECIDED'];
-    const pending = new Set();
+    let pending = new Map();
+    let currentSource;
     let families = [];
     let writable = false;
     let generation = 0;
@@ -78,6 +79,8 @@
         return details;
     }
     function editor(family) {
+        const at = generation;
+        const source = currentSource;
         const form = element('form');
         form.className = 'mt-2';
         const choose = element('select');
@@ -95,15 +98,23 @@
         form.append(choiceLabel, choose, reasonLabel, reason, save);
         form.addEventListener('submit', async event => {
             event.preventDefault();
-            if (!reason.value.trim() || pending.has(family.reviewKey)) return;
-            pending.add(family.reviewKey); save.disabled = true;
-            const at = generation;
+            if (at !== generation || !source() || !reason.value.trim() || pending.has(family.reviewKey)) return;
+            const submitted = pending;
+            submitted.set(family.reviewKey, form);
+            save.disabled = true;
             try {
                 const updated = await api.reviewProductGap(projectId, family.reviewKey, {
                     classification: choose.value, rationale: reason.value.trim(), expectedRevision: family.revision,
                     evidenceFingerprint: family.evidenceFingerprint
                 });
-                if (at !== generation) return;
+                if (!source() || pending !== submitted || !panel.open) return;
+                if (at !== generation) {
+                    // The panel reopened or reloaded while the decision committed.
+                    // Replace any earlier GET with one that can observe the saved revision.
+                    submitted.delete(family.reviewKey);
+                    await load();
+                    return;
+                }
                 families = families.map(item => item.reviewKey === updated.reviewKey ? updated : item);
                 render();
                 const current = [...results.children].find(node => node.dataset.gap === family.reviewKey);
@@ -111,12 +122,14 @@
                 else classification.focus();
                 status.textContent = t('saved', updated.revision);
             } catch (error) {
-                if (at === generation) status.textContent = t(error.status === 409 ? 'conflict' : 'failed');
+                if (at === generation && source()) status.textContent = t(error.status === 409 ? 'conflict' : 'failed');
             } finally {
-                pending.delete(family.reviewKey);
-                save.disabled = false;
-                const current = document.getElementById('class-' + family.reviewKey)?.form;
-                if (current) current.querySelector('button').disabled = false;
+                if (submitted.get(family.reviewKey) === form) submitted.delete(family.reviewKey);
+                if (submitted === pending && source() && !submitted.has(family.reviewKey)) {
+                    save.disabled = false;
+                    const current = document.getElementById('class-' + family.reviewKey)?.form;
+                    if (current) current.querySelector('button').disabled = false;
+                }
             }
         });
         return form;
@@ -137,26 +150,35 @@
         status.textContent = '';
     }
     async function load() {
+        if (!currentSource || !currentSource()) pending = new Map();
         reset();
+        const source = window.TaxonomyApiClient.captureContext();
+        currentSource = source;
         const at = generation;
         const controller = new AbortController(); fetchController = controller;
         await window.TaxonomyI18n.ready();
-        if (at !== generation) return;
+        if (at !== generation || !source()) return;
         if (classification.options.length === 1) options(classification);
         status.textContent = t('loading');
         try {
             const [data, account] = await Promise.all([api.productGaps(projectId, {signal: controller.signal}), api.getAccount()]);
-            if (at !== generation) return;
+            if (at !== generation || !source()) return;
             writable = account?.architectureMutationAllowed === true;
             families = data; render();
         } catch (error) {
-            if (at === generation) status.textContent = t('unavailable');
+            if (at === generation && source()) status.textContent = t('unavailable');
         }
     }
     panel.addEventListener('toggle', () => {if (panel.open) load(); else reset();});
     document.getElementById('loadProductGaps').addEventListener('click', load);
     filter.addEventListener('input', render);
     classification.addEventListener('change', render);
-    document.addEventListener('taxonomy:repository-context-changed', () => {if (panel.open) load(); else reset();});
+    const refreshChangedSource = () => {
+        if (panel.open && (!currentSource || !currentSource())) return load();
+    };
+    for (const event of ['taxonomy:repository-context-changed', 'taxonomy:entity-context-changed',
+            'taxonomy:architecture-source-changed']) {
+        document.addEventListener(event, refreshChangedSource);
+    }
     window.addEventListener('pagehide', reset);
 }());

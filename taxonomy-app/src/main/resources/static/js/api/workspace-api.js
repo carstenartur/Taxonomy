@@ -106,7 +106,8 @@
             return get('/api/context/compare?' + query, options);
         },
         searchHistory: function (query, branch, options) {
-            var params = new URLSearchParams({ query: query, currentBranch: branch });
+            var params = new URLSearchParams({query: query});
+            if (branch) params.set('currentBranch', branch);
             return get('/api/dsl/history/search-versioned?' + params, options);
         }
     });
