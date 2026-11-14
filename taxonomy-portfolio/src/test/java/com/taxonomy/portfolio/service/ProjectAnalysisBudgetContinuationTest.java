@@ -96,10 +96,27 @@ class ProjectAnalysisBudgetContinuationTest {
             assertThat(completed.status()).as(completed.errorSummary()).isEqualTo(AnalysisStatus.SUCCESS);
             assertThat(f.snapshot(completed).analysis().getRecovery().id()).isEqualTo(decision.continuationId());
 
+            var admitted = f.service.admitOwner("owner", f.scope);
+            var verification = new CopilotOperationKey(false, "a".repeat(64), 2, 2,
+                    com.taxonomy.portfolio.model.AnalysisAutomationProfile.EXHAUSTIVE, true, true);
+            var firstPass = new CopilotOperationKey(false, verification.operationId(), 1, 2,
+                    verification.profile(), true, true);
+            var first = worker.submit(() -> f.service.enqueueAdmittedPass(f.projectId, f.requirementId,
+                    firstPass, "CUSTOM_OPENAI", 100, "owner", f.scope, admitted)).get();
+            worker.submit(f::runQueued).get();
+            var second = worker.submit(() -> f.service.enqueueAdmittedPass(f.projectId, f.requirementId,
+                    verification, "CUSTOM_OPENAI", 100, "owner", f.scope, admitted)).get();
+            worker.submit(f::runQueued).get();
+            assertThat(f.current(second).items().getFirst().snapshotId()).isNotNull();
+            assertThat(first.id()).isNotEqualTo(second.id());
+
             int calls = f.prompts.size();
             var revoked = f.service.enqueueProject(f.projectId, new AnalyzeProjectRequest(
                     List.of(f.requirementId), false, "CUSTOM_OPENAI", 100, "revoked-worker"), "owner", f.scope);
             enabled.set(false);
+            assertThatThrownBy(() -> worker.submit(() -> f.service.enqueueAdmittedPass(f.projectId, f.requirementId,
+                    verification, "CUSTOM_OPENAI", 100, "owner", f.scope, admitted)).get())
+                    .hasCauseInstanceOf(org.springframework.security.access.AccessDeniedException.class);
             worker.submit(f::runQueued).get();
             assertThat(f.current(revoked).status()).isEqualTo(AnalysisStatus.FAILED);
             assertThat(f.prompts).hasSize(calls);

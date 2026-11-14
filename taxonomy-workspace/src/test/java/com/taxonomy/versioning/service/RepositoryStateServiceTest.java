@@ -81,7 +81,8 @@ class RepositoryStateServiceTest {
         assertNotNull(version.commitTimestamp());
         assertFalse(version.projectionStale());
         assertTrue(version.indexStale());
-        org.mockito.Mockito.verify(navigation).getScopedWorkspaceState(selected);
+        assertEquals(version, states.getViewContext(selected.username(), selected.currentBranch(), selected));
+        org.mockito.Mockito.verify(navigation, org.mockito.Mockito.times(2)).getScopedWorkspaceState(selected);
         org.mockito.Mockito.verifyNoMoreInteractions(navigation);
     }
 

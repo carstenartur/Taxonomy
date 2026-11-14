@@ -155,6 +155,20 @@ public class ProjectRequirementAnalysisService {
         return dispatchPending(job, projectId, username, context, owner);
     }
 
+    /** Recheck the original request's workspace and login before any scheduled pass or promotion. */
+    void checkCopilotOwner(AnalysisOwner owner, String username, WorkspaceContext context) {
+        if (owner != null) budgetContinuations.checkOwner(owner, username, context);
+    }
+
+    AnalysisJobView enqueueAdmittedPass(Long projectId, Long requirementId, CopilotOperationKey key,
+            String provider, int maxNodes, String username, WorkspaceContext context, AnalysisOwner owner) {
+        checkCopilotOwner(owner, username, context);
+        var job = key.pass() == 1
+                ? prepareJob(projectId, requestForRequirement(requirementId, provider, maxNodes, key.value()), username, context)
+                : persistenceService.createOrReuseVerificationPass(projectId, requirementId, key, username, context);
+        return dispatchPending(job, projectId, username, context, owner);
+    }
+
     private AnalysisJobView dispatchPending(AnalysisJobView job, Long projectId, String username, WorkspaceContext context,
                                             AnalysisOwner owner) {
         if (job.status() == AnalysisStatus.PENDING) {
@@ -359,7 +373,7 @@ public class ProjectRequirementAnalysisService {
                 targets, username, context);
     }
 
-    private AnalysisOwner admitOwner(String username, WorkspaceContext context) {
+    AnalysisOwner admitOwner(String username, WorkspaceContext context) {
         return budgetContinuations == null ? null : budgetContinuations.admitOwner(username, context);
     }
 
