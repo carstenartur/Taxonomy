@@ -394,10 +394,10 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     const result = await commit();
     return `arch-${result.commandId}`;
   }
-  async function select(id) {
+  async function select(id, reason = `select ${id}`) {
     await page.locator('#editorSearch').fill(id);
-    await confirmDraftDiscard(page, () => page.locator('#editorTree button').first().click(),
-      measurements.explicitDraftDiscards, `select ${id}`);
+    await confirmDraftDiscard(page, () => page.locator(`#editorTree [data-select-id=${JSON.stringify(id)}]`).click(),
+      measurements.explicitDraftDiscards, reason);
     assert.equal(await page.locator('#editorSelection').innerText(), id);
   }
   async function reflow() {
@@ -427,8 +427,9 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
   } else {
     const writable = initial.mayEdit ? initial : await readEditorAfter(() => page.locator('#editorWorkspace').click());
     assert.equal(writable.mayEdit, true);
-    if (writable.model.elements.length === 0) {
-      assert.equal(await page.locator('#editorTree button').count(), 0);
+    let initialElement = writable.model.elements[0]?.id;
+    if (!initialElement) {
+      assert.equal(await page.locator('#editorTree [data-select-id]').count(), 0);
       // A compact project starts without catalogue elements. Persist a sparse record before reviewing it in the form.
       const created = await page.evaluate(async context => {
         const id = crypto.randomUUID();
@@ -440,11 +441,11 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
       const reloaded = await readEditorAfter(() => page.locator('#editorRefresh').click());
       assert.equal(reloaded.document.context.revision, created.context.revision);
       assert.deepEqual(reloaded.model.elements.map(item => item.id), [`arch-${created.commandId}`]);
-      assert.equal(await page.locator('#editorTree button').count(), 1);
+      initialElement = reloaded.model.elements[0].id;
+      assert.equal(await page.locator('#editorTree [data-select-id]').count(), 1);
     }
     await page.locator('#editorRationale').fill('Browser acceptance architecture decision');
-    await confirmDraftDiscard(page, () => page.locator('#editorTree button').first().click(),
-      measurements.explicitDraftDiscards, 'select initial project element');
+    await select(initialElement, 'select initial project element');
     assert.deepEqual(measurements.explicitDraftDiscards, ['select initial project element'],
       'Selecting another element must explicitly confirm the unaccepted rationale');
     const unchanged = await preview(() => page.locator('#editorPreviewElement').click());
@@ -862,7 +863,9 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
   }
   await evidence.runAxe('architecture-editor');
   assert.ok(await page.locator('#editorGraph .editor-node').count() <= 200);
-  assert.ok(await page.locator('#editorTree button').count() <= 50);
+  const widestBranch = await page.locator('#editorTree ul').evaluateAll(lists => Math.max(0,
+    ...lists.map(list => list.querySelectorAll(':scope > li > .responsibility-row [data-select-id]').length)));
+  assert.ok(widestBranch <= 51, 'An unopened sibling page renders at most 50 elements plus the path to the selection');
   for (const failure of httpFailures.slice(failureStart)) {
     assert.ok(expectedFailures.some(expected => expected.requestId && expected.requestId === failure.requestId
       && expected.path === failure.path && expected.status === failure.status), `Unexpected editor HTTP failure: ${JSON.stringify(failure)}`);

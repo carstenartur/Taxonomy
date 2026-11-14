@@ -724,7 +724,7 @@ for (const { basePath, expectedEndpoint } of [
       request: { post: async (url, options) => {
         calls.push(['post', url, JSON.parse(JSON.stringify(options))]);
         selectedWorkspace = 'fixture-workspace';
-        return { status: () => 200 };
+        return { status: () => 200, json: async () => ({workspaceId:selectedWorkspace}) };
       } },
       reload: async options => {
         // A completed document can retain background network activity. Treat
@@ -834,7 +834,7 @@ for (const { basePath, provisionStatus } of [
         const match = path.match(new RegExp(`^${basePath}/api/workspace/(fixture-workspace|original-workspace)/switch$`));
         assert.ok(match, `Unexpected native lifecycle endpoint: ${path}`);
         selectedWorkspace = match[1];
-        return { status: () => 200 };
+        return { status: () => 200, json: async () => ({workspaceId:selectedWorkspace}) };
       } },
       reload: async () => {
         calls.push(`reload:${selectedWorkspace}`);

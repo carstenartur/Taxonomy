@@ -172,9 +172,18 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
 
     private void renderTree(StringBuilder html, DecisionRationaleReport report, DecisionReportLabels labels) {
         html.append("<section id=\"decision_tree\"><h2>").append(text(labels.treeOverview())).append("</h2>");
+        if (report.scope().options().showResponsibilities() && report.scope().decisionTree().responsibilitiesByCode().isEmpty())
+            html.append("<p>").append(text(labels.noResponsibilities())).append("</p>");
         if (report.scope().options().treeLayout() == DecisionReportOptions.TreeLayout.TABLE) {
             html.append("<table><thead><tr><th>").append(text(labels.node())).append("</th><th>").append(text(labels.score())).append("</th></tr></thead><tbody>");
-            report.scope().decisionTree().rows().forEach(row -> html.append("<tr><td style=\"padding-left:").append(row.depth() * 12 + 8).append("px\">").append(text(row.code() + " · " + row.title())).append("</td><td>").append(row.score() == null ? text(labels.notEvaluated()) : row.score() + "%").append("</td></tr>"));
+            for (var row : report.scope().decisionTree().rows()) {
+                html.append("<tr><td style=\"padding-left:").append(row.depth() * 12 + 8).append("px\">")
+                        .append(text(row.code() + " · " + row.title()));
+                var owner = row.responsibility();
+                if (owner != null) html.append("<br><span style=\"border-left:4px solid ").append(owner.color())
+                        .append(";padding-left:6px\">").append(text(labels.responsibility() + ": " + owner.name())).append("</span>");
+                html.append("</td><td>").append(row.score() == null ? text(labels.notEvaluated()) : row.score() + "%").append("</td></tr>");
+            }
             html.append("</tbody></table>");
         } else {
             var panels = new com.taxonomy.reporting.render.document.DecisionTreeFigureRenderer().render(report.scope().decisionTree(), report.languageTag(), report.scope().options().treeLayout());
@@ -283,6 +292,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
                         : "Each following chapter corresponds to one parent node whose direct children contain at least one non-zero score."))
                 .append("</p></section>");
 
+        var owners = report.scope().decisionTree().responsibilitiesByCode();
         for (DecisionChapter chapter : report.chapters()) {
             html.append("<section id=\"chapter-").append(chapter.number()).append("\" class=\"report-section decision-chapter\"><div class=\"chapter-number\">")
                     .append(chapter.number()).append("</div><div class=\"chapter-heading\"><div><span class=\"small-label\">")
@@ -295,7 +305,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
                         .append(text(chapter.parentDescription())).append("</p>");
             }
 
-            List<DiagramPanel> panels = diagramRenderer.render(chapter, report.languageTag());
+            List<DiagramPanel> panels = diagramRenderer.render(chapter, report.languageTag(), owners);
             for (DiagramPanel panel : panels) {
                 html.append("<figure class=\"decision-diagram\">")
                         .append(panel.svg())
@@ -303,6 +313,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
                         .append(text(labels.parentNode() + " " + chapter.parentCode()))
                         .append(panel.panelCount() > 1
                                 ? " · " + panel.panelNumber() + "/" + panel.panelCount() : "")
+                        .append(panel.responsibilityCaption().isEmpty() ? "" : "<br>" + text(panel.responsibilityCaption()))
                         .append("</figcaption></figure>");
             }
 

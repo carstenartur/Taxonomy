@@ -500,37 +500,6 @@ public class DslApiController {
         }
     }
 
-    // ── Branch deletion ─────────────────────────────────────────────
-
-    @DeleteMapping("/branch")
-    @Operation(summary = "Delete a branch",
-            description = "Deletes a Git branch in the selected writable working copy. " +
-                    "HTTP central selections are read-only and cannot delete branches. Protected branches (draft, accepted, main) " +
-                    "cannot be deleted.")
-    public ResponseEntity<Map<String, Object>> deleteBranch(@RequestParam String name) {
-        try {
-            boolean deleted = dslOps.deleteBranch(name);
-            if (!deleted) {
-                Map<String, Object> error = new LinkedHashMap<>();
-                error.put("error", "Branch '" + name + "' not found");
-                return ResponseEntity.status(404).body(error);
-            }
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("deleted", name);
-            result.put("success", true);
-            return ResponseEntity.ok(result);
-        } catch (IllegalArgumentException e) {
-            Map<String, Object> error = new LinkedHashMap<>();
-            error.put("error", e.getMessage());
-            return ResponseEntity.badRequest().body(error);
-        } catch (IOException e) {
-            log.error("Branch deletion failed", e);
-            Map<String, Object> error = new LinkedHashMap<>();
-            error.put("error", "Branch deletion failed: " + e.getMessage());
-            return ResponseEntity.internalServerError().body(error);
-        }
-    }
-
     @GetMapping("/operation/check")
     @Operation(summary = "Check whether a write operation is safe",
             description = "Returns warnings (e.g. stale projection) and blocks (e.g. operation in progress) " +

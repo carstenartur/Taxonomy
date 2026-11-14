@@ -165,9 +165,92 @@ async function fixture(standaloneUrl=null){
         history.replaceState=(_state,_title,url)=>navigation.push({kind:'replace',url:String(url)});history.pushState=(_state,_title,url)=>navigation.push({kind:'push',url:String(url)});
     });
     await page.addScriptTag({path:path.join(resources,'static/js/architecture-brief.js')});
+    await page.addScriptTag({path:path.join(resources,'static/js/architecture-responsibility-tree.js')});
     await page.addScriptTag({path:path.join(resources,'static/js/architecture-editor.js')});
     return page;
 }
+
+test('working tree selects a role and accepts or clears a stable organization override through preview', async () => {
+    const page = await fixture();
+    try {
+        await page.evaluate(async () => {
+            const original = ArchitectureEditorApi.load;
+            const property = 'x-responsible-organization-id';
+            let override = '', revision = 7, sequence = 0;
+            window.responsibilityPreviews = [];
+            window.responsibilityAccepted = [];
+            crypto.randomUUID = () => '00000000-0000-4000-8000-' + String(++sequence).padStart(12, '0');
+            TaxonomyI18n.t = (key, ...args) => [key, ...args].join(' ');
+            ArchitectureEditorApi.exportUrl = () => '/export';
+            ArchitectureEditorApi.load = async (...args) => {
+                const view = await original(...args);
+                view.document.context.revision = revision;
+                view.document.context.writeMode = 'PRIVATE_WORKSPACE';
+                view.schema.elementTypes = ['BusinessRole'];
+                view.model.organizations = [
+                    {id:'org-hq', title:'Headquarters', parentId:null},
+                    {id:'org-medical', title:'Medical service', parentId:'org-hq'}
+                ];
+                view.model.elements = [
+                    {id:'BR-1002', type:'BusinessRole', title:'Advisors and Liaison Roles', extensions:{[property]:'org-hq'}},
+                    {id:'BR-1081', type:'BusinessRole', title:'Medical Advisor Roles', extensions:override ? {[property]:override} : {}}
+                ];
+                view.hierarchy = {
+                    'BR-1002':{parentId:null, organizationId:'org-hq', sourceElementId:'BR-1002', legacyOrganization:null},
+                    'BR-1081':{parentId:'BR-1002', organizationId:override || 'org-hq',
+                        sourceElementId:override ? 'BR-1081' : 'BR-1002', legacyOrganization:null}
+                };
+                view.scene.nodes = view.model.elements.map(item => ({id:item.id, label:item.title}));
+                view.searchIndex = view.model.elements.map(item => ({id:item.id, text:item.title.toLowerCase()}));
+                return view;
+            };
+            ArchitectureEditorApi.preview = async command => {
+                responsibilityPreviews.push(structuredClone(command));
+                return {context:command.context, change:{changes:[{id:command.id, before:override, after:command.properties[property]}]}};
+            };
+            ArchitectureEditorApi.execute = async command => {
+                responsibilityAccepted.push(structuredClone(command));
+                override = command.properties[property];
+                return {context:{...command.context, revision:++revision}, projectionState:'READY'};
+            };
+            window.editor = TaxonomyArchitectureEditor.mount(document.getElementById('architectureWorkingSource'));
+            await editor.activate({kind:'working', repositoryId:'repo', workspaceScopeKey:'private-a', branch:'draft/a'});
+        });
+
+        const parent = page.locator('#editorTree [data-toggle-id="BR-1002"]');
+        assert.equal(await parent.isVisible(), true);
+        await parent.click();
+        await page.locator('#editorTree [data-select-id="BR-1081"]').click();
+        assert.equal(await page.locator('#editorSelection').innerText(), 'BR-1081');
+        assert.equal(await page.locator('#editorOrganization').inputValue(), '');
+        const inherited = await page.locator('#editorResponsibilitySource').innerText();
+        assert.match(inherited, /Headquarters/);
+        assert.match(inherited, /BR-1002|Advisors and Liaison Roles/);
+        assert.equal(await page.locator('#editorOrganization option[value="org-medical"]').count(), 1);
+
+        for (const [index, value] of ['org-medical', ''].entries()) {
+            await page.locator('#editorOrganization').selectOption(value);
+            await page.locator('#editorRationale').fill(value ? 'Assign medical service' : 'Use responsibility inherited from the parent');
+            await page.locator('#editorPreviewElement').click();
+            await page.locator('#editorPreviewDialog[open]').waitFor();
+            const preview = await page.evaluate(() => responsibilityPreviews.at(-1));
+            assert.equal(preview.kind, 'UPDATE_ELEMENT');
+            assert.equal(preview.id, 'BR-1081');
+            assert.deepEqual(preview.properties, {'x-responsible-organization-id':value});
+            assert.equal(await page.evaluate(() => responsibilityAccepted.length), index);
+            await page.locator('#editorAccept').click();
+            await page.waitForFunction(count => responsibilityAccepted.length === count &&
+                !document.querySelector('#editorPreviewDialog').open && !document.querySelector('#editorPreviewElement').disabled, index + 1);
+            assert.deepEqual(await page.evaluate(() => responsibilityAccepted.at(-1)), preview);
+            assert.equal(await page.locator('#editorOrganization').inputValue(), value);
+        }
+        assert.equal(await page.locator('#editorResponsibilitySource').innerText(), inherited);
+        assert.equal(await page.locator('#editorTree [data-select-id="BR-1081"]').getAttribute('aria-current'), 'true');
+    } finally {
+        await page.close();
+    }
+});
+
 test('the working editor supplies its authoritative taxonomy type mapping to the shared renderer',async()=>{
     const page=await fixture();try{
         const actual=await page.evaluate(async()=>{
@@ -471,7 +554,7 @@ test('history replay replaces the selected element without adding history and ca
         assert.equal(await page.locator('#editorTitle').inputValue(),'First');
         await page.locator('#editorTitle').fill('Keep this edit');
         await page.evaluate(()=>{window.confirmCalls=0;window.confirm=()=>{confirmCalls++;return false;};});
-        await page.locator('#editorTree button').filter({hasText:'First'}).click();
+        await page.locator('#editorTree [data-select-id="one"]').click();
         assert.equal(await page.locator('#editorTitle').inputValue(),'Keep this edit');
         assert.equal(await page.evaluate(()=>editor.hasDraft()),true);
         assert.equal(await page.evaluate(()=>confirmCalls),0,'Selecting the same element need not replace its form');

@@ -125,16 +125,6 @@ class DslApiControllerBranchCoverageTest {
         assertThat(controller.restore("broken", "draft").getStatusCode())
                 .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
 
-        when(dslOps.deleteBranch("feature")).thenReturn(true);
-        assertThat(controller.deleteBranch("feature").getBody())
-                .containsEntry("deleted", "feature").containsEntry("success", true);
-        when(dslOps.deleteBranch("missing")).thenReturn(false);
-        assertThat(controller.deleteBranch("missing").getStatusCode().value()).isEqualTo(404);
-        when(dslOps.deleteBranch("draft")).thenThrow(new IllegalArgumentException("protected"));
-        assertThat(controller.deleteBranch("draft").getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        when(dslOps.deleteBranch("io")).thenThrow(new IOException("delete io"));
-        assertThat(controller.deleteBranch("io").getStatusCode())
-                .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     @Test

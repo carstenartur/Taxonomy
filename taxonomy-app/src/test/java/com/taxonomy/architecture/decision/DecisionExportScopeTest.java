@@ -151,6 +151,18 @@ class DecisionExportScopeTest {
                 .doesNotContain(new DecisionReportLabels("en").aiReason());
     }
 
+    @Test
+    void oldSnapshotCannotAcquireCurrentResponsibilitiesEvenWhenExplicitlyRequested() {
+        var lookup = mock(TaxonomyResponsibilityLookup.class);
+        var service = service();
+        service.setResponsibilityLookup(lookup);
+        var source = input(Map.of("CP", 80d, "BP-looking", 80d, "CP-zero", 0d));
+        var options = new DecisionReportOptions(null, null, null, null, null, true);
+        var report = service.generate(source, context, null, Locale.ENGLISH, options, null, true);
+        assertThat(report.scope().decisionTree().responsibilitiesByCode()).isEmpty();
+        verifyNoInteractions(lookup);
+    }
+
     private DecisionAnalysisInput input(Map<String, Double> scores) {
         var reasons = new LinkedHashMap<String, String>();
         scores.forEach((code, score) -> reasons.put(code, "Saved reason for " + code));
@@ -161,13 +173,16 @@ class DecisionExportScopeTest {
     }
 
     private DecisionRationaleReport generate(DecisionAnalysisInput input, DecisionReportOptions options) {
+        return service().generate(input, context, null, Locale.ENGLISH, options);
+    }
+
+    private DecisionRationaleReportService service() {
         var catalogue = mock(TaxonomyCatalogueMetadataService.class);
         var build = mock(DecisionReportBuildMetadataService.class);
         when(catalogue.getMetadata()).thenReturn(new TaxonomyCatalogueMetadataService.CatalogueMetadata(
                 "catalogue.xlsx", "v1", "hash", "source", null, null, null, null));
         when(build.current()).thenReturn(new DecisionReportBuildMetadataService.BuildMetadata("1", "commit"));
-        return new DecisionRationaleReportService(mock(TaxonomyService.class), catalogue, build, "UTC")
-                .generate(input, context, null, Locale.ENGLISH, options);
+        return new DecisionRationaleReportService(mock(TaxonomyService.class), catalogue, build, "UTC");
     }
 
     private static DecisionReportOptions compact(String root) {

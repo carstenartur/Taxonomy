@@ -60,11 +60,12 @@ class DecisionReportOptionsHttpTest {
         var mvc = MockMvcBuilders.standaloneSetup(new DecisionRationaleSnapshotReportController(service,registry,workspace,words)).build();
         mvc.perform(get("/api/projects/41/snapshots/snapshot-1/decision-report/"+format)
                 .param("language","de").param("profile","COMPACT").param("taxonomyRoots","CP","BP")
-                .param("contents","NONE").param("treeLayout","A4_LANDSCAPE"))
+                .param("contents","NONE").param("treeLayout","A4_LANDSCAPE").param("showResponsibilities","true"))
                 .andExpect(status().isOk()).andExpect(header().string("X-Taxonomy-Snapshot-Id","snapshot-1"));
         var options = ArgumentCaptor.forClass(DecisionReportOptions.class);
         verify(service).generate(eq(41L),eq("snapshot-1"),eq("auditor"),any(),eq(Locale.GERMAN),options.capture());
         assertThat(options.getValue().taxonomyRoots()).containsExactly("BP","CP");
+        assertThat(options.getValue().showResponsibilities()).isTrue();
         assertThat(options.getValue().contents()).isEqualTo(DecisionReportOptions.Contents.NONE);
         assertThat(options.getValue().treeLayout()).isEqualTo(DecisionReportOptions.TreeLayout.A4_LANDSCAPE);
         verifyNoInteractions(words);

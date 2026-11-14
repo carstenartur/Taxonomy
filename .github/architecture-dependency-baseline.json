@@ -342,7 +342,7 @@
       "fromPackage": "com.taxonomy.composition.analysis",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.editor",
-      "classDependencyCount": 7
+      "classDependencyCount": 8
     },
     {
       "fromContext": "app-composition",
@@ -1070,7 +1070,7 @@
       "fromPackage": "com.taxonomy.security.access",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 8
+      "classDependencyCount": 10
     },
     {
       "fromContext": "app-composition",
