@@ -15,6 +15,7 @@ public final class RelationProjectionScopeMigrationChecks {
     private static final String REPO = "projection-scope-test";
     private static final String HEAD = "a".repeat(40);
     private static final Timestamp ORIGINAL = Timestamp.from(Instant.parse("2026-08-22T09:55:32Z"));
+    private static final String LEGACY_BRANCH = "legacy-scope";
 
     public static void verify(DataSource database, Runnable migration) {
         var rows = new JdbcTemplate(database);
@@ -31,6 +32,10 @@ public final class RelationProjectionScopeMigrationChecks {
         portable.migrate();
         seed(rows, "main", null);
         seed(rows, "historic", "__shared__");
+        seedCheckpointAndRecovery(rows, LEGACY_BRANCH, null, "__shared__", 1);
+        seedCheckpointAndRecovery(rows, LEGACY_BRANCH, "editor", "editor", 2);
+        seedCheckpointAndRecovery(rows, LEGACY_BRANCH, " editor ", " editor ", 3);
+        seedCheckpointAndRecovery(rows, LEGACY_BRANCH, "", "", 4);
         for (long id : new long[] {7001, 7002, 7003}) {
             rows.update("""
                     insert into taxonomy_node (id,code,name_en,node_level,has_embedding,incoming_relation_count,
@@ -39,12 +44,12 @@ public final class RelationProjectionScopeMigrationChecks {
         }
         seedLegacyRelations(rows, null, 7002);
         seedLegacyRelations(rows, "__shared__", 7003);
-        long centralHypothesis = seedHypothesis(rows, null, "main");
-        long privateHypothesis = seedHypothesis(rows, "__shared__", "historic");
+        long centralHypothesis = seedHypothesis(rows, null, "main", "__shared__");
+        long privateHypothesis = seedHypothesis(rows, "__shared__", "historic", "__shared__");
         try (var connection = database.getConnection()) {
             if (connection.getMetaData().getDatabaseProductName().equalsIgnoreCase("HSQL Database Engine")) {
                 portable.migrate();
-                assertThat(rows.queryForObject("select workspace_scope_key from relation_decision_projection_checkpoint where repository_id=? and workspace_id is null",
+                assertThat(rows.queryForObject("select workspace_scope_key from relation_decision_projection_checkpoint where repository_id=? and branch='main' and workspace_id is null",
                         String.class, REPO)).isEqualTo(" central");
             }
         } catch (java.sql.SQLException error) {
@@ -53,7 +58,28 @@ public final class RelationProjectionScopeMigrationChecks {
         var originalIds = rows.queryForList("""
                 select id from relation_decision_projection_checkpoint where repository_id=? order by id
                 """, Long.class, REPO);
+        // Older staged sources could store the private workspace key with an explicit prefix.
+        long stagedHypothesis = seedHypothesis(rows, "editor", "staged", "WORKSPACE:editor");
         migration.run();
+        assertCheckpointAndRecoveryAuthority(rows, " central", null, 1);
+        assertCheckpointAndRecoveryAuthority(rows, "editor", "editor", 2);
+        assertCheckpointAndRecoveryAuthority(rows, " editor ", " editor ", 3);
+        assertCheckpointAndRecoveryAuthority(rows, "", "", 4);
+        for (String table : new String[] {"relation_decision_projection_checkpoint", "relation_projection_recovery"}) {
+            assertThatThrownBy(() -> rows.update("update " + table
+                    + " set workspace_id=' central' where repository_id=? and branch=? and workspace_id is null", REPO, LEGACY_BRANCH))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+            assertThatThrownBy(() -> rows.update("update " + table
+                    + " set workspace_id='editor' where repository_id=? and branch=? and workspace_id=' editor '", REPO, LEGACY_BRANCH))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+            assertThatThrownBy(() -> rows.update("update " + table
+                    + " set workspace_id='editor ' where repository_id=? and branch=? and workspace_id='editor'", REPO, LEGACY_BRANCH))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+        }
+        assertThat(rows.queryForObject("select workspace_scope_key from relation_hypothesis where id=?",
+                String.class, stagedHypothesis)).isEqualTo("editor");
+        assertThat(rows.queryForObject("select workspace_scope_key from relation_evidence where hypothesis_id=?",
+                String.class, stagedHypothesis)).isEqualTo("editor");
         assertThat(rows.queryForList("""
                 select id from relation_decision_projection_checkpoint where repository_id=? order by id
                 """, Long.class, REPO)).isEqualTo(originalIds);
@@ -77,7 +103,7 @@ public final class RelationProjectionScopeMigrationChecks {
         }
         assertThatThrownBy(() -> rows.update("update relation_evidence set workspace_scope_key='__shared__' where hypothesis_id=?", centralHypothesis))
                 .isInstanceOf(DataIntegrityViolationException.class);
-        seedHypothesis(rows, "__shared__", "main");
+        seedHypothesis(rows, "__shared__", "main", "__shared__");
         seed(rows, "main", "__shared__");
         portable.migrate();
         portable.migrate();
@@ -85,7 +111,7 @@ public final class RelationProjectionScopeMigrationChecks {
                 String.class, REPO)).containsExactly(" central", "__shared__");
         assertThat(rows.queryForObject("select count(*) from relation_decision_projection_checkpoint where repository_id=? and branch='main'",
                 Long.class, REPO)).isEqualTo(2);
-        assertThat(rows.queryForObject("select last_observed_at from relation_projection_recovery where repository_id=? and workspace_id is null",
+        assertThat(rows.queryForObject("select last_observed_at from relation_projection_recovery where repository_id=? and branch='main' and workspace_id is null",
                 Timestamp.class, REPO).toInstant()).isEqualTo(ORIGINAL.toInstant());
     }
 
@@ -100,19 +126,19 @@ public final class RelationProjectionScopeMigrationChecks {
                 """, REPO, owner, target, ORIGINAL);
     }
 
-    private static long seedHypothesis(JdbcTemplate rows, String owner, String branch) {
+    private static long seedHypothesis(JdbcTemplate rows, String owner, String branch, String storedKey) {
         rows.update("""
                 insert into relation_hypothesis (repository_id, workspace_id, workspace_scope_key, branch_name,
                     source_node_id, target_node_id, relation_type, status, applied_in_current_analysis, analysis_session_scope_key, created_at)
-                values (?, ?, '__shared__', ?, 'BP', 'CP', 'SUPPORTS', 'PROVISIONAL', false, '__unspecified__', ?)
-                """, REPO, owner, branch, ORIGINAL);
+                values (?, ?, ?, ?, 'BP', 'CP', 'SUPPORTS', 'PROVISIONAL', false, '__unspecified__', ?)
+                """, REPO, owner, storedKey, branch, ORIGINAL);
         long id = rows.queryForObject("""
-                select id from relation_hypothesis where repository_id=? and branch_name=? and workspace_scope_key='__shared__'
-                """, Long.class, REPO, branch);
+                select id from relation_hypothesis where repository_id=? and branch_name=? and workspace_scope_key=?
+                """, Long.class, REPO, branch, storedKey);
         rows.update("""
                 insert into relation_evidence (hypothesis_id, repository_id, workspace_scope_key, branch_name, evidence_type, created_at)
-                values (?, ?, '__shared__', ?, 'MANUAL', ?)
-                """, id, REPO, branch, ORIGINAL);
+                values (?, ?, ?, ?, 'MANUAL', ?)
+                """, id, REPO, storedKey, branch, ORIGINAL);
         return id;
     }
 
@@ -127,15 +153,33 @@ public final class RelationProjectionScopeMigrationChecks {
                     source_code,relation_type,target_code,relation_present,authoritative_commit_id,causation_id,updated_at,version)
                 values (?,?,'__shared__',?,'A','SUPPORTS','B',true,?,'recorded-operation',?,0)
                 """, REPO, workspaceId, branch, HEAD, ORIGINAL);
+        seedCheckpointAndRecovery(rows, branch, workspaceId, "__shared__", 1);
+    }
+
+    private static void seedCheckpointAndRecovery(JdbcTemplate rows, String branch, String workspaceId,
+            String scopeKey, int relationCount) {
         rows.update("""
                 insert into relation_decision_projection_checkpoint (repository_id,workspace_id,workspace_scope_key,branch,
-                    authoritative_commit_id,relation_count,completed_at,version) values(?,?,'__shared__',?,?,1,?,0)
-                """, REPO, workspaceId, branch, HEAD, ORIGINAL);
+                    authoritative_commit_id,relation_count,completed_at,version) values(?,?,?,?,?,?,?,0)
+                """, REPO, workspaceId, scopeKey, branch, HEAD, relationCount, ORIGINAL);
         rows.update("""
                 insert into relation_projection_recovery (repository_id,workspace_id,workspace_scope_key,branch,authoritative_commit_id,
                     causation_id,status,attempt_count,failure_type,failure_message,first_observed_at,last_observed_at,version)
-                values(?,?,'__shared__',?,?,'recorded-operation','PENDING',1,'Projection','Recorded failure',?,?,0)
-                """, REPO, workspaceId, branch, HEAD, ORIGINAL, ORIGINAL);
+                values(?,?,?,?,?,?,'PENDING',1,'Projection','Recorded failure',?,?,0)
+                """, REPO, workspaceId, scopeKey, branch, HEAD, "recorded-operation-" + relationCount, ORIGINAL, ORIGINAL);
+    }
+
+    private static void assertCheckpointAndRecoveryAuthority(JdbcTemplate rows, String scopeKey, String workspaceId,
+            int relationCount) {
+        String authority = " where repository_id=? and branch=? and authoritative_commit_id=? and workspace_scope_key=?";
+        var checkpoint = rows.queryForMap("select workspace_id, relation_count from relation_decision_projection_checkpoint" + authority,
+                REPO, LEGACY_BRANCH, HEAD, scopeKey);
+        assertThat(checkpoint.get("workspace_id")).isEqualTo(workspaceId);
+        assertThat(checkpoint.get("relation_count")).isEqualTo(relationCount);
+        var recovery = rows.queryForMap("select workspace_id, causation_id from relation_projection_recovery" + authority,
+                REPO, LEGACY_BRANCH, HEAD, scopeKey);
+        assertThat(recovery.get("workspace_id")).isEqualTo(workspaceId);
+        assertThat(recovery.get("causation_id")).isEqualTo("recorded-operation-" + relationCount);
     }
 
     private RelationProjectionScopeMigrationChecks() {}

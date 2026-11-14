@@ -74,12 +74,26 @@ public final class WorkspacePublicationDatabaseContractTest {
             tx.executeWithoutResult(status -> { em.persist(source); em.persist(parent); });
             var operation=journal.admit(selected,grant,false,"published-scope",null,() -> snapshot);
             var other=journal.admit(neighbor,grant,false,"published-scope",null,() -> snapshot);
+            var pull=journal.admit(selected,grant,false,"published-scope",null,() -> snapshot,true);
+            var keyless=journal.admit(neighbor,grant,true,null,null,() -> snapshot,true);
             var contributor=RepositoryContext.workspace(repository,workspace,"main","member-"+workspace);
             String contributorId=UUID.randomUUID().toString();
             var contributorGrant=new WorkspaceFetchAuthority.Grant(contributorId,"LOCAL","c".repeat(64));
             var shared=journal.admit(contributor,contributorGrant,false,"contributor-publication",null,
                     () -> new WorkspacePublicationJournal.Source("main",null,null,null,null,selected.username()));
             try {
+                assertThat(pull.operationId()).isNotEqualTo(operation.operationId());
+                assertThat(pull.pull()).isTrue();
+                var replay=restarted.admit(neighbor,grant,true,null,null,() -> {
+                    throw new AssertionError("Repeating a legacy pull must not recapture a later source");
+                },true);
+                assertThat(replay.operationId()).isEqualTo(keyless.operationId());
+                var stalePull=journal.claim(pull.operationId(),"original-pull-worker",false);
+                var newPull=restarted.claim(pull.operationId(),"resumed-pull-worker",false);
+                assertThat(newPull).isNotNull();
+                assertThatThrownBy(() -> journal.step(stalePull,(row,lease) -> {
+                    throw new AssertionError("The previous pull lease must not access Git");
+                })).isInstanceOf(ResponseStatusException.class);
                 tx.executeWithoutResult(status -> {
                     catalogue.recordLastPush(repository,instant.plusSeconds(2));
                     catalogue.recordLastPush(repository,instant);
@@ -104,6 +118,8 @@ public final class WorkspacePublicationDatabaseContractTest {
                 assertThat(restarted.get(selected,initiator,operation.operationId()).status()).isEqualTo("RUNNING");
                 tx.executeWithoutResult(status -> manager.deleteWorkspace(workspace,selected.username()));
                 assertThat(rows.findByWorkspaceId(workspace)).isEmpty();
+                assertThat(restarted.get(selected,initiator,pull.operationId()).status()).isEqualTo("ARCHIVED");
+                assertThat(restarted.get(neighbor,initiator,keyless.operationId()).status()).isEqualTo("ADMITTED");
                 var archived=journal.get(selected,initiator,operation.operationId());
                 assertThat(archived.status()).isEqualTo("ARCHIVED");
                 var sharedEvidence=restarted.get(contributor,contributorId,shared.operationId());
@@ -126,7 +142,7 @@ public final class WorkspacePublicationDatabaseContractTest {
                 }
             } finally {
                 first.inTransaction(session -> {
-                    var ids=List.of(operation.operationId(),other.operationId(),shared.operationId());
+                    var ids=List.of(operation.operationId(),other.operationId(),pull.operationId(),keyless.operationId(),shared.operationId());
                     session.createMutationQuery("delete from WorkspacePublicationDecision d where d.operation in :ids").setParameter("ids",ids).executeUpdate();
                     session.createMutationQuery("delete from WorkspacePublicationOperation p where p.id in :ids").setParameter("ids",ids).executeUpdate();
                     session.createMutationQuery("delete from UserWorkspace w where w.workspaceId=:id").setParameter("id",workspace).executeUpdate();
