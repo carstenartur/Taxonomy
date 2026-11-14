@@ -39,8 +39,8 @@ public final class RelationProjectionScopeMigrationChecks {
         }
         seedLegacyRelations(rows, null, 7002);
         seedLegacyRelations(rows, "__shared__", 7003);
-        long centralHypothesis = seedHypothesis(rows, null, "main");
-        long privateHypothesis = seedHypothesis(rows, "__shared__", "historic");
+        long centralHypothesis = seedHypothesis(rows, null, "main", "__shared__");
+        long privateHypothesis = seedHypothesis(rows, "__shared__", "historic", "__shared__");
         try (var connection = database.getConnection()) {
             if (connection.getMetaData().getDatabaseProductName().equalsIgnoreCase("HSQL Database Engine")) {
                 portable.migrate();
@@ -53,7 +53,13 @@ public final class RelationProjectionScopeMigrationChecks {
         var originalIds = rows.queryForList("""
                 select id from relation_decision_projection_checkpoint where repository_id=? order by id
                 """, Long.class, REPO);
+        // Older staged sources could store the private workspace key with an explicit prefix.
+        long stagedHypothesis = seedHypothesis(rows, "editor", "staged", "WORKSPACE:editor");
         migration.run();
+        assertThat(rows.queryForObject("select workspace_scope_key from relation_hypothesis where id=?",
+                String.class, stagedHypothesis)).isEqualTo("editor");
+        assertThat(rows.queryForObject("select workspace_scope_key from relation_evidence where hypothesis_id=?",
+                String.class, stagedHypothesis)).isEqualTo("editor");
         assertThat(rows.queryForList("""
                 select id from relation_decision_projection_checkpoint where repository_id=? order by id
                 """, Long.class, REPO)).isEqualTo(originalIds);
@@ -77,7 +83,7 @@ public final class RelationProjectionScopeMigrationChecks {
         }
         assertThatThrownBy(() -> rows.update("update relation_evidence set workspace_scope_key='__shared__' where hypothesis_id=?", centralHypothesis))
                 .isInstanceOf(DataIntegrityViolationException.class);
-        seedHypothesis(rows, "__shared__", "main");
+        seedHypothesis(rows, "__shared__", "main", "__shared__");
         seed(rows, "main", "__shared__");
         portable.migrate();
         portable.migrate();
@@ -100,19 +106,19 @@ public final class RelationProjectionScopeMigrationChecks {
                 """, REPO, owner, target, ORIGINAL);
     }
 
-    private static long seedHypothesis(JdbcTemplate rows, String owner, String branch) {
+    private static long seedHypothesis(JdbcTemplate rows, String owner, String branch, String storedKey) {
         rows.update("""
                 insert into relation_hypothesis (repository_id, workspace_id, workspace_scope_key, branch_name,
                     source_node_id, target_node_id, relation_type, status, applied_in_current_analysis, analysis_session_scope_key, created_at)
-                values (?, ?, '__shared__', ?, 'BP', 'CP', 'SUPPORTS', 'PROVISIONAL', false, '__unspecified__', ?)
-                """, REPO, owner, branch, ORIGINAL);
+                values (?, ?, ?, ?, 'BP', 'CP', 'SUPPORTS', 'PROVISIONAL', false, '__unspecified__', ?)
+                """, REPO, owner, storedKey, branch, ORIGINAL);
         long id = rows.queryForObject("""
-                select id from relation_hypothesis where repository_id=? and branch_name=? and workspace_scope_key='__shared__'
-                """, Long.class, REPO, branch);
+                select id from relation_hypothesis where repository_id=? and branch_name=? and workspace_scope_key=?
+                """, Long.class, REPO, branch, storedKey);
         rows.update("""
                 insert into relation_evidence (hypothesis_id, repository_id, workspace_scope_key, branch_name, evidence_type, created_at)
-                values (?, ?, '__shared__', ?, 'MANUAL', ?)
-                """, id, REPO, branch, ORIGINAL);
+                values (?, ?, ?, ?, 'MANUAL', ?)
+                """, id, REPO, storedKey, branch, ORIGINAL);
         return id;
     }
 

@@ -32,6 +32,14 @@ alter table relation_evidence drop constraint fk_evidence_hypothesis_scope;
 update relation_evidence set workspace_scope_key=' central'
     where hypothesis_id in (select id from relation_hypothesis where workspace_id is null);
 update relation_hypothesis set workspace_scope_key=' central' where workspace_id is null;
+-- Older staged private hypotheses may use WORKSPACE:<id>. Their existing foreign key
+-- already binds the evidence to its parent; retain the same repository and branch.
+update relation_evidence e set workspace_scope_key = (
+    select trim(h.workspace_id) from relation_hypothesis h where h.id = e.hypothesis_id)
+    where exists (select 1 from relation_hypothesis h where h.id = e.hypothesis_id
+        and h.workspace_id is not null and h.workspace_scope_key = 'WORKSPACE:' || trim(h.workspace_id));
+update relation_hypothesis set workspace_scope_key = trim(workspace_id)
+    where workspace_id is not null and workspace_scope_key = 'WORKSPACE:' || trim(workspace_id);
 alter table relation_evidence add constraint fk_evidence_hypothesis_scope
     foreign key (hypothesis_id, repository_id, workspace_scope_key, branch_name)
     references relation_hypothesis (id, repository_id, workspace_scope_key, branch_name);
