@@ -18,25 +18,15 @@ Modellhistorie beschreibt [Signaturen für Modell-Commits](MODEL_COMMIT_SIGNING.
 
 Taxonomy verwendet öffentliche Typen aus `io.github.carstenartur.jgit.storage.hibernate` sowie öffentliche JGit-APIs. Anwendungscode darf keine Implementierungspakete `repository`, `objects` oder `refs` der Bibliothek importieren. Umgekehrt besitzt die Bibliothek keine Taxonomy-spezifische Mandanten-, Architektur-, UI- oder Projektionssemantik.
 
-## Veröffentlichte Abhängigkeit und anonymer Paket-Zugriff
+## JGit-Storage-Abhängigkeiten aus Maven Central
 
-Das Root-POM ist die maßgebliche Quelle für die veröffentlichte Abhängigkeit und ihr Repository:
-
-```xml
-<jgit-storage-hibernate.version>0.12.1</jgit-storage-hibernate.version>
-```
+Das Root-POM legt die Version für alle Taxonomy-Module fest. Maven bezieht Core und Smart HTTP mit seiner Standardkonfiguration aus Maven Central.
 
 ```xml
-<repository>
-  <id>jgit-storage-hibernate-releases</id>
-  <name>jgit-storage-hibernate anonymous releases</name>
-  <url>https://raw.githubusercontent.com/carstenartur/jgit-storage-hibernate/maven-repository/</url>
-  <releases><enabled>true</enabled></releases>
-  <snapshots><enabled>false</enabled></snapshots>
-</repository>
+<jgit-storage-hibernate.version>0.12.2</jgit-storage-hibernate.version>
 ```
 
-Das Anwendungsmodul verwendet die Property, statt die Versionsnummer erneut festzuschreiben:
+Das Anwendungsmodul verwendet für Core die gemeinsame Versions-Property.
 
 ```xml
 <dependency>
@@ -46,9 +36,7 @@ Das Anwendungsmodul verwendet die Property, statt die Versionsnummer erneut fest
 </dependency>
 ```
 
-Das konfigurierte Release-Repository ist öffentlich und anonym lesbar. Ein sauberer Konsumenten-Build benötigt deshalb weder Maven-Server-Zugangsdaten noch ein Token für den Paket-Lesezugriff. Das Repository ist nicht Maven Central; seine exakte ID, URL und reine Release-Policy bleiben Teil des reproduzierbaren Taxonomy-Abhängigkeitsvertrags, bis die Distribution in einer geprüften Änderung umgestellt wird.
-
-`JgitStorageDocumentationContractTest` liest Version und Repository-Block aus dem Root-POM und vergleicht beide Sprachfassungen mit dieser Quelle. Der Test weist außerdem das veraltete Modell eines authentifizierten Paket-Zugriffs zurück.
+`JgitStorageDocumentationContractTest` gleicht die Version in beiden Sprachfassungen mit dem Root-POM ab und prüft, dass die frühere Repository-Konfiguration entfernt bleibt.
 
 ## Von Spring verwalteter Persistence Context
 
@@ -190,11 +178,11 @@ Die Integration wird durch normale Maven-/JUnit-/Failsafe-Autorität abgedeckt:
 - `JgitStoragePostgresMigrationIT` wiederholt die alte Taxonomy-Übernahme gegen PostgreSQL und prüft die getrennten Historien.
 - `TaxonomySchemaMigrationConfigTest` prüft die primäre und qualifizierte Strategiekomposition, das Abbruchverhalten bei Core-Fehlern, die bedingte Aktivierung, die Klassifikation des Anwendungsschemas und die abschließende Tabellenvalidierung.
 - Die PostgreSQL-Migrationstests für das Anwendungsschema liegen unter `com.taxonomy.composition.persistence` und behalten die echten Datenbank-Fixtures für Upgrade- und Validate-Startup-Evidenz bei.
-- `JgitStorageDocumentationContractTest` leitet Abhängigkeits-/Distributionsdaten aus dem Root-POM ab, hält deutsche und englische Anleitung synchron, weist veraltete authentifizierte Zugriffsinstruktionen zurück und prüft die genannten Core-/Adoptionsressourcen des aufgelösten Artefakts.
+- `JgitStorageDocumentationContractTest` gleicht beide Sprachfassungen mit der festgelegten Version ab und prüft die genannten Core- und Adoptionsressourcen im aufgelösten Artefakt.
 
 ### CI Command
 
-Eine saubere Verifikation löst das festgelegte `jgit-storage-hibernate-core`-Release anonym über das konfigurierte Release-Repository auf. Verwende ohne zusätzliche Variante den autoritativen CI-Befehl des Repositorys:
+Ein sauberer Build bezieht das festgelegte Release aus Maven Central. Der reguläre CI-Befehl wird im Stammverzeichnis des Projekts ausgeführt.
 
 ```bash
 ./mvnw -B verify -Pci -DrunOnnxTests=true
