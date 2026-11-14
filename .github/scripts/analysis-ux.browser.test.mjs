@@ -42,17 +42,21 @@ async function fixture(locale = 'de', width = 1100) {
     return page;
 }
 
+async function loadD3(page) {
+    const source = process.env.TAXONOMY_TEST_D3_SCRIPT
+        ? await readFile(process.env.TAXONOMY_TEST_D3_SCRIPT, 'utf8')
+        : execFileSync('unzip', ['-p', path.join(process.env.MAVEN_REPO_LOCAL || path.join(os.homedir(), '.m2/repository'),
+                'org/webjars/npm/d3/7.9.0/d3-7.9.0.jar'), 'META-INF/resources/webjars/d3/7.9.0/dist/d3.min.js'], {encoding:'utf8'});
+    await page.addScriptTag({content:source});
+}
+
 async function architectureFixture(withGraph = true, withoutD3 = false) {
     const page = await fixture();
     await page.evaluate(() => {
         document.body.insertAdjacentHTML('beforeend', '<div id="architectureViewPanel"><div id="architectureViewContent"></div></div><div id="architecturePlaceholder"></div>');
     });
     if (withGraph) {
-        const source = process.env.TAXONOMY_TEST_D3_SCRIPT
-            ? await readFile(process.env.TAXONOMY_TEST_D3_SCRIPT, 'utf8')
-            : execFileSync('unzip', ['-p', path.join(process.env.MAVEN_REPO_LOCAL || path.join(os.homedir(), '.m2/repository'),
-                'org/webjars/npm/d3/7.9.0/d3-7.9.0.jar'), 'META-INF/resources/webjars/d3/7.9.0/dist/d3.min.js'], {encoding:'utf8'});
-        if (!withoutD3) await page.addScriptTag({content:source});
+        if (!withoutD3) await loadD3(page);
         for (const css of ['taxonomy-impact-map.css', 'shared/architecture-diagram.css'])
             await page.addStyleTag({path:path.join(resources,'static/css',css)});
         for (const script of ['shared/architecture-diagram.js', 'shared/taxonomy-impact-map.js'])
@@ -1387,6 +1391,62 @@ test('running analysis leaves tools visible with an explanation and does not sta
         await page.locator('#analysisReformulationAction').dispatchEvent('click');
         assert.deepEqual(await page.evaluate(()=>guideCalls),[]);
     }finally{await finish(page);}
+});
+
+test('tree and decision map keep score styling when toggling a responsibility branch and its override', async () => {
+    const page = await fixture();
+    try {
+        await loadD3(page);
+        await page.addScriptTag({path:path.join(resources,'static/js/core/taxonomy-views.js')});
+        await page.addScriptTag({path:path.join(resources,'static/js/core/taxonomy-browse.js')});
+        await page.evaluate(() => {
+            const hq = {unitId:'org-hq', name:'Headquarters', color:'#805ba6', sourceId:'role-a'};
+            const medical = {unitId:'org-med', name:'Medical service', color:'#168273', sourceId:'role-c'};
+            let enabled = false;
+            window.TaxonomyResponsibilityDisplay = {
+                enabled: () => enabled, entry:code => ({'role-a':hq, 'role-b':hq, 'role-c':medical})[code],
+                bindAnalysis: async () => {},
+                control() {
+                    const label=document.createElement('label'), input=document.createElement('input');
+                    input.type='checkbox'; input.checked=enabled; label.append(input,'Responsibilities');
+                    input.addEventListener('change', () => {
+                        enabled = input.checked;
+                        document.dispatchEvent(new CustomEvent('taxonomy:responsibility-display-changed'));
+                    });
+                    return label;
+                }
+            };
+            TaxonomyState.taxonomyData = [{code:'BR', name:'Roles', taxonomyRoot:true, children:[
+                {code:'role-a', name:'Parent', children:[{code:'role-b', name:'Inherited'}, {code:'role-c', name:'Exception'}]},
+                {code:'role-d', name:'Unassigned'}]}];
+            TaxonomyState.currentView = 'decision'; TaxonomyState.currentTreeRoot = 'BR';
+            TaxonomyState.currentScores = {'role-b':92, 'role-c':61};
+            TaxonomyBrowse.renderView(TaxonomyState.taxonomyData, TaxonomyState.currentScores);
+        });
+        const tree = page.locator('#taxonomyTree');
+        await tree.locator('.dm-node-control[data-diagram-node="role-b"]').waitFor();
+        const before = await tree.locator('.dm-rank').allTextContents();
+        assert.equal(await tree.locator('.diagram-unit-stripe').count(), 0);
+        await tree.getByRole('checkbox', {name:'Responsibilities'}).check();
+        await page.waitForFunction(() => document.querySelectorAll('#taxonomyTree rect.diagram-unit-stripe').length === 3);
+        assert.deepEqual(await tree.locator('.dm-rank').allTextContents(), before);
+        const inherited = tree.locator('.dm-node-control[data-diagram-node="role-b"]');
+        assert.match(await inherited.getAttribute('aria-label'), /Headquarters/);
+        assert.equal(await inherited.locator('.diagram-unit-name').count(), 0);
+        assert.match(await tree.locator('[data-diagram-node="role-c"]').textContent(), /Medical service/);
+        assert.doesNotMatch(await tree.locator('[data-diagram-node="role-d"]').textContent(), /Headquarters|Medical service/);
+        await tree.getByRole('checkbox', {name:'Responsibilities'}).uncheck();
+        await page.waitForFunction(() => !document.querySelector('#taxonomyTree .diagram-unit-stripe'));
+        assert.deepEqual(await tree.locator('.dm-rank').allTextContents(), before);
+        assert.doesNotMatch(await inherited.getAttribute('aria-label'), /Headquarters/);
+        await page.evaluate(() => {
+            TaxonomyState.currentView='tree';
+            TaxonomyBrowse.renderView(TaxonomyState.taxonomyData, TaxonomyState.currentScores);
+        });
+        await tree.getByRole('checkbox', {name:'Responsibilities'}).check();
+        await tree.locator('.tv-node[data-diagram-node="role-a"] .diagram-unit-stripe').waitFor();
+        assert.match(await tree.locator('.tv-node[data-diagram-node="role-a"] .tv-label').textContent(), /Headquarters/);
+    } finally { await finish(page); }
 });
 
 async function mountDocumentImport(page, locale, deferWorkspace = false) {

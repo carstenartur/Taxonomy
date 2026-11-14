@@ -58,13 +58,13 @@ public class ArchitectureEditorProjection {
     public record SearchEntry(String id, String text) {}
     public record View(ArchitectureEditorService.Document document, CanonicalArchitectureModel model,
                        DiagramScene scene, Schema schema, boolean mayEdit, List<SearchEntry> searchIndex,
-                       WorkspaceCollaborationService.Status collaboration) {
+                       WorkspaceCollaborationService.Status collaboration, Map<String, ArchitectureResponsibility.Entry> hierarchy) {
         public View(ArchitectureEditorService.Document document, CanonicalArchitectureModel model,
                     DiagramScene scene, Schema schema, boolean mayEdit, List<SearchEntry> searchIndex) {
-            this(document, model, scene, schema, mayEdit, searchIndex, null);
+            this(document, model, scene, schema, mayEdit, searchIndex, null, Map.of());
         }
         public View withCollaboration(WorkspaceCollaborationService.Status status) {
-            return new View(document, model, scene, schema, mayEdit, searchIndex, status);
+            return new View(document, model, scene, schema, mayEdit, searchIndex, status, hierarchy);
         }
         public ArchitectureBrief.Snapshot getArchitectureBrief() { return ArchitectureBrief.read(model); }
         public Map<String, List<com.taxonomy.dsl.planning.PlanningInformation.View>> getPlanningInformation() {
@@ -114,7 +114,8 @@ public class ArchitectureEditorProjection {
                 strategy.id(), layoutRevision);
         return new View(document, model, scene, schema, editable(document, mayEdit),
                 model.getElements().stream().map(element -> new SearchEntry(element.getId(),
-                        (element.getId() + " " + element.getTitle() + " " + element.getType()).toLowerCase(java.util.Locale.ROOT))).toList());
+                        (element.getId() + " " + element.getTitle() + " " + element.getType()).toLowerCase(java.util.Locale.ROOT))).toList(), null,
+                ArchitectureResponsibility.resolve(model, catalogues.parentsForModel(model)));
     }
 
     public static boolean editable(ArchitectureEditorService.Document document, boolean mayEdit) {
@@ -163,10 +164,13 @@ public class ArchitectureEditorProjection {
 
     private static Map<String, PropertyRule> properties(CatalogueDefinition catalogue) {
         Map<String, PropertyRule> properties = new java.util.TreeMap<>();
-        Map<String, String> labels = Map.of("title", "name", "description", "description", "x-editor-status", "elementStatus",
-                "x-owner", "owner", "x-responsible-organization", "organization", "x-product-reference", "product", "x-system-reference", "system",
-                AdmbwFffmlvProfile.TYPE, "admbw.stereotype", AdmbwFffmlvProfile.CATALOGUE_GUID, "admbw.catalogueGuid",
-                AdmbwFffmlvProfile.CATALOGUE_REFERENCE, "admbw.catalogueReference");
+        Map<String, String> labels = Map.ofEntries(Map.entry("title", "name"), Map.entry("description", "description"),
+                Map.entry("x-editor-status", "elementStatus"), Map.entry("x-owner", "owner"),
+                Map.entry("x-responsible-organization", "organization"),
+                Map.entry(com.taxonomy.dsl.model.ArchitectureOrganization.RESPONSIBLE_ID, "organization"),
+                Map.entry("x-product-reference", "product"), Map.entry("x-system-reference", "system"),
+                Map.entry(AdmbwFffmlvProfile.TYPE, "admbw.stereotype"), Map.entry(AdmbwFffmlvProfile.CATALOGUE_GUID, "admbw.catalogueGuid"),
+                Map.entry(AdmbwFffmlvProfile.CATALOGUE_REFERENCE, "admbw.catalogueReference"));
         ArchitectureDslCommands.ELEMENT_PROPERTIES.forEach(key -> {
             List<String> values = switch (key) {
                 case "x-editor-status" -> List.of("draft", "active", "retired");

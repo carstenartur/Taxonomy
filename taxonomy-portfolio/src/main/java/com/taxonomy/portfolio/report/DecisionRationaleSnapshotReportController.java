@@ -99,7 +99,13 @@ public class DecisionRationaleSnapshotReportController {
 
     /** Existing Java callers and unconfigured links retain their established full-report behavior. */
     public ResponseEntity<byte[]> export(Long projectId, String snapshotId, String formatId, String language) {
-        return export(projectId, snapshotId, formatId, language, null, null, null, null, null);
+        return export(projectId, snapshotId, formatId, language, null, null, null, null, null, false);
+    }
+
+    public ResponseEntity<byte[]> export(Long projectId, String snapshotId, String formatId, String language,
+            DecisionReportOptions.Profile profile, Set<String> taxonomyRoots, DecisionReportOptions.Contents contents,
+            DecisionReportOptions.TreeLayout treeLayout, Set<DecisionReportOptions.Section> sections) {
+        return export(projectId, snapshotId, formatId, language, profile, taxonomyRoots, contents, treeLayout, sections, false);
     }
 
     @GetMapping("/{formatId}")
@@ -117,9 +123,10 @@ public class DecisionRationaleSnapshotReportController {
             @RequestParam(required = false) Set<String> taxonomyRoots,
             @RequestParam(required = false) DecisionReportOptions.Contents contents,
             @RequestParam(required = false) DecisionReportOptions.TreeLayout treeLayout,
-            @RequestParam(required = false) Set<DecisionReportOptions.Section> sections) {
-        DecisionReportOptions options = profile == null && taxonomyRoots == null && contents == null && treeLayout == null && sections == null
-                ? null : new DecisionReportOptions(profile, taxonomyRoots, contents, treeLayout, sections);
+            @RequestParam(required = false) Set<DecisionReportOptions.Section> sections,
+            @RequestParam(defaultValue = "false") boolean showResponsibilities) {
+        DecisionReportOptions options = profile == null && taxonomyRoots == null && contents == null && treeLayout == null && sections == null && !showResponsibilities
+                ? null : new DecisionReportOptions(profile, taxonomyRoots, contents, treeLayout, sections, showResponsibilities);
         ReportRendererExtension renderer = reportRendererRegistry.findByFormatId(
                         DecisionRationaleReportPlugin.REPORT_TYPE_ID, formatId)
                 .orElseThrow(() -> PortfolioException.notFound(

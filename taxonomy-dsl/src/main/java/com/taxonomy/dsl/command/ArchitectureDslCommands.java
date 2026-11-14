@@ -7,6 +7,7 @@ import com.taxonomy.dsl.ast.BlockAst;
 import com.taxonomy.dsl.ast.PropertyAst;
 import com.taxonomy.dsl.command.ArchitectureCommand.*;
 import com.taxonomy.dsl.mapper.AstToModelMapper;
+import com.taxonomy.dsl.model.ArchitectureOrganization;
 import com.taxonomy.dsl.model.CanonicalArchitectureModel;
 import com.taxonomy.dsl.model.CatalogueDefinition;
 import com.taxonomy.dsl.parser.TaxDslParser;
@@ -37,7 +38,7 @@ public final class ArchitectureDslCommands {
     }
 
     public static final Set<String> ELEMENT_PROPERTIES = Set.of("title", "description",
-            "x-editor-status", "x-owner", "x-responsible-organization", "x-product-reference", "x-system-reference",
+            "x-editor-status", "x-owner", "x-responsible-organization", ArchitectureOrganization.RESPONSIBLE_ID, "x-product-reference", "x-system-reference",
             AdmbwFffmlvProfile.TYPE, AdmbwFffmlvProfile.CATALOGUE_GUID, AdmbwFffmlvProfile.CATALOGUE_REFERENCE);
 
     public record Change(String dsl, List<ArchitectureSemanticPatch.BlockChange> changes) {
@@ -84,6 +85,7 @@ public final class ArchitectureDslCommands {
         }
         validateContainment(blocks);
         validatePackages(source);
+        validateOrganizations(source);
         try { com.taxonomy.dsl.planning.PlanningInformation.validateReferences(source); }
         catch (IllegalArgumentException invalid) { throw problem("INVALID_REFERENCE", "source", invalid.getMessage()); }
     }
@@ -119,6 +121,8 @@ public final class ArchitectureDslCommands {
             case CreateArchitecturePackage create -> createPackage(source, blocks, create);
             case UpdateArchitecturePackage update -> updatePackage(source, blocks, update);
             case SetArchitecturePackagePlacements placements -> placePackages(source, blocks, placements);
+            case UpsertOrganization organization -> upsertOrganization(source, blocks, organization);
+            case DeleteOrganization organization -> deleteOrganization(source, blocks, organization.id());
             case DeleteArchitecturePackage delete -> deletePackage(source, blocks, delete.id());
             case UpsertRequirementMapping mapping -> upsertMapping(source, blocks, mapping);
             case DeleteRequirementMapping mapping -> deleteMapping(source, blocks, mapping);
@@ -143,6 +147,7 @@ public final class ArchitectureDslCommands {
         if (original.isEmpty()) throw problem("NOT_UNDOABLE", "targetOperationId", "Target has no semantic changes");
         if (original.stream().anyMatch(change -> !change.id().startsWith("element:")
                 && !change.id().startsWith("relation:") && !change.id().startsWith("package:")
+                && !change.id().startsWith("organization:")
                 && !change.id().startsWith("mapping:")
                 && !ArchitectureBrief.ownsChange(before, after, change.id())
                 && !AnalysisSnapshotAdoption.isAdoptionView(change)
@@ -174,6 +179,7 @@ public final class ArchitectureDslCommands {
         }
         validateContainment(blocks);
         validatePackages(next);
+        validateOrganizations(next);
         if (ArchitectureBrief.presentIn(blocks)
                 && original.stream().anyMatch(change -> change.id().startsWith("source:")
                         || change.id().startsWith("sourceVersion:") || change.id().startsWith("sourceFragment:"))
@@ -193,6 +199,50 @@ public final class ArchitectureDslCommands {
     private void validatePackages(String dsl) {
         com.taxonomy.dsl.model.ArchitecturePackageHierarchy.validate(model(dsl),
                 (code, message) -> { throw problem(code, "placements", message); });
+    }
+
+    private void validateOrganizations(String source) {
+        var ast = new TaxDslParser().parse(source);
+        for (BlockAst block : ast.getBlocks()) {
+            if ("organization".equals(block.getKind())) {
+                requireSingleProperty(block, "parentId");
+                requireSingleProperty(block, "title");
+            } else if ("element".equals(block.getKind())) {
+                requireSingleProperty(block, ArchitectureOrganization.RESPONSIBLE_ID);
+            }
+        }
+        ArchitectureOrganization.validate(new AstToModelMapper().map(ast),
+                (code, message) -> { throw problem(code, "organization", message); });
+    }
+
+    private static void requireSingleProperty(BlockAst block, String key) {
+        if (block.propertyValues(key).size() > 1)
+            throw problem("DUPLICATE_PROPERTY", key, "Ambiguous " + key + " on " + ArchitectureSemanticPatch.key(block));
+    }
+
+    private String upsertOrganization(String source, Map<String, BlockAst> blocks, UpsertOrganization command) {
+        token(command.id(), "id");
+        if (!Set.of("title", "parentId").containsAll(command.properties().keySet()))
+            throw problem("READ_ONLY_PROPERTY", "properties", "Only the organization title and parent can be edited");
+        BlockAst existing = blocks.get("organization:" + command.id());
+        if (existing != null && existing.getHeaderTokens().size() != 1)
+            throw problem("INVALID_HEADER", "id", "An organization has exactly one identifier");
+        var replacement = block("organization", List.of(command.id()), command.properties(), existing);
+        String next = ArchitectureSemanticPatch.replace(source, existing, replacement);
+        validateOrganizations(next);
+        return next;
+    }
+
+    private static String deleteOrganization(String source, Map<String, BlockAst> blocks, String id) {
+        token(id, "id");
+        BlockAst existing = require(blocks, "organization:" + id);
+        requireNoDependencies(id, dependencies(blocks, existing));
+        return ArchitectureSemanticPatch.replace(source, existing, null);
+    }
+
+    private static void requireOrganization(Map<String, BlockAst> blocks, String id) {
+        if (id != null && !id.isEmpty() && !blocks.containsKey("organization:" + id))
+            throw problem("UNKNOWN_ORGANIZATION", ArchitectureOrganization.RESPONSIBLE_ID, "Unknown organization: " + id);
     }
 
     private String createPackage(String source, Map<String, BlockAst> blocks, CreateArchitecturePackage command) {
@@ -310,6 +360,7 @@ public final class ArchitectureDslCommands {
         requireType(command.type());
         if (blocks.containsKey("element:" + command.id())) throw problem("DUPLICATE_ID", "id", "Element already exists");
         requireProperties(command.properties(), true);
+        requireOrganization(blocks, command.properties().get(ArchitectureOrganization.RESPONSIBLE_ID));
         return ArchitectureSemanticPatch.replace(source, null,
                 block("element", List.of(command.id(), "type", command.type()), command.properties(), null));
     }
@@ -405,6 +456,7 @@ public final class ArchitectureDslCommands {
         requireType(type);
         requireProperties(command.properties(), false);
         BlockAst replacement = block("element", List.of(command.id(), "type", type), command.properties(), existing);
+        requireOrganization(blocks, replacement.property(ArchitectureOrganization.RESPONSIBLE_ID));
         Map<String, BlockAst> changed = new LinkedHashMap<>(blocks);
         changed.put("element:" + command.id(), replacement);
         for (BlockAst candidate : changed.values()) {
@@ -529,6 +581,9 @@ public final class ArchitectureDslCommands {
                     case "evidence" -> referencesElement(candidate.property("for-relation"), id);
                     default -> false;
                 };
+            } else if ("organization".equals(removed.getKind())) {
+                references = "organization".equals(candidate.getKind()) && candidate.propertyValues("parentId").contains(id)
+                        || "element".equals(candidate.getKind()) && candidate.propertyValues(ArchitectureOrganization.RESPONSIBLE_ID).contains(id);
             } else if ("package".equals(removed.getKind())) {
                 references = "package".equals(candidate.getKind()) && id.equals(candidate.property("parent"))
                         || "element".equals(candidate.getKind()) && id.equals(candidate.property("package"));
@@ -560,6 +615,11 @@ public final class ArchitectureDslCommands {
             }
         }
         properties.putAll(changes);
+        // The form sends an empty selection to detach. Keep the canonical absence of a reference.
+        if ("element".equals(kind) && "".equals(changes.get(ArchitectureOrganization.RESPONSIBLE_ID)))
+            properties.remove(ArchitectureOrganization.RESPONSIBLE_ID);
+        if ("organization".equals(kind) && "".equals(changes.get("parentId")))
+            properties.remove("parentId");
         List<PropertyAst> values = properties.entrySet().stream().map(e -> new PropertyAst(e.getKey(), e.getValue(), null)).toList();
         Map<String, String> extensions = new LinkedHashMap<>();
         properties.forEach((key, value) -> { if (key.startsWith("x-")) extensions.put(key, value); });

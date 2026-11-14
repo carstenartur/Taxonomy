@@ -2,10 +2,14 @@ package com.taxonomy.catalog.definition;
 
 import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
 import com.taxonomy.dsl.model.CatalogueDefinition;
+import com.taxonomy.dsl.model.CanonicalArchitectureModel;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.util.Map;
+import java.util.NoSuchElementException;
 
 /** A descriptor belongs to the bytes of one recorded workbook, including after an import or restart. */
 @Service
@@ -14,7 +18,30 @@ public class RetainedCatalogueDefinitions implements com.taxonomy.dsl.model.Cata
     private String lastWorkbook;
     private CatalogueDefinition lastDefinition;
 
-    public RetainedCatalogueDefinitions(CatalogueSourceJournal sources) { this.sources = sources; }
+    private final CatalogueParentIndex hierarchy;
+
+    public RetainedCatalogueDefinitions(CatalogueSourceJournal sources) { this(sources, null); }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public RetainedCatalogueDefinitions(CatalogueSourceJournal sources, @Lazy CatalogueParentIndex hierarchy) {
+        this.sources = sources;
+        this.hierarchy = hierarchy;
+    }
+
+    @Override
+    public java.util.Map<String, String> parentsForModel(com.taxonomy.dsl.model.CanonicalArchitectureModel model) {
+        return hierarchy == null ? java.util.Map.of() : hierarchy.parentsFor(model);
+    }
+
+    public Map<String, String> analysisParents(CanonicalArchitectureModel model, String revision) {
+        if (revision == null || hierarchy == null) return Map.of();
+        var snapshot = sources.findRevision(revision).orElseThrow();
+        if (snapshot.workbook().use() != CatalogueSourceJournal.Use.APPLIED
+                || snapshot.overlay().use() != CatalogueSourceJournal.Use.APPLIED
+                && snapshot.overlay().use() != CatalogueSourceJournal.Use.NOT_USED)
+            throw new NoSuchElementException("The archived catalogue hierarchy was not retained");
+        return hierarchy.parentsFor(model, revision, forGeneration(snapshot));
+    }
 
     @Override
     public CatalogueDefinition forModel(com.taxonomy.dsl.model.CanonicalArchitectureModel model) {

@@ -791,10 +791,31 @@
         return !!filter && filter.value !== 'all';
     }
 
+    function responsibilityViewVisible() {
+        return (S.currentView === 'tree' || S.currentView === 'decision')
+            && !document.getElementById('leftPanel')?.classList?.contains('d-none');
+    }
+
+    var responsibilityFrame = null;
+    function refreshResponsibilities() {
+        if (!window.TaxonomyResponsibilityDisplay || !responsibilityViewVisible() || responsibilityFrame !== null) return;
+        responsibilityFrame = requestAnimationFrame(function () {
+            responsibilityFrame = null;
+            if (responsibilityViewVisible()) renderView(S.taxonomyData, S.currentScores);
+        });
+    }
+    document.addEventListener('taxonomy:responsibility-display-changed', refreshResponsibilities);
+    document.addEventListener('taxonomy:page-activated', refreshResponsibilities);
+    document.addEventListener('taxonomy:entity-context-changed', function () {
+        if (window.TaxonomyResponsibilityDisplay?.enabled()) refreshResponsibilities();
+    });
+
     function renderView(data, scores) {
         refreshAnalysisDuration();
         if (!data || data.length === 0) { return; }
         const container = document.getElementById('taxonomyTree');
+        const responsibilities = window.TaxonomyResponsibilityDisplay;
+        if (responsibilities?.enabled() && responsibilityViewVisible()) responsibilities.bindAnalysis();
         window.TaxonomyViews?.prepareDiagramContext?.(container, {
             analysisKey: diagramContextGeneration, view: S.currentView, treeRoot: S.currentTreeRoot
         });
@@ -811,6 +832,10 @@
             cleanupD3(container);
             container.innerHTML = '<p class="text-muted p-3" role="status">' + t('view.relevance.empty') + '</p>';
             if (diagram) window.TaxonomyViews?.installDiagramRelevanceControl?.(container);
+            if (responsibilities && responsibilityViewVisible()) {
+                const toolbar = container.querySelector('.tax-diagram-controls');
+                if (toolbar) toolbar.appendChild(responsibilities.control());
+            }
             window.TaxonomyViews?.restoreDiagramControlFocus?.(container);
             container.setAttribute('data-view-rendered', S.currentView);
         } else {
@@ -988,6 +1013,7 @@
                     ? window.TaxonomyI18n.getLocale() : document.documentElement.lang
             };
             var frozenRequest = JSON.parse(JSON.stringify(request));
+            var reportModel = S.currentModelBinding ? JSON.parse(JSON.stringify(S.currentModelBinding)) : null;
             var exportContext = window.TaxonomyApiClient.captureContext();
             window.TaxonomyDecisionExport.open({
                 source: decisionText,
@@ -1004,7 +1030,8 @@
                     var query = new URLSearchParams({repositoryId:scope.repositoryId, workspaceId:scope.workspaceId, branch:scope.branch});
                     var report = await window.TaxonomyApiClient.requestBlob('/api/decision-report/' + selection.format + '?' + query, {
                         method: 'POST', headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify(Object.assign({}, frozenRequest, {exportOptions: selection.options, language: selection.language}))
+                        body: JSON.stringify(Object.assign({}, frozenRequest, {exportOptions: selection.options, language: selection.language,
+                            modelBinding: selection.options.showResponsibilities && reportModel ? reportModel : undefined}))
                     }, { signal: selection.signal, pinnedWorkspaceId: scope.workspaceId });
                     await window.TaxonomyDecisionExport.download(report.response, selection.format, null, selection.signal, report.blob, selection.descriptor);
                 }

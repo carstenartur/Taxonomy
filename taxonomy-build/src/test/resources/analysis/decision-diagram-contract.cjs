@@ -202,4 +202,53 @@ assert.ok(evidenceText.includes('87.5%'));
 assert.ok(!evidenceText.includes('MUSTNOTLEAK'),'Evidence must use the same selected subset as the diagram');
 assert.equal(all(evidenceDoc.body,e=>e.getAttribute?.('id')==='diagram-evidence-1').length,1,'The diagram reference resolves to one complete evidence entry');
 for(const svg of all(evidenceDoc.body,e=>e.tagName==='svg'))assert.ok(svg.getAttribute('viewBox').split(' ').map(Number)[3]<=620,'Evidence remains readable on ordinary paper');
+
+// Compare the identical scored path with its responsibility overlay on and off.
+// The single child chain crosses a page at the fourth column in paginated print.
+{
+    const path = Array.from({length:8}, (_, index) => ({code:'role-' + index, name:'Role ' + index}));
+    path.slice(1).forEach((node, i) => { path[i].children = [node]; });
+    const overlayRoot = {code:'__root__', children:[path[0]]};
+    const hq = {unitId:'org-hq', name:'Headquarters', color:'#7956ac', sourceId:'role-0'};
+    const medical = {unitId:'org-med', name:'Medical service', color:'#237668', sourceId:'role-5'};
+    const overlayScores = {'role-0':94,'role-5':70};
+    let visible = false;
+    window.TaxonomyResponsibilityDisplay = {enabled:() => visible, entry:code => {
+        const index = path.findIndex(node => node.code === code);
+        return index < 0 || index === 7 ? null : index < 5 ? hq : medical;
+    }};
+    const render = () => api.layout(hierarchy(overlayRoot), overlayScores, {}, measure, null, {pageContext:true});
+    const before = render();
+    visible = true;
+    const after = render();
+    assert.deepEqual(after.rankMap, before.rankMap);
+    assert.deepEqual(after.scores, before.scores);
+    const printed = makeDocument();
+    api.pages(after, printed);
+    const stripes = all(printed.body, node => node.getAttribute?.('class') === 'diagram-unit-stripe');
+    assert.equal(stripes.length, 7, 'Every assigned node has a stripe, including inherited descendants');
+    assert.deepEqual(new Set(stripes.map(node => node.getAttribute('fill'))), new Set([hq.color, medical.color]));
+    let repeatedAtPageStart = 0;
+    for (const page of printed.body.children) {
+        const cards = all(page, el => el.getAttribute?.('data-print-node'));
+        const codes = new Set(cards.map(card => card.getAttribute('data-print-node')));
+        for (const card of cards) {
+            const code = card.getAttribute('data-print-node'), index = Number(code.slice(5));
+            const visibleName = all(card, el => el.getAttribute?.('class') === 'diagram-unit-name').map(el => el.textContent).join(' ');
+            const needsText = index !== 7 && (index === 0 || index === 5 || !codes.has('role-' + (index - 1)));
+            if (needsText) {
+                assert.ok(visibleName.includes(index < 5 ? hq.name : medical.name), 'Name in monochrome at boundary of ' + code);
+                if (index > 0 && index !== 5) repeatedAtPageStart++;
+            } else {
+                assert.equal(visibleName, '', 'The parent on the same page already names this unit');
+            }
+        }
+    }
+    assert.ok(repeatedAtPageStart > 0, 'Exercise a cross-page inherited branch');
+    visible = false;
+    const disabled = makeDocument(); api.pages(render(), disabled);
+    assert.equal(all(disabled.body, node => node.getAttribute?.('class') === 'diagram-unit-stripe').length, 0);
+    assert.ok(!text(disabled.body).includes(medical.name));
+    delete window.TaxonomyResponsibilityDisplay;
+}
 console.log('DECISION_DIAGRAM_READING_OK');

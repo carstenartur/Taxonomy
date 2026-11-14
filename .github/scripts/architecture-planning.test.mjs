@@ -153,6 +153,7 @@ async function editorFixture(conflictAt, history = [], serverUndo = history[0] |
         assert.ok(ids[id], `Production template is missing ${id}`);
         return ids[id];
     }, createElement:tag => new Element(tag), createTextNode:text => ({textContent:text}), querySelectorAll:() => [], documentElement:{lang:'en'}, activeElement:null};
+    ids.editorTree.ownerDocument = document;
     document.body={querySelector:selector=>document.getElementById(selector.slice(1)),
         querySelectorAll:selector=>selector.startsWith('#editorForm input') ? [ids.editorTitle,ids.editorRationale] : []};
     if (lifecycleOptions?.startup) {
@@ -222,6 +223,7 @@ async function editorFixture(conflictAt, history = [], serverUndo = history[0] |
     vm.runInContext(fs.readFileSync(path.join(root, 'taxonomy-app/src/main/resources/static/js/architecture-focus.js'), 'utf8'), sandbox);
     vm.runInContext(source, sandbox);
     vm.runInContext(fs.readFileSync(path.join(root, 'taxonomy-app/src/main/resources/static/js/analysis-snapshot-adoption.js'), 'utf8'), sandbox);
+    vm.runInContext(fs.readFileSync(path.join(root, 'taxonomy-app/src/main/resources/static/js/architecture-responsibility-tree.js'), 'utf8'), sandbox);
     vm.runInContext(fs.readFileSync(path.join(root, 'taxonomy-app/src/main/resources/static/js/architecture-editor.js'), 'utf8'), sandbox);
     if (lifecycleOptions?.startup) {
         vm.runInContext(fs.readFileSync(path.join(root, 'taxonomy-app/src/main/resources/static/js/shared/architecture-workspace.js'), 'utf8'), sandbox);
