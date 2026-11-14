@@ -7,15 +7,19 @@ alter table relation_decision_projection add constraint ck_rel_decision_workspac
     check ((workspace_id is null and workspace_scope_key = ' central')
         or (workspace_id is not null and trim(workspace_id) <> '' and workspace_scope_key = trim(workspace_id)));
 
+-- Checkpoints and recovery already permit exact legacy owner keys. Preserve those
+-- pairs verbatim, while keeping the new central key exclusive to rows without an owner.
 update relation_decision_projection_checkpoint set workspace_scope_key = ' central' where workspace_id is null;
 alter table relation_decision_projection_checkpoint add constraint ck_rel_projection_checkpoint_scope
     check ((workspace_id is null and workspace_scope_key = ' central')
-        or (workspace_id is not null and trim(workspace_id) <> '' and workspace_scope_key = trim(workspace_id)));
+        or (workspace_id is not null and workspace_scope_key = workspace_id and char_length(workspace_scope_key) = char_length(workspace_id)
+            and workspace_scope_key <> ' central'));
 
 update relation_projection_recovery set workspace_scope_key = ' central' where workspace_id is null;
 alter table relation_projection_recovery add constraint ck_rel_projection_recovery_scope
     check ((workspace_id is null and workspace_scope_key = ' central')
-        or (workspace_id is not null and trim(workspace_id) <> '' and workspace_scope_key = trim(workspace_id)));
+        or (workspace_id is not null and workspace_scope_key = workspace_id and char_length(workspace_scope_key) = char_length(workspace_id)
+            and workspace_scope_key <> ' central'));
 
 alter table relation_decision_projection alter column workspace_scope_key set default ' central';
 
@@ -32,6 +36,14 @@ alter table relation_evidence drop constraint fk_evidence_hypothesis_scope;
 update relation_evidence set workspace_scope_key=' central'
     where hypothesis_id in (select id from relation_hypothesis where workspace_id is null);
 update relation_hypothesis set workspace_scope_key=' central' where workspace_id is null;
+-- Older staged private hypotheses may use WORKSPACE:<id>. Their existing foreign key
+-- already binds the evidence to its parent; retain the same repository and branch.
+update relation_evidence e set workspace_scope_key = (
+    select trim(h.workspace_id) from relation_hypothesis h where h.id = e.hypothesis_id)
+    where exists (select 1 from relation_hypothesis h where h.id = e.hypothesis_id
+        and h.workspace_id is not null and h.workspace_scope_key = 'WORKSPACE:' || trim(h.workspace_id));
+update relation_hypothesis set workspace_scope_key = trim(workspace_id)
+    where workspace_id is not null and workspace_scope_key = 'WORKSPACE:' || trim(workspace_id);
 alter table relation_evidence add constraint fk_evidence_hypothesis_scope
     foreign key (hypothesis_id, repository_id, workspace_scope_key, branch_name)
     references relation_hypothesis (id, repository_id, workspace_scope_key, branch_name);

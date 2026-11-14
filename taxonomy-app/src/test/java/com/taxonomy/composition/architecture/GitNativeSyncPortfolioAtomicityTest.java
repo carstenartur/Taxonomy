@@ -100,12 +100,12 @@ class GitNativeSyncPortfolioAtomicityTest {
             RequestContextHolder.setRequestAttributes(previousRequest);
         }
 
-        if (strategy == DivergedStrategy.KEEP_MINE) {
-            assertThat(database.queryForList("""
-                    select decision_code from workspace_publication_operation
-                    where workspace_id=? and phase='MANUAL_REVIEW' and completed_at is not null
-                    """, String.class, fixture.local().workspaceId())).containsExactly("RECONCILIATION_REQUIRED");
-        }
+        String policy = strategy == DivergedStrategy.TAKE_SHARED
+                ? "ARCHITECTURE_PUBLISH+READER+KEYLESS" : "ARCHITECTURE_PUBLISH+CONTRIBUTOR";
+        assertThat(database.queryForList("""
+                select decision_code from workspace_publication_operation
+                where workspace_id=? and policy_code=? and phase='MANUAL_REVIEW' and completed_at is not null
+                """, String.class, fixture.local().workspaceId(), policy)).containsExactly("RECONCILIATION_REQUIRED");
         Snapshot after = snapshot(fixture);
         assertThat(after.localHead()).as("a rejected portfolio decision must not advance workspace HEAD")
                 .isEqualTo(before.localHead());
