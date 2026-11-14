@@ -87,6 +87,23 @@ public final class PrincipalIdentityService {
         return false;
     }
 
+    /** At least one supported login must still authenticate as this exact compatibility scope. */
+    public boolean hasCurrentLoginForScope(AppPrincipal principal) {
+        if (find(principal.id()).filter(AppPrincipal::enabled)
+                .filter(current -> current.scopeKey().equals(principal.scopeKey())).isEmpty()) return false;
+        var externalKeys = jdbc.queryForList("""
+                select binding_key from principal_binding
+                where principal_id=? and binding_kind='OIDC' and enabled=1
+                """, String.class, principal.id().value().toString());
+        if (externalKeys.stream().anyMatch(key -> isCurrentExternalBinding(principal.id(), key))) return true;
+        try {
+            currentLocalAuthority(principal.id(), principal.scopeKey());
+            return true;
+        } catch (org.springframework.security.access.AccessDeniedException unavailable) {
+            return false;
+        }
+    }
+
     /** Includes disabled binding tombstones so a delegated LEGACY grant cannot outlive migration. */
     public boolean hasRegisteredBinding(String key) {
         return jdbc.queryForObject("select count(*) from principal_binding where binding_key=?",
