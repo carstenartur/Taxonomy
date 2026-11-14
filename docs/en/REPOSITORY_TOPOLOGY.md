@@ -187,6 +187,8 @@ Read `GET /api/repositories/{repositoryId}` to obtain the current catalogue `ver
 
 The successor acquires an explicit `OWNER` membership in the same transaction that relinquishes the previous owner's direct `OWNER` membership. Independently assigned roles continue to apply. A stale version returns HTTP 409. Organization and system repositories retain their own ownership rules.
 
+A successful versioned membership `PUT` or `DELETE` commits its audit record and role change in the same transaction. `PUT` accepts an optional `rationale` in its JSON body. `DELETE` accepts the optional `X-Audit-Rationale` request header. Supply 1–256 printable characters. Requests without a supplied reason record `OWNER_REQUESTED_ROLE_ASSIGNMENT` or `OWNER_REQUESTED_REVOCATION`. The evidence keeps the repository, membership row ID, active role and revision before and after the change, and its outcome. The auditing subject is the authorizing principal. The affected holder is a separate optional UUID taken from that membership generation. An unbound historical grant remains revocable. A LEGACY OIDC decision retains the verified issuer/subject binding digest and has no registry principal ID. Installation-full exports include these decisions as private historical evidence.
+
 ## User-Facing Terminology
 
 The following terminology is used in the user interface to avoid exposing

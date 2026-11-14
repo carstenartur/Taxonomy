@@ -20,6 +20,27 @@ import static org.assertj.core.api.Assertions.*;
 class RestoreIdentityImportTest {
     @TempDir Path root;
     private final PrincipalId first=new PrincipalId(UUID.fromString("00000000-0000-0000-0000-0000000000ab")),second=PrincipalId.create();
+    @Test void legacyRoleAuditRestoresOnlyAsPrivateEvidenceWithItsOriginalBinding() throws Exception {
+        var source = source();
+        var staged = database();
+        RestoreSchemaMigration.bootstrap(source, staged, () -> {});
+        String binding = "a".repeat(64);
+        new JdbcTemplate(source).update("insert into legacy_repository_role_audit values (?,?,?,?)",
+                UUID.randomUUID().toString(), binding, "{\"outcome\":\"APPLIED\"}", Instant.now().toEpochMilli());
+        var allocations = Map.of(first, new RestorePrincipalAllocation(PrincipalId.create(), "a", RestorePrincipalAllocation.Disposition.EXPLICIT_TARGET),
+                second, new RestorePrincipalAllocation(PrincipalId.create(), "b", RestorePrincipalAllocation.Disposition.EXPLICIT_TARGET));
+        try (var factory = RestoreSchemaMigration.openValidatedFactory(source, staged, model(), () -> {});
+             var archive = export(source, BackupProfile.INSTALLATION_FULL)) {
+            var generation = RestoreTargetGeneration.verified(UUID.randomUUID(), source, staged, factory, Map.of(), () -> {});
+            new RestoreIdentityImporter().restore(archive, generation, allocations, () -> {});
+            var rows = new JdbcTemplate(staged);
+            assertThat(rows.queryForObject("select record_json from restore_identity_evidence where classification='HISTORICAL_EVIDENCE' and record_kind='access-audit'", String.class))
+                    .contains(binding, "LEGACY_REPOSITORY_MEMBERSHIP");
+            assertThat(rows.queryForObject("select count(*) from legacy_repository_role_audit", Long.class)).isZero();
+            assertThat(rows.queryForObject("select count(*) from principal_access_audit", Long.class)).isZero();
+        }
+    }
+
     @Test void sameNameDifferentIssuerStaysExplicitlyMappedOrPrivateWithNoLoginOrGrantCopy()throws Exception {
         var source=source();var staged=database();RestoreSchemaMigration.bootstrap(source,staged,()->{});
         var targetFirst=PrincipalId.create();var targetSecond=PrincipalId.create();
@@ -203,11 +224,12 @@ class RestoreIdentityImportTest {
         rows.update("insert into app_role(name) values('ADMIN')");rows.update("insert into user_roles(user_id,role_id) select u.id,r.id from app_user u,app_role r where u.principal_id=?",first.value().toString());
         rows.update("insert into backup_capability_grant values(?,'RESTORE_INSTALLATION')",first.value().toString());return source;
     }
-    private VerifiedBackup export(JDBCDataSource source)throws Exception {
+    private VerifiedBackup export(JDBCDataSource source)throws Exception { return export(source, BackupProfile.INSTALLATION_CURRENT); }
+    private VerifiedBackup export(JDBCDataSource source, BackupProfile profile)throws Exception {
         BackupMaintenanceLease.initialize(source);var prerequisite=BackupFeaturePrerequisites.discover();
         var contributor=new IdentityBackupContributor(source,(snapshot,checkpoint)->Set.of(first,second));
         var policy=new BackupAccessPolicy(){public boolean isEnabled(PrincipalId id){return true;}public boolean hasCapability(PrincipalId p,BackupCapability c,BackupScope s){return true;}public boolean canRead(PrincipalId p,BackupRepositoryKey k){return true;}public boolean canReadVersion(PrincipalId p,BackupRepositoryKey k,String c){return true;}};
-        var authorization=new BackupAuthorizationService(policy,Clock.systemUTC());var request=new BackupRequest(BackupProfile.INSTALLATION_CURRENT,new BackupScope.Installation(),new BackupTime.Current(),GitRepresentation.NONE,SecretsSelection.EXCLUDE);
+        var authorization=new BackupAuthorizationService(policy,Clock.systemUTC());var request=new BackupRequest(profile,new BackupScope.Installation(),profile.includesHistory() ? new BackupTime.History() : new BackupTime.Current(),profile.includesHistory() ? GitRepresentation.BUNDLE : GitRepresentation.NONE,SecretsSelection.EXCLUDE);
         String installation=new JdbcTemplate(source).queryForObject("select installation_id from principal_installation",String.class);
         var plan=new BackupSnapshotCoordinator.CapturePlan("1.5.1-SNAPSHOT","identity-fixture",installation,List.of(),Map.of(new BackupComponentId("application"),new BackupSnapshotCoordinator.CaptureComponent(1,BackupCompleteness.COMPLETE,Set.of())),List.of(),List.of(),new SourceDatabaseMetadata(1,SourceDatabaseFamily.HSQLDB));
         var coordinator=new BackupSnapshotCoordinator(new BackupMaintenanceLease(source,Duration.ofSeconds(30)),authorization,ignored->plan,List.of(contributor),root.resolve("spool"),BackupSnapshotCoordinator.CaptureLimits.defaults(),Clock.systemUTC(),prerequisite);

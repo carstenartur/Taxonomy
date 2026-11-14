@@ -94,7 +94,12 @@ public final class RestoreIdentityImporter {
             model.evidence("version-grants",StableIdentityHash.sha256(JSON.writeValueAsString(record)),record,"INERT_SOURCE_AUTHORITY");
         });
         read(archive,"access-audit",AccessAudit.class,checkpoint,record->{
-            id(record.sourceId(),"identity-audit");if(!model.principals.containsKey(record.actor())||!model.principals.containsKey(record.target()))throw invalid();
+            id(record.sourceId(),"identity-audit");
+            if ("LEGACY_REPOSITORY_MEMBERSHIP".equals(record.decision())) {
+                if (record.actor() != null || record.target() != null || record.legacyActorBinding() == null
+                        || !record.legacyActorBinding().matches("[0-9a-f]{64}")) throw invalid();
+            } else if (record.legacyActorBinding() != null || !model.principals.containsKey(record.actor())
+                    || !model.principals.containsKey(record.target())) throw invalid();
             required(record.decision(),40);text(record.detail(),2048);instant(record.occurredAt());model.evidence("access-audit",record.sourceId().value(),record,"HISTORICAL_EVIDENCE");
         });
         var installation=RestoreArchiveRecords.document(archive,OWNER,"identities/installation.json",InstallationRecord.class,checkpoint);
