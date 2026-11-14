@@ -296,6 +296,18 @@ public final class WorkspaceRestoreImporter {
     private static final Set<String> PUBLICATION_STEPS = Set.of("PREPARE","CANDIDATES","SOURCE_REF","WORKSPACE_REF",
             "TRACKING_REF","CENTRAL_PORTFOLIO","LOCAL_PORTFOLIO","WORKSPACE_METADATA","SOURCE_METADATA","PROGRESS","COMPLETE");
 
+    private static final Set<String> PULL_STEPS = Set.of("PREPARE","CANDIDATES","WORKSPACE_REF","TRACKING_REF",
+            "LOCAL_PORTFOLIO","WORKSPACE_METADATA","PROGRESS","COMPLETE");
+
+    private static boolean validSynchronizationStep(String policy,String step) {
+        if (policy==null || step==null) return false;
+        return switch (policy) {
+            case "ARCHITECTURE_PUBLISH+CONTRIBUTOR" -> PUBLICATION_STEPS.contains(step);
+            case "ARCHITECTURE_PUBLISH+READER","ARCHITECTURE_PUBLISH+READER+KEYLESS" -> PULL_STEPS.contains(step);
+            default -> false;
+        };
+    }
+
     private static void classifyPublications(BackupProfile profile,List<PublicationRecord> publications,
             List<PublicationDecisionRecord> decisions,Map<String,WorkspaceRecord> workspaces,Set<String> activeWorkspaces,
             RestoreIdentityImporter.Result identities,Map<PrincipalId,RestorePrincipalAllocation> principals,
@@ -310,9 +322,8 @@ public final class WorkspaceRestoreImporter {
             required(row.repositoryId(),255); required(row.workspaceId(),255); required(row.principalScope(),255);
             required(row.localBranch(),255); branch(row.localBranch());
             required(row.sourceBranch(),255); branch(row.sourceBranch());
-            if (row.commits()==null || row.step()==null || !PUBLICATION_STEPS.contains(row.step())
-                    || row.attempts()<0 || row.createdAt()<0 || (row.archivedAt()==null)!=(row.archivedBy()==null)
-                    || !"ARCHITECTURE_PUBLISH+CONTRIBUTOR".equals(row.requiredPolicy())) throw invalid();
+            if (row.commits()==null || !validSynchronizationStep(row.requiredPolicy(),row.step())
+                    || row.attempts()<0 || row.createdAt()<0 || (row.archivedAt()==null)!=(row.archivedBy()==null)) throw invalid();
             for (var digest : Arrays.asList(row.mergedDigest(),row.centralPortfolioDigest(),row.localPortfolioDigest()))
                 if (digest!=null) sha(digest);
             for (var commit : row.commits().recorded().values()) if (!commit.matches("[a-f0-9]{40}")) throw invalid();
@@ -362,7 +373,7 @@ public final class WorkspaceRestoreImporter {
             var parent = byId.get(event.operation());
             if (!event.sourceId().value().matches("0|[1-9][0-9]{0,18}") || parent==null
                     || !parent.originalActor().equals(event.originalActor()) || event.decidedAt()<0
-                    || event.step()==null || !PUBLICATION_STEPS.contains(event.step())) throw invalid();
+                    || !validSynchronizationStep(parent.requiredPolicy(),event.step())) throw invalid();
             publicationActor(event.executorId());
             decisionCode(event.decisionCode());
             model.classify("publication-decisions",event.sourceId().value(),classifications.get(event.operation()));

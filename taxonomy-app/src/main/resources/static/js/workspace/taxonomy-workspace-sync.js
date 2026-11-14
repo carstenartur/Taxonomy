@@ -36,6 +36,34 @@ window.TaxonomyWorkspaceSync = (function () {
         pageActive = true; startPolling();
     });
 
+    function selectedContext() {
+        return window.TaxonomyContextBar?.getCurrentContext?.();
+    }
+
+    function editable() {
+        return selectedContext()?.mode !== 'READ_ONLY';
+    }
+
+    document.addEventListener('taxonomy:repository-context-changed', function (event) {
+        var actions = document.getElementById('workspaceSyncActions');
+        if (actions) {
+            var moveFocus = actions.contains(document.activeElement) && !editable();
+            actions.disabled = !editable();
+            if (moveFocus) document.getElementById('contextBarBranch')?.focus({preventScroll: true});
+        }
+        if (!event.detail?.selectionChanged) return;
+        syncState = null;
+        document.getElementById('syncStatusIndicator')?.remove();
+        document.getElementById('syncStatePanel')?.replaceChildren();
+        var local = document.getElementById('localChangesPanel');
+        if (local) {
+            local.replaceChildren();
+            local.classList.add('d-none');
+        }
+        renderDirtyIndicator();
+        pollSyncState();
+    });
+
     // ── Polling ─────────────────────────────────────────────────────
 
     function pollSyncState() {
@@ -49,10 +77,17 @@ window.TaxonomyWorkspaceSync = (function () {
         window.TaxonomyWorkspaceApi.syncState({ signal: controller.signal })
             .then(function (state) {
                 if (!current() || !state) return;
+                var context = selectedContext();
+                var repository = window.TaxonomyArchitectureWorkflow?.getScope?.()?.repositoryId;
+                var workspace = window.__TaxonomyAnalysisSessionContext?.runtime?.workspaceId;
+                if ((state.branch && context?.branch && state.branch !== context.branch)
+                        || (state.repositoryId && repository && state.repositoryId !== repository)
+                        || (state.workspaceId && workspace && state.workspaceId !== workspace)) return;
                 syncState = state;
                 renderSyncIndicator(state);
                 renderDirtyIndicator();
                 renderSyncStatePanel(state);
+                window.TaxonomyContextBar?.updateSyncInfoInBar?.();
             })
             .catch(function () {
                 // silently ignore — non-critical
@@ -147,7 +182,7 @@ window.TaxonomyWorkspaceSync = (function () {
 
         var html = '<div class="d-flex align-items-center gap-2 mb-2">';
         html += '<span class="badge ' + badgeClass + '">' + escapeHtml(statusLabel) + '</span>';
-        if (status === 'DIVERGED') {
+        if (status === 'DIVERGED' && editable()) {
             html += '<button class="btn btn-sm btn-outline-danger ms-2" '
                 + 'onclick="var el = document.getElementById(\'syncDivergedModal\'); if (el &amp;&amp; typeof bootstrap !== \'undefined\') { new bootstrap.Modal(el).show(); }" '
                 + 'title="' + escapeHtml(t('workspace.sync.panel.resolve.title')) + '">' + escapeHtml(t('workspace.sync.panel.resolve')) + '</button>';
@@ -195,8 +230,10 @@ window.TaxonomyWorkspaceSync = (function () {
         var ctx = window.TaxonomyContextBar ? window.TaxonomyContextBar.getCurrentContext() : null;
         var branch = (ctx && ctx.branch) ? ctx.branch : 'draft';
 
+        var current = window.TaxonomyApiClient.captureContext();
         window.TaxonomyWorkspaceApi.localChanges(branch)
             .then(function (data) {
+                if (!current()) return;
                 var html = '<div class="card shadow-sm mb-3">';
                 html += '<div class="card-header fw-semibold d-flex justify-content-between align-items-center">';
                 html += '<span>\uD83D\uDCC4 ' + escapeHtml(t('workspace.local.changes')) + '</span>';
@@ -209,10 +246,12 @@ window.TaxonomyWorkspaceSync = (function () {
                 } else {
                     var branchDisplay = TaxonomyI18n.formatBranch(branch);
                     html += '<p class="mb-2">' + t('workspace.local.count', data.changeCount, escapeHtml(branchDisplay)) + '</p>';
-                    html += '<div class="d-flex gap-2">';
-                    html += '<button class="btn btn-sm btn-primary" onclick="TaxonomyWorkspaceSync.publish()">\uD83D\uDCE4 ' + escapeHtml(t('workspace.local.publish')) + '</button>';
-                    html += '<button class="btn btn-sm btn-outline-secondary" onclick="TaxonomyWorkspaceSync.syncFromShared()">\uD83D\uDCE5 ' + escapeHtml(t('workspace.local.sync')) + '</button>';
-                    html += '</div>';
+                    if (editable()) {
+                        html += '<div class="d-flex gap-2">';
+                        html += '<button class="btn btn-sm btn-primary" onclick="TaxonomyWorkspaceSync.publish()">\uD83D\uDCE4 ' + escapeHtml(t('workspace.local.publish')) + '</button>';
+                        html += '<button class="btn btn-sm btn-outline-secondary" onclick="TaxonomyWorkspaceSync.syncFromShared()">\uD83D\uDCE5 ' + escapeHtml(t('workspace.local.sync')) + '</button>';
+                        html += '</div>';
+                    }
                 }
 
                 html += '</div></div>';
@@ -222,88 +261,68 @@ window.TaxonomyWorkspaceSync = (function () {
                     container.innerHTML = html;
                     container.classList.remove('d-none');
                 }
-            }).catch(showError);
+            }).catch(function (error) { if (current()) showError(error); });
     }
 
     // ── Sync Actions ────────────────────────────────────────────────
 
-    function syncFromShared() {
+    var operationKeys = new Map();
+
+    function synchronize(pull) {
+        if (!editable()) return;
         var ctx = window.TaxonomyContextBar ? window.TaxonomyContextBar.getCurrentContext() : null;
-        var branch = (ctx && ctx.branch) ? ctx.branch : 'draft';
-
-        window.TaxonomyWorkspaceApi.syncFromShared(branch)
-            .then(function (result) {
-                if (result.error) {
-                    if (window.TaxonomyOperationResult) {
-                        window.TaxonomyOperationResult.showError(t('workspace.sync.failed'), result.message || result.error);
-                    } else {
-                        alert(t('workspace.sync.failed') + ': ' + result.error);
-                    }
-                } else {
-                    if (window.TaxonomyOperationResult) {
-                        window.TaxonomyOperationResult.showSuccess(t('workspace.sync.from.success'),
-                            t('workspace.sync.from.success.detail'));
-                    }
-                    pollSyncState();
-                    if (window.TaxonomyGitStatus) window.TaxonomyGitStatus.refresh();
-                    showLocalChangesPanel();
-                }
-            }).catch(showError);
-    }
-
-    var publicationKeys = new Map();
-
-    function publish() {
-        var ctx = window.TaxonomyContextBar ? window.TaxonomyContextBar.getCurrentContext() : null;
-        var branch = (ctx && ctx.branch) ? ctx.branch : 'draft';
-
+        var branch = ctx?.branch || 'draft';
         var workspace = window.__TaxonomyAnalysisSessionContext?.runtime?.workspaceId || '';
-        var scope = 'taxonomy-publish:' + JSON.stringify([workspace, ctx?.repositoryId || '', branch]);
-        var key = publicationKeys.get(scope);
+        var repository = window.TaxonomyArchitectureWorkflow?.getScope?.()?.repositoryId || '';
+        var scope = (pull ? 'taxonomy-pull:' : 'taxonomy-publish:') + JSON.stringify([workspace, repository, branch]);
+        var key = operationKeys.get(scope);
         try { key = key || window.sessionStorage?.getItem(scope); } catch (ignored) { }
-        if (!key) key = window.crypto?.randomUUID?.() || 'publish-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
-        publicationKeys.set(scope, key);
+        if (!key) key = window.crypto?.randomUUID?.() || 'sync-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+        operationKeys.set(scope, key);
         try { window.sessionStorage?.setItem(scope, key); } catch (ignored) { }
         function settled() {
-            if (publicationKeys.get(scope) !== key) return;
-            publicationKeys.delete(scope);
+            if (operationKeys.get(scope) !== key) return;
+            operationKeys.delete(scope);
             try { if (window.sessionStorage?.getItem(scope) === key) window.sessionStorage.removeItem(scope); } catch (ignored) { }
         }
 
-        return window.TaxonomyWorkspaceApi.publish(branch, {idempotencyKey:key})
+        var current = window.TaxonomyApiClient.captureContext();
+        var send = pull ? window.TaxonomyWorkspaceApi.syncFromShared : window.TaxonomyWorkspaceApi.publish;
+        var message = pull ? 'workspace.sync.from.' : 'workspace.sync.publish.';
+        return send(branch, {idempotencyKey:key})
             .then(function (result) {
-                if (result.operationId && !result.success && !result.error) {
-                    window.TaxonomyOperationResult?.showWarning(t('workspace.sync.publish.pending'),
+                var pending = result.operationId && !result.success && !result.error && result.status !== 'SUPERSEDED';
+                if (!pending) settled();
+                if (!current()) return;
+                if (pending) {
+                    window.TaxonomyOperationResult?.showWarning(t(message + 'pending'),
                         t('workspace.sync.publish.receipt', result.operationId, result.status));
                     return;
                 }
-                settled();
                 if (result.status === 'SUPERSEDED') {
-                    window.TaxonomyOperationResult?.showWarning(t('workspace.sync.publish.superseded'),
+                    window.TaxonomyOperationResult?.showWarning(t(message + 'superseded'),
                         t('workspace.sync.publish.receipt', result.operationId, result.status));
                     pollSyncState();
                     return;
                 }
                 if (result.error) {
-                    if (window.TaxonomyOperationResult) {
-                        window.TaxonomyOperationResult.showError(t('workspace.sync.publish.failed'), result.message || result.error);
-                    } else {
-                        alert(t('workspace.sync.publish.failed') + ': ' + result.error);
-                    }
-                } else {
-                    if (window.TaxonomyOperationResult) {
-                        window.TaxonomyOperationResult.showSuccess(t('workspace.sync.publish.success'),
-                            t('workspace.sync.publish.success.detail'));
-                    }
-                    pollSyncState();
-                    if (window.TaxonomyGitStatus) window.TaxonomyGitStatus.refresh();
-                    showLocalChangesPanel();
+                    var title=t(pull ? 'workspace.sync.failed' : 'workspace.sync.publish.failed');
+                    if (window.TaxonomyOperationResult) window.TaxonomyOperationResult.showError(title, result.message || result.error);
+                    else alert(title + ': ' + result.error);
+                    return;
                 }
+                window.TaxonomyOperationResult?.showSuccess(t(message + 'success'),t(message + 'success.detail'));
+                pollSyncState();
+                if (window.TaxonomyGitStatus) window.TaxonomyGitStatus.refresh();
+                showLocalChangesPanel();
             }).catch(function (error) {
                 if (error.status === 409 || error.status === 410 || error.status === 403) settled();
-                showError(error);
+                if (current()) showError(error);
             });
     }
+
+    function syncFromShared() { return synchronize(true); }
+    function publish() { return synchronize(false); }
 
     function showError(error) {
         if (error.code === 'ABORTED') return;
