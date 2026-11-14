@@ -918,7 +918,7 @@ class CompleteCopilotSessionIT {
     private static ExpectedCondition<Boolean> attributeEquals(By locator,
                                                                String attribute,
                                                                String value) {
-        return ExpectedConditions.attributeToBe(locator, attribute, value);
+        return ExpectedConditions.refreshed(ExpectedConditions.attributeToBe(locator, attribute, value));
     }
 
     private static ExpectedCondition<Boolean> textPresent(By locator, String expectedText) {
