@@ -4,6 +4,7 @@ import com.taxonomy.dsl.command.ArchitectureDslCommands;
 import com.taxonomy.security.service.DatabaseUserDetailsService;
 import com.taxonomy.security.service.UserManagementService;
 import com.taxonomy.support.AnalysisCatalogueSourceFixture;
+import com.taxonomy.testsupport.LocalTestLogin;
 import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.service.ArchitectureRepositoryProvisioningService;
 import com.taxonomy.workspace.service.RepositoryWorkspaceService;
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.ApplicationContext;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.test.context.support.WithMockUser;
@@ -29,7 +31,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -51,6 +53,9 @@ class AdminAuthorizationRegressionTest implements AnalysisCatalogueSourceFixture
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private ApplicationContext applicationContext;
 
     @Autowired
     private DatabaseUserDetailsService users;
@@ -96,9 +101,10 @@ class AdminAuthorizationRegressionTest implements AnalysisCatalogueSourceFixture
     @Test
     void architectCanReachWorkspacePullAndPublishOperations() throws Exception {
         String architect = "publication-architect-" + UUID.randomUUID();
-        accounts.createUser(Map.of("username", architect, "roles", List.of("ARCHITECT")),
-                UUID.randomUUID().toString(), "test");
-        var principal = users.loadUserByUsername(architect);
+        String password = UUID.randomUUID().toString();
+        accounts.createUser(Map.of("username", architect, "roles", List.of("ARCHITECT")), password, "test");
+        LocalTestLogin.loginExisting(applicationContext, architect, password);
+        var login = SecurityContextHolder.getContext().getAuthentication();
         String sourceDsl = """
                 element authorization-capability type Capability {
                   title: "Authorization capability";
@@ -131,7 +137,7 @@ class AdminAuthorizationRegressionTest implements AnalysisCatalogueSourceFixture
         var pull = mockMvc.perform(post("/api/workspace/sync-from-shared")
                         .header(WorkspaceContextResolver.WORKSPACE_HEADER, workspace.getWorkspaceId())
                         .param("userBranch", branch)
-                        .with(user(principal)).with(csrf()))
+                        .with(authentication(login)).with(csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.branch").value(branch));
@@ -143,7 +149,7 @@ class AdminAuthorizationRegressionTest implements AnalysisCatalogueSourceFixture
         var publish = mockMvc.perform(post("/api/workspace/publish")
                         .header(WorkspaceContextResolver.WORKSPACE_HEADER, workspace.getWorkspaceId())
                         .param("userBranch", branch)
-                        .with(user(principal)).with(csrf()))
+                        .with(authentication(login)).with(csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.branch").value(branch));

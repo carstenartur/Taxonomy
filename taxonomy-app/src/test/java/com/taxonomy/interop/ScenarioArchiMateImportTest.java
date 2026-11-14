@@ -1,5 +1,6 @@
 package com.taxonomy.interop;
 
+import com.taxonomy.testsupport.LocalTestLogin;
 import org.junit.jupiter.api.Tag;
 
 import com.taxonomy.dsl.command.ArchitectureDslCommands;
@@ -42,6 +43,7 @@ class ScenarioArchiMateImportTest {
     private static final String SOURCE = "/scenarios/pr1251-complete-architecture.archimate.xml.gz";
     private static final int SOURCE_BYTES = 1_826_654;
     private static final String SOURCE_SHA256 = "14bd36e03c95f1504c02efe9ecf884846a3d13670e14aa171c4fbddf46c879a2";
+    @Autowired org.springframework.context.ApplicationContext application;
     @Autowired IntegrationService integrations;
     @Autowired ArchitectureRepositoryProvisioningService repositories;
     @Autowired RepositoryWorkspaceService workspaces;
@@ -67,6 +69,7 @@ class ScenarioArchiMateImportTest {
         }
 
         String actor = "scenario-import-" + UUID.randomUUID().toString().substring(0, 8);
+        LocalTestLogin.login(application, actor, "ARCHITECT");
         var repository = repositories.createRepository("Complete scenario exchange", actor, "Captured realistic architecture",
                 RepositoryVisibility.PRIVATE, actor, "draft");
         var workspace = workspaces.createWorkingCopy(actor, repository.getRepositoryId(), "draft", "Complete import", "");

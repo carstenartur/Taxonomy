@@ -22,13 +22,16 @@ import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.portfolio.service.ProjectRequirementAnalysisService;
+import com.taxonomy.testsupport.LocalTestLogin;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceManager;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -49,6 +52,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 /** Durable authority regressions; no analysis worker or external provider is executed. */
 @SpringBootTest(properties = "llm.mock=true")
 class ProductDemoAuthorityRegressionTest extends RetainedPortfolioCatalogue {
+    @Autowired private ApplicationContext applicationContext;
     private static final String USER = "architect";
     @Autowired ProductDemoService demos;
     @Autowired ProductDemoRunRepository runs;
@@ -62,6 +66,11 @@ class ProductDemoAuthorityRegressionTest extends RetainedPortfolioCatalogue {
     @Autowired ProjectRequirementAnalysisService execution;
     // Keep dispatch observable without starting an analysis worker in an admission regression.
     @MockitoBean(name = "portfolioAnalysisExecutor") AsyncTaskExecutor analysisExecutor;
+
+    @BeforeEach
+    void login() {
+        LocalTestLogin.login(applicationContext, USER, "ARCHITECT");
+    }
 
     @ParameterizedTest(name = "{0} rejects changed stored {1}")
     @CsvSource({"get,version", "list,version", "compare,version", "get,fingerprint", "list,fingerprint", "compare,fingerprint"})

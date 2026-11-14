@@ -21,7 +21,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.security.test.context.support.WithMockUser;
 
 import java.util.List;
 import java.util.Map;
@@ -39,7 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /** Uses the real catalogue and stored snapshots; exporting must not invoke synthesis. */
 @SpringBootTest(properties = "llm.mock=true")
 @AutoConfigureMockMvc
-@WithMockUser(username = "architect", roles = "ARCHITECT")
+
 @Tag("ci-app-shard-domain-integration")
 class ReformulationReportTest extends ReformulationWorkflowFixture {
     @Autowired TaxonomyService catalogue;

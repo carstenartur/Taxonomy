@@ -26,7 +26,6 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
-import org.springframework.security.test.context.support.WithMockUser;
 import tools.jackson.databind.node.ObjectNode;
 
 import java.util.UUID;
@@ -39,7 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(properties = "llm.mock=true")
 @org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
-@WithMockUser(username = "architect", roles = "ARCHITECT")
+
 @Tag("ci-app-shard-domain-integration")
 class ReformulationPositiveReviewGuardTest extends ReformulationWorkflowFixture {
     @Autowired ReformulationAdoptionService adoption;

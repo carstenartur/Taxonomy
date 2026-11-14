@@ -10,6 +10,7 @@ import com.taxonomy.composition.reformulation.ReformulationExecutionService;
 import com.taxonomy.composition.reformulation.ReformulationRecoveryCoordinator;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.portfolio.PortfolioAnalysisWorkspace;
+import com.taxonomy.testsupport.LocalTestLogin;
 import com.taxonomy.portfolio.dto.PortfolioDtos.*;
 import com.taxonomy.portfolio.model.PortfolioTypes.*;
 import com.taxonomy.portfolio.service.*;
@@ -86,6 +87,7 @@ public final class ReformulationLocalRecoveryChecks {
                 "--embedding.enabled=false", "--taxonomy.init.async=false", "--llm.mock=false", "--llm.provider=CUSTOM_OPENAI",
                 "--custom.llm.model=local-recovery", "--custom.llm.api.key=", "--custom.llm.url=http://127.0.0.1:" + remote.getAddress().getPort() + "/v1/chat/completions",
                 "--gemini.api.key=", "--openai.api.key=", "--deepseek.api.key=", "--qwen.api.key=", "--llama.api.key=", "--mistral.api.key=")) {
+            LocalTestLogin.login(app, "architect", "ARCHITECT");
             // Stop automatic timers BEFORE creating test work; this test drives the same real methods explicitly.
             app.getBean(ReformulationRecoveryCoordinator.class).stop();
             var projects = app.getBean(ProjectPortfolioService.class); var proposals = app.getBean(ReformulationService.class);

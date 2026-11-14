@@ -2,6 +2,7 @@ package com.taxonomy.dsl.export;
 
 import com.taxonomy.architecture.repository.ArchitectureDslDocumentRepository;
 import com.taxonomy.relations.repository.RelationHypothesisRepository;
+import com.taxonomy.testsupport.LocalTestLogin;
 import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
@@ -10,14 +11,11 @@ import com.taxonomy.workspace.service.WorkspaceManager;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.annotation.DirtiesContext;
 
-import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -27,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.*;
         "gemini.api.key=", "openai.api.key=", "deepseek.api.key=", "qwen.api.key=", "llama.api.key=", "mistral.api.key="})
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class DslMaterializeProvisioningBoundaryTest {
+    @Autowired private ApplicationContext applicationContext;
     private static final String ACTOR = "materialize-provision-owner";
     private static final String BRANCH = "draft";
     private static final String SOURCE = "meta { language: \"taxdsl\"; namespace: \"before\"; }";
@@ -53,6 +52,7 @@ class DslMaterializeProvisioningBoundaryTest {
 
     @Test
     void failedMaterializationLeavesTheFirstWorkspaceAllocationReplayable() throws Exception {
+        LocalTestLogin.login(applicationContext, ACTOR, "ARCHITECT");
         var source = catalog.createCentralRepository("Materialization source", "materialize-" + UUID.randomUUID(),
                 null, RepositoryVisibility.PRIVATE, ACTOR, BRANCH);
         String repositoryId = source.getRepositoryId();
@@ -64,34 +64,25 @@ class DslMaterializeProvisioningBoundaryTest {
         workspace.setDefault(true);
         workspace.setSourceRepositoryId(repositoryId);
         workspaceRows.saveAndFlush(workspace);
-        var previous = SecurityContextHolder.getContext();
-        var authenticated = SecurityContextHolder.createEmptyContext();
-        authenticated.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(ACTOR, null,
-                List.of(new SimpleGrantedAuthority("ROLE_ARCHITECT"))));
-        SecurityContextHolder.setContext(authenticated);
-        try {
-            assertThrows(DataIntegrityViolationException.class,
-                    () -> materialization.materialize(DSL, "x".repeat(256), BRANCH, null));
-            assertTrue(hypotheses.findVisibleByRepositoryAndWorkspaceAndBranch(repositoryId, workspaceId, BRANCH).isEmpty());
+        assertThrows(DataIntegrityViolationException.class,
+                () -> materialization.materialize(DSL, "x".repeat(256), BRANCH, null));
+        assertTrue(hypotheses.findVisibleByRepositoryAndWorkspaceAndBranch(repositoryId, workspaceId, BRANCH).isEmpty());
 
-            var target = git.openWorkspaceRepository(workspaceId);
-            String retainedHead = target.getHeadCommit(BRANCH);
-            assertNotNull(retainedHead);
-            var retained = workspaceRows.findByWorkspaceId(workspaceId).orElseThrow();
-            assertEquals(WorkspaceProvisioningStatus.READY, retained.getProvisioningStatus());
-            assertEquals(base, retained.getBaseCommit());
-            assertEquals(retainedHead, retained.getCurrentCommit());
+        var target = git.openWorkspaceRepository(workspaceId);
+        String retainedHead = target.getHeadCommit(BRANCH);
+        assertNotNull(retainedHead);
+        var retained = workspaceRows.findByWorkspaceId(workspaceId).orElseThrow();
+        assertEquals(WorkspaceProvisioningStatus.READY, retained.getProvisioningStatus());
+        assertEquals(base, retained.getBaseCommit());
+        assertEquals(retainedHead, retained.getCurrentCommit());
 
-            upstream.commitDsl(BRANCH, "meta { language: \"taxdsl\"; namespace: \"after\"; }", ACTOR, "Advanced source");
-            var replay = materialization.materialize(DSL, "recovered.taxdsl", BRANCH, null);
-            assertTrue(replay.valid());
-            assertEquals(1, replay.hypothesesCreated());
-            assertEquals(BRANCH, documents.findById(replay.documentId()).orElseThrow().getBranch());
-            assertEquals(1, hypotheses.findVisibleByRepositoryAndWorkspaceAndBranch(repositoryId, workspaceId, BRANCH).size());
-            assertEquals(retainedHead, target.getHeadCommit(BRANCH));
-            assertEquals(base, workspaceRows.findByWorkspaceId(workspaceId).orElseThrow().getBaseCommit());
-        } finally {
-            SecurityContextHolder.setContext(previous);
-        }
+        upstream.commitDsl(BRANCH, "meta { language: \"taxdsl\"; namespace: \"after\"; }", ACTOR, "Advanced source");
+        var replay = materialization.materialize(DSL, "recovered.taxdsl", BRANCH, null);
+        assertTrue(replay.valid());
+        assertEquals(1, replay.hypothesesCreated());
+        assertEquals(BRANCH, documents.findById(replay.documentId()).orElseThrow().getBranch());
+        assertEquals(1, hypotheses.findVisibleByRepositoryAndWorkspaceAndBranch(repositoryId, workspaceId, BRANCH).size());
+        assertEquals(retainedHead, target.getHeadCommit(BRANCH));
+        assertEquals(base, workspaceRows.findByWorkspaceId(workspaceId).orElseThrow().getBaseCommit());
     }
 }

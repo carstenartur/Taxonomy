@@ -11,7 +11,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.openqa.selenium.*;
@@ -27,7 +26,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /** Real saved catalogue root, persisted evidence, authenticated browser, CSRF and retained reopen. */
 @Tag("browser") @Tag("ci-app-shard-browser")
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT,properties={"taxonomy.security.require-password-change=false","server.servlet.context-path=/taxonomy"})
-@AutoConfigureMockMvc @WithMockUser(username="architect",roles="ARCHITECT")
+@AutoConfigureMockMvc
 class InventoryComparisonUiIT extends ReformulationWorkflowFixture {
     private static final String BASE="/taxonomy";
     private static final String PASSWORD="Inventory-"+UUID.randomUUID();

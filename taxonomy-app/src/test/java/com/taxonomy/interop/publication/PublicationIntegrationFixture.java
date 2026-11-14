@@ -1,5 +1,6 @@
 package com.taxonomy.interop.publication;
 
+import com.taxonomy.testsupport.LocalTestLogin;
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
 import com.taxonomy.extension.api.integration.PublicationContracts.*;
 import com.taxonomy.interop.*;
@@ -39,6 +40,9 @@ abstract class PublicationIntegrationFixture {
             return new PublicationPolicy(List.of(new PublicationPolicy.VerifiedContract(PublicationContractProvider.PROFILE, "1", PublicationContractProvider.CAPS)));
         }
     }
+
+    @Autowired
+    org.springframework.context.ApplicationContext application;
 
     @Autowired
     IntegrationPublicationService publication;
@@ -89,17 +93,45 @@ abstract class PublicationIntegrationFixture {
 
     UUID connection;
 
+    private org.springframework.security.core.Authentication ownerAuthentication;
+
     PublicationContractProvider provider;
 
     @BeforeEach
     void setup() throws Exception {
         provider = new PublicationContractProvider(directory.resolve("provider.json"));
         connector.provider = provider;
-        String actor = "publication-" + UUID.randomUUID().toString().substring(0, 8);
+        String actor = loginOwner("publication-" + UUID.randomUUID().toString().substring(0, 8));
+        ownerAuthentication = org.springframework.security.test.context.TestSecurityContextHolder.getContext().getAuthentication();
         var repo = repositories.createRepository("Publication", actor, "", RepositoryVisibility.PRIVATE, actor, "draft");
         var workspace = workspaces.createWorkingCopy(actor, repo.getRepositoryId(), "draft", "Publication", "");
         context = RepositoryContext.workspace(repo.getRepositoryId(), workspace.getWorkspaceId(), workspace.getCurrentBranch(), actor);
         connection = integrations.create(context, new IntegrationService.CreateConnection(UUID.randomUUID(), "Contract", PublicationContractProvider.PROFILE, AuthorityMode.BIDIRECTIONAL, PublicationContractProvider.SCOPE.externalScope(), null, null)).id();
+    }
+
+    String loginOwner(String username) {
+        LocalTestLogin.login(application, username, "ARCHITECT");
+        return username;
+    }
+
+    org.springframework.security.core.Authentication ownerLogin() {
+        return ownerAuthentication;
+    }
+
+    <T> java.util.concurrent.Callable<T> asOwner(java.util.concurrent.Callable<T> action) {
+        var security = org.springframework.security.core.context.SecurityContextHolder.createEmptyContext();
+        security.setAuthentication(ownerLogin());
+        return new org.springframework.security.concurrent.DelegatingSecurityContextCallable<>(action, security);
+    }
+
+    org.springframework.test.web.servlet.ResultActions performAsRequest(
+            org.springframework.test.web.servlet.MockMvc mvc,
+            org.springframework.test.web.servlet.RequestBuilder request) throws Exception {
+        try {
+            return mvc.perform(request);
+        } finally {
+            org.springframework.security.test.context.TestSecurityContextHolder.setAuthentication(ownerLogin());
+        }
     }
 
     @AfterEach

@@ -5,7 +5,6 @@ import org.junit.jupiter.api.Tag;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.openqa.selenium.*;
 import org.openqa.selenium.support.ui.*;
 import org.openqa.selenium.remote.RemoteWebDriver;
@@ -18,7 +17,7 @@ import static org.assertj.core.api.Assertions.*;
 @Tag("browser")
 @Tag("ci-app-shard-browser")
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT,properties={"taxonomy.admin-password=Reformulation-Browser-2026!","taxonomy.security.require-password-change=false"})
-@AutoConfigureMockMvc @WithMockUser(username="architect",roles="ARCHITECT")
+@AutoConfigureMockMvc
 class ReformulationBrowserTest extends ReformulationWorkflowFixture {
     @LocalServerPort int port;
     @org.springframework.beans.factory.annotation.Autowired SaveGate saveGate;

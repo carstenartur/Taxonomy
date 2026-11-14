@@ -26,7 +26,7 @@ class IntegrationPublicationConcurrencyTest extends PublicationIntegrationFixtur
         };
         var review = review(preview(PublicationMode.PUSH));
         try (var executor = Executors.newSingleThreadExecutor()) {
-            var pending = executor.submit(() -> publication.publish(context, connection, review));
+            var pending = executor.submit(asOwner(() -> publication.publish(context, connection, review)));
             assertTrue(ready.await(15, TimeUnit.SECONDS));
             edit(new UpdateArchitectureElement("a", "System", Map.of("title", "Moved")));
             release.countDown();

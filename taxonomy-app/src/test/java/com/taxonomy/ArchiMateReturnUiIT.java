@@ -1,5 +1,6 @@
 package com.taxonomy;
 
+import com.taxonomy.testsupport.LocalTestLogin;
 import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
 import com.taxonomy.testsupport.BrowserSession;
 import com.taxonomy.workspace.model.RepositoryVisibility;
@@ -46,8 +47,11 @@ class ArchiMateReturnUiIT {
             var primary = app.getBean(SystemRepositoryService.class).getPrimaryRepository();
             var secondary = app.getBean(ArchitectureRepositoryProvisioningService.class).createRepository(
                     "Archi return", "archi-return-browser", "Independent empty return destination", RepositoryVisibility.PRIVATE, "admin", "main");
-            var workspace = app.getBean(RepositoryWorkspaceService.class).createWorkingCopy(
-                    "admin", secondary.getRepositoryId(), "main", "Archi return workspace", "Native import review");
+            com.taxonomy.workspace.model.UserWorkspace workspace;
+            try (var login = LocalTestLogin.openExisting(app, "admin", PASSWORD)) {
+                workspace = app.getBean(RepositoryWorkspaceService.class).createWorkingCopy(
+                        "admin", secondary.getRepositoryId(), "main", "Archi return workspace", "Native import review");
+            }
             var relations = app.getBean(TaxonomyRelationRepository.class);
             var primaryIds = relations.findByRepositoryIdAndWorkspaceId(primary.getRepositoryId(), null).stream().map(row -> row.getId()).toList();
             assertThat(primaryIds).isNotEmpty();

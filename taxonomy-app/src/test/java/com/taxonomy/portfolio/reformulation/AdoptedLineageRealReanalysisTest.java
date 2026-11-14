@@ -11,7 +11,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.client.ExpectedCount;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.test.web.client.match.MockRestRequestMatchers;
@@ -34,7 +33,6 @@ class AdoptedLineageRealReanalysisTest {
             "custom.llm.url=http://localhost:9999/v1/chat/completions",
             "custom.llm.model=reformulation-test", "custom.llm.api.key="})
     @org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
-    @WithMockUser(username = "architect", roles = "ARCHITECT")
     @org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_CLASS)
     static class Scenario extends ReformulationWorkflowFixture {
         @Autowired org.springframework.web.client.RestTemplate transport;

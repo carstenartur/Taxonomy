@@ -120,7 +120,7 @@ class IntegrationPublicationRecoveryTest extends PublicationIntegrationFixture {
         };
         var review = review(preview(PublicationMode.PUSH));
         try (var executor = Executors.newSingleThreadExecutor()) {
-            var original = executor.submit(() -> publication.publish(context, connection, review));
+            var original = executor.submit(asOwner(() -> publication.publish(context, connection, review)));
             assertTrue(waiting.await(15, TimeUnit.SECONDS));
             var inFlight = publication.retryPublication(context, connection, review.review().operationId());
             assertEquals(1, provider.writes.get());
@@ -192,7 +192,7 @@ class IntegrationPublicationRecoveryTest extends PublicationIntegrationFixture {
         };
         var review = review(preview(PublicationMode.PUSH));
         try (var executor = Executors.newSingleThreadExecutor()) {
-            var pending = executor.submit(() -> publication.publish(context, connection, review));
+            var pending = executor.submit(asOwner(() -> publication.publish(context, connection, review)));
             assertTrue(ready.await(15, TimeUnit.SECONDS));
             var operation = publication.publication(context, connection, review.review().operationId());
             assertEquals(PublicationPhase.VERIFY_PENDING, operation.phase());
@@ -232,7 +232,7 @@ class IntegrationPublicationRecoveryTest extends PublicationIntegrationFixture {
         };
         var review = review(preview(PublicationMode.PUSH));
         try (var executor = Executors.newSingleThreadExecutor()) {
-            var pending = executor.submit(() -> publication.publish(context, connection, review));
+            var pending = executor.submit(asOwner(() -> publication.publish(context, connection, review)));
             assertTrue(ready.await(15, TimeUnit.SECONDS));
             var operation = publication.publication(context, connection, review.review().operationId());
             var plan = store.locked(context, connection, s -> s.publications().plan(operation.operationId()));
@@ -628,7 +628,7 @@ class IntegrationPublicationRecoveryTest extends PublicationIntegrationFixture {
         });
         var service = service(port, clock);
         var executor = Executors.newSingleThreadExecutor();
-        var call = executor.submit(() -> service.publish(context, connection, review));
+        var call = executor.submit(asOwner(() -> service.publish(context, connection, review)));
         try {
             assertTrue(entered.await(10, TimeUnit.SECONDS));
             var pending = call.get(5, TimeUnit.SECONDS);
@@ -671,7 +671,7 @@ class IntegrationPublicationRecoveryTest extends PublicationIntegrationFixture {
         });
         var service = service(port, Clock.systemUTC());
         var executor = Executors.newSingleThreadExecutor();
-        var oldCall = executor.submit(() -> service.retryPublication(context, connection, pending.operationId()));
+        var oldCall = executor.submit(asOwner(() -> service.retryPublication(context, connection, pending.operationId())));
         try {
             assertTrue(entered.await(10, TimeUnit.SECONDS));
             var completed = publication.retryPublication(context, connection, pending.operationId());

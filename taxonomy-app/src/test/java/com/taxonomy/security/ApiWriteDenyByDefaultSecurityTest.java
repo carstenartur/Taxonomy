@@ -1,7 +1,9 @@
 package com.taxonomy.security;
 
+import com.taxonomy.testsupport.LocalTestLogin;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
@@ -28,6 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "mistral.api.key="
 })
 class ApiWriteDenyByDefaultSecurityTest {
+    @Autowired private ApplicationContext applicationContext;
 
     @Autowired
     private MockMvc mockMvc;
@@ -42,11 +45,14 @@ class ApiWriteDenyByDefaultSecurityTest {
     }
 
     @Test
-    @WithMockUser(roles = "USER")
     void headUsesTheSameScopedReadAuthorityForIntegrationsAndOslc() throws Exception {
-        var repository = repositories.createRepository("HTTP read methods", "user", "", com.taxonomy.workspace.model.RepositoryVisibility.PRIVATE, "user", "draft");
-        var workspace = workspaces.createWorkingCopy("user", repository.getRepositoryId(), "draft", "Protocol", "");
-        var context = com.taxonomy.workspace.service.RepositoryContext.workspace(repository.getRepositoryId(), workspace.getWorkspaceId(), workspace.getCurrentBranch(), "user");
+        String actor = "http-protocol-user";
+        LocalTestLogin.login(applicationContext, actor, "USER");
+        var repository = repositories.createRepository("HTTP read methods", actor, "",
+                com.taxonomy.workspace.model.RepositoryVisibility.PRIVATE, actor, "draft");
+        var workspace = workspaces.createWorkingCopy(actor, repository.getRepositoryId(), "draft", "Protocol", "");
+        var context = com.taxonomy.workspace.service.RepositoryContext.workspace(
+                repository.getRepositoryId(), workspace.getWorkspaceId(), workspace.getCurrentBranch(), actor);
         for (String path : java.util.List.of("/api/integrations/profiles", "/oslc/scopes/" + com.taxonomy.editor.persistence.EditorJournal.scope(context) + "/catalog"))
             mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.head(path)
                             .param("repositoryId", context.repositoryId()).param("workspaceId", context.workspaceId()).param("branch", context.branch()))
@@ -109,8 +115,8 @@ class ApiWriteDenyByDefaultSecurityTest {
     }
 
     @Test
-    @WithMockUser(roles = "ARCHITECT")
     void architectReachesSelfServiceWorkspaceProvisioning() throws Exception {
+        LocalTestLogin.login(applicationContext, "http-architect-provision", "ARCHITECT");
         mockMvc.perform(post("/api/workspace/provision").with(csrf()))
                 .andExpect(result -> assertThat(result.getResponse().getStatus())
                         .as("architect workspace provisioning must pass authorization")
@@ -118,8 +124,8 @@ class ApiWriteDenyByDefaultSecurityTest {
     }
 
     @Test
-    @WithMockUser(roles = "USER")
     void userReachesSelfServiceWorkspaceProvisioning() throws Exception {
+        LocalTestLogin.login(applicationContext, "http-user-provision", "USER");
         mockMvc.perform(post("/api/workspace/provision").with(csrf()))
                 .andExpect(result -> assertThat(result.getResponse().getStatus())
                         .as("user workspace provisioning must pass authorization")
@@ -127,8 +133,8 @@ class ApiWriteDenyByDefaultSecurityTest {
     }
 
     @Test
-    @WithMockUser(roles = "USER")
     void userReachesEditorWorkingCopySourceValidationWithCsrf() throws Exception {
+        LocalTestLogin.login(applicationContext, "http-editor-source-validation", "USER");
         // Preserve the former repository-workspaces route's audience. An invalid
         // source reaches the controller's exact-context check without creating data.
         mockMvc.perform(post("/api/architecture/editor/workspaces").with(csrf())

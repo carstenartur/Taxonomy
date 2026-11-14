@@ -15,7 +15,6 @@ import com.taxonomy.workspace.service.WorkspacePortfolioDocumentPort;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.security.test.context.support.WithMockUser;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -26,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest(properties = "llm.mock=true")
 @org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
-@WithMockUser(username = "architect", roles = "ARCHITECT")
+
 @Tag("ci-app-shard-domain-integration")
 class ReformulationEvidenceRoundTripTest extends ReformulationWorkflowFixture {
     private static final String EVIDENCE_BLOCK = "reformulationEvidence";

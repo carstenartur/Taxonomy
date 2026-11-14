@@ -1,5 +1,6 @@
 package com.taxonomy.interop.publication;
 
+import com.taxonomy.testsupport.LocalTestLogin;
 import com.taxonomy.TaxonomyApplication;
 import com.taxonomy.dsl.command.ArchitectureCommand.*;
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
@@ -24,8 +25,9 @@ public final class PublicationRestartDriver {
             var fixture = new PublicationIntegrationFixture() {
             };
             fixture.directory = directory;
+            fixture.application = app;
             for (var field : PublicationIntegrationFixture.class.getDeclaredFields()) {
-                if (field.isAnnotationPresent(Autowired.class)) {
+                if (field.isAnnotationPresent(Autowired.class) && !field.getName().equals("application")) {
                     field.setAccessible(true);
                     field.set(fixture, app.getBean(field.getType()));
                 }
@@ -61,6 +63,7 @@ public final class PublicationRestartDriver {
                     try (var input = Files.newInputStream(captured)) {
                         evidence.load(input);
                     }
+                    LocalTestLogin.login(app, evidence.getProperty("actor"), "ARCHITECT");
                     fixture.context = RepositoryContext.workspace(evidence.getProperty("repository"), evidence.getProperty("workspace"), evidence.getProperty("branch"), evidence.getProperty("actor"));
                     fixture.connection = UUID.fromString(evidence.getProperty("connection"));
                     fixture.provider = new PublicationContractProvider(directory.resolve("provider.json"));

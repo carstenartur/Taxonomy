@@ -7,7 +7,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.http.MediaType;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.test.web.client.MockRestServiceServer;
@@ -19,7 +18,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import static org.springframework.test.web.client.ExpectedCount.manyTimes;
 
 @SpringBootTest(properties={"llm.mock=false","llm.provider=CUSTOM_OPENAI","custom.llm.url=http://localhost:9999/v1/chat/completions","custom.llm.model=reformulation-test","custom.llm.api.key="})
-@AutoConfigureMockMvc @WithMockUser(username="architect",roles="ARCHITECT")
+@AutoConfigureMockMvc
 @Tag("ci-app-shard-domain-integration")
 class ReformulationTargetedSynthesisTest extends ReformulationWorkflowFixture {
     @Autowired RestTemplate transport;
