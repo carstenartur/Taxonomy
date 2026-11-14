@@ -181,6 +181,7 @@ class WorkspaceControllerTest extends RetainedPortfolioCatalogue {
     // ── Create workspace ────────────────────────────────────────────
 
     @Test
+    @WithMockUser(username = "workspace-creator", roles = {"USER", "ARCHITECT", "ADMIN"})
     void createWorkspace_returnsOk() throws Exception {
         mockMvc.perform(post("/api/workspace/create")
                         .contentType(MediaType.APPLICATION_JSON)
