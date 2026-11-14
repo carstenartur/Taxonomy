@@ -176,6 +176,10 @@ public class SystemRepositoryService implements RepositoryMutationFence {
                 RepositoryLifecycleState.ACTIVE);
     }
 
+    public Optional<SystemRepository> byCreationSlug(String slug, String name) {
+        return repository.findBySlug(normalizeSlug(slug == null || slug.isBlank() ? requireText(name, "displayName") : slug));
+    }
+
     /** Only the original personal creation is recoverable through the ordinary lifecycle. */
     public List<SystemRepository> listOwnIncompleteCreations(String username) {
         String owner = requireText(username, "ownerId");
@@ -331,7 +335,7 @@ public class SystemRepositoryService implements RepositoryMutationFence {
         return getRepository(existing.getRepositoryId());
     }
 
-    private static boolean matchesForkRequest(SystemRepository fork, String source, String branch, String name,
+    static boolean matchesForkRequest(SystemRepository fork, String source, String branch, String name,
             String description, RepositoryVisibility visibility, String actor) {
         var state = fork.getLifecycleState();
         boolean eligible = state == RepositoryLifecycleState.FAILED || state == RepositoryLifecycleState.PROVISIONING

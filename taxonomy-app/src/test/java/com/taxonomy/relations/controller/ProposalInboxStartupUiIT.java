@@ -20,9 +20,11 @@ import org.openqa.selenium.By;
 import org.openqa.selenium.Dimension;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebElement;
 import org.openqa.selenium.interactions.Actions;
 import org.openqa.selenium.logging.LogType;
 import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.openqa.selenium.support.ui.Select;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -92,7 +94,7 @@ class ProposalInboxStartupUiIT {
     }
 
     @Test
-    void acceptedOnMainCanBeInspectedThenAdoptedOnTheSelectedBranch(@TempDir Path downloads) throws Exception {
+    void acceptedOnMainIsVisibleOnDraftStartupAndCanBeExplicitlyAdopted(@TempDir Path downloads) throws Exception {
         var repository = provisioning.createRepository("Proposal review", "adopt-" + UUID.randomUUID(),
                 "Branch adoption", RepositoryVisibility.PRIVATE, "admin", "main");
         String repositoryId = repository.getRepositoryId();
@@ -111,6 +113,8 @@ class ProposalInboxStartupUiIT {
         projections.rebuild(target, baseline);
         var proposal = proposals.createFromHypothesisInContext("CP-1023", "CR-1047", RelationType.REALIZES,
                 0.73, "Branch adoption", source);
+        var pending = proposals.createFromHypothesisInContext("CP-1023", "CR-1047", RelationType.REALIZES,
+                0.65, "Pending draft proposal", target);
         var accepted = reviews.accept(proposal.getId(), source, baseline, new CommandMetadata(UUID.randomUUID().toString()));
         String sourceCommit = accepted.mutation().authority().authoritativeCommitId();
         String detail = "#proposal-adoption-" + proposal.getId();
@@ -133,9 +137,29 @@ class ProposalInboxStartupUiIT {
                     return scope?.repositoryId === arguments[0] && scope.workspaceId === arguments[1]
                             && scope.branch === arguments[2] && navigation?.mode === 'EDITABLE';
                     """, repositoryId, workspaceId, draft)));
-            openAcceptedProposals(wait, driver, detail);
-            var available = wait.until(ExpectedConditions.visibilityOfElementLocated(
-                    By.cssSelector(detail + "[data-state='AVAILABLE']")));
+            ordinaryWorkingInbox(wait);
+            assertThat(driver.findElement(By.id("filterPending")).getAttribute("aria-pressed")).isEqualTo("true");
+            var pendingRow = By.cssSelector("#proposalsTableContainer tr[data-proposal-id='"
+                    + pending.getId() + "'][data-status='PENDING']");
+            wait.until(ExpectedConditions.visibilityOfElementLocated(pendingRow));
+            assertThat(driver.findElement(By.id("proposalPendingBadge")).getText()).contains("1");
+            assertThat(driver.findElements(By.cssSelector("#proposalsTableContainer tr[data-status='ACCEPTED']"))).isEmpty();
+            var startup = awaitPreview(wait, driver, "#proposalAdoptionSection ", detail, "AVAILABLE");
+            assertThat(startup.getText()).contains("Auf main angenommen", draft,
+                    sourceCommit.substring(0, 8), baseline.substring(0, 8));
+
+            wait.until(ExpectedConditions.elementToBeClickable(By.id("filterAll"))).click();
+            awaitPreview(wait, driver, "#proposalsTableContainer ", detail, "AVAILABLE");
+            assertThat(driver.findElement(By.id("filterAll")).getAttribute("aria-pressed")).isEqualTo("true");
+            assertThat(driver.findElements(By.cssSelector(detail))).hasSize(1);
+            assertThat(driver.findElement(pendingRow).isDisplayed()).isTrue();
+            var displayedSource = new Select(driver.findElement(By.id("architectureSource")));
+            displayedSource.selectByValue("analysis");
+            wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("#analysisProposalInbox #filterAll")));
+            displayedSource.selectByValue("working");
+            ordinaryWorkingInbox(wait);
+            var available = awaitPreview(wait, driver, "#proposalsTableContainer ", detail, "AVAILABLE");
+            assertThat(driver.findElement(By.id("filterAll")).getAttribute("aria-pressed")).isEqualTo("true");
             assertThat(available.getText()).contains("Auf main angenommen", draft,
                     sourceCommit.substring(0, 8), baseline.substring(0, 8));
             assertThat(draftGit.getHeadCommit(draft)).as("Inspection is read-only").isEqualTo(baseline);
@@ -155,21 +179,25 @@ class ProposalInboxStartupUiIT {
             assertThat(draftGit.getDslAtCommit(adopted)).contains("proposal-adoption", sourceCommit);
             // Reopen the inbox after a full reload to read the persisted Git outcome.
             driver.navigate().refresh();
-            openAcceptedProposals(wait, driver, detail);
-            var present = wait.until(ExpectedConditions.visibilityOfElementLocated(
-                    By.cssSelector(detail + "[data-state='ALREADY_PRESENT']")));
+            ordinaryWorkingInbox(wait);
+            var present = awaitPreview(wait, driver, "#proposalAdoptionSection ", detail, "ALREADY_PRESENT");
             assertThat(present.findElements(By.cssSelector(".proposal-adoption-apply"))).isEmpty();
+            wait.until(ExpectedConditions.elementToBeClickable(By.id("filterAccepted"))).click();
+            awaitPreview(wait, driver, "#proposalsTableContainer ", detail, "ALREADY_PRESENT");
             assertThat(draftGit.getHeadCommit(draft)).isEqualTo(adopted);
         }
     }
 
-    private static void openAcceptedProposals(WebDriverWait wait, WebDriver driver, String detail) {
-        wait.until(ExpectedConditions.elementToBeClickable(By.id("applicationArchitectureLink"))).click();
-        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureWorkingSource")));
-        wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("#workingProposalInbox #filterAccepted"))).click();
-        var rowControl = wait.until(ExpectedConditions.presenceOfElementLocated(
-                By.cssSelector("button[aria-controls='" + detail.substring(1) + "']")));
+    private static void ordinaryWorkingInbox(WebDriverWait wait) {
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("#workingProposalInbox #filterPending")));
+    }
+
+    private static WebElement awaitPreview(WebDriverWait wait, WebDriver driver, String region,
+                                           String detail, String state) {
+        var rowControl = wait.until(ExpectedConditions.visibilityOfElementLocated(
+                By.cssSelector(region + "button[aria-controls='" + detail.substring(1) + "']")));
         new Actions(driver).scrollToElement(rowControl).perform();
-        wait.withMessage(() -> driver.findElement(By.id("proposalsTableContainer")).getText());
+        return wait.withMessage(() -> driver.findElement(By.id("proposalsPanel")).getText())
+                .until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(region + detail + "[data-state='" + state + "']")));
     }
 }

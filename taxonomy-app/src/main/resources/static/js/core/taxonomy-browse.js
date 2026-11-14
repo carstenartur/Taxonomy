@@ -2186,10 +2186,19 @@
         proposalRead = controller;
         proposalSource = currentProposalSource();
         const badge = document.getElementById('proposalPendingBadge');
+        const adoptionSection = document.getElementById('proposalAdoptionSection');
+        const adoptionTable = document.getElementById('proposalAdoptionTable');
+        const working = window.TaxonomyArchitectureWorkspace?.getSource?.()?.kind === 'working';
+        const showCentralAcceptances = working && statusFilter === 'PENDING' && adoptionSection && adoptionTable;
+        const listFilter = showCentralAcceptances ? 'ALL' : statusFilter;
         if (badge) badge.textContent = '';
+        if (adoptionSection && adoptionTable) {
+            adoptionSection.hidden = true;
+            adoptionTable.textContent = '';
+        }
         container.innerHTML = '<div class="text-muted small p-2" role="status" aria-live="polite">' + t('browse.proposals.loading') + '</div>';
-        // PENDING has a dedicated endpoint; ACCEPTED/REJECTED/ALL need the full list
-        window.TaxonomyProposalsApi.list(statusFilter, { signal: controller.signal })
+        // The working inbox uses the same authorized list for pending decisions and central acceptances.
+        window.TaxonomyProposalsApi.list(listFilter, { signal: controller.signal })
             .then(function (r) {
                 if (!currentProposalRead(controller)) return null;
                 if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -2198,11 +2207,21 @@
             .then(function (proposals) {
                 if (!currentProposalRead(controller)) return;
                 let filtered = proposals;
-                if (statusFilter !== 'ALL' && statusFilter !== 'PENDING') {
+                if (statusFilter !== 'ALL') {
                     filtered = proposals.filter(function (p) { return p.status === statusFilter; });
                 }
-                renderProposalTable(filtered, statusFilter, controller.signal);
-                updateProposalBadge(proposals, statusFilter);
+                let autoPreview = null;
+                if (statusFilter === 'ACCEPTED') autoPreview = 'all';
+                else if (working && statusFilter === 'ALL') autoPreview = 'central';
+                renderProposalTable(filtered, autoPreview, controller.signal, container);
+                if (showCentralAcceptances) {
+                    const accepted = proposals.filter(p => p.central === true && p.status === 'ACCEPTED');
+                    if (accepted.length) {
+                        adoptionSection.hidden = false;
+                        renderProposalTable(accepted, 'all', controller.signal, adoptionTable);
+                    }
+                }
+                updateProposalBadge(proposals, listFilter);
             })
             .catch(function (err) {
                 if (!currentProposalRead(controller) || err?.code === 'ABORTED') return;
@@ -2217,10 +2236,7 @@
             });
     }
 
-    function renderProposalTable(proposals, statusFilter, signal) {
-        const container = document.getElementById('proposalsTableContainer');
-        if (!container) return;
-
+    function renderProposalTable(proposals, autoPreview, signal, container) {
         if (!proposals || proposals.length === 0) {
             container.innerHTML = '<div class="text-muted small p-2">' + t('browse.proposals.none') + '</div>';
             return;
@@ -2286,14 +2302,14 @@
                     'aria-label="Reject proposal ' + p.id + '" ' +
                     'onclick="window._proposalReject(' + p.id + ')">&#10060; Reject</button>'
                 : p.status === 'ACCEPTED' && Number.isSafeInteger(p.id) && p.id > 0
-                    ? '<span class="badge bg-success">' + t('quality.accepted') + '</span> ' +
+                    ? '<span class="badge bg-success proposal-accepted-status">' + t('quality.accepted') + '</span> ' +
                         '<button type="button" class="btn btn-sm btn-outline-primary proposal-adoption-preview" data-id="' +
-                        p.id + '" aria-controls="proposal-adoption-' + p.id + '">' +
+                        p.id + '"' + (p.central ? ' data-central="true"' : '') + ' aria-controls="proposal-adoption-' + p.id + '">' +
                         t('browse.proposals.adoption.inspect') + '</button><div class="text-wrap small" role="status" id="proposal-adoption-' +
                         p.id + '"></div>'
                     : '<span class="badge bg-secondary">' + escapeHtml(p.status) + '</span>';
 
-            html += '<tr>';
+            html += '<tr data-proposal-id="' + escapeHtml(String(p.id)) + '" data-status="' + escapeHtml(p.status) + '">';
 
             if (hasPending) {
                 html += '<td>';
@@ -2316,7 +2332,7 @@
         html += '</tbody></table>';
         container.innerHTML = html;
 
-        bindProposalAdoptionPreviews(container.querySelectorAll('.proposal-adoption-preview'), statusFilter, signal);
+        bindProposalAdoptionPreviews(container.querySelectorAll('.proposal-adoption-preview'), autoPreview, signal);
 
         // Attach bulk action event listeners
         if (hasPending) {
@@ -2324,7 +2340,7 @@
         }
     }
 
-    function bindProposalAdoptionPreviews(buttons, statusFilter, signal) {
+    function bindProposalAdoptionPreviews(buttons, autoPreview, signal) {
         if (!buttons.length) return;
         const selected = window.TaxonomyApiClient.captureContext();
         const visible = new Set();
@@ -2347,7 +2363,7 @@
                 });
             }
         }
-        if (statusFilter === 'ACCEPTED' && window.IntersectionObserver) {
+        if (autoPreview && window.IntersectionObserver) {
             observer = new window.IntersectionObserver(entries => {
                 for (const entry of entries) {
                     if (entry.isIntersecting) visible.add(entry.target);
@@ -2361,7 +2377,7 @@
             }, {once: true});
         }
         buttons.forEach(button => {
-            observer?.observe(button);
+            if (autoPreview === 'all' || button.dataset.central === 'true') observer?.observe(button);
             button.addEventListener('click', () => inspect(button, true));
         });
     }

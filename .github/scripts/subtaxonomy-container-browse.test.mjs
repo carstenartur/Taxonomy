@@ -797,8 +797,9 @@ test('proposal badge reuses the single authoritative read under each filter with
                 pending() { secondaryRequests++; throw new Error('Redundant badge fetch'); }
             }},
             t: (key,n)=>key + ':' + n,
-            renderProposalTable(proposals, statusFilter, signal) {
-                assert.equal(statusFilter,filter);
+            renderProposalTable(proposals, autoPreview, signal, target) {
+                assert.equal(autoPreview,filter === 'ACCEPTED' ? 'all' : null);
+                assert.equal(target, container);
                 assert.ok(signal instanceof AbortSignal);
                 renderCount++;
                 assert.equal(proposals.length,filter==='ALL'?4:filter==='PENDING'?2:1);
@@ -1015,7 +1016,7 @@ function acceptedRowsFixture(count) {
 
 test('the accepted filter reads only visible rows and offers adoption without another click or focus change', async () => {
     const h = acceptedRowsFixture(6);
-    h.bind('ACCEPTED');
+    h.bind('all');
     assert.equal(h.requests.length,0);
     assert.equal(h.observed.size,6);
     h.buttons[0].focus();
@@ -1039,11 +1040,30 @@ test('the accepted filter reads only visible rows and offers adoption without an
     assert.ok(h.requests.every(request => request.signal === h.controller.signal));
 });
 
-test('pending, all and rejected lists spend no preview requests and a manual fallback still works', async () => {
-    for (const filter of ['PENDING','ALL','REJECTED','ACCEPTED']) {
+test('All automatically checks visible central acceptances and keeps other rows manual', async () => {
+    const h = acceptedRowsFixture(2);
+    h.buttons[0].dataset.central = 'true';
+    h.bind('central');
+    assert.deepEqual([...h.observed], [h.buttons[0]]);
+    h.visibility([0],true);
+    assert.deepEqual(h.requests.map(request => request.id),[1]);
+    h.requests[0].resolve();
+    await settleAdoption();
+    assert.equal(h.details[0].dataset.state,'AVAILABLE');
+    assert.equal(h.details[1].dataset.state,undefined);
+    h.buttons[1].click();
+    assert.deepEqual(h.requests.map(request => request.id),[1,2]);
+    h.requests[1].resolve();
+    await settleAdoption();
+    assert.equal(h.details[1].dataset.state,'AVAILABLE');
+    assert.equal(h.calls.length,0);
+});
+
+test('the preview button still works without automatic checks or an intersection observer', async () => {
+    for (const mode of [null, 'all']) {
         const h = acceptedRowsFixture(1);
-        if (filter === 'ACCEPTED') delete h.window.IntersectionObserver;
-        h.bind(filter);
+        if (mode === 'all') delete h.window.IntersectionObserver;
+        h.bind(mode);
         assert.equal(h.observed.size,0);
         assert.equal(h.requests.length,0);
         h.buttons[0].click();

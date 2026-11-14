@@ -133,7 +133,7 @@ cp .env.example .env
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-The local source build resolves `jgit-storage-hibernate-core` anonymously from the public immutable Maven repository. No GitHub account, token or Maven `settings.xml` entry is required.
+The local source build resolves `jgit-storage-hibernate-core` from Maven Central using Maven’s default configuration.
 
 The stack contains:
 
