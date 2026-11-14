@@ -192,8 +192,9 @@ class DslApiControllerBranchCoverageTest {
 
     @Test
     void simpleReadEndpointsCoverEmptyAndNonEmptyResults() throws Exception {
-        when(dslOps.indexBranch("draft")).thenReturn(4);
-        assertThat(controller.indexHistory("draft").getBody())
+        var kind = com.taxonomy.versioning.service.HistoryIndexJournal.Kind.INDEX;
+        when(dslOps.maintainHistory(kind, "draft", null, null)).thenReturn(HistoryIndexMaintenanceControllerTest.done(kind, "draft", 4));
+        assertThat(controller.indexHistory("draft", null, null).getBody())
                 .containsEntry("branch", "draft").containsEntry("indexed", 4);
         assertThat(controller.getMergeConflictDetails("a", "b").getBody())
                 .isEqualTo(Map.of("conflict", false, "message", "No conflict detected"));

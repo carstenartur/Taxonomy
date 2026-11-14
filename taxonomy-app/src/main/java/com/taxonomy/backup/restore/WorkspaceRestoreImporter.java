@@ -24,6 +24,8 @@ public final class WorkspaceRestoreImporter {
     private static final int MAX_ROWS=100_000,MAX_BYTES=32*1024*1024;
     private static final JsonMapper JSON=JsonMapper.builder().enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).build();
     private static final List<String> TABLES=List.of("system_repository","user_workspace","repository_membership","sync_state","workspace_branch_sync","editor_workspace","editor_operation","editor_checkpoint","architecture_commit_index","context_history_record");
+    private static final List<String> PRIVATE_INDEX_TABLES = List.of("history_index_operation", "history_index_decision", "history_index_purge_target");
+
     public record Result(Map<SourceRecordId,String> editorScopes,int targetRows,int evidenceRows) {
         public Result {editorScopes=Map.copyOf(editorScopes);}
     }
@@ -188,6 +190,8 @@ public final class WorkspaceRestoreImporter {
                             "last_publish_timestamp",timestamp(row.lastPublishAt()),"sync_status","RESTORED_REVIEW_REQUIRED",
                             "unpublished_commit_count",row.unpublishedCommitCount(),"created_at",timestamp(row.createdAt()),"updated_at",timestamp(row.updatedAt())));
         }
+        inspectHistoryIndex(archive, model, repositories, workspaceById, activeRepositories, activeWorkspaces,
+                principals, checkpoint);
         var capturedRepositories = new HashMap<String,RepositoryRecord>();
         for (var row : repositories) capturedRepositories.put(row.repositoryId(),row);
         var fetches = new ArrayList<>(workspaceFetches);
@@ -287,6 +291,65 @@ public final class WorkspaceRestoreImporter {
         for(var row:context) {checkpoint.check();required(row.principalScope(),255);canonicalUuidOptional(row.fromContext());canonicalUuidOptional(row.toContext());canonicalUuidOptional(row.originContext());instant(row.createdAt());model.classify("context-history",row.sourceId().value(),"PRIVATE_HISTORICAL_SOURCE");}
         var principalsSorted=new TreeMap<String,RestorePrincipalAllocation>();principals.forEach((id,allocation)->principalsSorted.put(id.value().toString(),allocation));
         model.planHash=hash(List.of(gitBinding(git,generation.allocations()),principalsSorted,model.targets.values(),model.evidence.values()));checkpoint.check();return model;
+    }
+
+    private static void inspectHistoryIndex(VerifiedBackup archive, Model model, List<RepositoryRecord> repositories,
+            Map<String,WorkspaceRecord> workspaces, Set<String> activeRepositories, Set<String> activeWorkspaces,
+            Map<PrincipalId,RestorePrincipalAllocation> principals, BackupCheckpoint checkpoint) throws IOException {
+        boolean operationsDeclared = RestoreArchiveRecords.declares(archive,OWNER,"data/workspace/index-recovery.ndjson");
+        boolean decisionsDeclared = RestoreArchiveRecords.declares(archive,OWNER,"data/workspace/index-decisions.ndjson");
+        if (operationsDeclared != decisionsDeclared) throw invalid();
+        if (!operationsDeclared) return;
+        var receipts = read(archive,"index-recovery",IndexRecoveryRecord.class,model,IndexRecoveryRecord::sourceId,checkpoint);
+        var decisions = read(archive,"index-decisions",IndexDecisionRecord.class,model,IndexDecisionRecord::sourceId,checkpoint);
+        var repositoryIds = new HashSet<String>();
+        for (var repository : repositories) repositoryIds.add(repository.repositoryId());
+        var classifications = new HashMap<String,String>();
+        var activePhases = Set.of("ADMITTED","RUNNING","RETRYABLE","AWAITING_AUTHORIZATION");
+        var terminalPhases = Set.of("COMPLETED","SUPERSEDED","MANUAL_REVIEW","DENIED","EXPIRED");
+        var explicitActors = new HashSet<String>();
+        principals.forEach((id, allocation) -> {
+            if (allocation.disposition() == RestorePrincipalAllocation.Disposition.EXPLICIT_TARGET) {
+                explicitActors.add(id.value().toString());
+            }
+        });
+        for (var row : receipts) {
+            checkpoint.check();
+            id(row.sourceId(),"workspace.index-recovery"); sha(row.sourceId().value());
+            required(row.cause(),64); required(row.actor(),64); required(row.repository(),255);
+            required(row.branch(),255); branch(row.branch());
+            if (!Set.of("LOCAL","OIDC","LEGACY_OIDC","RETIRED").contains(row.loginKind())) throw invalid();
+            boolean workspace = row.workspace() != null;
+            if (!Set.of("INDEX","REBUILD","PURGE","RELATION","VECTOR_BUILD","VECTOR_PURGE").contains(row.kind())
+                    || !(workspace ? "WORKSPACE".equals(row.scope()) : Set.of("CENTRAL_READ","CENTRAL_WRITE","FORK").contains(row.scope()))
+                    || !(activePhases.contains(row.phase()) || terminalPhases.contains(row.phase()))
+                    || row.attempts() < 0 || row.attempts() > 6 || row.createdAt() < 0
+                    || row.commit() != null && !row.commit().matches("[a-f0-9]{40}")
+                    || row.resultCount() != null && row.resultCount() < 0) throw invalid();
+            if (row.projectionSource() != null) sha(row.projectionSource());
+            canonicalUuidOptional(row.generation());
+            var parent = workspace ? workspaces.get(row.workspace()) : null;
+            if (parent != null && (!row.repository().equals(parent.repositoryId()) || !parent.ownerScope().equals(row.owner()))) throw invalid();
+            boolean detached = !repositoryIds.contains(row.repository()) || workspace && parent == null;
+            if (detached != row.detached() || detached && archive.manifest().request().profile() != BackupProfile.INSTALLATION_FULL) throw invalid();
+            com.taxonomy.workspace.backup.WorkspaceBackupContributor.validateIndexResult(row.result());
+            boolean knownActor = explicitActors.contains(row.actor());
+            boolean activeTarget = workspace ? activeWorkspaces.contains(row.workspace()) : activeRepositories.contains(row.repository());
+            String classification;
+            if (detached) classification = "DETACHED_SOURCE_QUARANTINE";
+            else if (!knownActor || !activeTarget) classification = "PRIVATE_QUARANTINE";
+            else classification = activePhases.contains(row.phase()) ? "INTERRUPTED_SOURCE_OPERATION" : "HISTORICAL_SOURCE_OPERATION";
+            classifications.put(row.sourceId().value(),classification);
+            model.classify("index-recovery",row.sourceId().value(),classification);
+        }
+        for (var row : decisions) {
+            checkpoint.check();
+            id(row.sourceId(),"workspace.index-decision"); canonicalUuid(row.sourceId().value());
+            required(row.actor(),64); required(row.decision(),40);
+            String classification = classifications.get(row.operationId());
+            if (classification == null || row.occurredAt() < 0) throw invalid();
+            model.classify("index-decisions",row.sourceId().value(),classification);
+        }
     }
 
     private static final Set<String> PUBLICATION_STEPS = Set.of("PREPARE","CANDIDATES","SOURCE_REF","WORKSPACE_REF",
@@ -445,7 +508,15 @@ public final class WorkspaceRestoreImporter {
         if(count(connection,"restore_workspace_owner")>1)throw new IOException("Workspace owner inventory proof failed");
         try(var statement=statement(connection,"select owner_id,generation_id,archive_sha256,plan_sha256 from restore_workspace_owner");var rows=statement.executeQuery()) {checkpoint.check();if(!rows.next())return null;if(!"workspace".equals(rows.getString(1)))throw new IOException("Workspace owner inventory proof failed");return List.of(rows.getString(2),rows.getString(3),rows.getString(4));}
     }
+    private static void requireEmptyIndexJournal(Connection connection, BackupCheckpoint checkpoint) throws SQLException, IOException {
+        for (String table : PRIVATE_INDEX_TABLES) {
+            checkpoint.check();
+            if (count(connection, table) != 0) throw new IOException("Isolated workspace index journal is not empty");
+        }
+    }
+
     private static void requireEmpty(Connection connection,BackupCheckpoint checkpoint)throws SQLException,IOException {
+        requireEmptyIndexJournal(connection, checkpoint);
         var tables=new ArrayList<>(TABLES);tables.addAll(List.of("restore_workspace_owner","restore_workspace_mapping","restore_workspace_evidence"));for(var table:tables){checkpoint.check();if(count(connection,table)!=0)throw new IOException("Unjournaled workspace target is not empty");}
     }
     private static void requireIdentity(Connection connection,VerifiedBackup archive,RestoreTargetGeneration generation,Map<PrincipalId,RestorePrincipalAllocation> allocations,BackupCheckpoint checkpoint)throws SQLException,IOException {
@@ -458,6 +529,7 @@ public final class WorkspaceRestoreImporter {
         }
     }
     private static void verify(Connection connection,Model model,BackupCheckpoint checkpoint)throws SQLException,IOException {
+        requireEmptyIndexJournal(connection, checkpoint);
         var counts=new HashMap<String,Long>();for(var row:model.targets.values())counts.merge(row.table(),1L,Long::sum);
         for(var table:TABLES){checkpoint.check();if(count(connection,table)!=counts.getOrDefault(table,0L))throw new IOException("Workspace target inventory proof failed");}
         if(count(connection,"restore_workspace_mapping")!=model.targets.size()||count(connection,"restore_workspace_evidence")!=model.evidence.size())throw new IOException("Workspace private evidence inventory proof failed");

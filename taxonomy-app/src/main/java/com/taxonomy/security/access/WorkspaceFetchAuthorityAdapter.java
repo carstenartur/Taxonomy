@@ -7,6 +7,7 @@ import com.taxonomy.security.model.PrincipalUserDetails;
 import com.taxonomy.security.model.StablePrincipal;
 import com.taxonomy.security.service.PrincipalIdentityService;
 import com.taxonomy.workspace.service.WorkspaceFetchAuthority;
+import com.taxonomy.workspace.service.HistoryIndexGrant;
 import com.taxonomy.workspace.service.WorkspacePublicationAuthority;
 import com.taxonomy.workspace.service.RepositoryScope;
 import org.springframework.security.access.AccessDeniedException;
@@ -23,7 +24,7 @@ import java.util.UUID;
 
 @Component
 @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
-public class WorkspaceFetchAuthorityAdapter implements WorkspaceFetchAuthority, WorkspacePublicationAuthority {
+public class WorkspaceFetchAuthorityAdapter implements WorkspaceFetchAuthority, WorkspacePublicationAuthority, HistoryIndexGrant {
     private final PrincipalIdentityService identities;
 
     public WorkspaceFetchAuthorityAdapter(PrincipalIdentityService identities) { this.identities = identities; }
@@ -44,6 +45,10 @@ public class WorkspaceFetchAuthorityAdapter implements WorkspaceFetchAuthority, 
 
     @Override public Grant authorizePublication(String username) {
         return authorize(username, ApiPermission.ARCHITECTURE_PUBLISH);
+    }
+
+    @Override public Grant authorizeHistoryIndex(String username, boolean purge) {
+        return authorize(username, historyPermission(purge));
     }
 
     private Grant authorize(String username, ApiPermission required) {
@@ -79,6 +84,25 @@ public class WorkspaceFetchAuthorityAdapter implements WorkspaceFetchAuthority, 
         checkGrant(original, username, ApiPermission.ARCHITECTURE_PUBLISH, unattended);
     }
 
+    @Override public void checkHistoryIndex(Grant original, String username, boolean purge, boolean unattended) {
+        checkGrant(original, username, historyPermission(purge), unattended);
+    }
+
+    @Override public boolean isCurrentAdministrator(Grant recorded, String username, boolean background) {
+        if (!background) {
+            var login = SecurityContextHolder.getContext().getAuthentication();
+            return recorded.principalId().equals(currentActor(username))
+                    && login.getAuthorities().stream().anyMatch(role -> "ROLE_ADMIN".equals(role.getAuthority()));
+        }
+        if (!"LOCAL".equals(recorded.loginKind())) return false;
+        var local = identities.currentLocalAuthority(new PrincipalId(UUID.fromString(recorded.principalId())), username);
+        return recorded.bindingKey().equals(local.bindingKey()) && local.roles().contains("ROLE_ADMIN");
+    }
+
+    private static ApiPermission historyPermission(boolean purge) {
+        return purge ? ApiPermission.ARCHITECTURE_DELETE : ApiPermission.ARCHITECTURE_WRITE;
+    }
+
     private void checkGrant(Grant original, String username, ApiPermission required, boolean unattended) {
         if (!unattended) {
             if (!authorize(username, required).equals(original)) throw denied();
@@ -104,5 +128,5 @@ public class WorkspaceFetchAuthorityAdapter implements WorkspaceFetchAuthority, 
         };
     }
 
-    private static AccessDeniedException denied() { return new AccessDeniedException("Workspace fetch permission is unavailable"); }
+    private static AccessDeniedException denied() { return new AccessDeniedException("Workspace operation permission is unavailable"); }
 }

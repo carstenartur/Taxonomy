@@ -597,12 +597,11 @@ public class DslApiController {
     @Operation(summary = "Index commits on a branch for history search",
             description = "Parses and tokenizes all unindexed commits on the given branch.")
     public ResponseEntity<Map<String, Object>> indexHistory(
-            @RequestParam(defaultValue = "draft") String branch) {
-        int indexed = dslOps.indexBranch(branch);
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("branch", branch);
-        result.put("indexed", indexed);
-        return ResponseEntity.ok(result);
+            @RequestParam(defaultValue = "draft") String branch,
+            @RequestHeader(value = "Idempotency-Key", required = false) String key,
+            @RequestHeader(value = "X-Causation-Id", required = false) String cause) {
+        return HistoryIndexMaintenanceController.response(dslOps.maintainHistory(
+                com.taxonomy.versioning.service.HistoryIndexJournal.Kind.INDEX, branch, key, cause));
     }
 
 }

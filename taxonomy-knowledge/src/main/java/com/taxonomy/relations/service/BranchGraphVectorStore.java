@@ -24,19 +24,40 @@ class BranchGraphVectorStore {
 
     BranchGraphVectorStore(RelationDecisionProjectionCheckpointRepository checkpoints) { this.checkpoints = checkpoints; }
 
+    static final class GenerationChanged extends com.taxonomy.workspace.service.DerivedProjection.SourceChanged {
+        GenerationChanged() { super("The selected vector generation changed"); }
+    }
+
     enum State { MISSING, BUILDING, READY, STALE, FAILED }
     record Status(State state, String generation, String sourceCommit, String modelKey, int nodeCount, int relationCount) { }
     record Generation(String id, BranchGraphVectorIndex.Archive index) { }
 
     String begin(RepositoryContext context, BranchGraphVectorSource source, String modelIdentity) {
+        String token = UUID.randomUUID().toString();
+        return begin(context, source, modelIdentity, token, null, false);
+    }
+
+    String beginCaptured(RepositoryContext context, BranchGraphVectorSource source, String modelIdentity,
+                         String token, String originalGeneration) {
+        return begin(context, source, modelIdentity, token, originalGeneration, true);
+    }
+
+    private String begin(RepositoryContext context, BranchGraphVectorSource source, String modelIdentity,
+                         String token, String originalGeneration, boolean captured) {
         var checkpoint = locked(context, source.commit());
         var row = em.find(BranchGraphVectorGeneration.class, checkpoint.getId());
+        if (captured && row != null && token.equals(row.generation) && source.key().equals(row.sourceKey)
+                && State.READY.name().equals(row.state)) return token;
+        if (captured && !java.util.Objects.equals(originalGeneration, row == null ? null : row.generation)
+                && (row == null || !token.equals(row.generation) || !source.key().equals(row.sourceKey))) {
+            throw new GenerationChanged();
+        }
         boolean creating = row == null;
         if (creating) {
             row = new BranchGraphVectorGeneration();
             row.checkpointId = checkpoint.getId();
         }
-        row.generation = UUID.randomUUID().toString();
+        row.generation = token;
         row.state = State.BUILDING.name();
         row.startedAt = java.time.Instant.now();
         row.startedBy = context.username();
@@ -82,13 +103,27 @@ class BranchGraphVectorStore {
         if (row != null && State.BUILDING.name().equals(row.state) && token.equals(row.generation)) row.state = State.FAILED.name();
     }
 
-    void purge(RepositoryContext context, Runnable verifyHead) {
+    /** The scalar lookup also captures absence without loading the native index bytes. */
+    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
+    String currentGeneration(RepositoryContext context) {
+        return em.createQuery("""
+                select v.generation from BranchGraphVectorGeneration v join v.checkpoint p
+                where p.repositoryId=:repo and p.workspaceScopeKey=:scope and p.branch=:branch
+                """, String.class).setParameter("repo", context.repositoryId()).setParameter("scope", scope(context))
+                .setParameter("branch", context.branch()).getResultStream().findFirst().orElse(null);
+    }
+
+    boolean purge(RepositoryContext context, String expectedGeneration, Runnable verifyHead) {
         verifyHead.run();
+        if (expectedGeneration == null) return false;
         var checkpoint = checkpoints.findExactForUpdate(context.repositoryId(), scope(context), context.branch());
-        if (checkpoint.isEmpty()) return;
-        var row = em.find(BranchGraphVectorGeneration.class, checkpoint.get().getId());
+        if (checkpoint.isEmpty()) return false;
         verifyHead.run();
-        if (row != null) em.remove(row);
+        // The generation predicate also fences a replacement committed after capture at the same Git head.
+        return em.createQuery("""
+                delete from BranchGraphVectorGeneration v where v.checkpointId=:checkpoint and v.generation=:generation
+                """).setParameter("checkpoint", checkpoint.get().getId()).setParameter("generation", expectedGeneration)
+                .executeUpdate() == 1;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
