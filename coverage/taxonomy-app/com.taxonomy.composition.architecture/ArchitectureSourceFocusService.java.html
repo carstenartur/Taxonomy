@@ -1,0 +1,262 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureSourceFocusService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.architecture</a> &gt; <span class="el_source">ArchitectureSourceFocusService.java</span></div><h1>ArchitectureSourceFocusService.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.architecture;
+
+import com.taxonomy.analysis.cluster.ClusterAnalysisObservation;
+import com.taxonomy.analysis.recovery.AnalysisContinuationService;
+import com.taxonomy.analysis.session.AnalysisWorkingDraftService;
+import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
+import com.taxonomy.dsl.model.*;
+import com.taxonomy.dto.*;
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.model.WorkspaceOverlayScope;
+import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
+import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.service.*;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import java.util.*;
+
+/** Resolves authorized retained evidence before entering the shared, read-only inference engine. */
+@com.taxonomy.shared.features.ConditionalOnFeature({&quot;architecture&quot;, &quot;analysis&quot;})
+@Service
+public class ArchitectureSourceFocusService {
+    private static final int MAX_PAYLOAD = 2_000_000;
+    private final ArchitectureFocusSuggestionService engine;
+    private final AnalysisWorkingDraftService drafts;
+    private final ClusterAnalysisObservation operations;
+    private final AnalysisContinuationService continuations;
+    private final PortfolioAnalysisPersistenceService snapshots;
+    private final UserWorkspaceRepository workspaces;
+    private final SystemRepositoryService repositories;
+    private final RepositoryMembershipService membership;
+    private final ObjectMapper json;
+<span class="fc" id="L37">    private CatalogueDefinitionResolver catalogues = CatalogueDefinitionResolver.standard();</span>
+    @Autowired(required = false)
+<span class="fc" id="L39">    void useCatalogueDefinitions(CatalogueDefinitionResolver catalogues) { this.catalogues = catalogues; }</span>
+<span class="fc" id="L40">    private WorkspaceActorAccess actorAccess = WorkspaceActorAccess.unavailable();</span>
+
+    @Autowired(required = false)
+<span class="fc" id="L43">    public void setActorAccess(WorkspaceActorAccess actorAccess) { this.actorAccess = Objects.requireNonNull(actorAccess); }</span>
+
+    @Autowired
+    public ArchitectureSourceFocusService(ArchitectureFocusSuggestionService engine, AnalysisWorkingDraftService drafts,
+            ObjectProvider&lt;ClusterAnalysisObservation&gt; operations, ObjectProvider&lt;AnalysisContinuationService&gt; continuations,
+            ObjectProvider&lt;PortfolioAnalysisPersistenceService&gt; snapshots, UserWorkspaceRepository workspaces,
+            SystemRepositoryService repositories, RepositoryMembershipService membership, ObjectMapper json) {
+<span class="fc" id="L50">        this(engine,drafts,operations.getIfAvailable(),continuations.getIfAvailable(),snapshots.getIfAvailable(),</span>
+                workspaces,repositories,membership,json);
+<span class="fc" id="L52">    }</span>
+    public ArchitectureSourceFocusService(ArchitectureFocusSuggestionService engine, AnalysisWorkingDraftService drafts,
+            ClusterAnalysisObservation operations, AnalysisContinuationService continuations,
+            PortfolioAnalysisPersistenceService snapshots, UserWorkspaceRepository workspaces,
+<span class="fc" id="L56">            SystemRepositoryService repositories, RepositoryMembershipService membership, ObjectMapper json) {</span>
+<span class="fc" id="L57">        this.engine=engine; this.drafts=drafts; this.operations=operations; this.continuations=continuations;</span>
+<span class="fc" id="L58">        this.snapshots=snapshots; this.workspaces=workspaces; this.repositories=repositories; this.membership=membership; this.json=json;</span>
+<span class="fc" id="L59">    }</span>
+<span class="fc" id="L60">    private record Retained(RequirementArchitectureView graph, AnalysisModelBinding binding, Map&lt;String,String&gt; provenance) { }</span>
+
+    public ArchitectureSourceFocusDtos.Response investigate(RepositoryContext selected, ArchitectureSourceFocusDtos.Request request) {
+<span class="fc" id="L63">        var source = request.source();</span>
+<span class="fc" id="L64">        var evidence = evidence(selected, source);</span>
+<span class="fc" id="L65">        var binding = evidence.retained().binding();</span>
+<span class="fc" id="L66">        return engine.investigateModel(evidence.model(), evidence.catalogue(),</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">                binding == null ? Set.of() : binding.excludedRelationTypes(), request.sourceId(),</span>
+<span class="fc" id="L68">                request.candidateLimit(), request.useAi(), request.language(), evidence.hash(), evidence.provenance(),</span>
+                ArchitectureSourceFocusDtos.Response.class,
+<span class="fc" id="L70">                result -&gt; new ArchitectureSourceFocusDtos.Response(source, request.sourceId(), evidence.hash(), result.method(),</span>
+<span class="fc" id="L71">                        result.outcome(), result.modelCalls(), result.candidateCount(), result.suggestions()),</span>
+<span class="nc" id="L72">                () -&gt; sourceCurrent(selected, source, evidence.hash()));</span>
+    }
+
+    public boolean sourceCurrent(RepositoryContext selected, ArchitectureSourceFocusDtos.Source source, String hash) {
+        try {
+<span class="nc" id="L77">            return hash.equals(evidence(selected, source).hash());</span>
+<span class="nc" id="L78">        } catch (CommandProblem | SecurityException deniedOrStale) {</span>
+<span class="nc" id="L79">            return false;</span>
+        }
+    }
+
+<span class="fc" id="L83">    private record Evidence(Retained retained, CanonicalArchitectureModel model, CatalogueDefinition catalogue,</span>
+                            String hash, Map&lt;String,String&gt; provenance) { }
+
+    private Evidence evidence(RepositoryContext selected, ArchitectureSourceFocusDtos.Source source) {
+<span class="pc bpc" id="L87" title="3 of 6 branches missed.">        if (selected == null || selected.username() == null || !source.repositoryId().equals(selected.repositoryId()))</span>
+<span class="nc" id="L88">            throw problem(&quot;NOT_FOUND&quot;,&quot;Source repository is not accessible in the selected context&quot;);</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        String workspace = WorkspaceOverlayScope.CENTRAL_SCOPE_KEY.equals(source.workspaceScopeKey()) ? null : source.workspaceScopeKey();</span>
+<span class="fc" id="L90">        UserWorkspace owned = null;</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        if (workspace == null) {</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">            if (!membership.canRead(repositories.getRepository(source.repositoryId()),selected.username()))</span>
+<span class="fc" id="L93">                throw problem(&quot;NOT_FOUND&quot;,&quot;Source repository is not readable&quot;);</span>
+<span class="fc" id="L94">        } else owned = owned(workspace,selected.username(),source.repositoryId());</span>
+<span class="fc" id="L95">        var scope = new WorkspaceContext(selected.username(),workspace,source.branch(),source.repositoryId());</span>
+        Retained retained;
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        if (&quot;ANALYSIS_DRAFT&quot;.equals(source.kind())) {</span>
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">            if (owned == null) throw problem(&quot;NOT_FOUND&quot;,&quot;Analysis drafts require an accessible working copy&quot;);</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">            if (!source.branch().equals(owned.getCurrentBranch())) throw problem(&quot;SOURCE_IDENTITY_MISMATCH&quot;,&quot;The source workspace branch changed&quot;);</span>
+<span class="fc" id="L100">            retained = draft(source,scope);</span>
+<span class="fc" id="L101">        } else retained = snapshot(source,scope);</span>
+<span class="fc" id="L102">        var binding = retained.binding();</span>
+<span class="fc" id="L103">        var catalogue = catalogue(binding);</span>
+<span class="fc" id="L104">        var model = model(retained.graph(), catalogue);</span>
+<span class="fc" id="L105">        var provenance = new TreeMap&lt;&gt;(retained.provenance());</span>
+<span class="fc" id="L106">        provenance.put(&quot;x-focus-source-kind&quot;,source.kind()); provenance.put(&quot;x-analysis-repository-id&quot;,source.repositoryId());</span>
+<span class="fc" id="L107">        provenance.put(&quot;x-analysis-workspace-scope&quot;,source.workspaceScopeKey()); provenance.put(&quot;x-analysis-branch&quot;,source.branch());</span>
+<span class="fc" id="L108">        var evidence = new TreeMap&lt;String,Object&gt;(Map.of(&quot;source&quot;,source,&quot;graph&quot;,retained.graph(),&quot;provenance&quot;,provenance));</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">        if (binding != null) {</span>
+<span class="fc" id="L110">            evidence.put(&quot;modelBinding&quot;, binding);</span>
+<span class="fc" id="L111">            provenance.put(&quot;x-focus-execution-catalogue&quot;, binding.analysisCatalogueRevision());</span>
+        }
+<span class="fc" id="L113">        String encoded = json.writeValueAsString(canonical(json.valueToTree(evidence)));</span>
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">        if (encoded.length() &gt; MAX_PAYLOAD) throw problem(&quot;ITEM_LIMIT&quot;,&quot;Source graph exceeds the bounded investigation payload&quot;);</span>
+<span class="fc" id="L115">        String hash = StableIdentityHash.sha256(encoded);</span>
+<span class="fc" id="L116">        return new Evidence(retained, model, catalogue, hash, provenance);</span>
+    }
+
+    private Retained draft(ArchitectureSourceFocusDtos.Source source, WorkspaceContext scope) {
+<span class="pc" id="L120">        var draft = drafts.read(scope.username(),scope.workspaceId()).orElseThrow(() -&gt; problem(&quot;SOURCE_UNAVAILABLE&quot;,&quot;No retained analysis draft is available&quot;));</span>
+<span class="pc bpc" id="L121" title="2 of 4 branches missed.">        if (!scope.workspaceId().equals(draft.workspaceId()) || !source.branch().equals(draft.branch()))</span>
+<span class="nc" id="L122">            throw problem(&quot;SOURCE_IDENTITY_MISMATCH&quot;,&quot;The draft source pins do not match&quot;);</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        if (source.version() != draft.version()) throw problem(&quot;CONTEXT_CHANGED&quot;,&quot;The analysis draft version changed; refresh before investigating&quot;);</span>
+<span class="fc" id="L124">        JsonNode payload = draft.payload();</span>
+<span class="pc bpc" id="L125" title="2 of 4 branches missed.">        if (payload == null || !payload.isObject()) throw problem(&quot;SOURCE_UNAVAILABLE&quot;,&quot;Retained draft is unavailable&quot;);</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        if (json.writeValueAsString(payload).length() &gt; MAX_PAYLOAD) throw problem(&quot;ITEM_LIMIT&quot;,&quot;Draft exceeds its bounded payload&quot;);</span>
+<span class="fc" id="L127">        JsonNode reference = payload.path(&quot;analysisReference&quot;);</span>
+<span class="pc bpc" id="L128" title="1 of 4 branches missed.">        if (!reference.isObject() || &quot;EMPTY&quot;.equals(payload.path(&quot;draftState&quot;).asString()))</span>
+<span class="fc" id="L129">            throw problem(&quot;SOURCE_UNAVAILABLE&quot;,&quot;The draft has no retained server analysis reference&quot;);</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        if (!scope.workspaceId().equals(reference.path(&quot;workspaceId&quot;).asString()))</span>
+<span class="fc" id="L131">            throw problem(&quot;SOURCE_IDENTITY_MISMATCH&quot;,&quot;The retained analysis reference belongs to a different workspace&quot;);</span>
+<span class="fc" id="L132">        String operationId = optionalId(reference,&quot;operationId&quot;), continuationId = optionalId(reference,&quot;continuationId&quot;);</span>
+        AnalysisResult result;
+<span class="fc" id="L134">        var provenance = new TreeMap&lt;String,String&gt;(); provenance.put(&quot;x-focus-source-version&quot;,Long.toString(draft.version()));</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        if (continuationId != null) {</span>
+<span class="fc" id="L136">            long recoveryVersion = recoveryVersion(reference);</span>
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">            if (continuations == null) throw problem(&quot;SOURCE_UNAVAILABLE&quot;,&quot;Retained continuation evidence is unavailable&quot;);</span>
+<span class="fc" id="L138">            var saved = continuations.readEvidence(continuationId,scope.username(),scope);</span>
+<span class="pc bpc" id="L139" title="4 of 8 branches missed.">            if (saved == null || saved.recovery() == null || !continuationId.equals(saved.recovery().id()) || saved.request() == null)</span>
+<span class="nc" id="L140">                throw problem(&quot;SOURCE_IDENTITY_MISMATCH&quot;,&quot;The retained continuation source does not match&quot;);</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">            if (saved.recovery().version() != recoveryVersion)</span>
+<span class="fc" id="L142">                throw problem(&quot;CONTEXT_CHANGED&quot;,&quot;The retained continuation version changed; restore and save the displayed analysis before investigating&quot;);</span>
+<span class="fc" id="L143">            result = saved.result();</span>
+<span class="pc bpc" id="L144" title="3 of 8 branches missed.">            if (operationId != null &amp;&amp; (saved.clusterOperationId() != null &amp;&amp; !operationId.equals(saved.clusterOperationId())</span>
+<span class="pc bpc" id="L145" title="2 of 4 branches missed.">                    || result != null &amp;&amp; result.getAnalysisOperationId() != null &amp;&amp; !operationId.equals(result.getAnalysisOperationId())</span>
+<span class="pc bpc" id="L146" title="5 of 6 branches missed.">                    || saved.clusterOperationId() == null &amp;&amp; (result == null || result.getAnalysisOperationId() == null)))</span>
+<span class="fc" id="L147">                throw problem(&quot;SOURCE_IDENTITY_MISMATCH&quot;,&quot;The retained operation and continuation disagree&quot;);</span>
+<span class="fc" id="L148">            provenance.put(&quot;x-focus-continuation-id&quot;,continuationId);</span>
+<span class="fc" id="L149">            provenance.put(&quot;x-focus-continuation-version&quot;,Long.toString(saved.recovery().version()));</span>
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">        } else if (operationId != null) {</span>
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">            if (operations == null) throw problem(&quot;SOURCE_UNAVAILABLE&quot;,&quot;Retained operation evidence is unavailable&quot;);</span>
+<span class="fc" id="L152">            var input = operations.request(operationId,scope.username(),scope);</span>
+<span class="pc bpc" id="L153" title="3 of 6 branches missed.">            if (input == null || !operationId.equals(input.operationId()) || input.scope() == null</span>
+<span class="pc bpc" id="L154" title="2 of 4 branches missed.">                    || !scope.workspaceId().equals(input.scope().workspaceId()) || !source.repositoryId().equals(input.scope().repositoryId())</span>
+<span class="pc bpc" id="L155" title="1 of 2 branches missed.">                    || !source.branch().equals(input.scope().branch()))</span>
+<span class="nc" id="L156">                throw problem(&quot;SOURCE_IDENTITY_MISMATCH&quot;,&quot;The retained analysis input source does not match&quot;);</span>
+<span class="fc" id="L157">            result = operations.result(operationId,scope.username(),scope);</span>
+<span class="pc" id="L158">        } else throw problem(&quot;SOURCE_UNAVAILABLE&quot;,&quot;The draft has no retained server analysis reference&quot;);</span>
+<span class="pc bpc" id="L159" title="1 of 2 branches missed.">        if (result == null) throw problem(&quot;SOURCE_UNAVAILABLE&quot;,&quot;The retained analysis result is not available yet&quot;);</span>
+<span class="pc bpc" id="L160" title="2 of 6 branches missed.">        if (operationId != null &amp;&amp; result.getAnalysisOperationId() != null &amp;&amp; !operationId.equals(result.getAnalysisOperationId()))</span>
+<span class="fc" id="L161">            throw problem(&quot;SOURCE_IDENTITY_MISMATCH&quot;,&quot;The retained analysis operation changed&quot;);</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">        if (!Set.of(&quot;SUCCESS&quot;,&quot;PARTIAL&quot;).contains(Objects.toString(result.getStatus(),&quot;&quot;)))</span>
+<span class="fc" id="L163">            throw problem(&quot;SOURCE_UNAVAILABLE&quot;,&quot;Only retained successful or partial architecture evidence can be investigated&quot;);</span>
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">        if (operationId != null) provenance.put(&quot;x-focus-operation-id&quot;,operationId);</span>
+<span class="fc" id="L165">        provenance.put(&quot;x-analysis-status&quot;,result.getStatus());</span>
+<span class="fc" id="L166">        return new Retained(result.getArchitectureView(),result.getModelBinding(),provenance);</span>
+    }
+
+    private Retained snapshot(ArchitectureSourceFocusDtos.Source source, WorkspaceContext scope) {
+<span class="pc bpc" id="L170" title="1 of 2 branches missed.">        if (snapshots == null) throw problem(&quot;SOURCE_UNAVAILABLE&quot;,&quot;Snapshot evidence is unavailable&quot;);</span>
+<span class="fc" id="L171">        var snapshot = snapshots.getSnapshot(source.projectId(),source.snapshotId(),scope.username(),scope);</span>
+<span class="fc" id="L172">        var summary = snapshot.summary();</span>
+<span class="fc bfc" id="L173" title="All 4 branches covered.">        if (!source.snapshotId().equals(summary.id()) || !source.projectId().equals(summary.projectId())</span>
+<span class="fc bfc" id="L174" title="All 4 branches covered.">                || !source.requirementId().equals(summary.requirementId()) || !source.requirementVersionId().equals(summary.requirementVersionId())</span>
+<span class="fc bfc" id="L175" title="All 4 branches covered.">                || !source.branch().equals(summary.branchName()) || !Objects.equals(scope.workspaceId(),summary.workspaceId()))</span>
+<span class="fc" id="L176">            throw problem(&quot;SOURCE_IDENTITY_MISMATCH&quot;,&quot;Snapshot identity does not match the exact requested source&quot;);</span>
+<span class="pc bpc" id="L177" title="2 of 4 branches missed.">        if (summary.status() != AnalysisStatus.SUCCESS &amp;&amp; summary.status() != AnalysisStatus.PARTIAL)</span>
+<span class="nc" id="L178">            throw problem(&quot;SOURCE_UNAVAILABLE&quot;,&quot;Only retained successful or partial architecture evidence can be investigated&quot;);</span>
+<span class="fc" id="L179">        var provenance = new TreeMap&lt;String,String&gt;();</span>
+<span class="fc" id="L180">        provenance.put(&quot;x-analysis-project-id&quot;,source.projectId().toString()); provenance.put(&quot;x-analysis-requirement-id&quot;,source.requirementId().toString());</span>
+<span class="fc" id="L181">        provenance.put(&quot;x-analysis-requirement-version-id&quot;,source.requirementVersionId().toString()); provenance.put(&quot;x-analysis-snapshot-id&quot;,source.snapshotId());</span>
+<span class="fc" id="L182">        provenance.put(&quot;x-analysis-status&quot;,summary.status().name());</span>
+<span class="fc" id="L183">        put(provenance,&quot;x-analysis-commit&quot;,summary.commitSha()); put(provenance,&quot;x-analysis-catalogue-fingerprint&quot;,summary.taxonomyFingerprint());</span>
+<span class="fc" id="L184">        put(provenance,&quot;x-analysis-provider&quot;,summary.provider()); put(provenance,&quot;x-analysis-model&quot;,summary.modelName());</span>
+<span class="fc" id="L185">        put(provenance,&quot;x-analysis-created-at&quot;,Objects.toString(summary.createdAt(),null));</span>
+<span class="fc" id="L186">        var analysis = snapshot.analysis();</span>
+<span class="pc bpc" id="L187" title="1 of 2 branches missed.">        if (analysis == null) throw problem(&quot;SOURCE_UNAVAILABLE&quot;,&quot;Snapshot contains no retained analysis&quot;);</span>
+<span class="fc" id="L188">        return new Retained(analysis.getArchitectureView(),analysis.getModelBinding(),provenance);</span>
+    }
+
+    private CatalogueDefinition catalogue(AnalysisModelBinding binding) {
+<span class="fc bfc" id="L192" title="All 2 branches covered.">        if (binding == null) return CatalogueDefinition.standard();</span>
+<span class="pc bpc" id="L193" title="2 of 4 branches missed.">        if (binding.analysisCatalogueRevision() == null || binding.catalogueDefinitionVersion() == null)</span>
+<span class="nc" id="L194">            throw problem(&quot;SOURCE_UNAVAILABLE&quot;,&quot;No retained catalogue definition is available for the recorded analysis&quot;);</span>
+        CatalogueDefinition definition;
+<span class="fc" id="L196">        try { definition = catalogues.forRevision(binding.analysisCatalogueRevision()); }</span>
+<span class="fc" id="L197">        catch (IllegalStateException unavailable) { throw problem(&quot;SOURCE_UNAVAILABLE&quot;,&quot;The recorded catalogue definition is unavailable&quot;); }</span>
+<span class="pc bpc" id="L198" title="1 of 2 branches missed.">        if (!binding.catalogueDefinitionVersion().equals(definition.version()))</span>
+<span class="nc" id="L199">            throw problem(&quot;SOURCE_IDENTITY_MISMATCH&quot;,&quot;The archived catalogue definition differs from the recorded analysis&quot;);</span>
+<span class="fc" id="L200">        return definition;</span>
+    }
+
+    private CanonicalArchitectureModel model(RequirementArchitectureView graph, CatalogueDefinition catalogue) {
+<span class="pc bpc" id="L204" title="3 of 8 branches missed.">        if (graph == null || graph.getIncludedElements() == null || graph.getIncludedRelationships() == null || graph.getIncludedElements().isEmpty())</span>
+<span class="fc" id="L205">            throw problem(&quot;SOURCE_UNAVAILABLE&quot;,&quot;Source contains no retained full architecture graph&quot;);</span>
+<span class="pc bpc" id="L206" title="1 of 4 branches missed.">        if (graph.getIncludedElements().size() &gt; 2000 || graph.getIncludedRelationships().size() &gt; 10000)</span>
+<span class="fc" id="L207">            throw problem(&quot;ITEM_LIMIT&quot;,&quot;Source graph exceeds investigation limits&quot;);</span>
+<span class="fc" id="L208">        var model = new CanonicalArchitectureModel(); var ids = new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L209" title="All 2 branches covered.">        for (var element : graph.getIncludedElements()) {</span>
+<span class="pc bpc" id="L210" title="1 of 2 branches missed.">            if (element == null) throw problem(&quot;SOURCE_IDENTITY_MISMATCH&quot;,&quot;Source element identity is incomplete&quot;);</span>
+<span class="fc" id="L211">            String id = element.getNodeCode(), root = element.getTaxonomySheet();</span>
+<span class="pc bpc" id="L212" title="3 of 6 branches missed.">            if (!bounded(id,200) || root == null || catalogue.typeFor(root) == null</span>
+<span class="pc bpc" id="L213" title="1 of 4 branches missed.">                    || !root.equals(catalogue.rootFromId(id)) || !ids.add(id))</span>
+<span class="fc" id="L214">                throw problem(&quot;SOURCE_IDENTITY_MISMATCH&quot;,&quot;Recorded element identity and taxonomy type disagree or are duplicated&quot;);</span>
+<span class="pc bpc" id="L215" title="2 of 4 branches missed.">            if (element.getTitle() == null || element.getTitle().isBlank())</span>
+<span class="nc" id="L216">                throw problem(&quot;SOURCE_UNAVAILABLE&quot;,&quot;Source element has no retained title evidence&quot;);</span>
+<span class="fc" id="L217">            model.getElements().add(new ArchitectureElement(id,catalogue.typeFor(root),element.getTitle(),</span>
+<span class="fc" id="L218">                    Objects.toString(element.getPresenceReason(),Objects.toString(element.getIncludedBecause(),&quot;&quot;)),root));</span>
+<span class="fc" id="L219">        }</span>
+<span class="fc" id="L220">        var relationKeys = new HashSet&lt;String&gt;();</span>
+<span class="pc bpc" id="L221" title="1 of 2 branches missed.">        for (var relation : graph.getIncludedRelationships()) {</span>
+<span class="nc bnc" id="L222" title="All 6 branches missed.">            if (relation == null || !ids.contains(relation.getSourceCode()) || !ids.contains(relation.getTargetCode())</span>
+<span class="nc bnc" id="L223" title="All 4 branches missed.">                    || !bounded(relation.getRelationType(),40) || !catalogue.relationDomains().containsKey(relation.getRelationType()))</span>
+<span class="nc" id="L224">                throw problem(&quot;SOURCE_IDENTITY_MISMATCH&quot;,&quot;Source relation has unknown endpoints or type&quot;);</span>
+<span class="nc" id="L225">            String key = relation.getSourceCode()+&quot; &quot;+relation.getRelationType()+&quot; &quot;+relation.getTargetCode();</span>
+<span class="nc bnc" id="L226" title="All 2 branches missed.">            if (!relationKeys.add(key)) throw problem(&quot;SOURCE_IDENTITY_MISMATCH&quot;,&quot;Source relation identity is duplicated&quot;);</span>
+<span class="nc" id="L227">            model.getRelations().add(new ArchitectureRelation(relation.getSourceCode(),relation.getRelationType(),relation.getTargetCode()));</span>
+<span class="nc" id="L228">        }</span>
+<span class="fc" id="L229">        return model;</span>
+    }
+    private UserWorkspace owned(String id,String username,String repositoryId) {
+<span class="pc" id="L232">        var workspace = workspaces.findByWorkspaceId(id).orElseThrow(() -&gt; problem(&quot;NOT_FOUND&quot;,&quot;Workspace is not accessible&quot;));</span>
+<span class="pc bpc" id="L233" title="3 of 6 branches missed.">        if (workspace.isShared() || workspace.isArchived() || !repositoryId.equals(workspace.getSourceRepositoryId())</span>
+<span class="fc bfc" id="L234" title="All 4 branches covered.">                || (!username.equals(workspace.getUsername()) &amp;&amp; !(workspace.isCollaborative()</span>
+<span class="fc bfc" id="L235" title="All 2 branches covered.">                &amp;&amp; membership.canCollaborate(repositories.getRepository(repositoryId), username))))</span>
+<span class="fc" id="L236">            throw problem(&quot;NOT_FOUND&quot;,&quot;Workspace is not accessible&quot;);</span>
+<span class="fc bfc" id="L237" title="All 2 branches covered.">        if (workspace.isCollaborative()) actorAccess.requireActive(username);</span>
+<span class="fc" id="L238">        return workspace;</span>
+    }
+    private JsonNode canonical(JsonNode value) {
+<span class="fc bfc" id="L241" title="All 2 branches covered.">        if (value.isObject()) {</span>
+<span class="fc" id="L242">            var result = json.createObjectNode(); value.propertyNames().stream().sorted().forEach(key -&gt; result.set(key,canonical(value.get(key)))); return result;</span>
+        }
+<span class="fc bfc" id="L244" title="All 2 branches covered.">        if (value.isArray()) { var result = json.createArrayNode(); value.forEach(item -&gt; result.add(canonical(item))); return result; }</span>
+<span class="fc" id="L245">        return value;</span>
+    }
+    private static long recoveryVersion(JsonNode reference) {
+<span class="fc" id="L248">        JsonNode value = reference.get(&quot;recoveryVersion&quot;);</span>
+<span class="pc bpc" id="L249" title="1 of 8 branches missed.">        if (value == null || !value.isIntegralNumber() || !value.canConvertToLong() || value.longValue() &lt; 0)</span>
+<span class="fc" id="L250">            throw problem(&quot;SOURCE_UNAVAILABLE&quot;,&quot;The draft has no exact retained continuation recovery version&quot;);</span>
+<span class="fc" id="L251">        return value.longValue();</span>
+    }
+    private static String optionalId(JsonNode reference,String key) {
+<span class="pc bpc" id="L254" title="1 of 4 branches missed.">        JsonNode value = reference.get(key); if (value == null || value.isNull()) return null;</span>
+<span class="pc bpc" id="L255" title="2 of 4 branches missed.">        if (!value.isString() || !bounded(value.asString(),255)) throw problem(&quot;SOURCE_IDENTITY_MISMATCH&quot;,&quot;Retained analysis reference is invalid&quot;);</span>
+<span class="fc" id="L256">        return value.asString();</span>
+    }
+<span class="pc bpc" id="L258" title="4 of 8 branches missed.">    private static boolean bounded(String value,int maximum) { return value != null &amp;&amp; !value.isBlank() &amp;&amp; value.length() &lt;= maximum &amp;&amp; value.chars().noneMatch(Character::isISOControl); }</span>
+<span class="pc bpc" id="L259" title="1 of 2 branches missed.">    private static void put(Map&lt;String,String&gt; values,String key,String value) { if (value != null) values.put(key,value); }</span>
+<span class="fc" id="L260">    private static CommandProblem problem(String code,String detail) { return new CommandProblem(code,&quot;source&quot;,detail,List.of()); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

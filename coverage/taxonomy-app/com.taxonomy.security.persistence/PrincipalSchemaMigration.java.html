@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PrincipalSchemaMigration.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.persistence</a> &gt; <span class="el_source">PrincipalSchemaMigration.java</span></div><h1>PrincipalSchemaMigration.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.persistence;
+
+import com.taxonomy.backup.IdentityBinding;
+import com.taxonomy.security.model.PrincipalBinding;
+import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.migration.BaseJavaMigration;
+import org.flywaydb.core.api.migration.Context;
+
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.UUID;
+
+/** Independently versioned, portable identity schema; runs before Hibernate validation. */
+public final class PrincipalSchemaMigration {
+    private PrincipalSchemaMigration() { }
+
+    public static void migrate(DataSource database) {
+<span class="fc" id="L19">        Flyway.configure().dataSource(database).table(&quot;principal_schema_history&quot;)</span>
+<span class="fc" id="L20">                .locations(&quot;classpath:db/identity-java-migrations&quot;)</span>
+<span class="fc" id="L21">                .baselineOnMigrate(true).baselineVersion(&quot;0&quot;)</span>
+<span class="fc" id="L22">                .javaMigrations(new V1__StablePrincipals(), new V2__ExplicitBackupGrants(),</span>
+<span class="fc" id="L23">                        new V3__ReserveHistoricalScopes(), new V4__WebDavCredentialOwner()).load().migrate();</span>
+<span class="fc" id="L24">    }</span>
+
+    /** A pre-upgrade app password has no evidence of its original login binding. Leave it unbound. */
+<span class="fc" id="L27">    public static final class V4__WebDavCredentialOwner extends BaseJavaMigration {</span>
+        @Override public void migrate(Context context) throws SQLException {
+<span class="fc" id="L29">            var connection = context.getConnection();</span>
+<span class="fc" id="L30">            String table = &quot;webdav_application_credential&quot;;</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">            if (!hasTable(connection, table)) return; // A fresh JPA schema creates the same mapped columns.</span>
+<span class="pc bpc" id="L32" title="1 of 2 branches missed.">            if (!hasColumn(connection, table, &quot;owner_id&quot;)) {</span>
+<span class="fc" id="L33">                execute(connection, &quot;alter table webdav_application_credential add owner_id varchar(64)&quot;);</span>
+            }
+<span class="pc bpc" id="L35" title="1 of 2 branches missed.">            if (!hasColumn(connection, table, &quot;owner_binding&quot;)) {</span>
+<span class="fc" id="L36">                execute(connection, &quot;alter table webdav_application_credential add owner_binding varchar(64)&quot;);</span>
+            }
+<span class="fc" id="L38">            execute(connection, &quot;create index idx_webdav_grant_owner on webdav_application_credential (owner_id)&quot;);</span>
+<span class="fc" id="L39">        }</span>
+    }
+
+    /**
+     * Legacy external accounts may own rows without having an AppUser. Reserve those
+     * scope keys as disabled historical identities, without a login binding or grants.
+     * This explicit list covers persisted ownership, not display/audit author fields.
+     */
+<span class="fc" id="L47">    public static final class V3__ReserveHistoricalScopes extends BaseJavaMigration {</span>
+        @Override public void migrate(Context context) throws Exception {
+<span class="fc" id="L49">            Connection connection = context.getConnection();</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">            for (String table : new String[]{&quot;user_workspace&quot;, &quot;repository_membership&quot;, &quot;workspace_projection&quot;,</span>
+                    &quot;sync_state&quot;, &quot;context_history_record&quot;, &quot;analysis_working_draft&quot;, &quot;webdav_application_credential&quot;}) {
+<span class="fc" id="L52">                reserve(connection, table, &quot;username&quot;, &quot;&quot;);</span>
+            }
+<span class="fc bfc" id="L54" title="All 2 branches covered.">            for (String table : new String[]{&quot;relation_proposal&quot;, &quot;relation_hypothesis&quot;, &quot;taxonomy_relation&quot;,</span>
+                    &quot;arch_project&quot;, &quot;project_requirement&quot;, &quot;solution_definition&quot;}) {
+<span class="fc" id="L56">                reserve(connection, table, &quot;owner_username&quot;, &quot;&quot;);</span>
+            }
+<span class="fc" id="L58">            reserve(connection, &quot;system_repository&quot;, &quot;owner_id&quot;,</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">                    hasColumn(connection, &quot;system_repository&quot;, &quot;owner_type&quot;)</span>
+<span class="fc" id="L60">                            ? &quot; and (owner_type is null or owner_type='USER')&quot; : &quot;&quot;);</span>
+<span class="fc" id="L61">        }</span>
+
+        private static void reserve(Connection connection, String table, String column, String predicate) throws SQLException {
+<span class="fc bfc" id="L64" title="All 4 branches covered.">            if (!hasTable(connection, table) || !hasColumn(connection, table, column)) return;</span>
+<span class="fc" id="L65">            try (var statement = connection.createStatement();</span>
+<span class="fc" id="L66">                 var owners = statement.executeQuery(&quot;select distinct &quot; + column + &quot; from &quot; + table</span>
+                         + &quot; where &quot; + column + &quot; is not null&quot; + predicate)) {
+<span class="fc bfc" id="L68" title="All 2 branches covered.">                while (owners.next()) {</span>
+<span class="fc" id="L69">                    String scope = owners.getString(1);</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">                    if (scope.isBlank()) continue;</span>
+<span class="fc" id="L71">                    try (var existing = connection.prepareStatement(&quot;select principal_id from app_principal where scope_key=?&quot;)) {</span>
+<span class="fc" id="L72">                        existing.setString(1, scope);</span>
+<span class="fc" id="L73">                        try (var matches = existing.executeQuery()) {</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">                            if (matches.next()) continue;</span>
+<span class="nc bnc" id="L75" title="All 2 branches missed.">                        }</span>
+<span class="nc bnc" id="L76" title="All 2 branches missed.">                    }</span>
+<span class="fc" id="L77">                    update(connection, &quot;insert into app_principal values (?, ?, 0)&quot;, UUID.randomUUID().toString(), scope);</span>
+<span class="fc" id="L78">                }</span>
+            }
+<span class="fc" id="L80">        }</span>
+    }
+
+<span class="fc" id="L83">    public static final class V2__ExplicitBackupGrants extends BaseJavaMigration {</span>
+        @Override public void migrate(Context context) throws Exception {
+<span class="fc" id="L85">            Connection connection = context.getConnection();</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">            for (String capability : new String[]{&quot;EXPORT_CURRENT&quot;, &quot;DOWNLOAD_BACKUP&quot;}) {</span>
+<span class="fc" id="L87">                execute(connection, &quot;insert into backup_capability_grant(principal_id, capability) select p.principal_id, '&quot; + capability</span>
+                        + &quot;' from app_principal p where not exists (select 1 from backup_capability_grant g where g.principal_id=p.principal_id and g.capability='&quot; + capability + &quot;')&quot;);
+            }
+<span class="fc" id="L90">            execute(connection, &quot;create table backup_version_grant (principal_id varchar(36) not null, repository_id varchar(255) not null, workspace_key varchar(257) not null, commit_id varchar(40) not null, constraint pk_backup_version primary key(principal_id, repository_id, workspace_key, commit_id), constraint fk_version_principal foreign key(principal_id) references app_principal(principal_id))&quot;);</span>
+<span class="fc" id="L91">            execute(connection, &quot;create table principal_access_audit (audit_id varchar(36) primary key, actor_principal varchar(36) not null, target_principal varchar(36) not null, decision_kind varchar(40) not null, detail varchar(2048) not null, occurred_at numeric(19,0) not null)&quot;);</span>
+<span class="fc" id="L92">        }</span>
+    }
+
+<span class="fc" id="L95">    public static final class V1__StablePrincipals extends BaseJavaMigration {</span>
+        @Override public void migrate(Context context) throws Exception {
+<span class="fc" id="L97">            Connection connection = context.getConnection();</span>
+<span class="fc" id="L98">            execute(connection, &quot;create table principal_installation (registry_key varchar(16) primary key, installation_id varchar(36) not null unique)&quot;);</span>
+<span class="fc" id="L99">            execute(connection, &quot;create table app_principal (principal_id varchar(36) primary key, scope_key varchar(255) not null unique, enabled smallint not null)&quot;);</span>
+<span class="fc" id="L100">            execute(connection, &quot;create table principal_binding (binding_key varchar(64) primary key, principal_id varchar(36) not null, binding_kind varchar(16) not null, issuer varchar(2048) not null, subject_id varchar(1024) not null, enabled smallint not null, constraint fk_binding_principal foreign key(principal_id) references app_principal(principal_id))&quot;);</span>
+<span class="fc" id="L101">            execute(connection, &quot;create index idx_binding_principal on principal_binding(principal_id)&quot;);</span>
+<span class="fc" id="L102">            execute(connection, &quot;create table backup_capability_grant (principal_id varchar(36) not null, capability varchar(40) not null, constraint pk_backup_capability primary key(principal_id, capability), constraint fk_capability_principal foreign key(principal_id) references app_principal(principal_id))&quot;);</span>
+<span class="fc" id="L103">            String installation = UUID.randomUUID().toString();</span>
+<span class="fc" id="L104">            update(connection, &quot;insert into principal_installation values ('local', ?)&quot;, installation);</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">            if (!hasTable(connection, &quot;app_user&quot;)) return;</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">            if (!hasColumn(connection, &quot;app_user&quot;, &quot;principal_id&quot;)) {</span>
+<span class="fc" id="L107">                execute(connection, &quot;alter table app_user add principal_id varchar(36)&quot;);</span>
+            }
+<span class="fc" id="L109">            try (var statement = connection.createStatement();</span>
+<span class="fc" id="L110">                 var users = statement.executeQuery(&quot;select id, username, principal_id from app_user&quot;)) {</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">                while (users.next()) {</span>
+<span class="fc" id="L112">                    String id = users.getString(&quot;principal_id&quot;);</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">                    if (id == null) {</span>
+<span class="fc" id="L114">                        id = UUID.randomUUID().toString();</span>
+<span class="fc" id="L115">                        try (var assign = connection.prepareStatement(&quot;update app_user set principal_id=? where id=?&quot;)) {</span>
+<span class="fc" id="L116">                            assign.setString(1, id); assign.setLong(2, users.getLong(&quot;id&quot;)); assign.executeUpdate();</span>
+                        }
+                    }
+<span class="fc" id="L119">                    UUID.fromString(id);</span>
+<span class="fc" id="L120">                    String scope = users.getString(&quot;username&quot;);</span>
+<span class="fc" id="L121">                    update(connection, &quot;insert into app_principal values (?, ?, 1)&quot;, id, scope);</span>
+<span class="fc" id="L122">                    var binding = new IdentityBinding(IdentityBinding.Kind.LOCAL, installation, id);</span>
+<span class="fc" id="L123">                    update(connection, &quot;insert into principal_binding values (?, ?, 'LOCAL', ?, ?, 1)&quot;,</span>
+<span class="fc" id="L124">                            PrincipalBinding.key(binding), id, installation, id);</span>
+<span class="fc" id="L125">                }</span>
+            }
+<span class="fc" id="L127">            execute(connection, &quot;create unique index uq_app_user_principal on app_user(principal_id)&quot;);</span>
+<span class="fc" id="L128">        }</span>
+    }
+
+    private static boolean hasTable(Connection connection, String name) throws SQLException {
+<span class="fc" id="L132">        try (var tables = connection.getMetaData().getTables(connection.getCatalog(), connection.getSchema(), &quot;%&quot;, new String[]{&quot;TABLE&quot;})) {</span>
+<span class="fc bfc" id="L133" title="All 4 branches covered.">            while (tables.next()) if (name.equalsIgnoreCase(tables.getString(&quot;TABLE_NAME&quot;))) return true;</span>
+<span class="pc bpc" id="L134" title="1 of 2 branches missed.">        }</span>
+<span class="fc" id="L135">        return false;</span>
+    }
+
+    private static boolean hasColumn(Connection connection, String table, String name) throws SQLException {
+<span class="fc" id="L139">        try (var columns = connection.getMetaData().getColumns(connection.getCatalog(), connection.getSchema(), &quot;%&quot;, &quot;%&quot;)) {</span>
+<span class="fc bfc" id="L140" title="All 4 branches covered.">            while (columns.next()) if (table.equalsIgnoreCase(columns.getString(&quot;TABLE_NAME&quot;))</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">                    &amp;&amp; name.equalsIgnoreCase(columns.getString(&quot;COLUMN_NAME&quot;))) return true;</span>
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">        }</span>
+<span class="fc" id="L143">        return false;</span>
+    }
+
+    private static void execute(Connection connection, String sql) throws SQLException {
+<span class="fc" id="L147">        try (var statement = connection.createStatement()) { statement.execute(sql); }</span>
+<span class="fc" id="L148">    }</span>
+
+    private static void update(Connection connection, String sql, String... values) throws SQLException {
+<span class="fc" id="L151">        try (var statement = connection.prepareStatement(sql)) {</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">            for (int i = 0; i &lt; values.length; i++) statement.setString(i + 1, values[i]);</span>
+<span class="fc" id="L153">            statement.executeUpdate();</span>
+        }
+<span class="fc" id="L155">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

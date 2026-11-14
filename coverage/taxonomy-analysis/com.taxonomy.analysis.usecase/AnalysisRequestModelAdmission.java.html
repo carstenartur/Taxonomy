@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisRequestModelAdmission.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.usecase</a> &gt; <span class="el_source">AnalysisRequestModelAdmission.java</span></div><h1>AnalysisRequestModelAdmission.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.usecase;
+
+import com.taxonomy.dto.AnalysisModelBinding;
+import com.taxonomy.dto.AnalysisScope;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.util.Objects;
+
+/** Explicit client revisions are expectations. Only scoped server reads supply model evidence. */
+public final class AnalysisRequestModelAdmission {
+    private AnalysisRequestModelAdmission() {}
+
+    public static AnalysisModelBinding capture(AnalysisAdmissionModelPort models, WorkspaceContext workspace,
+            String expectedCommit, Long expectedRevision, AnalysisScope scope) {
+<span class="fc bfc" id="L17" title="All 2 branches covered.">        AnalysisModelBinding captured = models == null ? null : models.capture(workspace, expectedCommit, expectedRevision, scope);</span>
+<span class="fc" id="L18">        requireExpected(captured, expectedCommit, expectedRevision);</span>
+<span class="fc bfc" id="L19" title="All 2 branches covered.">        if (captured != null) AdmittedCatalogue.revision(captured);</span>
+<span class="fc" id="L20">        return captured;</span>
+    }
+
+    public static AnalysisModelBinding requireExpected(AnalysisModelBinding saved, String expectedCommit, Long expectedRevision) {
+<span class="fc bfc" id="L24" title="All 10 branches covered.">        if ((expectedCommit != null &amp;&amp; (saved == null || !Objects.equals(expectedCommit, saved.commit())))</span>
+<span class="pc bpc" id="L25" title="1 of 2 branches missed.">                || (expectedRevision != null &amp;&amp; (saved == null || !Objects.equals(expectedRevision, saved.semanticRevision())))) {</span>
+<span class="fc" id="L26">            throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;The expected architecture revision differs from the admitted model&quot;);</span>
+        }
+<span class="fc" id="L28">        return saved;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

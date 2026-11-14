@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.composition.persistence.TaxonomySchemaPostgresMigrationIT
+-------------------------------------------------------------------------------
+Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 19.38 s -- in com.taxonomy.composition.persistence.TaxonomySchemaPostgresMigrationIT

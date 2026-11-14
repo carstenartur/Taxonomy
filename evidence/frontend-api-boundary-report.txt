@@ -1,0 +1,22 @@
+Frontend API boundary
+
+Baseline: HEAD^
+Legacy direct fetch debt: 0 call(s) in 0 file(s); baseline 0 call(s) in 0 file(s).
+
+Legacy literal /api inventory:
+- taxonomy-i18n.js: 1
+
+Bounded infrastructure/streaming exceptions:
+- core/taxonomy-operation-coordinator.js: 4/4 native references; The same durable-operation factory protects legacy and named transports. Removal: Remove legacy global installer when remaining integration consumers use the canonical registry
+- shared/architecture-workflow.js: 3/3 native references; Shared exact-source routing factory is registered for legacy and named requests. Removal: Remove native installer after legacy workflow page consumers are retired
+- core/taxonomy-analysis-session-transport.js: 2/2 native references; The same analysis-generation factory protects legacy and named transports. Removal: Remove the native compatibility installer when all external legacy consumers use named clients
+- shared/taxonomy-help.js: 2/2 native references; Read-only same-origin public /help HTML documents, independent of workspace state. Removal: Remove when a named HTML documentation client owns this lifecycle
+- portfolio/taxonomy-portfolio-async.js: 2/2 native references; The same admitted portfolio-job factory is registered for legacy and named requests. Removal: Remove native compatibility capture after legacy portfolio consumers are retired
+- core/taxonomy-analysis-session-core.js: 8/8 native references; Shared legacy workspace routing and native EventSource reconnect adapter. Removal: Remove native compatibility routing after the last legacy transport consumer is retired
+- core/taxonomy-state.js: 9/9 native references; SSE facade cancels obsolete analysis sessions while retaining native event protocol. Removal: Remove when the complete session stream facade moves into the named SSE adapter
+- api/analysis-session-api.js: 2/2 native references; Named SSE adapter retains browser Last-Event-ID reconnect and immutable workspace identity. Removal: Replace only with an equivalent named streaming lifecycle; do not buffer SSE as JSON
+- core/taxonomy-scoring.js: 1/1 native references; Scoring SSE events have selection/recovery fences and explicit close ownership. Removal: Remove when the complete scoring stream lifecycle moves into the named SSE adapter
+- taxonomy-i18n.js: 4/4 native references; Application-prefix and locale bootstrap before the canonical client loads. Removal: Remove when locale bootstrap and prefix capture move into the canonical transport
+- shared/taxonomy-about.js: 1/1 native references; Read-only public notices asset; authenticated About data uses its named client. Removal: Remove when static notice downloads use a named asset reader
+
+Result: PASS

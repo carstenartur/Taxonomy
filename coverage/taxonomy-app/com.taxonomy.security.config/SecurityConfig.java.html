@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SecurityConfig.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.config</a> &gt; <span class="el_source">SecurityConfig.java</span></div><h1>SecurityConfig.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.config;
+
+import com.taxonomy.security.webdav.WebDavApplicationCredentialFilter;
+import com.taxonomy.shared.config.RateLimitFilter;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.config.ObjectPostProcessor;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.session.SessionRegistry;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
+import org.springframework.security.web.authentication.ui.DefaultLogoutPageGeneratingFilter;
+import org.springframework.security.web.authentication.ui.DefaultResourcesFilter;
+import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
+import org.springframework.security.web.authentication.www.BasicAuthenticationEntryPoint;
+import org.springframework.security.web.context.SecurityContextHolderFilter;
+import org.springframework.security.web.csrf.CsrfToken;
+import org.springframework.security.web.header.HeaderWriterFilter;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
+import org.springframework.security.web.util.matcher.RequestMatcher;
+
+import java.util.Optional;
+import java.util.Map;
+
+/** Spring Security configuration for form-login mode. */
+@Configuration
+@EnableMethodSecurity
+@Profile(&quot;!keycloak&quot;)
+public class SecurityConfig {
+
+    private final AuthorizationRulesConfigurer authRules;
+    private final PasswordChangeRequiredFilter passwordChangeRequiredFilter;
+    private final WebDavApplicationCredentialFilter webDavCredentialFilter;
+    private final RateLimitFilter rateLimitFilter;
+    private final LoginRateLimitFilter loginRateLimitFilter;
+
+    @Autowired
+    public SecurityConfig(
+            AuthorizationRulesConfigurer authRules,
+            PasswordChangeRequiredFilter passwordChangeRequiredFilter,
+            WebDavApplicationCredentialFilter webDavCredentialFilter,
+            RateLimitFilter rateLimitFilter,
+<span class="fc" id="L50">            Optional&lt;LoginRateLimitFilter&gt; loginRateLimitFilter) {</span>
+<span class="fc" id="L51">        this.authRules = authRules;</span>
+<span class="fc" id="L52">        this.passwordChangeRequiredFilter = passwordChangeRequiredFilter;</span>
+<span class="fc" id="L53">        this.webDavCredentialFilter = webDavCredentialFilter;</span>
+<span class="fc" id="L54">        this.rateLimitFilter = rateLimitFilter;</span>
+<span class="fc" id="L55">        this.loginRateLimitFilter = loginRateLimitFilter.orElse(null);</span>
+<span class="fc" id="L56">    }</span>
+
+    /** Backward-compatible constructor for focused configuration tests. */
+    SecurityConfig(
+            AuthorizationRulesConfigurer authRules,
+            PasswordChangeRequiredFilter passwordChangeRequiredFilter) {
+<span class="fc" id="L62">        this(authRules, passwordChangeRequiredFilter, null, null, Optional.empty());</span>
+<span class="fc" id="L63">    }</span>
+
+    /** Backward-compatible constructor for tests of the WebDAV filter boundary. */
+    SecurityConfig(
+            AuthorizationRulesConfigurer authRules,
+            PasswordChangeRequiredFilter passwordChangeRequiredFilter,
+            WebDavApplicationCredentialFilter webDavCredentialFilter) {
+<span class="nc" id="L70">        this(authRules, passwordChangeRequiredFilter,</span>
+<span class="nc" id="L71">                webDavCredentialFilter, null, Optional.empty());</span>
+<span class="nc" id="L72">    }</span>
+
+    /** Backward-compatible constructor for focused LLM-quota tests. */
+    SecurityConfig(
+            AuthorizationRulesConfigurer authRules,
+            PasswordChangeRequiredFilter passwordChangeRequiredFilter,
+            WebDavApplicationCredentialFilter webDavCredentialFilter,
+            RateLimitFilter rateLimitFilter) {
+<span class="nc" id="L80">        this(authRules, passwordChangeRequiredFilter,</span>
+<span class="nc" id="L81">                webDavCredentialFilter, rateLimitFilter, Optional.empty());</span>
+<span class="nc" id="L82">    }</span>
+
+    @Bean(name = &quot;securityFilterChain&quot;)
+    SecurityFilterChain trackedSecurityFilterChain(HttpSecurity http, SessionRegistry registry) throws Exception {
+<span class="fc" id="L86">        BrowserSessionConfiguration.configure(http, registry);</span>
+<span class="fc" id="L87">        return securityFilterChain(http);</span>
+    }
+
+    /** Existing security rules, also used by focused protocol/filter configuration tests. */
+    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+<span class="fc" id="L92">        RequestMatcher statelessProtocolClient = SecurityConfig::isStatelessProtocolClient;</span>
+<span class="fc" id="L93">        var apiEntryPoint = new BasicAuthenticationEntryPoint();</span>
+<span class="fc" id="L94">        apiEntryPoint.setRealmName(&quot;Taxonomy&quot;);</span>
+
+<span class="fc" id="L96">        http</span>
+<span class="fc" id="L97">            .authorizeHttpRequests(auth -&gt; authRules.configure(auth))</span>
+<span class="fc" id="L98">            .csrf(csrf -&gt; csrf.ignoringRequestMatchers(statelessProtocolClient))</span>
+<span class="fc" id="L99">            .headers(headers -&gt; headers</span>
+<span class="fc" id="L100">                .withObjectPostProcessor(eagerHeaderWriter())</span>
+<span class="fc" id="L101">                .contentTypeOptions(Customizer.withDefaults())</span>
+<span class="fc" id="L102">                .frameOptions(frame -&gt; frame.sameOrigin())</span>
+<span class="fc" id="L103">                .httpStrictTransportSecurity(hsts -&gt; hsts</span>
+<span class="fc" id="L104">                    .includeSubDomains(true)</span>
+<span class="fc" id="L105">                    .maxAgeInSeconds(31536000))</span>
+<span class="fc" id="L106">                .referrerPolicy(referrer -&gt; referrer</span>
+<span class="fc" id="L107">                    .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN)))</span>
+<span class="fc" id="L108">            .formLogin(form -&gt; form.loginPage(&quot;/login&quot;).permitAll())</span>
+<span class="fc" id="L109">            .httpBasic(Customizer.withDefaults())</span>
+<span class="fc" id="L110">            .exceptionHandling(exceptions -&gt; exceptions.defaultAuthenticationEntryPointFor(</span>
+                    apiEntryPoint, SecurityConfig::isRestClient))
+<span class="fc" id="L112">            .logout(Customizer.withDefaults());</span>
+
+        // A custom login page disables Spring's generated logout page and its CSS too.
+        // Restore those UI filters while the standard CSRF-protected LogoutFilter performs logout.
+<span class="fc" id="L116">        var logoutPage = new DefaultLogoutPageGeneratingFilter();</span>
+<span class="fc" id="L117">        logoutPage.setResolveHiddenInputs(request -&gt; {</span>
+<span class="fc" id="L118">            var token = (CsrfToken) request.getAttribute(CsrfToken.class.getName());</span>
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">            return token == null ? Map.of() : Map.of(token.getParameterName(), token.getToken());</span>
+        });
+<span class="fc" id="L121">        http.addFilter(logoutPage);</span>
+<span class="fc" id="L122">        http.addFilter(DefaultResourcesFilter.css());</span>
+
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        if (webDavCredentialFilter != null) {</span>
+<span class="fc" id="L125">            http.addFilterBefore(webDavCredentialFilter, BasicAuthenticationFilter.class);</span>
+        }
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        if (loginRateLimitFilter != null) {</span>
+            // Restore a trusted session first, then wrap the authoritative form-login
+            // and HTTP-Basic authentication filters exactly once.
+<span class="fc" id="L130">            http.addFilterAfter(loginRateLimitFilter, SecurityContextHolderFilter.class);</span>
+        }
+<span class="fc" id="L132">        http.addFilterAfter(passwordChangeRequiredFilter, BasicAuthenticationFilter.class);</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        if (rateLimitFilter != null) {</span>
+            // Authorization must succeed before a request may consume quota or
+            // allocate per-principal state.
+<span class="fc" id="L136">            http.addFilterAfter(rateLimitFilter, AuthorizationFilter.class);</span>
+        }
+<span class="fc" id="L138">        return http.build();</span>
+    }
+
+    private static ObjectPostProcessor&lt;HeaderWriterFilter&gt; eagerHeaderWriter() {
+<span class="fc" id="L142">        return new ObjectPostProcessor&lt;&gt;() {</span>
+            @Override
+            public &lt;O extends HeaderWriterFilter&gt; O postProcess(O filter) {
+<span class="fc" id="L145">                filter.setShouldWriteHeadersEagerly(true);</span>
+<span class="fc" id="L146">                return filter;</span>
+            }
+        };
+    }
+
+    /**
+     * CSRF runs after context restoration and before Basic authentication. A
+     * restored browser authentication therefore still needs CSRF, even with a
+     * Basic header: that filter may reuse the same-name authenticated principal.
+     * Local mode has no Bearer authentication filter.
+     */
+    static boolean isStatelessProtocolClient(HttpServletRequest request) {
+        // Decide from the restored authority before inspecting untrusted routing
+        // or credential hints. No request value may skip this authentication check.
+<span class="fc" id="L160">        var restored = SecurityContextHolder.getContext().getAuthentication();</span>
+<span class="pc bpc" id="L161" title="2 of 6 branches missed.">        if (restored != null &amp;&amp; restored.isAuthenticated()</span>
+                &amp;&amp; !(restored instanceof AnonymousAuthenticationToken)) {
+<span class="fc" id="L163">            return false;</span>
+        }
+<span class="fc" id="L165">        String uri = protocolPath(request);</span>
+<span class="fc bfc" id="L166" title="All 2 branches covered.">        if (!uri.startsWith(&quot;/api/&quot;)</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">                &amp;&amp; !uri.equals(&quot;/dav/templates&quot;)</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">                &amp;&amp; !uri.startsWith(&quot;/dav/templates/&quot;)) {</span>
+<span class="fc" id="L169">            return false;</span>
+        }
+<span class="fc" id="L171">        String authorization = request.getHeader(&quot;Authorization&quot;);</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">        return authorization != null</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">                &amp;&amp; authorization.regionMatches(true, 0, &quot;Basic &quot;, 0, 6);</span>
+    }
+
+    static String protocolPath(HttpServletRequest request) {
+<span class="fc" id="L177">        String uri = request.getRequestURI();</span>
+<span class="fc" id="L178">        String context = request.getContextPath();</span>
+<span class="pc bpc" id="L179" title="2 of 6 branches missed.">        return context == null || context.isBlank() || !uri.startsWith(context)</span>
+<span class="fc" id="L180">                ? uri : uri.substring(context.length());</span>
+    }
+
+    static boolean isRestClient(HttpServletRequest request) {
+<span class="fc" id="L184">        String path = protocolPath(request);</span>
+<span class="pc bpc" id="L185" title="1 of 4 branches missed.">        return path.startsWith(&quot;/api/&quot;) || path.startsWith(&quot;/oslc/&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisWorkerShards.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.dag</a> &gt; <span class="el_source">AnalysisWorkerShards.java</span></div><h1>AnalysisWorkerShards.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.dag;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+
+/**
+ * Typed set of taxonomy roots one worker consumes, e.g. {@code CP,IP}.
+ *
+ * &lt;p&gt;Configuration is parsed into validated {@link TaxonomyShardRoot}s of the
+ * supplied catalogue definition. A blank selection consumes every registered
+ * root. Unknown and duplicate shard names are rejected.&lt;/p&gt;
+ */
+public record AnalysisWorkerShards(List&lt;TaxonomyShardRoot&gt; roots, Set&lt;TaxonomyShardRoot&gt; available) {
+
+    public AnalysisWorkerShards(List&lt;TaxonomyShardRoot&gt; roots) {
+<span class="nc" id="L19">        this(roots, Set.copyOf(TaxonomyShardRoot.DEFAULT_ROOTS));</span>
+<span class="nc" id="L20">    }</span>
+
+<span class="fc" id="L22">    public AnalysisWorkerShards {</span>
+<span class="pc bpc" id="L23" title="1 of 4 branches missed.">        if (roots == null || roots.isEmpty()) throw new IllegalArgumentException(&quot;At least one shard root is required&quot;);</span>
+<span class="fc" id="L24">        available = Set.copyOf(available);</span>
+<span class="fc" id="L25">        Set&lt;TaxonomyShardRoot&gt; distinct = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">        for (TaxonomyShardRoot root : roots) {</span>
+<span class="pc bpc" id="L27" title="1 of 4 branches missed.">            if (!available.contains(root) || !root.catalogueIdentifier()) {</span>
+<span class="fc" id="L28">                throw new IllegalArgumentException(&quot;Unsupported worker shard root: &quot; + root);</span>
+            }
+<span class="fc bfc" id="L30" title="All 2 branches covered.">            if (!distinct.add(root)) throw new IllegalArgumentException(&quot;Duplicate worker shard root: &quot; + root);</span>
+<span class="fc" id="L31">        }</span>
+<span class="fc" id="L32">        roots = List.copyOf(distinct);</span>
+<span class="fc" id="L33">    }</span>
+
+    /** All eight default catalogue roots. */
+    public static AnalysisWorkerShards all() {
+<span class="nc" id="L37">        return new AnalysisWorkerShards(TaxonomyShardRoot.DEFAULT_ROOTS);</span>
+    }
+
+    /** Parse a comma-separated root list; blank selects {@link #all()}. */
+    public static AnalysisWorkerShards parse(String value) {
+<span class="fc" id="L42">        return parseRoots(value, TaxonomyShardRoot.DEFAULT_ROOTS);</span>
+    }
+
+    public static AnalysisWorkerShards parse(String value, Collection&lt;String&gt; catalogueRoots) {
+<span class="fc" id="L46">        return parseRoots(value, catalogueRoots.stream().map(TaxonomyShardRoot::of).toList());</span>
+    }
+
+    private static AnalysisWorkerShards parseRoots(String value, List&lt;TaxonomyShardRoot&gt; allRoots) {
+<span class="fc" id="L50">        var available = Set.copyOf(allRoots);</span>
+<span class="fc bfc" id="L51" title="All 4 branches covered.">        if (value == null || value.isBlank()) return new AnalysisWorkerShards(allRoots, available);</span>
+<span class="fc" id="L52">        List&lt;TaxonomyShardRoot&gt; parsed = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        for (String token : value.split(&quot;,&quot;, -1)) {</span>
+<span class="fc" id="L54">            String code = token.strip();</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">            if (code.isEmpty()) throw new IllegalArgumentException(&quot;Empty worker shard root&quot;);</span>
+<span class="fc" id="L56">            parsed.add(TaxonomyShardRoot.of(code));</span>
+        }
+<span class="fc" id="L58">        return new AnalysisWorkerShards(parsed, available);</span>
+    }
+
+    public boolean contains(TaxonomyShardRoot root) {
+<span class="nc" id="L62">        return roots.contains(root);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

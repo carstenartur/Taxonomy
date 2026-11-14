@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ObligationProfile.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">ObligationProfile.java</span></div><h1>ObligationProfile.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.util.List;
+import java.util.Set;
+import java.util.Objects;
+
+/** Versioned authored business obligations, independent of relation legality. */
+public record ObligationProfile(String id, String version, String description, List&lt;Rule&gt; rules) {
+<span class="fc" id="L9">    public ObligationProfile { rules = List.copyOf(rules); }</span>
+    public record Rule(String id, Set&lt;String&gt; sourceRoots, String relationType, Set&lt;String&gt; targetRoots,
+                       int minCount, Integer maxCount, Severity severity, String requiredEvidence) {
+<span class="fc" id="L12">        public Rule {</span>
+<span class="fc" id="L13">            sourceRoots = Set.copyOf(sourceRoots); targetRoots = Set.copyOf(targetRoots);</span>
+<span class="fc" id="L14">            Objects.requireNonNull(severity); Objects.requireNonNull(requiredEvidence);</span>
+<span class="pc bpc" id="L15" title="4 of 10 branches missed.">            if (sourceRoots.isEmpty() || targetRoots.isEmpty() || minCount &lt; 0 || maxCount != null &amp;&amp; maxCount &lt; minCount)</span>
+<span class="nc" id="L16">                throw new IllegalArgumentException(&quot;Invalid obligation domain or cardinality&quot;);</span>
+<span class="fc" id="L17">        }</span>
+    }
+<span class="fc" id="L19">    public enum Severity { INFO, WARNING, ERROR }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

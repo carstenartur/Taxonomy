@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.portfolio.service.PortfolioStatusPayloadReadTest
+-------------------------------------------------------------------------------
+Tests run: 33, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 6.184 s -- in com.taxonomy.portfolio.service.PortfolioStatusPayloadReadTest

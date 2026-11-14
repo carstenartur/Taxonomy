@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationMetamodel.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.validation</a> &gt; <span class="el_source">RelationMetamodel.java</span></div><h1>RelationMetamodel.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.validation;
+
+import java.util.*;
+
+/** Immutable, framework-free relation legality. Legality never implies an obligation. */
+public final class RelationMetamodel {
+    public static final String VERSION = &quot;1.0.0&quot;;
+<span class="fc" id="L8">    public enum DomainState { UNRESTRICTED, RESTRICTED, FORBIDDEN }</span>
+    public record TargetDomain(DomainState state, Set&lt;String&gt; roots) {
+<span class="fc" id="L10">        public TargetDomain {</span>
+<span class="fc" id="L11">            Objects.requireNonNull(state, &quot;state&quot;); roots = Collections.unmodifiableSet(new TreeSet&lt;&gt;(roots));</span>
+<span class="pc bpc" id="L12" title="1 of 4 branches missed.">            if ((state == DomainState.RESTRICTED) == roots.isEmpty())</span>
+<span class="nc" id="L13">                throw new IllegalArgumentException(&quot;Only restricted domains have nonempty roots&quot;);</span>
+<span class="fc" id="L14">        }</span>
+        public boolean allows(String root) {
+<span class="pc bpc" id="L16" title="1 of 8 branches missed.">            return state == DomainState.UNRESTRICTED || (state == DomainState.RESTRICTED &amp;&amp; root != null &amp;&amp; roots.contains(root));</span>
+        }
+    }
+    private static final Map&lt;String, Map&lt;String, Set&lt;String&gt;&gt;&gt; RESTRICTED_RULES;
+    static {
+<span class="fc" id="L21">        Map&lt;String, Map&lt;String, Set&lt;String&gt;&gt;&gt; m = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L22">        m.put(&quot;REALIZES&quot;,          Map.of(&quot;CP&quot;, Set.of(&quot;CR&quot;)));</span>
+<span class="fc" id="L23">        m.put(&quot;SUPPORTS&quot;,          Map.of(&quot;CR&quot;, Set.of(&quot;BP&quot;, &quot;BR&quot;),</span>
+<span class="fc" id="L24">                                          &quot;CI&quot;, Set.of(&quot;BP&quot;, &quot;BR&quot;),</span>
+<span class="fc" id="L25">                                          &quot;CO&quot;, Set.of(&quot;BP&quot;),</span>
+<span class="fc" id="L26">                                          &quot;UA&quot;, Set.of(&quot;BP&quot;)));</span>
+<span class="fc" id="L27">        m.put(&quot;CONSUMES&quot;,          Map.of(&quot;BP&quot;, Set.of(&quot;IP&quot;),</span>
+<span class="fc" id="L28">                                          &quot;CR&quot;, Set.of(&quot;IP&quot;),</span>
+<span class="fc" id="L29">                                          &quot;CI&quot;, Set.of(&quot;IP&quot;),</span>
+<span class="fc" id="L30">                                          &quot;UA&quot;, Set.of(&quot;IP&quot;)));</span>
+<span class="fc" id="L31">        m.put(&quot;USES&quot;,              Map.of(&quot;UA&quot;, Set.of(&quot;CR&quot;, &quot;CI&quot;, &quot;CO&quot;),</span>
+<span class="fc" id="L32">                                          &quot;SY&quot;, Set.of(&quot;SY&quot;, &quot;CR&quot;),</span>
+<span class="fc" id="L33">                                          &quot;BP&quot;, Set.of(&quot;CR&quot;, &quot;CI&quot;),</span>
+<span class="fc" id="L34">                                          &quot;BR&quot;, Set.of(&quot;IP&quot;)));</span>
+<span class="fc" id="L35">        m.put(&quot;FULFILLS&quot;,          Map.of(&quot;CI&quot;, Set.of(&quot;CP&quot;), &quot;CR&quot;, Set.of(&quot;CP&quot;)));</span>
+<span class="fc" id="L36">        m.put(&quot;ASSIGNED_TO&quot;,       Map.of(&quot;BR&quot;, Set.of(&quot;BP&quot;)));</span>
+<span class="fc" id="L37">        m.put(&quot;DEPENDS_ON&quot;,        Map.of(&quot;CR&quot;, Set.of(&quot;CR&quot;, &quot;CI&quot;),</span>
+<span class="fc" id="L38">                                          &quot;CI&quot;, Set.of(&quot;CR&quot;),</span>
+<span class="fc" id="L39">                                          &quot;CO&quot;, Set.of(&quot;CR&quot;),</span>
+<span class="fc" id="L40">                                          &quot;SY&quot;, Set.of(&quot;SY&quot;),</span>
+<span class="fc" id="L41">                                          &quot;CM&quot;, Set.of(&quot;CM&quot;, &quot;CR&quot;)));</span>
+<span class="fc" id="L42">        m.put(&quot;PRODUCES&quot;,          Map.of(&quot;BP&quot;, Set.of(&quot;IP&quot;),</span>
+<span class="fc" id="L43">                                          &quot;CR&quot;, Set.of(&quot;IP&quot;),</span>
+<span class="fc" id="L44">                                          &quot;CI&quot;, Set.of(&quot;IP&quot;),</span>
+<span class="fc" id="L45">                                          &quot;UA&quot;, Set.of(&quot;IP&quot;)));</span>
+<span class="fc" id="L46">        m.put(&quot;COMMUNICATES_WITH&quot;, Map.of(&quot;CO&quot;, Set.of(&quot;CR&quot;, &quot;CI&quot;, &quot;UA&quot;)));</span>
+<span class="fc" id="L47">        m.put(&quot;CONTAINS&quot;,          Map.of(&quot;SY&quot;, Set.of(&quot;UA&quot;, &quot;CM&quot;), &quot;CM&quot;, Set.of(&quot;CM&quot;)));</span>
+<span class="fc" id="L48">        m.put(&quot;REQUIRES&quot;,          Map.of(&quot;CP&quot;, Set.of(&quot;IP&quot;)));</span>
+        // RELATED_TO has no restrictions
+<span class="fc" id="L50">        RESTRICTED_RULES = Collections.unmodifiableMap(m);</span>
+    }
+
+
+    private static final Set&lt;String&gt; TYPES;
+<span class="fc" id="L55">    static { var types = new TreeSet&lt;&gt;(RESTRICTED_RULES.keySet()); types.add(&quot;RELATED_TO&quot;); TYPES = Collections.unmodifiableSet(types); }</span>
+    public record RelationDomain(TargetDomain defaultDomain, Map&lt;String, TargetDomain&gt; sourceDomains) {
+<span class="fc" id="L57">        public RelationDomain { Objects.requireNonNull(defaultDomain); sourceDomains = Collections.unmodifiableMap(new TreeMap&lt;&gt;(sourceDomains)); }</span>
+    }
+    public static Map&lt;String, RelationDomain&gt; relationDomains() {
+<span class="fc" id="L60">        Map&lt;String, RelationDomain&gt; result = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        for (String type : TYPES) {</span>
+<span class="fc" id="L62">            Map&lt;String, TargetDomain&gt; sources = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L63">            RESTRICTED_RULES.getOrDefault(type, Map.of()).forEach((root, targets) -&gt; sources.put(root, targetDomain(root, type)));</span>
+<span class="fc" id="L64">            result.put(type, new RelationDomain(targetDomain(null, type), sources));</span>
+<span class="fc" id="L65">        }</span>
+<span class="fc" id="L66">        return Collections.unmodifiableMap(result);</span>
+    }
+    private RelationMetamodel() {}
+<span class="fc" id="L69">    public static Set&lt;String&gt; relationTypes() { return TYPES; }</span>
+    public static TargetDomain targetDomain(String sourceRoot, String relationType) {
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        if (&quot;RELATED_TO&quot;.equals(relationType)) return new TargetDomain(DomainState.UNRESTRICTED, Set.of());</span>
+<span class="fc" id="L72">        var rules = RESTRICTED_RULES.get(relationType);</span>
+<span class="pc bpc" id="L73" title="1 of 4 branches missed.">        var roots = rules == null || sourceRoot == null ? null : rules.get(sourceRoot);</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        return roots == null ? new TargetDomain(DomainState.FORBIDDEN, Set.of()) : new TargetDomain(DomainState.RESTRICTED, roots);</span>
+    }
+    public static boolean isCompatible(String sourceRoot, String targetRoot, String relationType) {
+<span class="fc" id="L77">        return targetDomain(sourceRoot, relationType).allows(targetRoot);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

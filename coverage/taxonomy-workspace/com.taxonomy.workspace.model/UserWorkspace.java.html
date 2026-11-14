@@ -1,0 +1,360 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>UserWorkspace.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.model</a> &gt; <span class="el_source">UserWorkspace.java</span></div><h1>UserWorkspace.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.model;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import org.hibernate.annotations.ColumnDefault;
+
+import java.time.Instant;
+
+/**
+ * Persistent workspace metadata for a user.
+ *
+ * &lt;p&gt;Each user has at least one workspace that provides an isolated context
+ * for architecture editing. Every provisioned workspace records an explicit
+ * source repository and source branch so synchronization never has to infer a
+ * global central repository.&lt;/p&gt;
+ */
+@Entity
+@Table(name = &quot;user_workspace&quot;, indexes = {
+    @Index(name = &quot;idx_workspace_username&quot;, columnList = &quot;username&quot;),
+    @Index(name = &quot;idx_workspace_shared&quot;, columnList = &quot;shared&quot;),
+    @Index(name = &quot;idx_workspace_source_repository&quot;, columnList = &quot;source_repository_id&quot;)
+}, uniqueConstraints = {
+    @UniqueConstraint(name = &quot;uq_workspace_user_name&quot;, columnNames = {&quot;username&quot;, &quot;display_name&quot;})
+})
+public class UserWorkspace {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = &quot;workspace_id&quot;, nullable = false, unique = true)
+    private String workspaceId;
+
+    @Column(nullable = false)
+    private String username;
+
+    @Column(name = &quot;display_name&quot;)
+    private String displayName;
+
+<span class="fc" id="L49">    @Column(name = &quot;current_branch&quot;, nullable = false)</span>
+    private String currentBranch = &quot;draft&quot;;
+
+<span class="fc" id="L52">    @Column(name = &quot;base_branch&quot;)</span>
+    private String baseBranch = &quot;draft&quot;;
+
+<span class="fc" id="L55">    @Column(nullable = false)</span>
+    private boolean shared = false;
+
+    /** Explicit opt-in for repository contributors; unrelated to the legacy central shared workspace. */
+    // Ordinary metadata merges must not replay a stale sharing decision.
+    // WorkspaceCollaborationService owns updates through its locked repository operation.
+<span class="fc" id="L61">    @Column(updatable = false)</span>
+<span class="fc" id="L62">    private Boolean collaborative = false;</span>
+
+    @Column(name = &quot;created_at&quot;, nullable = false)
+    private Instant createdAt;
+
+    @Column(name = &quot;last_accessed_at&quot;)
+    private Instant lastAccessedAt;
+
+<span class="fc" id="L70">    @Enumerated(EnumType.STRING)</span>
+    @Column(name = &quot;provisioning_status&quot;, nullable = false)
+    private WorkspaceProvisioningStatus provisioningStatus = WorkspaceProvisioningStatus.READY;
+
+<span class="fc" id="L74">    @Enumerated(EnumType.STRING)</span>
+    @Column(name = &quot;topology_mode&quot;, nullable = false)
+    private RepositoryTopologyMode topologyMode = RepositoryTopologyMode.INTERNAL_SHARED;
+
+    @Column(name = &quot;source_repository_id&quot;)
+    private String sourceRepositoryId;
+
+    @Column(name = &quot;source_branch&quot;)
+    private String sourceBranch;
+
+<span class="fc" id="L84">    @Enumerated(EnumType.STRING)</span>
+    @Column(name = &quot;relationship_type&quot;)
+    private WorkspaceRelationshipType relationshipType = WorkspaceRelationshipType.WORKING_COPY;
+
+    @Column(name = &quot;base_commit&quot;)
+    private String baseCommit;
+
+    @Column(name = &quot;current_commit&quot;)
+    private String currentCommit;
+
+    @Column(name = &quot;last_fetched_commit&quot;)
+    private String lastFetchedCommit;
+
+    @Column(name = &quot;last_integrated_commit&quot;)
+    private String lastIntegratedCommit;
+
+    @Column(name = &quot;sync_target_branch&quot;)
+    private String syncTargetBranch;
+
+    @Column(name = &quot;provisioned_at&quot;)
+    private Instant provisionedAt;
+
+    // The bulk claim owns these fields. Ordinary detached metadata saves must not resurrect an old lease.
+    @Column(name = &quot;provisioning_lease_owner&quot;, length = 36, updatable = false)
+    private String provisioningLeaseOwner;
+
+    @Column(name = &quot;provisioning_lease_until&quot;, updatable = false)
+    private Instant provisioningLeaseUntil;
+
+    @ColumnDefault(&quot;0&quot;)
+    @Column(name = &quot;provisioning_attempt&quot;, nullable = false, updatable = false)
+    private int provisioningAttempt;
+
+    @Column(name = &quot;provisioning_attempt_at&quot;, updatable = false)
+    private Instant provisioningAttemptAt;
+
+    @Column(name = &quot;provisioning_sync_base_branch&quot;, updatable = false)
+    private String provisioningSyncBaseBranch;
+
+    @Column(name = &quot;provisioning_error&quot;)
+    private String provisioningError;
+
+    @Column(name = &quot;description&quot;, length = 500)
+    private String description;
+
+<span class="fc" id="L129">    @Column(nullable = false)</span>
+    private boolean archived = false;
+
+<span class="fc" id="L132">    @Column(name = &quot;is_default&quot;, nullable = false)</span>
+    private boolean isDefault = false;
+
+<span class="fc" id="L135">    public UserWorkspace() {</span>
+<span class="fc" id="L136">    }</span>
+
+    /** First allocation of a newly inserted working copy; retries use the atomic repository claim. */
+    public void startProvisioningLease(String owner, Instant startedAt, Instant expiresAt) {
+<span class="fc" id="L140">        provisioningLeaseOwner = owner;</span>
+<span class="fc" id="L141">        provisioningLeaseUntil = expiresAt;</span>
+<span class="fc" id="L142">        provisioningAttemptAt = startedAt;</span>
+<span class="fc" id="L143">        provisioningAttempt = 1;</span>
+<span class="fc" id="L144">    }</span>
+
+<span class="fc" id="L146">    public String getProvisioningSyncBaseBranch() { return provisioningSyncBaseBranch; }</span>
+<span class="fc" id="L147">    public void setProvisioningSyncBaseBranch(String branch) { provisioningSyncBaseBranch = branch; }</span>
+
+    @JsonIgnore
+<span class="fc" id="L150">    public String getProvisioningLeaseOwner() { return provisioningLeaseOwner; }</span>
+
+<span class="fc" id="L152">    public Instant getProvisioningLeaseUntil() { return provisioningLeaseUntil; }</span>
+<span class="fc" id="L153">    public int getProvisioningAttempt() { return provisioningAttempt; }</span>
+<span class="fc" id="L154">    public Instant getProvisioningAttemptAt() { return provisioningAttemptAt; }</span>
+
+    public Long getId() {
+<span class="fc" id="L157">        return id;</span>
+    }
+
+    public void setId(Long id) {
+<span class="nc" id="L161">        this.id = id;</span>
+<span class="nc" id="L162">    }</span>
+
+    public String getWorkspaceId() {
+<span class="fc" id="L165">        return workspaceId;</span>
+    }
+
+    public void setWorkspaceId(String workspaceId) {
+<span class="fc" id="L169">        this.workspaceId = workspaceId;</span>
+<span class="fc" id="L170">    }</span>
+
+    public String getUsername() {
+<span class="fc" id="L173">        return username;</span>
+    }
+
+    public void setUsername(String username) {
+<span class="fc" id="L177">        this.username = username;</span>
+<span class="fc" id="L178">    }</span>
+
+    public String getDisplayName() {
+<span class="fc" id="L181">        return displayName;</span>
+    }
+
+    public void setDisplayName(String displayName) {
+<span class="fc" id="L185">        this.displayName = displayName;</span>
+<span class="fc" id="L186">    }</span>
+
+    public String getCurrentBranch() {
+<span class="fc" id="L189">        return currentBranch;</span>
+    }
+
+    public void setCurrentBranch(String currentBranch) {
+<span class="fc" id="L193">        this.currentBranch = currentBranch;</span>
+<span class="fc" id="L194">    }</span>
+
+    public String getBaseBranch() {
+<span class="fc" id="L197">        return baseBranch;</span>
+    }
+
+    public void setBaseBranch(String baseBranch) {
+<span class="fc" id="L201">        this.baseBranch = baseBranch;</span>
+<span class="fc" id="L202">    }</span>
+
+    public boolean isShared() {
+<span class="fc" id="L205">        return shared;</span>
+    }
+
+    public void setShared(boolean shared) {
+<span class="fc" id="L209">        this.shared = shared;</span>
+<span class="fc" id="L210">    }</span>
+
+<span class="fc" id="L212">    public boolean isCollaborative() { return Boolean.TRUE.equals(collaborative); }</span>
+
+    /** Initializes a new row; persisted sharing changes belong to WorkspaceCollaborationService. */
+<span class="fc" id="L215">    public void setCollaborative(boolean collaborative) { this.collaborative = collaborative; }</span>
+
+    public Instant getCreatedAt() {
+<span class="fc" id="L218">        return createdAt;</span>
+    }
+
+    public void setCreatedAt(Instant createdAt) {
+<span class="fc" id="L222">        this.createdAt = createdAt;</span>
+<span class="fc" id="L223">    }</span>
+
+    public Instant getLastAccessedAt() {
+<span class="fc" id="L226">        return lastAccessedAt;</span>
+    }
+
+    public void setLastAccessedAt(Instant lastAccessedAt) {
+<span class="fc" id="L230">        this.lastAccessedAt = lastAccessedAt;</span>
+<span class="fc" id="L231">    }</span>
+
+    public WorkspaceProvisioningStatus getProvisioningStatus() {
+<span class="fc" id="L234">        return provisioningStatus;</span>
+    }
+
+    public void setProvisioningStatus(WorkspaceProvisioningStatus provisioningStatus) {
+<span class="fc" id="L238">        this.provisioningStatus = provisioningStatus;</span>
+<span class="fc" id="L239">    }</span>
+
+    public RepositoryTopologyMode getTopologyMode() {
+<span class="fc" id="L242">        return topologyMode;</span>
+    }
+
+    public void setTopologyMode(RepositoryTopologyMode topologyMode) {
+<span class="fc" id="L246">        this.topologyMode = topologyMode;</span>
+<span class="fc" id="L247">    }</span>
+
+    public String getSourceRepositoryId() {
+<span class="fc" id="L250">        return sourceRepositoryId;</span>
+    }
+
+    public void setSourceRepositoryId(String sourceRepositoryId) {
+<span class="fc" id="L254">        this.sourceRepositoryId = sourceRepositoryId;</span>
+<span class="fc" id="L255">    }</span>
+
+    public String getSourceBranch() {
+<span class="fc" id="L258">        return sourceBranch;</span>
+    }
+
+    public void setSourceBranch(String sourceBranch) {
+<span class="fc" id="L262">        this.sourceBranch = sourceBranch;</span>
+<span class="fc" id="L263">    }</span>
+
+    public WorkspaceRelationshipType getRelationshipType() {
+<span class="nc" id="L266">        return relationshipType;</span>
+    }
+
+    public void setRelationshipType(WorkspaceRelationshipType relationshipType) {
+<span class="fc" id="L270">        this.relationshipType = relationshipType;</span>
+<span class="fc" id="L271">    }</span>
+
+    public String getBaseCommit() {
+<span class="fc" id="L274">        return baseCommit;</span>
+    }
+
+    public void setBaseCommit(String baseCommit) {
+<span class="fc" id="L278">        this.baseCommit = baseCommit;</span>
+<span class="fc" id="L279">    }</span>
+
+    public String getCurrentCommit() {
+<span class="fc" id="L282">        return currentCommit;</span>
+    }
+
+    public void setCurrentCommit(String currentCommit) {
+<span class="fc" id="L286">        this.currentCommit = currentCommit;</span>
+<span class="fc" id="L287">    }</span>
+
+    public String getLastFetchedCommit() {
+<span class="fc" id="L290">        return lastFetchedCommit;</span>
+    }
+
+    public void setLastFetchedCommit(String lastFetchedCommit) {
+<span class="fc" id="L294">        this.lastFetchedCommit = lastFetchedCommit;</span>
+<span class="fc" id="L295">    }</span>
+
+    public String getLastIntegratedCommit() {
+<span class="fc" id="L298">        return lastIntegratedCommit;</span>
+    }
+
+    public void setLastIntegratedCommit(String lastIntegratedCommit) {
+<span class="fc" id="L302">        this.lastIntegratedCommit = lastIntegratedCommit;</span>
+<span class="fc" id="L303">    }</span>
+
+    /** The same upstream selection applies to standalone fetch, pull, and publication. */
+    public String resolveUpstreamBranch(SystemRepository sourceRepository) {
+<span class="pc bpc" id="L307" title="1 of 4 branches missed.">        if (syncTargetBranch != null &amp;&amp; !syncTargetBranch.isBlank()) return syncTargetBranch;</span>
+<span class="pc bpc" id="L308" title="1 of 4 branches missed.">        if (sourceBranch != null &amp;&amp; !sourceBranch.isBlank()) return sourceBranch;</span>
+<span class="fc" id="L309">        return sourceRepository.getDefaultBranch();</span>
+    }
+
+    public String getSyncTargetBranch() {
+<span class="fc" id="L313">        return syncTargetBranch;</span>
+    }
+
+    public void setSyncTargetBranch(String syncTargetBranch) {
+<span class="fc" id="L317">        this.syncTargetBranch = syncTargetBranch;</span>
+<span class="fc" id="L318">    }</span>
+
+    public Instant getProvisionedAt() {
+<span class="fc" id="L321">        return provisionedAt;</span>
+    }
+
+    public void setProvisionedAt(Instant provisionedAt) {
+<span class="fc" id="L325">        this.provisionedAt = provisionedAt;</span>
+<span class="fc" id="L326">    }</span>
+
+    public String getProvisioningError() {
+<span class="fc" id="L329">        return provisioningError;</span>
+    }
+
+    public void setProvisioningError(String provisioningError) {
+<span class="fc" id="L333">        this.provisioningError = provisioningError;</span>
+<span class="fc" id="L334">    }</span>
+
+    public String getDescription() {
+<span class="fc" id="L337">        return description;</span>
+    }
+
+    public void setDescription(String description) {
+<span class="fc" id="L341">        this.description = description;</span>
+<span class="fc" id="L342">    }</span>
+
+    public boolean isArchived() {
+<span class="fc" id="L345">        return archived;</span>
+    }
+
+    public void setArchived(boolean archived) {
+<span class="fc" id="L349">        this.archived = archived;</span>
+<span class="fc" id="L350">    }</span>
+
+    public boolean isDefault() {
+<span class="fc" id="L353">        return isDefault;</span>
+    }
+
+    public void setDefault(boolean isDefault) {
+<span class="fc" id="L357">        this.isDefault = isDefault;</span>
+<span class="fc" id="L358">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

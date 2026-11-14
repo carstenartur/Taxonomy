@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GraphNeighborhoodView.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">GraphNeighborhoodView.java</span></div><h1>GraphNeighborhoodView.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Result of an upstream or downstream neighborhood query.
+ * Contains all elements and relationships found by traversing incoming (upstream)
+ * or outgoing (downstream) edges from a given node.
+ */
+public class GraphNeighborhoodView {
+
+    private GraphQueryEvidence evidence;
+<span class="fc" id="L14">    public GraphQueryEvidence getEvidence() { return evidence; }</span>
+<span class="fc" id="L15">    public void setEvidence(GraphQueryEvidence evidence) { this.evidence = evidence; }</span>
+
+    private String originNodeCode;
+    private String direction; // &quot;UPSTREAM&quot; or &quot;DOWNSTREAM&quot;
+    private int maxHops;
+<span class="fc" id="L20">    private List&lt;ImpactElement&gt; neighbors = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L21">    private List&lt;ImpactRelationship&gt; traversedRelationships = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L22">    private List&lt;String&gt; notes = new ArrayList&lt;&gt;();</span>
+    private int totalNeighbors;
+    private int totalRelationships;
+
+<span class="fc" id="L26">    public GraphNeighborhoodView() {}</span>
+
+<span class="fc" id="L28">    public String getOriginNodeCode() { return originNodeCode; }</span>
+<span class="fc" id="L29">    public void setOriginNodeCode(String originNodeCode) { this.originNodeCode = originNodeCode; }</span>
+
+<span class="fc" id="L31">    public String getDirection() { return direction; }</span>
+<span class="fc" id="L32">    public void setDirection(String direction) { this.direction = direction; }</span>
+
+<span class="fc" id="L34">    public int getMaxHops() { return maxHops; }</span>
+<span class="fc" id="L35">    public void setMaxHops(int maxHops) { this.maxHops = maxHops; }</span>
+
+<span class="fc" id="L37">    public List&lt;ImpactElement&gt; getNeighbors() { return neighbors; }</span>
+<span class="fc" id="L38">    public void setNeighbors(List&lt;ImpactElement&gt; neighbors) { this.neighbors = neighbors; }</span>
+
+<span class="fc" id="L40">    public List&lt;ImpactRelationship&gt; getTraversedRelationships() { return traversedRelationships; }</span>
+<span class="fc" id="L41">    public void setTraversedRelationships(List&lt;ImpactRelationship&gt; traversedRelationships) { this.traversedRelationships = traversedRelationships; }</span>
+
+<span class="fc" id="L43">    public List&lt;String&gt; getNotes() { return notes; }</span>
+<span class="nc" id="L44">    public void setNotes(List&lt;String&gt; notes) { this.notes = notes; }</span>
+
+<span class="fc" id="L46">    public int getTotalNeighbors() { return totalNeighbors; }</span>
+<span class="fc" id="L47">    public void setTotalNeighbors(int totalNeighbors) { this.totalNeighbors = totalNeighbors; }</span>
+
+<span class="fc" id="L49">    public int getTotalRelationships() { return totalRelationships; }</span>
+<span class="fc" id="L50">    public void setTotalRelationships(int totalRelationships) { this.totalRelationships = totalRelationships; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

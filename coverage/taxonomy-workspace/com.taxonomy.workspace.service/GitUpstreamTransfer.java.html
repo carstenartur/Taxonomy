@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GitUpstreamTransfer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">GitUpstreamTransfer.java</span></div><h1>GitUpstreamTransfer.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.workspace.service.WorkspaceUpstreamService.Request;
+import com.taxonomy.workspace.service.WorkspaceUpstreamService.Status;
+import com.taxonomy.workspace.service.WorkspaceUpstreamService.TagRequest;
+import com.taxonomy.workspace.service.WorkspaceUpstreamService.TagStatus;
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.GitHistoryTransfer;
+import com.taxonomy.workspace.storage.GitSelectedTag;
+import com.taxonomy.workspace.storage.GitUpstreamRef;
+import org.eclipse.jgit.errors.IncorrectObjectTypeException;
+import org.eclipse.jgit.errors.MissingObjectException;
+import org.eclipse.jgit.lib.Constants;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Objects;
+
+/** Exact-source fetch and selected-tag publication shared by working copies and central forks. */
+<span class="fc" id="L20">record GitUpstreamTransfer(GitUpstreamRef upstream, DslGitRepository source, DslGitRepository target,</span>
+                           String forkPoint, String actor, Runnable reauthorize) {
+    void requireOrigin(String repository, String branch, String originalForkPoint) throws IOException {
+<span class="pc bpc" id="L23" title="2 of 4 branches missed.">        if (!upstream.repositoryId().equals(repository) || !upstream.branch().equals(branch)</span>
+<span class="pc bpc" id="L24" title="1 of 2 branches missed.">                || !Objects.equals(forkPoint, originalForkPoint)) {</span>
+<span class="nc" id="L25">            throw new BranchHeadConflictException(branch, originalForkPoint, forkPoint, &quot;The recorded upstream changed&quot;);</span>
+        }
+<span class="fc" id="L27">    }</span>
+
+    Status inspect() throws IOException {
+<span class="fc" id="L30">        return new Status(upstream.repositoryId(), upstream.branch(), sourceHead(),</span>
+<span class="fc" id="L31">                upstream.name(), upstream.head(target));</span>
+    }
+
+    Status fetch(Request request) throws IOException {
+<span class="fc" id="L35">        return fetch(request, () -&gt; { });</span>
+    }
+
+    Status fetch(Request request, Runnable fence) throws IOException {
+<span class="fc" id="L39">        String incoming = request.sourceCommit();</span>
+<span class="fc" id="L40">        String tracked = upstream.head(target);</span>
+<span class="fc bfc" id="L41" title="All 4 branches covered.">        if (!Objects.equals(tracked, request.expectedTrackedCommit()) &amp;&amp; !incoming.equals(tracked)) {</span>
+<span class="fc" id="L42">            throw new BranchHeadConflictException(upstream.name(), request.expectedTrackedCommit(), tracked, &quot;The tracked commit changed&quot;);</span>
+        }
+<span class="fc" id="L44">        String head = sourceHead();</span>
+<span class="pc bpc" id="L45" title="2 of 4 branches missed.">        if (head == null || !reachable(source, incoming, head)) {</span>
+<span class="nc" id="L46">            throw new BranchHeadConflictException(upstream.branch(), incoming, head, &quot;The requested commit is no longer on the source branch&quot;);</span>
+        }
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        if (tracked == null) {</span>
+<span class="pc bpc" id="L49" title="2 of 4 branches missed.">            if (forkPoint == null || !reachable(source, forkPoint, incoming)) {</span>
+<span class="nc" id="L50">                throw new BranchHeadConflictException(upstream.branch(), forkPoint, incoming, &quot;Upstream history diverged from the retained fork point&quot;);</span>
+            }
+        }
+        // An identical replay may follow a successful ref update whose acknowledgement was lost.
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        if (!incoming.equals(tracked)) {</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">            GitHistoryTransfer.copyCommitClosure(source, target, incoming, tracked == null ? List.of() : List.of(tracked));</span>
+        }
+<span class="fc" id="L57">        reauthorize.run();</span>
+<span class="fc" id="L58">        String currentHead = sourceHead();</span>
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">        if (!head.equals(currentHead)) {</span>
+<span class="nc" id="L60">            throw new BranchHeadConflictException(upstream.branch(), head, currentHead, &quot;Source branch changed during transfer&quot;);</span>
+        }
+<span class="fc" id="L62">        fence.run();</span>
+<span class="fc" id="L63">        upstream.advance(target, tracked, incoming, actor);</span>
+<span class="fc" id="L64">        return new Status(upstream.repositoryId(), upstream.branch(), head, upstream.name(), incoming);</span>
+    }
+
+    /** A recovery may settle from a retained descendant without moving any ref. */
+    Status recover(Request request, Runnable fence) throws IOException {
+        try {
+<span class="fc" id="L70">            return fetch(request, fence);</span>
+<span class="fc" id="L71">        } catch (BranchHeadConflictException changed) {</span>
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">            if (!upstream.name().equals(changed.getBranch())) throw changed;</span>
+<span class="fc" id="L73">            String actual = upstream.head(target);</span>
+<span class="pc bpc" id="L74" title="2 of 4 branches missed.">            if (actual == null || actual.equals(request.sourceCommit())</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">                    || !reachable(target, request.sourceCommit(), actual)) throw changed;</span>
+<span class="fc" id="L76">            reauthorize.run();</span>
+<span class="fc" id="L77">            fence.run();</span>
+<span class="fc" id="L78">            throw new Superseded(actual);</span>
+        }
+    }
+
+    static final class Superseded extends IOException {
+        final String retainedCommit;
+        Superseded(String retainedCommit) {
+<span class="fc" id="L85">            super(&quot;The tracking ref already contains the requested commit&quot;);</span>
+<span class="fc" id="L86">            this.retainedCommit = retainedCommit;</span>
+<span class="fc" id="L87">        }</span>
+    }
+
+    TagStatus inspectTag(String name) throws IOException {
+<span class="fc" id="L91">        String tracked = upstream.head(target);</span>
+<span class="fc" id="L92">        var tag = selectedTag(name, tracked);</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        return new TagStatus(name, tag == null ? null : tag.objectId(), GitSelectedTag.objectAt(target, name), tracked);</span>
+    }
+
+    TagStatus fetchTag(TagRequest request) throws IOException {
+<span class="fc" id="L97">        return fetchTag(request, false, () -&gt; { });</span>
+    }
+
+    TagStatus fetchTag(TagRequest request, boolean recovering, Runnable fence) throws IOException {
+<span class="fc" id="L101">        String tracked = upstream.head(target);</span>
+<span class="fc bfc" id="L102" title="All 4 branches covered.">        if (recovering &amp;&amp; request.sourceTagObject().equals(GitSelectedTag.objectAt(target, request.name()))) {</span>
+<span class="fc" id="L103">            var retained = GitSelectedTag.read(target, request.name());</span>
+<span class="pc bpc" id="L104" title="3 of 6 branches missed.">            if (retained != null &amp;&amp; request.sourceTagObject().equals(retained.objectId())</span>
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">                    &amp;&amp; tracked != null &amp;&amp; reachable(target, retained.commit(), request.trackedCommit())</span>
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">                    &amp;&amp; reachable(target, request.trackedCommit(), tracked)) {</span>
+<span class="fc" id="L107">                reauthorize.run();</span>
+<span class="fc" id="L108">                fence.run();</span>
+<span class="fc" id="L109">                String current = upstream.head(target);</span>
+<span class="pc bpc" id="L110" title="2 of 4 branches missed.">                if (current == null || !reachable(target, request.trackedCommit(), current)) {</span>
+<span class="nc" id="L111">                    throw new BranchHeadConflictException(upstream.name(), request.trackedCommit(), current, &quot;Tracking ref changed&quot;);</span>
+                }
+<span class="fc" id="L113">                retained.verifyRetained(target);</span>
+<span class="fc" id="L114">                return new TagStatus(request.name(), retained.objectId(), retained.objectId(), request.trackedCommit());</span>
+            }
+        }
+<span class="pc bpc" id="L117" title="1 of 2 branches missed.">        if (!request.trackedCommit().equals(tracked)) {</span>
+<span class="nc" id="L118">            throw new BranchHeadConflictException(upstream.name(), request.trackedCommit(), tracked, &quot;Tracking ref changed&quot;);</span>
+        }
+<span class="fc" id="L120">        var tag = selectedTag(request.name(), tracked);</span>
+<span class="pc bpc" id="L121" title="1 of 4 branches missed.">        if (tag == null || !request.sourceTagObject().equals(tag.objectId())) {</span>
+<span class="fc" id="L122">            throw new BranchHeadConflictException(request.name(), request.sourceTagObject(), null, &quot;Selected source tag changed&quot;);</span>
+        }
+<span class="fc" id="L124">        tag.publish(target, actor, () -&gt; {</span>
+<span class="fc" id="L125">            reauthorize.run();</span>
+<span class="pc bpc" id="L126" title="1 of 2 branches missed.">            if (!tag.objectId().equals(GitSelectedTag.objectAt(source, request.name()))) {</span>
+<span class="nc" id="L127">                throw new BranchHeadConflictException(request.name(), tag.objectId(), null, &quot;Selected source tag changed&quot;);</span>
+            }
+<span class="fc" id="L129">            String current = upstream.head(target);</span>
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">            if (!tracked.equals(current)) {</span>
+<span class="nc" id="L131">                throw new BranchHeadConflictException(upstream.name(), tracked, current, &quot;Tracking ref changed&quot;);</span>
+            }
+<span class="fc" id="L133">            fence.run();</span>
+<span class="fc" id="L134">        });</span>
+<span class="fc" id="L135">        return new TagStatus(request.name(), tag.objectId(), tag.objectId(), tracked);</span>
+    }
+
+    private String sourceHead() throws IOException {
+<span class="fc" id="L139">        var ref = source.readFreshRef(Constants.R_HEADS + upstream.branch());</span>
+<span class="pc bpc" id="L140" title="2 of 4 branches missed.">        return ref == null || ref.getObjectId() == null ? null : ref.getObjectId().name();</span>
+    }
+
+    private GitSelectedTag selectedTag(String name, String tracked) throws IOException {
+<span class="fc" id="L144">        var tag = GitSelectedTag.read(source, name);</span>
+<span class="pc bpc" id="L145" title="2 of 6 branches missed.">        if (tag == null || tracked == null || !reachable(target, tag.commit(), tracked)) return null;</span>
+<span class="fc" id="L146">        return tag;</span>
+    }
+
+    private static boolean reachable(DslGitRepository repository, String ancestor, String tip) throws IOException {
+        try {
+<span class="fc" id="L151">            return repository.isAncestor(ancestor, tip);</span>
+<span class="nc" id="L152">        } catch (MissingObjectException | IncorrectObjectTypeException unavailable) {</span>
+<span class="nc" id="L153">            return false;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

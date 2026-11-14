@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisContextJson.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.dag.json</a> &gt; <span class="el_source">AnalysisContextJson.java</span></div><h1>AnalysisContextJson.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.dag.json;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.util.StdConverter;
+import com.taxonomy.analysis.dag.AnalysisOperationContext;
+import com.taxonomy.analysis.dag.AnalysisSourceAuthority;
+import com.taxonomy.analysis.dag.RequirementReference;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.json.JsonMapper;
+
+import java.io.IOException;
+import java.util.Map;
+
+/** Version-four source fields appear only when bound, including in portable backup rows. */
+<span class="fc" id="L20">public final class AnalysisContextJson extends StdConverter&lt;AnalysisOperationContext, Map&lt;String, Object&gt;&gt; {</span>
+    private interface AuthorityFields {
+        @JsonInclude(JsonInclude.Include.NON_NULL) String semanticModelSha256();
+    }
+
+    private interface RequirementFields {
+        @JsonInclude(JsonInclude.Include.NON_NULL) Long requirementVersionId();
+    }
+
+    static JsonMapper.Builder withSourceFields(JsonMapper.Builder builder) {
+<span class="fc" id="L30">        return builder.addMixIn(AnalysisSourceAuthority.class, AuthorityFields.class)</span>
+<span class="fc" id="L31">                .addMixIn(RequirementReference.class, RequirementFields.class);</span>
+    }
+
+<span class="fc" id="L34">    private static final JsonMapper CONTEXT = withSourceFields(JsonMapper.builder()).build();</span>
+<span class="fc" id="L35">    private static final TypeReference&lt;Map&lt;String, Object&gt;&gt; FIELDS = new TypeReference&lt;&gt;() { };</span>
+
+    /** The portable row writer uses Jackson 2 and consumes the same plain JSON field values. */
+    @Override public Map&lt;String, Object&gt; convert(AnalysisOperationContext context) {
+<span class="fc" id="L39">        return CONTEXT.convertValue(context, FIELDS);</span>
+    }
+    /** Restore the two explicitly omitted legacy fields while retaining the enclosing reader's strict schema. */
+<span class="fc" id="L42">    public static final class Reader extends JsonDeserializer&lt;AnalysisOperationContext&gt; {</span>
+        @Override public AnalysisOperationContext deserialize(JsonParser parser, DeserializationContext context) throws IOException {
+<span class="fc" id="L44">            JsonNode value = context.readTree(parser);</span>
+<span class="pc bpc" id="L45" title="1 of 4 branches missed.">            if (value.path(&quot;authority&quot;) instanceof ObjectNode authority &amp;&amp; !authority.has(&quot;semanticModelSha256&quot;))</span>
+<span class="fc" id="L46">                authority.putNull(&quot;semanticModelSha256&quot;);</span>
+<span class="pc bpc" id="L47" title="1 of 4 branches missed.">            if (value.path(&quot;requirement&quot;) instanceof ObjectNode requirement &amp;&amp; !requirement.has(&quot;requirementVersionId&quot;))</span>
+<span class="fc" id="L48">                requirement.putNull(&quot;requirementVersionId&quot;);</span>
+<span class="fc" id="L49">            return context.readTreeAsValue(value, AnalysisOperationContext.class);</span>
+        }
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

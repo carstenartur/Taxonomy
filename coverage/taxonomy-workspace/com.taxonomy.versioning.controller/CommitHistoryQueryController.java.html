@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CommitHistoryQueryController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.versioning.controller</a> &gt; <span class="el_source">CommitHistoryQueryController.java</span></div><h1>CommitHistoryQueryController.java</h1><pre class="source lang-java linenums">package com.taxonomy.versioning.controller;
+
+import com.taxonomy.dto.VersionedSearchResult;
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.versioning.model.ArchitectureCommitIndex;
+import com.taxonomy.versioning.service.CommitIndexService;
+import com.taxonomy.workspace.service.BranchHeadConflictException;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import tools.jackson.databind.ObjectMapper;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+import static com.taxonomy.workspace.service.WorkspaceDslReadPort.CommitRelationship.ANCESTOR;
+import static com.taxonomy.workspace.service.WorkspaceDslReadPort.CommitRelationship.SAME;
+import static com.taxonomy.workspace.service.WorkspaceDslReadPort.CommitRelationship.UNAVAILABLE;
+
+/** Repository/workspace history includes matches from all indexed branches in the selected Git store. */
+@RestController
+@RequestMapping(&quot;/api/dsl/history&quot;)
+@Tag(name = &quot;Architecture DSL&quot;)
+public class CommitHistoryQueryController {
+    private final CommitIndexService index;
+    private final WorkspaceResolver workspaces;
+    private final WorkspaceDslReadPort git;
+    private final ObjectMapper json;
+
+    public CommitHistoryQueryController(CommitIndexService index, WorkspaceResolver workspaces,
+<span class="fc" id="L41">                                        WorkspaceDslReadPort git, ObjectMapper json) {</span>
+<span class="fc" id="L42">        this.index = index;</span>
+<span class="fc" id="L43">        this.workspaces = workspaces;</span>
+<span class="fc" id="L44">        this.git = git;</span>
+<span class="fc" id="L45">        this.json = json;</span>
+<span class="fc" id="L46">    }</span>
+
+    @Operation(summary = &quot;Search indexed history in the selected repository/workspace&quot;,
+            description = &quot;Returns full-text matches across indexed branches of the selected Git store, up to maxResults. The ETag identifies the observed result set.&quot;)
+    @GetMapping(&quot;/search&quot;)
+    public ResponseEntity&lt;?&gt; search(@RequestParam String query, @RequestParam(defaultValue = &quot;50&quot;) int maxResults) {
+<span class="fc" id="L52">        var selected = workspaces.resolveUnambiguousRepositoryForRead();</span>
+<span class="fc" id="L53">        return observed(selected, &quot;search&quot;, List.of(query, maxResults), null, index.search(query, maxResults, selected));</span>
+    }
+
+    @Operation(summary = &quot;Find indexed commits affecting an element&quot;,
+            description = &quot;Returns indexed commits that mention the given element ID across branches of the selected repository and workspace. Each row identifies its original commit.&quot;)
+    @GetMapping(&quot;/element/{elementId}&quot;)
+    public ResponseEntity&lt;?&gt; element(@PathVariable String elementId) {
+<span class="fc" id="L60">        var selected = workspaces.resolveUnambiguousRepositoryForRead();</span>
+<span class="fc" id="L61">        return observed(selected, &quot;element&quot;, elementId, null, index.findByElement(elementId, selected));</span>
+    }
+
+    @Operation(summary = &quot;Find indexed commits affecting a relation&quot;,
+            description = &quot;Returns indexed commits that mention the supplied relation key across branches of the selected Git store. An empty list means the index found no match.&quot;)
+    @GetMapping(&quot;/relation&quot;)
+    public ResponseEntity&lt;?&gt; relation(@RequestParam String key) {
+<span class="fc" id="L68">        var selected = workspaces.resolveUnambiguousRepositoryForRead();</span>
+<span class="fc" id="L69">        return observed(selected, &quot;relation&quot;, key, null, index.findByRelation(key, selected));</span>
+    }
+
+    @Operation(summary = &quot;Aggregate the indexed history of an element in the selected repository/workspace&quot;,
+            description = &quot;Summarizes indexed changes for the element across the selected Git store. If the element has no history, the response includes the element ID and an explanatory message.&quot;)
+    @GetMapping(&quot;/element/{elementId}/aggregation&quot;)
+    public ResponseEntity&lt;?&gt; aggregate(@PathVariable String elementId) {
+<span class="fc" id="L76">        var selected = workspaces.resolveUnambiguousRepositoryForRead();</span>
+<span class="fc" id="L77">        var result = index.aggregateElementHistory(elementId, selected);</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">        Object body = result != null ? result : Map.of(&quot;elementId&quot;, elementId, &quot;message&quot;, &quot;No history found for element &quot; + elementId);</span>
+<span class="fc" id="L79">        return observed(selected, &quot;aggregation&quot;, elementId, null, body);</span>
+    }
+
+    @Operation(summary = &quot;Search indexed history and prove lineage against the selected Git head&quot;,
+            description = &quot;Matches span the selected repository/workspace. Optional currentBranch and commitId assert the current selection. The source commit and ETag identify the versioned observation.&quot;)
+    @GetMapping(&quot;/search-versioned&quot;)
+    public ResponseEntity&lt;?&gt; versioned(@RequestParam String query, @RequestParam(defaultValue = &quot;50&quot;) int maxResults,
+                                       @RequestParam(required = false) String currentBranch,
+                                       @RequestParam(required = false) String commitId) {
+<span class="fc" id="L88">        var selected = workspaces.resolveUnambiguousRepositoryForRead();</span>
+<span class="fc bfc" id="L89" title="All 4 branches covered.">        if (currentBranch != null &amp;&amp; !currentBranch.equals(selected.branch())) {</span>
+<span class="fc" id="L90">            return unavailable(HttpStatus.CONFLICT, &quot;STALE&quot;, null);</span>
+        }
+        String expected;
+        try {
+<span class="fc bfc" id="L94" title="All 2 branches covered.">            expected = commitId == null ? null : WorkspaceDslReadPort.normalizeCommitId(commitId);</span>
+<span class="fc" id="L95">        } catch (IllegalArgumentException invalid) {</span>
+<span class="fc" id="L96">            return ResponseEntity.badRequest().cacheControl(CacheControl.noStore()).build();</span>
+<span class="fc" id="L97">        }</span>
+        try {
+<span class="fc" id="L99">            var read = git.openRead(selected);</span>
+<span class="fc" id="L100">            String head = read.currentHead();</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">            if (head == null) return unavailable(HttpStatus.NOT_FOUND, &quot;MISSING&quot;, null);</span>
+<span class="pc bpc" id="L102" title="1 of 4 branches missed.">            if (expected != null &amp;&amp; !expected.equals(head)) return unavailable(HttpStatus.CONFLICT, &quot;STALE&quot;, head);</span>
+<span class="fc" id="L103">            var hits = index.search(query, maxResults, selected);</span>
+<span class="fc" id="L104">            var relationships = read.relationshipsTo(head, hits.stream().map(ArchitectureCommitIndex::getCommitId).toList());</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">            if (relationships.contains(UNAVAILABLE)) return unavailable(HttpStatus.CONFLICT, &quot;STALE&quot;, head);</span>
+<span class="fc" id="L106">            var rows = versionedRows(hits, relationships);</span>
+<span class="fc" id="L107">            read.verifyExpectedHead(head);</span>
+<span class="fc" id="L108">            return observed(selected, &quot;versioned&quot;, List.of(query, maxResults), head, rows);</span>
+<span class="fc" id="L109">        } catch (BranchHeadConflictException moved) {</span>
+<span class="fc" id="L110">            return unavailable(HttpStatus.CONFLICT, &quot;STALE&quot;, moved.getActualHeadCommit());</span>
+<span class="fc" id="L111">        } catch (IOException failure) {</span>
+<span class="fc" id="L112">            return unavailable(HttpStatus.SERVICE_UNAVAILABLE, &quot;FAILED&quot;, null);</span>
+        }
+    }
+
+    private static List&lt;VersionedSearchResult&gt; versionedRows(List&lt;ArchitectureCommitIndex&gt; hits,
+            List&lt;WorkspaceDslReadPort.CommitRelationship&gt; relationships) {
+<span class="fc" id="L118">        var newest = Comparator.comparing(ArchitectureCommitIndex::getCommitTimestamp)</span>
+<span class="fc" id="L119">                .thenComparing(ArchitectureCommitIndex::getCommitId);</span>
+<span class="pc bpc" id="L120" title="1 of 2 branches missed.">        var latest = hits.stream().filter(hit -&gt; hit.getCommitTimestamp() != null).max(newest).orElse(null);</span>
+<span class="fc" id="L121">        ArchitectureCommitIndex latestOnBranch = null;</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        for (int i = 0; i &lt; hits.size(); i++) {</span>
+<span class="fc" id="L123">            var hit = hits.get(i);</span>
+<span class="pc bpc" id="L124" title="1 of 6 branches missed.">            if (onLineage(relationships.get(i)) &amp;&amp; hit.getCommitTimestamp() != null</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">                    &amp;&amp; (latestOnBranch == null || newest.compare(hit, latestOnBranch) &gt; 0)) latestOnBranch = hit;</span>
+        }
+<span class="fc" id="L127">        var results = new ArrayList&lt;VersionedSearchResult&gt;(hits.size());</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        for (int i = 0; i &lt; hits.size(); i++) {</span>
+<span class="fc" id="L129">            var hit = hits.get(i);</span>
+<span class="fc" id="L130">            boolean onLineage = onLineage(relationships.get(i));</span>
+<span class="pc bpc" id="L131" title="1 of 4 branches missed.">            boolean latestOnLineage = latestOnBranch != null &amp;&amp; latestOnBranch.getCommitId().equals(hit.getCommitId());</span>
+<span class="pc bpc" id="L132" title="1 of 4 branches missed.">            boolean latestOverall = latest != null &amp;&amp; latest.getCommitId().equals(hit.getCommitId());</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">            var actions = latestOnLineage ? List.of(&quot;OPEN_READ_ONLY&quot;, &quot;CREATE_VARIANT&quot;, &quot;COMPARE&quot;)</span>
+<span class="fc" id="L134">                    : List.of(&quot;OPEN_READ_ONLY&quot;, &quot;SWITCH&quot;, &quot;CREATE_VARIANT&quot;, &quot;COMPARE&quot;);</span>
+<span class="fc" id="L135">            results.add(new VersionedSearchResult(hit.getCommitId(), hit.getBranch(), hit.getCommitTimestamp(),</span>
+<span class="fc" id="L136">                    hit.getAffectedElementIds(), hit.getMessage(), 0.0f, onLineage, latestOnLineage, latestOverall, actions));</span>
+        }
+<span class="fc" id="L138">        return List.copyOf(results);</span>
+    }
+
+    private static boolean onLineage(WorkspaceDslReadPort.CommitRelationship relationship) {
+<span class="fc bfc" id="L142" title="All 4 branches covered.">        return relationship == SAME || relationship == ANCESTOR;</span>
+    }
+
+    private ResponseEntity&lt;?&gt; observed(RepositoryContext selected, String route, Object parameters, String head, Object body) {
+<span class="fc" id="L146">        var source = List.of(selected.repositoryId(), Objects.toString(selected.workspaceId(), &quot;&quot;), selected.branch());</span>
+<span class="fc" id="L147">        var identity = List.of(&quot;commit-history-v1&quot;, source, route, parameters, Objects.toString(head, &quot;&quot;), body);</span>
+<span class="fc" id="L148">        var response = ResponseEntity.ok().cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L149">                .eTag(&quot;W/\&quot;&quot; + StableIdentityHash.sha256(json.writeValueAsString(identity)) + &quot;\&quot;&quot;)</span>
+<span class="fc" id="L150">                .header(&quot;X-Taxonomy-Read-Model&quot;, &quot;REPOSITORY_WORKSPACE_COMMIT_INDEX&quot;)</span>
+<span class="fc" id="L151">                .header(&quot;X-Taxonomy-Repository&quot;, selected.repositoryId())</span>
+<span class="fc" id="L152">                .header(&quot;X-Taxonomy-Workspace-Id&quot;, Objects.toString(selected.workspaceId(), &quot;&quot;))</span>
+<span class="fc" id="L153">                .header(&quot;X-Taxonomy-Branch&quot;, selected.branch());</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        if (head != null) response.header(&quot;X-Taxonomy-Commit&quot;, head).header(&quot;X-Taxonomy-Source-State&quot;, &quot;READY&quot;);</span>
+<span class="fc" id="L155">        return response.body(body);</span>
+    }
+
+    private static ResponseEntity&lt;?&gt; unavailable(HttpStatus status, String state, String head) {
+<span class="fc" id="L159">        var response = ResponseEntity.status(status).cacheControl(CacheControl.noStore()).header(&quot;X-Taxonomy-Source-State&quot;, state);</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">        if (head != null) response.header(&quot;X-Taxonomy-Commit&quot;, head);</span>
+<span class="fc" id="L161">        return response.build();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

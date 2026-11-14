@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisProfilePreviewController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.analysis</a> &gt; <span class="el_source">AnalysisProfilePreviewController.java</span></div><h1>AnalysisProfilePreviewController.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.analysis;
+
+import com.taxonomy.editor.ArchitectureEditPermission;
+import com.taxonomy.shared.features.ConditionalOnFeature;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Optional;
+
+@RestController
+@ConditionalOnFeature({&quot;architecture&quot;, &quot;analysis&quot;})
+public class AnalysisProfilePreviewController {
+    private final SelectedArchitectureAdmissionModel models;
+    private final Optional&lt;ArchitectureEditPermission&gt; editPermission;
+
+<span class="fc" id="L23">    public AnalysisProfilePreviewController(SelectedArchitectureAdmissionModel models, Optional&lt;ArchitectureEditPermission&gt; editPermission) {</span>
+<span class="fc" id="L24">        this.models = models;</span>
+<span class="fc" id="L25">        this.editPermission = editPermission;</span>
+<span class="fc" id="L26">    }</span>
+
+    @GetMapping(&quot;/api/architecture/editor/analysis-brief&quot;)
+    @Operation(summary = &quot;Read the architecture brief used by the selected analysis model&quot;,
+            description = &quot;Returns the authored brief, its retained references and their assignment status for the authorized &quot;
+                    + &quot;repository, workspace and branch. The selected Git checkpoint or semantic revision determines the &quot;
+                    + &quot;profile. Editing availability follows the same role and historical-version rules as the architecture editor.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;The versioned brief and this caller's editing capability&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;The requested version is malformed&quot;)
+    @ApiResponse(responseCode = &quot;404&quot;, description = &quot;The selected version is unavailable&quot;)
+    @ApiResponse(responseCode = &quot;409&quot;, description = &quot;The selected model context or version conflicts with the request&quot;)
+    public ResponseEntity&lt;ProfilePreview&gt; read(
+            @Parameter(description = &quot;Exact logical repository in the authenticated selection&quot;) @RequestParam String repositoryId,
+            @Parameter(description = &quot;Exact selected workspace scope key, including the shared scope&quot;) @RequestParam String workspaceScopeKey,
+            @Parameter(description = &quot;Selected Git branch&quot;) @RequestParam String branch,
+            @Parameter(description = &quot;Optional full SHA of the selected reachable Git checkpoint&quot;) @RequestParam(required = false) String expectedCommit,
+            @Parameter(description = &quot;Optional retained workspace semantic revision&quot;) @RequestParam(required = false) Long expectedSemanticRevision,
+            Authentication authentication) {
+<span class="fc" id="L44">        var preview = models.preview(repositoryId, workspaceScopeKey, branch, expectedCommit, expectedSemanticRevision,</span>
+<span class="fc" id="L45">                ArchitectureEditPermission.allowed(authentication, editPermission));</span>
+<span class="fc" id="L46">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(preview);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

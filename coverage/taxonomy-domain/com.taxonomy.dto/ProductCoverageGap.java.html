@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProductCoverageGap.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">ProductCoverageGap.java</span></div><h1>ProductCoverageGap.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Signals that a relevant product family was evaluated but none of its catalogued products
+ * reached the configured suitability threshold.
+ */
+public record ProductCoverageGap(
+        String productFamilyCode,
+        String productFamilyName,
+        double familyScore,
+        List&lt;String&gt; candidateCodes,
+        String reason,
+        Integer minimumSuitabilityScore,
+        Map&lt;String, Double&gt; assessedProductScores) {
+
+    /** Earlier snapshots only recorded the post-threshold scores and a human-readable reason. */
+    public ProductCoverageGap(String family, String name, double score, List&lt;String&gt; candidates, String reason) {
+<span class="fc" id="L21">        this(family, name, score, candidates, reason, null, Map.of());</span>
+<span class="fc" id="L22">    }</span>
+
+<span class="fc" id="L24">    public ProductCoverageGap {</span>
+<span class="pc bpc" id="L25" title="2 of 6 branches missed.">        if (minimumSuitabilityScore != null &amp;&amp; (minimumSuitabilityScore &lt; 0 || minimumSuitabilityScore &gt; 100)) {</span>
+<span class="nc" id="L26">            throw new IllegalArgumentException(&quot;Invalid product suitability threshold&quot;);</span>
+        }
+<span class="pc bpc" id="L28" title="1 of 2 branches missed.">        candidateCodes = candidateCodes == null ? List.of() : List.copyOf(candidateCodes);</span>
+<span class="fc bfc" id="L29" title="All 2 branches covered.">        assessedProductScores = assessedProductScores == null ? Map.of() : Map.copyOf(assessedProductScores);</span>
+<span class="pc bpc" id="L30" title="1 of 2 branches missed.">        if (!candidateCodes.containsAll(assessedProductScores.keySet())) {</span>
+<span class="nc" id="L31">            throw new IllegalArgumentException(&quot;Assessed scores must belong to the recorded product candidates&quot;);</span>
+        }
+<span class="fc bfc" id="L33" title="All 2 branches covered.">        for (double value : assessedProductScores.values()) {</span>
+<span class="pc bpc" id="L34" title="2 of 4 branches missed.">            if (minimumSuitabilityScore == null || AnalysisPercentages.require(value) &gt;= minimumSuitabilityScore) {</span>
+<span class="nc" id="L35">                throw new IllegalArgumentException(&quot;Recorded product qualifies at the stated threshold&quot;);</span>
+            }
+<span class="fc" id="L37">        }</span>
+<span class="fc" id="L38">    }</span>
+
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    public Integer minimumSuitabilityScore() { return minimumSuitabilityScore; }
+
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY)
+    public Map&lt;String, Double&gt; assessedProductScores() { return assessedProductScores; }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

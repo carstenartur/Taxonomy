@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProjectProductGapReviewController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.controller</a> &gt; <span class="el_source">ProjectProductGapReviewController.java</span></div><h1>ProjectProductGapReviewController.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.controller;
+
+import com.taxonomy.portfolio.service.ProjectProductGapReviewService;
+import com.taxonomy.portfolio.service.ProjectProductGapReviewService.ReviewRequest;
+import com.taxonomy.portfolio.service.ProjectProductGapReviewService.ReviewedFamily;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import org.springframework.web.bind.annotation.*;
+import java.util.List;
+
+@RestController
+@RequestMapping(&quot;/api/projects/{projectId}/product-gaps&quot;)
+public class ProjectProductGapReviewController {
+    private final ProjectProductGapReviewService reviews;
+    private final WorkspaceResolver workspace;
+
+<span class="fc" id="L17">    public ProjectProductGapReviewController(ProjectProductGapReviewService reviews, WorkspaceResolver workspace) {</span>
+<span class="fc" id="L18">        this.reviews = reviews;</span>
+<span class="fc" id="L19">        this.workspace = workspace;</span>
+<span class="fc" id="L20">    }</span>
+
+    @GetMapping
+    @Operation(summary = &quot;Read confirmed project product gaps and their review history&quot;,
+            description = &quot;Lists frozen product evidence and classifications from the authorized project and repository branch.&quot;)
+    public List&lt;ReviewedFamily&gt; list(@PathVariable Long projectId) {
+<span class="fc" id="L26">        return reviews.list(projectId, workspace.resolveCurrentUsername(), workspace.resolveUnambiguousContextForRead());</span>
+    }
+
+    @PostMapping(&quot;/{gapKey}/reviews&quot;)
+    @Operation(summary = &quot;Classify a confirmed product gap&quot;,
+            description = &quot;Appends a review at the expected project evidence fingerprint and revision. A stale reviewer receives 409.&quot;)
+    public ReviewedFamily review(@PathVariable Long projectId, @PathVariable String gapKey, @RequestBody ReviewRequest request) {
+<span class="fc" id="L33">        return reviews.review(projectId, gapKey, request, workspace.resolveCurrentUsername(), workspace.resolveCurrentContext());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

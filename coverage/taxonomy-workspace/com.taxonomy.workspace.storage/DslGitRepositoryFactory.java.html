@@ -1,0 +1,377 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DslGitRepositoryFactory.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.storage</a> &gt; <span class="el_source">DslGitRepositoryFactory.java</span></div><h1>DslGitRepositoryFactory.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.storage;
+
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.signing.GitCommitSignatureService;
+import io.github.carstenartur.jgit.storage.hibernate.HibernateRepositoryFactory;
+import io.github.carstenartur.jgit.storage.hibernate.RepositoryDeletionResult;
+import io.github.carstenartur.jgit.storage.hibernate.RepositoryName;
+import org.eclipse.jgit.internal.storage.dfs.DfsRepositoryDescription;
+import org.eclipse.jgit.internal.storage.dfs.InMemoryRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+
+/**
+ * Creates and caches Taxonomy's logical Git repositories.
+ *
+ * &lt;p&gt;The application owns repository naming, workspace routing and seeding. The
+ * reusable {@code jgit-storage-hibernate-core} library owns database-backed JGit
+ * object, ref and reflog persistence.&lt;/p&gt;
+ */
+public class DslGitRepositoryFactory implements AutoCloseable {
+
+<span class="fc" id="L29">    private static final Logger log = LoggerFactory.getLogger(DslGitRepositoryFactory.class);</span>
+
+    /** The well-known storage name retained for the migrated primary repository. */
+    static final String SYSTEM_REPO_NAME = SystemRepositoryService.PRIMARY_STORAGE_NAME;
+
+    /** Prefix for workspace repository names. */
+    static final String WORKSPACE_REPO_PREFIX = &quot;ws-&quot;;
+
+    /** Fallback prefix used by in-memory tests without a repository catalog. */
+    static final String CENTRAL_REPO_PREFIX = &quot;central-&quot;;
+
+    private final HibernateRepositoryFactory storageFactory;
+    private final SystemRepositoryService systemRepositoryService;
+    private final GitCommitSignatureService signatures;
+    private final io.github.carstenartur.jgit.storage.hibernate.SecuredHibernateRepositoryFactory&lt;PinCleanup&gt; existingPins;
+<span class="fc" id="L44">    private final ConcurrentMap&lt;String, DslGitRepository&gt; cache = new ConcurrentHashMap&lt;&gt;();</span>
+
+    /** Legacy/in-memory constructor retained for tests. */
+    public DslGitRepositoryFactory(HibernateRepositoryFactory storageFactory) {
+<span class="fc" id="L48">        this(storageFactory, null);</span>
+<span class="fc" id="L49">    }</span>
+
+    /** Create a logical-repository factory with explicit catalog resolution. */
+    public DslGitRepositoryFactory(
+            HibernateRepositoryFactory storageFactory,
+            SystemRepositoryService systemRepositoryService) {
+<span class="fc" id="L55">        this(storageFactory, systemRepositoryService, GitCommitSignatureService.disabled());</span>
+<span class="fc" id="L56">    }</span>
+
+    public DslGitRepositoryFactory(
+            HibernateRepositoryFactory storageFactory,
+            SystemRepositoryService systemRepositoryService,
+            GitCommitSignatureService signatures) {
+<span class="fc" id="L62">        this(storageFactory,systemRepositoryService,signatures,null);</span>
+<span class="fc" id="L63">    }</span>
+
+    DslGitRepositoryFactory(HibernateRepositoryFactory storageFactory, SystemRepositoryService systemRepositoryService,
+<span class="fc" id="L66">                            GitCommitSignatureService signatures, org.hibernate.SessionFactory sessions) {</span>
+<span class="fc" id="L67">        this.storageFactory = storageFactory;</span>
+<span class="fc" id="L68">        this.systemRepositoryService = systemRepositoryService;</span>
+<span class="fc" id="L69">        this.signatures = java.util.Objects.requireNonNull(signatures, &quot;signatures&quot;);</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">        this.existingPins = sessions == null ? null :</span>
+<span class="fc" id="L71">                new io.github.carstenartur.jgit.storage.hibernate.SecuredHibernateRepositoryFactory&lt;&gt;(sessions,(access,request) -&gt; {</span>
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">                    if (!access.name().equals(request.repositoryName())) throw new SecurityException(&quot;Mismatched publication storage&quot;);</span>
+<span class="pc bpc" id="L73" title="1 of 3 branches missed.">                    switch (request.operation()) {</span>
+<span class="fc" id="L74">                        case DISCOVER, READ -&gt; { }</span>
+                        case DELETE_REF -&gt; {
+<span class="pc bpc" id="L76" title="2 of 4 branches missed.">                            if (access.ref()==null || !access.ref().equals(request.refName())) throw new SecurityException(&quot;Mismatched publication pin&quot;);</span>
+<span class="fc" id="L77">                            access.authorize().run();</span>
+<span class="fc" id="L78">                        }</span>
+<span class="nc" id="L79">                        default -&gt; throw new SecurityException(&quot;Publication cleanup only releases its own private ref&quot;);</span>
+                    }
+<span class="fc" id="L81">                });</span>
+<span class="fc" id="L82">    }</span>
+
+    /**
+     * Return the migrated primary repository.
+     *
+     * @deprecated repository-sensitive code should resolve an explicit repository ID.
+     */
+    @Deprecated(forRemoval = false)
+    public DslGitRepository getSystemRepository() {
+<span class="fc" id="L91">        return cache.computeIfAbsent(SYSTEM_REPO_NAME, this::createRepository);</span>
+    }
+
+    /** Isolated administrative evidence, outside selectable model and workspace repositories. */
+    public DslGitRepository getCatalogueReviewRepository() {
+<span class="fc" id="L96">        return cache.computeIfAbsent(&quot;administrative-catalogue-reviews&quot;, this::createRepository);</span>
+    }
+
+<span class="fc" id="L99">    private record PinCleanup(RepositoryName name,String ref,Runnable authorize) { }</span>
+
+    /** Reopen existing storage without creating it, then conditionally remove the exact private pin. */
+    public void releasePublicationPin(String repositoryId,String workspaceId,String operationId,String branch,
+                                      String recordedCandidate,Runnable authorize) throws IOException {
+<span class="fc" id="L104">        authorize.run();</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">        String name = workspaceId == null ? storageNameFor(repositoryId) : workspaceRepositoryName(workspaceId);</span>
+<span class="fc" id="L106">        var committer = new ExpectedHeadDslCommitter();</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        if (existingPins != null) {</span>
+<span class="fc" id="L108">            var access = new PinCleanup(new RepositoryName(name),ExpectedHeadDslCommitter.pinRef(operationId,branch),authorize);</span>
+<span class="fc" id="L109">            try (var existing = existingPins.open(access.name(),access)) {</span>
+<span class="fc" id="L110">                releasePin(committer,existing.repository(),operationId,branch,recordedCandidate,authorize);</span>
+<span class="fc" id="L111">            } catch (io.github.carstenartur.jgit.storage.hibernate.RepositoryDoesNotExistException missing) {</span>
+<span class="fc" id="L112">                throw new IOException(&quot;The recorded publication storage is unavailable&quot;,missing);</span>
+<span class="fc" id="L113">            } catch (IOException storage) {</span>
+                // JGit wraps policy exceptions raised during its final conditional DELETE_REF in an IOException.
+<span class="pc bfc" id="L115" title="All 2 branches covered.">                for (Throwable cause=storage.getCause(); cause!=null; cause=cause.getCause()) {</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">                    if (cause instanceof org.springframework.security.access.AccessDeniedException denial) throw denial;</span>
+<span class="nc bnc" id="L117" title="All 2 branches missed.">                    if (cause instanceof com.taxonomy.workspace.service.WorkspaceFetchAuthority.FreshLoginRequired fresh) throw fresh;</span>
+                }
+<span class="fc" id="L119">                throw storage;</span>
+<span class="fc" id="L120">            }</span>
+<span class="fc" id="L121">            return;</span>
+        }
+        // A caller-supplied factory has no existing-only reopen contract. Prevent cleanup from allocating a repository.
+<span class="fc" id="L124">        DslGitRepository opened=cache.get(name);</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">        if (opened != null) releasePin(committer,opened.getGitRepository(),operationId,branch,recordedCandidate,authorize);</span>
+<span class="nc bnc" id="L126" title="All 2 branches missed.">        else if (storageFactory != null) throw new IOException(&quot;An existing repository handle is required for publication cleanup&quot;);</span>
+<span class="fc" id="L127">    }</span>
+
+    /** A missing owner does not prove its physical storage has disappeared. Never inspect or alter orphaned Git refs. */
+    public void requireRemovedWorkspaceStorage(String workspaceId,Runnable authorize) throws IOException {
+<span class="fc" id="L131">        authorize.run();</span>
+<span class="fc" id="L132">        String name=workspaceRepositoryName(workspaceId);</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">        if (existingPins!=null) {</span>
+<span class="fc" id="L134">            var routing=new PinCleanup(new RepositoryName(name),null,authorize);</span>
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">            try (var existing=existingPins.open(routing.name(),routing)) {</span>
+<span class="fc" id="L136">                throw new IOException(&quot;The removed working copy still has physical storage&quot;);</span>
+<span class="fc" id="L137">            } catch (io.github.carstenartur.jgit.storage.hibernate.RepositoryDoesNotExistException gone) {</span>
+<span class="fc" id="L138">                return;</span>
+            }
+        }
+<span class="nc bnc" id="L141" title="All 4 branches missed.">        if (cache.containsKey(name) || storageFactory!=null) throw new IOException(&quot;Cannot confirm removal of the recorded working copy storage&quot;);</span>
+<span class="nc" id="L142">    }</span>
+
+    private static void releasePin(ExpectedHeadDslCommitter committer, org.eclipse.jgit.lib.Repository repository,
+                                   String operation,String branch,String recordedCandidate,Runnable authorize) throws IOException {
+<span class="fc" id="L146">        String retained = committer.findPrepared(repository,operation,branch);</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        if (retained==null) return;</span>
+<span class="pc bpc" id="L148" title="1 of 4 branches missed.">        if (recordedCandidate!=null &amp;&amp; !recordedCandidate.equals(retained)) throw new IOException(&quot;Publication pin differs from its recorded candidate&quot;);</span>
+<span class="fc" id="L149">        authorize.run();</span>
+<span class="fc" id="L150">        committer.release(repository,operation,branch,retained);</span>
+<span class="fc" id="L151">    }</span>
+
+    /** Return one explicitly selected central architecture repository. */
+    public DslGitRepository getCentralRepository(String repositoryId) {
+<span class="fc" id="L155">        return cache.computeIfAbsent(storageNameFor(repositoryId), this::createRepository);</span>
+    }
+
+    /** Initialize/open a central repository under an already-reserved catalog storage name. */
+    public DslGitRepository createCentralRepository(String repositoryId, String storageName) {
+<span class="fc" id="L160">        requireText(repositoryId, &quot;repositoryId&quot;);</span>
+<span class="fc" id="L161">        requireText(storageName, &quot;storageName&quot;);</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">        if (systemRepositoryService != null) {</span>
+<span class="fc" id="L163">            SystemRepository metadata = systemRepositoryService.getRepository(repositoryId);</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">            if (!storageName.equals(metadata.getStorageRepositoryName())) {</span>
+<span class="fc" id="L165">                throw new IllegalArgumentException(</span>
+                        &quot;Storage name does not match repository catalog entry: &quot; + repositoryId);
+            }
+        }
+<span class="fc" id="L169">        return cache.computeIfAbsent(storageName, this::createRepository);</span>
+    }
+
+    /**
+     * Return a repository isolated by workspace ID.
+     *
+     * &lt;p&gt;This compatibility path retains the historic primary-repository seed.
+     * New multi-repository provisioning must use
+     * {@link #createWorkspaceRepository(String, String, String)}.&lt;/p&gt;
+     */
+    public DslGitRepository getWorkspaceRepository(String workspaceId) {
+<span class="fc" id="L180">        String repoName = workspaceRepositoryName(workspaceId);</span>
+<span class="fc" id="L181">        return cache.computeIfAbsent(repoName, name -&gt; {</span>
+<span class="fc" id="L182">            DslGitRepository repository = createRepository(name);</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">            String sourceRepositoryId = systemRepositoryService == null</span>
+<span class="fc" id="L184">                    ? WorkspaceContext.LEGACY_REPOSITORY_ID</span>
+<span class="fc" id="L185">                    : systemRepositoryService.getPrimaryRepository().getRepositoryId();</span>
+<span class="fc" id="L186">            seedFromCentral(repository, getSystemRepository(), sourceRepositoryId,</span>
+                    &quot;draft&quot;, &quot;system repository&quot;);
+<span class="fc" id="L188">            return repository;</span>
+        });
+    }
+
+    /**
+     * Open an existing workspace repository without inferring or seeding any source.
+     * Explicit repository contexts use this path so a missing workspace can never
+     * be accidentally initialized from the primary repository.
+     */
+    public DslGitRepository openWorkspaceRepository(String workspaceId) {
+<span class="fc" id="L198">        return cache.computeIfAbsent(</span>
+<span class="fc" id="L199">                workspaceRepositoryName(workspaceId), this::createRepository);</span>
+    }
+
+    /** Create/open an isolated workspace and seed it from the selected central source. */
+    public DslGitRepository createWorkspaceRepository(
+            String workspaceId,
+            String sourceRepositoryId,
+            String sourceBranch) {
+<span class="fc" id="L207">        String repoName = workspaceRepositoryName(workspaceId);</span>
+<span class="fc" id="L208">        String sourceId = requireText(sourceRepositoryId, &quot;sourceRepositoryId&quot;);</span>
+<span class="fc" id="L209">        DslGitRepository source = getCentralRepository(sourceId);</span>
+<span class="fc" id="L210">        String branch = requireText(sourceBranch, &quot;sourceBranch&quot;);</span>
+<span class="fc" id="L211">        return cache.computeIfAbsent(repoName, name -&gt; {</span>
+<span class="fc" id="L212">            DslGitRepository repository = createRepository(name);</span>
+<span class="fc" id="L213">            seedFromCentral(repository, source, sourceId, branch,</span>
+                    &quot;central repository &quot; + sourceId);
+<span class="fc" id="L215">            return repository;</span>
+        });
+    }
+
+    /** Resolve the repository selected by an explicit repository context. */
+    public DslGitRepository resolveRepository(RepositoryContext context) {
+<span class="fc bfc" id="L221" title="All 2 branches covered.">        if (context == null) {</span>
+<span class="fc" id="L222">            throw new IllegalArgumentException(&quot;RepositoryContext must not be null&quot;);</span>
+        }
+<span class="fc bfc" id="L224" title="All 2 branches covered.">        if (context.workspaceId() != null) {</span>
+<span class="fc" id="L225">            return openWorkspaceRepository(context.workspaceId());</span>
+        }
+<span class="fc" id="L227">        return getCentralRepository(context.repositoryId());</span>
+    }
+
+    /**
+     * Resolve the compatibility workspace context.
+     *
+     * &lt;p&gt;Request-bound compatibility contexts carry an exact repository ID and
+     * are routed with the same fail-closed semantics as {@link RepositoryContext}.
+     * Only direct legacy callers using {@link WorkspaceContext#LEGACY_REPOSITORY_ID}
+     * retain the historic primary-repository fallback.&lt;/p&gt;
+     *
+     * @deprecated use {@link #resolveRepository(RepositoryContext)} when repository
+     *             identity is available.
+     */
+    @Deprecated(forRemoval = false)
+    public DslGitRepository resolveRepository(WorkspaceContext context) {
+<span class="fc bfc" id="L243" title="All 2 branches covered.">        if (context == null) {</span>
+<span class="fc" id="L244">            return getSystemRepository();</span>
+        }
+<span class="fc bfc" id="L246" title="All 2 branches covered.">        if (!WorkspaceContext.LEGACY_REPOSITORY_ID.equals(context.repositoryId())) {</span>
+<span class="fc bfc" id="L247" title="All 2 branches covered.">            if (context.workspaceId() != null) {</span>
+<span class="fc" id="L248">                return openWorkspaceRepository(context.workspaceId());</span>
+            }
+<span class="fc" id="L250">            return getCentralRepository(context.repositoryId());</span>
+        }
+<span class="fc bfc" id="L252" title="All 2 branches covered.">        if (context.workspaceId() == null) {</span>
+<span class="fc" id="L253">            return getSystemRepository();</span>
+        }
+<span class="fc" id="L255">        return getWorkspaceRepository(context.workspaceId());</span>
+    }
+
+    /** Close and remove a cached workspace handle without deleting persisted data. */
+    public void evict(String workspaceId) {
+<span class="fc" id="L260">        closeQuietly(cache.remove(workspaceRepositoryName(workspaceId)));</span>
+<span class="fc" id="L261">    }</span>
+
+    /** Delete all persisted Git state belonging to one workspace repository. */
+    public RepositoryDeletionResult deleteWorkspaceRepository(String workspaceId) {
+<span class="fc" id="L265">        String repoName = workspaceRepositoryName(workspaceId);</span>
+<span class="fc" id="L266">        closeQuietly(cache.remove(repoName));</span>
+<span class="pc bpc" id="L267" title="1 of 2 branches missed.">        if (storageFactory == null) {</span>
+<span class="nc" id="L268">            return new RepositoryDeletionResult(0, 0, 0);</span>
+        }
+<span class="fc" id="L270">        return storageFactory.deleteRepository(new RepositoryName(repoName));</span>
+    }
+
+    /** Delete storage for a non-primary central repository. */
+    public RepositoryDeletionResult deleteCentralRepository(String repositoryId) {
+<span class="fc" id="L275">        String storageName = storageNameFor(repositoryId);</span>
+<span class="pc bpc" id="L276" title="1 of 2 branches missed.">        if (SYSTEM_REPO_NAME.equals(storageName)) {</span>
+<span class="nc" id="L277">            throw new IllegalArgumentException(&quot;The primary repository cannot be deleted&quot;);</span>
+        }
+<span class="fc" id="L279">        closeQuietly(cache.remove(storageName));</span>
+<span class="pc bpc" id="L280" title="1 of 2 branches missed.">        if (storageFactory == null) {</span>
+<span class="nc" id="L281">            return new RepositoryDeletionResult(0, 0, 0);</span>
+        }
+<span class="fc" id="L283">        return storageFactory.deleteRepository(new RepositoryName(storageName));</span>
+    }
+
+    /** Create either a persistent library-backed repository or an owned in-memory repository. */
+    protected DslGitRepository createRepository(String name) {
+<span class="fc bfc" id="L288" title="All 2 branches covered.">        if (storageFactory != null) {</span>
+<span class="fc" id="L289">            log.info(&quot;Opening database-backed DslGitRepository '{}'&quot;, name);</span>
+<span class="fc" id="L290">            return new DslGitRepository(storageFactory, name).withSignatureService(signatures, name);</span>
+        }
+<span class="fc" id="L292">        log.info(&quot;Creating in-memory DslGitRepository '{}' (test mode)&quot;, name);</span>
+<span class="fc" id="L293">        return new DslGitRepository(</span>
+                new InMemoryRepository(new DfsRepositoryDescription(name)), true)
+<span class="fc" id="L295">                .withSignatureService(signatures, name);</span>
+    }
+
+    private void seedFromCentral(
+            DslGitRepository workspace,
+            DslGitRepository source,
+            String sourceRepositoryId,
+            String sourceBranch,
+            String sourceDescription) {
+        try {
+<span class="pc bpc" id="L305" title="1 of 2 branches missed.">            if (!workspace.getBranchNames().isEmpty()) {</span>
+<span class="nc" id="L306">                log.debug(&quot;Workspace repository already contains refs; skipping seed&quot;);</span>
+<span class="nc" id="L307">                return;</span>
+            }
+
+<span class="fc" id="L310">            String sourceHead = source.getHeadCommit(sourceBranch);</span>
+<span class="fc bfc" id="L311" title="All 2 branches covered.">            String dsl = sourceHead == null ? null : source.getDslAtCommit(sourceHead);</span>
+<span class="fc bfc" id="L312" title="All 4 branches covered.">            if (dsl != null &amp;&amp; !dsl.isBlank()) {</span>
+<span class="fc" id="L313">                var provenance = CommitProvenance.capture(&quot;fork&quot;, source, sourceRepositoryId,</span>
+                        sourceBranch, sourceHead, null);
+<span class="fc" id="L315">                workspace.commitDsl(&quot;draft&quot;, dsl, &quot;system&quot;,</span>
+                        &quot;Initial working copy from &quot; + sourceDescription + &quot;/&quot; + sourceBranch, provenance);
+<span class="fc" id="L317">                log.info(&quot;Seeded workspace repository from {}/{}&quot;,</span>
+                        sourceDescription, sourceBranch);
+<span class="fc" id="L319">            } else {</span>
+<span class="fc" id="L320">                log.debug(&quot;Source branch {}/{} is empty; skipping workspace seed&quot;,</span>
+                        sourceDescription, sourceBranch);
+            }
+<span class="nc" id="L323">        } catch (IOException exception) {</span>
+<span class="nc" id="L324">            throw new IllegalStateException(</span>
+                    &quot;Failed to seed workspace repository from &quot; + sourceDescription,
+                    exception);
+<span class="fc" id="L327">        }</span>
+<span class="fc" id="L328">    }</span>
+
+    private String storageNameFor(String repositoryId) {
+<span class="fc" id="L331">        String id = requireText(repositoryId, &quot;repositoryId&quot;);</span>
+<span class="fc bfc" id="L332" title="All 2 branches covered.">        if (systemRepositoryService == null) {</span>
+<span class="fc" id="L333">            return CENTRAL_REPO_PREFIX + id;</span>
+        }
+<span class="fc" id="L335">        SystemRepository metadata = systemRepositoryService.getRepository(id);</span>
+<span class="fc" id="L336">        String storageName = metadata.getStorageRepositoryName();</span>
+<span class="pc bpc" id="L337" title="2 of 4 branches missed.">        if (storageName == null || storageName.isBlank()) {</span>
+<span class="nc bnc" id="L338" title="All 2 branches missed.">            if (metadata.isPrimaryRepo()) {</span>
+<span class="nc" id="L339">                return SYSTEM_REPO_NAME;</span>
+            }
+<span class="nc" id="L341">            throw new IllegalStateException(</span>
+                    &quot;Repository has no storageRepositoryName: &quot; + repositoryId);
+        }
+<span class="fc" id="L344">        return storageName;</span>
+    }
+
+    /** Shared storage identity convention; computing a name never opens or seeds a repository. */
+    public static String workspaceRepositoryName(String workspaceId) {
+<span class="fc" id="L349">        return WORKSPACE_REPO_PREFIX + requireText(workspaceId, &quot;workspaceId&quot;);</span>
+    }
+
+    private static String requireText(String value, String field) {
+<span class="fc bfc" id="L353" title="All 4 branches covered.">        if (value == null || value.isBlank()) {</span>
+<span class="fc" id="L354">            throw new IllegalArgumentException(field + &quot; must not be blank&quot;);</span>
+        }
+<span class="fc" id="L356">        return value.strip();</span>
+    }
+
+    private static void closeQuietly(DslGitRepository repository) {
+<span class="fc bfc" id="L360" title="All 2 branches covered.">        if (repository == null) {</span>
+<span class="fc" id="L361">            return;</span>
+        }
+        try {
+<span class="fc" id="L364">            repository.close();</span>
+<span class="nc" id="L365">        } catch (RuntimeException exception) {</span>
+<span class="nc" id="L366">            log.warn(&quot;Failed to close cached Git repository: {}&quot;, exception.getMessage());</span>
+<span class="fc" id="L367">        }</span>
+<span class="fc" id="L368">    }</span>
+
+    /** Close all cached repository handles during application shutdown. */
+    @Override
+    public void close() {
+<span class="fc" id="L373">        cache.values().forEach(DslGitRepositoryFactory::closeQuietly);</span>
+<span class="fc" id="L374">        cache.clear();</span>
+<span class="fc" id="L375">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

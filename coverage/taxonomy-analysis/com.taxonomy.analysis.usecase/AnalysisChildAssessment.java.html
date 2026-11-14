@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisChildAssessment.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.usecase</a> &gt; <span class="el_source">AnalysisChildAssessment.java</span></div><h1>AnalysisChildAssessment.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.usecase;
+
+import com.taxonomy.analysis.operation.AnalysisAdapterStore;
+import com.taxonomy.analysis.operation.AnalysisNodeReceipts;
+import com.taxonomy.analysis.service.AnalysisFollowUpProviders;
+import com.taxonomy.analysis.service.LlmService;
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.dto.AnalysisLanguage;
+import com.taxonomy.dto.AnalysisReasonLength;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.UUID;
+import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
+
+/** Separates typed public results from the scope and immutable provider binding retained for follow-ups. */
+@Service
+public class AnalysisChildAssessment {
+    private final TaxonomyService catalogue;
+    private final LlmService llm;
+    private final AnalysisFollowUpProviders providers;
+    private final AnalyzeNodeChildrenUseCase nodes;
+    private final JustifyLeafUseCase leaves;
+    @Autowired(required = false) private AnalysisNodeReceipts receipts;
+
+    public AnalysisChildAssessment(TaxonomyService catalogue, LlmService llm, AnalysisFollowUpProviders providers,
+<span class="fc" id="L34">                                   AnalyzeNodeChildrenUseCase nodes, JustifyLeafUseCase leaves) {</span>
+<span class="fc" id="L35">        this.catalogue = catalogue;</span>
+<span class="fc" id="L36">        this.llm = llm;</span>
+<span class="fc" id="L37">        this.providers = providers;</span>
+<span class="fc" id="L38">        this.nodes = nodes;</span>
+<span class="fc" id="L39">        this.leaves = leaves;</span>
+<span class="fc" id="L40">    }</span>
+
+<span class="fc" id="L42">    private record Pin(AnalysisFollowUpProviders.Binding binding, RuntimeException unavailable,</span>
+                       AnalysisReasonLength length, AnalysisLanguage language) {
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">        String languageIdentity() { return language == null ? null : language.value(); }</span>
+
+        AnalysisFollowUpProviders.Binding require() {
+<span class="pc bpc" id="L47" title="1 of 2 branches missed.">            if (unavailable != null) throw unavailable;</span>
+<span class="fc" id="L48">            return binding;</span>
+        }
+    }
+
+    private Pin pin(String parent, String provider, String text, String owner, WorkspaceContext workspace,
+                    AnalysisReasonLength length, AnalysisLanguage language) {
+        try {
+<span class="fc" id="L55">            var selected = providers.bind(parent, provider, text, owner, workspace, length, language);</span>
+<span class="fc" id="L56">            return new Pin(selected, null, selected.reasonLength(), selected.analysisLanguage());</span>
+<span class="nc" id="L57">        } catch (com.taxonomy.analysis.service.ProviderPluginUnavailableException unavailable) {</span>
+<span class="nc" id="L58">            return new Pin(null, unavailable, length, language);</span>
+        }
+    }
+
+    private boolean dispatch(Pin pin, boolean scoring) {
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">        if (pin.unavailable() != null) return false;</span>
+<span class="fc" id="L64">        try { return providers.execute(pin.require(), () -&gt; llm.interactiveDispatchAvailable(scoring)); }</span>
+<span class="nc" id="L65">        catch (com.taxonomy.analysis.service.ProviderPluginUnavailableException unavailable) { return false; }</span>
+    }
+
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">    public boolean available() { return receipts != null; }</span>
+
+    public AnalyzeNodeChildrenResult node(AnalyzeNodeChildrenCommand command, String parent, String requestedProvider,
+                                          String owner, WorkspaceContext workspace, AnalysisReasonLength length, AnalysisLanguage language) {
+<span class="fc" id="L72">        try (var catalogueScope = providers.openParentCatalogue(parent, owner, workspace)) {</span>
+<span class="fc" id="L73">            return evaluateNode(command, parent, requestedProvider, owner, workspace, length, language);</span>
+        }
+    }
+
+    private AnalyzeNodeChildrenResult evaluateNode(AnalyzeNodeChildrenCommand command, String parent, String requestedProvider,
+            String owner, WorkspaceContext workspace, AnalysisReasonLength length, AnalysisLanguage language) {
+<span class="fc" id="L79">        var pin = pin(parent, requestedProvider, command.businessText(), owner, workspace, length, language);</span>
+<span class="fc" id="L80">        Supplier&lt;List&lt;TaxonomyNode&gt;&gt; read = () -&gt; catalogue.getChildrenOf(command.parentCode());</span>
+<span class="fc" id="L81">        var children = List.copyOf(read.get());</span>
+<span class="fc" id="L82">        var source = llm.interactiveSource(children, true);</span>
+<span class="pc bpc" id="L83" title="2 of 4 branches missed.">        BooleanSupplier current = () -&gt; providers.parentCurrent(parent, owner, workspace) &amp;&amp; source.equals(llm.interactiveSource(read.get(), true));</span>
+<span class="pc bpc" id="L84" title="3 of 4 branches missed.">        var fingerprint = AnalysisAdapterStore.digest(&quot;node-v1&quot;, source, parent == null || parent.isBlank() ? null : parent, providerCommand(requestedProvider),</span>
+<span class="fc" id="L85">                command.parentCode(), command.businessText(), Double.toString(command.parentScore()),</span>
+<span class="fc" id="L86">                pin.length().value(), pin.languageIdentity());</span>
+<span class="pc bpc" id="L87" title="3 of 4 branches missed.">        boolean hasParent = parent != null &amp;&amp; !parent.isBlank();</span>
+<span class="fc bfc" id="L88" title="All 4 branches covered.">        boolean dispatch = !children.isEmpty() &amp;&amp; dispatch(pin, true);</span>
+<span class="fc" id="L89">        Supplier&lt;AnalyzeNodeChildrenResult&gt; evaluate = () -&gt; providers.execute(pin.require(), () -&gt; nodes.analyze(command, children));</span>
+<span class="fc" id="L90">        return receipts.executeNode(fingerprint, dispatch, id -&gt; {</span>
+<span class="fc" id="L91">            var binding = pin.require();</span>
+<span class="fc" id="L92">            var result = evaluate.get();</span>
+<span class="pc bpc" id="L93" title="2 of 6 branches missed.">            if (result.error() != null &amp;&amp; !result.error().isBlank() &amp;&amp; result.scores().isEmpty())</span>
+<span class="fc" id="L94">                throw new IllegalStateException(&quot;Node analysis returned no assessment&quot;);</span>
+<span class="fc" id="L95">            var safe = new AnalyzeNodeChildrenResult(result.scores(), result.reasons(), &quot;&quot;, &quot;&quot;, result.provider(),</span>
+<span class="pc bpc" id="L96" title="3 of 4 branches missed.">                    result.durationMs(), result.error() == null || result.error().isBlank() ? null : &quot;ANALYSIS_FAILED&quot;,</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">                    hasParent ? parent : id, binding.provider(), binding.reasonLength(), binding.analysisLanguage());</span>
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">            return new AnalysisNodeReceipts.BoundNode(safe, hasParent ? null : binding,</span>
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">                    new AnalysisNodeReceipts.Source(command.parentCode(), source, hasParent ? parent : null));</span>
+        }, () -&gt; {
+<span class="fc" id="L101">            var binding = pin.require();</span>
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">            var id = hasParent ? parent : UUID.randomUUID().toString();</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">            if (!hasParent) providers.rememberBinding(id, binding, owner, workspace);</span>
+<span class="fc" id="L104">            return evaluate.get().withFollowUpContext(id, binding.provider());</span>
+        }, current);
+    }
+
+    public JustifyLeafResult leaf(JustifyLeafCommand command, String parent, String requestedProvider, String owner,
+                                  WorkspaceContext workspace, AnalysisReasonLength length, AnalysisLanguage language) {
+<span class="fc" id="L110">        try (var catalogueScope = providers.openParentCatalogue(parent, owner, workspace)) {</span>
+<span class="fc" id="L111">            return evaluateLeaf(command, parent, requestedProvider, owner, workspace, length, language);</span>
+        }
+    }
+
+    private JustifyLeafResult evaluateLeaf(JustifyLeafCommand command, String parent, String requestedProvider, String owner,
+            WorkspaceContext workspace, AnalysisReasonLength length, AnalysisLanguage language) {
+<span class="fc" id="L117">        var pin = pin(parent, requestedProvider, command.businessText(), owner, workspace, length, language);</span>
+<span class="fc" id="L118">        Supplier&lt;List&lt;TaxonomyNode&gt;&gt; read = () -&gt; catalogue.getPathToRoot(command.nodeCode());</span>
+<span class="fc" id="L119">        var path = List.copyOf(read.get());</span>
+<span class="fc" id="L120">        var source = llm.interactiveSource(path, false);</span>
+<span class="pc bpc" id="L121" title="1 of 4 branches missed.">        String fingerprint = AnalysisAdapterStore.digest(&quot;leaf-v1&quot;, source, parent == null || parent.isBlank() ? null : parent, providerCommand(requestedProvider),</span>
+<span class="fc" id="L122">                command.nodeCode(), command.businessText(), mapDigest(command.scores()), mapDigest(command.reasons()),</span>
+<span class="fc" id="L123">                pin.length().value(), pin.languageIdentity());</span>
+<span class="pc" id="L124">        Supplier&lt;JustifyLeafResult&gt; result = () -&gt; providers.execute(pin.require(), () -&gt; leaves.justify(command, path));</span>
+<span class="fc" id="L125">        var retainedSource = new AnalysisNodeReceipts.Source(command.nodeCode(), source, parent);</span>
+<span class="fc" id="L126">        return receipts.executeLeaf(fingerprint, dispatch(pin, false),</span>
+<span class="fc" id="L127">                () -&gt; providers.execute(pin.require(), () -&gt; new AnalysisNodeReceipts.BoundLeaf(leaves.require(command, path), retainedSource)),</span>
+<span class="pc bpc" id="L128" title="2 of 4 branches missed.">                result, () -&gt; providers.parentCurrent(parent, owner, workspace) &amp;&amp; source.equals(llm.interactiveSource(read.get(), false)));</span>
+    }
+
+    public boolean sourceCurrent(AnalysisNodeReceipts.Source source, boolean scoring, String owner, WorkspaceContext workspace) {
+<span class="fc" id="L132">        try (var catalogueScope = providers.openParentCatalogue(source.parentId(), owner, workspace)) {</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">            var nodes = scoring ? catalogue.getChildrenOf(source.nodeCode()) : catalogue.getPathToRoot(source.nodeCode());</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">            return providers.parentCurrent(source.parentId(), owner, workspace)</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">                    &amp;&amp; source.fingerprint().equals(llm.interactiveSource(nodes, scoring));</span>
+<span class="nc" id="L136">        } catch (RuntimeException unavailable) {</span>
+<span class="nc" id="L137">            return false;</span>
+        }
+    }
+
+    private static String providerCommand(String requested) {
+<span class="pc bpc" id="L142" title="3 of 4 branches missed.">        return requested == null || requested.isBlank() ? null : requested.strip().toUpperCase(java.util.Locale.ROOT);</span>
+    }
+
+    private static String mapDigest(Map&lt;String, ?&gt; values) {
+<span class="fc" id="L146">        var parts = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L147">        new TreeMap&lt;&gt;(values).forEach((key, value) -&gt; {</span>
+<span class="nc" id="L148">            parts.add(key);</span>
+<span class="nc" id="L149">            parts.add(value.toString());</span>
+<span class="nc" id="L150">        });</span>
+<span class="fc" id="L151">        return AnalysisAdapterStore.digest(parts.toArray(String[]::new));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

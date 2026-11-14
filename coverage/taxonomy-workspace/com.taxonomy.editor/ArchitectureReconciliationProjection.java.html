@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureReconciliationProjection.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.editor</a> &gt; <span class="el_source">ArchitectureReconciliationProjection.java</span></div><h1>ArchitectureReconciliationProjection.java</h1><pre class="source lang-java linenums">package com.taxonomy.editor;
+
+import com.taxonomy.diagram.DiagramEdge;
+import com.taxonomy.diagram.DiagramLayout;
+import com.taxonomy.diagram.DiagramModel;
+import com.taxonomy.diagram.DiagramNode;
+import com.taxonomy.diagram.DiagramScene;
+import com.taxonomy.diagram.DiagramSceneEdge;
+import com.taxonomy.diagram.DiagramSceneNode;
+import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.dsl.command.ArchitectureDslCommands;
+import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
+import com.taxonomy.dsl.model.CatalogueDefinition;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
+import com.taxonomy.export.LayeredDiagramLayoutService;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/** Projects the frozen source, including the catalogue generation recorded by each document. */
+public final class ArchitectureReconciliationProjection {
+<span class="fc" id="L27">    private static final List&lt;String&gt; PARTS = List.of(&quot;base&quot;, &quot;local&quot;, &quot;incoming&quot;, &quot;proposed&quot;);</span>
+<span class="fc" id="L28">    private static final Set&lt;String&gt; PRESENTATION_PROPERTIES = Set.of(&quot;layout&quot;, &quot;x&quot;, &quot;y&quot;, &quot;width&quot;, &quot;height&quot;,</span>
+            &quot;x-layout&quot;, &quot;x-position&quot;, &quot;x-bounds&quot;, &quot;x-diagram-geometry&quot;);
+    private final LayeredDiagramLayoutService layout;
+
+    private final CatalogueDefinitionResolver catalogues;
+
+<span class="fc" id="L34">    ArchitectureReconciliationProjection(LayeredDiagramLayoutService layout, CatalogueDefinitionResolver catalogues) {</span>
+<span class="fc" id="L35">        this.layout = layout;</span>
+<span class="fc" id="L36">        this.catalogues = catalogues;</span>
+<span class="fc" id="L37">    }</span>
+
+<span class="fc" id="L39">    public record PropertyDifference(String blockId, String property, String category,</span>
+                                     List&lt;String&gt; base, List&lt;String&gt; local, List&lt;String&gt; incoming, List&lt;String&gt; proposed) {}
+<span class="fc" id="L41">    public record Comparison(Map&lt;String, DiagramScene&gt; scenes, List&lt;PropertyDifference&gt; properties,</span>
+                             Map&lt;String, String&gt; typeRoots, Map&lt;String, Map&lt;String, String&gt;&gt; sceneTypeRoots) {}
+<span class="fc" id="L43">    public record Preview(ArchitectureCommandPort.Context context, String headCommit, String fingerprint,</span>
+                          String baseDsl, String localDsl, String incomingDsl, String mergedDsl,
+                          List&lt;ArchitectureSemanticPatch.BlockChange&gt; changes,
+                          List&lt;ArchitectureEditorService.ReconciliationConflict&gt; conflicts, boolean canAccept,
+                          Comparison comparison) {}
+
+    Preview project(ArchitectureEditorService.ReconciliationPreview preview) {
+<span class="fc" id="L50">        List&lt;String&gt; sources = java.util.Arrays.asList(preview.baseDsl(), preview.localDsl(), preview.incomingDsl(), preview.mergedDsl());</span>
+<span class="fc" id="L51">        var commands = new ArchitectureDslCommands();</span>
+<span class="fc" id="L52">        Map&lt;String, DiagramModel&gt; diagrams = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L53">        Map&lt;String, Map&lt;String, String&gt;&gt; sceneTypeRoots = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L54">        Map&lt;String, String&gt; sharedTypeRoots = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L55">        Map&lt;String, CatalogueDefinition&gt; definitions = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        for (int index = 0; index &lt; PARTS.size(); index++) {</span>
+            // An unresolved preview has no proposed document; an empty scene would imply deletion.
+<span class="fc" id="L58">            String source = sources.get(index);</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">            if (source == null) continue;</span>
+<span class="fc" id="L60">            var model = commands.model(source);</span>
+<span class="fc" id="L61">            var catalogue = definitions.computeIfAbsent(model.getCatalogueRevision(), key -&gt; catalogues.forModel(model));</span>
+<span class="fc" id="L62">            String part = PARTS.get(index);</span>
+<span class="fc" id="L63">            sceneTypeRoots.put(part, catalogue.typeRoots());</span>
+            // Older renderers receive only mappings shared by every visible source.
+<span class="fc bfc" id="L65" title="All 2 branches covered.">            if (diagrams.isEmpty()) sharedTypeRoots.putAll(catalogue.typeRoots());</span>
+<span class="fc" id="L66">            else sharedTypeRoots.entrySet().retainAll(catalogue.typeRoots().entrySet());</span>
+<span class="fc" id="L67">            diagrams.put(part, ArchitectureEditorProjection.diagram(model, preview.context().branch(), catalogue));</span>
+        }
+<span class="fc" id="L69">        Map&lt;String, DiagramNode&gt; nodes = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L70">        Map&lt;String, DiagramEdge&gt; edges = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L71">        diagrams.values().forEach(diagram -&gt; {</span>
+<span class="fc" id="L72">            diagram.nodes().forEach(node -&gt; nodes.putIfAbsent(node.id(), node));</span>
+<span class="fc" id="L73">            diagram.edges().forEach(edge -&gt; edges.putIfAbsent(edge.id(), edge));</span>
+<span class="fc" id="L74">        });</span>
+        // Lay out each semantic identity exactly once. Version-specific labels/types stay in their own scene.
+<span class="fc" id="L76">        DiagramScene common = layout.layout(new DiagramModel(&quot;Reconciliation&quot;, List.copyOf(nodes.values()),</span>
+<span class="fc" id="L77">                List.copyOf(edges.values()), new DiagramLayout(&quot;LR&quot;, true)));</span>
+<span class="fc" id="L78">        Map&lt;String, DiagramScene&gt; scenes = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L79">        diagrams.forEach((part, diagram) -&gt; scenes.put(part, scene(diagram, common)));</span>
+<span class="fc" id="L80">        Comparison comparison = new Comparison(Collections.unmodifiableMap(scenes), differences(sources),</span>
+<span class="fc" id="L81">                Collections.unmodifiableMap(sharedTypeRoots), Collections.unmodifiableMap(sceneTypeRoots));</span>
+<span class="fc" id="L82">        return new Preview(preview.context(), preview.headCommit(), preview.fingerprint(), preview.baseDsl(), preview.localDsl(),</span>
+<span class="fc" id="L83">                preview.incomingDsl(), preview.mergedDsl(), preview.changes(), preview.conflicts(), preview.canAccept(), comparison);</span>
+    }
+
+    private static DiagramScene scene(DiagramModel diagram, DiagramScene common) {
+<span class="fc" id="L87">        Map&lt;String, DiagramNode&gt; nodes = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L88">        diagram.nodes().forEach(node -&gt; nodes.put(node.id(), node));</span>
+<span class="fc" id="L89">        Map&lt;String, DiagramEdge&gt; edges = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L90">        diagram.edges().forEach(edge -&gt; edges.put(edge.id(), edge));</span>
+<span class="fc" id="L91">        List&lt;DiagramSceneNode&gt; projectedNodes = common.nodes().stream().filter(position -&gt; nodes.containsKey(position.id()))</span>
+<span class="fc" id="L92">                .map(position -&gt; {</span>
+<span class="fc" id="L93">                    var node = nodes.get(position.id());</span>
+<span class="fc" id="L94">                    return new DiagramSceneNode(node.id(), node.label(), node.type(), node.relevance(), node.anchor(), node.layer(),</span>
+<span class="fc" id="L95">                            node.depth(), node.selectedForImpact(), node.parentId(), node.container(),</span>
+<span class="fc" id="L96">                            position.x(), position.y(), position.width(), position.height());</span>
+<span class="fc" id="L97">                }).toList();</span>
+<span class="fc" id="L98">        List&lt;DiagramSceneEdge&gt; projectedEdges = common.edges().stream().filter(position -&gt; edges.containsKey(position.id()))</span>
+<span class="pc bpc" id="L99" title="2 of 4 branches missed.">                .filter(position -&gt; nodes.containsKey(position.sourceId()) &amp;&amp; nodes.containsKey(position.targetId()))</span>
+<span class="fc" id="L100">                .map(position -&gt; {</span>
+<span class="fc" id="L101">                    var edge = edges.get(position.id());</span>
+<span class="fc" id="L102">                    return new DiagramSceneEdge(edge.id(), edge.sourceId(), edge.targetId(), edge.relationType(), edge.relevance(),</span>
+<span class="fc" id="L103">                            edge.relationCategory(), position.sourceX(), position.sourceY(), position.targetX(), position.targetY(), edge.metadata());</span>
+<span class="fc" id="L104">                }).toList();</span>
+<span class="fc" id="L105">        return new DiagramScene(diagram.title(), common.width(), common.height(), common.direction(), projectedNodes, projectedEdges);</span>
+    }
+
+    private static List&lt;PropertyDifference&gt; differences(List&lt;String&gt; sources) {
+<span class="fc" id="L109">        List&lt;Map&lt;String, BlockAst&gt;&gt; versions = sources.stream()</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">                .map(source -&gt; source == null ? null : ArchitectureSemanticPatch.index(source)).toList();</span>
+<span class="fc" id="L111">        Set&lt;String&gt; identities = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L112">        versions.stream().filter(java.util.Objects::nonNull).forEach(version -&gt; identities.addAll(version.keySet()));</span>
+<span class="fc" id="L113">        List&lt;PropertyDifference&gt; rows = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">        for (String identity : identities) {</span>
+<span class="fc" id="L115">            List&lt;Map&lt;String, List&lt;String&gt;&gt;&gt; values = versions.stream()</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">                    .map(version -&gt; version == null ? null : values(version.get(identity))).toList();</span>
+<span class="fc" id="L117">            Set&lt;String&gt; keys = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L118">            values.stream().filter(java.util.Objects::nonNull).forEach(properties -&gt; keys.addAll(properties.keySet()));</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">            for (String key : keys) {</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">                List&lt;List&lt;String&gt;&gt; parts = values.stream().map(properties -&gt; properties == null ? null : properties.getOrDefault(key, List.of())).toList();</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">                if (parts.stream().filter(java.util.Objects::nonNull).distinct().count() &gt; 1) rows.add(new PropertyDifference(identity, key, category(identity, key),</span>
+<span class="fc" id="L122">                        parts.get(0), parts.get(1), parts.get(2), parts.get(3)));</span>
+<span class="fc" id="L123">            }</span>
+<span class="fc" id="L124">        }</span>
+<span class="fc" id="L125">        return List.copyOf(rows);</span>
+    }
+
+    private static Map&lt;String, List&lt;String&gt;&gt; values(BlockAst block) {
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        if (block == null) return Map.of();</span>
+<span class="fc" id="L130">        Map&lt;String, List&lt;String&gt;&gt; result = new LinkedHashMap&lt;&gt;();</span>
+        // Header values may change while the kind-aware semantic identity remains the same.
+<span class="fc" id="L132">        result.put(&quot;@header&quot;, List.of(String.join(&quot; &quot;, block.getHeaderTokens())));</span>
+<span class="fc" id="L133">        block.getProperties().forEach(property -&gt; result.computeIfAbsent(property.key(), ignored -&gt; new ArrayList&lt;&gt;()).add(property.value()));</span>
+<span class="fc bfc" id="L134" title="All 4 branches covered.">        result.replaceAll((key, value) -&gt; &quot;view&quot;.equals(block.getKind()) &amp;&amp; &quot;include&quot;.equals(key)</span>
+<span class="fc" id="L135">                ? value.stream().distinct().sorted().toList() : List.copyOf(value));</span>
+<span class="fc" id="L136">        return result;</span>
+    }
+
+    private static String category(String identity, String property) {
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        if (property.startsWith(&quot;x-exchange-&quot;)) return &quot;EXCHANGE_EVIDENCE&quot;;</span>
+<span class="pc bpc" id="L141" title="1 of 4 branches missed.">        if (identity.startsWith(&quot;view:&quot;) || PRESENTATION_PROPERTIES.contains(property)) return &quot;PRESENTATION&quot;;</span>
+<span class="fc" id="L142">        return &quot;SEMANTIC&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

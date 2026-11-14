@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DurableClusterAnalysisExecution.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.cluster</a> &gt; <span class="el_source">DurableClusterAnalysisExecution.java</span></div><h1>DurableClusterAnalysisExecution.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.cluster;
+
+import com.taxonomy.extension.api.llm.ProviderId;
+
+import com.taxonomy.analysis.dag.*;
+import com.taxonomy.analysis.service.LlmProvider;
+import com.taxonomy.analysis.service.LlmProviderConfig;
+import com.taxonomy.analysis.usecase.AdmittedCatalogue;
+import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
+import com.taxonomy.analysis.usecase.UnknownAnalysisProviderException;
+import com.taxonomy.catalog.snapshot.CatalogueSnapshotService;
+import com.taxonomy.catalog.snapshot.CatalogueSourceIdentity;
+import com.taxonomy.catalog.snapshot.FrozenCatalogueEmbeddingService;
+import com.taxonomy.catalog.snapshot.RootCatalogueSnapshot;
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.ViewContext;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceViewContextReadPort;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import tools.jackson.databind.ObjectMapper;
+
+import java.util.LinkedHashMap;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.Semaphore;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
+
+/** Captures immutable input, admits once, and reconciles durable state only on live events/reconnect. */
+public final class DurableClusterAnalysisExecution implements ClusterAnalysisExecution {
+    private final ClusterAnalysisStore store;
+    private final CatalogueSnapshotService catalogue;
+    private final ClusterAnalysisSignals signals;
+    private final LlmProviderConfig providers;
+    private final ObjectMapper mapper;
+    private final WorkspaceViewContextReadPort workspaceViews;
+    private final FrozenCatalogueEmbeddingService embeddingSnapshots;
+    private final java.util.function.Supplier&lt;com.taxonomy.dsl.model.CatalogueDefinition&gt; definitions;
+
+    public DurableClusterAnalysisExecution(ClusterAnalysisStore store, CatalogueSnapshotService catalogue,
+            ClusterAnalysisSignals signals, LlmProviderConfig providers, ObjectMapper mapper,
+            WorkspaceViewContextReadPort workspaceViews) {
+<span class="fc" id="L44">        this(store, catalogue, signals, providers, mapper, workspaceViews, null);</span>
+<span class="fc" id="L45">    }</span>
+
+    public DurableClusterAnalysisExecution(ClusterAnalysisStore store, CatalogueSnapshotService catalogue,
+            ClusterAnalysisSignals signals, LlmProviderConfig providers, ObjectMapper mapper,
+            WorkspaceViewContextReadPort workspaceViews, FrozenCatalogueEmbeddingService embeddingSnapshots) {
+<span class="fc" id="L50">        this(store, catalogue, signals, providers, mapper, workspaceViews, embeddingSnapshots,</span>
+                com.taxonomy.dsl.model.CatalogueDefinition::standard);
+<span class="fc" id="L52">    }</span>
+
+    public DurableClusterAnalysisExecution(ClusterAnalysisStore store, CatalogueSnapshotService catalogue,
+            ClusterAnalysisSignals signals, LlmProviderConfig providers, ObjectMapper mapper,
+            WorkspaceViewContextReadPort workspaceViews, FrozenCatalogueEmbeddingService embeddingSnapshots,
+<span class="fc" id="L57">            java.util.function.Supplier&lt;com.taxonomy.dsl.model.CatalogueDefinition&gt; definitions) {</span>
+<span class="fc" id="L58">        this.definitions = Objects.requireNonNull(definitions);</span>
+<span class="fc" id="L59">        this.store = Objects.requireNonNull(store); this.catalogue = Objects.requireNonNull(catalogue);</span>
+<span class="fc" id="L60">        this.signals = Objects.requireNonNull(signals); this.providers = Objects.requireNonNull(providers);</span>
+<span class="fc" id="L61">        this.mapper = Objects.requireNonNull(mapper);</span>
+<span class="fc" id="L62">        this.workspaceViews = Objects.requireNonNull(workspaceViews);</span>
+<span class="fc" id="L63">        this.embeddingSnapshots = embeddingSnapshots;</span>
+<span class="fc" id="L64">    }</span>
+
+    @Override
+    public AnalysisResult execute(AnalysisOperationContext context, AnalyzeRequirementCommand command, ViewContext view,
+                                  Consumer&lt;ClusterAnalysisStore.Snapshot&gt; progress) {
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">        if (TransactionSynchronizationManager.isActualTransactionActive()) {</span>
+<span class="nc" id="L70">            throw new IllegalStateException(&quot;Cluster analysis must execute outside a database transaction&quot;);</span>
+        }
+<span class="fc" id="L72">        Objects.requireNonNull(progress, &quot;progress&quot;);</span>
+<span class="fc" id="L73">        requireInput(context, command, view);</span>
+<span class="fc" id="L74">        String provider = frozenProvider(command.provider());</span>
+<span class="fc" id="L75">        boolean localOnnx = &quot;LOCAL_ONNX&quot;.equals(provider);</span>
+<span class="fc bfc" id="L76" title="All 4 branches covered.">        if (localOnnx &amp;&amp; embeddingSnapshots == null) {</span>
+<span class="fc" id="L77">            throw new IllegalArgumentException(&quot;LOCAL_ONNX requires frozen embedding admission support&quot;);</span>
+        }
+<span class="fc" id="L79">        var binding = command.providerBinding();</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">        if (binding == null) binding = providers.captureProviderBinding(provider);</span>
+<span class="nc bnc" id="L81" title="All 2 branches missed.">        else try (var ignored = providers.withRequestProvider(provider, binding)) { /* Validate the job's original admission. */ }</span>
+<span class="fc" id="L82">        var admitted = new AnalyzeRequirementCommand(command.businessText(), command.includeArchitectureView(),</span>
+<span class="fc" id="L83">                command.maxArchitectureNodes(), provider, command.username(), command.workspaceContext(),</span>
+<span class="fc" id="L84">                command.provenance(), command.analysisScope(), binding, command.continuationBinding(),</span>
+<span class="fc" id="L85">                com.taxonomy.analysis.service.AnalysisReasonContext.effective(command.analysisReasonLength()),</span>
+<span class="fc" id="L86">                command.retainedAnalysis(), command.analysisLanguage(), command.modelBinding());</span>
+<span class="fc" id="L87">        var source = source(context);</span>
+<span class="fc" id="L88">        var model = command.modelBinding();</span>
+<span class="fc" id="L89">        java.util.List&lt;RootCatalogueSnapshot&gt; archive = null;</span>
+        com.taxonomy.dsl.model.CatalogueDefinition definition;
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        if (model != null) {</span>
+<span class="fc" id="L92">            AdmittedCatalogue.requireWorkspace(model, command.workspaceContext());</span>
+<span class="fc" id="L93">            archive = catalogue.captureRevision(source, AdmittedCatalogue.revision(model), java.util.Set.of());</span>
+<span class="fc" id="L94">            var spec = archive.getFirst().catalogueDefinition();</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">            definition = spec == null ? com.taxonomy.dsl.model.CatalogueDefinition.standard() : spec.definition();</span>
+<span class="fc" id="L96">        } else {</span>
+<span class="fc" id="L97">            definition = definitions.get();</span>
+        }
+<span class="fc" id="L99">        var available = definition.rootCodes();</span>
+<span class="fc" id="L100">        command.analysisScope().validateRoots(available);</span>
+<span class="fc" id="L101">        Map&lt;TaxonomyShardRoot, String&gt; scoring = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L102">        Map&lt;TaxonomyShardRoot, String&gt; targets = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L103" title="All 4 branches covered.">        boolean allTargets = command.analysisScope().includesRelations() || command.includeArchitectureView();</span>
+<span class="fc bfc" id="L104" title="All 4 branches covered.">        var required = available.stream().filter(root -&gt; allTargets || command.analysisScope().selects(root))</span>
+<span class="fc" id="L105">                .collect(Collectors.toSet());</span>
+        // All roots belong to one official catalogue generation, independently of the operation's Git source.
+        // ONNX text can name relation endpoints in other roots. Capture them atomically, then retain only required roots.
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        var captureRoots = localOnnx ? available : required;</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">        var frozenRoots = archive == null ? catalogue.captureRoots(source, captureRoots)</span>
+<span class="fc" id="L110">                : archive.stream().filter(root -&gt; captureRoots.contains(root.rootCode())).toList();</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        if (localOnnx) {</span>
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">            var repository = source.workspaceId() == null</span>
+<span class="nc" id="L113">                    ? RepositoryContext.centralRead(source.repositoryId(), source.branch(), command.username())</span>
+<span class="fc" id="L114">                    : RepositoryContext.workspace(source.repositoryId(), source.workspaceId(), source.branch(), command.username());</span>
+<span class="fc" id="L115">            frozenRoots = embeddingSnapshots.decorate(repository, source, frozenRoots, required);</span>
+        }
+<span class="fc" id="L117">        var captured = frozenRoots.stream().collect(Collectors.toMap(</span>
+<span class="fc" id="L118">                RootCatalogueSnapshot::rootCode, java.util.function.Function.identity()));</span>
+<span class="pc bpc" id="L119" title="3 of 6 branches missed.">        if (!captured.keySet().equals(required) || captured.values().stream().anyMatch(root -&gt; !source.equals(root.source())</span>
+<span class="pc bpc" id="L120" title="1 of 4 branches missed.">                || !definition.spec().equals(root.catalogueDefinition() == null</span>
+<span class="fc" id="L121">                        ? com.taxonomy.dsl.model.CatalogueDefinition.standard().spec() : root.catalogueDefinition()))) {</span>
+<span class="nc" id="L122">            throw new IllegalStateException(&quot;Captured catalogue does not match the admitted source and roots&quot;);</span>
+        }
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        for (var root : available.stream().map(TaxonomyShardRoot::of).toList()) {</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">            if (!required.contains(root.code())) continue;</span>
+<span class="fc" id="L126">            String frozen = mapper.writeValueAsString(captured.get(root.code()));</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">            if (command.analysisScope().selects(root.code())) scoring.put(root, frozen);</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">            if (allTargets) targets.put(root, frozen);</span>
+<span class="fc" id="L129">        }</span>
+<span class="fc" id="L130">        var wake = new Semaphore(0);</span>
+        // Register before admitting: even immediate completion cannot fall into a listener gap.
+<span class="fc" id="L132">        try (var subscription = signals.listen(context, ignored -&gt; wake.release())) {</span>
+<span class="fc" id="L133">            subscription.onReconnect(wake::release);</span>
+<span class="fc" id="L134">            requireCurrentSource(context, command);</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">            if (definition.spec().equals(com.taxonomy.dsl.model.CatalogueDefinition.standard().spec()))</span>
+<span class="fc" id="L136">                store.admit(context, admitted, view, scoring, targets);</span>
+<span class="fc" id="L137">            else store.admit(context, admitted, view, scoring, targets, definition);</span>
+            while (true) {
+                // Draining before the read coalesces events without losing a post-read notification.
+<span class="fc" id="L140">                wake.drainPermits();</span>
+<span class="fc" id="L141">                var snapshot = store.snapshot(context);</span>
+<span class="fc" id="L142">                progress.accept(snapshot);</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">                if (snapshot.state().terminal()) {</span>
+<span class="fc" id="L144">                    return Objects.requireNonNull(snapshot.result(), &quot;Terminal operation has no durable result&quot;);</span>
+                }
+                try {
+<span class="fc" id="L147">                    wake.acquire();</span>
+<span class="nc" id="L148">                } catch (InterruptedException interrupted) {</span>
+<span class="nc" id="L149">                    Thread.currentThread().interrupt();</span>
+<span class="nc" id="L150">                    throw new ClusterAnalysisObservationDetachedException();</span>
+<span class="fc" id="L151">                }</span>
+<span class="fc" id="L152">            }</span>
+        }
+    }
+
+    private void requireCurrentSource(AnalysisOperationContext context, AnalyzeRequirementCommand command) {
+<span class="fc" id="L157">        var workspace = command.workspaceContext();</span>
+        // Recheck the request's authorized branch, not another tab's active workspace.
+<span class="fc" id="L159">        String branch = workspace.currentBranch();</span>
+<span class="fc" id="L160">        var model = command.modelBinding();</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        if (model != null) {</span>
+<span class="fc" id="L162">            AdmittedCatalogue.requireWorkspace(model, workspace);</span>
+<span class="pc bpc" id="L163" title="1 of 2 branches missed.">            if (!Objects.equals(context.authority().sourceCommit(), model.commit())</span>
+<span class="pc bpc" id="L164" title="2 of 4 branches missed.">                    || !Objects.equals(context.authority().semanticModelSha256(), model.commit() == null ? model.modelSha256() : null))</span>
+<span class="nc" id="L165">                throw new IllegalStateException(&quot;Durable analysis does not match the admitted model commit&quot;);</span>
+<span class="fc" id="L166">            return;</span>
+        }
+<span class="fc" id="L168">        ViewContext current = workspaceViews.getViewContext(workspace.username(), branch, workspace);</span>
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">        if (!Objects.equals(context.authority().branch(), branch)</span>
+<span class="pc bpc" id="L170" title="2 of 6 branches missed.">                || !Objects.equals(context.authority().sourceCommit(), current == null ? null : current.basedOnCommit())</span>
+<span class="pc bpc" id="L171" title="1 of 2 branches missed.">                || (current != null &amp;&amp; !Objects.equals(context.authority().branch(), current.basedOnBranch()))) {</span>
+<span class="fc" id="L172">            throw new IllegalStateException(&quot;Analysis source changed before durable admission&quot;);</span>
+        }
+<span class="fc" id="L174">    }</span>
+
+    private String frozenProvider(String requested) {
+<span class="pc bpc" id="L177" title="1 of 4 branches missed.">        String explicit = requested == null || requested.isBlank() ? null : requested.toUpperCase(Locale.ROOT);</span>
+<span class="fc bfc" id="L178" title="All 4 branches covered.">        if (explicit != null &amp;&amp; !&quot;MOCK&quot;.equals(explicit)) {</span>
+<span class="fc" id="L179">            try { providers.requireRegisteredProvider(explicit); }</span>
+<span class="pc" id="L180">            catch (IllegalArgumentException invalid) { throw new UnknownAnalysisProviderException(requested); }</span>
+<span class="fc" id="L181">            requireSupportedProvider(explicit);</span>
+        }
+        // A run-bound scenario replay is never silently replaced by global mock mode.
+<span class="pc bpc" id="L184" title="1 of 2 branches missed.">        String effective = providers.isScenarioReplay(explicit) ? explicit</span>
+<span class="pc bpc" id="L185" title="1 of 4 branches missed.">                : &quot;MOCK&quot;.equals(explicit) || providers.isMockMode() ? &quot;MOCK&quot;</span>
+<span class="fc bfc" id="L186" title="All 2 branches covered.">                : explicit == null ? providers.getActiveProviderId().value() : explicit;</span>
+<span class="fc" id="L187">        requireSupportedProvider(effective);</span>
+<span class="fc" id="L188">        return effective;</span>
+    }
+
+    static void requireSupportedProvider(String provider) {
+<span class="pc bpc" id="L192" title="2 of 4 branches missed.">        if (provider == null || provider.isBlank()) throw new IllegalArgumentException(&quot;Frozen provider is required&quot;);</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">        if (!&quot;MOCK&quot;.equalsIgnoreCase(provider)) new ProviderId(provider);</span>
+<span class="fc" id="L194">    }</span>
+
+    static CatalogueSourceIdentity source(AnalysisOperationContext context) {
+<span class="fc" id="L197">        var source = context.authority();</span>
+<span class="fc" id="L198">        return new CatalogueSourceIdentity(source.repositoryId(), source.workspaceId(), source.branch(), source.sourceCommit(), source.semanticModelSha256());</span>
+    }
+
+    private static void requireInput(AnalysisOperationContext context, AnalyzeRequirementCommand command, ViewContext view) {
+<span class="fc" id="L202">        Objects.requireNonNull(context); Objects.requireNonNull(command);</span>
+<span class="fc" id="L203">        var workspace = Objects.requireNonNull(command.workspaceContext());</span>
+<span class="fc" id="L204">        var authority = context.authority();</span>
+<span class="pc bpc" id="L205" title="1 of 2 branches missed.">        if (!context.requirement().matches(command.businessText())</span>
+<span class="pc bpc" id="L206" title="1 of 2 branches missed.">                || !Objects.equals(command.username(), workspace.username())</span>
+<span class="pc bpc" id="L207" title="1 of 2 branches missed.">                || !authority.repositoryId().equals(workspace.repositoryId())</span>
+<span class="pc bpc" id="L208" title="1 of 2 branches missed.">                || !Objects.equals(authority.workspaceId(), workspace.workspaceId())</span>
+<span class="pc bpc" id="L209" title="1 of 4 branches missed.">                || !Objects.equals(authority.branch(), workspace.currentBranch())</span>
+<span class="pc bpc" id="L210" title="1 of 2 branches missed.">                || (view != null &amp;&amp; (!Objects.equals(authority.sourceCommit(), view.basedOnCommit())</span>
+<span class="pc bpc" id="L211" title="2 of 4 branches missed.">                || (view.basedOnBranch() != null &amp;&amp; !Objects.equals(authority.branch(), view.basedOnBranch()))))) {</span>
+<span class="nc" id="L212">            throw new IllegalArgumentException(&quot;Analysis input does not match exact source authority&quot;);</span>
+        }
+<span class="fc" id="L214">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

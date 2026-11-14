@@ -1,0 +1,381 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AdmbwFffmlvProfile.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.admbw</a> &gt; <span class="el_source">AdmbwFffmlvProfile.java</span></div><h1>AdmbwFffmlvProfile.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.admbw;
+
+import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.sparx.mapping.AdmbwSourceProfile;
+import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
+import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
+import com.taxonomy.dsl.mapper.AstToModelMapper;
+import com.taxonomy.dsl.model.ArchitectureElement;
+import com.taxonomy.dsl.model.ArchitectureRelation;
+import com.taxonomy.dsl.model.ArchitectureRequirement;
+import com.taxonomy.dsl.model.ArchitectureView;
+import com.taxonomy.dsl.model.CanonicalArchitectureModel;
+import com.taxonomy.dsl.parser.TaxDslParser;
+import com.taxonomy.dsl.planning.PlanningEntry;
+import com.taxonomy.dsl.planning.PlanningInformation;
+import com.taxonomy.dsl.requirements.RequirementRealization;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.regex.Pattern;
+
+/** Structural checks and authoring data for two views of the public FFFmLV V2.0 guide. */
+<span class="fc" id="L32">public final class AdmbwFffmlvProfile {</span>
+
+<span class="fc" id="L34">    public static final AdmbwSourceProfile SOURCE_PROFILE = AdmbwSourceProfile.CURRENT;</span>
+<span class="fc" id="L35">    public static final String ID = SOURCE_PROFILE.id();</span>
+    public static final String TYPE = &quot;x-admbw-type&quot;;
+    public static final String CATALOGUE_GUID = &quot;x-admbw-catalogue-guid&quot;;
+    public static final String CATALOGUE_REFERENCE = &quot;x-admbw-catalogue-reference&quot;;
+
+    private static final String CAPABILITY = &quot;Capability&quot;;
+    private static final String SERVICE = &quot;ServiceSpecification&quot;;
+    private static final String CONSTRAINT = &quot;OperationalConstraint&quot;;
+<span class="fc" id="L43">    private static final Set&lt;String&gt; SERVICE_TYPES = Set.of(&quot;CoreService&quot;, &quot;COIService&quot;);</span>
+<span class="fc" id="L44">    private static final Set&lt;String&gt; REALIZERS = Set.of(&quot;CapabilityConfiguration&quot;, &quot;ResourceRole&quot;);</span>
+<span class="fc" id="L45">    private static final Set&lt;String&gt; CONSTRAINT_SUBJECTS = Set.of(&quot;OperationalArchitecture&quot;, &quot;OperationalRole&quot;);</span>
+<span class="fc" id="L46">    public static final List&lt;String&gt; ELEMENT_STEREOTYPES = SOURCE_PROFILE.authoringElementTypes();</span>
+<span class="fc" id="L47">    private static final Pattern PROJECT_CODE = Pattern.compile(&quot;[A-Za-z0-9][A-Za-z0-9_-]{0,31}&quot;);</span>
+<span class="fc" id="L48">    private static final Pattern EA_GUID = Pattern.compile(</span>
+            &quot;\\{[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}}&quot;);
+    private static final String ZERO_GUID = &quot;{00000000-0000-0000-0000-000000000000}&quot;;
+
+<span class="fc" id="L52">    public record Report(String profile, String projectCode, String sourceViewId,</span>
+                         View capabilityToService, View requirementDerivation, AdmbwSourceProfile sourceProfile) { }
+
+<span class="fc" id="L55">    public record View(String viewpoint, String name, List&lt;String&gt; packagePath, String status,</span>
+                       List&lt;Element&gt; elements, List&lt;Connector&gt; connectors, List&lt;Issue&gt; issues,
+                       List&lt;String&gt; requiredReviews) { }
+
+<span class="fc" id="L59">    public record Element(String ref, String stereotype, String name, String notes,</span>
+                          String catalogueGuid, String catalogueReference,
+                          Integer requirementVersion, String requirementContentHash) { }
+
+<span class="fc" id="L63">    public record Connector(String stereotype, String client, String supplier) { }</span>
+
+<span class="fc" id="L65">    public record Issue(String code, String object, String detail) { }</span>
+
+    public Report assess(String dsl, String projectCode, String viewId) {
+<span class="pc bpc" id="L68" title="2 of 4 branches missed.">        if (projectCode == null || !PROJECT_CODE.matcher(projectCode).matches()) {</span>
+<span class="nc" id="L69">            throw new IllegalArgumentException(&quot;Project code must have 1–32 letters, digits, hyphens or underscores&quot;);</span>
+        }
+<span class="fc" id="L71">        validateDelimiters(dsl);</span>
+<span class="fc" id="L72">        var source = new TaxDslParser().parse(dsl);</span>
+<span class="fc" id="L73">        Set&lt;String&gt; identities = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        for (BlockAst block : source.getBlocks()) validateSourceBlock(block, identities);</span>
+<span class="fc" id="L75">        CanonicalArchitectureModel model = new AstToModelMapper().map(source);</span>
+<span class="fc" id="L76">        Map&lt;String, ArchitectureElement&gt; elements = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        for (ArchitectureElement element : model.getElements()) {</span>
+<span class="pc bpc" id="L78" title="2 of 4 branches missed.">            if (missing(element.getId()) || elements.putIfAbsent(element.getId(), element) != null) {</span>
+<span class="nc" id="L79">                throw new IllegalArgumentException(&quot;Each architecture element must have a unique identity&quot;);</span>
+            }
+<span class="fc" id="L81">        }</span>
+<span class="fc" id="L82">        Map&lt;String, String&gt; catalogueIdentities = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L83">        return new Report(ID, projectCode, viewId,</span>
+<span class="fc" id="L84">                capabilityToService(model, elements, projectCode, viewId, catalogueIdentities),</span>
+<span class="fc" id="L85">                requirementDerivation(model, elements, projectCode, catalogueIdentities), SOURCE_PROFILE);</span>
+    }
+
+    private View capabilityToService(CanonicalArchitectureModel model, Map&lt;String, ArchitectureElement&gt; elements,
+                                     String projectCode, String viewId, Map&lt;String, String&gt; catalogueIdentities) {
+<span class="fc" id="L90">        ArchitectureView selected = selectedView(model, viewId);</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        Set&lt;String&gt; members = selected == null ? elements.keySet() : new HashSet&lt;&gt;(selected.getIncludes());</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        String recordedRelations = selected == null ? null : selected.getExtensions().get(&quot;x-analysis-relation-members&quot;);</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        Set&lt;String&gt; allowedRelations = recordedRelations == null ? Set.of()</span>
+<span class="fc" id="L94">                : new HashSet&lt;&gt;(Arrays.asList(recordedRelations.split(&quot;\n&quot;)));</span>
+<span class="fc" id="L95">        var view = new ViewBuilder();</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        for (String id : members.stream().sorted().toList()) {</span>
+<span class="fc" id="L97">            ArchitectureElement element = elements.get(id);</span>
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">            if (element == null) {</span>
+<span class="nc" id="L99">                view.issue(&quot;UNKNOWN_VIEW_MEMBER&quot;, id, &quot;The selected view references an element missing from this checkpoint.&quot;);</span>
+<span class="nc" id="L100">                continue;</span>
+            }
+<span class="fc bfc" id="L102" title="All 2 branches covered.">            if (CAPABILITY.equals(element.getType())) {</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">                if (!missing(element.getExtensions().get(TYPE))) {</span>
+<span class="fc" id="L104">                    view.issue(&quot;INCOMPATIBLE_ADMBW_ROLE&quot;, ref(id), &quot;A catalogue capability cannot also carry another ADMBw stereotype.&quot;);</span>
+                }
+<span class="fc" id="L106">                CatalogueBinding binding = checkCatalogue(view, element, catalogueIdentities, &quot;CAPABILITY&quot;);</span>
+<span class="fc" id="L107">                view.add(element, CAPABILITY, binding.guid(), binding.reference());</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">            } else if (isService(element)) {</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">                if (!SERVICE.equals(element.getExtensions().get(TYPE))) {</span>
+<span class="fc" id="L110">                    view.issue(&quot;SERVICE_SPECIFICATION_REQUIRED&quot;, id, &quot;Review and declare the mapping to ServiceSpecification.&quot;);</span>
+                }
+<span class="fc" id="L112">                view.add(element, SERVICE, null, null);</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">            } else if (SERVICE.equals(element.getExtensions().get(TYPE))) {</span>
+<span class="fc" id="L114">                view.issue(&quot;UNSUPPORTED_SERVICE_MAPPING&quot;, ref(id), &quot;C1-S1 supports ServiceSpecification assignments on Core and COI Services.&quot;);</span>
+            }
+<span class="fc" id="L116">        }</span>
+
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        for (ArchitectureRelation relation : model.getRelations()) {</span>
+<span class="fc" id="L119">            String source = relation.getSourceId();</span>
+<span class="fc" id="L120">            String target = relation.getTargetId();</span>
+<span class="pc bpc" id="L121" title="2 of 6 branches missed.">            if (source == null || target == null || !&quot;accepted&quot;.equals(relation.getStatus())</span>
+<span class="pc bpc" id="L122" title="1 of 2 branches missed.">                    || !view.elements.containsKey(ref(source))</span>
+<span class="pc bpc" id="L123" title="1 of 4 branches missed.">                    || !view.elements.containsKey(ref(target))</span>
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">                    || recordedRelations != null &amp;&amp; !allowedRelations.contains(relationId(relation))) {</span>
+<span class="fc" id="L125">                continue;</span>
+            }
+<span class="pc bpc" id="L127" title="2 of 4 branches missed.">            if (&quot;REALIZES&quot;.equals(relation.getRelationType()) &amp;&amp; CAPABILITY.equals(elements.get(source).getType())</span>
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">                    &amp;&amp; &quot;CoreService&quot;.equals(elements.get(target).getType())) {</span>
+<span class="fc" id="L129">                view.connect(&quot;Exhibits&quot;, ref(target), ref(source));</span>
+<span class="nc bnc" id="L130" title="All 4 branches missed.">            } else if (&quot;FULFILLS&quot;.equals(relation.getRelationType()) &amp;&amp; isService(elements.get(source))</span>
+<span class="nc bnc" id="L131" title="All 2 branches missed.">                    &amp;&amp; CAPABILITY.equals(elements.get(target).getType())) {</span>
+<span class="nc" id="L132">                view.connect(&quot;Exhibits&quot;, ref(source), ref(target));</span>
+            }
+<span class="fc" id="L134">        }</span>
+
+<span class="fc" id="L136">        Set&lt;String&gt; linked = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L137">        view.connectors.forEach(connector -&gt; { linked.add(connector.client()); linked.add(connector.supplier()); });</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        for (Element element : view.elements.values()) {</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">            if (linked.contains(element.ref())) continue;</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">            if (CAPABILITY.equals(element.stereotype())) {</span>
+<span class="fc" id="L141">                view.issue(&quot;CAPABILITY_EXHIBITS_REQUIRED&quot;, element.ref(), &quot;Add an accepted mapping from a service to this capability.&quot;);</span>
+            } else {
+<span class="fc" id="L143">                view.issue(&quot;SERVICE_EXHIBITS_REQUIRED&quot;, element.ref(), &quot;Add an accepted mapping to an official capability.&quot;);</span>
+            }
+<span class="fc" id="L145">        }</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">        if (view.elements.isEmpty()) {</span>
+<span class="fc" id="L147">            view.issue(&quot;C1_S1_ELEMENTS_REQUIRED&quot;, &quot;C1-S1&quot;, &quot;Select a model containing the capabilities and services to be delivered.&quot;);</span>
+        }
+<span class="fc" id="L149">        return view.build(&quot;C1-S1&quot;, &quot;C1-S1 : &quot; + projectCode + &quot; : Capability to Service Mapping&quot;,</span>
+<span class="fc" id="L150">                List.of(&quot;Service Specifications&quot;, &quot;C1-S1&quot;, &quot;Einordnung Fähigkeitslage&quot;),</span>
+<span class="fc" id="L151">                List.of(&quot;Verify catalogue identities against the supplied catalogue. Record unresolved capabilities as Issues.&quot;,</span>
+                        &quot;Check whether an Environment and EnvironmentalCondition are needed.&quot;,
+                        &quot;Check the actual ADMBw diagram subtype, diagram notes and native delivery in Enterprise Architect.&quot;));
+    }
+
+    private View requirementDerivation(CanonicalArchitectureModel model, Map&lt;String, ArchitectureElement&gt; elements,
+                                       String projectCode, Map&lt;String, String&gt; catalogueIdentities) {
+<span class="fc" id="L158">        var view = new ViewBuilder();</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">        if (model.getRequirements().isEmpty()) {</span>
+<span class="fc" id="L160">            view.issue(&quot;R7_REQUIREMENTS_REQUIRED&quot;, &quot;R7&quot;, &quot;Add the versioned requirements to the architecture checkpoint.&quot;);</span>
+        }
+<span class="fc" id="L162">        Set&lt;String&gt; identities = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">        for (ArchitectureRequirement requirement : model.getRequirements()) {</span>
+<span class="pc bpc" id="L164" title="2 of 4 branches missed.">            if (missing(requirement.getId()) || !identities.add(requirement.getId())) {</span>
+<span class="nc" id="L165">                throw new IllegalArgumentException(&quot;Each architecture requirement must have a unique identity&quot;);</span>
+            }
+<span class="fc" id="L167">            String id = &quot;requirement:&quot; + requirement.getId();</span>
+<span class="fc" id="L168">            var metadata = requirement.getExtensions();</span>
+<span class="fc" id="L169">            String hash = metadata.get(&quot;x-content-hash&quot;);</span>
+<span class="fc" id="L170">            String recordedVersion = metadata.get(&quot;x-version&quot;);</span>
+<span class="fc" id="L171">            Integer version = version(recordedVersion);</span>
+<span class="pc bpc" id="L172" title="2 of 4 branches missed.">            if (version == null || missing(requirement.getText())</span>
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">                    || !RequirementRealization.textHash(requirement.getText()).equals(hash)) {</span>
+<span class="nc" id="L174">                view.issue(&quot;REQUIREMENT_VERSION_REQUIRED&quot;, id, &quot;Retain a positive requirement version and the SHA-256 of its exact text.&quot;);</span>
+<span class="nc" id="L175">                continue;</span>
+            }
+<span class="fc" id="L177">            Map&lt;String, String&gt; plan = r7Plan(view, id, metadata);</span>
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">            if (plan == null) continue;</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">            if (&quot;true&quot;.equals(plan.get(AdmbwRequirementProfile.IMPORTED))) {</span>
+<span class="fc" id="L180">                view.issue(&quot;R7_IMPORTED_REVIEW_REQUIRED&quot;, id, &quot;Verify the referenced elements and save the R7 assignment in this architecture.&quot;);</span>
+<span class="fc" id="L181">                continue;</span>
+            }
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">            if (!recordedVersion.equals(plan.get(AdmbwRequirementProfile.BOUND_VERSION))</span>
+<span class="fc bfc" id="L184" title="All 2 branches covered.">                    || !hash.equals(plan.get(AdmbwRequirementProfile.BOUND_HASH))) {</span>
+<span class="fc" id="L185">                view.issue(&quot;STALE_R7_PLANNING&quot;, id, &quot;Review and save the R7 assignment for the exact requirement revision.&quot;);</span>
+<span class="fc" id="L186">                continue;</span>
+            }
+<span class="fc" id="L188">            view.add(new Element(id, plan.get(AdmbwRequirementProfile.KIND), requirement.getTitle(),</span>
+<span class="fc" id="L189">                    requirement.getText(), null, null, version, hash));</span>
+<span class="fc" id="L190">            ArchitectureElement source = lookup(elements, plan.get(AdmbwRequirementProfile.DERIVED_FROM));</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">            if (!CONSTRAINT.equals(r7Role(source))) {</span>
+<span class="fc" id="L192">                view.issue(&quot;OPERATIONAL_CONSTRAINT_REQUIRED&quot;, id, &quot;Select exactly one modeled OperationalConstraint as the derivation source.&quot;);</span>
+            } else {
+<span class="fc" id="L194">                view.add(source, CONSTRAINT, null, null);</span>
+<span class="fc" id="L195">                view.connect(&quot;DerivedFrom&quot;, id, ref(source.getId()));</span>
+<span class="fc" id="L196">                ArchitectureElement subject = lookup(elements, plan.get(AdmbwRequirementProfile.SUBJECT));</span>
+<span class="fc" id="L197">                String subjectType = r7Role(subject);</span>
+<span class="pc bpc" id="L198" title="1 of 2 branches missed.">                if (!CONSTRAINT_SUBJECTS.contains(subjectType)) {</span>
+<span class="nc" id="L199">                    view.issue(&quot;R7_SUBJECT_REQUIRED&quot;, id, &quot;Select a catalogue OperationalArchitecture or OperationalRole for R7-MK08.&quot;);</span>
+                } else {
+<span class="fc" id="L201">                    CatalogueBinding binding = checkCatalogue(view, subject, catalogueIdentities, &quot;SUBJECT&quot;);</span>
+<span class="fc" id="L202">                    view.add(subject, subjectType, binding.guid(), binding.reference());</span>
+<span class="fc" id="L203">                    view.connect(&quot;Satisfy&quot;, ref(subject.getId()), ref(source.getId()));</span>
+                }
+            }
+<span class="fc" id="L206">            String realizerId = plan.get(AdmbwRequirementProfile.REALIZER);</span>
+<span class="fc bfc" id="L207" title="All 2 branches covered.">            if (realizerId != null) {</span>
+<span class="fc" id="L208">                ArchitectureElement realizer = lookup(elements, realizerId);</span>
+<span class="fc" id="L209">                String realizerType = r7Role(realizer);</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">                if (!REALIZERS.contains(realizerType)) {</span>
+<span class="fc" id="L211">                    view.issue(&quot;R7_REALIZER_TYPE&quot;, id, &quot;Use a declared CapabilityConfiguration or ResourceRole for the FFFmLV subject.&quot;);</span>
+                } else {
+<span class="fc" id="L213">                    var binding = new CatalogueBinding(null, null);</span>
+<span class="pc bpc" id="L214" title="1 of 4 branches missed.">                    if (&quot;ResourceRole&quot;.equals(realizerType) &amp;&amp; (realizer.getExtensions().containsKey(CATALOGUE_GUID)</span>
+<span class="pc bpc" id="L215" title="1 of 2 branches missed.">                            || realizer.getExtensions().containsKey(CATALOGUE_REFERENCE))) {</span>
+<span class="fc" id="L216">                        binding = checkCatalogue(view, realizer, catalogueIdentities, &quot;REALIZER&quot;);</span>
+                    }
+<span class="fc" id="L218">                    view.add(realizer, realizerType, binding.guid(), binding.reference());</span>
+<span class="fc" id="L219">                    view.connect(&quot;ToBeRealizedBy&quot;, id, ref(realizer.getId()));</span>
+                }
+            }
+<span class="fc" id="L222">        }</span>
+<span class="fc" id="L223">        return view.build(&quot;R7&quot;, &quot;R7 : &quot; + projectCode + &quot; : Requirements Derivation&quot;,</span>
+<span class="fc" id="L224">                List.of(&quot;Requirements&quot;, &quot;R7&quot;, &quot;Requirement Derivation&quot;),</span>
+<span class="fc" id="L225">                List.of(&quot;Check the SAMIT requirement sentence, Require.7 tagged fields and agreement of the Subjekt with the planned realizer.&quot;,</span>
+                        &quot;Verify the catalogue SubjectOfOperationalConstraint and the native Satisfy roles (R7-MK08).&quot;,
+                        &quot;Check additional allowed realizer types and view grouping against the applicable project guide.&quot;,
+                        &quot;Check the actual ADMBw diagram subtype, diagram notes and native delivery in Enterprise Architect.&quot;));
+    }
+
+    private static Map&lt;String, String&gt; r7Plan(ViewBuilder view, String id, Map&lt;String, String&gt; metadata) {
+        try {
+<span class="fc" id="L233">            List&lt;PlanningEntry&gt; entries = PlanningInformation.decode(metadata).stream()</span>
+<span class="fc" id="L234">                    .filter(entry -&gt; AdmbwRequirementProfile.ID.equals(entry.profile())).toList();</span>
+<span class="pc bpc" id="L235" title="2 of 4 branches missed.">            if (entries.size() != 1 || !AdmbwRequirementProfile.VERSION.equals(entries.getFirst().version())) {</span>
+<span class="nc" id="L236">                view.issue(&quot;R7_PLANNING_REQUIRED&quot;, id, &quot;Record one ADMBw R7 planning entry using profile version 1.&quot;);</span>
+<span class="nc" id="L237">                return null;</span>
+            }
+<span class="fc" id="L239">            Map&lt;String, String&gt; values = entries.getFirst().values();</span>
+<span class="fc" id="L240">            new AdmbwRequirementProfile().validate(values);</span>
+<span class="fc" id="L241">            return values;</span>
+<span class="nc" id="L242">        } catch (IllegalArgumentException invalid) {</span>
+<span class="nc" id="L243">            view.issue(&quot;INVALID_R7_PLANNING&quot;, id, &quot;Correct the R7 planning entry before delivery.&quot;);</span>
+<span class="nc" id="L244">            return null;</span>
+        }
+    }
+
+<span class="fc" id="L248">    private record CatalogueBinding(String guid, String reference) { }</span>
+
+    private static CatalogueBinding checkCatalogue(ViewBuilder view, ArchitectureElement element,
+                                                     Map&lt;String, String&gt; identities, String role) {
+<span class="fc" id="L252">        String id = ref(element.getId());</span>
+<span class="fc" id="L253">        String guid = element.getExtensions().get(CATALOGUE_GUID);</span>
+<span class="fc" id="L254">        String reference = element.getExtensions().get(CATALOGUE_REFERENCE);</span>
+<span class="pc bpc" id="L255" title="2 of 6 branches missed.">        if (guid == null || !EA_GUID.matcher(guid).matches() || ZERO_GUID.equals(guid)) {</span>
+<span class="fc" id="L256">            view.issue(role + &quot;_CATALOGUE_GUID_REQUIRED&quot;, id, &quot;Record the GUID of the existing catalogue element.&quot;);</span>
+<span class="fc" id="L257">            guid = null;</span>
+        } else {
+<span class="fc" id="L259">            guid = guid.toUpperCase(Locale.ROOT);</span>
+<span class="fc" id="L260">            String previous = identities.putIfAbsent(guid, id);</span>
+<span class="pc bpc" id="L261" title="3 of 4 branches missed.">            if (previous != null &amp;&amp; !previous.equals(id)) {</span>
+<span class="nc" id="L262">                view.issue(&quot;DUPLICATE_CATALOGUE_GUID&quot;, id, &quot;The same catalogue element is also bound to &quot; + previous + &quot;.&quot;);</span>
+            }
+        }
+<span class="pc bpc" id="L265" title="1 of 2 branches missed.">        if (missing(reference)) {</span>
+<span class="nc" id="L266">            view.issue(role + &quot;_CATALOGUE_REFERENCE_REQUIRED&quot;, id, &quot;Record the authoritative catalogue and its version.&quot;);</span>
+        }
+<span class="fc" id="L268">        return new CatalogueBinding(guid, reference);</span>
+    }
+
+    private static void validateDelimiters(String dsl) {
+<span class="fc" id="L272">        int depth = 0;</span>
+<span class="fc bfc" id="L273" title="All 2 branches covered.">        for (String line : dsl.lines().toList()) {</span>
+<span class="fc" id="L274">            depth += TaxDslParser.blockDelimiter(line);</span>
+<span class="pc bpc" id="L275" title="1 of 4 branches missed.">            if (depth &lt; 0 || depth &gt; 1) {</span>
+<span class="fc" id="L276">                throw new IllegalArgumentException(&quot;Invalid architecture DSL block delimiters&quot;);</span>
+            }
+<span class="fc" id="L278">        }</span>
+<span class="fc bfc" id="L279" title="All 2 branches covered.">        if (depth != 0) throw new IllegalArgumentException(&quot;Unbalanced architecture DSL block delimiters&quot;);</span>
+<span class="fc" id="L280">    }</span>
+
+    private static void validateSourceBlock(BlockAst block, Set&lt;String&gt; identities) {
+<span class="pc bpc" id="L283" title="1 of 3 branches missed.">        int headerLength = switch (block.getKind()) {</span>
+<span class="fc" id="L284">            case &quot;element&quot;, &quot;relation&quot; -&gt; 3;</span>
+<span class="fc" id="L285">            case &quot;requirement&quot;, &quot;view&quot; -&gt; 1;</span>
+<span class="nc" id="L286">            default -&gt; 0;</span>
+        };
+<span class="pc bpc" id="L288" title="1 of 2 branches missed.">        if (headerLength == 0) return;</span>
+<span class="fc" id="L289">        String id = ArchitectureSemanticPatch.key(block);</span>
+<span class="fc bfc" id="L290" title="All 2 branches covered.">        if (!identities.add(id)) {</span>
+<span class="fc" id="L291">            throw new CommandProblem(&quot;INVALID_ADMBW_SOURCE&quot;, id, &quot;Ambiguous duplicate block identity&quot;, List.of(id));</span>
+        }
+<span class="pc bpc" id="L293" title="1 of 2 branches missed.">        if (block.getHeaderTokens().size() != headerLength</span>
+<span class="pc bpc" id="L294" title="1 of 4 branches missed.">                || &quot;element&quot;.equals(block.getKind()) &amp;&amp; !&quot;type&quot;.equals(block.getHeaderTokens().get(1))) {</span>
+<span class="nc" id="L295">            throw new CommandProblem(&quot;INVALID_ADMBW_SOURCE&quot;, id, &quot;Invalid block header for ADMBw assessment&quot;, List.of(id));</span>
+        }
+<span class="fc" id="L297">        Set&lt;String&gt; names = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L298" title="All 2 branches covered.">        for (var property : block.getProperties()) {</span>
+<span class="fc" id="L299">            String name = property.key();</span>
+<span class="fc bfc" id="L300" title="All 6 branches covered.">            if (!(&quot;view&quot;.equals(block.getKind()) &amp;&amp; &quot;include&quot;.equals(name)) &amp;&amp; !names.add(name)) {</span>
+<span class="fc" id="L301">                throw new CommandProblem(&quot;INVALID_ADMBW_SOURCE&quot;, id, &quot;Ambiguous property: &quot; + name, List.of(id));</span>
+            }
+<span class="fc" id="L303">        }</span>
+<span class="fc" id="L304">    }</span>
+
+    private static String r7Role(ArchitectureElement element) {
+<span class="pc bpc" id="L307" title="1 of 6 branches missed.">        if (element == null || CAPABILITY.equals(element.getType()) || isService(element)</span>
+<span class="pc bpc" id="L308" title="1 of 2 branches missed.">                || &quot;CommunicationsService&quot;.equals(element.getType())) return &quot;&quot;;</span>
+<span class="fc" id="L309">        return Objects.toString(element.getExtensions().get(TYPE), &quot;&quot;);</span>
+    }
+
+    private static ArchitectureView selectedView(CanonicalArchitectureModel model, String viewId) {
+<span class="fc bfc" id="L313" title="All 2 branches covered.">        if (viewId == null) return null;</span>
+<span class="fc" id="L314">        List&lt;ArchitectureView&gt; views = model.getViews().stream().filter(view -&gt; viewId.equals(view.getId())).toList();</span>
+<span class="pc bpc" id="L315" title="1 of 2 branches missed.">        if (views.size() != 1) throw new IllegalArgumentException(&quot;Select one existing canonical view for C1-S1&quot;);</span>
+<span class="fc" id="L316">        return views.getFirst();</span>
+    }
+
+    private static ArchitectureElement lookup(Map&lt;String, ArchitectureElement&gt; elements, String id) {
+<span class="pc bpc" id="L320" title="1 of 2 branches missed.">        return id == null ? null : elements.get(id);</span>
+    }
+
+    private static boolean isService(ArchitectureElement element) {
+<span class="pc bpc" id="L324" title="2 of 6 branches missed.">        return element != null &amp;&amp; element.getType() != null &amp;&amp; SERVICE_TYPES.contains(element.getType());</span>
+    }
+
+<span class="fc" id="L327">    private static String ref(String id) { return &quot;element:&quot; + id; }</span>
+
+    private static String relationId(ArchitectureRelation relation) {
+<span class="fc" id="L330">        return relation.getSourceId() + &quot; &quot; + relation.getRelationType() + &quot; &quot; + relation.getTargetId();</span>
+    }
+
+<span class="pc bpc" id="L333" title="1 of 4 branches missed.">    private static boolean missing(String value) { return value == null || value.isBlank(); }</span>
+
+    static Integer version(String value) {
+        try {
+<span class="fc" id="L337">            int parsed = Integer.parseInt(value);</span>
+<span class="pc bpc" id="L338" title="1 of 2 branches missed.">            return parsed &gt; 0 ? parsed : null;</span>
+<span class="nc" id="L339">        } catch (NumberFormatException invalid) {</span>
+<span class="nc" id="L340">            return null;</span>
+        }
+    }
+
+<span class="fc" id="L344">    private static final class ViewBuilder {</span>
+<span class="fc" id="L345">        private final Map&lt;String, Element&gt; elements = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L346">        private final List&lt;Connector&gt; connectors = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L347">        private final List&lt;Issue&gt; issues = new ArrayList&lt;&gt;();</span>
+
+        void add(ArchitectureElement element, String kind, String guid, String reference) {
+<span class="fc" id="L350">            add(new Element(ref(element.getId()), kind, element.getTitle(), element.getDescription(), guid, reference, null, null));</span>
+<span class="fc" id="L351">        }</span>
+
+        void add(Element element) {
+<span class="pc bpc" id="L354" title="1 of 2 branches missed.">            if (elements.putIfAbsent(element.ref(), element) != null) return;</span>
+<span class="pc bpc" id="L355" title="1 of 4 branches missed.">            if (missing(element.name()) || missing(element.notes())) {</span>
+<span class="fc" id="L356">                issue(&quot;NAME_AND_NOTES_REQUIRED&quot;, element.ref(), &quot;Record the model element name and Notes.&quot;);</span>
+            }
+<span class="fc" id="L358">        }</span>
+
+        void connect(String stereotype, String client, String supplier) {
+<span class="fc" id="L361">            var rule = SOURCE_PROFILE.connectorRules().get(stereotype);</span>
+<span class="pc bpc" id="L362" title="2 of 4 branches missed.">            if (rule == null || !rule.accepts(elements.get(client).stereotype(), elements.get(supplier).stereotype()))</span>
+<span class="nc" id="L363">                throw new IllegalArgumentException(&quot;Connector is outside the declared ADMBw supported subset&quot;);</span>
+<span class="fc" id="L364">            connectors.add(new Connector(stereotype, client, supplier));</span>
+<span class="fc" id="L365">        }</span>
+
+        void issue(String code, String object, String detail) {
+<span class="fc" id="L368">            issues.add(new Issue(code, object, detail));</span>
+<span class="fc" id="L369">        }</span>
+
+        View build(String viewpoint, String name, List&lt;String&gt; path, List&lt;String&gt; requiredReviews) {
+<span class="fc bfc" id="L372" title="All 2 branches covered.">            return new View(viewpoint, name, path, issues.isEmpty() ? &quot;REVIEW_REQUIRED&quot; : &quot;CHANGES_REQUIRED&quot;,</span>
+<span class="fc" id="L373">                    List.copyOf(elements.values()),</span>
+<span class="fc" id="L374">                    connectors.stream().distinct().sorted(Comparator.comparing(Connector::client)</span>
+<span class="fc" id="L375">                            .thenComparing(Connector::stereotype).thenComparing(Connector::supplier)).toList(),</span>
+<span class="fc" id="L376">                    issues.stream().distinct().sorted(Comparator.comparing(Issue::object).thenComparing(Issue::code)).toList(),</span>
+                    requiredReviews);
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

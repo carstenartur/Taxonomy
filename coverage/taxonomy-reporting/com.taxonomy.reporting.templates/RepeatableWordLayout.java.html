@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RepeatableWordLayout.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-reporting</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.reporting.templates</a> &gt; <span class="el_source">RepeatableWordLayout.java</span></div><h1>RepeatableWordLayout.java</h1><pre class="source lang-java linenums">package com.taxonomy.reporting.templates;
+
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+
+import javax.xml.XMLConstants;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
+import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
+
+/** Version-one author-owned paragraph/table exemplars in the main Word story. */
+<span class="fc" id="L21">public final class RepeatableWordLayout {</span>
+    private static final String WORD = &quot;http://schemas.openxmlformats.org/wordprocessingml/2006/main&quot;;
+    private static final String CHAPTERS = &quot;taxonomy.repeat.chapters.v1&quot;;
+    private static final String APPENDIX = &quot;taxonomy.repeat.appendix.v1&quot;;
+    private static final long MAX_CLONED_ELEMENTS = 120_000;
+    private static final long MAX_CLONED_TEXT = 8_000_000;
+    private static final String FIELD = &quot;taxonomy.field.&quot;;
+<span class="fc" id="L28">    private static final Set&lt;String&gt; CHAPTER_FIELDS = Set.of(&quot;number&quot;, &quot;code&quot;, &quot;title&quot;, &quot;score&quot;, &quot;summary&quot;, &quot;comparison&quot;);</span>
+<span class="fc" id="L29">    private static final Set&lt;String&gt; APPENDIX_FIELDS = Set.of(&quot;code&quot;, &quot;title&quot;, &quot;score&quot;, &quot;path&quot;, &quot;reason&quot;);</span>
+<span class="fc" id="L30">    private static final Set&lt;String&gt; UNREPEATABLE = Set.of(&quot;dataBinding&quot;, &quot;drawing&quot;, &quot;pict&quot;, &quot;object&quot;, &quot;altChunk&quot;,</span>
+            &quot;txbxContent&quot;, &quot;customXml&quot;, &quot;fldSimple&quot;, &quot;instrText&quot;, &quot;bookmarkStart&quot;, &quot;bookmarkEnd&quot;, &quot;sectPr&quot;,
+            &quot;hyperlink&quot;, &quot;commentRangeStart&quot;, &quot;commentRangeEnd&quot;, &quot;footnoteReference&quot;, &quot;endnoteReference&quot;, &quot;ins&quot;, &quot;del&quot;);
+<span class="fc" id="L33">    private static final Pattern TOKEN = Pattern.compile(&quot;\\{\\{taxonomy\\.[A-Za-z0-9.]+}}&quot;);</span>
+<span class="fc" id="L34">    private final Map&lt;String, Element&gt; exemplars = new LinkedHashMap&lt;&gt;();</span>
+
+    static void validate(Document document, String path) {
+<span class="fc" id="L37">        discover(document, path);</span>
+<span class="fc" id="L38">    }</span>
+
+    public byte[] extract(byte[] xml) {
+<span class="fc" id="L41">        var doc = DecisionRationaleTemplateContract.parse(&quot;word/document.xml&quot;, xml);</span>
+<span class="fc" id="L42">        var controls = discover(doc, &quot;word/document.xml&quot;);</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        if (controls.isEmpty()) return xml;</span>
+<span class="fc" id="L44">        controls.forEach((name, control) -&gt; {</span>
+<span class="fc" id="L45">            exemplars.put(name, direct(control, &quot;sdtContent&quot;));</span>
+<span class="fc" id="L46">            control.getParentNode().removeChild(control);</span>
+<span class="fc" id="L47">        });</span>
+<span class="fc" id="L48">        return serialize(doc);</span>
+    }
+
+<span class="fc" id="L51">    public boolean isEmpty() { return exemplars.isEmpty(); }</span>
+
+    private static Map&lt;String, Element&gt; discover(Document doc, String path) {
+<span class="fc" id="L54">        var layouts = new LinkedHashMap&lt;String, Element&gt;();</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        if (!descendants(doc.getDocumentElement(), &quot;dataBinding&quot;).isEmpty()) throw invalid();</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        for (var control : descendants(doc.getDocumentElement(), &quot;sdt&quot;)) {</span>
+<span class="fc" id="L57">            String tag = tag(control);</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">            if (!tag.startsWith(&quot;taxonomy.&quot;)) continue;</span>
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">            if (!&quot;word/document.xml&quot;.equals(path)) throw invalid();</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">            if (tag.startsWith(FIELD)) {</span>
+<span class="fc" id="L61">                Element owner = ancestorControl(control);</span>
+<span class="pc bpc" id="L62" title="2 of 4 branches missed.">                if (owner == null || !Set.of(CHAPTERS, APPENDIX).contains(tag(owner))) throw invalid();</span>
+                continue;
+            }
+<span class="pc bpc" id="L65" title="1 of 4 branches missed.">            if (!Set.of(CHAPTERS, APPENDIX).contains(tag) || !(control.getParentNode() instanceof Element parent)</span>
+<span class="pc bpc" id="L66" title="2 of 4 branches missed.">                    || !word(parent, &quot;body&quot;) || layouts.putIfAbsent(tag, control) != null) throw invalid();</span>
+<span class="fc" id="L67">            Element content = direct(control, &quot;sdtContent&quot;);</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">            if (content == null) throw invalid();</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">            for (Node child = content.getFirstChild(); child != null; child = child.getNextSibling()) {</span>
+<span class="pc bpc" id="L70" title="4 of 6 branches missed.">                if (child instanceof Element block &amp;&amp; !word(block, &quot;p&quot;) &amp;&amp; !word(block, &quot;tbl&quot;)) throw invalid();</span>
+            }
+<span class="fc bfc" id="L72" title="All 4 branches covered.">            for (String forbidden : UNREPEATABLE) if (!descendants(control, forbidden).isEmpty()) throw invalid();</span>
+<span class="fc" id="L73">            var fields = descendants(content, &quot;sdt&quot;);</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">            if (fields.isEmpty()) throw invalid();</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">            Set&lt;String&gt; names = CHAPTERS.equals(tag) ? CHAPTER_FIELDS : APPENDIX_FIELDS;</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">            for (var field : fields) {</span>
+<span class="fc" id="L77">                String name = tag(field);</span>
+<span class="fc" id="L78">                var value = direct(field, &quot;sdtContent&quot;);</span>
+<span class="pc bpc" id="L79" title="1 of 4 branches missed.">                if (!name.startsWith(FIELD) || !names.contains(name.substring(FIELD.length()))</span>
+<span class="pc bpc" id="L80" title="2 of 4 branches missed.">                        || ancestorControl(field) != control || !(field.getParentNode() instanceof Element p)</span>
+<span class="pc bpc" id="L81" title="3 of 6 branches missed.">                        || !word(p, &quot;p&quot;) || value == null || descendants(value, &quot;t&quot;).isEmpty()) throw invalid();</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">                for (Node child = value.getFirstChild(); child != null; child = child.getNextSibling())</span>
+<span class="pc bpc" id="L83" title="2 of 4 branches missed.">                    if (child instanceof Element run &amp;&amp; !word(run, &quot;r&quot;)) throw invalid();</span>
+<span class="fc" id="L84">            }</span>
+<span class="fc" id="L85">        }</span>
+<span class="fc" id="L86">        return layouts;</span>
+    }
+
+    public byte[] materialize(byte[] xml, DecisionRationaleReport report) {
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">        if (isEmpty()) return xml;</span>
+<span class="fc" id="L91">        var doc = DecisionRationaleTemplateContract.parse(&quot;word/document.xml&quot;, xml);</span>
+        // A section absent from the frozen format options has no generated bookmark.
+<span class="fc" id="L93">        long clonedElements = 0;</span>
+<span class="fc" id="L94">        long clonedText = 0;</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        for (var bookmark : descendants(doc.getDocumentElement(), &quot;bookmarkStart&quot;)) {</span>
+<span class="fc" id="L96">            String name = bookmark.getAttributeNS(WORD, &quot;name&quot;);</span>
+<span class="fc" id="L97">            boolean chapters = name.equals(&quot;decision_chapters&quot;);</span>
+<span class="fc bfc" id="L98" title="All 4 branches covered.">            if (!chapters &amp;&amp; !name.equals(&quot;decision_evidence&quot;)) continue;</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">            var exemplar = exemplars.get(chapters ? CHAPTERS : APPENDIX);</span>
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">            if (exemplar == null) continue;</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">            int copies = chapters ? report.chapters().size() : report.leadingLeaves().size();</span>
+<span class="fc" id="L102">            clonedElements += (long) copies * exemplar.getElementsByTagName(&quot;*&quot;).getLength();</span>
+<span class="fc" id="L103">            clonedText += (long) copies * exemplar.getTextContent().length();</span>
+<span class="pc bpc" id="L104" title="2 of 4 branches missed.">            if (clonedElements &gt; MAX_CLONED_ELEMENTS || clonedText &gt; MAX_CLONED_TEXT)</span>
+<span class="nc" id="L105">                throw new IllegalArgumentException(&quot;The repeated Word layout exceeds its materialization budget&quot;);</span>
+<span class="fc" id="L106">            Node heading = bookmark.getParentNode();</span>
+<span class="pc bpc" id="L107" title="2 of 4 branches missed.">            while (heading instanceof Element e &amp;&amp; !word(e, &quot;p&quot;)) heading = heading.getParentNode();</span>
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">            if (heading == null) throw invalid();</span>
+<span class="fc" id="L109">            Node before = heading.getNextSibling();</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">            if (chapters) {</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">                for (var row : report.chapters()) clonedText = insert(exemplar, heading.getParentNode(), before, clonedText,</span>
+<span class="fc" id="L112">                        Map.of(&quot;number&quot;, String.valueOf(row.number()), &quot;code&quot;, value(row.parentCode()),</span>
+<span class="fc" id="L113">                                &quot;title&quot;, value(row.parentTitle()), &quot;score&quot;, value(row.parentScore()),</span>
+<span class="fc" id="L114">                                &quot;summary&quot;, value(row.decisionSummary()), &quot;comparison&quot;, value(row.comparativeRationale())));</span>
+            } else {
+<span class="fc bfc" id="L116" title="All 2 branches covered.">                for (var row : report.leadingLeaves()) clonedText = insert(exemplar, heading.getParentNode(), before, clonedText,</span>
+<span class="fc" id="L117">                        Map.of(&quot;code&quot;, value(row.code()), &quot;title&quot;, value(row.title()), &quot;score&quot;, value(row.score()),</span>
+<span class="fc" id="L118">                                &quot;path&quot;, value(row.hierarchyPath()), &quot;reason&quot;, value(row.reason())));</span>
+            }
+<span class="fc" id="L120">        }</span>
+<span class="fc" id="L121">        return serialize(doc);</span>
+    }
+
+    private static long insert(Element exemplar, Node body, Node before, long clonedText, Map&lt;String, String&gt; values) {
+<span class="fc" id="L125">        var clone = (Element) body.getOwnerDocument().importNode(exemplar, true);</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        for (var field : descendants(clone, &quot;sdt&quot;)) {</span>
+<span class="fc" id="L127">            var content = direct(field, &quot;sdtContent&quot;);</span>
+<span class="fc" id="L128">            var texts = descendants(content, &quot;t&quot;);</span>
+<span class="fc" id="L129">            texts.forEach(text -&gt; text.setTextContent(&quot;&quot;));</span>
+<span class="fc" id="L130">            String replacement = values.get(tag(field).substring(FIELD.length()));</span>
+<span class="fc" id="L131">            clonedText += replacement.length();</span>
+<span class="pc bpc" id="L132" title="1 of 2 branches missed.">            if (clonedText &gt; MAX_CLONED_TEXT) throw new IllegalArgumentException(&quot;Repeated Word text exceeds its materialization budget&quot;);</span>
+<span class="fc" id="L133">            texts.getFirst().setTextContent(replacement);</span>
+<span class="fc" id="L134">            texts.getFirst().setAttributeNS(XMLConstants.XML_NS_URI, &quot;xml:space&quot;, &quot;preserve&quot;);</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">            while (content.hasChildNodes()) field.getParentNode().insertBefore(content.getFirstChild(), field);</span>
+<span class="fc" id="L136">            field.getParentNode().removeChild(field);</span>
+<span class="fc" id="L137">        }</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        while (clone.hasChildNodes()) body.insertBefore(clone.getFirstChild(), before);</span>
+<span class="fc" id="L139">        return clonedText;</span>
+    }
+
+    /** Replace only token characters. Each replacement inherits the first matching text run. */
+    public static List&lt;String&gt; replaceRuns(List&lt;String&gt; pieces, Map&lt;String, String&gt; values) {
+<span class="fc" id="L144">        String joined = String.join(&quot;&quot;, pieces);</span>
+<span class="fc" id="L145">        var matches = TOKEN.matcher(joined).results().filter(m -&gt; values.containsKey(m.group())).toList();</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">        if (matches.isEmpty()) return pieces;</span>
+<span class="fc" id="L147">        var result = new ArrayList&lt;&gt;(pieces);</span>
+<span class="fc" id="L148">        int[] starts = new int[pieces.size() + 1];</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        for (int i = 0; i &lt; pieces.size(); i++) starts[i + 1] = starts[i] + pieces.get(i).length();</span>
+<span class="fc bfc" id="L150" title="All 2 branches covered.">        for (var match : matches.reversed()) {</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">            for (int i = 0; i &lt; pieces.size(); i++) {</span>
+<span class="fc" id="L152">                int from = Math.max(match.start(), starts[i]), to = Math.min(match.end(), starts[i + 1]);</span>
+<span class="fc bfc" id="L153" title="All 2 branches covered.">                if (from &gt;= to) continue;</span>
+<span class="fc" id="L154">                String text = result.get(i);</span>
+<span class="fc" id="L155">                result.set(i, text.substring(0, from - starts[i])</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">                        + (from == match.start() ? values.get(match.group()) : &quot;&quot;) + text.substring(to - starts[i]));</span>
+            }
+<span class="fc" id="L158">        }</span>
+<span class="fc" id="L159">        return result;</span>
+    }
+
+<span class="pc bpc" id="L162" title="1 of 2 branches missed.">    private static String value(Object value) { return value == null ? &quot;&quot; : value.toString(); }</span>
+
+    private static Element ancestorControl(Element control) {
+<span class="pc bpc" id="L165" title="1 of 4 branches missed.">        for (Node p = control.getParentNode(); p instanceof Element e; p = p.getParentNode()) if (word(e, &quot;sdt&quot;)) return e;</span>
+<span class="nc" id="L166">        return null;</span>
+    }
+
+    private static String tag(Element control) {
+<span class="fc" id="L170">        var properties = direct(control, &quot;sdtPr&quot;);</span>
+<span class="fc bfc" id="L171" title="All 2 branches covered.">        var tag = properties == null ? null : direct(properties, &quot;tag&quot;);</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">        return tag == null ? &quot;&quot; : tag.getAttributeNS(WORD, &quot;val&quot;);</span>
+    }
+
+    private static Element direct(Element parent, String local) {
+<span class="fc bfc" id="L176" title="All 2 branches covered.">        for (Node child = parent.getFirstChild(); child != null; child = child.getNextSibling())</span>
+<span class="pc bpc" id="L177" title="1 of 4 branches missed.">            if (child instanceof Element element &amp;&amp; word(element, local)) return element;</span>
+<span class="fc" id="L178">        return null;</span>
+    }
+
+    private static boolean word(Element element, String name) {
+<span class="pc bpc" id="L182" title="1 of 4 branches missed.">        return WORD.equals(element.getNamespaceURI()) &amp;&amp; name.equals(element.getLocalName());</span>
+    }
+
+    private static List&lt;Element&gt; descendants(Element root, String name) {
+<span class="fc" id="L186">        var nodes = root.getElementsByTagNameNS(WORD, name);</span>
+<span class="fc" id="L187">        var elements = new ArrayList&lt;Element&gt;(nodes.getLength());</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">        for (int i = 0; i &lt; nodes.getLength(); i++) elements.add((Element) nodes.item(i));</span>
+<span class="fc" id="L189">        return elements;</span>
+    }
+
+    private static byte[] serialize(Document doc) {
+        try {
+<span class="fc" id="L194">            var factory = TransformerFactory.newInstance();</span>
+<span class="fc" id="L195">            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, &quot;&quot;);</span>
+<span class="fc" id="L196">            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_STYLESHEET, &quot;&quot;);</span>
+<span class="fc" id="L197">            var output = new ByteArrayOutputStream();</span>
+<span class="fc" id="L198">            factory.newTransformer().transform(new DOMSource(doc), new StreamResult(output));</span>
+<span class="fc" id="L199">            return output.toByteArray();</span>
+<span class="nc" id="L200">        } catch (javax.xml.transform.TransformerException failed) {</span>
+<span class="nc" id="L201">            throw new IllegalStateException(&quot;Could not materialize the Word layout&quot;, failed);</span>
+        }
+    }
+
+    private static IllegalArgumentException invalid() {
+<span class="fc" id="L206">        return new IllegalArgumentException(&quot;Use an unbound version-one chapter or appendix control in the main Word body with supported inline fields&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

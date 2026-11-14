@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SecurityAuditListener.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.config</a> &gt; <span class="el_source">SecurityAuditListener.java</span></div><h1>SecurityAuditListener.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.config;
+
+import com.taxonomy.security.model.StablePrincipal;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.event.EventListener;
+import org.springframework.security.authentication.event.AuthenticationFailureBadCredentialsEvent;
+import org.springframework.security.authentication.event.AuthenticationSuccessEvent;
+import org.springframework.security.oauth2.server.resource.authentication.BearerTokenAuthenticationToken;
+import org.springframework.security.web.authentication.WebAuthenticationDetails;
+import org.springframework.stereotype.Component;
+
+/**
+ * Listens to Spring Security authentication events and logs them for audit purposes.
+ * &lt;p&gt;
+ * Enabled with {@code TAXONOMY_AUDIT_LOGGING=true}. Disabled by default to avoid log noise.
+ */
+@Component
+@ConditionalOnProperty(name = &quot;taxonomy.security.audit-logging&quot;, havingValue = &quot;true&quot;)
+<span class="fc" id="L21">public class SecurityAuditListener {</span>
+
+<span class="fc" id="L23">    private static final Logger log = LoggerFactory.getLogger(SecurityAuditListener.class);</span>
+
+    @EventListener
+    public void onSuccess(AuthenticationSuccessEvent event) {
+<span class="fc" id="L27">        var authentication = event.getAuthentication();</span>
+<span class="fc" id="L28">        String username = authentication.getName();</span>
+<span class="fc" id="L29">        String ip = extractIp(authentication.getDetails());</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">        Object actor = authentication instanceof StablePrincipal ? authentication : authentication.getPrincipal();</span>
+<span class="fc bfc" id="L31" title="All 4 branches covered.">        if (authentication.isAuthenticated() &amp;&amp; actor instanceof StablePrincipal stable) {</span>
+<span class="fc" id="L32">            log.info(&quot;LOGIN_SUCCESS user={} ip={} principalId={}&quot;, username, ip, stable.principalId().value());</span>
+        } else {
+<span class="fc" id="L34">            log.info(&quot;LOGIN_SUCCESS user={} ip={}&quot;, username, ip);</span>
+        }
+<span class="fc" id="L36">    }</span>
+
+    @EventListener
+    public void onFailure(AuthenticationFailureBadCredentialsEvent event) {
+        // Before JWT verification this token's principal/name is the raw credential.
+<span class="fc bfc" id="L41" title="All 2 branches covered.">        String username = event.getAuthentication() instanceof BearerTokenAuthenticationToken</span>
+<span class="fc" id="L42">                ? &quot;[unverified-bearer]&quot; : event.getAuthentication().getName();</span>
+<span class="fc" id="L43">        String ip = extractIp(event.getAuthentication().getDetails());</span>
+<span class="fc" id="L44">        log.warn(&quot;LOGIN_FAILED user={} ip={}&quot;, username, ip);</span>
+<span class="fc" id="L45">    }</span>
+
+    private String extractIp(Object details) {
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        if (details instanceof WebAuthenticationDetails webDetails) {</span>
+<span class="fc" id="L49">            return webDetails.getRemoteAddress();</span>
+        }
+<span class="fc" id="L51">        return &quot;unknown&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

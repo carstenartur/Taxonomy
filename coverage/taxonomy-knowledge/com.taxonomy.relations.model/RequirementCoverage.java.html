@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RequirementCoverage.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.model</a> &gt; <span class="el_source">RequirementCoverage.java</span></div><h1>RequirementCoverage.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.model;
+
+import jakarta.persistence.*;
+import java.time.Instant;
+
+/**
+ * Persists the mapping between a requirement identifier and a taxonomy node that
+ * the requirement covers (score ≥ configured threshold).
+ */
+@Entity
+@Table(name = &quot;scoped_requirement_coverage&quot;, uniqueConstraints = @UniqueConstraint(name = &quot;uq_scoped_requirement_coverage&quot;,
+        columnNames = {&quot;repository_id&quot;, &quot;workspace_scope&quot;, &quot;branch_name&quot;, &quot;source_commit&quot;, &quot;requirement_id&quot;, &quot;node_code&quot;}))
+public class RequirementCoverage {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = &quot;repository_id&quot;, nullable = false) private String repositoryId;
+    @Column(name = &quot;workspace_id&quot;) private String workspaceId;
+    @Column(name = &quot;workspace_scope&quot;, length = 257, nullable = false) private String workspaceScope;
+    @Column(name = &quot;branch_name&quot;, nullable = false) private String branch;
+    @Column(name = &quot;source_commit&quot;, nullable = false, length = 40) private String sourceCommit;
+    @Column(name = &quot;recorded_by&quot;, nullable = false) private String recordedBy;
+
+    @Column(name = &quot;requirement_id&quot;, nullable = false)
+    private String requirementId;
+
+    @Column(name = &quot;requirement_text&quot;, length = 2000)
+    private String requirementText;
+
+    @Column(name = &quot;node_code&quot;, nullable = false)
+    private String nodeCode;
+
+    @Column(name = &quot;score&quot;)
+    private double score;
+
+    @Column(name = &quot;analyzed_at&quot;)
+    private Instant analyzedAt;
+
+<span class="fc" id="L41">    protected RequirementCoverage() {</span>
+<span class="fc" id="L42">    }</span>
+
+    /** Source and actor of one admitted coverage recording, shared by all its node rows. */
+<span class="fc" id="L45">    public record Source(String repositoryId, String workspaceId, String branch, String commit, String actor) {}</span>
+
+    public RequirementCoverage(Source source, String requirementId, String requirementText,
+<span class="fc" id="L48">                               String nodeCode, double score, Instant analyzedAt) {</span>
+<span class="fc" id="L49">        this.repositoryId = source.repositoryId();</span>
+<span class="fc" id="L50">        this.workspaceId = source.workspaceId();</span>
+<span class="fc" id="L51">        this.workspaceScope = scope(source.workspaceId());</span>
+<span class="fc" id="L52">        this.branch = source.branch();</span>
+<span class="fc" id="L53">        this.sourceCommit = source.commit();</span>
+<span class="fc" id="L54">        this.recordedBy = source.actor();</span>
+<span class="fc" id="L55">        this.requirementId = requirementId;</span>
+<span class="fc" id="L56">        this.requirementText = requirementText;</span>
+<span class="fc" id="L57">        this.nodeCode = nodeCode;</span>
+<span class="fc" id="L58">        this.score = score;</span>
+<span class="fc" id="L59">        this.analyzedAt = analyzedAt;</span>
+<span class="fc" id="L60">    }</span>
+
+    /** Used together with repository, branch and commit; central and named workspaces occupy disjoint keys. */
+    public static String scope(String workspaceId) {
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        return workspaceId == null ? &quot;C&quot; : &quot;W:&quot; + workspaceId;</span>
+    }
+
+<span class="fc" id="L67">    public String getRepositoryId() { return repositoryId; }</span>
+<span class="fc" id="L68">    public String getWorkspaceId() { return workspaceId; }</span>
+<span class="fc" id="L69">    public String getBranch() { return branch; }</span>
+<span class="fc" id="L70">    public String getSourceCommit() { return sourceCommit; }</span>
+<span class="fc" id="L71">    public String getRecordedBy() { return recordedBy; }</span>
+
+<span class="fc" id="L73">    public Long getId() { return id; }</span>
+
+<span class="fc" id="L75">    public String getRequirementId() { return requirementId; }</span>
+
+<span class="fc" id="L77">    public String getRequirementText() { return requirementText; }</span>
+
+<span class="fc" id="L79">    public String getNodeCode() { return nodeCode; }</span>
+
+<span class="fc" id="L81">    public double getScore() { return score; }</span>
+
+<span class="fc" id="L83">    public Instant getAnalyzedAt() { return analyzedAt; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

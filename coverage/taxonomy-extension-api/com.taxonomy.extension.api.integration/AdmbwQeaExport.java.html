@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AdmbwQeaExport.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-extension-api</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.extension.api.integration</a> &gt; <span class="el_source">AdmbwQeaExport.java</span></div><h1>AdmbwQeaExport.java</h1><pre class="source lang-java linenums">package com.taxonomy.extension.api.integration;
+
+import com.taxonomy.extension.api.integration.IntegrationContracts.ExchangeFile;
+import com.taxonomy.extension.api.plugin.ExtensionKey;
+import com.taxonomy.shared.extension.ExtensionKind;
+
+import java.util.List;
+
+/** Optional native delivery from the host's checked FFFmLV checkpoint, using a supplied QEA copy basis. */
+public interface AdmbwQeaExport extends IntegrationConnectorExtension {
+<span class="fc" id="L11">    ExtensionKey KEY = new ExtensionKey(ExtensionKind.INTEGRATION_CONNECTOR, &quot;sparx-qea@2&quot;);</span>
+    String MEDIA_TYPE = &quot;application/vnd.sparx.qea&quot;;
+    int MAX_BASIS_BYTES = 32 * 1024 * 1024;
+
+    ExchangeFile exportAdmbw(Delivery delivery, String rootPackageGuid, byte[] basis);
+
+    record Delivery(String projectCode, String commit, List&lt;View&gt; views) {
+<span class="fc" id="L18">        public Delivery { views = List.copyOf(views); }</span>
+    }
+
+    record View(String viewpoint, String name, List&lt;String&gt; packagePath, List&lt;Element&gt; elements, List&lt;Connector&gt; connectors) {
+<span class="fc" id="L22">        public View {</span>
+<span class="fc" id="L23">            packagePath = List.copyOf(packagePath);</span>
+<span class="fc" id="L24">            elements = List.copyOf(elements);</span>
+<span class="fc" id="L25">            connectors = List.copyOf(connectors);</span>
+<span class="fc" id="L26">        }</span>
+    }
+
+<span class="fc" id="L29">    record Element(String ref, String stereotype, String name, String notes, String catalogueGuid,</span>
+                   Integer requirementVersion, String requirementContentHash) { }
+
+<span class="fc" id="L32">    record Connector(String stereotype, String client, String supplier) { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisAdapterObservationController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.analysis</a> &gt; <span class="el_source">AnalysisAdapterObservationController.java</span></div><h1>AnalysisAdapterObservationController.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.analysis;
+
+import com.taxonomy.shared.features.ConditionalOnFeature;
+import io.swagger.v3.oas.annotations.Operation;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@ConditionalOnFeature({&quot;analysis&quot;})
+@RequestMapping(&quot;/api/analysis-adapters&quot;)
+public class AnalysisAdapterObservationController {
+    private final ScopedAnalysisAdapterExecution operations;
+<span class="fc" id="L13">    public AnalysisAdapterObservationController(ScopedAnalysisAdapterExecution operations) { this.operations = operations; }</span>
+
+    @Operation(summary = &quot;Read the original scoped analysis result&quot;,
+            description = &quot;Returns the native result for the initiating account and repository source. A running receipt returns 202 with its sequence, and an expired receipt returns 410.&quot;)
+    @GetMapping(&quot;/{id}&quot;)
+<span class="fc" id="L18">    public ResponseEntity&lt;?&gt; status(@PathVariable(&quot;id&quot;) String id) { return operations.status(id, false); }</span>
+
+    @Operation(summary = &quot;Find an admitted native analysis while its original request is running&quot;,
+            description = &quot;Resolves the initiating browser's scoped observation to the original operation and source without submitting work. An unknown observation or another account's observation returns 404.&quot;)
+    @GetMapping(&quot;/observations/{token}&quot;)
+<span class="fc" id="L23">    public ResponseEntity&lt;?&gt; observe(@PathVariable(&quot;token&quot;) String token) { return operations.observe(token); }</span>
+
+    @Operation(summary = &quot;Cancel a scoped native analysis&quot;,
+            description = &quot;Closes a running receipt for its initiating account and repository. The operation retains its original identifier and prevents a late provider result from replacing its terminal state.&quot;)
+    @PostMapping(&quot;/{id}/cancel&quot;)
+<span class="fc" id="L28">    public ResponseEntity&lt;?&gt; cancel(@PathVariable(&quot;id&quot;) String id) { return operations.status(id, true); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

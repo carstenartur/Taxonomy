@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ApqcHierarchyService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-architecture</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.service</a> &gt; <span class="el_source">ApqcHierarchyService.java</span></div><h1>ApqcHierarchyService.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.service;
+
+import com.taxonomy.dto.ApqcHierarchyNode;
+import com.taxonomy.dto.ApqcHierarchyView;
+import com.taxonomy.workspace.service.RepositoryContext;
+import org.springframework.stereotype.Service;
+
+import java.util.*;
+
+/**
+ * Service that extracts the APQC process hierarchy from one selected canonical commit.
+ *
+ * &lt;p&gt;Reads the frozen DSL snapshot for elements with the
+ * {@code x-source-framework: &quot;apqc&quot;} extension and reconstructs the
+ * parent–child hierarchy using {@code x-apqc-parent} chains.
+ */
+@Service
+public class ApqcHierarchyService {
+
+    private final GraphSnapshotReadService snapshots;
+
+<span class="fc" id="L22">    public ApqcHierarchyService(GraphSnapshotReadService snapshots) {</span>
+<span class="fc" id="L23">        this.snapshots = snapshots;</span>
+<span class="fc" id="L24">    }</span>
+
+    public ApqcHierarchyView buildHierarchy(RepositoryContext context, String commitId) {
+<span class="fc" id="L27">        var selected = snapshots.read(context, commitId);</span>
+<span class="fc" id="L28">        var snapshot = selected.proof();</span>
+<span class="fc" id="L29">        var apqcElements = selected.nodes().values().stream()</span>
+<span class="fc" id="L30">                .filter(node -&gt; &quot;apqc&quot;.equals(node.extensions().get(&quot;x-source-framework&quot;))).toList();</span>
+
+        // Build lookup map and tree
+<span class="fc" id="L33">        Map&lt;String, ApqcHierarchyNode&gt; nodeMap = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        for (var el : apqcElements) {</span>
+<span class="fc" id="L35">            Map&lt;String, String&gt; ext = el.extensions();</span>
+<span class="fc" id="L36">            String level = ext.getOrDefault(&quot;x-apqc-level&quot;, &quot;Unknown&quot;);</span>
+<span class="fc" id="L37">            String pcfId = ext.getOrDefault(&quot;x-apqc-pcf-id&quot;, &quot;&quot;);</span>
+<span class="fc" id="L38">            String parentId = ext.get(&quot;x-apqc-parent&quot;);</span>
+<span class="fc" id="L39">            String taxonomyRoot = el.taxonomyRoot();</span>
+<span class="fc" id="L40">            nodeMap.put(el.id(), new ApqcHierarchyNode(</span>
+<span class="fc" id="L41">                    el.id(), el.title(), level, pcfId, parentId,</span>
+<span class="pc bpc" id="L42" title="1 of 2 branches missed.">                    taxonomyRoot != null ? taxonomyRoot : &quot;&quot;,</span>
+                    new ArrayList&lt;&gt;()));
+<span class="fc" id="L44">        }</span>
+
+        // A cycle must not silently disappear as an empty hierarchy.
+<span class="fc bfc" id="L47" title="All 2 branches covered.">        for (ApqcHierarchyNode node : nodeMap.values()) {</span>
+<span class="fc" id="L48">            Set&lt;String&gt; ancestors = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L49">            ApqcHierarchyNode current = node;</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">            while (current != null) {</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">                if (!ancestors.add(current.id())) throw new IllegalStateException(&quot;APQC parent cycle in selected commit&quot;);</span>
+<span class="fc" id="L52">                current = nodeMap.get(current.parentId());</span>
+            }
+<span class="fc" id="L54">        }</span>
+        // Link children to parents
+<span class="fc" id="L56">        List&lt;ApqcHierarchyNode&gt; roots = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        for (ApqcHierarchyNode node : nodeMap.values()) {</span>
+<span class="pc bpc" id="L58" title="3 of 4 branches missed.">            if (node.parentId() != null &amp;&amp; nodeMap.containsKey(node.parentId())) {</span>
+<span class="nc" id="L59">                nodeMap.get(node.parentId()).children().add(node);</span>
+            } else {
+<span class="fc" id="L61">                roots.add(node);</span>
+            }
+<span class="fc" id="L63">        }</span>
+
+<span class="fc" id="L65">        snapshots.verifyHead(selected);</span>
+<span class="fc" id="L66">        return new ApqcHierarchyView(roots, ArchitectureGraphQueryServiceImpl.evidence(snapshot, 0, 0, &quot;apqc-parent-hierarchy-v1&quot;));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

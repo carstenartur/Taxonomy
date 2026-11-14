@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>HypothesisApiController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.controller</a> &gt; <span class="el_source">HypothesisApiController.java</span></div><h1>HypothesisApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.controller;
+
+import com.taxonomy.model.HypothesisStatus;
+import com.taxonomy.relations.model.RelationHypothesis;
+import com.taxonomy.relations.service.HypothesisService;
+import com.taxonomy.relations.service.HypothesisSourceReadService;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+/** Relation-owned HTTP operations retaining the established hypothesis URLs. */
+@RestController
+@RequestMapping(&quot;/api/dsl/hypotheses&quot;)
+@Tag(name = &quot;Architecture DSL&quot;)
+public class HypothesisApiController {
+
+    private final HypothesisService hypothesisService;
+    private final WorkspaceResolver workspaceResolver;
+    private final HypothesisSourceReadService sourceReads;
+
+    public HypothesisApiController(HypothesisService hypothesisService, WorkspaceResolver workspaceResolver,
+<span class="fc" id="L46">                                   HypothesisSourceReadService sourceReads) {</span>
+<span class="fc" id="L47">        this.sourceReads = sourceReads;</span>
+<span class="fc" id="L48">        this.hypothesisService = hypothesisService;</span>
+<span class="fc" id="L49">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L50">    }</span>
+
+    @GetMapping
+    @Operation(summary = &quot;List hypotheses at the selected Git revision, optionally filtered by status&quot;,
+            description = &quot;The default view reads one selected branch head. An optional full commitId must match it. &quot;
+                    + &quot;X-Taxonomy-Commit identifies the source and ETag identifies the filtered representation. &quot;
+                    + &quot;Use view=working for retained analysis and materialization metadata without a Git precondition. &quot;
+                    + &quot;When central repositories overlap, select a repositoryId and branch with an empty workspace pin.&quot;,
+            parameters = {
+                    @Parameter(name = &quot;repositoryId&quot;, in = ParameterIn.QUERY, description = &quot;Selected repository&quot;),
+                    @Parameter(name = &quot;branch&quot;, in = ParameterIn.QUERY, description = &quot;Selected branch&quot;),
+                    @Parameter(name = &quot;workspaceId&quot;, in = ParameterIn.QUERY, description = &quot;Workspace pin; empty selects central&quot;)
+            },
+            responses = {
+                    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Committed hypothesis facts or explicit working rows&quot;,
+                            content = @Content(array = @ArraySchema(schema = @Schema(oneOf = {
+                                    HypothesisSourceReadService.Item.class, RelationHypothesis.class})))),
+                    @ApiResponse(responseCode = &quot;304&quot;, description = &quot;The selected representation matches If-None-Match&quot;),
+                    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid view or commit precondition&quot;),
+                    @ApiResponse(responseCode = &quot;404&quot;, description = &quot;Selected branch or repository is unavailable&quot;),
+                    @ApiResponse(responseCode = &quot;409&quot;, description = &quot;Selection, commit or retained binding needs reconciliation&quot;),
+                    @ApiResponse(responseCode = &quot;503&quot;, description = &quot;The selected source could not be verified&quot;)
+            })
+    public ResponseEntity&lt;List&lt;?&gt;&gt; listHypotheses(
+            @RequestParam(required = false) HypothesisStatus status,
+            @RequestParam(required = false) String commitId,
+            @RequestParam(defaultValue = &quot;current&quot;) String view) {
+<span class="fc" id="L77">        RepositoryContext context = readRepositoryContext();</span>
+<span class="fc bfc" id="L78" title="All 4 branches covered.">        if (&quot;working&quot;.equals(view) &amp;&amp; commitId == null) {</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">            var rows = status == null ? hypothesisService.findAll(context) : hypothesisService.findByStatus(status, context);</span>
+<span class="fc" id="L80">            return ResponseEntity.ok().header(RelationApiController.READ_MODEL_HEADER, &quot;WORKING&quot;)</span>
+<span class="fc" id="L81">                    .header(HttpHeaders.CACHE_CONTROL, &quot;no-store&quot;).body(rows);</span>
+        }
+<span class="fc bfc" id="L83" title="All 2 branches covered.">        if (!&quot;current&quot;.equals(view)) return ResponseEntity.badRequest().build();</span>
+        String expected;
+        try {
+<span class="fc bfc" id="L86" title="All 2 branches covered.">            expected = commitId == null ? null : WorkspaceDslReadPort.normalizeCommitId(commitId);</span>
+<span class="fc" id="L87">        } catch (IllegalArgumentException invalid) {</span>
+<span class="fc" id="L88">            return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L89">        }</span>
+<span class="fc" id="L90">        var result = sourceReads.read(context, expected, status);</span>
+<span class="pc bpc" id="L91" title="1 of 4 branches missed.">        var response = ResponseEntity.status(switch (result.state()) {</span>
+<span class="fc" id="L92">            case READY -&gt; HttpStatus.OK;</span>
+<span class="fc" id="L93">            case STALE -&gt; HttpStatus.CONFLICT;</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">            case MISSING -&gt; result.commit() == null ? HttpStatus.NOT_FOUND : HttpStatus.CONFLICT;</span>
+<span class="nc" id="L95">            case FAILED -&gt; HttpStatus.SERVICE_UNAVAILABLE;</span>
+<span class="fc" id="L96">        }).header(RelationApiController.PROJECTION_STATE_HEADER, result.state().name())</span>
+<span class="fc" id="L97">                .header(RelationApiController.READ_MODEL_HEADER, &quot;GIT&quot;)</span>
+<span class="fc" id="L98">                .header(HttpHeaders.CACHE_CONTROL, &quot;no-store&quot;);</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">        if (result.commit() != null) {</span>
+<span class="fc" id="L100">            String location = &quot;?repositoryId=&quot; + encoded(context.repositoryId())</span>
+<span class="fc" id="L101">                    + &quot;&amp;workspaceId=&quot; + encoded(Objects.toString(context.workspaceId(), &quot;&quot;))</span>
+<span class="fc" id="L102">                    + &quot;&amp;branch=&quot; + encoded(context.branch()) + &quot;&amp;commitId=&quot; + result.commit()</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">                    + (status == null ? &quot;&quot; : &quot;&amp;status=&quot; + status.name());</span>
+<span class="fc" id="L104">            response.header(&quot;X-Taxonomy-Commit&quot;, result.commit());</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">            if (result.problem() == null) response.header(HttpHeaders.CONTENT_LOCATION, location);</span>
+<span class="fc" id="L106">            else response.header(HttpHeaders.LINK, &quot;&lt;&quot; + location + &quot;&gt;; rel=\&quot;latest-version\&quot;&quot;);</span>
+        }
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        if (result.problem() != null) {</span>
+<span class="fc" id="L109">            return response.header(&quot;X-Taxonomy-Read-Problem&quot;, result.problem().name()).build();</span>
+        }
+<span class="fc" id="L111">        return response.eTag(result.entityTag()).body(result.rows());</span>
+    }
+
+    @PostMapping(&quot;/{id}/accept&quot;)
+    @Operation(summary = &quot;Accept a relation hypothesis&quot;,
+            description = &quot;Promotes the hypothesis to an accepted TaxonomyRelation in the knowledge graph.&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; acceptHypothesis(@PathVariable Long id) {
+<span class="fc" id="L118">        RepositoryContext context = currentRepositoryContext();</span>
+        try {
+<span class="fc" id="L120">            RelationHypothesis accepted = hypothesisService.accept(id, context);</span>
+<span class="fc" id="L121">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L122">            result.put(&quot;id&quot;, accepted.getId());</span>
+<span class="fc" id="L123">            result.put(&quot;status&quot;, accepted.getStatus().name());</span>
+<span class="fc" id="L124">            result.put(&quot;sourceNodeId&quot;, accepted.getSourceNodeId());</span>
+<span class="fc" id="L125">            result.put(&quot;targetNodeId&quot;, accepted.getTargetNodeId());</span>
+<span class="fc" id="L126">            result.put(&quot;relationType&quot;, accepted.getRelationType().name());</span>
+<span class="fc" id="L127">            return ResponseEntity.ok(result);</span>
+<span class="fc" id="L128">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L129">            return ResponseEntity.notFound().build();</span>
+<span class="fc" id="L130">        } catch (IllegalStateException e) {</span>
+<span class="fc" id="L131">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L132">            error.put(&quot;error&quot;, e.getMessage());</span>
+<span class="fc" id="L133">            return ResponseEntity.badRequest().body(error);</span>
+        }
+    }
+
+    @PostMapping(&quot;/{id}/reject&quot;)
+    @Operation(summary = &quot;Reject a relation hypothesis&quot;,
+            description = &quot;Marks one relation hypothesis rejected in the authenticated repository context. Missing hypotheses return 404 and invalid state transitions return 400; this does not promote a relation.&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; rejectHypothesis(@PathVariable Long id) {
+<span class="fc" id="L141">        RepositoryContext context = currentRepositoryContext();</span>
+        try {
+<span class="fc" id="L143">            RelationHypothesis rejected = hypothesisService.reject(id, context);</span>
+<span class="fc" id="L144">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L145">            result.put(&quot;id&quot;, rejected.getId());</span>
+<span class="fc" id="L146">            result.put(&quot;status&quot;, rejected.getStatus().name());</span>
+<span class="fc" id="L147">            return ResponseEntity.ok(result);</span>
+<span class="fc" id="L148">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L149">            return ResponseEntity.notFound().build();</span>
+<span class="fc" id="L150">        } catch (IllegalStateException e) {</span>
+<span class="fc" id="L151">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L152">            error.put(&quot;error&quot;, e.getMessage());</span>
+<span class="fc" id="L153">            return ResponseEntity.badRequest().body(error);</span>
+        }
+    }
+
+    @PostMapping(&quot;/{id}/apply-session&quot;)
+    @Operation(summary = &quot;Mark hypothesis as applied for current analysis session only&quot;,
+            description = &quot;The relationship is used in the current Architecture View and exports &quot; +
+                    &quot;but is not permanently persisted as a TaxonomyRelation.&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; applyHypothesisForSession(@PathVariable Long id) {
+<span class="fc" id="L162">        RepositoryContext context = currentRepositoryContext();</span>
+        try {
+<span class="fc" id="L164">            RelationHypothesis hypothesis = hypothesisService.applyForSession(id, context);</span>
+<span class="fc" id="L165">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L166">            result.put(&quot;id&quot;, hypothesis.getId());</span>
+<span class="fc" id="L167">            result.put(&quot;appliedInCurrentAnalysis&quot;, hypothesis.isAppliedInCurrentAnalysis());</span>
+<span class="fc" id="L168">            result.put(&quot;status&quot;, hypothesis.getStatus().name());</span>
+<span class="fc" id="L169">            return ResponseEntity.ok(result);</span>
+<span class="fc" id="L170">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L171">            return ResponseEntity.notFound().build();</span>
+        }
+    }
+
+    @GetMapping(&quot;/{id}/evidence&quot;)
+    @Operation(summary = &quot;Get evidence records for a hypothesis&quot;,
+            description = &quot;Reads retained evidence for one hypothesis in the authenticated repository context. Returns 404 when the hypothesis is unavailable in that context; no model call is made.&quot;)
+    public ResponseEntity&lt;?&gt; getHypothesisEvidence(@PathVariable Long id,
+            @RequestParam(required = false) String commitId) {
+<span class="fc" id="L180">        RepositoryContext context = readRepositoryContext();</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">        if (commitId != null) return ResponseEntity.badRequest().build();</span>
+        try {
+<span class="fc" id="L183">            return ResponseEntity.ok().header(RelationApiController.READ_MODEL_HEADER, &quot;WORKING&quot;)</span>
+<span class="fc" id="L184">                    .header(HttpHeaders.CACHE_CONTROL, &quot;no-store&quot;).body(hypothesisService.findEvidence(id, context));</span>
+<span class="fc" id="L185">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L186">            return ResponseEntity.notFound().build();</span>
+        }
+    }
+
+    private static String encoded(String component) {
+<span class="fc" id="L191">        return URLEncoder.encode(component, StandardCharsets.UTF_8);</span>
+    }
+
+    private RepositoryContext readRepositoryContext() {
+<span class="fc" id="L195">        return Objects.requireNonNull(workspaceResolver.resolveUnambiguousRepositoryForRead(),</span>
+                &quot;Repository context resolver returned null for a hypothesis operation&quot;);
+    }
+
+    private RepositoryContext currentRepositoryContext() {
+        // The existing workspace interceptor provisions and pins this context
+        // before MVC dispatch. Resolution failures must never select shared data.
+<span class="fc" id="L202">        return Objects.requireNonNull(workspaceResolver.resolveCurrentRepositoryContext(),</span>
+                &quot;Repository context resolver returned null for a hypothesis operation&quot;);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

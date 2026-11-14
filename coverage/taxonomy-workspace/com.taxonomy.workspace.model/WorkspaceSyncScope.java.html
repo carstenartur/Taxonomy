@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkspaceSyncScope.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.model</a> &gt; <span class="el_source">WorkspaceSyncScope.java</span></div><h1>WorkspaceSyncScope.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.model;
+
+import com.taxonomy.identity.StableIdentityHash;
+
+import org.eclipse.jgit.lib.Repository;
+
+/** Actor and exact Git scope of an observed synchronization. */
+public record WorkspaceSyncScope(String username, String repositoryId, String workspaceId, String branch) {
+<span class="fc" id="L9">    public WorkspaceSyncScope {</span>
+<span class="fc" id="L10">        exactText(username);</span>
+<span class="fc" id="L11">        exactText(repositoryId);</span>
+<span class="fc bfc" id="L12" title="All 2 branches covered.">        if (workspaceId != null) exactText(workspaceId);</span>
+<span class="fc" id="L13">        exactText(branch);</span>
+<span class="pc bpc" id="L14" title="1 of 2 branches missed.">        if (!Repository.isValidRefName(&quot;refs/heads/&quot; + branch)) throw new IllegalArgumentException(&quot;Invalid synchronization branch&quot;);</span>
+<span class="fc" id="L15">    }</span>
+
+    private static void exactText(String value) {
+<span class="pc bpc" id="L18" title="4 of 8 branches missed.">        if (value == null || value.isBlank() || !value.equals(value.strip()) || value.length() &gt; 255) {</span>
+<span class="nc" id="L19">            throw new IllegalArgumentException(&quot;Invalid synchronization scope&quot;);</span>
+        }
+<span class="fc" id="L21">    }</span>
+
+    public String key() {
+<span class="fc bfc" id="L24" title="All 2 branches covered.">        var workspace = workspaceId == null ? RepositoryTenantIdentity.CENTRAL_SCOPE</span>
+<span class="fc" id="L25">                : RepositoryTenantIdentity.WORKSPACE_SCOPE_PREFIX + workspaceId;</span>
+<span class="fc" id="L26">        var identity = new RepositoryTenantIdentity(repositoryId, workspace, branch);</span>
+<span class="fc" id="L27">        return StableIdentityHash.sha256(username.length() + &quot;:&quot; + username + identity.scopeKey());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>JdbcDocumentTemplateWebDavLockStore.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-templates</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.templates</a> &gt; <span class="el_source">JdbcDocumentTemplateWebDavLockStore.java</span></div><h1>JdbcDocumentTemplateWebDavLockStore.java</h1><pre class="source lang-java linenums">package com.taxonomy.templates;
+
+import com.taxonomy.templates.DocumentTemplateWebDavLockManager.LockStoreUnavailableException;
+import com.taxonomy.templates.DocumentTemplateWebDavLockManager.TemplateLock;
+import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.migration.BaseJavaMigration;
+import org.flywaydb.core.api.migration.Context;
+
+import javax.sql.DataSource;
+import java.io.IOException;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.Locale;
+import java.util.Objects;
+
+/**
+ * Transient WebDAV leases shared by the configured installation database.
+ * A short, installation-wide database fence also covers the existing bounded Git
+ * upload, so an expired lease cannot admit a second writer during that upload.
+ * Template content and its history remain exclusively in the existing Git owner.
+ */
+final class JdbcDocumentTemplateWebDavLockStore implements DocumentTemplateWebDavLockStore {
+    private static final int QUERY_TIMEOUT_SECONDS = 5;
+    private final DataSource database;
+    private final String clockSql;
+    private final boolean utcWithoutOffset;
+
+<span class="fc" id="L32">    JdbcDocumentTemplateWebDavLockStore(DataSource database) {</span>
+<span class="fc" id="L33">        this.database = Objects.requireNonNull(database, &quot;database&quot;);</span>
+<span class="fc" id="L34">        Flyway.configure().dataSource(database).table(&quot;webdav_lock_schema_history&quot;)</span>
+<span class="fc" id="L35">                .locations(&quot;classpath:db/webdav-lock-java-migrations&quot;)</span>
+<span class="fc" id="L36">                .baselineOnMigrate(true).baselineVersion(&quot;0&quot;)</span>
+<span class="fc" id="L37">                .javaMigrations(new V1__SharedWebDavLocks()).load().migrate();</span>
+<span class="fc" id="L38">        try (var connection = database.getConnection()) {</span>
+<span class="fc" id="L39">            String product = connection.getMetaData().getDatabaseProductName().toLowerCase(Locale.ROOT);</span>
+<span class="pc bpc" id="L40" title="2 of 4 branches missed.">            utcWithoutOffset = product.contains(&quot;mysql&quot;) || product.contains(&quot;mariadb&quot;);</span>
+            String clock;
+<span class="fc bfc" id="L42" title="All 2 branches covered.">            if (product.contains(&quot;postgresql&quot;)) clock = &quot;clock_timestamp()&quot;;</span>
+<span class="pc bpc" id="L43" title="1 of 2 branches missed.">            else if (product.contains(&quot;microsoft&quot;)) clock = &quot;sysdatetimeoffset()&quot;;</span>
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">            else if (product.contains(&quot;oracle&quot;)) clock = &quot;systimestamp&quot;;</span>
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">            else if (utcWithoutOffset) clock = &quot;utc_timestamp(3)&quot;;</span>
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">            else if (product.contains(&quot;hsql&quot;)) clock = &quot;current_timestamp&quot;;</span>
+<span class="nc" id="L47">            else throw new IllegalArgumentException(&quot;Unsupported WebDAV coordination database&quot;);</span>
+<span class="fc" id="L48">            clockSql = &quot;select &quot; + clock + &quot; from template_webdav_gate where gate_id=1&quot;;</span>
+<span class="nc" id="L49">        } catch (SQLException failure) {</span>
+<span class="nc" id="L50">            throw unavailable(failure);</span>
+<span class="fc" id="L51">        }</span>
+<span class="fc" id="L52">    }</span>
+
+    @Override
+    public &lt;T&gt; T locked(String resource, Operation&lt;T&gt; operation) throws IOException {
+<span class="fc" id="L56">        try (var connection = database.getConnection()) {</span>
+<span class="fc" id="L57">            connection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);</span>
+<span class="fc" id="L58">            connection.setAutoCommit(false);</span>
+            try {
+                // A write fence also serializes absent-row acquisition in HSQLDB MVCC.
+<span class="fc" id="L61">                try (var gate = connection.prepareStatement(</span>
+                        &quot;update template_webdav_gate set gate_id=gate_id where gate_id=1&quot;)) {
+<span class="fc" id="L63">                    gate.setQueryTimeout(QUERY_TIMEOUT_SECONDS);</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">                    if (gate.executeUpdate() != 1) throw new SQLException(&quot;Missing WebDAV coordination gate&quot;);</span>
+                }
+<span class="fc" id="L66">                Instant now = now(connection);</span>
+<span class="fc" id="L67">                try (var expired = connection.prepareStatement(</span>
+                        &quot;delete from template_webdav_lock where expires_at&lt;=?&quot;)) {
+<span class="fc" id="L69">                    expired.setQueryTimeout(QUERY_TIMEOUT_SECONDS);</span>
+<span class="fc" id="L70">                    expired.setLong(1, now.toEpochMilli());</span>
+<span class="fc" id="L71">                    expired.executeUpdate();</span>
+                }
+<span class="fc" id="L73">                var state = new State(connection, resource, read(connection, resource));</span>
+<span class="fc" id="L74">                T result = operation.execute(state);</span>
+<span class="fc" id="L75">                state.flush();</span>
+<span class="fc" id="L76">                connection.commit();</span>
+<span class="fc" id="L77">                return result;</span>
+<span class="fc" id="L78">            } catch (IOException | SQLException | RuntimeException failure) {</span>
+<span class="pc" id="L79">                try { connection.rollback(); } catch (SQLException cleanup) { failure.addSuppressed(cleanup); }</span>
+<span class="fc" id="L80">                throw failure;</span>
+            }
+<span class="fc" id="L82">        } catch (SQLException failure) {</span>
+<span class="fc" id="L83">            throw unavailable(failure);</span>
+        }
+    }
+
+    private TemplateLock read(Connection connection, String resource) throws SQLException {
+<span class="fc" id="L88">        try (var query = connection.prepareStatement(</span>
+                &quot;select lock_token, owner_id, base_commit, current_commit, expires_at &quot;
+                        + &quot;from template_webdav_lock where resource_id=?&quot;)) {
+<span class="fc" id="L91">            query.setQueryTimeout(QUERY_TIMEOUT_SECONDS);</span>
+<span class="fc" id="L92">            query.setString(1, resource);</span>
+<span class="fc" id="L93">            try (var row = query.executeQuery()) {</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">                return row.next() ? new TemplateLock(resource, row.getString(1), row.getString(2),</span>
+<span class="fc" id="L95">                        row.getString(3), row.getString(4), Instant.ofEpochMilli(row.getLong(5))) : null;</span>
+            }
+        }
+    }
+
+    private Instant now(Connection connection) {
+<span class="fc" id="L101">        try (var query = connection.prepareStatement(clockSql)) {</span>
+<span class="fc" id="L102">            query.setQueryTimeout(QUERY_TIMEOUT_SECONDS);</span>
+<span class="fc" id="L103">            try (var row = query.executeQuery()) {</span>
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">                if (!row.next()) throw new SQLException(&quot;Missing WebDAV coordination clock&quot;);</span>
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">                Instant timestamp = (utcWithoutOffset</span>
+<span class="nc" id="L106">                        ? row.getObject(1, LocalDateTime.class).toInstant(ZoneOffset.UTC)</span>
+<span class="fc" id="L107">                        : row.getObject(1, OffsetDateTime.class).toInstant());</span>
+<span class="fc" id="L108">                return Instant.ofEpochMilli(timestamp.toEpochMilli());</span>
+            }
+<span class="nc" id="L110">        } catch (SQLException failure) {</span>
+<span class="nc" id="L111">            throw unavailable(failure);</span>
+        }
+    }
+
+    private final class State implements Lease {
+        private final Connection connection;
+        private final String resource;
+        private TemplateLock current;
+        private boolean changed;
+
+<span class="fc" id="L121">        private State(Connection connection, String resource, TemplateLock current) {</span>
+<span class="fc" id="L122">            this.connection = connection;</span>
+<span class="fc" id="L123">            this.resource = resource;</span>
+<span class="fc" id="L124">            this.current = current;</span>
+<span class="fc" id="L125">        }</span>
+
+<span class="fc" id="L127">        @Override public TemplateLock current() { return current; }</span>
+<span class="fc" id="L128">        @Override public Instant now() { return JdbcDocumentTemplateWebDavLockStore.this.now(connection); }</span>
+        @Override public void save(TemplateLock lock) {
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">            if (!resource.equals(lock.resource())) throw new IllegalArgumentException(&quot;Foreign WebDAV lease resource&quot;);</span>
+<span class="fc" id="L131">            current = lock;</span>
+<span class="fc" id="L132">            changed = true;</span>
+<span class="fc" id="L133">        }</span>
+<span class="fc" id="L134">        @Override public void remove() { current = null; changed = true; }</span>
+
+        private void flush() throws SQLException {
+<span class="fc bfc" id="L137" title="All 2 branches covered.">            if (!changed) return;</span>
+<span class="fc" id="L138">            try (var delete = connection.prepareStatement(&quot;delete from template_webdav_lock where resource_id=?&quot;)) {</span>
+<span class="fc" id="L139">                delete.setQueryTimeout(QUERY_TIMEOUT_SECONDS);</span>
+<span class="fc" id="L140">                delete.setString(1, resource);</span>
+<span class="fc" id="L141">                delete.executeUpdate();</span>
+            }
+<span class="fc bfc" id="L143" title="All 2 branches covered.">            if (current == null) return;</span>
+<span class="fc" id="L144">            try (var insert = connection.prepareStatement(</span>
+                    &quot;insert into template_webdav_lock &quot;
+                            + &quot;(resource_id,lock_token,owner_id,base_commit,current_commit,expires_at) values (?,?,?,?,?,?)&quot;)) {
+<span class="fc" id="L147">                insert.setQueryTimeout(QUERY_TIMEOUT_SECONDS);</span>
+<span class="fc" id="L148">                insert.setString(1, resource);</span>
+<span class="fc" id="L149">                insert.setString(2, current.token());</span>
+<span class="fc" id="L150">                insert.setString(3, current.owner());</span>
+<span class="fc" id="L151">                insert.setString(4, current.baseCommit());</span>
+<span class="fc" id="L152">                insert.setString(5, current.currentCommit());</span>
+<span class="fc" id="L153">                insert.setLong(6, current.expiresAt().toEpochMilli());</span>
+<span class="fc" id="L154">                insert.executeUpdate();</span>
+            }
+<span class="fc" id="L156">        }</span>
+    }
+
+    private static LockStoreUnavailableException unavailable(SQLException failure) {
+<span class="fc" id="L160">        return new LockStoreUnavailableException(&quot;Shared WebDAV edit authority is unavailable&quot;, failure);</span>
+    }
+
+<span class="fc" id="L163">    public static final class V1__SharedWebDavLocks extends BaseJavaMigration {</span>
+        @Override public void migrate(Context context) throws SQLException {
+<span class="fc" id="L165">            try (var statement = context.getConnection().createStatement()) {</span>
+<span class="fc" id="L166">                statement.execute(&quot;create table template_webdav_gate (gate_id smallint primary key)&quot;);</span>
+<span class="fc" id="L167">                statement.execute(&quot;insert into template_webdav_gate values (1)&quot;);</span>
+<span class="fc" id="L168">                statement.execute(&quot;create table template_webdav_lock (resource_id varchar(128) primary key, &quot;</span>
+                        + &quot;lock_token varchar(64) not null, owner_id varchar(255) not null, &quot;
+                        + &quot;base_commit varchar(40), current_commit varchar(40), expires_at numeric(19,0) not null)&quot;);
+<span class="fc" id="L171">                statement.execute(&quot;create index idx_template_webdav_expiry on template_webdav_lock(expires_at)&quot;);</span>
+            }
+<span class="fc" id="L173">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

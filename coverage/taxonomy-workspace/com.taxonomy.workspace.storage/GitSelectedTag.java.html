@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GitSelectedTag.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.storage</a> &gt; <span class="el_source">GitSelectedTag.java</span></div><h1>GitSelectedTag.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.storage;
+
+import com.taxonomy.workspace.service.BranchHeadConflictException;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ObjectReader;
+import org.eclipse.jgit.lib.PersonIdent;
+import org.eclipse.jgit.lib.RefUpdate;
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.revwalk.RevTag;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+
+/** Bounded transfer of one explicitly named lightweight or annotated tag. */
+public final class GitSelectedTag {
+    private static final int MAX_ANNOTATIONS = 8;
+    private static final int MAX_ANNOTATION_BYTES = 256 * 1024;
+
+<span class="fc" id="L21">    private record Annotation(ObjectId id, byte[] bytes) {}</span>
+
+    private final String name;
+    private final String objectId;
+    private final String commit;
+    private final List&lt;Annotation&gt; annotations;
+
+<span class="fc" id="L28">    private GitSelectedTag(String name, String objectId, String commit, List&lt;Annotation&gt; annotations) {</span>
+<span class="fc" id="L29">        this.name = name;</span>
+<span class="fc" id="L30">        this.objectId = objectId;</span>
+<span class="fc" id="L31">        this.commit = commit;</span>
+<span class="fc" id="L32">        this.annotations = annotations;</span>
+<span class="fc" id="L33">    }</span>
+
+<span class="fc" id="L35">    public String objectId() { return objectId; }</span>
+<span class="fc" id="L36">    public String commit() { return commit; }</span>
+
+    public static String objectAt(DslGitRepository repository, String name) throws IOException {
+<span class="fc bfc" id="L39" title="All 4 branches covered.">        if (name == null || !Repository.isValidRefName(Constants.R_TAGS + name)) {</span>
+<span class="fc" id="L40">            throw new IllegalArgumentException(&quot;A valid Git tag name is required&quot;);</span>
+        }
+<span class="fc" id="L42">        var ref = repository.readFreshRef(Constants.R_TAGS + name);</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        if (ref == null) return null;</span>
+<span class="pc bpc" id="L44" title="2 of 4 branches missed.">        if (ref.isSymbolic() || ref.getObjectId() == null) throw new IOException(&quot;Invalid Git tag ref&quot;);</span>
+<span class="fc" id="L45">        return ref.getObjectId().name();</span>
+    }
+
+    public static GitSelectedTag read(DslGitRepository source, String name) throws IOException {
+<span class="fc" id="L49">        String tagId = objectAt(source, name);</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        if (tagId == null) return null;</span>
+<span class="fc" id="L51">        var annotations = new ArrayList&lt;Annotation&gt;();</span>
+<span class="fc" id="L52">        ObjectId id = ObjectId.fromString(tagId);</span>
+<span class="fc" id="L53">        try (var reader = source.getGitRepository().newObjectReader()) {</span>
+<span class="fc" id="L54">            int type = ObjectReader.OBJ_ANY;</span>
+            while (true) {
+<span class="fc" id="L56">                var object = reader.open(id, type);</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">                if (object.getType() == Constants.OBJ_COMMIT) {</span>
+<span class="fc" id="L58">                    return new GitSelectedTag(name, tagId, id.name(), annotations);</span>
+                }
+<span class="pc bpc" id="L60" title="1 of 4 branches missed.">                if (object.getType() != Constants.OBJ_TAG || annotations.size() == MAX_ANNOTATIONS</span>
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">                        || object.getSize() &gt; MAX_ANNOTATION_BYTES) {</span>
+<span class="fc" id="L62">                    throw new IllegalArgumentException(&quot;The selected tag is not a supported commit tag&quot;);</span>
+                }
+<span class="fc" id="L64">                byte[] bytes = object.getBytes(MAX_ANNOTATION_BYTES);</span>
+<span class="fc" id="L65">                annotations.add(new Annotation(id, bytes));</span>
+<span class="fc" id="L66">                var next = RevTag.parse(bytes).getObject();</span>
+<span class="fc" id="L67">                id = next.copy();</span>
+<span class="fc" id="L68">                type = next.getType();</span>
+<span class="fc" id="L69">            }</span>
+        }
+    }
+
+    /** Confirm this exact ref without recreating a missing tag or overwriting another writer. */
+    public void verifyRetained(DslGitRepository target) throws IOException {
+<span class="fc" id="L75">        var repository = target.getGitRepository();</span>
+<span class="fc" id="L76">        synchronized (repository) {</span>
+<span class="fc" id="L77">            String current = objectAt(target, name);</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">            if (objectId.equals(current)) {</span>
+<span class="fc" id="L79">                var update = repository.updateRef(Constants.R_TAGS + name, true);</span>
+<span class="fc" id="L80">                update.setExpectedOldObjectId(ObjectId.fromString(objectId));</span>
+<span class="fc" id="L81">                update.setNewObjectId(ObjectId.fromString(objectId));</span>
+<span class="fc" id="L82">                update.disableRefLog();</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">                if (update.update() == RefUpdate.Result.NO_CHANGE) return;</span>
+<span class="nc" id="L84">                current = objectAt(target, name);</span>
+            }
+<span class="fc" id="L86">            throw new BranchHeadConflictException(name, objectId, current, &quot;The retained destination tag changed&quot;);</span>
+        }
+    }
+
+    /** The caller has verified that the commit belongs to the target's tracked history. */
+    public void publish(DslGitRepository target, String actor) throws IOException {
+<span class="fc" id="L92">        publish(target, actor, () -&gt; { });</span>
+<span class="fc" id="L93">    }</span>
+
+    @FunctionalInterface
+    public interface PublicationCheck { void verify() throws IOException; }
+
+    public void publish(DslGitRepository target, String actor, PublicationCheck beforePublication) throws IOException {
+<span class="fc" id="L99">        var repository = target.getGitRepository();</span>
+<span class="fc" id="L100">        synchronized (repository) {</span>
+<span class="fc" id="L101">            String current = objectAt(target, name);</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">            if (objectId.equals(current)) {</span>
+<span class="fc" id="L103">                beforePublication.verify();</span>
+<span class="fc" id="L104">                verifyRetained(target);</span>
+<span class="fc" id="L105">                return;</span>
+            }
+<span class="fc bfc" id="L107" title="All 2 branches covered.">            if (current != null) {</span>
+<span class="fc" id="L108">                throw new BranchHeadConflictException(name, null, current, &quot;An independent destination tag already exists&quot;);</span>
+            }
+<span class="fc" id="L110">            try (var writer = repository.newObjectInserter()) {</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">                for (Annotation entry : annotations) {</span>
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">                    if (!writer.insert(Constants.OBJ_TAG, entry.bytes()).equals(entry.id())) {</span>
+<span class="nc" id="L113">                        throw new IOException(&quot;Transferred tag object identity mismatch&quot;);</span>
+                    }
+<span class="fc" id="L115">                }</span>
+<span class="fc" id="L116">                writer.flush();</span>
+            }
+<span class="fc" id="L118">            var update = repository.updateRef(Constants.R_TAGS + name, true);</span>
+<span class="fc" id="L119">            update.setExpectedOldObjectId(ObjectId.zeroId());</span>
+<span class="fc" id="L120">            update.setNewObjectId(ObjectId.fromString(objectId));</span>
+<span class="fc" id="L121">            update.setForceUpdate(false);</span>
+<span class="fc" id="L122">            update.setRefLogIdent(new PersonIdent(actor, &quot;taxonomy@localhost&quot;));</span>
+<span class="fc" id="L123">            update.setRefLogMessage(&quot;fetch: import selected upstream tag&quot;, true);</span>
+<span class="fc" id="L124">            beforePublication.verify();</span>
+<span class="fc" id="L125">            RefUpdate.Result result = update.update();</span>
+<span class="pc bpc" id="L126" title="3 of 4 branches missed.">            if (result == RefUpdate.Result.NEW || result == RefUpdate.Result.NO_CHANGE) return;</span>
+<span class="nc bnc" id="L127" title="All 4 branches missed.">            if (result == RefUpdate.Result.LOCK_FAILURE || result == RefUpdate.Result.REJECTED) {</span>
+<span class="nc" id="L128">                throw new BranchHeadConflictException(name, null, objectAt(target, name), &quot;Destination tag changed during transfer&quot;);</span>
+            }
+<span class="nc" id="L130">            throw new IOException(&quot;Could not publish the selected upstream tag&quot;);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

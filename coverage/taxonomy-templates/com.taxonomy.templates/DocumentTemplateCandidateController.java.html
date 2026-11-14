@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DocumentTemplateCandidateController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-templates</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.templates</a> &gt; <span class="el_source">DocumentTemplateCandidateController.java</span></div><h1>DocumentTemplateCandidateController.java</h1><pre class="source lang-java linenums">package com.taxonomy.templates;
+
+import com.taxonomy.templates.api.TemplateConflictException;
+import com.taxonomy.templates.api.TemplateNotFoundException;
+import io.swagger.v3.oas.annotations.Operation;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.security.Principal;
+import java.util.Map;
+
+@Controller
+@RequestMapping(&quot;/admin/document-templates/{templateId}/candidates&quot;)
+class DocumentTemplateCandidateController {
+    private static final String PAGE = &quot;document-template-candidate&quot;;
+    private final DocumentTemplateCandidateService candidates;
+    private final DocumentTemplateService templates;
+
+<span class="fc" id="L31">    DocumentTemplateCandidateController(DocumentTemplateCandidateService candidates, DocumentTemplateService templates) {</span>
+<span class="fc" id="L32">        this.candidates = candidates;</span>
+<span class="fc" id="L33">        this.templates = templates;</span>
+<span class="fc" id="L34">    }</span>
+
+    @GetMapping
+    String form(@PathVariable String templateId, Model model) throws IOException {
+<span class="fc" id="L38">        model.addAttribute(&quot;template&quot;, templates.describeCurrent(templateId));</span>
+<span class="fc" id="L39">        return PAGE;</span>
+    }
+
+    @PostMapping
+    String stage(@PathVariable String templateId, @RequestParam String displayName, @RequestParam String expectedHead,
+                 @RequestParam MultipartFile file, Principal actor, HttpServletResponse response, Model model) throws IOException {
+        try {
+<span class="pc bpc" id="L46" title="2 of 4 branches missed.">            if (file.isEmpty() || file.getSize() &gt; OoxmlTemplatePackageCodec.MAX_ARCHIVE_BYTES) {</span>
+<span class="nc" id="L47">                throw new IllegalArgumentException();</span>
+            }
+<span class="fc" id="L49">            var candidate = candidates.stage(templateId, displayName, expectedHead, file.getBytes(), actor.getName());</span>
+<span class="fc" id="L50">            return &quot;redirect:/admin/document-templates/&quot; + templateId + &quot;/candidates/&quot; + candidate.version();</span>
+<span class="nc" id="L51">        } catch (IllegalArgumentException | TemplateConflictException rejected) {</span>
+<span class="nc bnc" id="L52" title="All 2 branches missed.">            response.setStatus(rejected instanceof TemplateConflictException ? 412 : 400);</span>
+<span class="nc bnc" id="L53" title="All 2 branches missed.">            model.addAttribute(&quot;candidateError&quot;, rejected instanceof TemplateConflictException ? &quot;changed&quot; : &quot;invalid&quot;);</span>
+<span class="nc" id="L54">            return form(templateId, model);</span>
+        }
+    }
+
+    @GetMapping(&quot;/{version}&quot;)
+    String detail(@PathVariable String templateId, @PathVariable String version, Model model) throws IOException {
+<span class="fc" id="L60">        model.addAttribute(&quot;candidate&quot;, candidates.describe(templateId, version));</span>
+<span class="fc" id="L61">        return form(templateId, model);</span>
+    }
+
+    @PostMapping(&quot;/{version}/activate&quot;)
+    String activate(@PathVariable String templateId, @PathVariable String version, Principal actor,
+                    HttpServletResponse response, Model model) throws IOException {
+        try {
+<span class="fc" id="L68">            candidates.activate(templateId, version, actor.getName());</span>
+<span class="fc" id="L69">            return &quot;redirect:/admin/document-templates/&quot; + templateId;</span>
+<span class="nc" id="L70">        } catch (IllegalArgumentException | TemplateConflictException rejected) {</span>
+<span class="nc bnc" id="L71" title="All 2 branches missed.">            response.setStatus(rejected instanceof TemplateConflictException ? 412 : 400);</span>
+<span class="nc bnc" id="L72" title="All 2 branches missed.">            model.addAttribute(&quot;candidateError&quot;, rejected instanceof TemplateConflictException ? &quot;changed&quot; : &quot;sample&quot;);</span>
+<span class="nc" id="L73">            return detail(templateId, version, model);</span>
+        }
+    }
+
+    @Operation(summary = &quot;Download the candidate's sample document&quot;,
+            description = &quot;Administrator access. Returns the DOCX rendered from this exact staged template revision as a private attachment.&quot;)
+    @GetMapping(&quot;/{version}/sample.docx&quot;)
+    ResponseEntity&lt;byte[]&gt; sample(@PathVariable String templateId, @PathVariable String version) throws IOException {
+<span class="fc" id="L81">        return attachment(&quot;sample.docx&quot;, &quot;application/vnd.openxmlformats-officedocument.wordprocessingml.document&quot;,</span>
+<span class="fc" id="L82">                candidates.sample(templateId, version));</span>
+    }
+
+    @Operation(summary = &quot;Download the original staged template&quot;,
+            description = &quot;Administrator access. Returns the original uploaded DOTX bytes for the selected template and candidate revision.&quot;)
+    @GetMapping(&quot;/{version}/original.dotx&quot;)
+    ResponseEntity&lt;byte[]&gt; original(@PathVariable String templateId, @PathVariable String version) throws IOException {
+<span class="fc" id="L89">        return attachment(&quot;original.dotx&quot;, com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE,</span>
+<span class="fc" id="L90">                candidates.original(templateId, version));</span>
+    }
+
+    @Operation(summary = &quot;Read the candidate validation report&quot;,
+            description = &quot;Administrator access. Returns the validation evidence for the specified staged template revision before activation.&quot;)
+    @GetMapping(&quot;/{version}/validation.json&quot;)
+    ResponseEntity&lt;Map&lt;String, Object&gt;&gt; validation(@PathVariable String templateId, @PathVariable String version) throws IOException {
+<span class="fc" id="L97">        var candidate = candidates.describe(templateId, version);</span>
+<span class="fc" id="L98">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).contentType(MediaType.APPLICATION_JSON)</span>
+<span class="fc" id="L99">                .header(HttpHeaders.CONTENT_DISPOSITION, &quot;attachment; filename=validation.json&quot;)</span>
+<span class="fc" id="L100">                .body(Map.of(&quot;templateId&quot;, templateId, &quot;candidateVersion&quot;, version, &quot;baseVersion&quot;, candidate.baseVersion(),</span>
+<span class="fc" id="L101">                        &quot;originalSha256&quot;, candidate.originalSha256(), &quot;packageSha256&quot;, candidate.packageSha256(),</span>
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">                        &quot;packageValidation&quot;, &quot;PASSED&quot;, &quot;sample&quot;, candidate.ready() ? &quot;PASSED&quot; : &quot;FAILED&quot;));</span>
+    }
+
+    @org.springframework.web.bind.annotation.ExceptionHandler(TemplateNotFoundException.class)
+    ResponseEntity&lt;Void&gt; missing() {
+<span class="nc" id="L107">        return ResponseEntity.notFound().build();</span>
+    }
+
+    private static ResponseEntity&lt;byte[]&gt; attachment(String name, String type, byte[] content) {
+<span class="fc" id="L111">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).contentType(MediaType.parseMediaType(type))</span>
+<span class="fc" id="L112">                .header(HttpHeaders.CONTENT_DISPOSITION, &quot;attachment; filename=&quot; + name).body(content);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AdmbwRequirementProfile.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.admbw</a> &gt; <span class="el_source">AdmbwRequirementProfile.java</span></div><h1>AdmbwRequirementProfile.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.admbw;
+
+import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
+import com.taxonomy.dsl.planning.PlanningProfile;
+import com.taxonomy.dsl.requirements.RequirementRealization;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/** Records a reviewed R7 assignment on the exact requirement revision. */
+<span class="fc" id="L13">public final class AdmbwRequirementProfile implements PlanningProfile {</span>
+    public static final String ID = &quot;admbw-r7&quot;;
+    public static final String VERSION = &quot;1&quot;;
+    static final String KIND = &quot;requirementType&quot;;
+    static final String DERIVED_FROM = &quot;derivedFrom&quot;;
+    static final String REALIZER = &quot;realizer&quot;;
+    static final String SUBJECT = &quot;constraintSubject&quot;;
+    static final String BOUND_VERSION = &quot;boundVersion&quot;;
+    static final String BOUND_HASH = &quot;boundHash&quot;;
+    static final String IMPORTED = &quot;imported&quot;;
+<span class="fc" id="L23">    private static final List&lt;String&gt; KINDS = List.of(&quot;FunctionalRequirement&quot;, &quot;NonfunctionalRequirement&quot;);</span>
+<span class="fc" id="L24">    private static final Set&lt;String&gt; FIELDS = Set.of(KIND, DERIVED_FROM, SUBJECT, REALIZER, BOUND_VERSION, BOUND_HASH, IMPORTED);</span>
+
+    @Override
+    public Descriptor descriptor() {
+<span class="fc" id="L28">        return new Descriptor(ID, VERSION, List.of(new Field(KIND, true, KINDS),</span>
+<span class="fc" id="L29">                new Field(DERIVED_FROM, true, List.of()), new Field(SUBJECT, true, List.of()),</span>
+<span class="fc" id="L30">                new Field(REALIZER, false, List.of())));</span>
+    }
+
+    @Override
+    public void validate(Map&lt;String, String&gt; values) {
+<span class="pc bpc" id="L35" title="2 of 4 branches missed.">        if (!FIELDS.containsAll(values.keySet()) || !KINDS.contains(values.getOrDefault(KIND, &quot;&quot;))</span>
+<span class="pc bpc" id="L36" title="2 of 4 branches missed.">                || !elementId(values.get(DERIVED_FROM)) || !elementId(values.get(SUBJECT))</span>
+<span class="pc bpc" id="L37" title="1 of 4 branches missed.">                || values.containsKey(REALIZER) &amp;&amp; !elementId(values.get(REALIZER))</span>
+<span class="pc bpc" id="L38" title="1 of 4 branches missed.">                || values.containsKey(IMPORTED) &amp;&amp; !&quot;true&quot;.equals(values.get(IMPORTED))) {</span>
+<span class="nc" id="L39">            throw new IllegalArgumentException(&quot;R7 needs a requirement type, one source element and its catalogue subject, with at most one realizer&quot;);</span>
+        }
+<span class="pc bpc" id="L41" title="1 of 4 branches missed.">        if (values.containsKey(BOUND_VERSION) || values.containsKey(BOUND_HASH)) {</span>
+<span class="pc bpc" id="L42" title="1 of 2 branches missed.">            if (AdmbwFffmlvProfile.version(values.get(BOUND_VERSION)) == null</span>
+<span class="pc bpc" id="L43" title="1 of 2 branches missed.">                    || !values.getOrDefault(BOUND_HASH, &quot;&quot;).matches(&quot;[0-9a-f]{64}&quot;)) {</span>
+<span class="nc" id="L44">                throw new IllegalArgumentException(&quot;Invalid R7 requirement revision&quot;);</span>
+            }
+        }
+<span class="fc" id="L47">    }</span>
+
+    @Override
+    public Stored store(String dsl, String requirement, String entry, Map&lt;String, String&gt; values) {
+<span class="fc" id="L51">        validate(values);</span>
+<span class="fc" id="L52">        var block = ArchitectureSemanticPatch.index(dsl).get(&quot;requirement:&quot; + requirement);</span>
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">        if (block == null) throw new IllegalArgumentException(&quot;Unknown canonical requirement&quot;);</span>
+<span class="fc" id="L54">        String version = block.property(&quot;x-version&quot;);</span>
+<span class="fc" id="L55">        String hash = block.property(&quot;x-content-hash&quot;);</span>
+<span class="fc" id="L56">        String text = block.property(&quot;text&quot;);</span>
+<span class="pc bpc" id="L57" title="3 of 6 branches missed.">        if (AdmbwFffmlvProfile.version(version) == null || text == null || text.isBlank()</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">                || !RequirementRealization.textHash(text).equals(hash)) {</span>
+<span class="nc" id="L59">            throw new IllegalArgumentException(&quot;R7 needs a versioned requirement with its exact text hash&quot;);</span>
+        }
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">        if (values.containsKey(BOUND_VERSION)</span>
+<span class="nc bnc" id="L62" title="All 4 branches missed.">                &amp;&amp; (!version.equals(values.get(BOUND_VERSION)) || !hash.equals(values.get(BOUND_HASH)))) {</span>
+<span class="nc" id="L63">            throw new IllegalArgumentException(&quot;The R7 assignment belongs to another requirement revision&quot;);</span>
+        }
+<span class="fc" id="L65">        Map&lt;String, String&gt; stored = new LinkedHashMap&lt;&gt;(values);</span>
+<span class="fc" id="L66">        stored.remove(IMPORTED);</span>
+<span class="fc" id="L67">        stored.put(BOUND_VERSION, version);</span>
+<span class="fc" id="L68">        stored.put(BOUND_HASH, hash);</span>
+<span class="fc" id="L69">        return new Stored(dsl, stored);</span>
+    }
+
+    @Override
+    public Stored storeImported(String dsl, String requirement, String entry, Map&lt;String, String&gt; values) {
+<span class="fc" id="L74">        validate(values);</span>
+<span class="fc" id="L75">        Map&lt;String, String&gt; stored = new LinkedHashMap&lt;&gt;(values);</span>
+<span class="fc" id="L76">        stored.put(IMPORTED, &quot;true&quot;);</span>
+<span class="fc" id="L77">        return new Stored(dsl, stored);</span>
+    }
+
+    private static boolean elementId(String value) {
+<span class="pc bpc" id="L81" title="2 of 4 branches missed.">        return value != null &amp;&amp; value.matches(&quot;[A-Za-z0-9][A-Za-z0-9_.-]{0,127}&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

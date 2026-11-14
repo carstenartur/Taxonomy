@@ -1,0 +1,384 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RepositoryMembershipService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">RepositoryMembershipService.java</span></div><h1>RepositoryMembershipService.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.workspace.model.RepositoryLifecycleState;
+import com.taxonomy.workspace.model.RepositoryMembership;
+import com.taxonomy.workspace.model.RepositoryOwnerType;
+import com.taxonomy.workspace.model.RepositoryRole;
+import com.taxonomy.workspace.model.RepositoryVisibility;
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.repository.RepositoryMembershipRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+
+/** Evaluates and persists repository-scoped memberships independently of global app roles. */
+@Service
+public class RepositoryMembershipService {
+
+    private final RepositoryMembershipRepository membershipRepository;
+    private final Optional&lt;RepositoryRoleGrantProvider&gt; grantProvider;
+
+    public RepositoryMembershipService(RepositoryMembershipRepository membershipRepository) {
+<span class="fc" id="L28">        this(membershipRepository, Optional.empty());</span>
+<span class="fc" id="L29">    }</span>
+
+    @Autowired
+    public RepositoryMembershipService(RepositoryMembershipRepository membershipRepository,
+<span class="fc" id="L33">            Optional&lt;RepositoryRoleGrantProvider&gt; grantProvider) {</span>
+<span class="fc" id="L34">        this.membershipRepository = membershipRepository;</span>
+<span class="fc" id="L35">        this.grantProvider = grantProvider;</span>
+<span class="fc" id="L36">    }</span>
+
+    /** Assign the repository creator as its explicit owner, idempotently. */
+    @Transactional
+    public RepositoryMembership assignOwner(String repositoryId, String username) {
+<span class="fc" id="L41">        return assignRole(repositoryId, username, RepositoryRole.OWNER, username);</span>
+    }
+
+    /**
+     * Persist a role assignment. Authorization of the actor belongs to the calling API/service;
+     * this method owns validation and idempotent persistence only.
+     */
+    @Transactional
+    public RepositoryMembership assignRole(
+            String repositoryId,
+            String username,
+            RepositoryRole role,
+            String actor) {
+<span class="fc" id="L54">        String repository = requireText(repositoryId, &quot;repositoryId&quot;);</span>
+<span class="fc" id="L55">        String member = requireText(username, &quot;username&quot;);</span>
+<span class="fc" id="L56">        String changedBy = requireText(actor, &quot;actor&quot;);</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">        if (role == null) {</span>
+<span class="nc" id="L58">            throw new IllegalArgumentException(&quot;role must not be null&quot;);</span>
+        }
+
+<span class="fc" id="L61">        RepositoryMembership membership = membershipRepository</span>
+<span class="fc" id="L62">                .findByRepositoryIdAndUsername(repository, member)</span>
+<span class="fc" id="L63">                .orElse(null);</span>
+<span class="fc" id="L64">        return saveRole(repository, member, role, changedBy, membership);</span>
+    }
+
+    /** Assign or change a membership after enforcing repository-owner authority. */
+    @Transactional
+    public RepositoryMembership assignRole(
+            SystemRepository repository,
+            String username,
+            RepositoryRole role,
+            String actor) {
+<span class="fc" id="L74">        return assignRole(repository, username, role, actor, null);</span>
+    }
+
+    /**
+     * Version-preconditioned membership update for external callers.
+     * -1 means the member must not exist; a nonnegative value must match the locked row.
+     * Internal migration/bootstrap callers retain the distinct, trusted four-argument API.
+     */
+    @Transactional
+    public RepositoryMembership assignRole(
+            SystemRepository repository,
+            String username,
+            RepositoryRole role,
+            String actor,
+            Long expectedVersion) {
+<span class="fc" id="L89">        String repositoryId = requireRepositoryId(repository);</span>
+<span class="fc" id="L90">        String member = requireText(username, &quot;username&quot;);</span>
+<span class="fc" id="L91">        String changedBy = requireText(actor, &quot;actor&quot;);</span>
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">        if (role == null) {</span>
+<span class="nc" id="L93">            throw new IllegalArgumentException(&quot;role must not be null&quot;);</span>
+        }
+
+<span class="fc" id="L96">        List&lt;RepositoryMembership&gt; lockedMemberships = membershipRepository</span>
+<span class="fc" id="L97">                .findByRepositoryIdForUpdate(repositoryId);</span>
+<span class="fc" id="L98">        requireOwner(repository, actor, lockedMemberships);</span>
+<span class="pc bpc" id="L99" title="1 of 4 branches missed.">        if (isUserCatalogOwner(repository, member) &amp;&amp; role != RepositoryRole.OWNER) {</span>
+<span class="fc" id="L100">            throw new IllegalArgumentException(</span>
+                    &quot;The repository catalog owner must retain the OWNER role&quot;);
+        }
+<span class="fc" id="L103">        RepositoryMembership existing = findMembership(lockedMemberships, member)</span>
+<span class="fc" id="L104">                .orElse(null);</span>
+<span class="fc" id="L105">        requireExpectedVersion(existing, expectedVersion);</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        if (existing != null</span>
+<span class="pc bpc" id="L107" title="1 of 4 branches missed.">                &amp;&amp; existing.getRole() == RepositoryRole.OWNER</span>
+                &amp;&amp; role != RepositoryRole.OWNER
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">                &amp;&amp; !hasImplicitUserOwner(repository)</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">                &amp;&amp; ownerCount(lockedMemberships) &lt;= 1) {</span>
+<span class="fc" id="L111">            throw new IllegalStateException(&quot;A repository must retain at least one OWNER&quot;);</span>
+        }
+<span class="fc" id="L113">        return saveRole(repositoryId, member, role, changedBy, existing);</span>
+    }
+
+    /** Remove a membership after enforcing repository-owner authority and owner retention. */
+    @Transactional
+    public void removeMembership(
+            SystemRepository repository,
+            String username,
+            String actor) {
+<span class="fc" id="L122">        removeMembership(repository, username, actor, null);</span>
+<span class="fc" id="L123">    }</span>
+
+    /** Version-preconditioned deletion: an outdated editor cannot remove a changed grant. */
+    @Transactional
+    public void removeMembership(
+            SystemRepository repository,
+            String username,
+            String actor,
+            Long expectedVersion) {
+<span class="fc" id="L132">        String repositoryId = requireRepositoryId(repository);</span>
+<span class="fc" id="L133">        String member = requireText(username, &quot;username&quot;);</span>
+<span class="fc" id="L134">        requireText(actor, &quot;actor&quot;);</span>
+
+<span class="fc" id="L136">        List&lt;RepositoryMembership&gt; lockedMemberships = membershipRepository</span>
+<span class="fc" id="L137">                .findByRepositoryIdForUpdate(repositoryId);</span>
+<span class="fc" id="L138">        requireOwner(repository, actor, lockedMemberships);</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        if (isUserCatalogOwner(repository, member)) {</span>
+<span class="fc" id="L140">            throw new IllegalArgumentException(</span>
+                    &quot;The repository catalog owner membership cannot be removed&quot;);
+        }
+<span class="fc" id="L143">        Optional&lt;RepositoryMembership&gt; current = findMembership(lockedMemberships, member);</span>
+<span class="fc" id="L144">        requireExpectedVersion(current.orElse(null), expectedVersion);</span>
+<span class="pc" id="L145">        RepositoryMembership membership = current.orElseThrow(() -&gt; new IllegalArgumentException(</span>
+                &quot;Repository membership does not exist: &quot; + member));
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        if (membership.getRole() == RepositoryRole.OWNER</span>
+<span class="pc bpc" id="L148" title="1 of 2 branches missed.">                &amp;&amp; !hasImplicitUserOwner(repository)</span>
+<span class="pc bpc" id="L149" title="1 of 2 branches missed.">                &amp;&amp; ownerCount(lockedMemberships) &lt;= 1) {</span>
+<span class="fc" id="L150">            throw new IllegalStateException(&quot;A repository must retain at least one OWNER&quot;);</span>
+        }
+<span class="fc" id="L152">        membershipRepository.delete(membership);</span>
+<span class="fc" id="L153">    }</span>
+
+    public Optional&lt;RepositoryRole&gt; effectiveRole(
+            SystemRepository repository, String username) {
+<span class="pc bpc" id="L157" title="3 of 6 branches missed.">        if (repository == null || username == null || username.isBlank()) {</span>
+<span class="nc" id="L158">            return Optional.empty();</span>
+        }
+<span class="fc" id="L160">        String member = username.strip();</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        if (isUserCatalogOwner(repository, member)) {</span>
+<span class="fc" id="L162">            return Optional.of(RepositoryRole.OWNER);</span>
+        }
+<span class="fc" id="L164">        Optional&lt;RepositoryRole&gt; stored = membershipRepository.findByRepositoryIdAndUsername(</span>
+<span class="fc" id="L165">                        repository.getRepositoryId(), member)</span>
+<span class="fc" id="L166">                .map(RepositoryMembership::getRole);</span>
+<span class="fc" id="L167">        Optional&lt;RepositoryRole&gt; granted = trustedRole(repository, username);</span>
+<span class="fc" id="L168">        return granted.filter(role -&gt; stored.map(role::grants).orElse(true))</span>
+<span class="fc" id="L169">                .or(() -&gt; stored);</span>
+    }
+
+    /**
+     * Fail-closed read decision. Public repositories and the historic primary repository are
+     * readable without an explicit membership; all other visibility modes require membership.
+     */
+    public boolean canRead(SystemRepository repository, String username) {
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        if (!isActive(repository)) {</span>
+<span class="fc" id="L178">            return false;</span>
+        }
+<span class="fc bfc" id="L180" title="All 2 branches covered.">        if (repository.isPrimaryRepo()</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">                || repository.getVisibility() == RepositoryVisibility.PUBLIC) {</span>
+<span class="fc" id="L182">            return true;</span>
+        }
+<span class="fc" id="L184">        return effectiveRole(repository, username)</span>
+<span class="fc" id="L185">                .map(role -&gt; role.grants(RepositoryRole.READER))</span>
+<span class="fc" id="L186">                .orElse(false);</span>
+    }
+
+    /**
+     * Working-copy creation requires CONTRIBUTOR. The historic primary repository remains a
+     * compatibility exception for authenticated users until installations can bootstrap explicit
+     * memberships for that pre-existing shared repository.
+     */
+    public boolean canContribute(SystemRepository repository, String username) {
+<span class="pc bpc" id="L195" title="1 of 6 branches missed.">        if (!isActive(repository) || username == null || username.isBlank()) {</span>
+<span class="fc" id="L196">            return false;</span>
+        }
+<span class="fc bfc" id="L198" title="All 2 branches covered.">        if (repository.isPrimaryRepo()) {</span>
+<span class="fc" id="L199">            return true;</span>
+        }
+<span class="fc" id="L201">        return effectiveRole(repository, username)</span>
+<span class="fc" id="L202">                .map(role -&gt; role.grants(RepositoryRole.CONTRIBUTOR))</span>
+<span class="fc" id="L203">                .orElse(false);</span>
+    }
+
+    /** The publishing caller holds the catalogue lock. Read memberships in a fresh transaction. */
+    @Transactional(readOnly = true, propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public boolean canPublishLockedSource(SystemRepository source, String username) {
+<span class="fc bfc" id="L209" title="All 4 branches covered.">        return canRead(source, username) &amp;&amp; canContribute(source, username);</span>
+    }
+
+    @Transactional(readOnly = true, propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public boolean canCollaborateOnLockedSource(SystemRepository source, String username) {
+<span class="fc" id="L214">        return canCollaborate(source, username);</span>
+    }
+
+    public boolean canMaintain(SystemRepository repository, String username) {
+<span class="fc bfc" id="L218" title="All 2 branches covered.">        return isActive(repository)</span>
+<span class="fc" id="L219">                &amp;&amp; effectiveRole(repository, username)</span>
+<span class="fc" id="L220">                .map(role -&gt; role.grants(RepositoryRole.MAINTAINER))</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">                .orElse(false);</span>
+    }
+
+    /** Shared drafts require explicit repository authority; public/primary compatibility is insufficient. */
+    public boolean canCollaborate(SystemRepository repository, String username) {
+<span class="fc bfc" id="L226" title="All 2 branches covered.">        return isActive(repository) &amp;&amp; effectiveRole(repository, username)</span>
+<span class="fc bfc" id="L227" title="All 2 branches covered.">                .map(role -&gt; role.grants(RepositoryRole.CONTRIBUTOR)).orElse(false);</span>
+    }
+
+    /** Does not provision, select or disclose a foreign private working copy. */
+    public boolean canUseWorkspace(SystemRepository repository, com.taxonomy.workspace.model.UserWorkspace workspace, String username) {
+        // A retained workspace record never grants authority after the source has been
+        // archived or the actor's current repository membership was revoked.
+<span class="fc bfc" id="L234" title="All 6 branches covered.">        return isActive(repository) &amp;&amp; username != null &amp;&amp; !username.isBlank()</span>
+<span class="pc bpc" id="L235" title="1 of 4 branches missed.">                &amp;&amp; canRead(repository, username)</span>
+<span class="pc bpc" id="L236" title="2 of 4 branches missed.">                &amp;&amp; workspace != null &amp;&amp; !workspace.isShared() &amp;&amp; !workspace.isArchived()</span>
+<span class="fc bfc" id="L237" title="All 2 branches covered.">                &amp;&amp; java.util.Objects.equals(workspace.getSourceRepositoryId(), repository.getRepositoryId())</span>
+<span class="fc bfc" id="L238" title="All 2 branches covered.">                &amp;&amp; (java.util.Objects.equals(workspace.getUsername(), username)</span>
+<span class="fc bfc" id="L239" title="All 4 branches covered.">                || (workspace.isCollaborative() &amp;&amp; canCollaborate(repository, username)));</span>
+    }
+
+    public boolean isOwner(SystemRepository repository, String username) {
+<span class="fc bfc" id="L243" title="All 2 branches covered.">        return isActive(repository)</span>
+<span class="fc" id="L244">                &amp;&amp; effectiveRole(repository, username)</span>
+<span class="fc" id="L245">                .map(role -&gt; role.grants(RepositoryRole.OWNER))</span>
+<span class="fc bfc" id="L246" title="All 2 branches covered.">                .orElse(false);</span>
+    }
+
+    public List&lt;RepositoryMembership&gt; listMemberships(String repositoryId) {
+<span class="fc" id="L250">        return membershipRepository.findByRepositoryIdOrderByUsernameAsc(</span>
+<span class="fc" id="L251">                requireText(repositoryId, &quot;repositoryId&quot;));</span>
+    }
+
+    /** List memberships only for an effective repository owner. */
+    public List&lt;RepositoryMembership&gt; listMemberships(
+            SystemRepository repository, String actor) {
+<span class="fc" id="L257">        requireOwner(repository, actor);</span>
+<span class="fc" id="L258">        return listMemberships(repository.getRepositoryId());</span>
+    }
+
+    public long countOwners(String repositoryId) {
+<span class="nc" id="L262">        return membershipRepository.countByRepositoryIdAndRole(</span>
+<span class="nc" id="L263">                requireText(repositoryId, &quot;repositoryId&quot;), RepositoryRole.OWNER);</span>
+    }
+
+    private static void requireExpectedVersion(RepositoryMembership existing, Long expectedVersion) {
+<span class="fc bfc" id="L267" title="All 2 branches covered.">        if (expectedVersion == null) {</span>
+<span class="fc" id="L268">            return; // Only trusted internal callers use the unversioned API.</span>
+        }
+<span class="pc bpc" id="L270" title="1 of 2 branches missed.">        if (expectedVersion &lt; -1) {</span>
+<span class="nc" id="L271">            throw new IllegalArgumentException(&quot;expectedVersion must be -1 or nonnegative&quot;);</span>
+        }
+<span class="fc bfc" id="L273" title="All 6 branches covered.">        if ((existing == null &amp;&amp; expectedVersion != -1)</span>
+                || (existing != null
+<span class="fc bfc" id="L275" title="All 4 branches covered.">                        &amp;&amp; (expectedVersion == -1 || existing.getVersion() != expectedVersion))) {</span>
+<span class="fc" id="L276">            throw new OptimisticLockingFailureException(</span>
+                    &quot;Repository membership changed; reload the latest version&quot;);
+        }
+<span class="fc" id="L279">    }</span>
+
+    private RepositoryMembership saveRole(
+            String repositoryId,
+            String username,
+            RepositoryRole role,
+            String actor,
+            RepositoryMembership existing) {
+<span class="fc" id="L287">        Instant now = Instant.now();</span>
+<span class="fc" id="L288">        RepositoryMembership membership = existing;</span>
+<span class="fc bfc" id="L289" title="All 2 branches covered.">        if (membership == null) {</span>
+<span class="fc" id="L290">            membership = new RepositoryMembership();</span>
+<span class="fc" id="L291">            membership.setRepositoryId(repositoryId);</span>
+<span class="fc" id="L292">            membership.setUsername(username);</span>
+<span class="fc" id="L293">            membership.setCreatedAt(now);</span>
+<span class="fc" id="L294">            membership.setCreatedBy(actor);</span>
+        }
+<span class="fc" id="L296">        membership.setRole(role);</span>
+<span class="fc" id="L297">        membership.setUpdatedAt(now);</span>
+<span class="fc" id="L298">        return membershipRepository.save(membership);</span>
+    }
+
+    private void requireOwner(
+            SystemRepository repository,
+            String actor,
+            List&lt;RepositoryMembership&gt; lockedMemberships) {
+<span class="fc bfc" id="L305" title="All 2 branches covered.">        if (!isActive(repository)) {</span>
+<span class="fc" id="L306">            throw new AccessDeniedException(&quot;Repository OWNER role required&quot;);</span>
+        }
+<span class="fc" id="L308">        String username = requireText(actor, &quot;actor&quot;);</span>
+<span class="fc bfc" id="L309" title="All 2 branches covered.">        boolean owner = isUserCatalogOwner(repository, username)</span>
+<span class="fc" id="L310">                || findMembership(lockedMemberships, username)</span>
+<span class="fc" id="L311">                        .map(RepositoryMembership::getRole)</span>
+<span class="fc" id="L312">                        .filter(role -&gt; role.grants(RepositoryRole.OWNER))</span>
+<span class="fc bfc" id="L313" title="All 2 branches covered.">                        .isPresent()</span>
+<span class="fc" id="L314">                || trustedRole(repository, actor)</span>
+<span class="fc" id="L315">                        .filter(role -&gt; role.grants(RepositoryRole.OWNER))</span>
+<span class="fc bfc" id="L316" title="All 2 branches covered.">                        .isPresent();</span>
+<span class="fc bfc" id="L317" title="All 2 branches covered.">        if (!owner) {</span>
+<span class="fc" id="L318">            throw new AccessDeniedException(&quot;Repository OWNER role required&quot;);</span>
+        }
+<span class="fc" id="L320">    }</span>
+
+    private Optional&lt;RepositoryRole&gt; trustedRole(SystemRepository repository, String actor) {
+<span class="fc" id="L323">        return grantProvider.flatMap(provider -&gt; provider.findRole(repository.getRepositoryId(), actor));</span>
+    }
+
+    private void requireOwner(SystemRepository repository, String actor) {
+<span class="fc bfc" id="L327" title="All 2 branches covered.">        if (!isOwner(repository, actor)) {</span>
+<span class="fc" id="L328">            throw new AccessDeniedException(&quot;Repository OWNER role required&quot;);</span>
+        }
+<span class="fc" id="L330">    }</span>
+
+    private static Optional&lt;RepositoryMembership&gt; findMembership(
+            List&lt;RepositoryMembership&gt; memberships,
+            String username) {
+<span class="fc" id="L335">        return memberships.stream()</span>
+<span class="fc" id="L336">                .filter(membership -&gt; username.equals(membership.getUsername()))</span>
+<span class="fc" id="L337">                .findFirst();</span>
+    }
+
+    private static long ownerCount(List&lt;RepositoryMembership&gt; memberships) {
+<span class="fc" id="L341">        return memberships.stream()</span>
+<span class="fc" id="L342">                .map(RepositoryMembership::getRole)</span>
+<span class="fc" id="L343">                .filter(RepositoryRole.OWNER::equals)</span>
+<span class="fc" id="L344">                .count();</span>
+    }
+
+    private static String requireRepositoryId(SystemRepository repository) {
+<span class="pc bpc" id="L348" title="1 of 2 branches missed.">        if (repository == null) {</span>
+<span class="nc" id="L349">            throw new IllegalArgumentException(&quot;repository must not be null&quot;);</span>
+        }
+<span class="fc" id="L351">        return requireText(repository.getRepositoryId(), &quot;repositoryId&quot;);</span>
+    }
+
+    private static boolean isUserCatalogOwner(
+            SystemRepository repository, String username) {
+<span class="pc bpc" id="L356" title="2 of 4 branches missed.">        if (repository == null || username == null) {</span>
+<span class="nc" id="L357">            return false;</span>
+        }
+<span class="fc" id="L359">        RepositoryOwnerType ownerType = repository.getOwnerType();</span>
+<span class="pc bpc" id="L360" title="1 of 4 branches missed.">        return (ownerType == null || ownerType == RepositoryOwnerType.USER)</span>
+<span class="fc bfc" id="L361" title="All 2 branches covered.">                &amp;&amp; username.equals(repository.getOwnerId());</span>
+    }
+
+    private static boolean hasImplicitUserOwner(SystemRepository repository) {
+<span class="pc bpc" id="L365" title="1 of 2 branches missed.">        return repository != null</span>
+<span class="pc bpc" id="L366" title="1 of 2 branches missed.">                &amp;&amp; (repository.getOwnerType() == null</span>
+<span class="pc bpc" id="L367" title="1 of 2 branches missed.">                        || repository.getOwnerType() == RepositoryOwnerType.USER)</span>
+<span class="nc bnc" id="L368" title="All 2 branches missed.">                &amp;&amp; repository.getOwnerId() != null</span>
+<span class="pc bnc" id="L369" title="All 2 branches missed.">                &amp;&amp; !repository.getOwnerId().isBlank();</span>
+    }
+
+    private static boolean isActive(SystemRepository repository) {
+<span class="pc bpc" id="L373" title="1 of 2 branches missed.">        return repository != null</span>
+<span class="fc bfc" id="L374" title="All 2 branches covered.">                &amp;&amp; repository.getLifecycleState() == RepositoryLifecycleState.ACTIVE;</span>
+    }
+
+    private static String requireText(String value, String field) {
+<span class="pc bpc" id="L378" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="nc" id="L379">            throw new IllegalArgumentException(field + &quot; must not be blank&quot;);</span>
+        }
+<span class="fc" id="L381">        return value.strip();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

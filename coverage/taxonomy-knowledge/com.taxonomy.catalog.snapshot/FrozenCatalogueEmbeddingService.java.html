@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>FrozenCatalogueEmbeddingService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.snapshot</a> &gt; <span class="el_source">FrozenCatalogueEmbeddingService.java</span></div><h1>FrozenCatalogueEmbeddingService.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.snapshot;
+
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.model.TaxonomyRelation;
+import com.taxonomy.catalog.service.EmbeddingModelIdentity;
+import com.taxonomy.catalog.service.LocalEmbeddingService;
+import com.taxonomy.catalog.service.NodeEmbeddingText;
+import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.ReadinessState;
+import com.taxonomy.relations.service.RelationProjectionReadService;
+import com.taxonomy.relations.service.RelationProjectionReadService.IdentitySnapshot;
+import com.taxonomy.relations.service.RelationProjectionReadService.ReadModel;
+import com.taxonomy.relations.service.RelationProjectionReadService.RelationIdentity;
+import com.taxonomy.workspace.service.RepositoryContext;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+/** Admission-only enrichment from proven exact-source relations and an already atomically captured catalogue. */
+@Service
+public class FrozenCatalogueEmbeddingService {
+    private final RelationProjectionReadService relations;
+    private final LocalEmbeddingService embeddings;
+
+<span class="fc" id="L32">    public FrozenCatalogueEmbeddingService(RelationProjectionReadService relations, LocalEmbeddingService embeddings) {</span>
+<span class="fc" id="L33">        this.relations = Objects.requireNonNull(relations);</span>
+<span class="fc" id="L34">        this.embeddings = Objects.requireNonNull(embeddings);</span>
+<span class="fc" id="L35">    }</span>
+
+    /**
+     * Endpoint names may cross roots, so admission supplies one atomic all-root scalar capture.
+     * Only required roots are returned for persistence; workers never load endpoint roots or relation projections.
+     * No legacy/global projection or scalar-only text fallback is permitted.
+     */
+    public List&lt;RootCatalogueSnapshot&gt; decorate(RepositoryContext context, CatalogueSourceIdentity source,
+                                                List&lt;RootCatalogueSnapshot&gt; capturedRoots,
+                                                Set&lt;String&gt; requiredRoots) {
+<span class="fc" id="L45">        return decorate(context, source, capturedRoots, requiredRoots, null);</span>
+    }
+
+    /** An index builder can also require the exact detached edge set used to build its relation field. */
+    public List&lt;RootCatalogueSnapshot&gt; decorate(RepositoryContext context, CatalogueSourceIdentity source,
+                                                List&lt;RootCatalogueSnapshot&gt; capturedRoots, Set&lt;String&gt; requiredRoots,
+                                                Set&lt;RelationIdentity&gt; expectedRelations) {
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">        if (TransactionSynchronizationManager.isActualTransactionActive()) {</span>
+<span class="nc" id="L53">            throw new IllegalStateException(&quot;Frozen embedding preparation requires no database transaction&quot;);</span>
+        }
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        if (!context.repositoryId().equals(source.repositoryId())</span>
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">                || !Objects.equals(context.workspaceId(), source.workspaceId())</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">                || !context.branch().equals(source.branch())) {</span>
+<span class="fc" id="L58">            throw new IllegalArgumentException(&quot;Embedding context does not match the captured source authority&quot;);</span>
+        }
+<span class="pc bpc" id="L60" title="2 of 4 branches missed.">        if (capturedRoots == null || capturedRoots.isEmpty()) throw new IllegalArgumentException(&quot;Captured roots are empty&quot;);</span>
+<span class="fc" id="L61">        var spec = capturedRoots.getFirst().catalogueDefinition();</span>
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">        var allRoots = spec == null ? com.taxonomy.dsl.model.CatalogueDefinition.standard().rootCodes()</span>
+<span class="pc" id="L63">                : spec.definition().rootCodes();</span>
+<span class="pc bpc" id="L64" title="3 of 6 branches missed.">        if (requiredRoots == null || requiredRoots.isEmpty() || !allRoots.containsAll(requiredRoots)) {</span>
+<span class="nc" id="L65">            throw new IllegalArgumentException(&quot;Required embedding roots are invalid&quot;);</span>
+        }
+        // Validates source, root membership, hierarchy and one retained catalogue generation.
+<span class="fc" id="L68">        new FrozenCatalogueView(source, allRoots, capturedRoots);</span>
+<span class="fc" id="L69">        IdentitySnapshot before = requireExact(relations.readIdentitySnapshot(context), source);</span>
+<span class="pc bpc" id="L70" title="1 of 4 branches missed.">        if (expectedRelations != null &amp;&amp; !expectedRelations.equals(before.identities())) {</span>
+<span class="nc" id="L71">            throw new IllegalStateException(&quot;Relation projection differs from the selected vector generation&quot;);</span>
+        }
+<span class="fc" id="L73">        Map&lt;String, TaxonomyNode&gt; nodes = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        for (var root : capturedRoots) {</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">            for (var node : root.nodes()) nodes.put(node.code(), node.detached());</span>
+<span class="fc" id="L76">        }</span>
+<span class="fc" id="L77">        before.identities().stream().sorted(Comparator.comparing(RelationIdentity::sourceCode)</span>
+<span class="fc" id="L78">                .thenComparing(identity -&gt; identity.relationType().name()).thenComparing(RelationIdentity::targetCode))</span>
+<span class="fc" id="L79">                .forEach(identity -&gt; enrich(nodes, identity));</span>
+        EmbeddingModelIdentity model;
+        try {
+<span class="fc" id="L82">            model = embeddings.embeddingIdentity();</span>
+<span class="nc" id="L83">        } catch (Exception failure) {</span>
+<span class="nc" id="L84">            throw new IllegalStateException(&quot;Frozen embedding model identity is unavailable&quot;, failure);</span>
+<span class="fc" id="L85">        }</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        var relationNameLocale = expectedRelations == null ? java.util.Locale.getDefault() : java.util.Locale.ROOT;</span>
+<span class="fc" id="L87">        List&lt;RootCatalogueSnapshot&gt; result = capturedRoots.stream()</span>
+<span class="fc" id="L88">                .filter(root -&gt; requiredRoots.contains(root.rootCode())).map(root -&gt; {</span>
+<span class="fc" id="L89">                    Map&lt;String, String&gt; texts = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L90">                    root.nodes().forEach(node -&gt; texts.put(node.code(),</span>
+<span class="fc" id="L91">                            NodeEmbeddingText.buildEnrichedText(nodes.get(node.code()), relationNameLocale)));</span>
+<span class="fc" id="L92">                    return root.withEmbeddings(new RootEmbeddingSnapshot(RootEmbeddingSnapshot.SCHEMA_VERSION,</span>
+<span class="fc" id="L93">                            source, root.rootCode(), before.commitId(), RootEmbeddingSnapshot.TEXT_VERSION,</span>
+                            model, texts));
+<span class="fc" id="L95">                }).toList();</span>
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">        if (!before.equals(requireExact(relations.readIdentitySnapshot(context), source))) {</span>
+<span class="nc" id="L97">            throw new IllegalStateException(&quot;Relation projection changed during frozen embedding preparation&quot;);</span>
+        }
+<span class="fc" id="L99">        return result;</span>
+    }
+
+    private static IdentitySnapshot requireExact(IdentitySnapshot snapshot, CatalogueSourceIdentity source) {
+<span class="pc bpc" id="L103" title="1 of 4 branches missed.">        if (snapshot == null || snapshot.readModel() != ReadModel.PROJECTION</span>
+<span class="pc bpc" id="L104" title="1 of 4 branches missed.">                || snapshot.readinessState() != ReadinessState.READY || source.sourceCommit() == null</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">                || !source.sourceCommit().equals(snapshot.commitId())) {</span>
+<span class="fc" id="L106">            throw new IllegalStateException(&quot;Frozen embeddings require a complete relation projection at the exact source commit&quot;);</span>
+        }
+<span class="fc" id="L108">        return snapshot;</span>
+    }
+
+    private static void enrich(Map&lt;String, TaxonomyNode&gt; nodes, RelationIdentity identity) {
+<span class="fc" id="L112">        TaxonomyNode source = nodes.get(identity.sourceCode());</span>
+<span class="fc" id="L113">        TaxonomyNode target = nodes.get(identity.targetCode());</span>
+<span class="pc bpc" id="L114" title="1 of 4 branches missed.">        if (source == null || target == null) {</span>
+<span class="fc" id="L115">            throw new IllegalStateException(&quot;Relation endpoint is absent from the captured catalogue generation&quot;);</span>
+        }
+<span class="fc" id="L117">        var relation = new TaxonomyRelation();</span>
+<span class="fc" id="L118">        relation.setSourceNode(source);</span>
+<span class="fc" id="L119">        relation.setTargetNode(target);</span>
+<span class="fc" id="L120">        relation.setRelationType(identity.relationType());</span>
+<span class="fc" id="L121">        source.getOutgoingRelations().add(relation);</span>
+<span class="fc" id="L122">        target.getIncomingRelations().add(relation);</span>
+<span class="fc" id="L123">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

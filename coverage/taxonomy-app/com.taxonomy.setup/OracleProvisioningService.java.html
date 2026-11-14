@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>OracleProvisioningService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.setup</a> &gt; <span class="el_source">OracleProvisioningService.java</span></div><h1>OracleProvisioningService.java</h1><pre class="source lang-java linenums">package com.taxonomy.setup;
+
+import org.springframework.stereotype.Component;
+import java.sql.*;
+import java.util.Locale;
+import java.util.Set;
+import static com.taxonomy.setup.DatabaseProvisioningService.*;
+
+/** Creates a local schema owner inside an existing PDB; never creates an Oracle database or tablespace. */
+@Component
+public class OracleProvisioningService implements DatabaseProvisioningService.Provider {
+    // User-assigned DBMS_LOCK IDs must be in 0..1073741823. Do not ALLOCATE_UNIQUE:
+    // that operation would persist lock metadata and commit during inspection.
+    private static final int LOCK_ID = 0x5441584;
+<span class="fc" id="L15">    private static final Set&lt;String&gt; RESERVED_USERS = Set.of(&quot;SYS&quot;, &quot;SYSTEM&quot;, &quot;PUBLIC&quot;, &quot;OUTLN&quot;, &quot;DBSNMP&quot;,</span>
+            &quot;SYSMAN&quot;, &quot;XDB&quot;, &quot;AUDSYS&quot;, &quot;GSMADMIN_INTERNAL&quot;, &quot;DVSYS&quot;, &quot;DVF&quot;, &quot;LBACSYS&quot;, &quot;MDSYS&quot;, &quot;ORDSYS&quot;,
+            &quot;WMSYS&quot;, &quot;CTXSYS&quot;, &quot;APPQOSSYS&quot;, &quot;ANONYMOUS&quot;, &quot;XS_NULL&quot;, &quot;REMOTE_SCHEDULER_AGENT&quot;);
+<span class="fc" id="L18">    private static final Set&lt;String&gt; RESERVED_TABLESPACES = Set.of(&quot;SYSTEM&quot;, &quot;SYSAUX&quot;, &quot;TEMP&quot;, &quot;UNDOTBS1&quot;, &quot;UNDOTBS2&quot;);</span>
+    private final Connector connector;
+
+<span class="fc" id="L21">    public OracleProvisioningService() { this(DriverManager::getConnection); }</span>
+<span class="fc" id="L22">    OracleProvisioningService(Connector connector) { this.connector = connector; }</span>
+<span class="fc" id="L23">    @Override public String type() { return &quot;oracle&quot;; }</span>
+
+    @Override public void validate(ProvisionSettings input) {
+<span class="fc" id="L26">        String user = canonical(input.target().username()), tablespace = canonical(input.tablespace());</span>
+<span class="pc bpc" id="L27" title="1 of 8 branches missed.">        if (!name(user) || RESERVED_USERS.contains(user) || user.startsWith(&quot;SYS_&quot;) || user.startsWith(&quot;ORA_&quot;)</span>
+<span class="pc bpc" id="L28" title="2 of 4 branches missed.">                || !name(tablespace) || RESERVED_TABLESPACES.contains(tablespace)</span>
+<span class="fc bfc" id="L29" title="All 6 branches covered.">                || input.quotaMiB() == null || input.quotaMiB() &lt; 1 || input.quotaMiB() &gt; 1048576</span>
+<span class="pc bpc" id="L30" title="1 of 2 branches missed.">                || !input.target().database().equals(input.maintenanceDatabase())</span>
+<span class="pc bpc" id="L31" title="1 of 4 branches missed.">                || input.expectedDatabase() != null &amp;&amp; input.expectedDatabase() != ResourceState.REUSE</span>
+<span class="pc bpc" id="L32" title="1 of 2 branches missed.">                || input.target().password().length() &gt; 30</span>
+<span class="pc bpc" id="L33" title="4 of 8 branches missed.">                || input.target().password().chars().anyMatch(c -&gt; c &lt; 32 || c &gt; 126 || c == '&quot;')) throw invalid();</span>
+<span class="fc" id="L34">    }</span>
+
+    @Override public ProvisionResult execute(ProvisionSettings input, boolean create, Progress progress) throws Exception {
+<span class="fc" id="L37">        try (Connection admin = connect(connector, input, input.target().database(), input.adminUsername(), input.adminPassword())) {</span>
+<span class="fc" id="L38">            admin.setAutoCommit(true); // Oracle DDL commits; this operation cannot promise transactional rollback.</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">            if (admin.getMetaData().getDatabaseMajorVersion() &lt; 19) return pdbFailure(progress);</span>
+            String pdb;
+<span class="fc" id="L41">            try (Statement statement = statement(admin); ResultSet rows = statement.executeQuery(&quot;&quot;&quot;</span>
+                    SELECT TO_NUMBER(SYS_CONTEXT('USERENV', 'CON_ID')), SYS_CONTEXT('USERENV', 'CON_NAME'),
+                           (SELECT open_mode FROM v$pdbs WHERE con_id = TO_NUMBER(SYS_CONTEXT('USERENV', 'CON_ID'))),
+                           (SELECT COUNT(*) FROM session_roles WHERE role = 'DBA'),
+                           (SELECT COUNT(*) FROM session_privs WHERE privilege IN ('CREATE USER', 'GRANT ANY PRIVILEGE'))
+                    FROM dual
+                    &quot;&quot;&quot;)) {
+<span class="pc bpc" id="L48" title="1 of 2 branches missed.">                if (!rows.next()) throw new SQLException(&quot;&quot;, &quot;08000&quot;);</span>
+<span class="fc" id="L49">                pdb = rows.getString(2);</span>
+<span class="pc bpc" id="L50" title="2 of 6 branches missed.">                if (rows.getInt(1) &lt; 3 || pdb == null || Set.of(&quot;CDB$ROOT&quot;, &quot;PDB$SEED&quot;).contains(pdb)</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">                        || !&quot;READ WRITE&quot;.equals(rows.getString(3))) return pdbFailure(progress);</span>
+<span class="fc" id="L52">                progress.database = ResourceState.REUSED;</span>
+<span class="pc bpc" id="L53" title="1 of 4 branches missed.">                if (rows.getInt(4) != 1 || rows.getInt(5) != 2) return denied(progress);</span>
+<span class="pc bpc" id="L54" title="4 of 8 branches missed.">            }</span>
+<span class="fc" id="L55">            boolean locked = false;</span>
+            try {
+                // This is a fresh, unpooled connection. RELEASE checks package execution
+                // without acquiring a lock or creating objects; it normally returns 4
+                // (this session does not own the lock). The application user never needs it.
+                try {
+<span class="fc" id="L61">                    int released = lock(admin, false);</span>
+<span class="pc bpc" id="L62" title="2 of 4 branches missed.">                    if (released != 0 &amp;&amp; released != 4) return denied(progress);</span>
+<span class="nc" id="L63">                } catch (SQLException permission) {</span>
+<span class="nc bnc" id="L64" title="All 4 branches missed.">                    if (permission.getErrorCode() == 1031 || permission.getErrorCode() == 6550)</span>
+<span class="nc" id="L65">                        return result(Outcome.FAILED, progress.role, progress.database, &quot;oracle.lock-permission&quot;,</span>
+                                &quot;The setup administrator needs EXECUTE on SYS.DBMS_LOCK in this PDB. Ask the Oracle administrator to provide this setup permission; the application user does not need it.&quot;);
+<span class="nc" id="L67">                    throw permission;</span>
+<span class="fc" id="L68">                }</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">                if (create) {</span>
+<span class="fc" id="L70">                    int acquired = lock(admin, true);</span>
+<span class="pc bpc" id="L71" title="1 of 4 branches missed.">                    if (acquired != 0 &amp;&amp; acquired != 4) return result(Outcome.BUSY, progress.role, progress.database, &quot;busy&quot;,</span>
+                            &quot;Another Oracle preparation is running, or the session lock could not be acquired. Inspect again before retrying.&quot;);
+<span class="fc" id="L73">                    locked = true;</span>
+                }
+<span class="fc" id="L75">                Plan plan = inspectCatalog(admin, input, pdb, create, progress);</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">                if (plan.failure != null) return plan.failure;</span>
+<span class="fc bfc" id="L77" title="All 4 branches covered.">                if (!create) return result(Outcome.READY, plan.userExists ? ResourceState.REUSE : ResourceState.CREATE,</span>
+                        ResourceState.REUSE, &quot;oracle.ready&quot;,
+                        &quot;The existing PDB, application tablespace, finite quota and local user were inspected. Only the displayed local user/schema may be created; the PDB and tablespace are reused. Application schema initialization remains a separate compatibility step.&quot;);
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">                if (cancelled(progress)) return uncertain(progress, true);</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">                if (!plan.userExists) {</span>
+<span class="fc" id="L82">                    progress.role = ResourceState.UNKNOWN;</span>
+<span class="fc" id="L83">                    progress.writing = true;</span>
+<span class="fc" id="L84">                    createUser(admin, input);</span>
+<span class="fc" id="L85">                    progress.role = ResourceState.CREATED;</span>
+<span class="fc" id="L86">                    progress.writing = false;</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">                    if (cancelled(progress)) return uncertain(progress, true);</span>
+<span class="fc" id="L88">                    progress.writing = true;</span>
+<span class="fc" id="L89">                    executeSql(admin, &quot;GRANT CREATE SESSION, CREATE TABLE, CREATE SEQUENCE TO &quot; + identifier(canonical(input.target().username())));</span>
+<span class="fc" id="L90">                    progress.writing = false;</span>
+<span class="fc" id="L91">                } else progress.role = ResourceState.REUSED;</span>
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">                if (cancelled(progress)) return uncertain(progress, true);</span>
+<span class="fc" id="L93">                verifyApplication(input, pdb);</span>
+<span class="fc" id="L94">                return result(Outcome.COMPLETE, progress.role, ResourceState.REUSED, &quot;oracle.complete&quot;,</span>
+                        &quot;The local Oracle user, own-schema privileges and finite tablespace quota were verified in the existing PDB. No PDB or tablespace was created. Application tables, production migrations and data transfer are not prepared by this operation; follow the Oracle compatibility setup before applying deployment configuration.&quot;);
+            } finally {
+<span class="fc bfc" id="L97" title="All 2 branches covered.">                if (locked) {</span>
+<span class="fc" id="L98">                    try { lock(admin, false); }</span>
+<span class="pc" id="L99">                    catch (SQLException ignored) { /* Closing this unpooled session releases its lock. */ }</span>
+                }
+            }
+<span class="pc bpc" id="L102" title="15 of 22 branches missed.">        }</span>
+    }
+
+    private Plan inspectCatalog(Connection admin, ProvisionSettings input, String pdb, boolean create, Progress progress) throws SQLException {
+<span class="fc" id="L106">        try (PreparedStatement statement = admin.prepareStatement(&quot;SELECT status, contents FROM dba_tablespaces WHERE tablespace_name = ?&quot;)) {</span>
+<span class="fc" id="L107">            statement.setQueryTimeout(15); statement.setString(1, canonical(input.tablespace()));</span>
+<span class="fc" id="L108">            try (ResultSet rows = statement.executeQuery()) {</span>
+<span class="pc bpc" id="L109" title="2 of 6 branches missed.">                if (!rows.next() || !&quot;ONLINE&quot;.equals(rows.getString(1)) || !&quot;PERMANENT&quot;.equals(rows.getString(2)))</span>
+<span class="fc" id="L110">                    return new Plan(false, result(Outcome.FAILED, progress.role, progress.database, &quot;oracle.tablespace&quot;,</span>
+                            &quot;Select an existing online permanent application tablespace. The wizard does not create or change tablespaces.&quot;));
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">            }</span>
+<span class="pc bpc" id="L113" title="1 of 2 branches missed.">        }</span>
+        boolean userExists;
+<span class="fc" id="L115">        try (PreparedStatement statement = admin.prepareStatement(&quot;&quot;&quot;</span>
+                SELECT u.account_status, u.common, u.oracle_maintained, u.authentication_type, u.default_tablespace,
+                       (SELECT COUNT(*) FROM dba_role_privs r WHERE r.grantee = u.username),
+                       (SELECT COUNT(*) FROM dba_sys_privs s WHERE s.grantee = u.username
+                            AND (s.privilege NOT IN ('CREATE SESSION', 'CREATE TABLE', 'CREATE SEQUENCE') OR s.admin_option = 'YES')),
+                       (SELECT COUNT(*) FROM dba_sys_privs s WHERE s.grantee = u.username
+                            AND s.privilege IN ('CREATE SESSION', 'CREATE TABLE', 'CREATE SEQUENCE')),
+                       NVL((SELECT q.max_bytes FROM dba_ts_quotas q WHERE q.username = u.username AND q.tablespace_name = ?), 0),
+                       (SELECT COUNT(*) FROM dba_tab_privs t WHERE t.grantee = u.username AND t.owner &lt;&gt; u.username)
+                            + (SELECT COUNT(*) FROM dba_col_privs c WHERE c.grantee = u.username AND c.owner &lt;&gt; u.username),
+                       (SELECT COUNT(*) FROM dba_ts_quotas q WHERE q.username = u.username AND q.tablespace_name &lt;&gt; ? AND q.max_bytes &lt;&gt; 0)
+                FROM dba_users u WHERE u.username = ?
+                &quot;&quot;&quot;)) {
+<span class="fc" id="L128">            statement.setQueryTimeout(15); statement.setString(1, canonical(input.tablespace()));</span>
+<span class="fc" id="L129">            statement.setString(2, canonical(input.tablespace())); statement.setString(3, canonical(input.target().username()));</span>
+<span class="fc" id="L130">            try (ResultSet rows = statement.executeQuery()) {</span>
+<span class="fc" id="L131">                userExists = rows.next();</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">                progress.role = userExists ? ResourceState.REUSE : ResourceState.NOT_CREATED;</span>
+<span class="fc bfc" id="L133" title="All 6 branches covered.">                if (create &amp;&amp; input.expectedRole() != (userExists ? ResourceState.REUSE : ResourceState.CREATE))</span>
+<span class="fc" id="L134">                    return new Plan(false, planChanged(progress));</span>
+<span class="fc bfc" id="L135" title="All 6 branches covered.">                if (userExists &amp;&amp; (!&quot;OPEN&quot;.equals(rows.getString(1)) || !&quot;NO&quot;.equals(rows.getString(2))</span>
+<span class="pc bpc" id="L136" title="2 of 4 branches missed.">                        || !&quot;N&quot;.equals(rows.getString(3)) || !&quot;PASSWORD&quot;.equals(rows.getString(4))</span>
+<span class="pc bpc" id="L137" title="1 of 4 branches missed.">                        || !canonical(input.tablespace()).equals(rows.getString(5)) || rows.getInt(6) != 0</span>
+<span class="pc bpc" id="L138" title="1 of 6 branches missed.">                        || rows.getInt(7) != 0 || rows.getInt(8) != 3 || rows.getLong(9) != quotaBytes(input)</span>
+<span class="fc bfc" id="L139" title="All 4 branches covered.">                        || rows.getInt(10) != 0 || rows.getInt(11) != 0))</span>
+<span class="fc" id="L140">                    return conflict(progress, &quot;The existing user is not an open, local, restricted application account with only own-schema access, the selected tablespace and exactly the reviewed finite quota. Existing users, grants, passwords and quotas are never changed.&quot;);</span>
+<span class="pc bpc" id="L141" title="2 of 4 branches missed.">            }</span>
+<span class="pc bpc" id="L142" title="2 of 4 branches missed.">        }</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        if (!userExists) {</span>
+<span class="fc" id="L144">            try (PreparedStatement statement = admin.prepareStatement(&quot;SELECT COUNT(*) FROM dba_roles WHERE role = ?&quot;)) {</span>
+<span class="fc" id="L145">                statement.setQueryTimeout(15); statement.setString(1, canonical(input.target().username()));</span>
+<span class="fc" id="L146">                try (ResultSet rows = statement.executeQuery()) {</span>
+<span class="pc bpc" id="L147" title="1 of 2 branches missed.">                    if (!rows.next()) throw new SQLException(&quot;&quot;, &quot;08000&quot;);</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">                    if (rows.getInt(1) != 0) return conflict(progress, &quot;An Oracle role already uses the requested application user name. Choose a new dedicated name; existing roles are never changed.&quot;);</span>
+<span class="pc bpc" id="L149" title="1 of 2 branches missed.">                }</span>
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">            }</span>
+        } else {
+            // Oracle 23 introduced schema-wide grants; they are not individual
+            // object grants and do not appear in the older privilege views.
+            // Do not query this view on 19/21, where it does not exist.
+<span class="fc bfc" id="L155" title="All 2 branches covered.">            if (admin.getMetaData().getDatabaseMajorVersion() &gt;= 23) {</span>
+<span class="fc" id="L156">                try (PreparedStatement statement = admin.prepareStatement(&quot;SELECT COUNT(*) FROM dba_schema_privs WHERE grantee = ?&quot;)) {</span>
+<span class="fc" id="L157">                    statement.setQueryTimeout(15); statement.setString(1, canonical(input.target().username()));</span>
+<span class="fc" id="L158">                    try (ResultSet rows = statement.executeQuery()) {</span>
+<span class="pc bpc" id="L159" title="1 of 2 branches missed.">                        if (!rows.next()) throw new SQLException(&quot;&quot;, &quot;08000&quot;);</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">                        if (rows.getInt(1) != 0) return conflict(progress,</span>
+                                &quot;The existing application user has schema-wide grants. Choose a dedicated restricted account; existing grants are never changed.&quot;);
+<span class="pc bpc" id="L162" title="1 of 2 branches missed.">                    }</span>
+<span class="pc bpc" id="L163" title="1 of 2 branches missed.">                }</span>
+            }
+<span class="fc" id="L165">            verifyApplication(input, pdb);</span>
+        }
+<span class="fc" id="L167">        return new Plan(userExists, null);</span>
+    }
+
+    private void verifyApplication(ProvisionSettings input, String pdb) throws SQLException {
+<span class="fc" id="L171">        try (Connection app = connect(connector, input, input.target().database(), input.target().username(), input.target().password());</span>
+<span class="fc" id="L172">             PreparedStatement statement = app.prepareStatement(&quot;&quot;&quot;</span>
+                     SELECT SYS_CONTEXT('USERENV', 'SESSION_USER'), SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA'),
+                            SYS_CONTEXT('USERENV', 'CON_NAME'),
+                            (SELECT COUNT(*) FROM session_privs WHERE privilege IN ('CREATE SESSION', 'CREATE TABLE', 'CREATE SEQUENCE')),
+                            NVL((SELECT max_bytes FROM user_ts_quotas WHERE tablespace_name = ?), 0)
+                     FROM dual
+                     &quot;&quot;&quot;)) {
+<span class="fc" id="L179">            statement.setQueryTimeout(15); statement.setString(1, canonical(input.tablespace()));</span>
+<span class="fc" id="L180">            try (ResultSet rows = statement.executeQuery()) {</span>
+<span class="pc bpc" id="L181" title="2 of 4 branches missed.">                if (!rows.next() || !canonical(input.target().username()).equals(rows.getString(1))</span>
+<span class="pc bpc" id="L182" title="2 of 4 branches missed.">                        || !canonical(input.target().username()).equals(rows.getString(2)) || !pdb.equals(rows.getString(3))</span>
+<span class="pc bpc" id="L183" title="2 of 4 branches missed.">                        || rows.getInt(4) != 3 || rows.getLong(5) != quotaBytes(input)) throw new SQLException(&quot;&quot;, &quot;42501&quot;);</span>
+            }
+        }
+<span class="fc" id="L186">    }</span>
+
+    private static void createUser(Connection admin, ProvisionSettings input) throws SQLException {
+        // Oracle does not accept binds in DDL itself. Bind into this constant PL/SQL
+        // block, quote identifiers with DBMS_ASSERT, and permit no double quote or
+        // control character in the password. Raw secrets never enter client SQL text.
+<span class="fc" id="L192">        try (PreparedStatement statement = admin.prepareStatement(&quot;&quot;&quot;</span>
+                DECLARE
+                    app_name VARCHAR2(30) := ?;
+                    app_password VARCHAR2(30) := ?;
+                    app_tablespace VARCHAR2(30) := ?;
+                    app_quota PLS_INTEGER := ?;
+                BEGIN
+                    EXECUTE IMMEDIATE 'CREATE USER ' || SYS.DBMS_ASSERT.ENQUOTE_NAME(app_name, FALSE)
+                        || ' IDENTIFIED BY &quot;' || app_password || '&quot; DEFAULT TABLESPACE '
+                        || SYS.DBMS_ASSERT.ENQUOTE_NAME(app_tablespace, FALSE)
+                        || ' QUOTA ' || TO_CHAR(app_quota, 'FM9999999', 'NLS_NUMERIC_CHARACTERS=''.,''')
+                        || 'M ON ' || SYS.DBMS_ASSERT.ENQUOTE_NAME(app_tablespace, FALSE) || ' CONTAINER=CURRENT';
+                END;
+                &quot;&quot;&quot;)) {
+<span class="fc" id="L206">            statement.setQueryTimeout(15);</span>
+<span class="fc" id="L207">            statement.setString(1, canonical(input.target().username())); statement.setString(2, input.target().password());</span>
+<span class="fc" id="L208">            statement.setString(3, canonical(input.tablespace())); statement.setInt(4, input.quotaMiB());</span>
+<span class="fc" id="L209">            statement.execute();</span>
+        }
+<span class="fc" id="L211">    }</span>
+
+    private static int lock(Connection connection, boolean acquire) throws SQLException {
+<span class="fc bfc" id="L214" title="All 2 branches covered.">        try (CallableStatement statement = connection.prepareCall(acquire</span>
+<span class="fc" id="L215">                ? &quot;BEGIN ? := SYS.DBMS_LOCK.REQUEST(id =&gt; ?, lockmode =&gt; 6, timeout =&gt; 0, release_on_commit =&gt; FALSE); END;&quot;</span>
+<span class="fc" id="L216">                : &quot;BEGIN ? := SYS.DBMS_LOCK.RELEASE(?); END;&quot;)) {</span>
+<span class="fc" id="L217">            statement.setQueryTimeout(15); statement.registerOutParameter(1, Types.INTEGER); statement.setInt(2, LOCK_ID);</span>
+<span class="fc" id="L218">            statement.execute();</span>
+<span class="fc" id="L219">            return statement.getInt(1);</span>
+        }
+    }
+
+<span class="pc bpc" id="L223" title="1 of 2 branches missed.">    private static String canonical(String value) { return value == null ? null : value.toUpperCase(Locale.ROOT); }</span>
+<span class="pc bpc" id="L224" title="1 of 4 branches missed.">    private static boolean name(String value) { return value != null &amp;&amp; value.matches(&quot;[A-Z][A-Z0-9_]{0,29}&quot;); }</span>
+<span class="fc" id="L225">    private static String identifier(String value) { return '&quot;' + value.replace(&quot;\&quot;&quot;, &quot;\&quot;\&quot;&quot;) + '&quot;'; }</span>
+<span class="fc" id="L226">    private static long quotaBytes(ProvisionSettings input) { return input.quotaMiB().longValue() * 1024 * 1024; }</span>
+<span class="pc bpc" id="L227" title="1 of 4 branches missed.">    private static boolean cancelled(Progress progress) { return progress.cancelled || Thread.currentThread().isInterrupted(); }</span>
+    private static Plan conflict(Progress progress, String message) {
+<span class="fc" id="L229">        return new Plan(false, result(Outcome.CONFLICT, progress.role, progress.database, &quot;conflict&quot;, message));</span>
+    }
+    private static ProvisionResult pdbFailure(Progress progress) {
+<span class="fc" id="L232">        return result(Outcome.FAILED, progress.role, progress.database, &quot;oracle.pdb&quot;,</span>
+                &quot;Automatic preparation requires Oracle 19 or later and an existing PDB open READ WRITE. Connect to its service; CDB root, PDB seed, non-CDB databases and PDB creation are not handled by this operation.&quot;);
+    }
+<span class="fc" id="L235">    private record Plan(boolean userExists, ProvisionResult failure) { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

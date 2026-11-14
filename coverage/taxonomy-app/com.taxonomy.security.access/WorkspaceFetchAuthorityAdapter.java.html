@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkspaceFetchAuthorityAdapter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.access</a> &gt; <span class="el_source">WorkspaceFetchAuthorityAdapter.java</span></div><h1>WorkspaceFetchAuthorityAdapter.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.access;
+
+import com.taxonomy.backup.IdentityBinding;
+import com.taxonomy.backup.PrincipalId;
+import com.taxonomy.security.model.PrincipalBinding;
+import com.taxonomy.security.model.PrincipalUserDetails;
+import com.taxonomy.security.model.StablePrincipal;
+import com.taxonomy.security.service.PrincipalIdentityService;
+import com.taxonomy.workspace.service.WorkspaceFetchAuthority;
+import com.taxonomy.workspace.service.WorkspacePublicationAuthority;
+import com.taxonomy.workspace.service.RepositoryScope;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
+import org.springframework.security.oauth2.core.oidc.user.OidcUser;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.UUID;
+
+@Component
+@Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
+public class WorkspaceFetchAuthorityAdapter implements WorkspaceFetchAuthority, WorkspacePublicationAuthority {
+    private final PrincipalIdentityService identities;
+
+<span class="fc" id="L29">    public WorkspaceFetchAuthorityAdapter(PrincipalIdentityService identities) { this.identities = identities; }</span>
+
+    @Override public String currentActor(String username) {
+<span class="fc" id="L32">        var authentication = SecurityContextHolder.getContext().getAuthentication();</span>
+<span class="pc bpc" id="L33" title="3 of 6 branches missed.">        if (authentication == null || !authentication.isAuthenticated() || !username.equals(authentication.getName())) throw denied();</span>
+<span class="pc bpc" id="L34" title="1 of 4 branches missed.">        if (authentication instanceof StablePrincipal || authentication.getPrincipal() instanceof StablePrincipal) {</span>
+<span class="fc" id="L35">            return identities.requireCurrent(authentication).value().toString();</span>
+        }
+        // Legacy OIDC keeps its configured workspace name. Only the verified issuer/subject identifies a new operation.
+<span class="fc" id="L38">        return externalBinding(authentication);</span>
+    }
+
+    @Override public Grant authorize(String username, RepositoryScope scope) {
+<span class="fc" id="L42">        return authorize(username, permission(scope));</span>
+    }
+
+    @Override public Grant authorizePublication(String username) {
+<span class="fc" id="L46">        return authorize(username, ApiPermission.ARCHITECTURE_PUBLISH);</span>
+    }
+
+    private Grant authorize(String username, ApiPermission required) {
+<span class="fc" id="L50">        var authentication = SecurityContextHolder.getContext().getAuthentication();</span>
+<span class="fc" id="L51">        String actor = currentActor(username);</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        if (!ApiAccessPolicy.hasPermission(authentication, required)) throw denied();</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        if (authentication.getPrincipal() instanceof PrincipalUserDetails local) {</span>
+<span class="fc" id="L54">            return new Grant(actor, &quot;LOCAL&quot;, identities.currentLocalAuthority(local.principalId(), username).bindingKey());</span>
+        }
+<span class="fc" id="L56">        String binding = externalBinding(authentication);</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        return new Grant(actor, actor.equals(binding) ? &quot;LEGACY_OIDC&quot; : &quot;OIDC&quot;, binding);</span>
+    }
+
+    private static String externalBinding(Authentication authentication) {
+<span class="pc bpc" id="L61" title="3 of 4 branches missed.">        if (authentication instanceof JwtAuthenticationToken jwt &amp;&amp; jwt.getToken().getIssuer() != null) {</span>
+<span class="nc" id="L62">            return binding(jwt.getToken().getIssuer().toString(), jwt.getToken().getSubject());</span>
+        }
+<span class="pc bpc" id="L64" title="2 of 4 branches missed.">        if (authentication instanceof OAuth2AuthenticationToken &amp;&amp; authentication.getPrincipal() instanceof OidcUser oidc</span>
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">                &amp;&amp; oidc.getIssuer() != null) return binding(oidc.getIssuer().toString(), oidc.getSubject());</span>
+<span class="nc" id="L66">        throw denied();</span>
+    }
+
+    private static String binding(String issuer, String subject) {
+<span class="pc bpc" id="L70" title="2 of 4 branches missed.">        if (subject == null || subject.isBlank()) throw denied();</span>
+<span class="fc" id="L71">        return PrincipalBinding.key(new IdentityBinding(IdentityBinding.Kind.OIDC, issuer, subject));</span>
+    }
+
+    @Override public void checkPublication(Grant original, String username, RepositoryScope scope, boolean unattended) {
+<span class="fc" id="L75">        checkGrant(original, username, permission(scope), unattended);</span>
+<span class="fc" id="L76">    }</span>
+
+    @Override public void checkPublicationGrant(Grant original, String username, boolean unattended) {
+<span class="fc" id="L79">        checkGrant(original, username, ApiPermission.ARCHITECTURE_PUBLISH, unattended);</span>
+<span class="fc" id="L80">    }</span>
+
+    private void checkGrant(Grant original, String username, ApiPermission required, boolean unattended) {
+<span class="fc bfc" id="L83" title="All 2 branches covered.">        if (!unattended) {</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">            if (!authorize(username, required).equals(original)) throw denied();</span>
+<span class="fc" id="L85">            return;</span>
+        }
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        if (&quot;LEGACY_OIDC&quot;.equals(original.loginKind())) throw new FreshLoginRequired();</span>
+<span class="fc" id="L88">        var id = new PrincipalId(UUID.fromString(original.principalId()));</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">        if (!&quot;LOCAL&quot;.equals(original.loginKind())) {</span>
+<span class="nc bnc" id="L90" title="All 2 branches missed.">            if (!identities.isEnabled(id)) throw denied();</span>
+            // External role/scope grants are in a verified login assertion. A worker cannot renew that assertion.
+<span class="nc" id="L92">            throw new FreshLoginRequired();</span>
+        }
+<span class="fc" id="L94">        var local = identities.currentLocalAuthority(id, username);</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">        if (!local.bindingKey().equals(original.bindingKey()) || required.roles().stream()</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">                .noneMatch(role -&gt; local.roles().contains(&quot;ROLE_&quot; + role))) throw denied();</span>
+<span class="fc" id="L97">    }</span>
+
+    private static ApiPermission permission(RepositoryScope scope) {
+<span class="pc bpc" id="L100" title="1 of 3 branches missed.">        return switch (scope) {</span>
+<span class="fc" id="L101">            case WORKSPACE -&gt; ApiPermission.ANALYSIS_RUN;</span>
+<span class="fc" id="L102">            case CENTRAL_WRITE -&gt; ApiPermission.ARCHITECTURE_WRITE;</span>
+<span class="nc" id="L103">            default -&gt; throw denied();</span>
+        };
+    }
+
+<span class="fc" id="L107">    private static AccessDeniedException denied() { return new AccessDeniedException(&quot;Workspace fetch permission is unavailable&quot;); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

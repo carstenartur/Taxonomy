@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>LeasedRepositoryOperation.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">LeasedRepositoryOperation.java</span></div><h1>LeasedRepositoryOperation.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Id;
+import jakarta.persistence.MappedSuperclass;
+
+/** Execution ownership and scheduling shared by durable Git operations. */
+@MappedSuperclass
+<span class="fc" id="L9">abstract class LeasedRepositoryOperation {</span>
+    @Id @Column(name = &quot;operation_id&quot;, length = 64) String id;
+    @Column(name = &quot;phase&quot;, nullable = false, length = 24) String phase;
+    @Column(name = &quot;attempts&quot;, nullable = false) int attempts;
+    @Column(name = &quot;last_attempt_at&quot;) Long lastAttemptAt;
+    @Column(name = &quot;next_attempt_at&quot;) Long nextAttemptAt;
+    @Column(name = &quot;completed_at&quot;) Long completedAt;
+    @Column(name = &quot;archived_at&quot;) Long archivedAt;
+    @Column(name = &quot;executor_id&quot;, length = 64) String executor;
+    @Column(name = &quot;lease_id&quot;, length = 36) String lease;
+    @Column(name = &quot;decision_code&quot;, length = 40) String decision;
+
+    void finish(String outcome, String decisionCode, long now) {
+<span class="fc" id="L22">        phase = outcome;</span>
+<span class="fc" id="L23">        decision = decisionCode;</span>
+<span class="fc" id="L24">        completedAt = now;</span>
+<span class="fc" id="L25">        nextAttemptAt = null;</span>
+<span class="fc" id="L26">        lease = null;</span>
+<span class="fc" id="L27">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

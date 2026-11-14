@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BranchGraphVectorStore.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.service</a> &gt; <span class="el_source">BranchGraphVectorStore.java</span></div><h1>BranchGraphVectorStore.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.service;
+
+import com.taxonomy.error.SearchUnavailableException;
+import com.taxonomy.relations.model.RelationDecisionProjection;
+import com.taxonomy.relations.model.RelationDecisionProjectionCheckpoint;
+import com.taxonomy.relations.repository.RelationDecisionProjectionCheckpointRepository;
+import com.taxonomy.workspace.service.RepositoryContext;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+import java.util.UUID;
+
+/** Short database transactions fence competing builders and publish both native vector fields together. */
+@Service
+@Transactional(propagation = Propagation.REQUIRES_NEW)
+class BranchGraphVectorStore {
+    @PersistenceContext private EntityManager em;
+    private final RelationDecisionProjectionCheckpointRepository checkpoints;
+
+<span class="fc" id="L25">    BranchGraphVectorStore(RelationDecisionProjectionCheckpointRepository checkpoints) { this.checkpoints = checkpoints; }</span>
+
+<span class="fc" id="L27">    enum State { MISSING, BUILDING, READY, STALE, FAILED }</span>
+<span class="fc" id="L28">    record Status(State state, String generation, String sourceCommit, String modelKey, int nodeCount, int relationCount) { }</span>
+<span class="fc" id="L29">    record Generation(String id, BranchGraphVectorIndex.Archive index) { }</span>
+
+    String begin(RepositoryContext context, BranchGraphVectorSource source, String modelIdentity) {
+<span class="fc" id="L32">        var checkpoint = locked(context, source.commit());</span>
+<span class="fc" id="L33">        var row = em.find(BranchGraphVectorGeneration.class, checkpoint.getId());</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        boolean creating = row == null;</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">        if (creating) {</span>
+<span class="fc" id="L36">            row = new BranchGraphVectorGeneration();</span>
+<span class="fc" id="L37">            row.checkpointId = checkpoint.getId();</span>
+        }
+<span class="fc" id="L39">        row.generation = UUID.randomUUID().toString();</span>
+<span class="fc" id="L40">        row.state = State.BUILDING.name();</span>
+<span class="fc" id="L41">        row.startedAt = java.time.Instant.now();</span>
+<span class="fc" id="L42">        row.startedBy = context.username();</span>
+<span class="fc" id="L43">        row.publishedAt = null;</span>
+<span class="fc" id="L44">        row.commit = source.commit();</span>
+<span class="fc" id="L45">        row.sourceKey = source.key();</span>
+<span class="fc" id="L46">        row.catalogueRevision = source.catalogueRevision();</span>
+<span class="fc" id="L47">        row.definitionKey = source.catalogueDefinition();</span>
+<span class="fc" id="L48">        row.modelKey = source.modelKey();</span>
+<span class="fc" id="L49">        row.modelIdentity = modelIdentity;</span>
+<span class="fc" id="L50">        row.textFormat = BranchGraphVectorSource.TEXT_FORMAT;</span>
+<span class="fc" id="L51">        row.indexFormat = BranchGraphVectorIndex.FORMAT;</span>
+<span class="fc" id="L52">        row.relationsKey = source.relationsHash();</span>
+<span class="fc" id="L53">        row.bytes = null;</span>
+<span class="fc" id="L54">        row.indexSha256 = null;</span>
+<span class="fc" id="L55">        row.nodes = 0;</span>
+<span class="fc" id="L56">        row.relations = 0;</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        if (creating) em.persist(row);</span>
+<span class="fc" id="L58">        return row.generation;</span>
+    }
+
+    void publish(RepositoryContext context, BranchGraphVectorSource source, String token, BranchGraphVectorIndex.Archive archive, Runnable verifySource) {
+<span class="fc" id="L62">        var checkpoint = locked(context, source.commit());</span>
+<span class="fc" id="L63">        var row = em.find(BranchGraphVectorGeneration.class, checkpoint.getId());</span>
+<span class="pc bpc" id="L64" title="1 of 6 branches missed.">        if (row == null || !State.BUILDING.name().equals(row.state) || !token.equals(row.generation)</span>
+<span class="pc bpc" id="L65" title="2 of 4 branches missed.">                || !source.key().equals(row.sourceKey) || !row.sourceKey.equals(archive.sourceKey())</span>
+<span class="pc bpc" id="L66" title="2 of 4 branches missed.">                || checkpoint.getRelationCount() != archive.relationCount() || source.relationCount() != archive.relationCount()) {</span>
+<span class="fc" id="L67">            throw new SearchUnavailableException();</span>
+        }
+<span class="fc" id="L69">        verifySource.run();</span>
+<span class="fc" id="L70">        row.bytes = archive.bytes();</span>
+<span class="fc" id="L71">        row.indexSha256 = digest(row.bytes);</span>
+<span class="fc" id="L72">        row.nodes = archive.nodeCount();</span>
+<span class="fc" id="L73">        row.relations = archive.relationCount();</span>
+<span class="fc" id="L74">        row.state = State.READY.name();</span>
+<span class="fc" id="L75">        row.publishedAt = java.time.Instant.now();</span>
+<span class="fc" id="L76">    }</span>
+
+    void fail(RepositoryContext context, String token) {
+<span class="fc" id="L79">        var checkpoint = checkpoints.findExactForUpdate(context.repositoryId(), scope(context), context.branch());</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">        if (checkpoint.isEmpty()) return;</span>
+<span class="fc" id="L81">        var row = em.find(BranchGraphVectorGeneration.class, checkpoint.get().getId());</span>
+<span class="pc bpc" id="L82" title="3 of 6 branches missed.">        if (row != null &amp;&amp; State.BUILDING.name().equals(row.state) &amp;&amp; token.equals(row.generation)) row.state = State.FAILED.name();</span>
+<span class="fc" id="L83">    }</span>
+
+    void purge(RepositoryContext context, Runnable verifyHead) {
+<span class="fc" id="L86">        verifyHead.run();</span>
+<span class="fc" id="L87">        var checkpoint = checkpoints.findExactForUpdate(context.repositoryId(), scope(context), context.branch());</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">        if (checkpoint.isEmpty()) return;</span>
+<span class="fc" id="L89">        var row = em.find(BranchGraphVectorGeneration.class, checkpoint.get().getId());</span>
+<span class="fc" id="L90">        verifyHead.run();</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">        if (row != null) em.remove(row);</span>
+<span class="fc" id="L92">    }</span>
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
+    Status status(RepositoryContext context, BranchGraphVectorSource source) {
+        // The scalar projection avoids loading a potentially large Lucene index for a readiness request.
+<span class="fc" id="L97">        var rows = em.createQuery(&quot;&quot;&quot;</span>
+                select new com.taxonomy.relations.service.BranchGraphVectorStore$Header(
+                    v.state, v.generation, v.commit, v.sourceKey, v.modelKey, v.nodes, v.relations)
+                from BranchGraphVectorGeneration v join v.checkpoint p
+                where p.repositoryId=:repo and p.workspaceScopeKey=:scope and p.branch=:branch
+<span class="fc" id="L102">                &quot;&quot;&quot;, Header.class).setParameter(&quot;repo&quot;, context.repositoryId()).setParameter(&quot;scope&quot;, scope(context))</span>
+<span class="fc" id="L103">                .setParameter(&quot;branch&quot;, context.branch()).getResultList();</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        if (rows.isEmpty()) return new Status(State.MISSING, null, null, null, 0, 0);</span>
+<span class="fc" id="L105">        var row = rows.getFirst();</span>
+<span class="pc bpc" id="L106" title="2 of 4 branches missed.">        var state = source != null &amp;&amp; source.key().equals(row.sourceKey()) ? State.valueOf(row.state()) : State.STALE;</span>
+<span class="fc" id="L107">        return new Status(state, row.generation(), row.commit(), row.modelKey(), row.nodes(), row.relations());</span>
+    }
+
+<span class="fc" id="L110">    record Header(String state, String generation, String commit, String sourceKey, String modelKey, int nodes, int relations) { }</span>
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
+    Generation read(RepositoryContext context, BranchGraphVectorSource source) {
+<span class="fc" id="L114">        var checkpoint = checkpoints.findByRepositoryIdAndWorkspaceScopeKeyAndBranch(context.repositoryId(), scope(context), context.branch())</span>
+<span class="fc" id="L115">                .orElseThrow(SearchUnavailableException::new);</span>
+<span class="fc" id="L116">        var row = em.find(BranchGraphVectorGeneration.class, checkpoint.getId());</span>
+<span class="pc bpc" id="L117" title="3 of 6 branches missed.">        if (row == null || !State.READY.name().equals(row.state) || !source.commit().equals(checkpoint.getAuthoritativeCommitId())</span>
+<span class="pc bpc" id="L118" title="1 of 6 branches missed.">                || !source.key().equals(row.sourceKey) || row.bytes == null || !digest(row.bytes).equals(row.indexSha256)) {</span>
+<span class="fc" id="L119">            throw new SearchUnavailableException();</span>
+        }
+<span class="fc" id="L121">        return new Generation(row.generation, new BranchGraphVectorIndex.Archive(row.bytes, row.nodes, row.relations, row.sourceKey));</span>
+    }
+
+    private RelationDecisionProjectionCheckpoint locked(RepositoryContext context, String commit) {
+<span class="fc" id="L125">        return checkpoints.findExactForUpdate(context.repositoryId(), scope(context), context.branch())</span>
+<span class="fc" id="L126">                .filter(row -&gt; commit.equals(row.getAuthoritativeCommitId())).orElseThrow(SearchUnavailableException::new);</span>
+    }
+
+<span class="fc" id="L129">    private static String scope(RepositoryContext context) { return RelationDecisionProjection.scopeKeyFor(context.workspaceId()); }</span>
+    private static String digest(byte[] bytes) {
+<span class="fc" id="L131">        try { return HexFormat.of().formatHex(MessageDigest.getInstance(&quot;SHA-256&quot;).digest(bytes)); }</span>
+<span class="nc" id="L132">        catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

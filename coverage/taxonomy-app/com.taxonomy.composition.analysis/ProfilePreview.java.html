@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProfilePreview.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.analysis</a> &gt; <span class="el_source">ProfilePreview.java</span></div><h1>ProfilePreview.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.analysis;
+
+import com.taxonomy.dsl.planning.ArchitectureBrief;
+import java.util.HashMap;
+import java.util.List;
+
+/** Read-only profile evidence for the selected model. No editor command or admission is executed. */
+<span class="fc" id="L8">public record ProfilePreview(String repositoryId, String workspaceScopeKey, String branch, String commit,</span>
+        Long semanticRevision, String source, boolean editable, ArchitectureBrief.Snapshot brief, Decision decision) {
+<span class="fc" id="L10">    public enum Decision { ASSIGNED, UNASSIGNED, OPEN, CONFLICTING_EDITIONS, UNRESOLVED }</span>
+
+    static Decision decision(ArchitectureBrief.Snapshot brief) {
+<span class="fc bfc" id="L13" title="All 2 branches covered.">        if (brief.problem() != null) return Decision.UNRESOLVED;</span>
+<span class="fc bfc" id="L14" title="All 4 branches covered.">        if (!brief.present() || brief.references().isEmpty()) return Decision.UNASSIGNED;</span>
+<span class="fc" id="L15">        var editions = new HashMap&lt;List&lt;String&gt;, String&gt;();</span>
+<span class="fc" id="L16">        boolean open = false;</span>
+<span class="fc bfc" id="L17" title="All 2 branches covered.">        for (var reference : brief.references()) {</span>
+<span class="fc" id="L18">            var values = reference.values();</span>
+<span class="fc" id="L19">            String role = values.get(&quot;role&quot;);</span>
+<span class="fc bfc" id="L20" title="All 2 branches covered.">            if (&quot;open&quot;.equals(role)) open = true;</span>
+            // Distinct sections, purposes or scopes may deliberately cite different editions.
+<span class="fc bfc" id="L22" title="All 2 branches covered.">            if (&quot;binding&quot;.equals(role)) {</span>
+<span class="fc" id="L23">                String edition = values.get(&quot;edition&quot;);</span>
+<span class="pc bpc" id="L24" title="1 of 2 branches missed.">                if (edition == null) {</span>
+<span class="nc" id="L25">                    open = true;</span>
+                } else {
+<span class="fc" id="L27">                    var subject = List.of(reference.sourceId(), values.get(&quot;scope&quot;), values.getOrDefault(&quot;appliesTo&quot;, &quot;&quot;),</span>
+<span class="fc" id="L28">                            values.getOrDefault(&quot;section&quot;, &quot;&quot;), values.getOrDefault(&quot;purpose&quot;, &quot;&quot;));</span>
+<span class="fc" id="L29">                    String other = editions.putIfAbsent(subject, edition);</span>
+<span class="pc bpc" id="L30" title="1 of 4 branches missed.">                    if (other != null &amp;&amp; !other.equals(edition)) return Decision.CONFLICTING_EDITIONS;</span>
+                }
+            }
+<span class="fc" id="L33">        }</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        return open ? Decision.OPEN : Decision.ASSIGNED;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

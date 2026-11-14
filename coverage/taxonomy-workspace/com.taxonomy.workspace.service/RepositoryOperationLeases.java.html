@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RepositoryOperationLeases.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">RepositoryOperationLeases.java</span></div><h1>RepositoryOperationLeases.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import jakarta.persistence.EntityManager;
+import org.springframework.http.HttpStatus;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.time.Clock;
+import java.util.UUID;
+
+/** Claims commit independently. Hold the conditional row lock in the publication transaction through the ref CAS. */
+final class RepositoryOperationLeases {
+<span class="fc" id="L14">    record Claim(String operationId, String lease) { }</span>
+
+    private final EntityManager entities;
+    private final TransactionTemplate transaction;
+    private final Clock clock;
+    private final long leaseMillis;
+    private final int attemptLimit;
+
+    RepositoryOperationLeases(EntityManager entities, TransactionTemplate transaction, Clock clock,
+<span class="fc" id="L23">                              long leaseMillis, int attemptLimit) {</span>
+<span class="fc" id="L24">        this.entities = entities;</span>
+<span class="pc bpc" id="L25" title="1 of 2 branches missed.">        if (transaction.getPropagationBehavior() != TransactionDefinition.PROPAGATION_REQUIRES_NEW) {</span>
+<span class="nc" id="L26">            throw new IllegalArgumentException(&quot;Repository operation claims require an independent transaction&quot;);</span>
+        }
+<span class="fc" id="L28">        this.transaction = transaction;</span>
+<span class="fc" id="L29">        this.clock = clock;</span>
+<span class="fc" id="L30">        this.leaseMillis = leaseMillis;</span>
+<span class="fc" id="L31">        this.attemptLimit = attemptLimit;</span>
+<span class="fc" id="L32">    }</span>
+
+    Claim claim(Class&lt;? extends LeasedRepositoryOperation&gt; type, String id, String executor, boolean respectBackoff) {
+<span class="pc" id="L35">        return claim(type,id,executor,respectBackoff,row -&gt; {});</span>
+    }
+
+    /** Publish the limit decision inside the same transaction that retires the last abandoned lease. */
+    &lt;T extends LeasedRepositoryOperation&gt; Claim claim(Class&lt;T&gt; type, String id, String executor, boolean respectBackoff,
+                                                       java.util.function.Consumer&lt;T&gt; exhausted) {
+<span class="fc" id="L41">        long now = clock.millis();</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        String eligible = respectBackoff</span>
+<span class="fc" id="L43">                ? &quot;(f.phase in ('ADMITTED','RUNNING','RETRYABLE') and f.nextAttemptAt &lt;= :now)&quot;</span>
+<span class="fc" id="L44">                : &quot;(f.phase in ('ADMITTED','RETRYABLE','AWAITING_AUTHORIZATION') or (f.phase='RUNNING' and f.nextAttemptAt &lt;= :now))&quot;;</span>
+<span class="fc" id="L45">        String lease = UUID.randomUUID().toString();</span>
+<span class="fc" id="L46">        String entity = entities.getMetamodel().entity(type).getName();</span>
+<span class="fc" id="L47">        return transaction.execute(status -&gt; {</span>
+<span class="fc" id="L48">            int changed = entities.createQuery(&quot;&quot;&quot;</span>
+                    update %s f set f.phase='RUNNING', f.attempts=f.attempts+1,
+                    f.executor=:executor, f.lastAttemptAt=:now, f.nextAttemptAt=:until, f.lease=:lease
+<span class="fc" id="L51">                    where f.id=:id and f.archivedAt is null and f.attempts &lt; :limit and %s&quot;&quot;&quot;.formatted(entity, eligible))</span>
+<span class="fc" id="L52">                    .setParameter(&quot;id&quot;, id).setParameter(&quot;executor&quot;, executor).setParameter(&quot;lease&quot;, lease)</span>
+<span class="fc" id="L53">                    .setParameter(&quot;now&quot;, now).setParameter(&quot;until&quot;, now + leaseMillis)</span>
+<span class="fc" id="L54">                    .setParameter(&quot;limit&quot;, attemptLimit).executeUpdate();</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">            if (changed == 1) return new Claim(id, lease);</span>
+<span class="fc" id="L56">            int retired = entities.createQuery(&quot;&quot;&quot;</span>
+                    update %s f set f.phase='MANUAL_REVIEW', f.decision='ATTEMPTS_EXHAUSTED',
+                    f.completedAt=:now, f.nextAttemptAt=null, f.lease=null
+<span class="fc" id="L59">                    where f.id=:id and f.archivedAt is null and f.attempts &gt;= :limit and %s&quot;&quot;&quot;.formatted(entity, eligible))</span>
+<span class="fc" id="L60">                    .setParameter(&quot;id&quot;, id).setParameter(&quot;now&quot;, now).setParameter(&quot;limit&quot;, attemptLimit).executeUpdate();</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">            if (retired==1) {</span>
+<span class="fc" id="L62">                var row=entities.find(type,id);</span>
+<span class="fc" id="L63">                entities.refresh(row);</span>
+<span class="fc" id="L64">                exhausted.accept(row);</span>
+            }
+<span class="fc" id="L66">            return null;</span>
+        });
+    }
+
+    /** The conditional write takes the physical row lock before any Git callback can see the lease. */
+    &lt;T extends LeasedRepositoryOperation&gt; T locked(Class&lt;T&gt; type, Claim claim) {
+<span class="fc" id="L72">        String entity = entities.getMetamodel().entity(type).getName();</span>
+<span class="fc" id="L73">        String id = claim.operationId();</span>
+<span class="fc" id="L74">        int locked = entities.createQuery(&quot;&quot;&quot;</span>
+                update %s f set f.lease=:lease
+<span class="fc" id="L76">                where f.id=:id and f.phase='RUNNING' and f.lease=:lease&quot;&quot;&quot;.formatted(entity))</span>
+<span class="fc" id="L77">                .setParameter(&quot;id&quot;, claim.operationId()).setParameter(&quot;lease&quot;, claim.lease()).executeUpdate();</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        if (locked != 1) return null;</span>
+<span class="fc" id="L79">        var row = entities.find(type,id);</span>
+<span class="fc" id="L80">        entities.refresh(row);</span>
+<span class="fc" id="L81">        return row;</span>
+    }
+
+    void requireCurrent(LeasedRepositoryOperation row, Claim claim) {
+<span class="pc bpc" id="L85" title="3 of 8 branches missed.">        if (row == null || !claim.lease().equals(row.lease) || !&quot;RUNNING&quot;.equals(row.phase)</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">                || row.nextAttemptAt == null || row.nextAttemptAt &lt;= clock.millis()) {</span>
+<span class="fc" id="L87">            throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;Git operation ownership changed&quot;);</span>
+        }
+<span class="fc" id="L89">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

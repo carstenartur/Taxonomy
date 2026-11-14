@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RetainedCatalogueDefinitions.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.definition</a> &gt; <span class="el_source">RetainedCatalogueDefinitions.java</span></div><h1>RetainedCatalogueDefinitions.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.definition;
+
+import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
+import com.taxonomy.dsl.model.CatalogueDefinition;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+
+/** A descriptor belongs to the bytes of one recorded workbook, including after an import or restart. */
+@Service
+public class RetainedCatalogueDefinitions implements com.taxonomy.dsl.model.CatalogueDefinitionResolver {
+    private final CatalogueSourceJournal sources;
+    private String lastWorkbook;
+    private CatalogueDefinition lastDefinition;
+
+<span class="fc" id="L17">    public RetainedCatalogueDefinitions(CatalogueSourceJournal sources) { this.sources = sources; }</span>
+
+    @Override
+    public CatalogueDefinition forModel(com.taxonomy.dsl.model.CanonicalArchitectureModel model) {
+<span class="fc" id="L21">        String revision = model.getCatalogueRevision();</span>
+<span class="fc bfc" id="L22" title="All 2 branches covered.">        if (revision == null) return CatalogueDefinition.standard();</span>
+<span class="fc" id="L23">        return forGeneration(generation(revision));</span>
+    }
+
+    @Override
+    public CatalogueDefinition forRevision(String revision) {
+<span class="fc" id="L28">        var retained = generation(revision);</span>
+<span class="fc bfc" id="L29" title="All 2 branches covered.">        if (retained.workbook().use() != CatalogueSourceJournal.Use.APPLIED)</span>
+<span class="fc" id="L30">            throw new IllegalStateException(&quot;The recorded catalogue workbook was not retained as applied&quot;);</span>
+<span class="fc" id="L31">        return forGeneration(retained);</span>
+    }
+
+    private CatalogueSourceJournal.Snapshot generation(String revision) {
+<span class="fc" id="L35">        return sources.findRevision(revision)</span>
+<span class="pc" id="L36">                .orElseThrow(() -&gt; new IllegalStateException(&quot;The project's catalogue revision is unavailable&quot;));</span>
+    }
+
+<span class="fc" id="L39">    public record AppliedGeneration(String revision, CatalogueDefinition definition) { }</span>
+
+    /** Resolve a project pin, or capture the current pointer once when the project has no pin. */
+    public java.util.Optional&lt;AppliedGeneration&gt; appliedGeneration(String projectRevision) {
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        var selected = projectRevision == null ? sources.current() : sources.findRevision(projectRevision).orElse(null);</span>
+<span class="fc bfc" id="L44" title="All 4 branches covered.">        if (selected == null || selected.workbook().use() != CatalogueSourceJournal.Use.APPLIED)</span>
+<span class="fc" id="L45">            return java.util.Optional.empty();</span>
+<span class="fc" id="L46">        return java.util.Optional.of(new AppliedGeneration(selected.id(), forGeneration(selected)));</span>
+    }
+
+    public CatalogueDefinition current() {
+<span class="fc" id="L50">        return com.taxonomy.catalog.snapshot.FrozenCatalogueContext.definition()</span>
+<span class="fc" id="L51">                .orElseGet(() -&gt; forGeneration(sources.current()));</span>
+    }
+
+    public synchronized CatalogueDefinition forGeneration(CatalogueSourceJournal.Snapshot generation) {
+<span class="fc bfc" id="L55" title="All 4 branches covered.">        if (generation == null || generation.workbook().use() == CatalogueSourceJournal.Use.NOT_RETAINED)</span>
+<span class="fc" id="L56">            return CatalogueDefinition.standard();</span>
+<span class="fc" id="L57">        var ref = generation.workbook();</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">        if (ref.use() != CatalogueSourceJournal.Use.APPLIED)</span>
+<span class="nc" id="L59">            throw new IllegalStateException(&quot;Catalogue definition has no applied workbook&quot;);</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        if (ref.sha256().equals(lastWorkbook)) return lastDefinition;</span>
+<span class="fc" id="L61">        try (var input = sources.retainedWorkbook(ref).openStream(); var book = new XSSFWorkbook(input)) {</span>
+<span class="fc" id="L62">            var definition = WorkbookCatalogueDefinition.read(book);</span>
+<span class="fc" id="L63">            lastDefinition = definition;</span>
+<span class="fc" id="L64">            lastWorkbook = ref.sha256();</span>
+<span class="fc" id="L65">            return definition;</span>
+<span class="nc" id="L66">        } catch (IOException failure) {</span>
+<span class="nc" id="L67">            throw new IllegalStateException(&quot;Cannot read the retained catalogue definition&quot;, failure);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

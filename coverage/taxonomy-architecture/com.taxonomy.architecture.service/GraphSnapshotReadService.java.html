@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GraphSnapshotReadService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-architecture</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.service</a> &gt; <span class="el_source">GraphSnapshotReadService.java</span></div><h1>GraphSnapshotReadService.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.service;
+
+import com.taxonomy.dsl.mapper.AstToModelMapper;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
+import com.taxonomy.dsl.parser.TaxDslParser;
+import com.taxonomy.relations.service.RelationProjectionReadService;
+import com.taxonomy.relations.service.RelationProjectionReadService.Snapshot;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
+import org.springframework.stereotype.Service;
+import java.io.IOException;
+import java.util.*;
+import java.util.stream.Collectors;
+
+/** One detached model and relation proof, read at one exact selected commit per query. */
+@Service
+public class GraphSnapshotReadService {
+    private final RelationProjectionReadService relations;
+    private final WorkspaceDslReadPort reads;
+
+    private final CatalogueDefinitionResolver catalogues;
+
+    public GraphSnapshotReadService(RelationProjectionReadService relations, WorkspaceDslReadPort reads) {
+<span class="fc" id="L24">        this(relations, reads, CatalogueDefinitionResolver.standard());</span>
+<span class="fc" id="L25">    }</span>
+    @org.springframework.beans.factory.annotation.Autowired
+<span class="fc" id="L27">    public GraphSnapshotReadService(RelationProjectionReadService relations, WorkspaceDslReadPort reads, CatalogueDefinitionResolver catalogues) {</span>
+<span class="fc" id="L28">        this.catalogues = catalogues;</span>
+<span class="fc" id="L29">        this.relations = relations;</span>
+<span class="fc" id="L30">        this.reads = reads;</span>
+<span class="fc" id="L31">    }</span>
+
+    public SelectedGraphSnapshot read(RepositoryContext context, String commitId) {
+<span class="fc" id="L34">        Snapshot proof = relations.readSnapshot(context, commitId);</span>
+<span class="fc" id="L35">        var repository = reads.openRead(context);</span>
+        try {
+<span class="fc" id="L37">            String dsl = repository.dslAtCommit(proof.commitId())</span>
+<span class="pc" id="L38">                    .orElseThrow(() -&gt; new IllegalStateException(&quot;Selected commit has no canonical DSL evidence&quot;));</span>
+<span class="fc" id="L39">            var model = new AstToModelMapper().map(new TaxDslParser().parse(dsl, &quot;architecture.taxdsl&quot;));</span>
+<span class="fc" id="L40">            var catalogue = catalogues.forModel(model);</span>
+<span class="fc" id="L41">            Map&lt;String, SnapshotNode&gt; nodes = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L42">            model.getElements().forEach(element -&gt; {</span>
+<span class="fc" id="L43">                String root = catalogue.rootFor(element.getType());</span>
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">                if (nodes.putIfAbsent(element.getId(), new SnapshotNode(element.getId(), element.getTitle(),</span>
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">                        root == null ? &quot;&quot; : root, element.getExtensions())) != null)</span>
+<span class="nc" id="L46">                    throw new IllegalStateException(&quot;Duplicate element in selected graph snapshot&quot;);</span>
+<span class="fc" id="L47">            });</span>
+<span class="fc" id="L48">            Set&lt;String&gt; requirements = model.getRequirements().stream().map(requirement -&gt; requirement.getId()).collect(Collectors.toSet());</span>
+<span class="fc" id="L49">            List&lt;SnapshotMapping&gt; mappings = model.getMappings().stream()</span>
+<span class="fc" id="L50">                    .filter(mapping -&gt; requirements.contains(mapping.getRequirementId()))</span>
+<span class="fc" id="L51">                    .map(mapping -&gt; new SnapshotMapping(mapping.getRequirementId(), mapping.getElementId(),</span>
+<span class="fc" id="L52">                            mapping.getSource(), mapping.getScore())).toList();</span>
+<span class="fc" id="L53">            return new SelectedGraphSnapshot(proof, nodes, mappings, repository);</span>
+<span class="nc" id="L54">        } catch (IOException error) {</span>
+<span class="nc" id="L55">            throw new IllegalStateException(&quot;Selected graph snapshot is not readable&quot;, error);</span>
+        }
+    }
+
+    public void verifyHead(SelectedGraphSnapshot snapshot) {
+<span class="fc" id="L60">        try { snapshot.repository().verifyExpectedHead(snapshot.proof().commitId()); }</span>
+<span class="fc" id="L61">        catch (IOException error) { throw new IllegalStateException(&quot;Selected graph head is no longer proven&quot;, error); }</span>
+<span class="fc" id="L62">    }</span>
+
+    public record SnapshotNode(String id, String title, String taxonomyRoot, Map&lt;String,String&gt; extensions) {
+<span class="fc" id="L65">        public SnapshotNode { extensions = Map.copyOf(extensions); }</span>
+    }
+<span class="fc" id="L67">    public record SnapshotMapping(String requirementId, String elementId, String source, Double score) { }</span>
+    public record SelectedGraphSnapshot(Snapshot proof, Map&lt;String, SnapshotNode&gt; nodes,
+                                        List&lt;SnapshotMapping&gt; mappings, WorkspaceDslReadPort.RepositoryRead repository) {
+<span class="fc" id="L70">        public SelectedGraphSnapshot {</span>
+<span class="fc" id="L71">            Objects.requireNonNull(proof); Objects.requireNonNull(repository);</span>
+<span class="fc" id="L72">            nodes = Collections.unmodifiableMap(new LinkedHashMap&lt;&gt;(nodes));</span>
+<span class="fc" id="L73">            mappings = List.copyOf(mappings);</span>
+<span class="fc" id="L74">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

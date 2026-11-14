@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GraphSearchService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.service</a> &gt; <span class="el_source">GraphSearchService.java</span></div><h1>GraphSearchService.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.service;
+
+import com.taxonomy.catalog.service.LocalEmbeddingService;
+import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
+import com.taxonomy.error.SearchUnavailableException;
+
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.model.TaxonomyRelation;
+import com.taxonomy.dto.GraphSearchResult;
+import com.taxonomy.dto.TaxonomyNodeDto;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.relations.service.RelationProjectionReadService.ReadModel;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import org.hibernate.search.mapper.orm.Search;
+import org.hibernate.search.mapper.orm.session.SearchSession;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
+import java.util.function.BooleanSupplier;
+
+/** Graph-semantic search gated by the exact canonical relation source. */
+@Service
+public class GraphSearchService {
+
+<span class="fc" id="L34">    private static final Logger log = LoggerFactory.getLogger(GraphSearchService.class);</span>
+    private static final int MAX_NODE_RESULTS = 1_000;
+    private static final int RELATIONS_PER_NODE_RESULT = 2;
+    private static final int MAX_RELATION_RESULTS =
+            MAX_NODE_RESULTS * RELATIONS_PER_NODE_RESULT;
+
+    private final LocalEmbeddingService embeddingService;
+    private final GraphSearchAuthorityService authority;
+    private final BranchGraphVectors branchVectors;
+
+    @PersistenceContext
+    private EntityManager entityManager;
+
+<span class="fc" id="L47">    @Autowired</span>
+<span class="fc" id="L48">    private CatalogueRuntimePolicy catalogueRuntimePolicy = CatalogueRuntimePolicy.fullCatalogue();</span>
+
+    public GraphSearchService(LocalEmbeddingService embeddingService,
+                              GraphSearchAuthorityService authority) {
+<span class="fc" id="L52">        this(embeddingService, authority, null);</span>
+<span class="fc" id="L53">    }</span>
+
+    @Autowired
+<span class="fc" id="L56">    public GraphSearchService(LocalEmbeddingService embeddingService, GraphSearchAuthorityService authority, BranchGraphVectors branchVectors) {</span>
+<span class="fc" id="L57">        this.branchVectors = branchVectors;</span>
+<span class="fc" id="L58">        this.embeddingService = embeddingService;</span>
+<span class="fc" id="L59">        this.authority = authority;</span>
+<span class="fc" id="L60">    }</span>
+
+<span class="fc" id="L62">    public record Readiness(boolean ready, GraphSearchResult.VectorSource vectorSource, String sourceCommit) { }</span>
+
+    public Readiness readiness(RepositoryContext context, BooleanSupplier globalReady) {
+<span class="fc" id="L65">        catalogueRuntimePolicy.requireGlobalIndexAllowed();</span>
+        try {
+<span class="fc" id="L67">            var source = authority.inspectForBranchSelection(context);</span>
+<span class="pc bpc" id="L68" title="1 of 4 branches missed.">            if (source.readModel() == ReadModel.PROJECTION &amp;&amp; source.count() &gt; 0) {</span>
+<span class="fc" id="L69">                var index = branchVectors.inspect(context);</span>
+<span class="pc bpc" id="L70" title="2 of 4 branches missed.">                boolean ready = &quot;READY&quot;.equals(index.state()) &amp;&amp; source.authoritativeCommitId().equals(index.sourceCommit());</span>
+<span class="fc" id="L71">                return new Readiness(ready, GraphSearchResult.VectorSource.BRANCH_GENERATION, source.authoritativeCommitId());</span>
+            }
+<span class="fc" id="L73">            return new Readiness(globalReady.getAsBoolean(), GraphSearchResult.VectorSource.GLOBAL_INDEX, source.authoritativeCommitId());</span>
+<span class="nc" id="L74">        } catch (IllegalStateException unavailable) {</span>
+<span class="nc" id="L75">            throw new SearchUnavailableException();</span>
+        }
+    }
+
+    /** Branch reads have their own complete node and relation index, independent of the global index lifecycle. */
+    public Optional&lt;GraphSearchResult&gt; searchBranchIfPresent(String query, int maxResults, RepositoryContext context) {
+<span class="fc bfc" id="L81" title="All 2 branches covered.">        if (branchVectors == null) return Optional.empty();</span>
+<span class="fc" id="L82">        catalogueRuntimePolicy.requireGlobalIndexAllowed();</span>
+        try {
+<span class="fc" id="L84">            var source = authority.inspectForBranchSelection(context);</span>
+<span class="fc" id="L85">            String sourceCommit = source.authoritativeCommitId();</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">            if (maxResults &lt;= 0) return Optional.of(noResultsRequested(context, source));</span>
+<span class="pc bpc" id="L87" title="1 of 4 branches missed.">            if (source.readModel() != ReadModel.PROJECTION || source.count() == 0) return Optional.empty();</span>
+<span class="fc" id="L88">            int nodeLimit = Math.min(maxResults, MAX_NODE_RESULTS);</span>
+<span class="fc" id="L89">            return Optional.of(branchVectors.search(context, sourceCommit, query, nodeLimit, safeRelationLimit(nodeLimit)));</span>
+<span class="fc" id="L90">        } catch (Exception | LinkageError error) {</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">            if (error instanceof InterruptedException) Thread.currentThread().interrupt();</span>
+<span class="fc" id="L92">            throw new SearchUnavailableException();</span>
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public GraphSearchResult graphSearch(String queryText,
+                                         int maxResults,
+                                         RepositoryContext context) {
+<span class="fc" id="L100">        var branch = searchBranchIfPresent(queryText, maxResults, context);</span>
+<span class="fc" id="L101">        return branch.orElseGet(() -&gt; searchGlobalSource(queryText, maxResults, context));</span>
+    }
+
+    /** This path independently rejects every nonempty projected branch, even if the selection moves. */
+    @Transactional(readOnly = true)
+    public GraphSearchResult searchGlobalSource(String queryText, int maxResults, RepositoryContext context) {
+<span class="fc" id="L107">        catalogueRuntimePolicy.requireGlobalIndexAllowed();</span>
+        try {
+<span class="fc" id="L109">            var source = authority.inspect(context);</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">            if (maxResults &lt;= 0) return noResultsRequested(context, source);</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">            if (!embeddingService.isAvailable()) throw new SearchUnavailableException();</span>
+
+<span class="fc" id="L113">            int nodeLimit = Math.min(maxResults, MAX_NODE_RESULTS);</span>
+<span class="fc" id="L114">            int relationLimit = safeRelationLimit(nodeLimit);</span>
+<span class="fc" id="L115">            float[] queryVector = embeddingService.embedQuery(queryText);</span>
+<span class="fc" id="L116">            String indexKey = embeddingService.embeddingIndexKey();</span>
+<span class="fc" id="L117">            SearchSession session = Search.session(entityManager);</span>
+
+<span class="fc" id="L119">            List&lt;TaxonomyNode&gt; nodeHits = session.search(TaxonomyNode.class)</span>
+<span class="fc" id="L120">                    .where(f -&gt; f.knn(nodeLimit).field(&quot;embedding&quot;).matching(queryVector)</span>
+<span class="fc" id="L121">                            .filter(f.match().field(&quot;embeddingModel&quot;).matching(indexKey)))</span>
+<span class="fc" id="L122">                    .fetchHits(nodeLimit);</span>
+<span class="fc" id="L123">            List&lt;TaxonomyNodeDto&gt; matchedNodes = nodeHits.stream()</span>
+<span class="fc" id="L124">                    .map(GraphSearchService::toFlatDto)</span>
+<span class="fc" id="L125">                    .collect(Collectors.toList());</span>
+
+<span class="fc bfc" id="L127" title="All 2 branches covered.">            List&lt;TaxonomyRelation&gt; relationHits = source.readModel() == ReadModel.PROJECTION</span>
+<span class="fc" id="L128">                    ? List.of() : session.search(TaxonomyRelation.class)</span>
+<span class="fc" id="L129">                    .where(f -&gt; f.knn(relationLimit).field(&quot;embedding&quot;).matching(queryVector)</span>
+<span class="fc" id="L130">                            .filter(f.bool()</span>
+<span class="fc" id="L131">                                    .must(f.match().field(&quot;embeddingModel&quot;).matching(indexKey))</span>
+<span class="fc" id="L132">                                    .must(f.match().field(&quot;repositoryId&quot;).matching(context.repositoryId()))</span>
+<span class="fc" id="L133">                                    .must(f.not(f.exists().field(&quot;workspaceId&quot;)))))</span>
+<span class="fc" id="L134">                    .fetchHits(relationLimit);</span>
+
+<span class="fc" id="L136">            Map&lt;String, Long&gt; relationCountByRoot = relationHits.stream()</span>
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">                    .filter(relation -&gt; relation.getSourceNode() != null</span>
+<span class="pc bpc" id="L138" title="1 of 2 branches missed.">                            &amp;&amp; relation.getSourceNode().getTaxonomyRoot() != null)</span>
+<span class="fc" id="L139">                    .collect(Collectors.groupingBy(</span>
+<span class="fc" id="L140">                            relation -&gt; relation.getSourceNode().getTaxonomyRoot(),</span>
+<span class="fc" id="L141">                            Collectors.counting()));</span>
+<span class="fc" id="L142">            Map&lt;String, Long&gt; topRelationTypes = relationHits.stream()</span>
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">                    .filter(relation -&gt; relation.getRelationType() != null)</span>
+<span class="fc" id="L144">                    .collect(Collectors.groupingBy(</span>
+<span class="fc" id="L145">                            relation -&gt; relation.getRelationType().name(),</span>
+<span class="fc" id="L146">                            Collectors.counting()));</span>
+
+<span class="fc" id="L148">            String summary = buildSummary(relationCountByRoot, topRelationTypes, queryText);</span>
+<span class="fc" id="L149">            authority.verifyUnchanged(context, source);</span>
+<span class="fc" id="L150">            log.debug(&quot;Graph search completed with {} node hits and {} relation hits&quot;,</span>
+<span class="fc" id="L151">                    nodeHits.size(), relationHits.size());</span>
+<span class="fc" id="L152">            var provenance = new GraphSearchResult.Source(context.repositoryId(), context.workspaceId(), context.branch(),</span>
+<span class="fc" id="L153">                    source.authoritativeCommitId(), source.readModel().name(), GraphSearchResult.VectorSource.GLOBAL_INDEX,</span>
+                    indexKey, null, null);
+<span class="fc" id="L155">            return new GraphSearchResult(matchedNodes, relationCountByRoot, topRelationTypes, summary, provenance);</span>
+<span class="fc" id="L156">        } catch (Exception | LinkageError error) {</span>
+<span class="pc bpc" id="L157" title="1 of 2 branches missed.">            if (error instanceof InterruptedException) Thread.currentThread().interrupt();</span>
+<span class="fc" id="L158">            log.error(&quot;Graph search failed (code=GRAPH_SEARCH_FAILED)&quot;);</span>
+<span class="fc" id="L159">            throw new SearchUnavailableException();</span>
+        }
+    }
+
+    private static GraphSearchResult noResultsRequested(RepositoryContext context, RelationProjectionReadService.CountResult source) {
+<span class="fc" id="L164">        var provenance = new GraphSearchResult.Source(context.repositoryId(), context.workspaceId(), context.branch(),</span>
+<span class="fc" id="L165">                source.authoritativeCommitId(), source.readModel().name(), GraphSearchResult.VectorSource.NO_INFERENCE,</span>
+                null, null, null);
+<span class="fc" id="L167">        return new GraphSearchResult(Collections.emptyList(), Collections.emptyMap(),</span>
+<span class="fc" id="L168">                Collections.emptyMap(), &quot;No graph search results were requested.&quot;, provenance);</span>
+    }
+
+    private static int safeRelationLimit(int nodeLimit) {
+<span class="fc" id="L172">        long requested = (long) nodeLimit * RELATIONS_PER_NODE_RESULT;</span>
+<span class="fc" id="L173">        return (int) Math.min(requested, MAX_RELATION_RESULTS);</span>
+    }
+
+    static String buildSummary(Map&lt;String, Long&gt; byRoot, Map&lt;String, Long&gt; byType, String query) {
+<span class="pc bpc" id="L177" title="1 of 4 branches missed.">        if (byRoot.isEmpty() &amp;&amp; byType.isEmpty()) {</span>
+<span class="fc" id="L178">            return &quot;No graph relationships matched for: &quot; + query;</span>
+        }
+<span class="fc" id="L180">        StringBuilder summary = new StringBuilder();</span>
+<span class="fc" id="L181">        byRoot.entrySet().stream().max(Map.Entry.comparingByValue()).ifPresent(entry -&gt; summary</span>
+<span class="fc" id="L182">                .append(entry.getKey()).append(&quot; has the most matching relationships (&quot;)</span>
+<span class="fc" id="L183">                .append(entry.getValue()).append(')'));</span>
+<span class="fc" id="L184">        Optional&lt;Map.Entry&lt;String, Long&gt;&gt; topType = byType.entrySet().stream()</span>
+<span class="fc" id="L185">                .max(Map.Entry.comparingByValue());</span>
+<span class="fc" id="L186">        topType.ifPresent(entry -&gt; {</span>
+<span class="pc bpc" id="L187" title="1 of 2 branches missed.">            if (!summary.isEmpty()) summary.append(&quot;. &quot;);</span>
+<span class="fc" id="L188">            summary.append(&quot;Most common relation type: &quot;)</span>
+<span class="fc" id="L189">                    .append(entry.getKey().toLowerCase().replace('_', ' '))</span>
+<span class="fc" id="L190">                    .append(&quot; (&quot;).append(entry.getValue()).append(')');</span>
+<span class="fc" id="L191">        });</span>
+<span class="fc" id="L192">        return summary.toString();</span>
+    }
+
+    static TaxonomyNodeDto toFlatDto(TaxonomyNode node) {
+<span class="fc" id="L196">        TaxonomyNodeDto dto = new TaxonomyNodeDto();</span>
+<span class="fc" id="L197">        dto.setId(node.getId());</span>
+<span class="fc" id="L198">        dto.setCode(node.getCode());</span>
+<span class="fc" id="L199">        dto.setUuid(node.getUuid());</span>
+<span class="fc" id="L200">        dto.setNameEn(node.getNameEn());</span>
+<span class="fc" id="L201">        dto.setNameDe(node.getNameDe());</span>
+<span class="fc" id="L202">        dto.setDescriptionEn(node.getDescriptionEn());</span>
+<span class="fc" id="L203">        dto.setDescriptionDe(node.getDescriptionDe());</span>
+<span class="fc" id="L204">        dto.setParentCode(node.getParentCode());</span>
+<span class="fc" id="L205">        dto.setTaxonomyRoot(node.getTaxonomyRoot());</span>
+<span class="fc" id="L206">        dto.setLevel(node.getLevel());</span>
+<span class="fc" id="L207">        dto.setDataset(node.getDataset());</span>
+<span class="fc" id="L208">        dto.setExternalId(node.getExternalId());</span>
+<span class="fc" id="L209">        dto.setSource(node.getSource());</span>
+<span class="fc" id="L210">        dto.setReference(node.getReference());</span>
+<span class="fc" id="L211">        dto.setSortOrder(node.getSortOrder());</span>
+<span class="fc" id="L212">        dto.setState(node.getState());</span>
+<span class="fc" id="L213">        return dto;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

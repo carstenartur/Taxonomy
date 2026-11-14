@@ -1,0 +1,355 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkspaceFetchJournal.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">WorkspaceFetchJournal.java</span></div><h1>WorkspaceFetchJournal.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.workspace.storage.GitUpstreamRef;
+import jakarta.persistence.EntityManager;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.time.Clock;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
+
+/** Admission, claim and Git publication are independently committed and fenced by the same operation row. */
+@Service
+public class WorkspaceFetchJournal {
+<span class="fc" id="L27">    private enum Owner {</span>
+<span class="fc" id="L28">        WORKSPACE(WorkspaceFetchOperation.class), CENTRAL(CentralFetchOperation.class);</span>
+
+        final Class&lt;? extends RepositoryFetchOperation&gt; type;
+<span class="fc" id="L31">        Owner(Class&lt;? extends RepositoryFetchOperation&gt; type) { this.type = type; }</span>
+
+        String query(String statement, Object... additional) {
+<span class="fc" id="L34">            return statement.replace(&quot;{entity}&quot;, type.getSimpleName()).formatted(additional);</span>
+        }
+
+        static Owner of(String id) {
+            // Historical working-copy receipts are full SHA-256 hex IDs. Central IDs have a distinct prefix.
+<span class="fc bfc" id="L39" title="All 4 branches covered.">            return id.startsWith(&quot;f-&quot;) || CentralFetchOperation.initialIdFormat(id) ? CENTRAL : WORKSPACE;</span>
+        }
+    }
+
+<span class="fc" id="L43">    static final long LEASE_MILLIS = Duration.ofMinutes(5).toMillis();</span>
+    private static final int MAX_ATTEMPTS = 6;
+<span class="fc" id="L45">    static final long RETENTION_MILLIS = Duration.ofDays(30).toMillis();</span>
+<span class="fc" id="L46">    static final long ARCHIVE_MILLIS = Duration.ofDays(90).toMillis();</span>
+    private final EntityManager entities;
+    private final TransactionTemplate transaction;
+    private final Clock clock;
+    private final RepositoryOperationLeases leases;
+
+    @Autowired
+    public WorkspaceFetchJournal(EntityManager entities, PlatformTransactionManager transactions) {
+<span class="fc" id="L54">        this(entities, transactions, Clock.systemUTC());</span>
+<span class="fc" id="L55">    }</span>
+
+<span class="fc" id="L57">    WorkspaceFetchJournal(EntityManager entities, PlatformTransactionManager transactions, Clock clock) {</span>
+<span class="fc" id="L58">        this.entities = entities;</span>
+<span class="fc" id="L59">        this.transaction = new TransactionTemplate(transactions);</span>
+<span class="fc" id="L60">        this.transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);</span>
+<span class="fc" id="L61">        this.clock = clock;</span>
+<span class="fc" id="L62">        this.leases = new RepositoryOperationLeases(entities, transaction, clock, LEASE_MILLIS, MAX_ATTEMPTS);</span>
+<span class="fc" id="L63">    }</span>
+
+<span class="fc" id="L65">    public record View(String operationId, String causationId, String phase, String repositoryId, String workspaceId,</span>
+                       String branch, String sourceBranch, String originalForkPoint, String requestedCommit, String expectedTrackedCommit,
+                       String observedSourceCommit, String resultCommit, int attempts, String decisionCode,
+                       long createdAt, Long lastAttemptAt, Long completedAt, String originalActor, String lastExecutor,
+                       String authorizationKind, String requiredPolicy, String outcome, Long archivedAt, String archivedBy,
+                       String sourceRepositoryId, String trackingRef, String selectedTag, String requestedTagObject,
+                       String resultTagObject) { }
+    @FunctionalInterface interface FetchStep {
+        WorkspaceUpstreamService.Status apply(RepositoryFetchOperation operation, Runnable checkLease) throws IOException;
+    }
+
+    /** Join the allocating catalogue transaction. A process cannot leave one side committed without the other. */
+    @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void admitInitialFork(com.taxonomy.workspace.model.SystemRepository fork, WorkspaceFetchAuthority.Grant grant) {
+<span class="fc" id="L79">        var operation = new CentralFetchOperation();</span>
+<span class="fc" id="L80">        operation.id = CentralFetchOperation.initialId(fork.getRepositoryId());</span>
+<span class="fc" id="L81">        operation.targetRepositoryId = fork.getRepositoryId();</span>
+<span class="fc" id="L82">        operation.sourceRepositoryId = fork.getUpstreamRepositoryId();</span>
+<span class="fc" id="L83">        operation.actor = grant.principalId();</span>
+<span class="fc" id="L84">        operation.loginKind = grant.loginKind();</span>
+<span class="fc" id="L85">        operation.bindingKey = grant.bindingKey();</span>
+<span class="fc" id="L86">        operation.username = fork.getOwnerId();</span>
+<span class="fc" id="L87">        operation.branch = fork.getDefaultBranch();</span>
+<span class="fc" id="L88">        operation.sourceBranch = fork.getUpstreamBranch();</span>
+<span class="fc" id="L89">        operation.requested = fork.getForkPointCommit();</span>
+<span class="fc" id="L90">        operation.forkPoint = operation.requested;</span>
+<span class="fc" id="L91">        operation.observed = operation.requested;</span>
+<span class="fc" id="L92">        operation.fingerprint = fork.forkRequestFingerprint();</span>
+<span class="fc" id="L93">        operation.causeId = operation.id;</span>
+<span class="fc" id="L94">        operation.policy = &quot;ARCHITECTURE_WRITE+CONTRIBUTOR&quot;;</span>
+<span class="fc" id="L95">        operation.phase = &quot;ADMITTED&quot;;</span>
+<span class="fc" id="L96">        operation.createdAt = clock.millis();</span>
+<span class="fc" id="L97">        operation.nextAttemptAt = operation.createdAt;</span>
+<span class="fc" id="L98">        entities.persist(operation);</span>
+<span class="fc" id="L99">    }</span>
+
+    boolean hasInitialFork(String targetId) {
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">        return transaction.execute(status -&gt; find(CentralFetchOperation.initialId(targetId)) != null);</span>
+    }
+
+    public View admit(RepositoryContext selected, WorkspaceFetchAuthority.Grant grant, WorkspaceUpstreamService.Capture capture,
+                      WorkspaceUpstreamService.Request request, String key, String cause) {
+<span class="fc" id="L107">        return admit(selected, grant, capture, request, null, key, cause);</span>
+    }
+
+    public View admitTag(RepositoryContext selected, WorkspaceFetchAuthority.Grant grant, WorkspaceUpstreamService.Capture capture,
+                         WorkspaceUpstreamService.TagRequest tag, String key, String cause) {
+<span class="fc" id="L112">        return admit(selected, grant, capture, new WorkspaceUpstreamService.Request(tag.trackedCommit(), tag.trackedCommit()),</span>
+                tag, key, cause);
+    }
+
+    private View admit(RepositoryContext selected, WorkspaceFetchAuthority.Grant grant, WorkspaceUpstreamService.Capture capture,
+                       WorkspaceUpstreamService.Request request, WorkspaceUpstreamService.TagRequest tag, String key, String cause) {
+<span class="fc" id="L118">        var source = capture.source();</span>
+<span class="fc" id="L119">        String actor = grant.principalId();</span>
+<span class="pc bpc" id="L120" title="1 of 4 branches missed.">        if (key != null &amp;&amp; !key.matches(&quot;[a-zA-Z0-9._~:-]{1,128}&quot;)) throw badRequest(&quot;Invalid fetch idempotency key&quot;);</span>
+<span class="pc bpc" id="L121" title="1 of 4 branches missed.">        if (cause != null &amp;&amp; !cause.matches(&quot;[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}&quot;)) {</span>
+<span class="nc" id="L122">            throw badRequest(&quot;Invalid fetch causation ID&quot;);</span>
+        }
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        String commandFields = tag == null</span>
+<span class="fc" id="L125">                ? StableIdentityHash.sha256(String.join(&quot;\u0000&quot;, &quot;fetch&quot;, source.sourceBranch(), request.sourceCommit(),</span>
+<span class="fc" id="L126">                        Objects.toString(request.expectedTrackedCommit(), &quot;&quot;)))</span>
+<span class="fc" id="L127">                : StableIdentityHash.sha256(String.join(&quot;\u0000&quot;, &quot;fetch-tag&quot;, source.sourceRepositoryId(), source.sourceBranch(),</span>
+<span class="fc" id="L128">                        tag.name(), tag.sourceTagObject(), tag.trackedCommit()));</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        boolean central = selected.scope() == RepositoryScope.CENTRAL_WRITE;</span>
+        final String command;
+<span class="fc bfc" id="L131" title="All 2 branches covered.">        if (central) {</span>
+<span class="pc bpc" id="L132" title="1 of 2 branches missed.">            if (!source.sourceBranch().equals(selected.branch())) {</span>
+<span class="nc" id="L133">                throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;The upstream binding changed before admission&quot;);</span>
+            }
+<span class="fc" id="L135">            command = StableIdentityHash.sha256(String.join(&quot;\u0000&quot;, &quot;central-fork&quot;, source.sourceRepositoryId(),</span>
+<span class="fc" id="L136">                    Objects.toString(capture.forkPoint(), &quot;&quot;), commandFields));</span>
+<span class="fc" id="L137">        } else command = commandFields;</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        String scope = central ? String.join(&quot;\u0000&quot;, &quot;central-fork&quot;, selected.repositoryId(), selected.branch())</span>
+<span class="fc" id="L139">                : selected.repositoryWorkspaceScopeKey();</span>
+<span class="fc" id="L140">        String digest = StableIdentityHash.sha256(String.join(&quot;\u0000&quot;, scope, actor,</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">                key == null ? &quot;derived:&quot; + command : &quot;provided:&quot; + key));</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">        String id = central ? &quot;f-&quot; + digest.substring(0, 62) : digest;</span>
+        try {
+<span class="fc" id="L144">            return transaction.execute(status -&gt; {</span>
+<span class="fc" id="L145">                var existing = find(id);</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">                if (existing != null) return replay(existing, selected, actor, command);</span>
+                RepositoryFetchOperation operation;
+<span class="fc bfc" id="L148" title="All 2 branches covered.">                if (central) {</span>
+<span class="fc" id="L149">                    var fork = new CentralFetchOperation();</span>
+<span class="fc" id="L150">                    fork.targetRepositoryId = selected.repositoryId();</span>
+<span class="fc" id="L151">                    fork.sourceRepositoryId = source.sourceRepositoryId();</span>
+<span class="fc" id="L152">                    operation = fork;</span>
+<span class="fc" id="L153">                } else {</span>
+<span class="fc" id="L154">                    var copy = new WorkspaceFetchOperation();</span>
+<span class="fc" id="L155">                    copy.repositoryId = selected.repositoryId();</span>
+<span class="fc" id="L156">                    copy.workspaceId = selected.workspaceId();</span>
+<span class="fc" id="L157">                    operation = copy;</span>
+                }
+<span class="fc" id="L159">                operation.id = id;</span>
+<span class="fc" id="L160">                operation.fingerprint = command;</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">                operation.causeId = cause == null ? id : UUID.fromString(cause).toString();</span>
+<span class="fc" id="L162">                operation.actor = actor;</span>
+<span class="fc" id="L163">                operation.loginKind = grant.loginKind();</span>
+<span class="fc" id="L164">                operation.bindingKey = grant.bindingKey();</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">                operation.policy = central ? &quot;ARCHITECTURE_WRITE+CONTRIBUTOR&quot; : &quot;ANALYSIS_RUN+CONTRIBUTOR&quot;;</span>
+<span class="fc" id="L166">                operation.username = selected.username();</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">                operation.selectedTag = tag == null ? null : tag.name();</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">                operation.requestedTagObject = tag == null ? null : tag.sourceTagObject();</span>
+<span class="fc" id="L169">                operation.branch = selected.branch();</span>
+<span class="fc" id="L170">                operation.sourceBranch = source.sourceBranch();</span>
+<span class="fc" id="L171">                operation.forkPoint = capture.forkPoint();</span>
+<span class="fc" id="L172">                operation.requested = request.sourceCommit();</span>
+<span class="fc" id="L173">                operation.expected = request.expectedTrackedCommit();</span>
+<span class="fc" id="L174">                operation.observed = source.sourceCommit();</span>
+<span class="fc" id="L175">                operation.phase = &quot;ADMITTED&quot;;</span>
+<span class="fc" id="L176">                operation.createdAt = clock.millis();</span>
+<span class="fc" id="L177">                operation.nextAttemptAt = operation.createdAt;</span>
+<span class="fc" id="L178">                entities.persist(operation);</span>
+<span class="fc" id="L179">                entities.flush();</span>
+<span class="fc" id="L180">                return view(operation);</span>
+            });
+<span class="fc" id="L182">        } catch (RuntimeException failure) {</span>
+            // An independent request may have committed the same scoped primary key first.
+<span class="pc" id="L184">            var existing = transaction.execute(status -&gt; find(id));</span>
+<span class="nc bnc" id="L185" title="All 2 branches missed.">            if (existing == null) throw failure;</span>
+<span class="nc" id="L186">            return replay(existing, selected, actor, command);</span>
+        }
+    }
+
+    public View status(RepositoryContext selected, String principal, String id) {
+<span class="fc" id="L191">        return transaction.execute(status -&gt; {</span>
+<span class="fc" id="L192">            var operation = find(id);</span>
+<span class="fc bfc" id="L193" title="All 4 branches covered.">            if (operation == null || !operation.ownedBy(selected, principal)) throw missing();</span>
+<span class="fc" id="L194">            return view(operation);</span>
+        });
+    }
+
+<span class="fc" id="L198">    private RepositoryFetchOperation find(String id) { return entities.find(Owner.of(id).type, id); }</span>
+
+    List&lt;String&gt; due() {
+<span class="fc" id="L201">        return transaction.execute(status -&gt; {</span>
+<span class="fc" id="L202">            var due = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L203" title="All 2 branches covered.">            for (Owner owner : Owner.values()) {</span>
+<span class="fc" id="L204">                due.addAll(entities.createQuery(owner.query(&quot;&quot;&quot;</span>
+                        select f.id from {entity} f where f.phase in ('ADMITTED','RUNNING','RETRYABLE') and f.nextAttemptAt &lt;= :now
+<span class="fc" id="L206">                        order by f.nextAttemptAt, f.id&quot;&quot;&quot;), String.class).setParameter(&quot;now&quot;, clock.millis())</span>
+<span class="fc" id="L207">                        .setMaxResults(8).getResultList());</span>
+            }
+<span class="fc" id="L209">            return due;</span>
+        });
+    }
+
+    /** Joins owner deletion, so failed Git storage cleanup rolls back receipt changes as well. */
+    @org.springframework.transaction.annotation.Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void archiveForWorkspaceRemoval(String workspace,String repository,String owner,java.util.function.Supplier&lt;String&gt; deletingActor) {
+<span class="fc" id="L216">        var active = entities.createQuery(&quot;&quot;&quot;</span>
+                select f.id from WorkspaceFetchOperation f where f.workspaceId=:workspace and f.repositoryId=:repository
+                and f.username=:owner and f.archivedAt is null&quot;&quot;&quot;,String.class)
+<span class="fc" id="L219">                .setParameter(&quot;workspace&quot;,workspace).setParameter(&quot;repository&quot;,repository).setParameter(&quot;owner&quot;,owner)</span>
+<span class="fc" id="L220">                .setMaxResults(1).getResultList();</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">        if (active.isEmpty()) return;</span>
+<span class="fc" id="L222">        String actor=Objects.requireNonNull(deletingActor.get(),&quot;Deleting workspace actor&quot;);</span>
+<span class="fc" id="L223">        entities.createQuery(&quot;&quot;&quot;</span>
+                update WorkspaceFetchOperation f set
+                    f.phase=case when f.completedAt is null then 'DENIED' else f.phase end,
+                    f.decision=case when f.completedAt is null then 'WORKSPACE_DELETED' else f.decision end,
+                    f.completedAt=coalesce(f.completedAt,:now), f.archivedAt=:now, f.archivedBy=:actor,
+                    f.nextAttemptAt=null, f.lease=null, f.observed=null, f.result=null, f.resultTagObject=null
+                where f.workspaceId=:workspace and f.repositoryId=:repository and f.username=:owner and f.archivedAt is null&quot;&quot;&quot;)
+<span class="fc" id="L230">                .setParameter(&quot;workspace&quot;,workspace).setParameter(&quot;repository&quot;,repository).setParameter(&quot;owner&quot;,owner)</span>
+<span class="fc" id="L231">                .setParameter(&quot;actor&quot;,actor).setParameter(&quot;now&quot;,clock.millis()).executeUpdate();</span>
+<span class="fc" id="L232">    }</span>
+
+    public View archive(RepositoryContext scope, String principal, String id) {
+<span class="fc" id="L235">        return transaction.execute(status -&gt; {</span>
+<span class="fc" id="L236">            var row = find(id);</span>
+<span class="pc bpc" id="L237" title="1 of 4 branches missed.">            if (row == null || !row.ownedBy(scope, principal)) throw missing();</span>
+<span class="fc bfc" id="L238" title="All 2 branches covered.">            if (row.completedAt == null) throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;A live fetch cannot be archived&quot;);</span>
+<span class="fc" id="L239">            archiveSettled(id, principal, clock.millis(), Long.MAX_VALUE);</span>
+<span class="fc" id="L240">            entities.refresh(row);</span>
+<span class="fc" id="L241">            return view(row);</span>
+        });
+    }
+
+    /** Archive settled data after 30 days. Retain the immutable outcome and deletion decision for another 90 days. */
+    void expireDue() {
+<span class="fc" id="L247">        long now = clock.millis();</span>
+<span class="fc" id="L248">        var ids = transaction.execute(status -&gt; {</span>
+<span class="fc" id="L249">            var due = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L250" title="All 2 branches covered.">            for (Owner owner : Owner.values()) {</span>
+<span class="fc" id="L251">                due.addAll(entities.createQuery(owner.query(&quot;&quot;&quot;</span>
+                        select f.id from {entity} f where f.archivedAt &lt;= :purge
+                        or (f.archivedAt is null and (f.completedAt &lt;= :archive or
+                            (f.phase='AWAITING_AUTHORIZATION' and f.lastAttemptAt &lt;= :archive))) order by f.id&quot;&quot;&quot;), String.class)
+<span class="fc" id="L255">                        .setParameter(&quot;purge&quot;, now - ARCHIVE_MILLIS).setParameter(&quot;archive&quot;, now - RETENTION_MILLIS)</span>
+<span class="fc" id="L256">                        .setMaxResults(16).getResultList());</span>
+            }
+<span class="fc" id="L258">            return due;</span>
+        });
+<span class="fc bfc" id="L260" title="All 2 branches covered.">        for (String id : ids) transaction.executeWithoutResult(status -&gt; {</span>
+<span class="fc" id="L261">            int purged = entities.createQuery(Owner.of(id).query(&quot;&quot;&quot;</span>
+                    delete from {entity} f where f.id=:id and f.archivedAt &lt;= :cutoff&quot;&quot;&quot;))
+<span class="fc" id="L263">                    .setParameter(&quot;id&quot;, id).setParameter(&quot;cutoff&quot;, now - ARCHIVE_MILLIS).executeUpdate();</span>
+<span class="fc bfc" id="L264" title="All 2 branches covered.">            if (purged == 1) return;</span>
+<span class="fc" id="L265">            String executor = &quot;system:workspace-fetch-retention&quot;;</span>
+<span class="fc" id="L266">            int archived = archiveSettled(id, executor, now, now - RETENTION_MILLIS);</span>
+<span class="pc bpc" id="L267" title="1 of 2 branches missed.">            if (archived == 1) return;</span>
+<span class="nc" id="L268">            entities.createQuery(Owner.of(id).query(&quot;&quot;&quot;</span>
+                    update {entity} f set f.phase='MANUAL_REVIEW', f.decision='AUTHORIZATION_EXPIRED',
+                    f.completedAt=:now, f.archivedAt=:now, f.archivedBy=:executor, f.observed=null, f.result=null, f.resultTagObject=null
+                    where f.id=:id and f.phase='AWAITING_AUTHORIZATION' and f.archivedAt is null and f.lastAttemptAt &lt;= :cutoff&quot;&quot;&quot;))
+<span class="nc" id="L272">                    .setParameter(&quot;id&quot;, id).setParameter(&quot;executor&quot;, executor).setParameter(&quot;now&quot;, now)</span>
+<span class="nc" id="L273">                    .setParameter(&quot;cutoff&quot;, now - RETENTION_MILLIS).executeUpdate();</span>
+<span class="nc" id="L274">        });</span>
+<span class="fc" id="L275">    }</span>
+
+    private int archiveSettled(String id, String actor, long now, long cutoff) {
+<span class="fc" id="L278">        return entities.createQuery(Owner.of(id).query(&quot;&quot;&quot;</span>
+                update {entity} f set f.archivedAt=:now, f.archivedBy=:actor, f.observed=null, f.result=null, f.resultTagObject=null
+                where f.id=:id and f.archivedAt is null and f.completedAt &lt;= :cutoff&quot;&quot;&quot;))
+<span class="fc" id="L281">                .setParameter(&quot;id&quot;, id).setParameter(&quot;actor&quot;, actor).setParameter(&quot;now&quot;, now)</span>
+<span class="fc" id="L282">                .setParameter(&quot;cutoff&quot;, cutoff).executeUpdate();</span>
+    }
+
+    RepositoryOperationLeases.Claim claim(String id, String executor, boolean respectBackoff) {
+<span class="fc" id="L286">        return leases.claim(Owner.of(id).type,id,executor,respectBackoff);</span>
+    }
+
+    View run(RepositoryOperationLeases.Claim claim, FetchStep fetch) throws IOException {
+        try {
+<span class="fc" id="L291">            return transaction.execute(status -&gt; {</span>
+<span class="fc" id="L292">                var row = leases.locked(Owner.of(claim.operationId()).type,claim);</span>
+<span class="fc" id="L293">                leases.requireCurrent(row,claim);</span>
+                try {
+<span class="fc" id="L295">                    var result = fetch.apply(row, () -&gt; leases.requireCurrent(row,claim));</span>
+<span class="fc" id="L296">                    row.observed = result.sourceCommit();</span>
+<span class="fc" id="L297">                    row.result = result.trackedCommit();</span>
+<span class="fc" id="L298">                    row.finish(&quot;COMPLETED&quot;, null, clock.millis());</span>
+<span class="fc" id="L299">                    return view(row);</span>
+<span class="fc" id="L300">                } catch (IOException failure) {</span>
+<span class="fc" id="L301">                    throw new UncheckedIOException(failure);</span>
+                }
+            });
+<span class="fc" id="L304">        } catch (RuntimeException failure) {</span>
+<span class="fc" id="L305">            failed(claim, failure);</span>
+<span class="fc bfc" id="L306" title="All 2 branches covered.">            if (failure instanceof UncheckedIOException io) throw io.getCause();</span>
+<span class="fc" id="L307">            throw failure;</span>
+        }
+    }
+
+    private void failed(RepositoryOperationLeases.Claim claim, RuntimeException failure) {
+<span class="fc" id="L312">        transaction.executeWithoutResult(status -&gt; {</span>
+<span class="fc" id="L313">            var row = leases.locked(Owner.of(claim.operationId()).type,claim);</span>
+<span class="pc bpc" id="L314" title="1 of 4 branches missed.">            if (row == null || !claim.lease().equals(row.lease)) return;</span>
+<span class="fc" id="L315">            long now = clock.millis();</span>
+<span class="fc bfc" id="L316" title="All 2 branches covered.">            if (failure instanceof WorkspaceFetchAuthority.FreshLoginRequired) {</span>
+<span class="fc" id="L317">                row.phase = &quot;AWAITING_AUTHORIZATION&quot;;</span>
+<span class="fc" id="L318">                row.decision = &quot;FRESH_LOGIN_REQUIRED&quot;;</span>
+<span class="fc" id="L319">                row.nextAttemptAt = null;</span>
+<span class="fc" id="L320">                row.lease = null;</span>
+<span class="fc bfc" id="L321" title="All 4 branches covered.">            } else if (failure instanceof UncheckedIOException io &amp;&amp; io.getCause() instanceof GitUpstreamTransfer.Superseded superseded) {</span>
+<span class="fc" id="L322">                row.result = superseded.retainedCommit;</span>
+<span class="fc" id="L323">                row.finish(&quot;SUPERSEDED&quot;, &quot;RETAINED_DESCENDANT&quot;, now);</span>
+<span class="fc bfc" id="L324" title="All 2 branches covered.">            } else if (failure instanceof AccessDeniedException) row.finish(&quot;DENIED&quot;, &quot;AUTHORITY_CHANGED&quot;, now);</span>
+<span class="pc bpc" id="L325" title="1 of 4 branches missed.">            else if (failure instanceof UncheckedIOException io &amp;&amp; io.getCause() instanceof BranchHeadConflictException) row.finish(&quot;MANUAL_REVIEW&quot;, &quot;GIT_AUTHORITY_CHANGED&quot;, now);</span>
+<span class="pc bpc" id="L326" title="1 of 2 branches missed.">            else if (row.attempts &gt;= MAX_ATTEMPTS) row.finish(&quot;MANUAL_REVIEW&quot;, &quot;ATTEMPTS_EXHAUSTED&quot;, now);</span>
+            else {
+<span class="fc" id="L328">                row.phase = &quot;RETRYABLE&quot;;</span>
+<span class="pc bpc" id="L329" title="1 of 4 branches missed.">                row.decision = row instanceof CentralFetchOperation fork &amp;&amp; fork.isInitialFork() ? &quot;FORK_TRANSFER_INTERRUPTED&quot; : &quot;FETCH_INTERRUPTED&quot;;</span>
+<span class="fc" id="L330">                row.lease = null;</span>
+<span class="fc" id="L331">                row.nextAttemptAt = now + Duration.ofSeconds(15L &lt;&lt; (row.attempts - 1)).toMillis();</span>
+            }
+<span class="fc" id="L333">        });</span>
+<span class="fc" id="L334">    }</span>
+
+    private static View replay(RepositoryFetchOperation row, RepositoryContext selected, String principal, String command) {
+<span class="pc bpc" id="L337" title="1 of 2 branches missed.">        if (!row.ownedBy(selected, principal)) throw missing();</span>
+<span class="fc bfc" id="L338" title="All 2 branches covered.">        if (row.archivedAt != null) throw new ResponseStatusException(HttpStatus.GONE, &quot;FETCH_ARCHIVED&quot;);</span>
+<span class="fc bfc" id="L339" title="All 2 branches covered.">        if (!row.fingerprint.equals(command)) throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;Fetch command changed&quot;);</span>
+<span class="fc" id="L340">        return view(row);</span>
+    }
+
+    private static View view(RepositoryFetchOperation row) {
+<span class="fc bfc" id="L344" title="All 2 branches covered.">        return new View(row.id, row.causeId, row.archivedAt == null ? row.phase : &quot;ARCHIVED&quot;, row.context().repositoryId(), row.context().workspaceId(), row.branch, row.sourceBranch,</span>
+                row.forkPoint, row.requested, row.expected, row.observed, row.result, row.attempts, row.decision,
+                row.createdAt, row.lastAttemptAt, row.completedAt, row.actor, row.executor, row.loginKind,
+<span class="fc bfc" id="L347" title="All 2 branches covered.">                row.policy, row.completedAt == null ? null : row.phase, row.archivedAt, row.archivedBy,</span>
+<span class="fc" id="L348">                row.sourceRepositoryId(), new GitUpstreamRef(row.sourceRepositoryId(), row.sourceBranch).name(),</span>
+                row.selectedTag, row.requestedTagObject, row.resultTagObject);
+    }
+
+<span class="fc" id="L352">    static ResponseStatusException missing() { return new ResponseStatusException(HttpStatus.NOT_FOUND, &quot;Fetch operation unavailable&quot;); }</span>
+<span class="nc" id="L353">    private static ResponseStatusException badRequest(String reason) { return new ResponseStatusException(HttpStatus.BAD_REQUEST, reason); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,235 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ContextNavigationController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.versioning.controller</a> &gt; <span class="el_source">ContextNavigationController.java</span></div><h1>ContextNavigationController.java</h1><pre class="source lang-java linenums">package com.taxonomy.versioning.controller;
+
+import com.taxonomy.dto.ContextComparison;
+import com.taxonomy.dto.ContextHistoryEntry;
+import com.taxonomy.dto.ContextRef;
+import com.taxonomy.dto.SemanticChange;
+import com.taxonomy.dto.TransferConflict;
+import com.taxonomy.dto.TransferSelection;
+import com.taxonomy.versioning.service.ContextCompareService;
+import com.taxonomy.versioning.service.ContextNavigationService;
+import com.taxonomy.versioning.service.SelectiveTransferService;
+import com.taxonomy.workspace.service.BranchHeadConflictException;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * REST API for architecture context navigation.
+ *
+ * &lt;p&gt;Provides browser-like navigation through architecture versions:
+ * open read-only snapshots, switch branches, compare contexts, and
+ * selectively transfer elements between versions.
+ *
+ * &lt;p&gt;Navigation state is isolated by authenticated user and authorized workspace.
+ */
+@RestController
+@RequestMapping(&quot;/api/context&quot;)
+@Tag(name = &quot;Context Navigation&quot;)
+public class ContextNavigationController {
+
+<span class="fc" id="L44">    private static final Logger log = LoggerFactory.getLogger(ContextNavigationController.class);</span>
+
+    private final ContextNavigationService navigationService;
+    private final ContextCompareService compareService;
+    private final SelectiveTransferService transferService;
+    private final WorkspaceResolver workspaceResolver;
+
+    public ContextNavigationController(ContextNavigationService navigationService,
+                                       ContextCompareService compareService,
+                                       SelectiveTransferService transferService,
+<span class="fc" id="L54">                                       WorkspaceResolver workspaceResolver) {</span>
+<span class="fc" id="L55">        this.navigationService = navigationService;</span>
+<span class="fc" id="L56">        this.compareService = compareService;</span>
+<span class="fc" id="L57">        this.transferService = transferService;</span>
+<span class="fc" id="L58">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L59">    }</span>
+
+    // ── Phase 1: Context Navigation ─────────────────────────────────
+
+    @GetMapping(&quot;/current&quot;)
+    @Operation(summary = &quot;Get the current architecture context&quot;,
+            description = &quot;Returns the active context including branch, commit, mode, and origin info.&quot;)
+    public ResponseEntity&lt;ContextRef&gt; getCurrentContext() {
+<span class="fc" id="L67">        WorkspaceContext scope = workspaceResolver.resolveCurrentContext();</span>
+<span class="fc bfc" id="L68" title="All 4 branches covered.">        if (scope.workspaceId() == null &amp;&amp; WorkspaceContextResolver.requestedWorkspaceId() == null) {</span>
+            // Keep the default-workspace bootstrap for an initial unpinned page.
+<span class="fc" id="L70">            return ResponseEntity.ok(navigationService.getCurrentContext(scope.username()));</span>
+        }
+<span class="fc" id="L72">        return ResponseEntity.ok(navigationService.getCurrentContextForScope(scope));</span>
+    }
+
+    @PostMapping(&quot;/open&quot;)
+    @Operation(summary = &quot;Open a context (read-only or editable)&quot;,
+            description = &quot;Opens a specific branch/commit as a new context. &quot; +
+                    &quot;If readOnly is true, write operations will be blocked.&quot;)
+    public ResponseEntity&lt;ContextRef&gt; openContext(
+            @RequestParam(defaultValue = &quot;draft&quot;) String branch,
+            @RequestParam(required = false) String commitId,
+            @RequestParam(defaultValue = &quot;true&quot;) boolean readOnly,
+            @RequestParam(required = false) String searchQuery,
+            @RequestParam(required = false) String elementId) {
+<span class="fc" id="L85">        WorkspaceContext ctx = workspaceResolver.resolveCurrentContext();</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        if (readOnly) {</span>
+<span class="fc" id="L87">            return ResponseEntity.ok(</span>
+<span class="fc" id="L88">                    navigationService.openReadOnly(ctx.username(), branch, commitId, ctx, searchQuery, elementId));</span>
+        } else {
+<span class="fc" id="L90">            return ResponseEntity.ok(</span>
+<span class="fc" id="L91">                    navigationService.switchContext(ctx.username(), branch, commitId, ctx));</span>
+        }
+    }
+
+    @PostMapping(&quot;/return-to-origin&quot;)
+    @Operation(summary = &quot;Return to the origin context&quot;,
+            description = &quot;Navigates back to the context from which the current context was opened.&quot;)
+    public ResponseEntity&lt;ContextRef&gt; returnToOrigin() {
+<span class="fc" id="L99">        WorkspaceContext scope = workspaceResolver.resolveCurrentContext();</span>
+<span class="fc" id="L100">        return ResponseEntity.ok(navigationService.returnToOrigin(scope.username(), scope));</span>
+    }
+
+    @PostMapping(&quot;/back&quot;)
+    @Operation(summary = &quot;Go one step back in navigation history&quot;,
+            description = &quot;Like the browser back button — returns to the previous context.&quot;)
+    public ResponseEntity&lt;ContextRef&gt; back() {
+<span class="fc" id="L107">        WorkspaceContext scope = workspaceResolver.resolveCurrentContext();</span>
+<span class="fc" id="L108">        return ResponseEntity.ok(navigationService.back(scope.username(), scope));</span>
+    }
+
+    @GetMapping(&quot;/history&quot;)
+    @Operation(summary = &quot;Get the navigation history&quot;,
+            description = &quot;Returns the list of context navigations (newest last).&quot;)
+    public ResponseEntity&lt;List&lt;ContextHistoryEntry&gt;&gt; getHistory() {
+<span class="fc" id="L115">        return ResponseEntity.ok(navigationService.getHistoryForScope(workspaceResolver.resolveCurrentContext()));</span>
+    }
+
+    @PostMapping(&quot;/variant&quot;)
+    @Operation(summary = &quot;Create a new branch variant from the current context&quot;,
+            description = &quot;Creates a new Git branch from the current context and switches to it.&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; createVariant(
+            @RequestParam String name) {
+        try {
+<span class="fc" id="L124">            WorkspaceContext scope = workspaceResolver.resolveCurrentContext();</span>
+<span class="fc" id="L125">            ContextRef variant = navigationService.createVariantFromCurrent(scope.username(), name, scope);</span>
+<span class="fc" id="L126">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L127">            result.put(&quot;context&quot;, variant);</span>
+<span class="fc" id="L128">            result.put(&quot;branch&quot;, variant.branch());</span>
+<span class="fc" id="L129">            return ResponseEntity.ok(result);</span>
+<span class="fc" id="L130">        } catch (IOException e) {</span>
+<span class="fc" id="L131">            log.error(&quot;Failed to create variant '{}'&quot;, name, e);</span>
+<span class="fc" id="L132">            return ResponseEntity.internalServerError().body(</span>
+<span class="fc" id="L133">                    Map.of(&quot;error&quot;, &quot;Failed to create variant: &quot; + e.getMessage()));</span>
+        }
+    }
+
+    // ── Phase 3: Compare ────────────────────────────────────────────
+
+    @GetMapping(&quot;/compare&quot;)
+    @Operation(summary = &quot;Compare two architecture contexts&quot;,
+            description = &quot;Returns a semantic diff between two contexts identified by &quot; +
+                    &quot;branch/commit pairs. Includes summary counts, individual changes, &quot; +
+                    &quot;and optional raw DSL diff.&quot;)
+    public ResponseEntity&lt;ContextComparison&gt; compare(
+            @RequestParam String leftBranch,
+            @RequestParam(required = false) String leftCommit,
+            @RequestParam String rightBranch,
+            @RequestParam(required = false) String rightCommit,
+            @RequestParam(required = false) Set&lt;String&gt; filter) {
+        try {
+<span class="fc" id="L151">            ContextRef left = new ContextRef(</span>
+                    null, leftBranch, leftCommit, null, null,
+                    null, null, null, null, null, false);
+<span class="fc" id="L154">            ContextRef right = new ContextRef(</span>
+                    null, rightBranch, rightCommit, null, null,
+                    null, null, null, null, null, false);
+
+<span class="fc" id="L158">            WorkspaceContext scope = workspaceResolver.resolveCurrentContext();</span>
+            ContextComparison comparison;
+<span class="fc bfc" id="L160" title="All 4 branches covered.">            if (leftCommit != null || rightCommit != null) {</span>
+<span class="fc" id="L161">                comparison = compareService.compareContexts(left, right, scope);</span>
+            } else {
+<span class="fc" id="L163">                comparison = compareService.compareBranches(left, right, scope);</span>
+            }
+<span class="fc" id="L165">            return ResponseEntity.ok(applyFilter(comparison, filter));</span>
+<span class="fc" id="L166">        } catch (IOException e) {</span>
+<span class="fc" id="L167">            log.error(&quot;Compare failed&quot;, e);</span>
+<span class="fc" id="L168">            return ResponseEntity.internalServerError().build();</span>
+        }
+    }
+
+    // ── Phase 4: Selective Transfer ─────────────────────────────────
+
+    @PostMapping(&quot;/copy-back/preview&quot;)
+    @Operation(summary = &quot;Preview a selective transfer&quot;,
+            description = &quot;Shows what would happen if the selected elements and relations &quot; +
+                    &quot;were transferred from source to target context, including conflicts.&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; previewTransfer(
+            @RequestBody TransferSelection selection) {
+        try {
+<span class="fc" id="L181">            List&lt;TransferConflict&gt; conflicts = transferService.previewTransfer(selection, workspaceResolver.resolveCurrentContext());</span>
+<span class="fc" id="L182">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L183">            result.put(&quot;conflicts&quot;, conflicts);</span>
+<span class="fc bfc" id="L184" title="All 2 branches covered.">            result.put(&quot;hasConflicts&quot;, !conflicts.isEmpty());</span>
+<span class="fc" id="L185">            result.put(&quot;selectedElements&quot;, selection.selectedElementIds().size());</span>
+<span class="fc" id="L186">            result.put(&quot;selectedRelations&quot;, selection.selectedRelationIds().size());</span>
+<span class="fc" id="L187">            return ResponseEntity.ok(result);</span>
+<span class="fc" id="L188">        } catch (IOException e) {</span>
+<span class="fc" id="L189">            log.error(&quot;Transfer preview failed&quot;, e);</span>
+<span class="fc" id="L190">            return ResponseEntity.internalServerError().body(</span>
+<span class="fc" id="L191">                    Map.of(&quot;error&quot;, &quot;Transfer preview failed: &quot; + e.getMessage()));</span>
+        }
+    }
+
+    @PostMapping(&quot;/copy-back/apply&quot;)
+    @Operation(summary = &quot;Apply a selective transfer&quot;,
+            description = &quot;Transfers the selected elements and relations from the source &quot; +
+                    &quot;snapshot to the editable workspace branch if the target commit is still its head.&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; applyTransfer(
+            @RequestBody TransferSelection selection,
+            @RequestParam(required = false) String expectedContextId) {
+        try {
+<span class="fc" id="L203">            String commitId = transferService.applyTransfer(selection, expectedContextId);</span>
+<span class="fc" id="L204">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L205">            result.put(&quot;commitId&quot;, commitId);</span>
+<span class="fc" id="L206">            result.put(&quot;success&quot;, true);</span>
+<span class="fc" id="L207">            return ResponseEntity.ok(result);</span>
+<span class="fc" id="L208">        } catch (BranchHeadConflictException conflict) {</span>
+<span class="fc" id="L209">            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(</span>
+                    &quot;error&quot;, &quot;The target branch changed. Preview its current head before applying.&quot;));
+<span class="fc" id="L211">        } catch (IOException e) {</span>
+<span class="fc" id="L212">            log.error(&quot;Transfer failed&quot;, e);</span>
+<span class="fc" id="L213">            return ResponseEntity.internalServerError().body(</span>
+<span class="fc" id="L214">                    Map.of(&quot;error&quot;, &quot;Transfer failed: &quot; + e.getMessage()));</span>
+        }
+    }
+
+    // ── Internal helpers ────────────────────────────────────────────
+
+    private ContextComparison applyFilter(ContextComparison comparison, Set&lt;String&gt; filter) {
+<span class="fc bfc" id="L221" title="All 4 branches covered.">        if (filter == null || filter.isEmpty()) {</span>
+<span class="fc" id="L222">            return comparison;</span>
+        }
+<span class="fc" id="L224">        List&lt;SemanticChange&gt; filtered = comparison.changes().stream()</span>
+<span class="fc" id="L225">                .filter(c -&gt; {</span>
+<span class="fc bfc" id="L226" title="All 4 branches covered.">                    if (filter.contains(&quot;elements&quot;) &amp;&amp; &quot;ELEMENT&quot;.equals(c.category())) return true;</span>
+<span class="fc bfc" id="L227" title="All 4 branches covered.">                    if (filter.contains(&quot;relations&quot;) &amp;&amp; &quot;RELATION&quot;.equals(c.category())) return true;</span>
+<span class="fc" id="L228">                    return false;</span>
+                })
+<span class="fc" id="L230">                .toList();</span>
+<span class="fc" id="L231">        return new ContextComparison(comparison.left(), comparison.right(),</span>
+<span class="fc" id="L232">                comparison.summary(), filtered, comparison.rawDslDiff());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

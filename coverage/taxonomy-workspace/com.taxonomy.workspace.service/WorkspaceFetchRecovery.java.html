@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkspaceFetchRecovery.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">WorkspaceFetchRecovery.java</span></div><h1>WorkspaceFetchRecovery.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.workspace.storage.GitUpstreamRef;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.io.IOException;
+
+@Service
+public class WorkspaceFetchRecovery {
+<span class="fc" id="L16">    private static final Logger log = LoggerFactory.getLogger(WorkspaceFetchRecovery.class);</span>
+    private final WorkspaceFetchJournal journal;
+    private final WorkspaceUpstreamService upstream;
+    private final WorkspaceFetchAuthority actors;
+    private final CentralForkUpstreamService forks;
+
+<span class="fc" id="L22">    public WorkspaceFetchRecovery(WorkspaceFetchJournal journal, WorkspaceUpstreamService upstream, WorkspaceFetchAuthority actors, CentralForkUpstreamService forks) {</span>
+<span class="fc" id="L23">        this.journal = journal;</span>
+<span class="fc" id="L24">        this.upstream = upstream;</span>
+<span class="fc" id="L25">        this.actors = actors;</span>
+<span class="fc" id="L26">        this.forks = forks;</span>
+<span class="fc" id="L27">    }</span>
+
+    private CentralForkInitialTransfer initialTransfers;
+
+    @org.springframework.beans.factory.annotation.Autowired
+<span class="fc" id="L32">    void useInitialTransfers(CentralForkInitialTransfer transfers) { this.initialTransfers = transfers; }</span>
+
+<span class="fc" id="L34">    public record Receipt(String operationId, WorkspaceUpstreamService.Status result, WorkspaceUpstreamService.TagStatus tag) {</span>
+<span class="pc bpc" id="L35" title="1 of 2 branches missed.">        public Object response() { return tag == null ? result : tag; }</span>
+    }
+
+    private WorkspaceUpstreamService.Capture capture(RepositoryContext context) throws IOException {
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        return context.scope() == RepositoryScope.CENTRAL_WRITE ? forks.capture(context) : upstream.capture(context);</span>
+    }
+
+    public RepositoryContext centralOperationContext(String repositoryId, String username, String id) {
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        if (CentralFetchOperation.initialIdFormat(id)) return initialTransfers.operationContext(repositoryId, username, id);</span>
+<span class="fc" id="L44">        return forks.context(repositoryId, username);</span>
+    }
+
+    private void inspect(RepositoryContext context, String id) throws IOException {
+<span class="fc bfc" id="L48" title="All 4 branches covered.">        if (context.scope() == RepositoryScope.CENTRAL_WRITE &amp;&amp; CentralFetchOperation.initialIdFormat(id)) {</span>
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">            if (!context.equals(initialTransfers.operationContext(context.repositoryId(), context.username(), id)))</span>
+<span class="nc" id="L50">                throw WorkspaceFetchJournal.missing();</span>
+<span class="fc" id="L51">            return;</span>
+        }
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        if (context.scope() == RepositoryScope.CENTRAL_WRITE) forks.inspect(context.repositoryId(), context.username());</span>
+<span class="fc" id="L54">        else upstream.inspect(context);</span>
+<span class="fc" id="L55">    }</span>
+
+    public Receipt fetch(RepositoryContext context, WorkspaceUpstreamService.Request request,
+                         String key, String causation) throws IOException {
+<span class="fc" id="L59">        var grant = actors.authorize(context.username(), context.scope());</span>
+<span class="fc" id="L60">        var selection = capture(context);</span>
+<span class="fc" id="L61">        var state = journal.admit(context, grant, selection, request, key, causation);</span>
+<span class="fc" id="L62">        return complete(context, grant.principalId(), state, true);</span>
+    }
+
+    public Receipt fetchTag(RepositoryContext context, WorkspaceUpstreamService.TagRequest tag,
+                            String key, String cause) throws IOException {
+<span class="fc" id="L67">        var grant = actors.authorize(context.username(), context.scope());</span>
+<span class="fc" id="L68">        var selection = capture(context);</span>
+<span class="fc" id="L69">        var state = journal.admitTag(context, grant, selection, tag, key, cause);</span>
+<span class="fc" id="L70">        return complete(context, grant.principalId(), state, true);</span>
+    }
+
+    public WorkspaceFetchJournal.View status(RepositoryContext context, String id) throws IOException {
+<span class="fc" id="L74">        String principal = actors.currentActor(context.username());</span>
+<span class="fc" id="L75">        inspect(context, id);</span>
+<span class="fc" id="L76">        return journal.status(context, principal, id);</span>
+    }
+
+    public Receipt retry(RepositoryContext context, String id) throws IOException {
+<span class="fc" id="L80">        String principal = actors.authorize(context.username(), context.scope()).principalId();</span>
+<span class="fc" id="L81">        inspect(context, id);</span>
+<span class="fc" id="L82">        return complete(context, principal, journal.status(context, principal, id), false);</span>
+    }
+
+    public WorkspaceFetchJournal.View archive(RepositoryContext context, String id) throws IOException {
+<span class="fc" id="L86">        String principal = actors.authorize(context.username(), context.scope()).principalId();</span>
+<span class="fc" id="L87">        inspect(context, id);</span>
+<span class="fc" id="L88">        return journal.archive(context, principal, id);</span>
+    }
+
+    private Receipt complete(RepositoryContext context, String principal, WorkspaceFetchJournal.View state,
+                             boolean respectBackoff) throws IOException {
+        // Repeating the fetch observes the saved delay. The explicit retry endpoint can request an early attempt.
+<span class="fc" id="L94">        var claim = journal.claim(state.operationId(), principal, respectBackoff);</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        if (claim == null) {</span>
+<span class="fc" id="L96">            state = journal.status(context, principal, state.operationId());</span>
+        } else {
+            try {
+<span class="fc" id="L99">                state = journal.run(claim, this::apply);</span>
+<span class="fc" id="L100">            } catch (IOException | RuntimeException failure) {</span>
+                // Return the persisted operation to the caller even when Git succeeded and the database update failed.
+<span class="fc" id="L102">                var recorded = journal.status(context, principal, state.operationId());</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">                if (&quot;RETRYABLE&quot;.equals(recorded.phase())) return new Receipt(recorded.operationId(), null, null);</span>
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">                if (!&quot;SUPERSEDED&quot;.equals(recorded.phase())) throw failure;</span>
+<span class="nc" id="L105">                state = recorded;</span>
+<span class="fc" id="L106">            }</span>
+        }
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        if (&quot;ARCHIVED&quot;.equals(state.phase())) throw new ResponseStatusException(HttpStatus.GONE, &quot;FETCH_ARCHIVED&quot;);</span>
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">        if (&quot;DENIED&quot;.equals(state.phase())) throw new AccessDeniedException(&quot;Fetch authority changed&quot;);</span>
+<span class="pc bpc" id="L110" title="2 of 6 branches missed.">        if (&quot;RUNNING&quot;.equals(state.phase()) || &quot;ADMITTED&quot;.equals(state.phase()) || &quot;RETRYABLE&quot;.equals(state.phase())</span>
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">                || &quot;AWAITING_AUTHORIZATION&quot;.equals(state.phase())) {</span>
+<span class="fc" id="L112">            return new Receipt(state.operationId(), null, null);</span>
+        }
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">        if (!&quot;COMPLETED&quot;.equals(state.phase())) throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;Fetch requires an explicit decision&quot;);</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">        if (state.selectedTag() != null) {</span>
+<span class="fc" id="L116">            return new Receipt(state.operationId(), null, new WorkspaceUpstreamService.TagStatus(state.selectedTag(),</span>
+<span class="fc" id="L117">                    state.requestedTagObject(), state.resultTagObject(), state.resultCommit()));</span>
+        }
+<span class="fc" id="L119">        return new Receipt(state.operationId(), new WorkspaceUpstreamService.Status(state.sourceRepositoryId(), state.sourceBranch(),</span>
+<span class="fc" id="L120">                state.observedSourceCommit(), state.trackingRef(), state.resultCommit()), null);</span>
+    }
+
+    @Scheduled(fixedDelayString = &quot;${taxonomy.workspace.fetch-recovery-poll:30000}&quot;)
+    public void recoverDue() {
+<span class="fc" id="L125">        journal.expireDue();</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        for (String id : journal.due()) {</span>
+<span class="fc" id="L127">            var claim = journal.claim(id, &quot;system:workspace-fetch-recovery&quot;, true);</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">            if (claim == null) continue;</span>
+            try {
+<span class="fc" id="L130">                journal.run(claim, this::apply);</span>
+<span class="fc" id="L131">            } catch (IOException | RuntimeException failure) {</span>
+                // The journal records a bounded decision code without retaining provider, Git or SQL exception text.
+<span class="fc" id="L133">                log.info(&quot;Workspace fetch recovery deferred or ended for operation {}&quot;, id);</span>
+<span class="fc" id="L134">            }</span>
+<span class="fc" id="L135">        }</span>
+<span class="fc" id="L136">    }</span>
+
+    private WorkspaceUpstreamService.Status apply(RepositoryFetchOperation operation, Runnable checkLease) throws IOException {
+<span class="fc" id="L139">        var original = new WorkspaceFetchAuthority.Grant(operation.actor, operation.loginKind, operation.bindingKey);</span>
+<span class="fc" id="L140">        boolean unattended = &quot;system:workspace-fetch-recovery&quot;.equals(operation.executor);</span>
+<span class="fc" id="L141">        Runnable authorize = () -&gt; {</span>
+<span class="fc" id="L142">            actors.checkPublication(original, operation.username, operation.context().scope(), unattended);</span>
+<span class="fc" id="L143">            checkLease.run();</span>
+<span class="fc" id="L144">        };</span>
+<span class="fc" id="L145">        authorize.run();</span>
+<span class="fc bfc" id="L146" title="All 4 branches covered.">        if (operation instanceof CentralFetchOperation central &amp;&amp; CentralFetchOperation.initialIdFormat(operation.id)) {</span>
+<span class="pc bpc" id="L147" title="1 of 2 branches missed.">            if (!central.isInitialFork()) throw new AccessDeniedException(&quot;Invalid initial fork operation&quot;);</span>
+<span class="fc" id="L148">            return initialTransfers.apply(central, authorize);</span>
+        }
+<span class="fc bfc" id="L150" title="All 2 branches covered.">        boolean recovering = operation.attempts &gt; 1;</span>
+<span class="fc" id="L151">        var context = operation.context();</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">        var fork = operation instanceof CentralFetchOperation ? forks.recorded(operation) : null;</span>
+<span class="fc bfc" id="L153" title="All 2 branches covered.">        if (operation.selectedTag != null) {</span>
+<span class="fc" id="L154">            var request = new WorkspaceUpstreamService.TagRequest(operation.selectedTag, operation.requestedTagObject, operation.expected);</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">            var tag = fork == null</span>
+<span class="fc" id="L156">                    ? upstream.fetchRecordedTag(context, operation.sourceBranch, operation.forkPoint, request, recovering, authorize)</span>
+<span class="fc" id="L157">                    : fork.fetchTag(request, recovering, authorize);</span>
+<span class="fc" id="L158">            operation.resultTagObject = tag.destinationTagObject();</span>
+<span class="fc" id="L159">            var tracking = new GitUpstreamRef(operation.sourceRepositoryId(), operation.sourceBranch);</span>
+<span class="fc" id="L160">            return new WorkspaceUpstreamService.Status(tracking.repositoryId(), tracking.branch(), operation.observed,</span>
+<span class="fc" id="L161">                    tracking.name(), tag.trackedCommit());</span>
+        }
+<span class="fc" id="L163">        var request = new WorkspaceUpstreamService.Request(operation.requested, operation.expected);</span>
+<span class="fc bfc" id="L164" title="All 4 branches covered.">        if (fork != null) return recovering ? fork.recover(request, authorize) : fork.fetch(request, authorize);</span>
+<span class="fc" id="L165">        return upstream.fetchRecorded(context, operation.sourceBranch, operation.forkPoint, request, recovering, authorize);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

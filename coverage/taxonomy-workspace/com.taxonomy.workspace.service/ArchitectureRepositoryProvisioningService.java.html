@@ -1,0 +1,305 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureRepositoryProvisioningService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">ArchitectureRepositoryProvisioningService.java</span></div><h1>ArchitectureRepositoryProvisioningService.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.GitHistoryTransfer;
+import com.taxonomy.workspace.storage.GitUpstreamRef;
+import com.taxonomy.workspace.model.RepositoryLifecycleState;
+import com.taxonomy.workspace.model.RepositoryVisibility;
+import com.taxonomy.workspace.model.SystemRepository;
+import org.springframework.stereotype.Service;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.server.ResponseStatusException;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.FileMode;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.revwalk.ObjectWalk;
+import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.treewalk.TreeWalk;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+
+/** Provisions central repositories and durable forks in logical JGit storage. */
+@Service
+public class ArchitectureRepositoryProvisioningService {
+
+    private static final String MINIMAL_DSL = &quot;meta { language: \&quot;taxdsl\&quot;; }\n&quot;;
+    private static final String INITIAL_MESSAGE = &quot;Initialize architecture repository&quot;;
+
+    private final ProjectCatalogueSeed projectSeed;
+    private final SystemRepositoryService systemRepositoryService;
+    private final RepositoryMembershipService membershipService;
+    private final DslGitRepositoryFactory repositoryFactory;
+
+    public ArchitectureRepositoryProvisioningService(
+            SystemRepositoryService systemRepositoryService,
+            RepositoryMembershipService membershipService,
+            DslGitRepositoryFactory repositoryFactory,
+<span class="fc" id="L41">            ProjectCatalogueSeed projectSeed) {</span>
+<span class="fc" id="L42">        this.projectSeed = projectSeed;</span>
+<span class="fc" id="L43">        this.systemRepositoryService = systemRepositoryService;</span>
+<span class="fc" id="L44">        this.membershipService = membershipService;</span>
+<span class="fc" id="L45">        this.repositoryFactory = repositoryFactory;</span>
+<span class="fc" id="L46">    }</span>
+
+    private CentralForkInitialTransfer initialTransfers;
+
+    @org.springframework.beans.factory.annotation.Autowired
+<span class="fc" id="L51">    void useInitialTransfers(CentralForkInitialTransfer transfers) { this.initialTransfers = transfers; }</span>
+
+    /** Create a new independent central repository with a valid initial DSL commit. */
+    public SystemRepository createRepository(
+            String displayName,
+            String slug,
+            String description,
+            RepositoryVisibility visibility,
+            String ownerId,
+            String defaultBranch) {
+<span class="fc" id="L61">        SystemRepository metadata = systemRepositoryService.createCentralRepository(</span>
+                displayName, slug, description, visibility, ownerId, defaultBranch);
+<span class="fc" id="L63">        return provisionRepository(metadata, ownerId);</span>
+    }
+
+    /** Stable-slug lifecycle creation and recovery share the catalog's durable claim. */
+    public SystemRepositoryService.CreationClaim createOrResumePrivateRepository(
+            String displayName, String slug, String description, String ownerId) {
+<span class="fc" id="L69">        var claim = systemRepositoryService.claimPrivateCreation(displayName, slug, description, ownerId);</span>
+<span class="fc" id="L70">        SystemRepository metadata = claim.repository();</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        if (metadata.getLifecycleState() == RepositoryLifecycleState.ACTIVE) return claim;</span>
+<span class="fc" id="L72">        String repositoryId = metadata.getRepositoryId();</span>
+        try {
+<span class="fc" id="L74">            membershipService.assignOwner(repositoryId, ownerId);</span>
+<span class="fc" id="L75">            DslGitRepository git = repositoryFactory.createCentralRepository(repositoryId, metadata.getStorageRepositoryName());</span>
+<span class="fc" id="L76">            initializeOrVerifyCreation(git, metadata, ownerId);</span>
+<span class="fc" id="L77">            return new SystemRepositoryService.CreationClaim(systemRepositoryService.markProvisioningReady(repositoryId), claim.created());</span>
+<span class="fc" id="L78">        } catch (IOException | RuntimeException failure) {</span>
+            // A failed catalogue completion can follow a successful Git write. Retain that exact
+            // source for the next retry; recovery must never delete existing logical Git storage.
+<span class="fc" id="L81">            try { systemRepositoryService.markProvisioningFailed(repositoryId, safeMessage(failure)); }</span>
+<span class="pc" id="L82">            catch (RuntimeException stateFailure) { failure.addSuppressed(stateFailure); }</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">            if (failure instanceof ResponseStatusException conflict) throw conflict;</span>
+<span class="fc" id="L84">            throw new IllegalStateException(&quot;Could not initialize central repository &quot; + repositoryId, failure);</span>
+        }
+    }
+
+    private void initializeOrVerifyCreation(DslGitRepository git, SystemRepository metadata, String owner) throws IOException {
+<span class="fc" id="L89">        String branch = metadata.getDefaultBranch();</span>
+<span class="fc" id="L90">        var repository = git.getGitRepository();</span>
+<span class="fc" id="L91">        synchronized (repository) {</span>
+<span class="fc" id="L92">            var refs = repository.getRefDatabase().getRefsByPrefix(Constants.R_REFS);</span>
+<span class="fc" id="L93">            String head = git.getHeadCommit(branch);</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">            if (head == null) {</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">                if (!refs.isEmpty()) throw retainedSourceConflict();</span>
+<span class="fc" id="L96">                git.commitDslIfHeadMatches(branch, null, projectSeed.newProject(&quot;default&quot;), owner, INITIAL_MESSAGE);</span>
+<span class="fc" id="L97">                return;</span>
+            }
+<span class="pc bpc" id="L99" title="2 of 4 branches missed.">            if (refs.size() != 1 || !refs.getFirst().getName().equals(Constants.R_HEADS + branch)) throw retainedSourceConflict();</span>
+<span class="fc" id="L100">            String retained = git.getDslAtCommit(head);</span>
+<span class="pc bpc" id="L101" title="1 of 4 branches missed.">            if (!MINIMAL_DSL.equals(retained) &amp;&amp; !com.taxonomy.dsl.model.ProjectCatalogue.isInitial(retained, &quot;default&quot;))</span>
+<span class="fc" id="L102">                throw retainedSourceConflict();</span>
+<span class="fc" id="L103">            try (var walk = new RevWalk(repository); var tree = new TreeWalk(repository)) {</span>
+<span class="fc" id="L104">                var initial = walk.parseCommit(ObjectId.fromString(head));</span>
+<span class="pc bpc" id="L105" title="2 of 4 branches missed.">                if (initial.getParentCount() != 0 || !INITIAL_MESSAGE.equals(initial.getFullMessage())</span>
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">                        || !owner.equals(initial.getAuthorIdent().getName())</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">                        || !owner.equals(initial.getCommitterIdent().getName())) throw retainedSourceConflict();</span>
+<span class="fc" id="L108">                tree.addTree(initial.getTree());</span>
+<span class="pc bpc" id="L109" title="2 of 4 branches missed.">                if (!tree.next() || !DslGitRepository.DSL_FILENAME.equals(tree.getPathString())</span>
+<span class="pc bpc" id="L110" title="2 of 4 branches missed.">                        || !FileMode.REGULAR_FILE.equals(tree.getFileMode(0)) || tree.next()) throw retainedSourceConflict();</span>
+            }
+<span class="fc" id="L112">            git.verifyExpectedHead(branch, head);</span>
+<span class="fc" id="L113">        }</span>
+<span class="fc" id="L114">    }</span>
+
+    private static ResponseStatusException retainedSourceConflict() {
+<span class="fc" id="L117">        return new ResponseStatusException(HttpStatus.CONFLICT,</span>
+                &quot;This creation already retains different Git content; it was preserved and requires explicit review&quot;);
+    }
+
+    /** Create a durable central fork from the selected source repository/branch. */
+    public SystemRepository createFork(
+            String sourceRepositoryId,
+            String requestedSourceBranch,
+            String displayName,
+            String slug,
+            String description,
+            RepositoryVisibility visibility,
+            String ownerId) {
+<span class="fc" id="L130">        SystemRepository source = systemRepositoryService.getRepository(sourceRepositoryId);</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">        if (source.getLifecycleState() != RepositoryLifecycleState.ACTIVE) {</span>
+<span class="fc" id="L132">            throw new IllegalStateException(</span>
+                    &quot;Source repository is not active: &quot; + sourceRepositoryId);
+        }
+<span class="fc" id="L135">        requireForkSource(source, ownerId, visibility);</span>
+<span class="pc bpc" id="L136" title="1 of 4 branches missed.">        String sourceBranch = requestedSourceBranch == null || requestedSourceBranch.isBlank()</span>
+<span class="fc" id="L137">                ? source.getDefaultBranch()</span>
+<span class="fc" id="L138">                : requestedSourceBranch.strip();</span>
+
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        if (initialTransfers != null) {</span>
+<span class="fc" id="L141">            var existing = systemRepositoryService.byCreationSlug(slug, displayName).orElse(null);</span>
+<span class="pc bpc" id="L142" title="1 of 4 branches missed.">            if (existing != null &amp;&amp; initialTransfers.isJournalled(existing.getRepositoryId())) {</span>
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">                if (!SystemRepositoryService.matchesForkRequest(existing, sourceRepositoryId, sourceBranch, displayName.strip(),</span>
+<span class="nc" id="L144">                        description, visibility, ownerId)) throw retainedSourceConflict();</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">                if (existing.getLifecycleState() == RepositoryLifecycleState.ACTIVE) verifyRetainedFork(existing);</span>
+<span class="fc" id="L146">                return initialTransfers.complete(existing, ownerId);</span>
+            }
+        }
+
+<span class="fc" id="L150">        var recovered = systemRepositoryService.acknowledgePublishedFork(sourceRepositoryId, sourceBranch,</span>
+                displayName, slug, description, visibility, ownerId, retained -&gt; {
+<span class="fc" id="L152">                    verifyRetainedFork(retained);</span>
+<span class="fc" id="L153">                    systemRepositoryService.readCurrentAuthorization(sourceRepositoryId, current -&gt; {</span>
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">                        if (current.getLifecycleState() != RepositoryLifecycleState.ACTIVE) throw retainedSourceConflict();</span>
+<span class="fc" id="L155">                        requireForkSource(current, ownerId, retained.getVisibility());</span>
+<span class="fc" id="L156">                    });</span>
+<span class="fc" id="L157">                });</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">        if (recovered != null) return recovered;</span>
+
+        DslGitRepository sourceGit;
+        String sourceCommit;
+        try {
+<span class="fc" id="L163">            sourceGit = repositoryFactory.getCentralRepository(source.getRepositoryId());</span>
+<span class="fc" id="L164">            sourceCommit = sourceGit.getHeadCommit(sourceBranch);</span>
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">            if (sourceCommit == null) throw new IOException(&quot;Source branch has no commit&quot;);</span>
+<span class="fc" id="L166">            verifyForkSnapshot(sourceGit, sourceCommit);</span>
+<span class="nc" id="L167">        } catch (IOException | RuntimeException exception) {</span>
+<span class="nc" id="L168">            throw new IllegalStateException(</span>
+                    &quot;Could not read source repository &quot; + sourceRepositoryId,
+                    exception);
+<span class="fc" id="L171">        }</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">        if (initialTransfers != null) {</span>
+<span class="fc" id="L173">            var fork = initialTransfers.admit(sourceRepositoryId, sourceBranch, sourceCommit, displayName, slug, description, visibility, ownerId);</span>
+<span class="nc" id="L174">            return initialTransfers.complete(fork, ownerId);</span>
+        }
+<span class="fc" id="L176">        SystemRepository fork = systemRepositoryService.createForkMetadata(</span>
+<span class="fc" id="L177">                source.getRepositoryId(),</span>
+                sourceBranch,
+                sourceCommit,
+                displayName,
+                slug,
+                description,
+                visibility,
+                ownerId);
+<span class="fc" id="L185">        return provisionFork(fork, sourceGit, ownerId);</span>
+    }
+
+    private void verifyRetainedFork(SystemRepository fork) {
+<span class="fc" id="L189">        verifyRetainedFork(repositoryFactory.getCentralRepository(fork.getRepositoryId()), fork);</span>
+<span class="fc" id="L190">    }</span>
+
+    static void verifyRetainedFork(DslGitRepository target, SystemRepository fork) {
+<span class="fc" id="L193">        String commit = fork.getForkPointCommit();</span>
+<span class="fc" id="L194">        var upstream = new GitUpstreamRef(fork.getUpstreamRepositoryId(), fork.getUpstreamBranch());</span>
+        try {
+<span class="fc" id="L196">            String branch = Constants.R_HEADS + fork.getDefaultBranch();</span>
+<span class="fc" id="L197">            var git = target.getGitRepository();</span>
+<span class="fc" id="L198">            target.readFreshRef(branch);</span>
+<span class="fc" id="L199">            var refs = git.getRefDatabase().getRefsByPrefix(Constants.R_REFS);</span>
+<span class="pc bpc" id="L200" title="3 of 8 branches missed.">            if (refs.size() != 2 || refs.stream().anyMatch(ref -&gt; ref.isSymbolic() || ref.getObjectId() == null</span>
+<span class="pc bpc" id="L201" title="1 of 6 branches missed.">                    || !commit.equals(ref.getObjectId().name()) || !(branch.equals(ref.getName()) || upstream.name().equals(ref.getName()))))</span>
+<span class="fc" id="L202">                throw retainedSourceConflict();</span>
+<span class="fc" id="L203">            verifyForkSnapshot(target, commit);</span>
+<span class="fc" id="L204">            try (var objects = new ObjectWalk(git)) {</span>
+<span class="fc" id="L205">                objects.markStart(objects.parseCommit(ObjectId.fromString(commit)));</span>
+<span class="fc" id="L206">                objects.checkConnectivity();</span>
+            }
+<span class="fc" id="L208">            target.verifyIncoming(commit, null);</span>
+<span class="fc" id="L209">            target.verifyExpectedHead(fork.getDefaultBranch(), commit);</span>
+<span class="pc bpc" id="L210" title="1 of 2 branches missed.">            if (!commit.equals(upstream.head(target))) throw retainedSourceConflict();</span>
+<span class="nc" id="L211">        } catch (IOException failure) {</span>
+<span class="nc" id="L212">            throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;The retained fork cannot be verified&quot;, failure);</span>
+<span class="fc" id="L213">        }</span>
+<span class="fc" id="L214">    }</span>
+
+    static void verifyForkSnapshot(DslGitRepository source, String commit) throws IOException {
+<span class="fc" id="L217">        source.verifySnapshot(commit);</span>
+<span class="fc" id="L218">        var repository = source.getGitRepository();</span>
+<span class="fc" id="L219">        try (var walk = new RevWalk(repository)) {</span>
+<span class="fc" id="L220">            var tip = walk.parseCommit(ObjectId.fromString(commit));</span>
+<span class="fc" id="L221">            try (var tree = TreeWalk.forPath(repository, DslGitRepository.DSL_FILENAME, tip.getTree())) {</span>
+<span class="pc bpc" id="L222" title="2 of 4 branches missed.">                if (tree == null || !FileMode.REGULAR_FILE.equals(tree.getFileMode(0))) {</span>
+<span class="nc" id="L223">                    throw new IOException(&quot;Source branch has no regular architecture DSL document&quot;);</span>
+                }
+<span class="fc" id="L225">                var loader = repository.open(tree.getObjectId(0), Constants.OBJ_BLOB);</span>
+<span class="pc bpc" id="L226" title="1 of 2 branches missed.">                if (new String(loader.getBytes(GitHistoryTransfer.MAX_OBJECT_BYTES), StandardCharsets.UTF_8).isBlank()) {</span>
+<span class="nc" id="L227">                    throw new IOException(&quot;Source branch has no architecture content&quot;);</span>
+                }
+            }
+        }
+<span class="fc" id="L231">    }</span>
+
+    private void requireForkSource(SystemRepository source, String actor, RepositoryVisibility visibility) {
+<span class="fc bfc" id="L234" title="All 2 branches covered.">        if (!membershipService.canContribute(source, actor)) {</span>
+<span class="fc" id="L235">            throw new AccessDeniedException(&quot;Current source repository CONTRIBUTOR role is required&quot;);</span>
+        }
+<span class="fc" id="L237">        SystemRepositoryService.requirePermittedForkVisibility(source, visibility);</span>
+<span class="fc" id="L238">    }</span>
+
+    private SystemRepository provisionFork(SystemRepository fork, DslGitRepository source, String ownerId) {
+<span class="fc" id="L241">        String repositoryId = fork.getRepositoryId();</span>
+<span class="fc" id="L242">        String branch = fork.getDefaultBranch();</span>
+<span class="fc" id="L243">        String forkPoint = fork.getForkPointCommit();</span>
+        try {
+<span class="fc" id="L245">            membershipService.assignOwner(repositoryId, ownerId);</span>
+<span class="fc" id="L246">            var destination = repositoryFactory.createCentralRepository(repositoryId, fork.getStorageRepositoryName());</span>
+<span class="fc" id="L247">            destination.verifyExpectedHead(branch, null);</span>
+<span class="fc" id="L248">            GitHistoryTransfer.copyCommitClosure(source, destination, forkPoint, List.of());</span>
+<span class="fc" id="L249">            systemRepositoryService.readCurrentAuthorization(fork.getUpstreamRepositoryId(),</span>
+<span class="fc" id="L250">                    current -&gt; requireForkSource(current, ownerId, fork.getVisibility()));</span>
+<span class="fc" id="L251">            source.verifyExpectedHead(fork.getUpstreamBranch(), forkPoint);</span>
+<span class="fc" id="L252">            destination.recordUpstreamForkPoint(fork.getUpstreamRepositoryId(), fork.getUpstreamBranch(), forkPoint, ownerId);</span>
+<span class="fc" id="L253">            destination.fastForwardIfHeadMatches(branch, null, forkPoint, ownerId, &quot;Provision repository fork&quot;);</span>
+<span class="fc" id="L254">            return systemRepositoryService.markProvisioningReady(repositoryId);</span>
+<span class="fc" id="L255">        } catch (BranchHeadConflictException conflict) {</span>
+<span class="fc" id="L256">            recordProvisioningFailure(repositoryId, conflict);</span>
+<span class="fc" id="L257">            throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;A branch changed while provisioning the fork&quot;, conflict);</span>
+<span class="fc" id="L258">        } catch (AccessDeniedException | IllegalArgumentException rejected) {</span>
+<span class="fc" id="L259">            recordProvisioningFailure(repositoryId, rejected);</span>
+<span class="fc" id="L260">            throw rejected;</span>
+<span class="fc" id="L261">        } catch (IOException | RuntimeException failure) {</span>
+            // Keep any published ref for recovery if catalog completion failed after Git publication.
+<span class="fc" id="L263">            recordProvisioningFailure(repositoryId, failure);</span>
+<span class="fc" id="L264">            throw new IllegalStateException(&quot;Could not initialize fork repository &quot; + repositoryId, failure);</span>
+        }
+    }
+
+    private SystemRepository provisionRepository(SystemRepository metadata, String ownerId) {
+<span class="fc" id="L269">        String repositoryId = metadata.getRepositoryId();</span>
+<span class="fc" id="L270">        boolean storageAttempted = false;</span>
+        try {
+<span class="fc" id="L272">            membershipService.assignOwner(repositoryId, ownerId);</span>
+<span class="fc" id="L273">            storageAttempted = true;</span>
+<span class="fc" id="L274">            DslGitRepository git = repositoryFactory.createCentralRepository(</span>
+<span class="fc" id="L275">                    repositoryId, metadata.getStorageRepositoryName());</span>
+<span class="fc" id="L276">            git.commitDsl(metadata.getDefaultBranch(), projectSeed.newProject(&quot;default&quot;), ownerId, INITIAL_MESSAGE);</span>
+<span class="fc" id="L277">            return systemRepositoryService.markProvisioningReady(repositoryId);</span>
+<span class="fc" id="L278">        } catch (IOException | RuntimeException exception) {</span>
+<span class="fc bfc" id="L279" title="All 2 branches covered.">            if (storageAttempted) {</span>
+                try {
+<span class="fc" id="L281">                    repositoryFactory.deleteCentralRepository(repositoryId);</span>
+<span class="nc" id="L282">                } catch (RuntimeException cleanupException) {</span>
+<span class="nc" id="L283">                    exception.addSuppressed(cleanupException);</span>
+<span class="fc" id="L284">                }</span>
+            }
+<span class="fc" id="L286">            recordProvisioningFailure(repositoryId, exception);</span>
+<span class="fc" id="L287">            throw new IllegalStateException(&quot;Could not initialize central repository &quot; + repositoryId, exception);</span>
+        }
+    }
+
+    private void recordProvisioningFailure(String repositoryId, Exception failure) {
+        try {
+<span class="fc" id="L293">            systemRepositoryService.markProvisioningFailed(repositoryId, safeMessage(failure));</span>
+<span class="fc" id="L294">        } catch (RuntimeException stateFailure) {</span>
+<span class="fc" id="L295">            failure.addSuppressed(stateFailure);</span>
+<span class="fc" id="L296">        }</span>
+<span class="fc" id="L297">    }</span>
+
+    private static String safeMessage(Throwable throwable) {
+<span class="pc bpc" id="L300" title="1 of 2 branches missed.">        return throwable.getMessage() == null</span>
+<span class="nc" id="L301">                ? throwable.getClass().getSimpleName()</span>
+<span class="fc" id="L302">                : throwable.getMessage();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

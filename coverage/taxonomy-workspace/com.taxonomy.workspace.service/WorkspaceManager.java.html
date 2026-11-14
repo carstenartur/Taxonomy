@@ -1,0 +1,837 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkspaceManager.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">WorkspaceManager.java</span></div><h1>WorkspaceManager.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.GitHistoryTransfer;
+import com.taxonomy.dto.ContextRef;
+import com.taxonomy.dto.WorkspaceInfo;
+import com.taxonomy.workspace.model.RepositoryTopologyMode;
+import com.taxonomy.workspace.model.RepositoryLifecycleState;
+import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.revwalk.RevWalk;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.time.Instant;
+import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.stream.Stream;
+
+/**
+ * Manages per-user workspace state for multi-user architecture editing.
+ *
+ * &lt;p&gt;Workspace metadata is persisted through {@link UserWorkspaceRepository},
+ * while active navigation state stays in memory. When a
+ * {@link DslGitRepositoryFactory} is available, each workspace uses its own
+ * logical JGit repository name in the shared database.&lt;/p&gt;
+ */
+@Service
+public class WorkspaceManager {
+
+<span class="fc" id="L49">    private static final Logger log = LoggerFactory.getLogger(WorkspaceManager.class);</span>
+
+    /** Default username used when no authentication context is available. */
+    public static final String DEFAULT_USER = &quot;anonymous&quot;;
+
+    private final UserWorkspaceRepository workspaceRepository;
+    private final int maxHistory;
+    private final SystemRepositoryService systemRepositoryService;
+    private final DslGitRepository gitRepository;
+    private final DslGitRepositoryFactory repositoryFactory;
+    private RepositoryMembershipService sourceMemberships;
+    private WorkspaceFetchJournal fetchJournal;
+    private WorkspaceFetchAuthority fetchActors;
+    private TransactionTemplate provisioningOutsideReadOnlyTransaction;
+<span class="fc" id="L63">    private WorkspaceProvisionPermission provisionPermission = actor -&gt; true;</span>
+
+    @Autowired(required = false)
+    void setWorkspaceProvisionPermission(WorkspaceProvisionPermission provisionPermission) {
+<span class="fc" id="L67">        this.provisionPermission = java.util.Objects.requireNonNull(provisionPermission);</span>
+<span class="fc" id="L68">    }</span>
+
+    /** Only automatic read/default paths use this policy; explicit system provisioning stays separate. */
+    public boolean mayProvisionDefaultWorkspace(String username) {
+<span class="fc" id="L72">        return provisionPermission.mayProvision(username);</span>
+    }
+
+    @Autowired
+    void configureProvisioningTransactions(PlatformTransactionManager transactions) {
+<span class="fc" id="L77">        provisioningOutsideReadOnlyTransaction = new TransactionTemplate(transactions);</span>
+<span class="fc" id="L78">        provisioningOutsideReadOnlyTransaction.setPropagationBehavior(</span>
+                TransactionDefinition.PROPAGATION_NOT_SUPPORTED);
+<span class="fc" id="L80">    }</span>
+
+    private WorkspacePublicationJournal publicationJournal;
+
+    @Autowired
+    void configurePublicationJournal(WorkspacePublicationJournal journal) {
+<span class="fc" id="L86">        this.publicationJournal = journal;</span>
+<span class="fc" id="L87">    }</span>
+
+    @Autowired
+    void configureSourceMemberships(RepositoryMembershipService sourceMemberships) {
+<span class="fc" id="L91">        this.sourceMemberships = sourceMemberships;</span>
+<span class="fc" id="L92">    }</span>
+
+    /** Navigation state belongs to one actor and workspace, including pinned inactive tabs. */
+<span class="fc" id="L95">    private record WorkspaceStateKey(String username, String workspaceId) {}</span>
+
+<span class="fc" id="L97">    private final ConcurrentMap&lt;WorkspaceStateKey, UserWorkspaceState&gt; workspaceStates =</span>
+            new ConcurrentHashMap&lt;&gt;();
+
+    /** Maps a username to its currently active workspace ID. */
+<span class="fc" id="L101">    private final ConcurrentMap&lt;String, String&gt; activeWorkspaceByUser =</span>
+            new ConcurrentHashMap&lt;&gt;();
+
+    @Autowired
+    public WorkspaceManager(
+            UserWorkspaceRepository workspaceRepository,
+            @Value(&quot;${taxonomy.context.max-history:50}&quot;) int maxHistory,
+            SystemRepositoryService systemRepositoryService,
+            DslGitRepositoryFactory repositoryFactory, WorkspaceFetchJournal fetchJournal, WorkspaceFetchAuthority fetchActors) {
+<span class="fc" id="L110">        this(workspaceRepository,maxHistory,systemRepositoryService,repositoryFactory);</span>
+<span class="fc" id="L111">        this.fetchJournal=java.util.Objects.requireNonNull(fetchJournal);</span>
+<span class="fc" id="L112">        this.fetchActors=java.util.Objects.requireNonNull(fetchActors);</span>
+<span class="fc" id="L113">    }</span>
+
+    public WorkspaceManager(
+            UserWorkspaceRepository workspaceRepository,
+            int maxHistory,
+            SystemRepositoryService systemRepositoryService,
+<span class="fc" id="L119">            DslGitRepositoryFactory repositoryFactory) {</span>
+<span class="fc" id="L120">        this.workspaceRepository = workspaceRepository;</span>
+<span class="fc" id="L121">        this.maxHistory = maxHistory;</span>
+<span class="fc" id="L122">        this.systemRepositoryService = systemRepositoryService;</span>
+<span class="fc" id="L123">        this.gitRepository = repositoryFactory.getSystemRepository();</span>
+<span class="fc" id="L124">        this.repositoryFactory = repositoryFactory;</span>
+<span class="fc" id="L125">    }</span>
+
+    /** Legacy constructor retained for unit tests using one caller-supplied repository. */
+    public WorkspaceManager(
+            UserWorkspaceRepository workspaceRepository,
+            int maxHistory,
+            SystemRepositoryService systemRepositoryService,
+<span class="fc" id="L132">            DslGitRepository gitRepository) {</span>
+<span class="fc" id="L133">        this.workspaceRepository = workspaceRepository;</span>
+<span class="fc" id="L134">        this.maxHistory = maxHistory;</span>
+<span class="fc" id="L135">        this.systemRepositoryService = systemRepositoryService;</span>
+<span class="fc" id="L136">        this.gitRepository = gitRepository;</span>
+<span class="fc" id="L137">        this.repositoryFactory = null;</span>
+<span class="fc" id="L138">    }</span>
+
+    /**
+     * Return or create the user's default workspace state.
+     * Returns {@code null} when automatic creation is denied and no READY copy exists.
+     */
+    public UserWorkspaceState getOrCreateWorkspace(String username) {
+<span class="fc bfc" id="L145" title="All 4 branches covered.">        if (username == null || username.isBlank()) {</span>
+<span class="fc" id="L146">            username = DEFAULT_USER;</span>
+        }
+<span class="fc" id="L148">        String user = username;</span>
+
+<span class="fc" id="L150">        String activeWorkspaceId = activeWorkspaceByUser.get(user);</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">        if (activeWorkspaceId != null) {</span>
+<span class="fc" id="L152">            UserWorkspaceState existing = workspaceStates.get(new WorkspaceStateKey(user, activeWorkspaceId));</span>
+<span class="pc bpc" id="L153" title="1 of 2 branches missed.">            if (existing != null) {</span>
+<span class="fc" id="L154">                return existing;</span>
+            }
+        }
+
+<span class="fc bfc" id="L158" title="All 2 branches covered.">        if (!mayProvisionDefaultWorkspace(user)) {</span>
+<span class="fc" id="L159">            UserWorkspace workspace = findUserWorkspace(user);</span>
+<span class="pc bpc" id="L160" title="1 of 4 branches missed.">            if (workspace == null || !user.equals(workspace.getUsername())</span>
+<span class="pc bpc" id="L161" title="2 of 4 branches missed.">                    || workspace.isArchived() || workspace.isShared()</span>
+<span class="pc bpc" id="L162" title="1 of 2 branches missed.">                    || workspace.getProvisioningStatus() != WorkspaceProvisioningStatus.READY) {</span>
+<span class="fc" id="L163">                return null;</span>
+            }
+            // An existing working copy may gain navigation state without writing
+            // metadata or allocating a repository through an implicit read.
+<span class="fc" id="L167">            return getOrCreateWorkspace(user, workspace.getWorkspaceId());</span>
+        }
+
+<span class="fc" id="L170">        ensurePersistentWorkspace(user);</span>
+
+<span class="fc" id="L172">        UserWorkspace workspace = safeOptional(</span>
+<span class="fc" id="L173">                workspaceRepository.findByUsernameAndIsDefaultTrue(user));</span>
+<span class="fc bfc" id="L174" title="All 4 branches covered.">        if (workspace != null &amp;&amp; workspace.isArchived()) {</span>
+<span class="fc" id="L175">            workspace = null;</span>
+        }
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        if (workspace == null) {</span>
+<span class="fc" id="L178">            workspace = safeOptional(workspaceRepository.findByUsernameAndSharedFalse(user));</span>
+<span class="fc bfc" id="L179" title="All 4 branches covered.">            if (workspace != null &amp;&amp; workspace.isArchived()) {</span>
+<span class="fc" id="L180">                workspace = null;</span>
+            }
+        }
+
+<span class="fc bfc" id="L184" title="All 2 branches covered.">        String workspaceId = workspace != null</span>
+<span class="fc" id="L185">                ? workspace.getWorkspaceId()</span>
+<span class="fc" id="L186">                : user + &quot;-workspace&quot;;</span>
+<span class="fc" id="L187">        UserWorkspaceState state = getOrCreateWorkspaceState(user, workspaceId,</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">                workspace == null ? null : workspace.getCurrentBranch());</span>
+<span class="fc" id="L189">        activeWorkspaceByUser.put(user, workspaceId);</span>
+<span class="fc" id="L190">        return state;</span>
+    }
+
+    /** Return or create state for one explicitly selected workspace. */
+    public UserWorkspaceState getOrCreateWorkspace(String username, String workspaceId) {
+<span class="pc bpc" id="L195" title="2 of 4 branches missed.">        if (username == null || username.isBlank()) {</span>
+<span class="nc" id="L196">            username = DEFAULT_USER;</span>
+        }
+<span class="fc" id="L198">        UserWorkspaceState state = getOrCreateWorkspaceState(username, workspaceId, null);</span>
+<span class="fc" id="L199">        activeWorkspaceByUser.put(username, workspaceId);</span>
+<span class="fc" id="L200">        return state;</span>
+    }
+
+    /** Use an authorized workspace from the current request without changing the active selection. */
+    public UserWorkspaceState getOrCreateScopedWorkspaceState(WorkspaceContext context) {
+<span class="fc" id="L205">        return getOrCreateWorkspaceState(context.username(), context.workspaceId(), context.currentBranch());</span>
+    }
+
+    /** Look up an authorized selection without initializing navigation state. */
+    public UserWorkspaceState getScopedWorkspaceState(WorkspaceContext context) {
+<span class="fc" id="L210">        return workspaceStates.get(new WorkspaceStateKey(context.username(), context.workspaceId()));</span>
+    }
+
+    private UserWorkspaceState getOrCreateWorkspaceState(String username, String workspaceId, String branch) {
+<span class="fc" id="L214">        var key = new WorkspaceStateKey(username, Objects.requireNonNull(workspaceId));</span>
+<span class="fc" id="L215">        return workspaceStates.computeIfAbsent(key, ignored -&gt; {</span>
+<span class="fc" id="L216">            log.info(&quot;Creating workspace state for user '{}', workspaceId='{}'&quot;, username, workspaceId);</span>
+<span class="fc" id="L217">            return new UserWorkspaceState(username, maxHistory, branch);</span>
+        });
+    }
+
+    /** Return the active in-memory workspace state for a user, or {@code null}. */
+    public UserWorkspaceState getWorkspace(String username) {
+<span class="pc bpc" id="L223" title="1 of 2 branches missed.">        String user = username != null ? username : DEFAULT_USER;</span>
+<span class="fc" id="L224">        String activeWorkspaceId = activeWorkspaceByUser.get(user);</span>
+<span class="fc bfc" id="L225" title="All 2 branches covered.">        return activeWorkspaceId != null</span>
+<span class="fc" id="L226">                ? workspaceStates.get(new WorkspaceStateKey(user, activeWorkspaceId)) : null;</span>
+    }
+
+    /** Return summaries of all currently active workspaces. */
+    public List&lt;WorkspaceInfo&gt; listActiveWorkspaces() {
+<span class="fc" id="L231">        return activeWorkspaceStates()</span>
+<span class="fc" id="L232">                .map(this::toWorkspaceInfo)</span>
+<span class="fc" id="L233">                .toList();</span>
+    }
+
+    /** Return the current workspace summary for a user. */
+    public WorkspaceInfo getWorkspaceInfo(String username) {
+<span class="fc bfc" id="L238" title="All 2 branches covered.">        if (!mayProvisionDefaultWorkspace(username)) {</span>
+<span class="fc" id="L239">            UserWorkspace workspace = findUserWorkspace(username);</span>
+<span class="pc bpc" id="L240" title="2 of 6 branches missed.">            if (workspace == null || workspace.isArchived() || workspace.isShared()</span>
+<span class="fc bfc" id="L241" title="All 2 branches covered.">                    || (workspace.isDefault()</span>
+<span class="fc bfc" id="L242" title="All 2 branches covered.">                    &amp;&amp; (workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.NOT_PROVISIONED</span>
+<span class="pc bpc" id="L243" title="1 of 2 branches missed.">                    || workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.PROVISIONING))) {</span>
+<span class="fc" id="L244">                return null;</span>
+            }
+<span class="fc" id="L246">            return getWorkspaceMetadataInfo(username, workspace);</span>
+        }
+<span class="fc" id="L248">        return toWorkspaceInfo(getOrCreateWorkspace(username));</span>
+    }
+
+    /** Summarize already-authorized metadata without changing the active selection. */
+    public WorkspaceInfo getWorkspaceMetadataInfo(String actor, UserWorkspace workspace) {
+<span class="fc" id="L253">        UserWorkspaceState state = workspaceStates.get(new WorkspaceStateKey(actor, workspace.getWorkspaceId()));</span>
+<span class="fc" id="L254">        return new WorkspaceInfo(workspace.getWorkspaceId(), workspace.getUsername(),</span>
+<span class="fc" id="L255">                workspace.getDisplayName(), workspace.getCurrentBranch(), workspace.getBaseBranch(),</span>
+<span class="fc bfc" id="L256" title="All 2 branches covered.">                workspace.isShared(), state == null ? null : state.getCurrentContext(),</span>
+<span class="fc" id="L257">                workspace.getCreatedAt(), workspace.getLastAccessedAt(),</span>
+<span class="pc bpc" id="L258" title="1 of 2 branches missed.">                workspace.getProvisioningStatus() == null ? null : workspace.getProvisioningStatus().name(),</span>
+<span class="pc bpc" id="L259" title="1 of 2 branches missed.">                workspace.getTopologyMode() == null ? null : workspace.getTopologyMode().name(),</span>
+<span class="fc" id="L260">                workspace.getSourceRepositoryId(), workspace.getDescription(),</span>
+<span class="fc" id="L261">                workspace.isArchived(), workspace.isDefault());</span>
+    }
+
+    /** Remove only a user's in-memory workspace state. */
+    public void evictWorkspace(String username) {
+<span class="fc" id="L266">        activeWorkspaceByUser.remove(username);</span>
+<span class="fc bfc" id="L267" title="All 2 branches covered.">        if (workspaceStates.keySet().removeIf(key -&gt; username.equals(key.username()))) {</span>
+<span class="fc" id="L268">            log.info(&quot;Evicted workspace state for user '{}'&quot;, username);</span>
+        }
+<span class="fc" id="L270">    }</span>
+
+    /** Return the number of active in-memory workspaces. */
+    public int getActiveWorkspaceCount() {
+<span class="fc" id="L274">        return Math.toIntExact(activeWorkspaceStates().count());</span>
+    }
+
+    private Stream&lt;UserWorkspaceState&gt; activeWorkspaceStates() {
+<span class="fc" id="L278">        return activeWorkspaceByUser.entrySet().stream()</span>
+<span class="fc" id="L279">                .map(entry -&gt; workspaceStates.get(new WorkspaceStateKey(entry.getKey(), entry.getValue())))</span>
+<span class="pc bpc" id="L280" title="1 of 2 branches missed.">                .filter(state -&gt; state != null);</span>
+    }
+
+    /** Find a user's persistent workspace, preferring the active one. */
+    public UserWorkspace findUserWorkspace(String username) {
+<span class="fc" id="L285">        UserWorkspace active = findActiveWorkspace(username);</span>
+<span class="fc bfc" id="L286" title="All 2 branches covered.">        if (active != null) {</span>
+<span class="fc" id="L287">            return active;</span>
+        }
+<span class="fc" id="L289">        return workspaceRepository.findByUsernameAndSharedFalse(username).orElse(null);</span>
+    }
+
+    // ── Multi-workspace management ─────────────────────────────────
+
+    /** Create a new, initially unprovisioned workspace. */
+    public UserWorkspace createWorkspace(
+            String username,
+            String displayName,
+            String description) {
+<span class="fc" id="L299">        UserWorkspace workspace = new UserWorkspace();</span>
+<span class="fc" id="L300">        workspace.setWorkspaceId(UUID.randomUUID().toString());</span>
+<span class="fc" id="L301">        workspace.setUsername(username);</span>
+<span class="fc" id="L302">        workspace.setDisplayName(displayName);</span>
+<span class="fc" id="L303">        workspace.setDescription(description);</span>
+<span class="fc" id="L304">        workspace.setCurrentBranch(&quot;draft&quot;);</span>
+<span class="fc" id="L305">        workspace.setBaseBranch(&quot;draft&quot;);</span>
+<span class="fc" id="L306">        workspace.setShared(false);</span>
+<span class="fc" id="L307">        workspace.setArchived(false);</span>
+<span class="fc" id="L308">        workspace.setDefault(false);</span>
+<span class="fc" id="L309">        workspace.setProvisioningStatus(WorkspaceProvisioningStatus.NOT_PROVISIONED);</span>
+<span class="fc" id="L310">        workspace.setTopologyMode(RepositoryTopologyMode.INTERNAL_SHARED);</span>
+<span class="fc" id="L311">        workspace.setCreatedAt(Instant.now());</span>
+<span class="fc" id="L312">        workspace.setLastAccessedAt(Instant.now());</span>
+<span class="fc" id="L313">        workspaceRepository.save(workspace);</span>
+<span class="fc" id="L314">        log.info(&quot;Created new workspace '{}' for user '{}'&quot;, displayName, username);</span>
+<span class="fc" id="L315">        return workspace;</span>
+    }
+
+    /** Switch the user's active workspace. */
+    public UserWorkspace switchWorkspace(String username, String workspaceId) {
+<span class="fc" id="L320">        UserWorkspace workspace = workspaceRepository.findByWorkspaceId(workspaceId)</span>
+<span class="fc" id="L321">                .orElseThrow(() -&gt;</span>
+<span class="fc" id="L322">                        new IllegalArgumentException(&quot;Workspace not found: &quot; + workspaceId));</span>
+
+<span class="fc bfc" id="L324" title="All 2 branches covered.">        if (!workspace.getUsername().equals(username)) {</span>
+<span class="fc" id="L325">            throw new IllegalArgumentException(</span>
+                    &quot;Cannot switch to workspace owned by another user&quot;);
+        }
+<span class="fc bfc" id="L328" title="All 2 branches covered.">        if (workspace.isArchived()) {</span>
+<span class="fc" id="L329">            throw new IllegalArgumentException(&quot;Cannot switch to an archived workspace&quot;);</span>
+        }
+<span class="fc bfc" id="L331" title="All 2 branches covered.">        if (workspace.isShared()) {</span>
+<span class="fc" id="L332">            throw new IllegalArgumentException(&quot;Cannot switch to the shared workspace&quot;);</span>
+        }
+
+<span class="fc" id="L335">        workspace.setLastAccessedAt(Instant.now());</span>
+<span class="fc" id="L336">        workspaceRepository.save(workspace);</span>
+<span class="fc" id="L337">        getOrCreateWorkspaceState(username, workspaceId, workspace.getCurrentBranch());</span>
+<span class="fc" id="L338">        activeWorkspaceByUser.put(username, workspaceId);</span>
+<span class="fc" id="L339">        log.info(&quot;User '{}' switched to workspace '{}'&quot;, username, workspaceId);</span>
+<span class="fc" id="L340">        return workspace;</span>
+    }
+
+    /** Rename a workspace owned by the requesting user. */
+    public UserWorkspace renameWorkspace(
+            String username,
+            String workspaceId,
+            String newName) {
+<span class="fc" id="L348">        UserWorkspace workspace = workspaceRepository.findByWorkspaceId(workspaceId)</span>
+<span class="fc" id="L349">                .orElseThrow(() -&gt;</span>
+<span class="fc" id="L350">                        new IllegalArgumentException(&quot;Workspace not found: &quot; + workspaceId));</span>
+
+<span class="fc bfc" id="L352" title="All 2 branches covered.">        if (!workspace.getUsername().equals(username)) {</span>
+<span class="fc" id="L353">            throw new IllegalArgumentException(</span>
+                    &quot;User '&quot; + username + &quot;' does not own workspace: &quot; + workspaceId);
+        }
+<span class="fc bfc" id="L356" title="All 2 branches covered.">        if (workspace.isArchived()) {</span>
+<span class="fc" id="L357">            throw new IllegalStateException(</span>
+                    &quot;Archived workspace cannot be renamed: &quot; + workspaceId);
+        }
+<span class="fc bfc" id="L360" title="All 2 branches covered.">        if (workspace.isShared()) {</span>
+<span class="fc" id="L361">            throw new IllegalStateException(</span>
+                    &quot;Shared workspace cannot be renamed: &quot; + workspaceId);
+        }
+
+<span class="fc" id="L365">        workspace.setDisplayName(newName);</span>
+<span class="fc" id="L366">        workspaceRepository.save(workspace);</span>
+<span class="fc" id="L367">        log.info(&quot;User '{}' renamed workspace '{}' to '{}'&quot;,</span>
+                username, workspaceId, newName);
+<span class="fc" id="L369">        return workspace;</span>
+    }
+
+    /** Archive a non-default workspace without removing its Git history. */
+    public UserWorkspace archiveWorkspace(String workspaceId, String username) {
+<span class="fc" id="L374">        UserWorkspace workspace = workspaceRepository.findByWorkspaceId(workspaceId)</span>
+<span class="fc" id="L375">                .orElseThrow(() -&gt;</span>
+<span class="fc" id="L376">                        new IllegalArgumentException(&quot;Workspace not found: &quot; + workspaceId));</span>
+
+<span class="fc bfc" id="L378" title="All 2 branches covered.">        if (!workspace.getUsername().equals(username)) {</span>
+<span class="fc" id="L379">            throw new IllegalArgumentException(</span>
+                    &quot;Cannot archive workspace owned by another user&quot;);
+        }
+<span class="fc bfc" id="L382" title="All 2 branches covered.">        if (workspace.isShared()) {</span>
+<span class="fc" id="L383">            throw new IllegalArgumentException(&quot;Cannot archive the shared workspace&quot;);</span>
+        }
+<span class="fc bfc" id="L385" title="All 2 branches covered.">        if (workspace.isDefault()) {</span>
+<span class="fc" id="L386">            throw new IllegalArgumentException(&quot;Cannot archive the default workspace&quot;);</span>
+        }
+
+<span class="fc" id="L389">        workspace.setArchived(true);</span>
+<span class="fc" id="L390">        workspaceRepository.save(workspace);</span>
+<span class="fc" id="L391">        workspaceStates.keySet().removeIf(key -&gt; workspaceId.equals(key.workspaceId()));</span>
+<span class="fc" id="L392">        activeWorkspaceByUser.entrySet()</span>
+<span class="fc" id="L393">                .removeIf(entry -&gt; entry.getValue().equals(workspaceId));</span>
+<span class="fc" id="L394">        log.info(&quot;Archived workspace '{}' for user '{}'&quot;, workspaceId, username);</span>
+<span class="fc" id="L395">        return workspace;</span>
+    }
+
+    /**
+     * Permanently delete a workspace and its isolated logical Git repository.
+     *
+     * &lt;p&gt;Storage deletion happens before metadata deletion. If the storage library
+     * rejects or cannot complete deletion, the workspace row remains available for
+     * diagnosis and retry rather than becoming an orphaned Git namespace.&lt;/p&gt;
+     */
+    @org.springframework.transaction.annotation.Transactional
+    public void deleteWorkspace(String workspaceId, String username) {
+<span class="fc" id="L407">        UserWorkspace workspace = workspaceRepository.findByWorkspaceIdForUpdate(workspaceId)</span>
+<span class="fc" id="L408">                .orElseThrow(() -&gt;</span>
+<span class="fc" id="L409">                        new IllegalArgumentException(&quot;Workspace not found: &quot; + workspaceId));</span>
+
+<span class="pc bpc" id="L411" title="1 of 2 branches missed.">        if (!workspace.getUsername().equals(username)) {</span>
+<span class="nc" id="L412">            throw new IllegalArgumentException(</span>
+                    &quot;Cannot delete workspace owned by another user&quot;);
+        }
+<span class="pc bpc" id="L415" title="1 of 2 branches missed.">        if (workspace.isShared()) {</span>
+<span class="nc" id="L416">            throw new IllegalArgumentException(&quot;Cannot delete the shared workspace&quot;);</span>
+        }
+<span class="pc bpc" id="L418" title="1 of 2 branches missed.">        if (workspace.isDefault()) {</span>
+<span class="nc" id="L419">            throw new IllegalArgumentException(&quot;Cannot delete the default workspace&quot;);</span>
+        }
+
+        // Settle or archive exactly this owner's receipts while the workspace and matching operations are locked.
+        // A storage error rolls this transaction back and leaves the original receipts available for retry.
+<span class="fc bfc" id="L424" title="All 2 branches covered.">        if (fetchJournal != null) {</span>
+<span class="fc" id="L425">            fetchJournal.archiveForWorkspaceRemoval(workspaceId,workspace.getSourceRepositoryId(),username,</span>
+<span class="fc" id="L426">                    () -&gt; fetchActors.currentActor(username));</span>
+        }
+<span class="fc bfc" id="L428" title="All 2 branches covered.">        if (publicationJournal != null) {</span>
+<span class="fc" id="L429">            publicationJournal.archiveForWorkspaceRemoval(workspaceId,workspace.getSourceRepositoryId(),username,</span>
+<span class="fc" id="L430">                    () -&gt; fetchActors.currentActor(username));</span>
+        }
+<span class="pc bpc" id="L432" title="1 of 2 branches missed.">        if (repositoryFactory != null) {</span>
+<span class="fc" id="L433">            repositoryFactory.deleteWorkspaceRepository(workspaceId);</span>
+        }
+<span class="fc" id="L435">        workspaceRepository.delete(workspace);</span>
+<span class="fc" id="L436">        workspaceStates.keySet().removeIf(key -&gt; workspaceId.equals(key.workspaceId()));</span>
+<span class="fc" id="L437">        activeWorkspaceByUser.entrySet()</span>
+<span class="fc" id="L438">                .removeIf(entry -&gt; entry.getValue().equals(workspaceId));</span>
+
+<span class="fc" id="L440">        log.info(&quot;Deleted workspace '{}' and its logical Git repository for user '{}'&quot;,</span>
+                workspaceId, username);
+<span class="fc" id="L442">    }</span>
+
+    /** Return all non-archived workspaces for a user. */
+    public List&lt;UserWorkspace&gt; listUserWorkspaces(String username) {
+<span class="fc" id="L446">        return workspaceRepository</span>
+<span class="fc" id="L447">                .findByUsernameAndArchivedFalseOrderByLastAccessedAtDesc(username);</span>
+    }
+
+    /** Find the persistent entity for the user's active workspace. */
+    public UserWorkspace findActiveWorkspace(String username) {
+<span class="fc" id="L452">        String activeWorkspaceId = activeWorkspaceByUser.get(username);</span>
+<span class="fc bfc" id="L453" title="All 2 branches covered.">        if (activeWorkspaceId == null) {</span>
+<span class="fc" id="L454">            return null;</span>
+        }
+<span class="fc" id="L456">        return workspaceRepository.findByWorkspaceId(activeWorkspaceId).orElse(null);</span>
+    }
+
+    /** Return a workspace by ID, or {@code null} only after a successful empty lookup. */
+    public UserWorkspace getWorkspaceById(String workspaceId) {
+<span class="fc" id="L461">        return workspaceRepository.findByWorkspaceId(workspaceId).orElse(null);</span>
+    }
+
+    /** Update the description of a non-archived workspace. */
+    public UserWorkspace updateDescription(
+            String username,
+            String workspaceId,
+            String description) {
+<span class="fc" id="L469">        UserWorkspace workspace = workspaceRepository.findByWorkspaceId(workspaceId)</span>
+<span class="fc" id="L470">                .orElseThrow(() -&gt;</span>
+<span class="nc" id="L471">                        new IllegalArgumentException(&quot;Workspace not found: &quot; + workspaceId));</span>
+
+<span class="fc bfc" id="L473" title="All 2 branches covered.">        if (!workspace.getUsername().equals(username)) {</span>
+<span class="fc" id="L474">            throw new IllegalArgumentException(</span>
+                    &quot;User '&quot; + username + &quot;' does not own workspace: &quot; + workspaceId);
+        }
+<span class="fc bfc" id="L477" title="All 2 branches covered.">        if (workspace.isArchived()) {</span>
+<span class="fc" id="L478">            throw new IllegalStateException(</span>
+                    &quot;Archived workspace cannot be updated: &quot; + workspaceId);
+        }
+
+<span class="fc" id="L482">        workspace.setDescription(description);</span>
+<span class="fc" id="L483">        workspaceRepository.save(workspace);</span>
+<span class="fc" id="L484">        log.info(&quot;User '{}' updated description for workspace '{}'&quot;, username, workspaceId);</span>
+<span class="fc" id="L485">        return workspace;</span>
+    }
+
+    // ── Provisioning ───────────────────────────────────────────────
+
+    /** Lazily provision the active workspace repository. */
+    public synchronized UserWorkspace provisionWorkspaceRepository(String username) {
+<span class="fc" id="L492">        UserWorkspace workspace = null;</span>
+<span class="fc" id="L493">        String activeWorkspaceId = activeWorkspaceByUser.get(username);</span>
+<span class="fc bfc" id="L494" title="All 2 branches covered.">        if (activeWorkspaceId != null) {</span>
+<span class="fc" id="L495">            workspace = workspaceRepository.findByWorkspaceId(activeWorkspaceId).orElse(null);</span>
+        }
+<span class="fc bfc" id="L497" title="All 2 branches covered.">        if (workspace == null) {</span>
+<span class="fc" id="L498">            workspace = workspaceRepository.findByUsernameAndSharedFalse(username)</span>
+<span class="fc" id="L499">                    .orElseThrow(() -&gt;</span>
+<span class="fc" id="L500">                            new IllegalStateException(&quot;No workspace metadata for &quot; + username));</span>
+        }
+
+<span class="fc" id="L503">        return provisionWorkspaceRepository(username, workspace);</span>
+    }
+
+    /** Provision exactly the owned workspace selected by a caller, without switching other tabs. */
+    public synchronized UserWorkspace provisionWorkspaceRepository(String username, String workspaceId) {
+<span class="fc" id="L508">        UserWorkspace workspace = workspaceRepository.findByWorkspaceId(workspaceId).orElse(null);</span>
+<span class="fc" id="L509">        return provisionWorkspaceRepository(username, workspace);</span>
+    }
+
+    /** Initialize an automatic default on its existing branch, without redirecting a tab pin. */
+    public synchronized UserWorkspace provisionDefaultWorkspaceRepository(String username, String workspaceId) {
+<span class="fc" id="L514">        UserWorkspace workspace = workspaceRepository.findByWorkspaceId(workspaceId).orElse(null);</span>
+<span class="pc bpc" id="L515" title="2 of 4 branches missed.">        if (workspace == null || !workspace.isDefault()) {</span>
+<span class="nc" id="L516">            throw new AccessDeniedException(&quot;No automatic default workspace was selected&quot;);</span>
+        }
+<span class="fc bfc" id="L518" title="All 6 branches covered.">        if (!username.equals(workspace.getUsername()) || workspace.isArchived() || workspace.isShared()) {</span>
+<span class="fc" id="L519">            throw new AccessDeniedException(&quot;Workspace is not available to the authenticated user&quot;);</span>
+        }
+        // A concurrent implicit reader may have observed PROVISIONING before
+        // obtaining this monitor. Re-read here, but never turn the winner's
+        // failure into an unrequested automatic retry.
+<span class="fc bfc" id="L524" title="All 2 branches covered.">        if (workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.FAILED) {</span>
+<span class="fc" id="L525">            throw new ResponseStatusException(HttpStatus.CONFLICT,</span>
+                    &quot;Default workspace initialization failed; retry provisioning explicitly&quot;);
+        }
+<span class="fc" id="L528">        String branch = workspace.getCurrentBranch();</span>
+<span class="pc bpc" id="L529" title="2 of 4 branches missed.">        if (branch == null || branch.isBlank()) {</span>
+<span class="nc" id="L530">            throw new IllegalStateException(&quot;Default workspace has no current branch&quot;);</span>
+        }
+<span class="fc bfc" id="L532" title="All 2 branches covered.">        if (workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.NOT_PROVISIONED</span>
+<span class="pc bpc" id="L533" title="1 of 4 branches missed.">                &amp;&amp; (workspace.getBaseCommit() == null || workspace.getBaseCommit().isBlank())</span>
+<span class="fc bfc" id="L534" title="All 2 branches covered.">                &amp;&amp; defaultSourceHeadIsMissing(workspace)) {</span>
+            // Bootstrap publishes the initial source checkpoint after application
+            // readiness. No allocation has started, so keep this UUID retryable.
+<span class="fc" id="L537">            throw new ResponseStatusException(HttpStatus.CONFLICT,</span>
+                    &quot;Source repository is still initializing; retry when its initial checkpoint is available&quot;);
+        }
+<span class="fc" id="L540">        return provisionWorkspaceRepository(username, workspace, branch);</span>
+    }
+
+    private boolean defaultSourceHeadIsMissing(UserWorkspace workspace) {
+<span class="fc" id="L544">        String sourceRepositoryId = workspace.getSourceRepositoryId();</span>
+<span class="pc bpc" id="L545" title="1 of 4 branches missed.">        boolean recordedSource = sourceRepositoryId != null &amp;&amp; !sourceRepositoryId.isBlank();</span>
+<span class="fc bfc" id="L546" title="All 2 branches covered.">        var source = recordedSource</span>
+<span class="fc" id="L547">                ? systemRepositoryService.getRepository(sourceRepositoryId.strip())</span>
+<span class="fc" id="L548">                : systemRepositoryService.getPrimaryRepository();</span>
+<span class="pc bpc" id="L549" title="1 of 2 branches missed.">        if (source.getLifecycleState() != RepositoryLifecycleState.ACTIVE) {</span>
+<span class="nc" id="L550">            throw new IllegalStateException(&quot;Source repository is not active: &quot; + source.getRepositoryId());</span>
+        }
+<span class="pc bpc" id="L552" title="3 of 4 branches missed.">        if (repositoryFactory == null &amp;&amp; recordedSource</span>
+<span class="nc bnc" id="L553" title="All 2 branches missed.">                &amp;&amp; !sourceRepositoryId.strip().equals(</span>
+<span class="nc" id="L554">                        systemRepositoryService.getPrimaryRepository().getRepositoryId())) {</span>
+<span class="nc" id="L555">            throw new IllegalStateException(&quot;Legacy storage cannot open the recorded source repository&quot;);</span>
+        }
+<span class="fc" id="L557">        String sourceBranch = workspace.getSourceBranch();</span>
+<span class="pc bpc" id="L558" title="1 of 4 branches missed.">        String baseBranch = sourceBranch != null &amp;&amp; !sourceBranch.isBlank()</span>
+<span class="fc" id="L559">                ? sourceBranch.strip() : source.getDefaultBranch();</span>
+<span class="pc bpc" id="L560" title="1 of 2 branches missed.">        DslGitRepository sourceGit = repositoryFactory == null ? gitRepository</span>
+<span class="fc bfc" id="L561" title="All 2 branches covered.">                : recordedSource ? repositoryFactory.getCentralRepository(sourceRepositoryId.strip())</span>
+<span class="fc" id="L562">                : repositoryFactory.getSystemRepository();</span>
+        try {
+<span class="fc bfc" id="L564" title="All 2 branches covered.">            return sourceGit.getHeadCommit(baseBranch) == null;</span>
+<span class="fc" id="L565">        } catch (IOException failure) {</span>
+            // A failed read is not evidence of a missing bootstrap checkpoint.
+            // Preserve its cause without claiming a workspace allocation.
+<span class="fc" id="L568">            throw new UncheckedIOException(&quot;Could not inspect the default workspace source checkpoint&quot;, failure);</span>
+        }
+    }
+
+    private UserWorkspace provisionWorkspaceRepository(String username, UserWorkspace workspace) {
+        // Repository-specific working copies persist their destination branch before
+        // allocation. Retrying them must not redirect an existing tab to &quot;main&quot;.
+<span class="pc bpc" id="L575" title="1 of 4 branches missed.">        boolean allocated = workspace != null &amp;&amp; workspace.getCurrentCommit() != null;</span>
+<span class="pc bpc" id="L576" title="1 of 4 branches missed.">        String targetBranch = workspace != null &amp;&amp; (allocated</span>
+<span class="pc bpc" id="L577" title="1 of 4 branches missed.">                || (workspace.getSourceBranch() != null &amp;&amp; !workspace.getSourceBranch().isBlank()))</span>
+<span class="fc" id="L578">                ? workspace.getCurrentBranch() : &quot;main&quot;;</span>
+<span class="fc" id="L579">        return provisionWorkspaceRepository(username, workspace, targetBranch);</span>
+    }
+
+    private UserWorkspace provisionWorkspaceRepository(
+            String username, UserWorkspace workspace, String targetBranch) {
+<span class="pc bpc" id="L584" title="2 of 4 branches missed.">        if (workspace == null || !username.equals(workspace.getUsername())</span>
+<span class="pc bpc" id="L585" title="2 of 4 branches missed.">                || workspace.isArchived() || workspace.isShared()) {</span>
+<span class="nc" id="L586">            throw new AccessDeniedException(&quot;Workspace is not available to the authenticated user&quot;);</span>
+        }
+<span class="fc bfc" id="L588" title="All 2 branches covered.">        if (workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.READY) {</span>
+<span class="fc" id="L589">            return workspace;</span>
+        }
+<span class="pc bpc" id="L591" title="1 of 2 branches missed.">        if (workspace.getProvisioningStatus() == null</span>
+<span class="fc bfc" id="L592" title="All 2 branches covered.">                || (workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.PROVISIONING</span>
+<span class="fc bfc" id="L593" title="All 4 branches covered.">                    &amp;&amp; workspace.getProvisioningLeaseUntil() != null &amp;&amp; workspace.getProvisioningLeaseUntil().isAfter(Instant.now()))) {</span>
+<span class="fc" id="L594">            throw new ResponseStatusException(HttpStatus.CONFLICT,</span>
+                    &quot;Workspace provisioning is already running or its state is unavailable&quot;);
+        }
+
+        // Lazy first use may be reached from a read-only report/query. Suspend
+        // only that transaction so each repository write owns a writable boundary;
+        // keep existing writable callers joined, including atomic integration flows.
+<span class="fc bfc" id="L601" title="All 2 branches covered.">        if (TransactionSynchronizationManager.isCurrentTransactionReadOnly()) {</span>
+<span class="pc bpc" id="L602" title="1 of 2 branches missed.">            if (provisioningOutsideReadOnlyTransaction == null) {</span>
+<span class="nc" id="L603">                throw new IllegalStateException(&quot;Provisioning transaction boundary is not configured&quot;);</span>
+            }
+<span class="fc" id="L605">            String workspaceId = workspace.getWorkspaceId();</span>
+<span class="fc" id="L606">            return provisioningOutsideReadOnlyTransaction.execute(status -&gt;</span>
+<span class="fc" id="L607">                    provisionWorkspaceRepository(username,</span>
+<span class="fc" id="L608">                            workspaceRepository.findByWorkspaceId(workspaceId).orElse(null), targetBranch));</span>
+        }
+<span class="fc" id="L610">        var claim = new WorkspaceProvisioningClaim(workspace);</span>
+<span class="fc bfc" id="L611" title="All 2 branches covered.">        if (workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.PROVISIONING</span>
+<span class="fc bfc" id="L612" title="All 2 branches covered.">                &amp;&amp; workspace.getProvisioningLeaseUntil() == null) {</span>
+<span class="fc" id="L613">            claim.observeLegacyWorker(workspaceRepository);</span>
+<span class="fc" id="L614">            throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;Legacy workspace provisioning is awaiting recovery&quot;);</span>
+        }
+<span class="fc bfc" id="L616" title="All 2 branches covered.">        if (!claim.acquire(workspaceRepository)) {</span>
+<span class="fc" id="L617">            throw new ResponseStatusException(HttpStatus.CONFLICT,</span>
+                    &quot;Workspace provisioning was claimed or its lifecycle changed&quot;);
+        }
+        try {
+<span class="pc bpc" id="L621" title="1 of 4 branches missed.">            if (targetBranch == null || targetBranch.isBlank()) {</span>
+<span class="fc" id="L622">                throw new IllegalStateException(&quot;Workspace has no destination branch&quot;);</span>
+            }
+<span class="fc" id="L624">            String sourceRepositoryId = workspace.getSourceRepositoryId();</span>
+<span class="pc bpc" id="L625" title="1 of 4 branches missed.">            boolean recordedSource = sourceRepositoryId != null &amp;&amp; !sourceRepositoryId.isBlank();</span>
+<span class="fc bfc" id="L626" title="All 2 branches covered.">            var systemRepository = recordedSource</span>
+<span class="fc" id="L627">                    ? systemRepositoryService.getRepository(sourceRepositoryId.strip())</span>
+<span class="fc" id="L628">                    : systemRepositoryService.getPrimaryRepository();</span>
+<span class="fc bfc" id="L629" title="All 2 branches covered.">            if (systemRepository.getLifecycleState() != RepositoryLifecycleState.ACTIVE) {</span>
+<span class="fc" id="L630">                throw new IllegalStateException(&quot;Source repository is not active: &quot;</span>
+<span class="fc" id="L631">                        + systemRepository.getRepositoryId());</span>
+            }
+<span class="fc bfc" id="L633" title="All 2 branches covered.">            if (repositoryFactory != null) {</span>
+<span class="fc" id="L634">                requireProvisioningAuthority(systemRepository.getRepositoryId(), username);</span>
+            }
+<span class="fc" id="L636">            String recordedBase = workspace.getBaseCommit();</span>
+<span class="fc" id="L637">            String sourceBranch = workspace.getSourceBranch();</span>
+<span class="pc bpc" id="L638" title="2 of 8 branches missed.">            if ((sourceBranch == null || sourceBranch.isBlank()) &amp;&amp; recordedBase != null &amp;&amp; !recordedBase.isBlank()) {</span>
+<span class="fc" id="L639">                sourceBranch = workspace.getBaseBranch();</span>
+            }
+<span class="pc bpc" id="L641" title="1 of 4 branches missed.">            String baseBranch = sourceBranch != null &amp;&amp; !sourceBranch.isBlank()</span>
+<span class="fc" id="L642">                    ? sourceBranch.strip() : systemRepository.getDefaultBranch();</span>
+<span class="fc bfc" id="L643" title="All 4 branches covered.">            if (repositoryFactory == null &amp;&amp; recordedSource</span>
+<span class="fc bfc" id="L644" title="All 2 branches covered.">                    &amp;&amp; !sourceRepositoryId.strip().equals(</span>
+<span class="fc" id="L645">                            systemRepositoryService.getPrimaryRepository().getRepositoryId())) {</span>
+<span class="fc" id="L646">                throw new IllegalStateException(&quot;Legacy storage cannot open the recorded source repository&quot;);</span>
+            }
+<span class="fc bfc" id="L648" title="All 2 branches covered.">            DslGitRepository systemGit = repositoryFactory == null ? gitRepository</span>
+<span class="fc bfc" id="L649" title="All 2 branches covered.">                    : recordedSource ? repositoryFactory.getCentralRepository(sourceRepositoryId.strip())</span>
+<span class="fc" id="L650">                    : repositoryFactory.getSystemRepository();</span>
+<span class="fc" id="L651">            String legacyBranch = username + &quot;/workspace/&quot; + workspace.getWorkspaceId();</span>
+<span class="fc bfc" id="L652" title="All 2 branches covered.">            String existingLegacyHead = repositoryFactory == null</span>
+<span class="fc" id="L653">                    ? gitRepository.getHeadCommit(legacyBranch) : null;</span>
+<span class="pc bpc" id="L654" title="1 of 4 branches missed.">            String baseCommit = recordedBase != null &amp;&amp; !recordedBase.isBlank()</span>
+<span class="fc" id="L655">                    ? recordedBase : systemGit.getHeadCommit(baseBranch);</span>
+<span class="fc bfc" id="L656" title="All 2 branches covered.">            String systemDsl = baseCommit == null ? null : systemGit.getDslAtCommit(baseCommit);</span>
+<span class="fc bfc" id="L657" title="All 6 branches covered.">            if (baseCommit == null || systemDsl == null || systemDsl.isBlank()) {</span>
+<span class="fc" id="L658">                throw new IllegalStateException(&quot;Source repository has no readable checkpoint for &quot; + baseBranch);</span>
+            }
+<span class="fc" id="L660">            systemGit.verifySnapshot(baseCommit);</span>
+
+<span class="fc bfc" id="L662" title="All 2 branches covered.">            String destination = repositoryFactory == null ? legacyBranch : targetBranch;</span>
+<span class="fc" id="L663">            claim.apply(workspaceRepository, current -&gt; {</span>
+<span class="pc bpc" id="L664" title="1 of 4 branches missed.">                if (current.getBaseCommit() != null &amp;&amp; !current.getBaseCommit().equals(baseCommit)) {</span>
+<span class="nc" id="L665">                    throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;The captured provisioning checkpoint changed&quot;);</span>
+                }
+<span class="fc" id="L667">                current.setProvisioningStatus(WorkspaceProvisioningStatus.PROVISIONING);</span>
+<span class="fc" id="L668">                current.setSourceRepositoryId(systemRepository.getRepositoryId());</span>
+<span class="fc" id="L669">                current.setSourceBranch(baseBranch);</span>
+<span class="fc" id="L670">                current.setTopologyMode(systemRepository.getTopologyMode());</span>
+<span class="fc" id="L671">                current.setBaseBranch(baseBranch);</span>
+<span class="fc" id="L672">                current.setBaseCommit(baseCommit);</span>
+<span class="fc" id="L673">                current.setCurrentBranch(destination);</span>
+<span class="fc" id="L674">                current.setSyncTargetBranch(baseBranch);</span>
+<span class="fc" id="L675">            });</span>
+
+<span class="fc bfc" id="L677" title="All 2 branches covered.">            if (repositoryFactory == null) {</span>
+<span class="fc" id="L678">                return claim.apply(workspaceRepository, current -&gt; {</span>
+<span class="fc bfc" id="L679" title="All 2 branches covered.">                    if (existingLegacyHead == null) {</span>
+<span class="fc" id="L680">                        gitRepository.createBranchAtCommit(legacyBranch, baseCommit);</span>
+<span class="pc bpc" id="L681" title="1 of 4 branches missed.">                    } else if (recordedBase != null &amp;&amp; recordedBase.equals(existingLegacyHead)) {</span>
+<span class="fc" id="L682">                        gitRepository.verifyExpectedHead(legacyBranch, recordedBase);</span>
+                    } else {
+<span class="fc" id="L684">                        throw new IllegalStateException(&quot;Existing workspace branch does not match its recorded checkpoint&quot;);</span>
+                    }
+<span class="fc" id="L686">                    WorkspaceProvisioningClaim.markProvisioned(current, baseCommit);</span>
+<span class="fc" id="L687">                });</span>
+            }
+
+<span class="fc" id="L690">            DslGitRepository workspaceGit = repositoryFactory.openWorkspaceRepository(workspace.getWorkspaceId());</span>
+<span class="fc" id="L691">            String existingHead = workspaceGit.getHeadCommit(targetBranch);</span>
+<span class="fc bfc" id="L692" title="All 4 branches covered.">            boolean originalHistory = existingHead == null || existingHead.equals(baseCommit);</span>
+<span class="fc bfc" id="L693" title="All 2 branches covered.">            if (originalHistory) {</span>
+                // Object transfer is outside the lease lock. The next owner can adopt any verified objects.
+<span class="fc" id="L695">                GitHistoryTransfer.copyCommitClosure(systemGit, workspaceGit, baseCommit, List.of());</span>
+            } else {
+<span class="pc bpc" id="L697" title="1 of 4 branches missed.">                if (recordedBase == null || !existingHead.equals(workspace.getCurrentCommit())</span>
+<span class="fc bfc" id="L698" title="All 2 branches covered.">                        || !isRootCommit(workspaceGit, existingHead)</span>
+<span class="pc bpc" id="L699" title="1 of 2 branches missed.">                        || !systemDsl.equals(workspaceGit.getDslAtCommit(existingHead))) {</span>
+<span class="fc" id="L700">                    throw new IllegalStateException(&quot;Existing workspace content does not match its recorded allocation&quot;);</span>
+                }
+<span class="fc" id="L702">                workspaceGit.verifySnapshot(existingHead);</span>
+            }
+<span class="fc" id="L704">            return claim.apply(workspaceRepository, current -&gt; {</span>
+<span class="fc" id="L705">                requireProvisioningAuthority(systemRepository.getRepositoryId(), username);</span>
+<span class="fc bfc" id="L706" title="All 2 branches covered.">                if (originalHistory) {</span>
+<span class="fc" id="L707">                    workspaceGit.recordUpstreamForkPoint(systemRepository.getRepositoryId(), baseBranch, baseCommit, username);</span>
+<span class="fc bfc" id="L708" title="All 2 branches covered.">                    if (existingHead == null) {</span>
+<span class="fc" id="L709">                        workspaceGit.fastForwardIfHeadMatches(targetBranch, null, baseCommit, username,</span>
+                                &quot;Provision workspace from &quot; + baseBranch);
+                    } else {
+<span class="fc" id="L712">                        workspaceGit.verifyExpectedHead(targetBranch, baseCommit);</span>
+                    }
+<span class="fc" id="L714">                    String integrationBaseBranch = current.getProvisioningSyncBaseBranch();</span>
+<span class="fc bfc" id="L715" title="All 2 branches covered.">                    if (integrationBaseBranch != null) {</span>
+<span class="fc" id="L716">                        WorkspaceProvisioningClaim.adoptIntegrationBase(workspaceGit, integrationBaseBranch, baseCommit);</span>
+<span class="fc" id="L717">                        current.setLastFetchedCommit(baseCommit);</span>
+<span class="fc" id="L718">                        current.setLastIntegratedCommit(baseCommit);</span>
+                    }
+<span class="fc" id="L720">                } else {</span>
+<span class="fc" id="L721">                    workspaceGit.verifyExpectedHead(targetBranch, existingHead);</span>
+                }
+<span class="fc bfc" id="L723" title="All 2 branches covered.">                WorkspaceProvisioningClaim.markProvisioned(current, originalHistory ? baseCommit : existingHead);</span>
+<span class="fc" id="L724">            });</span>
+<span class="fc" id="L725">        } catch (Exception exception) {</span>
+<span class="fc" id="L726">            claim.fail(workspaceRepository, exception, ignored -&gt; {});</span>
+<span class="pc bpc" id="L727" title="1 of 2 branches missed.">            if (exception instanceof ResponseStatusException conflict) throw conflict;</span>
+<span class="fc bfc" id="L728" title="All 2 branches covered.">            if (exception instanceof AccessDeniedException denied) throw denied;</span>
+<span class="fc" id="L729">            throw new RuntimeException(</span>
+                    &quot;Could not provision workspace for &quot; + username,
+                    exception);
+        }
+    }
+
+    private void requireProvisioningAuthority(String repositoryId, String username) {
+<span class="fc bfc" id="L736" title="All 2 branches covered.">        if (sourceMemberships == null) return; // Direct legacy fixtures have no membership catalogue.</span>
+<span class="fc" id="L737">        systemRepositoryService.readCurrentAuthorization(repositoryId, current -&gt; {</span>
+<span class="fc bfc" id="L738" title="All 2 branches covered.">            if (!sourceMemberships.canContribute(current, username)) {</span>
+<span class="fc" id="L739">                throw new AccessDeniedException(&quot;Current source repository CONTRIBUTOR role is required&quot;);</span>
+            }
+<span class="fc" id="L741">        });</span>
+<span class="fc" id="L742">    }</span>
+
+    private static boolean isRootCommit(DslGitRepository repository, String commit) throws IOException {
+<span class="fc" id="L745">        try (var walk = new RevWalk(repository.getGitRepository())) {</span>
+<span class="fc bfc" id="L746" title="All 2 branches covered.">            return walk.parseCommit(ObjectId.fromString(commit)).getParentCount() == 0;</span>
+        }
+    }
+
+    // ── Internal helpers ───────────────────────────────────────────
+
+    private synchronized void ensurePersistentWorkspace(String username) {
+        try {
+<span class="fc bfc" id="L754" title="All 2 branches covered.">            if (!workspaceRepository.existsByUsername(username)) {</span>
+<span class="fc" id="L755">                UserWorkspace workspace = new UserWorkspace();</span>
+<span class="fc" id="L756">                workspace.setWorkspaceId(UUID.randomUUID().toString());</span>
+<span class="fc" id="L757">                workspace.setUsername(username);</span>
+<span class="fc" id="L758">                workspace.setDisplayName(username + &quot;'s workspace&quot;);</span>
+<span class="fc" id="L759">                workspace.setCurrentBranch(&quot;draft&quot;);</span>
+<span class="fc" id="L760">                workspace.setBaseBranch(&quot;draft&quot;);</span>
+<span class="fc" id="L761">                workspace.setShared(false);</span>
+<span class="fc" id="L762">                workspace.setDefault(true);</span>
+<span class="fc" id="L763">                workspace.setArchived(false);</span>
+<span class="fc" id="L764">                workspace.setProvisioningStatus(</span>
+                        WorkspaceProvisioningStatus.NOT_PROVISIONED);
+<span class="fc" id="L766">                workspace.setTopologyMode(RepositoryTopologyMode.INTERNAL_SHARED);</span>
+<span class="fc" id="L767">                workspace.setCreatedAt(Instant.now());</span>
+<span class="fc" id="L768">                workspace.setLastAccessedAt(Instant.now());</span>
+<span class="fc" id="L769">                workspaceRepository.save(workspace);</span>
+<span class="fc" id="L770">                log.debug(&quot;Created persistent workspace for user '{}'&quot;, username);</span>
+<span class="fc" id="L771">            } else {</span>
+<span class="fc" id="L772">                workspaceRepository.findByUsernameAndSharedFalse(username)</span>
+<span class="fc" id="L773">                        .ifPresent(workspace -&gt; {</span>
+<span class="fc" id="L774">                            workspace.setLastAccessedAt(Instant.now());</span>
+<span class="fc" id="L775">                            workspaceRepository.save(workspace);</span>
+<span class="fc" id="L776">                        });</span>
+            }
+<span class="fc" id="L778">        } catch (Exception exception) {</span>
+<span class="fc" id="L779">            log.warn(&quot;Could not persist workspace for user '{}': {}&quot;,</span>
+<span class="fc" id="L780">                    username, exception.getMessage());</span>
+<span class="fc" id="L781">        }</span>
+<span class="fc" id="L782">    }</span>
+
+    private WorkspaceInfo toWorkspaceInfo(UserWorkspaceState state) {
+<span class="fc" id="L785">        ContextRef context = state.getCurrentContext();</span>
+<span class="fc" id="L786">        String provisioningStatus = &quot;NOT_PROVISIONED&quot;;</span>
+<span class="fc" id="L787">        String topologyMode = &quot;INTERNAL_SHARED&quot;;</span>
+<span class="fc" id="L788">        String sourceRepositoryId = null;</span>
+<span class="fc" id="L789">        String workspaceId = state.getUsername() + &quot;-workspace&quot;;</span>
+<span class="fc" id="L790">        String displayName = state.getUsername() + &quot;'s workspace&quot;;</span>
+<span class="fc" id="L791">        String description = null;</span>
+<span class="fc" id="L792">        boolean archived = false;</span>
+<span class="fc" id="L793">        boolean defaultWorkspace = false;</span>
+
+<span class="fc" id="L795">        UserWorkspace workspace = findActiveWorkspace(state.getUsername());</span>
+<span class="fc bfc" id="L796" title="All 2 branches covered.">        if (workspace == null) {</span>
+<span class="fc" id="L797">            workspace = workspaceRepository</span>
+<span class="fc" id="L798">                    .findByUsernameAndSharedFalse(state.getUsername())</span>
+<span class="fc" id="L799">                    .orElse(null);</span>
+        }
+<span class="fc bfc" id="L801" title="All 2 branches covered.">        if (workspace != null) {</span>
+<span class="pc bpc" id="L802" title="1 of 2 branches missed.">            provisioningStatus = workspace.getProvisioningStatus() == null</span>
+<span class="pc" id="L803">                    ? &quot;NOT_PROVISIONED&quot; : workspace.getProvisioningStatus().name();</span>
+<span class="pc bpc" id="L804" title="1 of 2 branches missed.">            topologyMode = workspace.getTopologyMode() == null</span>
+<span class="pc" id="L805">                    ? topologyMode : workspace.getTopologyMode().name();</span>
+<span class="fc" id="L806">            sourceRepositoryId = workspace.getSourceRepositoryId();</span>
+<span class="fc" id="L807">            workspaceId = workspace.getWorkspaceId();</span>
+<span class="fc" id="L808">            displayName = workspace.getDisplayName();</span>
+<span class="fc" id="L809">            description = workspace.getDescription();</span>
+<span class="fc" id="L810">            archived = workspace.isArchived();</span>
+<span class="fc" id="L811">            defaultWorkspace = workspace.isDefault();</span>
+        }
+
+<span class="fc" id="L814">        return new WorkspaceInfo(</span>
+                workspaceId,
+<span class="fc" id="L816">                state.getUsername(),</span>
+                displayName,
+<span class="pc bpc" id="L818" title="1 of 2 branches missed.">                context != null ? context.branch() : &quot;draft&quot;,</span>
+                &quot;draft&quot;,
+                false,
+                context,
+<span class="fc" id="L822">                Instant.now(),</span>
+<span class="fc" id="L823">                Instant.now(),</span>
+                provisioningStatus,
+                topologyMode,
+                sourceRepositoryId,
+                description,
+                archived,
+                defaultWorkspace);
+    }
+
+    /** Safely unwrap an Optional that may itself be null from an unstubbed mock. */
+    private static &lt;T&gt; T safeOptional(java.util.Optional&lt;T&gt; optional) {
+<span class="pc bpc" id="L834" title="1 of 2 branches missed.">        return optional != null ? optional.orElse(null) : null;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

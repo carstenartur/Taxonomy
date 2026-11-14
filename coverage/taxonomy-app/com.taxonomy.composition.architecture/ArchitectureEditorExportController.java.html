@@ -1,0 +1,327 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureEditorExportController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.architecture</a> &gt; <span class="el_source">ArchitectureEditorExportController.java</span></div><h1>ArchitectureEditorExportController.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.architecture;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
+import com.taxonomy.dsl.admbw.AdmbwFffmlvProfile;
+import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
+import com.taxonomy.editor.ArchitectureEditorExportPort;
+import com.taxonomy.editor.ArchitectureEditorExportPort.ExportDocument;
+import com.taxonomy.export.ArchitecturePdfRenderer;
+import com.taxonomy.export.SvgDiagramRenderer;
+import com.taxonomy.extension.api.integration.AdmbwQeaExport;
+import com.taxonomy.extension.api.integration.IntegrationConnectorExtension;
+import com.taxonomy.extension.api.plugin.ExtensionCatalog;
+import com.taxonomy.extension.api.plugin.ExtensionUnavailableException;
+import com.taxonomy.model.WorkspaceOverlayScope;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import jakarta.servlet.http.HttpServletRequest;
+import org.eclipse.jgit.lib.ObjectId;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * Spring composition for immutable architecture exports.
+ *
+ * &lt;p&gt;Workspace/editor owns exact document state and the neutral render-ready scene;
+ * this controller owns the cross-boundary HTTP/export orchestration.&lt;/p&gt;
+ */
+@RestController
+@Tag(name = &quot;Architecture editor exports&quot;)
+public final class ArchitectureEditorExportController {
+
+    private final ArchitectureEditorExportPort exports;
+    private final WorkspaceResolver resolver;
+    private final SvgDiagramRenderer svg;
+    private final ArchitecturePdfRenderer pdf;
+    private final ExtensionCatalog catalog;
+
+    public ArchitectureEditorExportController(
+            ArchitectureEditorExportPort exports,
+            WorkspaceResolver resolver,
+            SvgDiagramRenderer svg,
+            ArchitecturePdfRenderer pdf,
+<span class="fc" id="L63">            ExtensionCatalog catalog) {</span>
+<span class="fc" id="L64">        this.exports = Objects.requireNonNull(exports, &quot;exports&quot;);</span>
+<span class="fc" id="L65">        this.resolver = Objects.requireNonNull(resolver, &quot;resolver&quot;);</span>
+<span class="fc" id="L66">        this.svg = Objects.requireNonNull(svg, &quot;svg&quot;);</span>
+<span class="fc" id="L67">        this.pdf = Objects.requireNonNull(pdf, &quot;pdf&quot;);</span>
+<span class="fc" id="L68">        this.catalog = Objects.requireNonNull(catalog, &quot;catalog&quot;);</span>
+<span class="fc" id="L69">    }</span>
+
+<span class="fc" id="L71">    public record AdmbwAssessment(String repositoryId, String workspaceScopeKey, String branch, String commit,</span>
+                                  AdmbwFffmlvProfile.Report assessment, List&lt;AdmbwFffmlvProfile.Issue&gt; qeaIssues) { }
+
+    @GetMapping(value = &quot;/api/architecture/editor.admbw.json&quot;, produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = &quot;Prepare ADMBw C1-S1 and R7 from an exact architecture checkpoint&quot;,
+            description = &quot;Exports typed authoring data, structural findings and manual reviews for the public FFFmLV 2.0 and ADMBw 2026.05 subset. Requires a reachable Git checkpoint in the authenticated selected context. Optional viewId scopes C1-S1 only. Native EA delivery and acceptance require separate verification.&quot;)
+    public ResponseEntity&lt;AdmbwAssessment&gt; admbw(
+            @RequestParam String repositoryId,
+            @RequestParam String workspaceScopeKey,
+            @RequestParam String branch,
+            @RequestParam String commit,
+            @RequestParam String projectCode,
+            @RequestParam(required = false) String viewId) throws IOException {
+<span class="fc" id="L84">        var assessment = assessAdmbw(repositoryId, workspaceScopeKey, branch, commit, projectCode, viewId);</span>
+<span class="fc" id="L85">        return ResponseEntity.ok()</span>
+<span class="fc" id="L86">                .cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L87">                .header(HttpHeaders.CONTENT_DISPOSITION, &quot;attachment; filename=admbw-assessment.json&quot;)</span>
+<span class="fc" id="L88">                .header(&quot;X-Content-Type-Options&quot;, &quot;nosniff&quot;)</span>
+<span class="fc" id="L89">                .body(assessment);</span>
+    }
+
+    @PostMapping(value = &quot;/api/architecture/editor.admbw.qea&quot;,
+            consumes = {AdmbwQeaExport.MEDIA_TYPE, MediaType.APPLICATION_OCTET_STREAM_VALUE})
+    @Operation(summary = &quot;Download a native ADMBw QEA copy&quot;,
+            description = &quot;Requires the Sparx plugin, a structurally checked Git checkpoint in the selected context, and the GUID of a model root in the supplied QEA basis. The output adds C1-S1 and R7 to a private copy for manual review.&quot;,
+            requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
+                    content = @Content(mediaType = AdmbwQeaExport.MEDIA_TYPE, schema = @Schema(type = &quot;string&quot;, format = &quot;binary&quot;))))
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Native QEA copy for manual review&quot;,
+            content = @Content(mediaType = AdmbwQeaExport.MEDIA_TYPE, schema = @Schema(type = &quot;string&quot;, format = &quot;binary&quot;)))
+    public ResponseEntity&lt;byte[]&gt; admbwQea(
+            @RequestParam String repositoryId,
+            @RequestParam String workspaceScopeKey,
+            @RequestParam String branch,
+            @RequestParam String commit,
+            @RequestParam String projectCode,
+            @RequestParam(required = false) String viewId,
+            @RequestParam String rootPackageGuid,
+            HttpServletRequest request) throws IOException {
+<span class="fc" id="L109">        var checked = assessAdmbw(repositoryId, workspaceScopeKey, branch, commit, projectCode, viewId);</span>
+<span class="fc" id="L110">        var report = checked.assessment();</span>
+<span class="fc" id="L111">        var views = List.of(report.capabilityToService(), report.requirementDerivation());</span>
+<span class="fc" id="L112">        var issues = views.stream().flatMap(view -&gt; view.issues().stream())</span>
+<span class="fc" id="L113">                .map(AdmbwFffmlvProfile.Issue::code).distinct().toList();</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">        if (!issues.isEmpty()) throw new CommandProblem(&quot;ADMBW_CHANGES_REQUIRED&quot;, &quot;commit&quot;,</span>
+                &quot;Resolve the structural findings from the ADMBw assessment before creating a QEA copy&quot;, issues);
+
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        if (!checked.qeaIssues().isEmpty()) throw new CommandProblem(&quot;ADMBW_QEA_PART_OWNER&quot;, &quot;commit&quot;,</span>
+                &quot;Bind each R7 ResourceRole to an existing owned EA Part before native delivery&quot;,
+<span class="fc" id="L119">                checked.qeaIssues().stream().map(AdmbwFffmlvProfile.Issue::object).toList());</span>
+
+<span class="fc" id="L121">        try (var lease = catalog.acquire(AdmbwQeaExport.KEY, IntegrationConnectorExtension.class)) {</span>
+<span class="pc bpc" id="L122" title="1 of 2 branches missed.">            if (!(lease.extension() instanceof AdmbwQeaExport writer)) throw admbwExporterUnavailable();</span>
+<span class="fc" id="L123">            var delivery = new AdmbwQeaExport.Delivery(report.projectCode(), checked.commit(),</span>
+<span class="fc" id="L124">                    views.stream().map(ArchitectureEditorExportController::nativeView).toList());</span>
+<span class="fc" id="L125">            var file = writer.exportAdmbw(delivery, rootPackageGuid, readQeaBasis(request));</span>
+<span class="fc" id="L126">            return ResponseEntity.ok()</span>
+<span class="fc" id="L127">                    .cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L128">                    .contentType(MediaType.parseMediaType(file.mediaType()))</span>
+<span class="fc" id="L129">                    .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename(file.filename()).build().toString())</span>
+<span class="fc" id="L130">                    .header(&quot;X-Content-Type-Options&quot;, &quot;nosniff&quot;)</span>
+<span class="fc" id="L131">                    .header(&quot;X-Taxonomy-Source&quot;, &quot;GIT_CHECKPOINT&quot;)</span>
+<span class="fc" id="L132">                    .header(&quot;X-Taxonomy-Commit&quot;, checked.commit())</span>
+<span class="fc" id="L133">                    .body(file.content());</span>
+<span class="fc" id="L134">        } catch (ExtensionUnavailableException unavailable) {</span>
+<span class="fc" id="L135">            throw admbwExporterUnavailable();</span>
+        }
+    }
+
+    private AdmbwAssessment assessAdmbw(String repositoryId, String workspaceScopeKey, String branch,
+                                        String commit, String projectCode, String viewId) throws IOException {
+<span class="fc" id="L141">        var context = readContext(repositoryId, workspaceScopeKey, branch);</span>
+<span class="fc" id="L142">        var checkpoint = exports.readCheckpoint(context, commit);</span>
+<span class="fc" id="L143">        var assessment = new AdmbwFffmlvProfile().assess(checkpoint.dsl(), projectCode, viewId);</span>
+<span class="fc" id="L144">        var qeaIssues = assessment.requirementDerivation().elements().stream()</span>
+<span class="pc bpc" id="L145" title="1 of 4 branches missed.">                .filter(e -&gt; e.stereotype().equals(&quot;ResourceRole&quot;) &amp;&amp; e.catalogueGuid() == null)</span>
+<span class="fc" id="L146">                .map(e -&gt; new AdmbwFffmlvProfile.Issue(&quot;ADMBW_QEA_PART_OWNER&quot;, e.ref(),</span>
+                        &quot;Bind this ResourceRole to an existing owned EA Part before native delivery.&quot;))
+<span class="fc" id="L148">                .toList();</span>
+<span class="fc" id="L149">        return new AdmbwAssessment(repositoryId, workspaceScopeKey, branch, checkpoint.commit(), assessment, qeaIssues);</span>
+    }
+
+    private static AdmbwQeaExport.View nativeView(AdmbwFffmlvProfile.View view) {
+<span class="fc" id="L153">        return new AdmbwQeaExport.View(view.viewpoint(), view.name(), view.packagePath(),</span>
+<span class="fc" id="L154">                view.elements().stream().map(e -&gt; new AdmbwQeaExport.Element(e.ref(), e.stereotype(), e.name(), e.notes(),</span>
+<span class="fc" id="L155">                        e.catalogueGuid(), e.requirementVersion(), e.requirementContentHash())).toList(),</span>
+<span class="fc" id="L156">                view.connectors().stream().map(c -&gt; new AdmbwQeaExport.Connector(c.stereotype(), c.client(), c.supplier())).toList());</span>
+    }
+
+    private static byte[] readQeaBasis(HttpServletRequest request) {
+<span class="fc" id="L160">        int maxBytes = AdmbwQeaExport.MAX_BASIS_BYTES;</span>
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">        if (request.getContentLengthLong() &lt;= maxBytes) {</span>
+            try {
+<span class="fc" id="L163">                byte[] bytes = request.getInputStream().readNBytes(maxBytes + 1);</span>
+<span class="pc bpc" id="L164" title="2 of 4 branches missed.">                if (bytes.length &gt; 0 &amp;&amp; bytes.length &lt;= maxBytes) return bytes;</span>
+<span class="nc" id="L165">            } catch (IOException interrupted) {</span>
+<span class="nc" id="L166">                throw new CommandProblem(&quot;ADMBW_QEA_BASIS&quot;, &quot;basis&quot;, &quot;The QEA upload could not be read completely&quot;, List.of());</span>
+<span class="nc" id="L167">            }</span>
+        }
+<span class="nc" id="L169">        throw new CommandProblem(&quot;ADMBW_QEA_BASIS&quot;, &quot;basis&quot;, &quot;Supply a QEA file of up to 32 MiB&quot;, List.of());</span>
+    }
+
+    private static CommandProblem admbwExporterUnavailable() {
+<span class="fc" id="L173">        return new CommandProblem(&quot;ADMBW_QEA_UNAVAILABLE&quot;, &quot;basis&quot;, &quot;Install or update the Sparx plugin to enable native ADMBw export&quot;, List.of());</span>
+    }
+
+    @GetMapping(value = &quot;/api/architecture/editor.svg&quot;, produces = &quot;image/svg+xml&quot;)
+    @Operation(summary = &quot;Export an exact architecture revision as SVG&quot;,
+            description = &quot;Requires an exact commit or semantic revision plus repositoryId, workspaceScopeKey and branch matching the authenticated selected context. Exports the full stored scene, not the viewport. Returns a no-store SVG attachment with source, layout and ETag headers; does not change the editor.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Operation completed&quot;)
+    public ResponseEntity&lt;String&gt; svg(
+            @Parameter(description = &quot;Repository identity; must match the authenticated selected context&quot;) @RequestParam String repositoryId,
+            @Parameter(description = &quot;Workspace overlay scope key for the selected authenticated workspace&quot;) @RequestParam String workspaceScopeKey,
+            @Parameter(description = &quot;Exact branch of the selected authenticated repository context&quot;) @RequestParam String branch,
+            @Parameter(description = &quot;Exact retained architecture Git commit; required when no semantic revision is supplied&quot;) @RequestParam(required = false) String commit,
+            @Parameter(description = &quot;Exact retained revision number or commit, as required by this endpoint&quot;) @RequestParam(required = false) Long revision,
+            @Parameter(description = &quot;Server layout: stable (default) or reduce-crossings&quot;) @RequestParam(required = false) String layout,
+            @Parameter(description = &quot;Optional retained workspace revision supplying optimized ordering&quot;) @RequestParam(required = false) Long layoutRevision,
+            @Parameter(description = &quot;Optional canonical architecture view identity&quot;) @RequestParam(required = false) String viewId) throws IOException {
+<span class="fc" id="L189">        var strategy = com.taxonomy.diagram.DiagramLayout.Strategy.fromId(layout);</span>
+<span class="fc" id="L190">        requireExactSelection(commit, revision);</span>
+<span class="fc" id="L191">        var context = readContext(repositoryId, workspaceScopeKey, branch);</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">        ExportDocument document = viewId == null ? exports.read(context, commit, revision, strategy, layoutRevision)</span>
+<span class="fc" id="L193">                : exports.read(context, commit, revision, strategy, layoutRevision, viewId);</span>
+<span class="fc" id="L194">        return documentResponse(document)</span>
+<span class="fc" id="L195">                .header(&quot;X-Taxonomy-Layout-Source&quot;, document.layoutMode())</span>
+<span class="fc" id="L196">                .header(HttpHeaders.CONTENT_DISPOSITION, &quot;attachment; filename=architecture.svg&quot;)</span>
+<span class="fc" id="L197">                .body(svg.render(document.scene()));</span>
+    }
+
+    @GetMapping(value = &quot;/api/architecture/editor.pdf&quot;, produces = &quot;application/pdf&quot;)
+    @Operation(summary = &quot;Export an exact architecture revision as PDF&quot;,
+            description = &quot;Requires an exact commit or semantic revision and the authenticated repository/workspace/branch context. Renders the immutable scene with provenance as a PDF attachment; neither the current model nor editor selection is changed.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Operation completed&quot;)
+    public ResponseEntity&lt;byte[]&gt; pdf(
+            @Parameter(description = &quot;Repository identity; must match the authenticated selected context&quot;) @RequestParam String repositoryId,
+            @Parameter(description = &quot;Workspace overlay scope key for the selected authenticated workspace&quot;) @RequestParam String workspaceScopeKey,
+            @Parameter(description = &quot;Exact branch of the selected authenticated repository context&quot;) @RequestParam String branch,
+            @Parameter(description = &quot;Exact retained architecture Git commit; required when no semantic revision is supplied&quot;) @RequestParam(required = false) String commit,
+            @Parameter(description = &quot;Exact retained revision number or commit, as required by this endpoint&quot;) @RequestParam(required = false) Long revision,
+            @Parameter(description = &quot;Server layout: stable (default) or reduce-crossings&quot;) @RequestParam(required = false) String layout,
+            @Parameter(description = &quot;Optional retained workspace revision supplying optimized ordering&quot;) @RequestParam(required = false) Long layoutRevision,
+            @Parameter(description = &quot;Optional canonical architecture view identity&quot;) @RequestParam(required = false) String viewId) throws IOException {
+<span class="fc" id="L213">        var strategy = com.taxonomy.diagram.DiagramLayout.Strategy.fromId(layout);</span>
+<span class="fc" id="L214">        requireExactSelection(commit, revision);</span>
+<span class="fc" id="L215">        var context = readContext(repositoryId, workspaceScopeKey, branch);</span>
+<span class="pc bpc" id="L216" title="1 of 2 branches missed.">        ExportDocument document = viewId == null ? exports.read(context, commit, revision, strategy, layoutRevision)</span>
+<span class="pc" id="L217">                : exports.read(context, commit, revision, strategy, layoutRevision, viewId);</span>
+<span class="fc bfc" id="L218" title="All 2 branches covered.">        String selected = &quot;GIT_CHECKPOINT&quot;.equals(document.source())</span>
+<span class="fc" id="L219">                ? &quot;Checkpoint &quot; + document.commit()</span>
+<span class="fc" id="L220">                : &quot;Revision &quot; + document.revision() + &quot; / checkpoint &quot; + document.commit();</span>
+<span class="fc" id="L221">        String provenance = document.repositoryId() + &quot; / &quot; + document.workspaceScopeKey()</span>
+<span class="fc" id="L222">                + &quot; / &quot; + document.branch() + &quot;\n&quot; + selected;</span>
+<span class="fc" id="L223">        return documentResponse(document)</span>
+<span class="fc" id="L224">                .header(&quot;X-Taxonomy-Layout-Source&quot;, document.layoutMode())</span>
+<span class="fc" id="L225">                .header(HttpHeaders.CONTENT_DISPOSITION, &quot;attachment; filename=architecture.pdf&quot;)</span>
+<span class="fc" id="L226">                .body(pdf.render(document.scene(), provenance));</span>
+    }
+
+    public ResponseEntity&lt;String&gt; svg(String repositoryId, String workspaceScopeKey, String branch,
+            String commit, Long revision, String layout, Long layoutRevision) throws IOException {
+<span class="fc" id="L231">        return svg(repositoryId, workspaceScopeKey, branch, commit, revision, layout, layoutRevision, null);</span>
+    }
+
+    public ResponseEntity&lt;byte[]&gt; pdf(String repositoryId, String workspaceScopeKey, String branch,
+            String commit, Long revision, String layout, Long layoutRevision) throws IOException {
+<span class="fc" id="L236">        return pdf(repositoryId, workspaceScopeKey, branch, commit, revision, layout, layoutRevision, null);</span>
+    }
+
+    public ResponseEntity&lt;String&gt; svg(String repositoryId, String workspaceScopeKey, String branch,
+            String commit, Long revision) throws IOException {
+<span class="fc" id="L241">        return svg(repositoryId, workspaceScopeKey, branch, commit, revision, null, null);</span>
+    }
+
+    public ResponseEntity&lt;byte[]&gt; pdf(String repositoryId, String workspaceScopeKey, String branch,
+            String commit, Long revision) throws IOException {
+<span class="fc" id="L246">        return pdf(repositoryId, workspaceScopeKey, branch, commit, revision, null, null);</span>
+    }
+
+    private RepositoryContext readContext(
+            String repositoryId,
+            String workspaceScopeKey,
+            String branch) {
+<span class="fc" id="L253">        RepositoryContext context = resolver.resolveCurrentRepositoryContext();</span>
+<span class="fc" id="L254">        String selectedScope = WorkspaceOverlayScope.keyFor(context.workspaceId());</span>
+<span class="pc bpc" id="L255" title="1 of 2 branches missed.">        if (!context.repositoryId().equals(repositoryId)</span>
+<span class="fc bfc" id="L256" title="All 2 branches covered.">                || !selectedScope.equals(workspaceScopeKey)</span>
+<span class="fc bfc" id="L257" title="All 2 branches covered.">                || !context.branch().equals(branch)) {</span>
+<span class="fc" id="L258">            throw new CommandProblem(</span>
+                    &quot;NOT_FOUND&quot;,
+                    &quot;context&quot;,
+                    &quot;This exact context is not selected or accessible&quot;,
+<span class="fc" id="L262">                    List.of());</span>
+        }
+<span class="fc" id="L264">        return context;</span>
+    }
+
+    private static void requireExactSelection(String commit, Long revision) {
+<span class="fc bfc" id="L268" title="All 4 branches covered.">        if (commit == null &amp;&amp; revision == null) {</span>
+<span class="fc" id="L269">            throw new IllegalArgumentException(</span>
+                    &quot;An exact revision or version is required for export&quot;);
+        }
+<span class="fc" id="L272">    }</span>
+
+    private static ResponseEntity.BodyBuilder documentResponse(ExportDocument document) {
+<span class="fc bfc" id="L275" title="All 2 branches covered.">        if (&quot;GIT_CHECKPOINT&quot;.equals(document.source())) {</span>
+<span class="fc" id="L276">            return ResponseEntity.ok()</span>
+<span class="fc" id="L277">                    .header(HttpHeaders.CACHE_CONTROL, &quot;no-store&quot;)</span>
+<span class="fc" id="L278">                    .eTag(commitEtag(document.commit()))</span>
+<span class="fc" id="L279">                    .header(&quot;X-Taxonomy-Source&quot;, document.source());</span>
+        }
+<span class="fc" id="L281">        return ResponseEntity.ok()</span>
+<span class="fc" id="L282">                .header(HttpHeaders.CACHE_CONTROL, &quot;no-store&quot;)</span>
+<span class="fc" id="L283">                .header(HttpHeaders.ETAG, revisionEtag(document.revision()))</span>
+<span class="fc" id="L284">                .header(&quot;X-Taxonomy-Semantic-Revision&quot;, Long.toString(document.revision()))</span>
+<span class="fc" id="L285">                .header(&quot;X-Taxonomy-Source&quot;, document.source());</span>
+    }
+
+    private static String revisionEtag(long revision) {
+<span class="fc" id="L289">        return &quot;\&quot;workspace-revision-&quot; + revision + &quot;\&quot;&quot;;</span>
+    }
+
+    private static String commitEtag(String commitId) {
+<span class="fc" id="L293">        return '&quot;' + ObjectId.fromString(commitId).name() + '&quot;';</span>
+    }
+
+    @ExceptionHandler(CommandProblem.class)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; problem(CommandProblem error) {
+<span class="pc bpc" id="L298" title="2 of 5 branches missed.">        int status = switch (error.code()) {</span>
+<span class="fc" id="L299">            case &quot;NOT_FOUND&quot; -&gt; 404;</span>
+<span class="nc" id="L300">            case &quot;READ_ONLY&quot; -&gt; 403;</span>
+<span class="fc" id="L301">            case &quot;ADMBW_QEA_UNAVAILABLE&quot; -&gt; 503;</span>
+            case &quot;CONTEXT_CHANGED&quot;, &quot;UNDO_CONFLICT&quot;, &quot;ALREADY_INVERTED&quot;, &quot;COMMAND_ID_REUSED&quot;,
+<span class="nc" id="L303">                    &quot;DEPENDENCIES_EXIST&quot;, &quot;CHECKPOINT_PENDING&quot;, &quot;CHECKPOINT_CONFLICT&quot;, &quot;VERSION_CHANGED&quot; -&gt; 409;</span>
+<span class="fc" id="L304">            default -&gt; 422;</span>
+        };
+<span class="fc" id="L306">        return ResponseEntity.status(status).body(Map.of(</span>
+<span class="fc" id="L307">                &quot;code&quot;, error.code(),</span>
+<span class="fc" id="L308">                &quot;field&quot;, error.field(),</span>
+<span class="fc" id="L309">                &quot;detail&quot;, error.getMessage(),</span>
+<span class="fc" id="L310">                &quot;dependencies&quot;, error.dependencies()));</span>
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; invalid(IllegalArgumentException error) {
+<span class="fc" id="L315">        return ResponseEntity.badRequest().body(Map.of(</span>
+                &quot;code&quot;, &quot;INVALID_COMMAND&quot;,
+<span class="pc bpc" id="L317" title="1 of 2 branches missed.">                &quot;detail&quot;, error.getMessage() == null ? &quot;Invalid command&quot; : error.getMessage()));</span>
+    }
+
+    @ExceptionHandler(IOException.class)
+    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; unavailable() {
+<span class="nc" id="L322">        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(</span>
+                &quot;code&quot;, &quot;GIT_UNAVAILABLE&quot;,
+                &quot;detail&quot;, &quot;Git storage is unavailable; refresh before retrying the same command identity&quot;));
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

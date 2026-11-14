@@ -1,0 +1,367 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DslMaterializeService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.export</a> &gt; <span class="el_source">DslMaterializeService.java</span></div><h1>DslMaterializeService.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.export;
+
+import com.taxonomy.architecture.model.ArchitectureDslDocument;
+import com.taxonomy.architecture.repository.ArchitectureDslDocumentRepository;
+import com.taxonomy.catalog.model.TaxonomyRelation;
+import com.taxonomy.catalog.service.TaxonomyRelationService;
+import com.taxonomy.dsl.ast.DocumentAst;
+import com.taxonomy.dsl.diff.ModelDiff;
+import com.taxonomy.dsl.diff.ModelDiffer;
+import com.taxonomy.dsl.mapper.AstToModelMapper;
+import com.taxonomy.dsl.model.ArchitectureRelation;
+import com.taxonomy.dsl.model.CanonicalArchitectureModel;
+import com.taxonomy.dsl.parser.TaxDslParser;
+import com.taxonomy.dsl.validation.DslValidationResult;
+import com.taxonomy.dsl.validation.DslValidator;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
+import com.taxonomy.model.HypothesisStatus;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.model.RelationHypothesis;
+import com.taxonomy.relations.repository.RelationHypothesisRepository;
+import com.taxonomy.versioning.service.RepositoryStateService;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryScope;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.lang.Nullable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionOperations;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Materializes a parsed DSL document into repository-scoped relational projections.
+ *
+ * &lt;p&gt;The materialization pipeline parses and validates the DSL, creates accepted
+ * {@link TaxonomyRelation} projections or provisional {@link RelationHypothesis}
+ * projections in the exact selected repository/workspace, stores the source
+ * document and updates projection-state diagnostics.&lt;/p&gt;
+ */
+@com.taxonomy.shared.features.ConditionalOnFeature({&quot;architecture&quot;})
+@Service
+public class DslMaterializeService {
+
+<span class="fc" id="L52">    private static final Logger log = LoggerFactory.getLogger(DslMaterializeService.class);</span>
+    private static final String TEST_REPOSITORY_ID = &quot;test-primary&quot;;
+
+    private final TaxonomyRelationService relationService;
+    private final RelationHypothesisRepository hypothesisRepository;
+    private final ArchitectureDslDocumentRepository documentRepository;
+    @Nullable
+    private final RepositoryStateService repositoryStateService;
+    @Nullable
+    private final WorkspaceResolver workspaceResolver;
+    @Nullable
+    private final WorkspaceContextResolver contextResolver;
+
+<span class="fc" id="L65">    private final TaxDslParser parser = new TaxDslParser();</span>
+<span class="fc" id="L66">    private final AstToModelMapper astMapper = new AstToModelMapper();</span>
+<span class="fc" id="L67">    private DslValidator validator = new DslValidator();</span>
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void useCatalogueDefinitions(CatalogueDefinitionResolver catalogues) {
+<span class="fc" id="L71">        validator = new DslValidator(catalogues);</span>
+<span class="fc" id="L72">    }</span>
+<span class="fc" id="L73">    private final ModelDiffer differ = new ModelDiffer();</span>
+<span class="fc" id="L74">    private TransactionOperations materializationTransaction = TransactionOperations.withoutTransaction();</span>
+
+    @Autowired
+    public DslMaterializeService(TaxonomyRelationService relationService,
+                                 RelationHypothesisRepository hypothesisRepository,
+                                 ArchitectureDslDocumentRepository documentRepository,
+                                 @Nullable RepositoryStateService repositoryStateService,
+                                 @Nullable WorkspaceResolver workspaceResolver,
+<span class="fc" id="L82">                                 @Nullable WorkspaceContextResolver contextResolver) {</span>
+<span class="fc" id="L83">        this.relationService = relationService;</span>
+<span class="fc" id="L84">        this.hypothesisRepository = hypothesisRepository;</span>
+<span class="fc" id="L85">        this.documentRepository = documentRepository;</span>
+<span class="fc" id="L86">        this.repositoryStateService = repositoryStateService;</span>
+<span class="fc" id="L87">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L88">        this.contextResolver = contextResolver;</span>
+<span class="fc" id="L89">    }</span>
+
+    /**
+     * Compatibility constructor for focused unit tests that still provide only
+     * the historic workspace resolver. Productive Spring wiring uses the
+     * six-argument constructor and therefore the request-stable
+     * {@link RepositoryContext} path.
+     */
+    public DslMaterializeService(TaxonomyRelationService relationService,
+                                 RelationHypothesisRepository hypothesisRepository,
+                                 ArchitectureDslDocumentRepository documentRepository,
+                                 @Nullable RepositoryStateService repositoryStateService,
+                                 @Nullable WorkspaceContextResolver contextResolver) {
+<span class="nc" id="L102">        this(relationService, hypothesisRepository, documentRepository,</span>
+                repositoryStateService, null, contextResolver);
+<span class="nc" id="L104">    }</span>
+
+    @Autowired
+    void configureMaterializationTransaction(PlatformTransactionManager transactionManager) {
+<span class="fc" id="L108">        materializationTransaction = new TransactionTemplate(transactionManager);</span>
+<span class="fc" id="L109">    }</span>
+
+<span class="fc" id="L111">    public record MaterializeResult(</span>
+            boolean valid,
+            List&lt;String&gt; errors,
+            List&lt;String&gt; warnings,
+            int relationsCreated,
+            int hypothesesCreated,
+            Long documentId
+    ) {}
+
+    /** Parse, validate and materialize a complete DSL document. */
+    public MaterializeResult materialize(
+            String dslText, String path, String branch, String commitId) {
+<span class="fc" id="L123">        var documentAst = parser.parse(dslText, path);</span>
+<span class="fc" id="L124">        CanonicalArchitectureModel model = astMapper.map(documentAst);</span>
+
+<span class="fc" id="L126">        DslValidationResult validation = validator.validate(model);</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        if (!validation.isValid()) {</span>
+<span class="fc" id="L128">            return new MaterializeResult(false, validation.getErrors(), validation.getWarnings(),</span>
+                    0, 0, null);
+        }
+
+        // Initial workspace resolution can publish to Git in a separate store.
+        // Complete it before the projection writes enter their transaction.
+<span class="fc" id="L134">        RepositoryContext context = currentRepositoryContext();</span>
+        // The API branch is optional; an explicit branch must still agree with
+        // the already-authorized selection used for every projection below.
+<span class="fc bfc" id="L137" title="All 2 branches covered.">        if (branch != null) {</span>
+<span class="fc" id="L138">            requireSelectedBranch(branch, context);</span>
+        }
+<span class="fc" id="L140">        return materializationTransaction.execute(status -&gt; persistMaterialization(</span>
+<span class="fc" id="L141">                dslText, path, commitId, documentAst, model, validation.getWarnings(), context));</span>
+    }
+
+    private MaterializeResult persistMaterialization(
+            String dslText, String path, String commitId, DocumentAst documentAst,
+            CanonicalArchitectureModel model, List&lt;String&gt; warnings, RepositoryContext context) {
+<span class="fc" id="L147">        int relationsCreated = 0;</span>
+<span class="fc" id="L148">        int hypothesesCreated = 0;</span>
+
+<span class="fc bfc" id="L150" title="All 2 branches covered.">        for (ArchitectureRelation relation : model.getRelations()) {</span>
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">            String status = relation.getStatus() != null</span>
+<span class="pc" id="L152">                    ? relation.getStatus().toLowerCase() : &quot;accepted&quot;;</span>
+
+<span class="fc bfc" id="L154" title="All 2 branches covered.">            if (&quot;accepted&quot;.equals(status)) {</span>
+                try {
+<span class="fc" id="L156">                    RelationType type = RelationType.valueOf(relation.getRelationType());</span>
+<span class="fc" id="L157">                    relationService.createRelationInContext(</span>
+<span class="fc" id="L158">                            relation.getSourceId(), relation.getTargetId(), type,</span>
+                            &quot;Materialized from DSL&quot;, &quot;dsl-materialize&quot;, context);
+<span class="fc" id="L160">                    relationsCreated++;</span>
+<span class="fc" id="L161">                } catch (IllegalArgumentException error) {</span>
+<span class="fc" id="L162">                    log.warn(&quot;Skipped DSL relation (reason=INVALID_ARGUMENT)&quot;);</span>
+<span class="fc" id="L163">                }</span>
+<span class="pc bpc" id="L164" title="1 of 4 branches missed.">            } else if (&quot;proposed&quot;.equals(status) || &quot;provisional&quot;.equals(status)) {</span>
+                try {
+<span class="fc" id="L166">                    hypothesisRepository.save(toHypothesis(</span>
+                            relation,
+<span class="fc bfc" id="L168" title="All 2 branches covered.">                            &quot;proposed&quot;.equals(status)</span>
+<span class="fc" id="L169">                                    ? HypothesisStatus.PROPOSED</span>
+<span class="fc" id="L170">                                    : HypothesisStatus.PROVISIONAL,</span>
+                            &quot;dsl-materialize&quot;,
+                            context));
+<span class="fc" id="L173">                    hypothesesCreated++;</span>
+<span class="fc" id="L174">                } catch (IllegalArgumentException error) {</span>
+<span class="fc" id="L175">                    log.warn(&quot;Skipped DSL hypothesis (reason=INVALID_ARGUMENT)&quot;);</span>
+<span class="fc" id="L176">                }</span>
+            }
+<span class="fc" id="L178">        }</span>
+
+<span class="fc bfc" id="L180" title="All 2 branches covered.">        String namespace = documentAst.getMeta() != null</span>
+<span class="fc" id="L181">                ? documentAst.getMeta().namespace() : null;</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">        String dslVersion = documentAst.getMeta() != null</span>
+<span class="fc" id="L183">                ? documentAst.getMeta().version() : null;</span>
+
+<span class="fc" id="L185">        ArchitectureDslDocument document = new ArchitectureDslDocument();</span>
+<span class="fc bfc" id="L186" title="All 2 branches covered.">        document.setPath(path != null ? path : &quot;inline&quot;);</span>
+<span class="fc" id="L187">        document.setBranch(context.branch());</span>
+<span class="fc" id="L188">        document.setCommitId(commitId);</span>
+<span class="fc" id="L189">        document.setNamespace(namespace);</span>
+<span class="fc" id="L190">        document.setDslVersion(dslVersion);</span>
+<span class="fc" id="L191">        document.setRawContent(dslText);</span>
+
+<span class="fc" id="L193">        ArchitectureDslDocument saved = documentRepository.save(document);</span>
+
+<span class="fc" id="L195">        log.info(&quot;Materialized DSL document (scope={}, relations={}, hypotheses={})&quot;,</span>
+<span class="fc" id="L196">                context.scope(), relationsCreated, hypothesesCreated);</span>
+
+<span class="fc bfc" id="L198" title="All 4 branches covered.">        if (repositoryStateService != null &amp;&amp; commitId != null) {</span>
+<span class="fc" id="L199">            repositoryStateService.recordProjection(context.username(), commitId, context.branch());</span>
+        }
+
+<span class="fc" id="L202">        return new MaterializeResult(true, List.of(), warnings,</span>
+<span class="fc" id="L203">                relationsCreated, hypothesesCreated, saved.getId());</span>
+    }
+
+    public ModelDiff diffDocuments(Long beforeDocId, Long afterDocId) {
+<span class="fc" id="L207">        CanonicalArchitectureModel before = null;</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">        if (beforeDocId != null) {</span>
+<span class="fc" id="L209">            ArchitectureDslDocument beforeDocument = documentRepository.findById(beforeDocId)</span>
+<span class="fc" id="L210">                    .orElseThrow(() -&gt; new IllegalArgumentException(</span>
+                            &quot;Before document not found: &quot; + beforeDocId));
+<span class="fc" id="L212">            before = parseToModel(</span>
+<span class="fc" id="L213">                    beforeDocument.getRawContent(), beforeDocument.getPath());</span>
+        }
+
+<span class="fc" id="L216">        ArchitectureDslDocument afterDocument = documentRepository.findById(afterDocId)</span>
+<span class="pc" id="L217">                .orElseThrow(() -&gt; new IllegalArgumentException(</span>
+                        &quot;After document not found: &quot; + afterDocId));
+<span class="fc" id="L219">        CanonicalArchitectureModel after = parseToModel(</span>
+<span class="fc" id="L220">                afterDocument.getRawContent(), afterDocument.getPath());</span>
+
+<span class="fc" id="L222">        return differ.diff(before, after);</span>
+    }
+
+    /** Materialize only the delta between two stored DSL versions. */
+    @Transactional
+    public MaterializeResult materializeIncremental(Long beforeDocId, Long afterDocId) {
+<span class="fc" id="L228">        RepositoryContext context = currentRepositoryContext();</span>
+<span class="fc bfc" id="L229" title="All 2 branches covered.">        if (beforeDocId != null) {</span>
+<span class="fc" id="L230">            requireSelectedBranch(documentRepository.findById(beforeDocId)</span>
+<span class="pc" id="L231">                    .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Before document not found: &quot; + beforeDocId))</span>
+<span class="fc" id="L232">                    .getBranch(), context);</span>
+        }
+<span class="fc" id="L234">        requireSelectedBranch(documentRepository.findById(afterDocId)</span>
+<span class="pc" id="L235">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;After document not found: &quot; + afterDocId))</span>
+<span class="fc" id="L236">                .getBranch(), context);</span>
+<span class="fc" id="L237">        ModelDiff diff = diffDocuments(beforeDocId, afterDocId);</span>
+
+<span class="fc" id="L239">        int relationsCreated = 0;</span>
+<span class="fc" id="L240">        int hypothesesCreated = 0;</span>
+<span class="fc" id="L241">        List&lt;String&gt; warnings = new ArrayList&lt;&gt;();</span>
+
+<span class="fc bfc" id="L243" title="All 2 branches covered.">        for (ArchitectureRelation relation : diff.addedRelations()) {</span>
+<span class="pc bpc" id="L244" title="1 of 2 branches missed.">            String status = relation.getStatus() != null</span>
+<span class="pc" id="L245">                    ? relation.getStatus().toLowerCase() : &quot;accepted&quot;;</span>
+
+<span class="fc bfc" id="L247" title="All 2 branches covered.">            if (&quot;accepted&quot;.equals(status)) {</span>
+                try {
+<span class="fc" id="L249">                    RelationType type = RelationType.valueOf(relation.getRelationType());</span>
+<span class="fc" id="L250">                    relationService.createRelationInContext(</span>
+<span class="fc" id="L251">                            relation.getSourceId(), relation.getTargetId(), type,</span>
+                            &quot;Materialized incrementally from DSL&quot;, &quot;dsl-incremental&quot;, context);
+<span class="fc" id="L253">                    relationsCreated++;</span>
+<span class="nc" id="L254">                } catch (IllegalArgumentException error) {</span>
+<span class="nc" id="L255">                    warnings.add(&quot;Skipped relation &quot; + relation.getSourceId() + &quot; → &quot;</span>
+<span class="nc" id="L256">                            + relation.getTargetId() + &quot;: &quot; + error.getMessage());</span>
+<span class="pc" id="L257">                }</span>
+<span class="pc bpc" id="L258" title="3 of 4 branches missed.">            } else if (&quot;proposed&quot;.equals(status) || &quot;provisional&quot;.equals(status)) {</span>
+                try {
+<span class="fc" id="L260">                    hypothesisRepository.save(toHypothesis(</span>
+                            relation,
+<span class="pc bpc" id="L262" title="1 of 2 branches missed.">                            &quot;proposed&quot;.equals(status)</span>
+<span class="fc" id="L263">                                    ? HypothesisStatus.PROPOSED</span>
+<span class="pc" id="L264">                                    : HypothesisStatus.PROVISIONAL,</span>
+                            &quot;dsl-incremental&quot;,
+                            context));
+<span class="fc" id="L267">                    hypothesesCreated++;</span>
+<span class="nc" id="L268">                } catch (IllegalArgumentException error) {</span>
+<span class="nc" id="L269">                    warnings.add(&quot;Skipped hypothesis &quot; + relation.getSourceId() + &quot; → &quot;</span>
+<span class="nc" id="L270">                            + relation.getTargetId() + &quot;: &quot; + error.getMessage());</span>
+<span class="fc" id="L271">                }</span>
+            }
+<span class="fc" id="L273">        }</span>
+
+<span class="pc bpc" id="L275" title="1 of 2 branches missed.">        for (ModelDiff.RelationChange change : diff.changedRelations()) {</span>
+<span class="nc bnc" id="L276" title="All 2 branches missed.">            String newStatus = change.after().getStatus() != null</span>
+<span class="nc" id="L277">                    ? change.after().getStatus().toLowerCase() : &quot;accepted&quot;;</span>
+<span class="nc bnc" id="L278" title="All 2 branches missed.">            String oldStatus = change.before().getStatus() != null</span>
+<span class="nc" id="L279">                    ? change.before().getStatus().toLowerCase() : &quot;accepted&quot;;</span>
+
+<span class="nc bnc" id="L281" title="All 4 branches missed.">            if (&quot;accepted&quot;.equals(newStatus) &amp;&amp; !newStatus.equals(oldStatus)) {</span>
+                try {
+<span class="nc" id="L283">                    RelationType type = RelationType.valueOf(</span>
+<span class="nc" id="L284">                            change.after().getRelationType());</span>
+<span class="nc" id="L285">                    relationService.createRelationInContext(</span>
+<span class="nc" id="L286">                            change.after().getSourceId(),</span>
+<span class="nc" id="L287">                            change.after().getTargetId(),</span>
+                            type,
+                            &quot;Promoted from &quot; + oldStatus + &quot; via DSL&quot;,
+                            &quot;dsl-incremental&quot;,
+                            context);
+<span class="nc" id="L292">                    relationsCreated++;</span>
+<span class="nc" id="L293">                } catch (IllegalArgumentException error) {</span>
+<span class="nc" id="L294">                    warnings.add(&quot;Skipped promotion &quot; + change.after().getSourceId()</span>
+<span class="nc" id="L295">                            + &quot; → &quot; + change.after().getTargetId() + &quot;: &quot;</span>
+<span class="nc" id="L296">                            + error.getMessage());</span>
+<span class="nc" id="L297">                }</span>
+            }
+<span class="nc" id="L299">        }</span>
+
+<span class="fc" id="L301">        log.info(&quot;Incremental materialization (scope={}, relations={}, hypotheses={}, changes={})&quot;,</span>
+<span class="fc" id="L302">                context.scope(), relationsCreated, hypothesesCreated, diff.totalChanges());</span>
+
+<span class="fc" id="L304">        return new MaterializeResult(true, List.of(), warnings,</span>
+                relationsCreated, hypothesesCreated, afterDocId);
+    }
+
+    private static void requireSelectedBranch(String branch, RepositoryContext context) {
+<span class="fc bfc" id="L309" title="All 4 branches covered.">        if (branch == null || !context.branch().equals(branch.strip())) {</span>
+<span class="fc" id="L310">            throw new IllegalArgumentException(&quot;Materialization branch does not match selected context&quot;);</span>
+        }
+<span class="fc" id="L312">    }</span>
+
+    private RelationHypothesis toHypothesis(
+            ArchitectureRelation relation,
+            HypothesisStatus status,
+            String sessionId,
+            RepositoryContext context) {
+<span class="fc" id="L319">        RelationHypothesis hypothesis = new RelationHypothesis();</span>
+<span class="fc" id="L320">        hypothesis.setRepositoryId(context.repositoryId());</span>
+<span class="fc" id="L321">        hypothesis.setBranchName(context.branch());</span>
+<span class="fc" id="L322">        hypothesis.setSourceNodeId(relation.getSourceId());</span>
+<span class="fc" id="L323">        hypothesis.setTargetNodeId(relation.getTargetId());</span>
+<span class="fc" id="L324">        hypothesis.setRelationType(RelationType.valueOf(relation.getRelationType()));</span>
+<span class="fc" id="L325">        hypothesis.setStatus(status);</span>
+<span class="fc" id="L326">        hypothesis.setConfidence(relation.getConfidence());</span>
+<span class="fc" id="L327">        hypothesis.setAnalysisSessionId(sessionId);</span>
+<span class="fc" id="L328">        hypothesis.setWorkspaceId(context.workspaceId());</span>
+<span class="fc" id="L329">        hypothesis.setOwnerUsername(context.username());</span>
+<span class="fc" id="L330">        return hypothesis;</span>
+    }
+
+    private RepositoryContext currentRepositoryContext() {
+        RepositoryContext context;
+<span class="pc bpc" id="L335" title="1 of 2 branches missed.">        if (workspaceResolver != null) {</span>
+<span class="fc" id="L336">            context = workspaceResolver.resolveCurrentRepositoryContext();</span>
+        } else {
+            // Isolated unit tests may construct this service without the request
+            // resolver. Keep that compatibility explicitly test-local rather than
+            // silently using the catalog primary in production.
+<span class="nc bnc" id="L341" title="All 2 branches missed.">            WorkspaceContext legacy = contextResolver != null</span>
+<span class="nc" id="L342">                    ? contextResolver.resolveCurrentContext() : WorkspaceContext.SHARED;</span>
+<span class="nc bnc" id="L343" title="All 4 branches missed.">            String username = legacy.username() == null || legacy.username().isBlank()</span>
+<span class="nc" id="L344">                    ? &quot;system&quot; : legacy.username().strip();</span>
+<span class="nc bnc" id="L345" title="All 4 branches missed.">            String branch = legacy.currentBranch() == null || legacy.currentBranch().isBlank()</span>
+<span class="nc" id="L346">                    ? &quot;draft&quot; : legacy.currentBranch().strip();</span>
+<span class="nc bnc" id="L347" title="All 2 branches missed.">            context = legacy.workspaceId() == null</span>
+<span class="nc" id="L348">                    ? RepositoryContext.centralWrite(TEST_REPOSITORY_ID, branch, username)</span>
+<span class="nc" id="L349">                    : RepositoryContext.workspace(</span>
+                            TEST_REPOSITORY_ID,
+<span class="nc" id="L351">                            legacy.workspaceId(),</span>
+                            branch,
+                            username);
+        }
+<span class="fc bfc" id="L355" title="All 2 branches covered.">        if (context.scope() == RepositoryScope.CENTRAL_READ) {</span>
+<span class="fc" id="L356">            throw new IllegalStateException(</span>
+                    &quot;DSL materialization requires a workspace or explicit central write context&quot;);
+        }
+<span class="fc" id="L359">        return context;</span>
+    }
+
+    private CanonicalArchitectureModel parseToModel(String dslText, String path) {
+<span class="fc" id="L363">        var document = parser.parse(dslText, path);</span>
+<span class="fc" id="L364">        return astMapper.map(document);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

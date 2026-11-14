@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkbookCatalogueDefinition.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.definition</a> &gt; <span class="el_source">WorkbookCatalogueDefinition.java</span></div><h1>WorkbookCatalogueDefinition.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.definition;
+
+import com.taxonomy.dsl.model.CatalogueDefinition;
+import org.apache.poi.ss.usermodel.CellType;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Workbook;
+
+import java.util.ArrayList;
+import java.util.Set;
+
+/** Reads the definition from the same retained workbook bytes as its hierarchy. */
+public final class WorkbookCatalogueDefinition {
+    private static final String SHEET = &quot;Catalogue Definition&quot;;
+    private WorkbookCatalogueDefinition() {}
+
+    public static CatalogueDefinition read(Workbook workbook) {
+<span class="fc" id="L17">        var sheet = workbook.getSheet(SHEET);</span>
+<span class="fc bfc" id="L18" title="All 2 branches covered.">        if (sheet == null) return CatalogueDefinition.standard();</span>
+<span class="fc" id="L19">        Row header = sheet.getRow(0);</span>
+<span class="pc bpc" id="L20" title="1 of 2 branches missed.">        if (!&quot;catalogue-definition-v1&quot;.equals(text(header, 0)))</span>
+<span class="nc" id="L21">            throw new IllegalArgumentException(&quot;Unrecognized catalogue definition format&quot;);</span>
+<span class="fc" id="L22">        String version = text(header, 1);</span>
+<span class="fc" id="L23">        String base = text(header, 2);</span>
+<span class="pc bpc" id="L24" title="1 of 2 branches missed.">        if (!Set.of(&quot;standard-v1&quot;, &quot;empty&quot;).contains(base))</span>
+<span class="nc" id="L25">            throw new IllegalArgumentException(&quot;Unknown catalogue definition base: &quot; + base);</span>
+<span class="fc" id="L26">        var roots = new ArrayList&lt;CatalogueDefinition.Root&gt;();</span>
+<span class="fc" id="L27">        var directions = new ArrayList&lt;CatalogueDefinition.Direction&gt;();</span>
+<span class="fc bfc" id="L28" title="All 2 branches covered.">        for (Row row : sheet) {</span>
+<span class="pc bpc" id="L29" title="1 of 4 branches missed.">            if (row.getRowNum() == 0 || row.getPhysicalNumberOfCells() == 0) continue;</span>
+<span class="fc" id="L30">            String kind = text(row, 0);</span>
+<span class="fc" id="L31">            String first = text(row, 1);</span>
+<span class="fc" id="L32">            String second = text(row, 2);</span>
+<span class="fc" id="L33">            String third = text(row, 3);</span>
+<span class="pc bpc" id="L34" title="1 of 3 branches missed.">            switch (kind) {</span>
+                case &quot;root&quot; -&gt; {
+<span class="pc bpc" id="L36" title="2 of 6 branches missed.">                    if (SHEET.equalsIgnoreCase(first) || &quot;Relations&quot;.equalsIgnoreCase(first) || workbook.getSheet(first) == null)</span>
+<span class="fc" id="L37">                        throw new IllegalArgumentException(&quot;Missing or reserved taxonomy sheet: &quot; + first);</span>
+<span class="fc" id="L38">                    roots.add(new CatalogueDefinition.Root(first, second, third));</span>
+<span class="fc" id="L39">                }</span>
+<span class="fc" id="L40">                case &quot;direction&quot; -&gt; directions.add(new CatalogueDefinition.Direction(first, second, third));</span>
+<span class="nc" id="L41">                default -&gt; throw new IllegalArgumentException(&quot;Unknown catalogue definition row: &quot; + (row.getRowNum() + 1));</span>
+            }
+<span class="fc" id="L43">        }</span>
+<span class="fc" id="L44">        return new CatalogueDefinition(version, base.equals(&quot;standard-v1&quot;), roots, directions);</span>
+    }
+
+    private static String text(Row row, int col) {
+<span class="pc bpc" id="L48" title="1 of 2 branches missed.">        var cell = row == null ? null : row.getCell(col);</span>
+<span class="pc bpc" id="L49" title="3 of 6 branches missed.">        if (cell == null || cell.getCellType() != CellType.STRING || cell.getStringCellValue().isBlank())</span>
+<span class="nc" id="L50">            throw new IllegalArgumentException(&quot;Missing catalogue definition text at column &quot; + (col + 1));</span>
+<span class="fc" id="L51">        return cell.getStringCellValue().strip();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

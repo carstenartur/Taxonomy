@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisAdapterStore.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.operation</a> &gt; <span class="el_source">AnalysisAdapterStore.java</span></div><h1>AnalysisAdapterStore.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.operation;
+
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import org.springframework.http.HttpStatus;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Clock;
+import java.time.Duration;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
+
+/** Durable admission and settlement for provider-backed adapters. Every database operation commits independently of dispatch. */
+public final class AnalysisAdapterStore {
+<span class="fc" id="L25">    public static final long ORPHAN_MILLIS = Duration.ofMinutes(30).toMillis();</span>
+<span class="fc" id="L26">    public static final long RETAIN_MILLIS = Duration.ofDays(30).toMillis();</span>
+<span class="fc" id="L27">    public static final long MARKER_MILLIS = Duration.ofDays(90).toMillis();</span>
+<span class="fc" id="L28">    private static final Set&lt;String&gt; KINDS = Set.of(&quot;DOCUMENT_EXTRACTION&quot;, &quot;REGULATION_MAPPING&quot;, &quot;NODE_CHILDREN&quot;, &quot;LEAF_JUSTIFICATION&quot;, &quot;FOCUS_INVESTIGATION&quot;);</span>
+    private final EntityManager em;
+    private final TransactionTemplate transactions;
+    private final Clock clock;
+
+    public record Scope(String actor, String repository, String workspace, String branch) {
+<span class="fc" id="L34">        public Scope {</span>
+<span class="pc bpc" id="L35" title="1 of 2 branches missed.">            if (!UUID.fromString(actor).toString().equals(actor)) throw new IllegalArgumentException(&quot;Invalid analysis actor&quot;);</span>
+<span class="fc" id="L36">            requireText(repository, 320);</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">            if (workspace != null) requireText(workspace, 320);</span>
+<span class="fc" id="L38">            requireText(branch, 512);</span>
+<span class="fc" id="L39">        }</span>
+    }
+<span class="fc" id="L41">    public record Operation(String id, Scope scope, String kind, String sourceCommit, String requestKey, String fingerprint,</span>
+            String state, String resultJson, String failureCode, long createdAt, long updatedAt, long revision) {}
+<span class="fc" id="L43">    public record Admission(Operation operation, boolean claimed) {}</span>
+
+<span class="fc" id="L45">    public AnalysisAdapterStore(EntityManager em, PlatformTransactionManager tx) { this(em, tx, Clock.systemUTC()); }</span>
+<span class="fc" id="L46">    public AnalysisAdapterStore(EntityManager em, PlatformTransactionManager tx, Clock clock) {</span>
+<span class="fc" id="L47">        this.em = Objects.requireNonNull(em);</span>
+<span class="fc" id="L48">        this.clock = Objects.requireNonNull(clock);</span>
+<span class="fc" id="L49">        this.transactions = new TransactionTemplate(tx);</span>
+<span class="fc" id="L50">        this.transactions.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);</span>
+<span class="fc" id="L51">    }</span>
+
+    public Admission admit(Scope scope, String kind, String source, String fingerprint, String callerKey, boolean dispatchAvailable) {
+<span class="fc" id="L54">        return admit(scope, kind, source, fingerprint, callerKey, dispatchAvailable, null);</span>
+    }
+
+    public Admission admit(Scope scope, String kind, String source, String fingerprint, String callerKey,
+                           boolean dispatchAvailable, String observer) {
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        String observation = observer == null ? null : observerKey(scope, observer);</span>
+<span class="pc bpc" id="L60" title="4 of 8 branches missed.">        if (!kinds().contains(kind) || source == null || !source.matches(&quot;[a-f0-9]{40}|[a-f0-9]{64}&quot;) || !hash(fingerprint))</span>
+<span class="nc" id="L61">            throw new IllegalArgumentException(&quot;Invalid analysis command&quot;);</span>
+<span class="pc bpc" id="L62" title="3 of 8 branches missed.">        if (callerKey != null &amp;&amp; (callerKey.isBlank() || callerKey.length() &gt; 256 || callerKey.chars().anyMatch(Character::isISOControl)))</span>
+<span class="nc" id="L63">            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, &quot;Invalid analysis idempotency key&quot;);</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        String key = callerKey == null ? digest(&quot;input&quot;, source, fingerprint) : digest(&quot;caller&quot;, callerKey);</span>
+<span class="fc" id="L65">        String command = command(scope, kind, key);</span>
+<span class="fc" id="L66">        var found = transactions.execute(status -&gt; replay(scope, source, fingerprint, command, observation));</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        if (found != null) return found;</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        if (!dispatchAvailable) return null;</span>
+        try {
+<span class="fc" id="L70">            return transactions.execute(status -&gt; {</span>
+<span class="fc" id="L71">                var row = new AnalysisAdapterOperation();</span>
+<span class="fc" id="L72">                row.id = UUID.randomUUID().toString();</span>
+<span class="fc" id="L73">                row.actor = scope.actor(); row.repository = scope.repository();</span>
+<span class="fc" id="L74">                row.workspace = scope.workspace(); row.branch = scope.branch();</span>
+<span class="fc" id="L75">                row.kind = kind; row.sourceCommit = source; row.fingerprint = fingerprint;</span>
+<span class="fc" id="L76">                row.requestKey = key; row.commandKey = command; row.state = &quot;RUNNING&quot;;</span>
+<span class="fc" id="L77">                row.createdAt = row.updatedAt = clock.millis();</span>
+<span class="fc" id="L78">                attach(row, observation);</span>
+<span class="fc" id="L79">                em.persist(row);</span>
+<span class="fc" id="L80">                em.flush();</span>
+<span class="fc" id="L81">                return new Admission(snapshot(row), true);</span>
+            });
+<span class="fc" id="L83">        } catch (RuntimeException conflict) {</span>
+<span class="fc" id="L84">            var winner = transactions.execute(status -&gt; replay(scope, source, fingerprint, command, observation));</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">            if (winner != null) return winner;</span>
+<span class="pc bpc" id="L86" title="2 of 4 branches missed.">            if (observation != null &amp;&amp; transactions.execute(status -&gt; observedId(observation)) != null)</span>
+<span class="fc" id="L87">                throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;Observation already identifies another analysis&quot;);</span>
+<span class="nc" id="L88">            throw conflict;</span>
+        }
+    }
+
+    private Admission replay(Scope scope, String source, String fingerprint, String command, String observation) {
+<span class="fc" id="L93">        var rows = em.createQuery(&quot;select o from AnalysisAdapterOperation o where o.commandKey=:command&quot;, AnalysisAdapterOperation.class)</span>
+<span class="fc" id="L94">                .setParameter(&quot;command&quot;, command).setLockMode(LockModeType.PESSIMISTIC_WRITE).getResultList();</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        if (rows.isEmpty()) return null;</span>
+<span class="fc" id="L96">        var row = rows.getFirst();</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">        if (!scope.equals(scope(row))) throw unavailable();</span>
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">        if (!age(row, clock.millis())) return null;</span>
+<span class="pc bpc" id="L99" title="2 of 4 branches missed.">        if (!row.sourceCommit.equals(source) || !row.fingerprint.equals(fingerprint))</span>
+<span class="nc" id="L100">            throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;Analysis source or command changed&quot;);</span>
+<span class="fc" id="L101">        attach(row, observation);</span>
+<span class="fc" id="L102">        return new Admission(snapshot(row), false);</span>
+    }
+
+    private static String observerKey(Scope scope, String token) {
+<span class="pc bpc" id="L106" title="2 of 4 branches missed.">        if (token == null || !token.matches(&quot;[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}&quot;))</span>
+<span class="nc" id="L107">            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, &quot;Invalid analysis observation identifier&quot;);</span>
+<span class="fc" id="L108">        return command(scope, &quot;browser-observer&quot;, token);</span>
+    }
+
+    private String observedId(String observation) {
+<span class="fc" id="L112">        return em.createQuery(&quot;select o.id from AnalysisAdapterOperation o join o.observers marker where key(marker)=:observation&quot;, String.class)</span>
+<span class="fc" id="L113">                .setParameter(&quot;observation&quot;, observation).getResultList().stream().findFirst().orElse(null);</span>
+    }
+
+    private void attach(AnalysisAdapterOperation row, String observation) {
+<span class="pc bpc" id="L117" title="1 of 4 branches missed.">        if (observation == null || row.observers.containsKey(observation)) return;</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        if (observedId(observation) != null)</span>
+<span class="fc" id="L119">            throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;Observation already identifies another analysis&quot;);</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        if (row.observers.size() &gt;= 32) {</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">            if (&quot;RUNNING&quot;.equals(row.state))</span>
+<span class="fc" id="L122">                throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, &quot;Analysis observer limit reached&quot;);</span>
+<span class="fc" id="L123">            var oldest = row.observers.entrySet().stream().min(java.util.Map.Entry.&lt;String,Long&gt;comparingByValue()</span>
+<span class="fc" id="L124">                    .thenComparing(java.util.Map.Entry.comparingByKey())).orElseThrow();</span>
+<span class="fc" id="L125">            row.observers.remove(oldest.getKey());</span>
+        }
+<span class="fc" id="L127">        row.observers.put(observation, clock.millis());</span>
+<span class="fc" id="L128">    }</span>
+
+    public Operation observe(Scope scope, String token) {
+<span class="fc" id="L131">        String key = observerKey(scope, token);</span>
+<span class="fc" id="L132">        return transactions.execute(status -&gt; {</span>
+<span class="fc" id="L133">            String id = observedId(key);</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">            if (id == null) throw unavailable();</span>
+<span class="fc" id="L135">            return snapshot(owned(scope, id));</span>
+        });
+    }
+
+<span class="fc" id="L139">    public Operation read(Scope scope, String id) { return transactions.execute(status -&gt; snapshot(owned(scope, id))); }</span>
+    public Operation cancel(Scope scope, String id) {
+<span class="fc" id="L141">        return transactions.execute(status -&gt; {</span>
+<span class="fc" id="L142">            var row = owned(scope, id);</span>
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">            if (row.state.equals(&quot;RUNNING&quot;)) {</span>
+<span class="fc" id="L144">                row.state = &quot;CANCELLED&quot;; row.updatedAt = clock.millis(); em.flush();</span>
+            }
+<span class="fc" id="L146">            return snapshot(row);</span>
+        });
+    }
+
+    public Operation settle(Scope scope, String id, long revision, String result, String failure) {
+<span class="pc bpc" id="L151" title="1 of 6 branches missed.">        if ((result == null) == (failure == null)) throw new IllegalArgumentException(&quot;Exactly one analysis outcome is required&quot;);</span>
+<span class="fc" id="L152">        return transactions.execute(status -&gt; {</span>
+<span class="fc" id="L153">            var row = owned(scope, id);</span>
+<span class="pc bpc" id="L154" title="1 of 4 branches missed.">            if (row.revision == revision &amp;&amp; row.state.equals(&quot;RUNNING&quot;)) {</span>
+<span class="fc" id="L155">                row.resultJson = result; row.failureCode = failure;</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">                row.state = failure == null ? &quot;COMPLETED&quot; : &quot;FAILED&quot;;</span>
+<span class="fc" id="L157">                row.updatedAt = clock.millis(); em.flush();</span>
+            }
+<span class="fc" id="L159">            return snapshot(row);</span>
+        });
+    }
+
+    private AnalysisAdapterOperation owned(Scope scope, String id) {
+<span class="pc bpc" id="L164" title="2 of 4 branches missed.">        if (id == null || !id.matches(&quot;[a-f0-9-]{36}&quot;)) throw unavailable();</span>
+<span class="fc" id="L165">        var row = em.find(AnalysisAdapterOperation.class, id, LockModeType.PESSIMISTIC_WRITE);</span>
+<span class="pc bpc" id="L166" title="1 of 6 branches missed.">        if (row == null || !scope.equals(scope(row)) || !age(row, clock.millis())) throw unavailable();</span>
+<span class="fc" id="L167">        return row;</span>
+    }
+
+<span class="fc" id="L170">    public void sweep(long now) { sweep(null, now); }</span>
+<span class="fc" id="L171">    public void sweepScope(Scope scope, long now) { sweep(Objects.requireNonNull(scope), now); }</span>
+
+    private void sweep(Scope scope, long now) {
+<span class="fc" id="L174">        String where = &quot;&quot;&quot;</span>
+                ((o.state='RUNNING' and o.updatedAt&lt;=:orphan)
+                or (o.state in ('COMPLETED','FAILED','CANCELLED') and o.updatedAt&lt;=:retained)
+                or (o.state='EXPIRED' and o.updatedAt&lt;=:marker))
+                &quot;&quot;&quot;;
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        if (scope != null) where += &quot; and o.actor=:actor and o.repository=:repository and o.branch=:branch and &quot;</span>
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">                + (scope.workspace() == null ? &quot;o.workspace is null&quot; : &quot;o.workspace=:workspace&quot;);</span>
+<span class="fc" id="L181">        String selection = &quot;select o.id from AnalysisAdapterOperation o where &quot; + where + &quot; order by o.updatedAt,o.id&quot;;</span>
+<span class="fc" id="L182">        List&lt;String&gt; ids = transactions.execute(status -&gt; {</span>
+<span class="fc" id="L183">            var query = em.createQuery(selection,String.class).setParameter(&quot;orphan&quot;,now - ORPHAN_MILLIS)</span>
+<span class="fc" id="L184">                    .setParameter(&quot;retained&quot;,now - RETAIN_MILLIS).setParameter(&quot;marker&quot;,now - MARKER_MILLIS);</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">            if (scope != null) {</span>
+<span class="fc" id="L186">                query.setParameter(&quot;actor&quot;,scope.actor()).setParameter(&quot;repository&quot;,scope.repository()).setParameter(&quot;branch&quot;,scope.branch());</span>
+<span class="pc bpc" id="L187" title="1 of 2 branches missed.">                if (scope.workspace() != null) query.setParameter(&quot;workspace&quot;,scope.workspace());</span>
+            }
+<span class="fc" id="L189">            return query.setMaxResults(64).getResultList();</span>
+        });
+<span class="fc bfc" id="L191" title="All 2 branches covered.">        for (String id : ids) transactions.executeWithoutResult(status -&gt; {</span>
+<span class="fc" id="L192">            var row = em.find(AnalysisAdapterOperation.class, id, LockModeType.PESSIMISTIC_WRITE);</span>
+<span class="pc bpc" id="L193" title="3 of 6 branches missed.">            if (row != null &amp;&amp; (scope == null || scope.equals(scope(row)))) age(row, now);</span>
+<span class="fc" id="L194">        });</span>
+<span class="fc" id="L195">    }</span>
+
+    private boolean age(AnalysisAdapterOperation row, long now) {
+<span class="fc bfc" id="L198" title="All 4 branches covered.">        if (row.state.equals(&quot;RUNNING&quot;) &amp;&amp; row.updatedAt &lt;= now - ORPHAN_MILLIS) {</span>
+<span class="fc" id="L199">            row.state = &quot;FAILED&quot;; row.failureCode = &quot;OUTCOME_UNKNOWN&quot;; row.updatedAt += ORPHAN_MILLIS;</span>
+        }
+<span class="fc bfc" id="L201" title="All 6 branches covered.">        if (!row.state.equals(&quot;RUNNING&quot;) &amp;&amp; !row.state.equals(&quot;EXPIRED&quot;) &amp;&amp; row.updatedAt &lt;= now - RETAIN_MILLIS) {</span>
+<span class="fc" id="L202">            row.resultJson = null; row.failureCode = null; row.state = &quot;EXPIRED&quot;; row.updatedAt += RETAIN_MILLIS;</span>
+        }
+<span class="fc bfc" id="L204" title="All 4 branches covered.">        if (row.state.equals(&quot;EXPIRED&quot;) &amp;&amp; row.updatedAt &lt;= now - MARKER_MILLIS) { em.remove(row); em.flush(); return false; }</span>
+<span class="fc" id="L205">        em.flush();</span>
+<span class="fc" id="L206">        return true;</span>
+    }
+
+<span class="fc" id="L209">    static Set&lt;String&gt; kinds() { return KINDS; }</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">    static String command(Scope s, String kind, String key) { return digest(s.actor(), s.repository(), s.workspace() == null ? &quot;&quot; : s.workspace(), s.branch(), kind, key); }</span>
+<span class="fc" id="L211">    static Scope scope(AnalysisAdapterOperation row) { return new Scope(row.actor, row.repository, row.workspace, row.branch); }</span>
+    static Operation snapshot(AnalysisAdapterOperation r) {
+<span class="fc" id="L213">        return new Operation(r.id, scope(r), r.kind, r.sourceCommit, r.requestKey, r.fingerprint, r.state, r.resultJson,</span>
+                r.failureCode, r.createdAt, r.updatedAt, r.revision);
+    }
+<span class="pc bpc" id="L216" title="2 of 4 branches missed.">    static boolean hash(String value) { return value != null &amp;&amp; value.matches(&quot;[a-f0-9]{64}&quot;); }</span>
+    private static void requireText(String value, int limit) {
+<span class="pc bpc" id="L218" title="3 of 6 branches missed.">        if (value == null || value.isBlank() || value.length() &gt; limit) throw new IllegalArgumentException(&quot;Invalid analysis scope&quot;);</span>
+<span class="fc" id="L219">    }</span>
+<span class="fc" id="L220">    private static ResponseStatusException unavailable() { return new ResponseStatusException(HttpStatus.NOT_FOUND, &quot;Analysis operation is unavailable&quot;); }</span>
+    public static String digest(String... parts) {
+        try {
+<span class="fc" id="L223">            var sha = MessageDigest.getInstance(&quot;SHA-256&quot;);</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">            for (String part : parts) {</span>
+<span class="fc bfc" id="L225" title="All 2 branches covered.">                if (part == null) { sha.update(ByteBuffer.allocate(4).putInt(-1).array()); continue; }</span>
+<span class="fc" id="L226">                byte[] bytes = part.getBytes(StandardCharsets.UTF_8);</span>
+<span class="fc" id="L227">                sha.update(ByteBuffer.allocate(4).putInt(bytes.length).array()); sha.update(bytes);</span>
+            }
+<span class="fc" id="L229">            return HexFormat.of().formatHex(sha.digest());</span>
+<span class="nc" id="L230">        } catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

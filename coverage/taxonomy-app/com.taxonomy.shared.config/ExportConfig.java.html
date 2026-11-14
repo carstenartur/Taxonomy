@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ExportConfig.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.shared.config</a> &gt; <span class="el_source">ExportConfig.java</span></div><h1>ExportConfig.java</h1><pre class="source lang-java linenums">package com.taxonomy.shared.config;
+
+import com.taxonomy.export.ArchiMateDiagramService;
+import com.taxonomy.export.ArchitecturePdfRenderer;
+import com.taxonomy.archimate.exchange.ArchiMateXmlExporter;
+import com.taxonomy.export.ConfigurableDiagramSelectionPolicy;
+import com.taxonomy.export.DiagramProjectionService;
+import com.taxonomy.export.DiagramSelectionConfig;
+import com.taxonomy.export.DiagramSelectionPolicy;
+import com.taxonomy.export.DiagramViewMetadata;
+import com.taxonomy.export.LayeredDiagramLayoutService;
+import com.taxonomy.export.MermaidExportService;
+import com.taxonomy.export.StructurizrExportService;
+import com.taxonomy.export.SvgDiagramRenderer;
+import com.taxonomy.export.VisioDiagramService;
+import com.taxonomy.export.VisioPackageBuilder;
+import com.taxonomy.export.ExportThemeProvider;
+import org.springframework.beans.factory.ObjectProvider;
+import com.taxonomy.preferences.PreferencesService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+/**
+ * Registers export-module classes as Spring beans.
+ * &lt;p&gt;The taxonomy-export module is framework-free; this configuration
+ * wires its classes into the Spring application context.&lt;/p&gt;
+ */
+@Configuration
+<span class="fc" id="L31">public class ExportConfig {</span>
+
+<span class="fc" id="L33">    private static final Logger log = LoggerFactory.getLogger(ExportConfig.class);</span>
+
+    // The shared extension catalog and workspace editor use these even when the
+    // optional architecture feature is not installed.
+    @Bean
+    public LayeredDiagramLayoutService layeredDiagramLayoutService() {
+<span class="fc" id="L39">        return new LayeredDiagramLayoutService();</span>
+    }
+
+    @Bean
+    public SvgDiagramRenderer svgDiagramRenderer(ObjectProvider&lt;ExportThemeProvider&gt; themes) {
+<span class="fc" id="L44">        return new SvgDiagramRenderer(themes.getIfAvailable(ExportThemeProvider::defaults));</span>
+    }
+
+    @Bean
+    public ArchitecturePdfRenderer neutralArchitecturePdfRenderer(ObjectProvider&lt;ExportThemeProvider&gt; themes) {
+<span class="fc" id="L49">        return new ArchitecturePdfRenderer(themes.getIfAvailable(ExportThemeProvider::defaults));</span>
+    }
+
+    @Bean
+    public ArchiMateDiagramService archiMateDiagramService() {
+<span class="fc" id="L54">        return new ArchiMateDiagramService();</span>
+    }
+
+    @Bean
+    public ArchiMateXmlExporter archiMateXmlExporter() {
+<span class="fc" id="L59">        return new ArchiMateXmlExporter();</span>
+    }
+
+    @Bean
+    public DiagramSelectionPolicy diagramSelectionPolicy(PreferencesService preferencesService) {
+        // Delegating policy: reads the preference on each apply() call
+<span class="fc" id="L65">        return rawModel -&gt; resolvePolicy(preferencesService).apply(rawModel);</span>
+    }
+
+    @Bean
+    public DiagramProjectionService diagramProjectionService(DiagramSelectionPolicy policy) {
+<span class="fc" id="L70">        var service = new DiagramProjectionService();</span>
+<span class="fc" id="L71">        service.setPolicy(policy);</span>
+<span class="fc" id="L72">        return service;</span>
+    }
+
+    @Bean
+    public MermaidExportService mermaidExportService() {
+<span class="fc" id="L77">        return new MermaidExportService();</span>
+    }
+
+    @Bean
+    public StructurizrExportService structurizrExportService() {
+<span class="fc" id="L82">        return new StructurizrExportService();</span>
+    }
+
+    @Bean
+    public VisioDiagramService visioDiagramService() {
+<span class="fc" id="L87">        return new VisioDiagramService();</span>
+    }
+
+    @Bean
+    public VisioPackageBuilder visioPackageBuilder(ObjectProvider&lt;ExportThemeProvider&gt; themes) {
+<span class="fc" id="L92">        return new VisioPackageBuilder(themes.getIfAvailable(ExportThemeProvider::defaults));</span>
+    }
+
+    /**
+     * Resolves the active {@link DiagramSelectionPolicy} from the current
+     * {@code diagram.policy} preference value.
+     *
+     * @param prefs the preferences service providing the current setting
+     * @return the resolved policy (never {@code null}; defaults to {@code defaultImpact})
+     */
+    static DiagramSelectionPolicy resolvePolicy(PreferencesService prefs) {
+<span class="fc" id="L103">        String policyName = prefs.getString(&quot;diagram.policy&quot;, &quot;defaultImpact&quot;);</span>
+<span class="fc bfc" id="L104" title="All 5 branches covered.">        DiagramSelectionConfig config = switch (policyName) {</span>
+<span class="fc" id="L105">            case &quot;leafOnly&quot; -&gt; DiagramSelectionConfig.leafOnly();</span>
+<span class="fc" id="L106">            case &quot;clustering&quot; -&gt; DiagramSelectionConfig.clustering();</span>
+<span class="fc" id="L107">            case &quot;trace&quot; -&gt; DiagramSelectionConfig.trace();</span>
+<span class="fc" id="L108">            case &quot;defaultImpact&quot; -&gt; DiagramSelectionConfig.defaultImpact();</span>
+            default -&gt; {
+<span class="fc" id="L110">                log.warn(&quot;Unknown diagram.policy '{}', falling back to defaultImpact&quot;, policyName);</span>
+<span class="fc" id="L111">                yield DiagramSelectionConfig.defaultImpact();</span>
+            }
+        };
+<span class="fc" id="L114">        return new ConfigurableDiagramSelectionPolicy(config);</span>
+    }
+
+    /**
+     * Resolves human-readable view metadata for the active diagram policy.
+     *
+     * @param prefs the preferences service providing the current setting
+     * @return view metadata generated from the active policy configuration
+     */
+    public static DiagramViewMetadata resolveViewMetadata(PreferencesService prefs) {
+<span class="fc" id="L124">        String policyName = prefs.getString(&quot;diagram.policy&quot;, &quot;defaultImpact&quot;);</span>
+<span class="fc bfc" id="L125" title="All 4 branches covered.">        DiagramSelectionConfig config = switch (policyName) {</span>
+<span class="fc" id="L126">            case &quot;leafOnly&quot; -&gt; DiagramSelectionConfig.leafOnly();</span>
+<span class="fc" id="L127">            case &quot;clustering&quot; -&gt; DiagramSelectionConfig.clustering();</span>
+<span class="fc" id="L128">            case &quot;trace&quot; -&gt; DiagramSelectionConfig.trace();</span>
+<span class="fc" id="L129">            default -&gt; DiagramSelectionConfig.defaultImpact();</span>
+        };
+<span class="fc" id="L131">        return DiagramViewMetadata.fromConfig(config, policyName);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisModelBinding.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">AnalysisModelBinding.java</span></div><h1>AnalysisModelBinding.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
+
+/** Immutable, server-read architecture, catalogue and profile evidence for one accepted analysis. */
+public record AnalysisModelBinding(
+        State state, String repositoryId, String workspaceScopeKey, String branch, String commit,
+        Long semanticRevision, String modelSource, String modelSha256, String catalogueRevision,
+        String catalogueDefinitionVersion, Set&lt;String&gt; rootCodes, AnalysisScope scope,
+        String briefVersion, Map&lt;String, String&gt; briefFields, List&lt;Reference&gt; references,
+        Set&lt;String&gt; excludedRelationTypes, String profileProblem,
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+        String executionCatalogueRevision) {
+
+<span class="fc" id="L21">    public enum State {</span>
+<span class="fc" id="L22">        RESOLVED, MODEL_UNCOMMITTED, CATALOGUE_UNRESOLVED, BRIEF_UNASSIGNED, PROFILE_UNRESOLVED</span>
+    }
+
+    public record Reference(String id, String sourceId, String sourceVersionId, String sourceFragmentId,
+                            Map&lt;String, String&gt; values) {
+<span class="fc" id="L27">        public Reference {</span>
+<span class="fc" id="L28">            Objects.requireNonNull(id, &quot;reference id&quot;);</span>
+<span class="fc" id="L29">            Objects.requireNonNull(sourceId, &quot;canonical source id&quot;);</span>
+<span class="fc" id="L30">            values = orderedMap(values);</span>
+<span class="fc" id="L31">        }</span>
+    }
+
+    /** Stored bindings created before the execution catalogue was recorded still use their explicit project pin. */
+    public AnalysisModelBinding(State state, String repositoryId, String workspaceScopeKey, String branch, String commit,
+            Long semanticRevision, String modelSource, String modelSha256, String catalogueRevision,
+            String catalogueDefinitionVersion, Set&lt;String&gt; rootCodes, AnalysisScope scope, String briefVersion,
+            Map&lt;String,String&gt; briefFields, List&lt;Reference&gt; references, Set&lt;String&gt; excludedRelationTypes,
+            String profileProblem) {
+<span class="fc" id="L40">        this(state, repositoryId, workspaceScopeKey, branch, commit, semanticRevision, modelSource, modelSha256,</span>
+                catalogueRevision, catalogueDefinitionVersion, rootCodes, scope, briefVersion, briefFields,
+                references, excludedRelationTypes, profileProblem, null);
+<span class="fc" id="L43">    }</span>
+
+    public String analysisCatalogueRevision() {
+<span class="fc bfc" id="L46" title="All 2 branches covered.">        return executionCatalogueRevision == null ? catalogueRevision : executionCatalogueRevision;</span>
+    }
+
+<span class="fc" id="L49">    public AnalysisModelBinding {</span>
+<span class="fc" id="L50">        Objects.requireNonNull(state, &quot;model binding state&quot;);</span>
+<span class="fc" id="L51">        Objects.requireNonNull(repositoryId, &quot;repository&quot;);</span>
+<span class="fc" id="L52">        Objects.requireNonNull(workspaceScopeKey, &quot;workspace&quot;);</span>
+<span class="fc" id="L53">        Objects.requireNonNull(branch, &quot;branch&quot;);</span>
+<span class="fc" id="L54">        Objects.requireNonNull(modelSource, &quot;model source&quot;);</span>
+<span class="pc bpc" id="L55" title="2 of 4 branches missed.">        if (modelSha256 == null || !modelSha256.matches(&quot;[0-9a-f]{64}&quot;))</span>
+<span class="nc" id="L56">            throw new IllegalArgumentException(&quot;An exact model content hash is required&quot;);</span>
+<span class="pc bpc" id="L57" title="1 of 4 branches missed.">        if (commit != null &amp;&amp; !commit.matches(&quot;[0-9a-f]{40}&quot;))</span>
+<span class="nc" id="L58">            throw new IllegalArgumentException(&quot;Expected a full Git commit&quot;);</span>
+<span class="pc bpc" id="L59" title="1 of 4 branches missed.">        if (semanticRevision != null &amp;&amp; semanticRevision &lt; 0)</span>
+<span class="nc" id="L60">            throw new IllegalArgumentException(&quot;Invalid semantic model revision&quot;);</span>
+<span class="pc bpc" id="L61" title="1 of 6 branches missed.">        if (executionCatalogueRevision != null &amp;&amp; (executionCatalogueRevision.isBlank()</span>
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">                || catalogueRevision != null &amp;&amp; !catalogueRevision.equals(executionCatalogueRevision))) {</span>
+<span class="nc" id="L63">            throw new IllegalArgumentException(&quot;The execution catalogue must honor the recorded project generation&quot;);</span>
+        }
+<span class="fc" id="L65">        rootCodes = orderedSet(rootCodes);</span>
+<span class="fc" id="L66">        scope = Objects.requireNonNull(scope, &quot;requested analysis scope&quot;);</span>
+<span class="fc" id="L67">        briefFields = orderedMap(briefFields);</span>
+<span class="fc" id="L68">        references = List.copyOf(references);</span>
+<span class="fc" id="L69">        excludedRelationTypes = orderedSet(excludedRelationTypes);</span>
+<span class="pc bpc" id="L70" title="3 of 8 branches missed.">        if (state == State.RESOLVED &amp;&amp; (commit == null || catalogueRevision == null || catalogueDefinitionVersion == null</span>
+<span class="pc bpc" id="L71" title="3 of 6 branches missed.">                || rootCodes.isEmpty() || briefVersion == null || profileProblem != null))</span>
+<span class="nc" id="L72">            throw new IllegalArgumentException(&quot;A resolved binding requires its exact model, catalogue, scope and brief&quot;);</span>
+<span class="fc" id="L73">    }</span>
+
+    private static Map&lt;String, String&gt; orderedMap(Map&lt;String, String&gt; source) {
+<span class="fc" id="L76">        return Collections.unmodifiableMap(new TreeMap&lt;&gt;(Map.copyOf(source)));</span>
+    }
+
+    private static Set&lt;String&gt; orderedSet(Set&lt;String&gt; source) {
+<span class="fc" id="L80">        return Collections.unmodifiableSet(new TreeSet&lt;&gt;(Set.copyOf(source)));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitecturePatternService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-architecture</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.service</a> &gt; <span class="el_source">ArchitecturePatternService.java</span></div><h1>ArchitecturePatternService.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.service;
+
+import com.taxonomy.dto.DetectedPattern;
+import com.taxonomy.dto.PatternDetectionView;
+import com.taxonomy.dto.PatternDetectionEvidence;
+import com.taxonomy.relations.service.RelationProjectionReadService.SnapshotRelation;
+import com.taxonomy.workspace.service.RepositoryContext;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import java.util.*;
+
+/** Evaluates connected accepted chains in one explicitly selected canonical snapshot. */
+@Service
+public class ArchitecturePatternService {
+    public static final String TEMPLATE_VERSION = &quot;1.0.0&quot;;
+    private static final int DEFAULT_MIN_SCORE = 50;
+    private final GraphSnapshotReadService snapshots;
+<span class="fc" id="L18">    public ArchitecturePatternService(GraphSnapshotReadService snapshots) { this.snapshots = snapshots; }</span>
+
+<span class="fc" id="L20">    record PatternStep(String sourceRoot, String relationType, String targetRoot) {</span>
+        @Override
+        public String toString() {
+<span class="fc" id="L23">            return sourceRoot + &quot; → &quot; + relationType + &quot; → &quot; + targetRoot;</span>
+        }
+    }
+
+    /**
+     * A named sequence of steps.
+     */
+<span class="fc" id="L30">    record PatternTemplate(String name, List&lt;PatternStep&gt; steps) {}</span>
+
+    /** Shared definitions; evaluation uses selected canonical or frozen retained evidence. */
+    static List&lt;PatternTemplate&gt; patternTemplates() {
+<span class="fc" id="L34">        return List.of(</span>
+<span class="fc" id="L35">                new PatternTemplate(&quot;Full Stack&quot;, List.of(</span>
+                        new PatternStep(&quot;CP&quot;, &quot;REALIZES&quot;, &quot;CR&quot;),
+                        new PatternStep(&quot;CR&quot;, &quot;SUPPORTS&quot;, &quot;BP&quot;),
+                        new PatternStep(&quot;BP&quot;, &quot;CONSUMES&quot;, &quot;IP&quot;)
+                )),
+<span class="fc" id="L40">                new PatternTemplate(&quot;App Chain&quot;, List.of(</span>
+                        new PatternStep(&quot;UA&quot;, &quot;USES&quot;, &quot;CR&quot;),
+                        new PatternStep(&quot;CR&quot;, &quot;SUPPORTS&quot;, &quot;BP&quot;)
+                )),
+<span class="fc" id="L44">                new PatternTemplate(&quot;Role Chain&quot;, List.of(</span>
+                        new PatternStep(&quot;BR&quot;, &quot;ASSIGNED_TO&quot;, &quot;BP&quot;),
+                        new PatternStep(&quot;BP&quot;, &quot;CONSUMES&quot;, &quot;IP&quot;)
+                ))
+        );
+    }
+
+
+    @Transactional(readOnly = true)
+    public PatternDetectionView detectForNode(RepositoryContext context, String commitId, String nodeCode) {
+<span class="fc" id="L54">        var result = detectForScores(context, commitId, Map.of(nodeCode, 100d), DEFAULT_MIN_SCORE);</span>
+<span class="fc" id="L55">        result.setNodeCode(nodeCode);</span>
+<span class="fc" id="L56">        return result;</span>
+    }
+
+    @Transactional(readOnly = true)
+    public PatternDetectionView detectForScores(RepositoryContext context, String commitId,
+                                                Map&lt;String, Double&gt; scores, int minScore) {
+<span class="pc bpc" id="L62" title="2 of 4 branches missed.">        if (minScore &lt; 0 || minScore &gt; 100) throw new IllegalArgumentException(&quot;minScore must be between 0 and 100&quot;);</span>
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">        int threshold = minScore == 0 ? DEFAULT_MIN_SCORE : minScore;</span>
+<span class="fc" id="L64">        var selected = snapshots.read(context, commitId);</span>
+<span class="fc" id="L65">        var nodes = selected.nodes();</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">        boolean complete = nodes.values().stream().allMatch(node -&gt; !node.taxonomyRoot().isBlank());</span>
+<span class="fc" id="L67">        Map&lt;String, List&lt;SnapshotRelation&gt;&gt; outgoing = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        for (var relation : selected.proof().relations()) {</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">            if (!&quot;accepted&quot;.equals(relation.status())) continue;</span>
+<span class="fc" id="L70">            var source = nodes.get(relation.sourceCode()); var target = nodes.get(relation.targetCode());</span>
+<span class="pc bpc" id="L71" title="3 of 8 branches missed.">            if (source == null || target == null || source.taxonomyRoot().isBlank() || target.taxonomyRoot().isBlank()) {</span>
+<span class="fc" id="L72">                complete = false;</span>
+<span class="fc" id="L73">                continue;</span>
+            }
+<span class="fc" id="L75">            outgoing.computeIfAbsent(relation.sourceCode(), key -&gt; new ArrayList&lt;&gt;()).add(relation);</span>
+<span class="fc" id="L76">        }</span>
+<span class="fc" id="L77">        outgoing.values().forEach(edges -&gt; edges.sort(Comparator.comparing(SnapshotRelation::targetCode)</span>
+<span class="pc" id="L78">                .thenComparing(edge -&gt; edge.relationType().name())));</span>
+<span class="fc" id="L79">        var result = new PatternDetectionView();</span>
+<span class="fc" id="L80">        int eligible = 0, evaluated = 0;</span>
+<span class="fc bfc" id="L81" title="All 4 branches covered.">        for (var anchor : new TreeMap&lt;&gt;(scores == null ? Map.&lt;String,Double&gt;of() : scores).entrySet()) {</span>
+<span class="pc bpc" id="L82" title="1 of 6 branches missed.">            if (anchor.getValue() == null || !Double.isFinite(anchor.getValue()) || anchor.getValue() &lt; threshold) continue;</span>
+<span class="fc" id="L83">            var node = nodes.get(anchor.getKey());</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">            if (node == null) continue;</span>
+<span class="fc" id="L85">            var applicable = patternTemplates().stream().filter(template -&gt; template.steps().getFirst().sourceRoot().equals(node.taxonomyRoot())).toList();</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">            if (applicable.isEmpty()) continue;</span>
+<span class="fc" id="L87">            eligible++;</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">            for (var template : applicable) {</span>
+<span class="fc" id="L89">                evaluated++;</span>
+<span class="fc" id="L90">                var detected = checkPattern(anchor.getKey(), template, outgoing, nodes);</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">                if (detected.getCompleteness() == 100d) result.getMatchedPatterns().add(detected);</span>
+<span class="fc" id="L92">                else result.getIncompletePatterns().add(detected);</span>
+<span class="fc" id="L93">            }</span>
+<span class="fc" id="L94">        }</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        result.setPatternCoverage(evaluated == 0 ? null : result.getMatchedPatterns().size() * 100d / evaluated);</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        String completeness = !complete ? &quot;INCOMPLETE_CANONICAL_EVIDENCE&quot;</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">                : eligible == 0 ? &quot;NOT_EVALUATED_NO_ANCHORS&quot; : &quot;COMPLETE_WITHIN_PATTERN_TEMPLATES&quot;;</span>
+<span class="fc" id="L98">        result.setEvidence(new PatternDetectionEvidence(context.repositoryId(), context.workspaceId(),</span>
+<span class="fc" id="L99">                com.taxonomy.model.WorkspaceOverlayScope.keyFor(context.workspaceId()), context.branch(), selected.proof().commitId(),</span>
+                &quot;CANONICAL_SNAPSHOT&quot;, &quot;GIT_BRANCH_PROJECTION&quot;, &quot;READY&quot;, TEMPLATE_VERSION, threshold, eligible, completeness));
+<span class="fc bfc" id="L101" title="All 2 branches covered.">        if (eligible == 0) result.getNotes().add(&quot;No declared, threshold-qualified anchors have an applicable pattern template; pattern coverage was not assessed.&quot;);</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        if (!complete) result.getNotes().add(&quot;Unknown canonical element types or unresolved accepted endpoints prevent complete pattern evidence.&quot;);</span>
+<span class="fc" id="L103">        result.getNotes().add(&quot;Coverage counts evaluated anchor/template pairs within this selected revision. Missing steps are not evidenced by accepted canonical relations; they are not business obligation violations or claims about external architecture.&quot;);</span>
+<span class="fc" id="L104">        snapshots.verifyHead(selected);</span>
+<span class="fc" id="L105">        return result;</span>
+    }
+
+    private DetectedPattern checkPattern(String anchor, PatternTemplate template,
+            Map&lt;String, List&lt;SnapshotRelation&gt;&gt; outgoing, Map&lt;String, GraphSnapshotReadService.SnapshotNode&gt; nodes) {
+<span class="fc" id="L110">        Map&lt;String,List&lt;SnapshotRelation&gt;&gt; frontier = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L111">        frontier.put(anchor,List.of());</span>
+<span class="fc" id="L112">        List&lt;SnapshotRelation&gt; longest = List.of();</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">        for (var step : template.steps()) {</span>
+<span class="fc" id="L114">            Map&lt;String,List&lt;SnapshotRelation&gt;&gt; next = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">            for (var current : frontier.entrySet()) {</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">                if (!step.sourceRoot().equals(nodes.get(current.getKey()).taxonomyRoot())) continue;</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">                for (var edge : outgoing.getOrDefault(current.getKey(),List.of())) {</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">                    if (!step.relationType().equals(edge.relationType().name())</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">                            || !step.targetRoot().equals(nodes.get(edge.targetCode()).taxonomyRoot())) continue;</span>
+<span class="fc" id="L120">                    var path = new ArrayList&lt;&gt;(current.getValue()); path.add(edge);</span>
+<span class="fc" id="L121">                    next.putIfAbsent(edge.targetCode(), List.copyOf(path));</span>
+<span class="fc" id="L122">                }</span>
+<span class="fc" id="L123">            }</span>
+            // An absent middle step ends this connected path; never reuse its old frontier.
+<span class="fc bfc" id="L125" title="All 2 branches covered.">            if (next.isEmpty()) break;</span>
+<span class="fc" id="L126">            frontier = next; longest = next.values().iterator().next();</span>
+<span class="fc" id="L127">        }</span>
+<span class="fc" id="L128">        var expected = template.steps().stream().map(PatternStep::toString).toList();</span>
+<span class="fc" id="L129">        var present = longest.stream().map(edge -&gt; edge.sourceCode()+&quot; &quot;+edge.relationType()+&quot; &quot;+edge.targetCode()).toList();</span>
+<span class="fc" id="L130">        var missing = expected.subList(present.size(),expected.size()).stream().map(step -&gt; step+&quot; — not evidenced in selected canonical snapshot&quot;).toList();</span>
+<span class="fc" id="L131">        return new DetectedPattern(template.name(),expected,present,missing,present.size()*100d/expected.size());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

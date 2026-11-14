@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>IntegrationPackageProjection.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop</a> &gt; <span class="el_source">IntegrationPackageProjection.java</span></div><h1>IntegrationPackageProjection.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop;
+
+import com.taxonomy.dsl.command.ArchitectureCommand;
+import com.taxonomy.dsl.command.ArchitectureCommand.*;
+import com.taxonomy.dsl.command.ArchitectureDslCommands;
+import com.taxonomy.dsl.model.*;
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import com.taxonomy.interop.persistence.IntegrationStore.*;
+import java.util.*;
+
+/** Neutral package projection. Diagram occurrences never assign package membership. */
+final class IntegrationPackageProjection {
+    private IntegrationPackageProjection() {}
+    static List&lt;ArchitectureCommand&gt; commands(Connection connection, String dsl, Map&lt;String, Artifact&gt; current,
+            Map&lt;String, Artifact&gt; selected, List&lt;Identity&gt; mappings, IntegrationDomainAdapter domain) {
+<span class="fc" id="L16">        Map&lt;String, Identity&gt; known = new HashMap&lt;&gt;(); mappings.forEach(m -&gt; known.put(m.externalId(), m));</span>
+<span class="fc" id="L17">        Map&lt;String, String&gt; nativeIds = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L18" title="All 6 branches covered.">        for (Artifact a : selected.values()) if (a.kind() == ArtifactKind.SPECIFICATION || a.kind() == ArtifactKind.ELEMENT)</span>
+<span class="fc" id="L19">            nativeIds.put(a.id(), domain.businessId(connection, known.get(ExchangeItems.key(a)), a));</span>
+<span class="fc" id="L20">        List&lt;ArchitectureCommand&gt; commands = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L21">        ArchitectureDslCommands transformer = new ArchitectureDslCommands();</span>
+<span class="fc" id="L22">        String preview = dsl;</span>
+<span class="fc bfc" id="L23" title="All 4 branches covered.">        for (Artifact a : selected.values()) if (a.kind() == ArtifactKind.SPECIFICATION) {</span>
+<span class="fc" id="L24">            String id = nativeIds.get(a.id());</span>
+<span class="fc" id="L25">            boolean exists = transformer.model(preview).getPackages().stream().anyMatch(p -&gt; p.id().equals(id));</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">            ArchitectureCommand command = exists ? new UpdateArchitecturePackage(id, Map.of(&quot;title&quot;, a.title(), &quot;description&quot;, a.text()))</span>
+<span class="fc" id="L27">                    : new CreateArchitecturePackage(id, Map.of(&quot;title&quot;, a.title(), &quot;description&quot;, a.text()));</span>
+<span class="pc bpc" id="L28" title="1 of 4 branches missed.">            if (!exists || !ExchangeItems.fields(a).equals(ExchangeItems.fields(current.get(ExchangeItems.key(a))))) {</span>
+<span class="fc" id="L29">                commands.add(command); preview = transformer.apply(preview, command).dsl();</span>
+<span class="fc" id="L30">                commands.add(new SetExchangeProperties(&quot;package&quot;, id, Map.of(&quot;x-exchange-id&quot;, a.id(), &quot;x-exchange-connection&quot;, connection.id().toString())));</span>
+            }
+        }
+<span class="fc" id="L33">        CanonicalArchitectureModel model = transformer.model(preview);</span>
+<span class="fc" id="L34">        Map&lt;String, PackagePlacement&gt; members = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L35">        model.getPackages().forEach(p -&gt; members.put(&quot;PACKAGE:&quot; + p.id(), new PackagePlacement(PackageMemberKind.PACKAGE, p.id(), p.parentId(), p.position())));</span>
+<span class="pc bpc" id="L36" title="1 of 2 branches missed.">        model.getElements().stream().filter(e -&gt; e.getPackageId() != null).forEach(e -&gt; members.put(&quot;ELEMENT:&quot; + e.getId(), new PackagePlacement(PackageMemberKind.ELEMENT, e.getId(), e.getPackageId(), e.getPackagePosition())));</span>
+<span class="fc" id="L37">        Map&lt;String, Artifact&gt; occurrences = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L38">        Set&lt;String&gt; viewContainers = viewContainers(current, mappings);</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        selected.values().stream().filter(a -&gt; a.kind() == ArtifactKind.VIEW).map(Artifact::id).forEach(viewContainers::add);</span>
+<span class="fc" id="L40">        selected.values().stream().filter(a -&gt; isPackagePlacement(a, viewContainers)).forEach(a -&gt; occurrences.put(a.id(), a));</span>
+<span class="fc" id="L41">        Map&lt;String, Integer&gt; nativePositions = nativePositions(occurrences.values(), nativeIds.keySet());</span>
+<span class="fc" id="L42">        Map&lt;String, PackagePlacement&gt; desired = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L43">        Set&lt;String&gt; changed = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">        for (Artifact a : occurrences.values()) {</span>
+<span class="fc" id="L45">            String nativeId = nativeIds.get(a.extensions().get(&quot;artifact&quot;));</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">            if (nativeId == null) continue; // Requirement membership remains exchange evidence.</span>
+<span class="pc bpc" id="L47" title="1 of 4 branches missed.">            Artifact artifact = selected.values().stream().filter(v -&gt; v.id().equals(a.extensions().get(&quot;artifact&quot;)) &amp;&amp; v.kind() != ArtifactKind.PLACEMENT).findFirst().orElseThrow();</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">            PackageMemberKind kind = artifact.kind() == ArtifactKind.SPECIFICATION ? PackageMemberKind.PACKAGE : PackageMemberKind.ELEMENT;</span>
+<span class="fc" id="L49">            String parentOccurrence = a.extensions().get(&quot;parent&quot;);</span>
+<span class="fc" id="L50">            String parent = &quot;&quot;;</span>
+<span class="pc bpc" id="L51" title="1 of 4 branches missed.">            if (parentOccurrence != null &amp;&amp; !parentOccurrence.isEmpty()) {</span>
+<span class="fc" id="L52">                Artifact occurrence = occurrences.get(parentOccurrence);</span>
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">                if (occurrence == null) throw new IntegrationProblem(&quot;SPARX_ENDPOINT_KIND_UNMAPPED&quot;, 422, &quot;Package parent occurrence is outside the reviewed scope&quot;);</span>
+<span class="fc" id="L54">                parent = nativeIds.get(occurrence.extensions().get(&quot;artifact&quot;));</span>
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">                if (parent == null) throw new IntegrationProblem(&quot;SPARX_ENDPOINT_KIND_UNMAPPED&quot;, 422, &quot;Package parent is not native&quot;);</span>
+            }
+<span class="fc" id="L57">            String key = kind + &quot;:&quot; + nativeId;</span>
+<span class="fc" id="L58">            desired.put(key, new PackagePlacement(kind, nativeId, parent, nativePositions.get(a.id())));</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">            if (!ExchangeItems.fields(a).equals(ExchangeItems.fields(current.get(ExchangeItems.key(a))))) changed.add(key);</span>
+<span class="fc" id="L60">        }</span>
+<span class="fc bfc" id="L61" title="All 6 branches covered.">        for (var entry : current.entrySet()) if (isPackagePlacement(entry.getValue(), viewContainers) &amp;&amp; !selected.containsKey(entry.getKey())) {</span>
+<span class="fc" id="L62">            String external = entry.getValue().extensions().get(&quot;artifact&quot;);</span>
+<span class="pc bpc" id="L63" title="1 of 4 branches missed.">            Identity prior = known.values().stream().filter(m -&gt; m.internal() != null &amp;&amp; m.internal().id().equals(external)).findFirst().orElse(null);</span>
+<span class="pc bpc" id="L64" title="2 of 4 branches missed.">            if (prior != null &amp;&amp; prior.internal().kind() == ArtifactKind.ELEMENT) {</span>
+<span class="fc" id="L65">                String key = &quot;ELEMENT:&quot; + prior.businessIdentity();</span>
+<span class="fc" id="L66">                desired.put(key, new PackagePlacement(PackageMemberKind.ELEMENT, prior.businessIdentity(), null, -1));</span>
+<span class="fc" id="L67">                changed.add(key);</span>
+            }
+        }
+<span class="fc" id="L70">        Set&lt;String&gt; touched = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        for (String key : changed) {</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">            PackagePlacement old = members.get(key); if (old != null) touched.add(old.parentPackageId());</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">            String parent = desired.get(key).parentPackageId(); if (parent != null) touched.add(parent);</span>
+<span class="fc" id="L74">        }</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">        if (!touched.isEmpty()) {</span>
+<span class="fc" id="L76">            List&lt;PackagePlacement&gt; finalState = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L77">            Comparator&lt;PackagePlacement&gt; order = Comparator.comparingInt(PackagePlacement::position).thenComparing(PackagePlacement::memberId);</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">            for (String parent : touched) {</span>
+<span class="fc" id="L79">                Iterator&lt;PackagePlacement&gt; projected = desired.values().stream().filter(p -&gt; parent.equals(p.parentPackageId()))</span>
+<span class="fc" id="L80">                        .sorted(order).iterator();</span>
+<span class="fc" id="L81">                List&lt;PackagePlacement&gt; siblings = new ArrayList&lt;&gt;();</span>
+                // A changed source rank can also move a sibling whose own source fields are unchanged.
+                // Refill all surviving mapped slots, retain local siblings, and discard departures first.
+<span class="fc bfc" id="L84" title="All 2 branches covered.">                for (PackagePlacement member : members.values().stream().filter(p -&gt; parent.equals(p.parentPackageId())).sorted(order).toList()) {</span>
+<span class="fc" id="L85">                    PackagePlacement target = desired.get(member.kind() + &quot;:&quot; + member.memberId());</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">                    if (target == null) siblings.add(member);</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">                    else if (parent.equals(target.parentPackageId())) siblings.add(projected.next());</span>
+<span class="fc" id="L88">                }</span>
+                // New or incoming members can exceed the surviving slots; preserve their source order.
+<span class="fc" id="L90">                projected.forEachRemaining(siblings::add);</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">                for (int i = 0; i &lt; siblings.size(); i++) {</span>
+<span class="fc" id="L92">                    PackagePlacement member = siblings.get(i);</span>
+<span class="fc" id="L93">                    finalState.add(new PackagePlacement(member.kind(), member.memberId(), parent, i));</span>
+                }
+<span class="fc" id="L95">            }</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">            desired.values().stream().filter(p -&gt; p.parentPackageId() == null).forEach(finalState::add);</span>
+<span class="fc" id="L97">            commands.add(new SetArchitecturePackagePlacements(finalState, touched));</span>
+        }
+<span class="fc bfc" id="L99" title="All 2 branches covered.">        List&lt;ArchitecturePackage&gt; removed = model.getPackages().stream().filter(p -&gt; mappings.stream().anyMatch(m -&gt; p.id().equals(m.businessIdentity())</span>
+<span class="pc bpc" id="L100" title="3 of 6 branches missed.">                &amp;&amp; m.internal() != null &amp;&amp; m.internal().kind() == ArtifactKind.SPECIFICATION &amp;&amp; !selected.containsKey(m.externalId()))).toList();</span>
+<span class="pc" id="L101">        removed.stream().sorted(Comparator.comparingInt((ArchitecturePackage p) -&gt; depth(p, model)).reversed())</span>
+<span class="pc" id="L102">                .forEach(p -&gt; commands.add(new DeleteArchitecturePackage(p.id())));</span>
+<span class="fc" id="L103">        return commands;</span>
+    }
+    static void synchronize(Connection connection, String dsl, List&lt;Identity&gt; mappings, Map&lt;String, Artifact&gt; items,
+                            String modelId, boolean includeNew) {
+<span class="fc" id="L107">        synchronize(connection, dsl, mappings, items, modelId, includeNew, null);</span>
+<span class="fc" id="L108">    }</span>
+    static void synchronize(Connection connection, String dsl, List&lt;Identity&gt; mappings, Map&lt;String, Artifact&gt; items,
+                            String modelId, boolean includeNew, FileExportProfile fileProfile) {
+<span class="fc" id="L111">        CanonicalArchitectureModel model = new ArchitectureDslCommands().model(dsl);</span>
+<span class="fc" id="L112">        Map&lt;String, String&gt; external = new HashMap&lt;&gt;();</span>
+<span class="pc bpc" id="L113" title="1 of 6 branches missed.">        for (Identity mapping : mappings) if (!mapping.removed() &amp;&amp; mapping.internal() != null</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">                &amp;&amp; Set.of(ArtifactKind.ELEMENT, ArtifactKind.SPECIFICATION).contains(mapping.internal().kind()))</span>
+<span class="fc" id="L115">            external.put(mapping.businessIdentity(), mapping.internal().id());</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">        if (includeNew) {</span>
+<span class="fc" id="L117">            model.getElements().forEach(e -&gt; external.putIfAbsent(e.getId(), IntegrationDomainAdapter.externalId(connection, &quot;export-element:&quot; + e.getId(), fileProfile)));</span>
+<span class="fc" id="L118">            model.getPackages().forEach(p -&gt; external.putIfAbsent(p.id(), IntegrationDomainAdapter.externalId(connection, &quot;export-package:&quot; + p.id(), fileProfile)));</span>
+        }
+<span class="fc" id="L120">        Set&lt;String&gt; existingPackages = model.getPackages().stream().map(ArchitecturePackage::id).collect(java.util.stream.Collectors.toSet());</span>
+<span class="pc bpc" id="L121" title="2 of 8 branches missed.">        for (Identity mapping : mappings) if (mapping.internal() != null &amp;&amp; mapping.internal().kind() == ArtifactKind.SPECIFICATION &amp;&amp; !existingPackages.contains(mapping.businessIdentity()))</span>
+<span class="nc" id="L122">            items.remove(mapping.externalId());</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        for (ArchitecturePackage pkg : model.getPackages()) {</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">            String id = external.get(pkg.id()); if (id == null) continue;</span>
+<span class="fc" id="L125">            Artifact previous = items.get(&quot;SPECIFICATION:&quot; + id);</span>
+<span class="pc bpc" id="L126" title="1 of 4 branches missed.">            items.put(&quot;SPECIFICATION:&quot; + id, new Artifact(id, ArtifactKind.SPECIFICATION, fileProfile == null ? &quot;Package&quot; : fileProfile.packageType(), pkg.title(), pkg.description() == null ? &quot;&quot; : pkg.description(),</span>
+<span class="fc bfc" id="L127" title="All 4 branches covered.">                    previous == null ? Map.of() : previous.attributes(), previous == null ? Map.of() : previous.extensions()));</span>
+<span class="fc" id="L128">        }</span>
+<span class="fc" id="L129">        Map&lt;String, Artifact&gt; occurrences = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L130">        Set&lt;String&gt; viewContainers = viewContainers(items, mappings);</span>
+<span class="fc bfc" id="L131" title="All 4 branches covered.">        for (Artifact a : items.values()) if (isPackagePlacement(a, viewContainers)) occurrences.put(a.extensions().get(&quot;artifact&quot;), a);</span>
+<span class="fc" id="L132">        Map&lt;String, String&gt; placementIds = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        external.forEach((nativeId, id) -&gt; placementIds.put(nativeId, occurrences.containsKey(id) ? occurrences.get(id).id()</span>
+<span class="pc bpc" id="L134" title="1 of 4 branches missed.">                : fileProfile != null ? (existingPackages.contains(nativeId) ? &quot;package:&quot; : &quot;member:&quot;) + id</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">                : com.taxonomy.interop.sparx.SparxSnapshots.isSparx(connection.connectorId()) ? &quot;placement:&quot; + id : IntegrationDomainAdapter.externalId(connection, &quot;export-placement:&quot; + nativeId)));</span>
+<span class="fc" id="L136">        List&lt;PackagePlacement&gt; members = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L137">        model.getPackages().forEach(p -&gt; members.add(new PackagePlacement(PackageMemberKind.PACKAGE, p.id(), p.parentId(), p.position())));</span>
+<span class="fc" id="L138">        model.getElements().forEach(e -&gt; {</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">            if (e.getPackageId() != null) members.add(new PackagePlacement(PackageMemberKind.ELEMENT, e.getId(), e.getPackageId(), e.getPackagePosition()));</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">            else if (external.containsKey(e.getId())) {</span>
+<span class="fc" id="L141">                Artifact prior = occurrences.get(external.get(e.getId()));</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">                if (prior != null) items.remove(ExchangeItems.key(prior));</span>
+            }
+<span class="fc" id="L144">        });</span>
+<span class="fc" id="L145">        Map&lt;String, Integer&gt; sourcePositions = sourcePositions(members, occurrences.values(), external, placementIds, modelId);</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">        for (PackagePlacement member : members) {</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">            String id = external.get(member.memberId()); if (id == null) continue;</span>
+<span class="fc" id="L148">            Artifact prior = occurrences.get(id);</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">            String container = prior == null ? modelId : prior.extensions().get(&quot;container&quot;);</span>
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">            if (container == null) continue;</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">            String parent = member.parentPackageId().isEmpty() ? &quot;&quot; : placementIds.get(member.parentPackageId());</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">            if (parent == null) continue;</span>
+<span class="fc bfc" id="L153" title="All 2 branches covered.">            Map&lt;String, String&gt; extension = new TreeMap&lt;&gt;(prior == null ? Map.of() : prior.extensions());</span>
+<span class="fc" id="L154">            extension.put(&quot;artifact&quot;, id); extension.put(&quot;parent&quot;, parent); extension.put(&quot;container&quot;, container);</span>
+<span class="fc" id="L155">            extension.put(&quot;position&quot;, Integer.toString(sourcePositions.get(member.memberId())));</span>
+<span class="fc" id="L156">            Artifact placement = new Artifact(placementIds.get(member.memberId()), ArtifactKind.PLACEMENT, &quot;placement&quot;, &quot;&quot;, &quot;&quot;,</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">                    prior == null ? Map.of() : prior.attributes(), extension);</span>
+<span class="fc" id="L158">            items.put(ExchangeItems.key(placement), placement);</span>
+<span class="fc" id="L159">        }</span>
+<span class="fc" id="L160">    }</span>
+
+    /** Requirement occurrences remain source evidence and do not occupy native package positions. */
+    private static Map&lt;String, Integer&gt; nativePositions(Collection&lt;Artifact&gt; occurrences, Set&lt;String&gt; nativeIds) {
+<span class="fc" id="L164">        Map&lt;OccurrenceScope, List&lt;Artifact&gt;&gt; scopes = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L165" title="All 4 branches covered.">        for (Artifact a : occurrences) if (nativeIds.contains(a.extensions().get(&quot;artifact&quot;)))</span>
+<span class="fc" id="L166">            scopes.computeIfAbsent(OccurrenceScope.of(a), ignored -&gt; new ArrayList&lt;&gt;()).add(a);</span>
+<span class="fc" id="L167">        Map&lt;String, Integer&gt; positions = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L168">        scopes.values().forEach(siblings -&gt; {</span>
+<span class="fc" id="L169">            siblings.sort(Comparator.comparingInt(IntegrationPackageProjection::position).thenComparing(Artifact::id));</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">            for (int i = 0; i &lt; siblings.size(); i++) positions.put(siblings.get(i).id(), i);</span>
+<span class="fc" id="L171">        });</span>
+<span class="fc" id="L172">        return positions;</span>
+    }
+
+    /** Expand native ordering into the original source slots without rewriting opaque membership evidence. */
+    private static Map&lt;String, Integer&gt; sourcePositions(List&lt;PackagePlacement&gt; members, Collection&lt;Artifact&gt; occurrences,
+            Map&lt;String, String&gt; external, Map&lt;String, String&gt; placementIds, String modelId) {
+<span class="fc" id="L178">        Map&lt;String, Artifact&gt; prior = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        for (Artifact a : occurrences) prior.put(a.extensions().get(&quot;artifact&quot;), a);</span>
+<span class="fc" id="L180">        Map&lt;OccurrenceScope, List&lt;PackagePlacement&gt;&gt; scopes = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L181">        Map&lt;String, OccurrenceScope&gt; targetScopes = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">        for (PackagePlacement member : members) {</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">            String id = external.get(member.memberId()); if (id == null) continue;</span>
+<span class="fc" id="L184">            Artifact a = prior.get(id);</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">            String container = a == null ? modelId : a.extensions().get(&quot;container&quot;);</span>
+<span class="fc bfc" id="L186" title="All 2 branches covered.">            String parent = member.parentPackageId().isEmpty() ? &quot;&quot; : placementIds.get(member.parentPackageId());</span>
+<span class="pc bpc" id="L187" title="1 of 4 branches missed.">            if (container != null &amp;&amp; parent != null) {</span>
+<span class="fc" id="L188">                OccurrenceScope scope = new OccurrenceScope(container, parent);</span>
+<span class="fc" id="L189">                scopes.computeIfAbsent(scope, ignored -&gt; new ArrayList&lt;&gt;()).add(member);</span>
+<span class="fc" id="L190">                targetScopes.put(id, scope);</span>
+            }
+<span class="fc" id="L192">        }</span>
+<span class="fc" id="L193">        Map&lt;OccurrenceScope, SortedSet&lt;Integer&gt;&gt; slots = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L194">        Map&lt;OccurrenceScope, Integer&gt; next = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L195" title="All 2 branches covered.">        for (Artifact a : occurrences) {</span>
+<span class="fc" id="L196">            OccurrenceScope scope = OccurrenceScope.of(a);</span>
+<span class="fc" id="L197">            next.merge(scope, position(a) + 1, Math::max);</span>
+            // Removed or moved members do not donate slots across retained requirement evidence.
+<span class="fc bfc" id="L199" title="All 2 branches covered.">            if (scope.equals(targetScopes.get(a.extensions().get(&quot;artifact&quot;))))</span>
+<span class="fc" id="L200">                slots.computeIfAbsent(scope, ignored -&gt; new TreeSet&lt;&gt;()).add(position(a));</span>
+<span class="fc" id="L201">        }</span>
+<span class="fc" id="L202">        Map&lt;String, Integer&gt; positions = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L203">        scopes.forEach((scope, siblings) -&gt; {</span>
+<span class="fc" id="L204">            siblings.sort(Comparator.comparingInt(PackagePlacement::position).thenComparing(PackagePlacement::memberId));</span>
+<span class="fc" id="L205">            Iterator&lt;Integer&gt; available = slots.getOrDefault(scope, Collections.emptySortedSet()).iterator();</span>
+<span class="fc" id="L206">            int appended = next.getOrDefault(scope, 0);</span>
+<span class="fc bfc" id="L207" title="All 2 branches covered.">            for (PackagePlacement member : siblings)</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">                positions.put(member.memberId(), available.hasNext() ? available.next() : appended++);</span>
+<span class="fc" id="L209">        });</span>
+<span class="fc" id="L210">        return positions;</span>
+    }
+
+<span class="fc" id="L213">    private static int position(Artifact occurrence) { return Integer.parseInt(occurrence.extensions().get(&quot;position&quot;)); }</span>
+
+<span class="fc" id="L215">    private record OccurrenceScope(String container, String parent) {</span>
+        static OccurrenceScope of(Artifact a) {
+<span class="fc" id="L217">            return new OccurrenceScope(a.extensions().get(&quot;container&quot;), Objects.requireNonNullElse(a.extensions().get(&quot;parent&quot;), &quot;&quot;));</span>
+        }
+    }
+
+    static Set&lt;String&gt; viewContainers(Map&lt;String, Artifact&gt; items, List&lt;Identity&gt; mappings) {
+<span class="fc" id="L222">        Set&lt;String&gt; views = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L223" title="All 2 branches covered.">        items.values().stream().filter(a -&gt; a.kind() == ArtifactKind.VIEW).map(Artifact::id).forEach(views::add);</span>
+        // A locally removed view still identifies its retained source occurrences as diagram evidence.
+<span class="fc bfc" id="L225" title="All 4 branches covered.">        for (Identity mapping : mappings) for (Artifact a : new Artifact[]{mapping.internal(), mapping.external()})</span>
+<span class="fc bfc" id="L226" title="All 4 branches covered.">            if (a != null &amp;&amp; a.kind() == ArtifactKind.VIEW) views.add(a.id());</span>
+<span class="fc" id="L227">        return views;</span>
+    }
+
+    static String modelContainer(Map&lt;String, Artifact&gt; items, List&lt;Identity&gt; mappings) {
+<span class="fc" id="L231">        Set&lt;String&gt; views = viewContainers(items, mappings);</span>
+<span class="fc" id="L232">        Artifact metadata = items.get(&quot;METADATA:package&quot;);</span>
+<span class="fc bfc" id="L233" title="All 2 branches covered.">        String identifier = metadata == null ? null : metadata.attributes().get(&quot;identifier&quot;);</span>
+<span class="pc bpc" id="L234" title="2 of 6 branches missed.">        if (identifier != null &amp;&amp; !identifier.isBlank() &amp;&amp; !views.contains(identifier)) return identifier;</span>
+<span class="fc" id="L235">        return items.values().stream().filter(a -&gt; isPackagePlacement(a, views))</span>
+<span class="pc" id="L236">                .map(a -&gt; a.extensions().get(&quot;container&quot;)).filter(Objects::nonNull).findFirst().orElse(null);</span>
+    }
+
+    private static boolean isPackagePlacement(Artifact artifact, Set&lt;String&gt; views) {
+<span class="fc bfc" id="L240" title="All 4 branches covered.">        return artifact.kind() == ArtifactKind.PLACEMENT &amp;&amp; !views.contains(artifact.extensions().get(&quot;container&quot;));</span>
+    }
+
+    private static int depth(ArchitecturePackage p, CanonicalArchitectureModel model) {
+<span class="nc" id="L244">        Map&lt;String, ArchitecturePackage&gt; packages = new HashMap&lt;&gt;(); model.getPackages().forEach(v -&gt; packages.put(v.id(), v));</span>
+<span class="nc bnc" id="L245" title="All 4 branches missed.">        int depth = 0; for (; p != null &amp;&amp; depth &lt;= 80; p = packages.get(p.parentId())) depth++;</span>
+<span class="nc" id="L246">        return depth;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisModelEvidence.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-reporting</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.reporting.render.document</a> &gt; <span class="el_source">AnalysisModelEvidence.java</span></div><h1>AnalysisModelEvidence.java</h1><pre class="source lang-java linenums">package com.taxonomy.reporting.render.document;
+
+import com.taxonomy.dto.AnalysisMode;
+import com.taxonomy.dto.AnalysisModelBinding;
+import com.taxonomy.dto.AnalysisScope;
+import com.taxonomy.dto.ArchitectureReport;
+import com.taxonomy.reporting.render.decision.DecisionReportLabels;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/** Human-readable version evidence shared by the existing retained report renderers. */
+public final class AnalysisModelEvidence {
+    private AnalysisModelEvidence() {}
+
+    static List&lt;List&lt;String&gt;&gt; rows(ArchitectureReport report, DecisionReportLabels labels) {
+<span class="fc" id="L17">        List&lt;List&lt;String&gt;&gt; rows = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L18" title="1 of 2 branches missed.">        if (report.getRequirementVersionId() != null) {</span>
+<span class="nc" id="L19">            rows.add(List.of(labels.requirementVersion() + &quot; (ID)&quot;, report.getRequirementVersionId().toString()));</span>
+        }
+<span class="fc" id="L21">        rows.addAll(rows(report.getModelBinding(), report.getAnalysisScope(), labels));</span>
+<span class="fc" id="L22">        return rows;</span>
+    }
+
+    public static List&lt;List&lt;String&gt;&gt; rows(AnalysisModelBinding binding, AnalysisScope actualScope, DecisionReportLabels labels) {
+<span class="fc bfc" id="L26" title="All 2 branches covered.">        if (binding == null) return List.of();</span>
+<span class="fc" id="L27">        List&lt;List&lt;String&gt;&gt; rows = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L28">        boolean de = labels.german();</span>
+<span class="pc bpc" id="L29" title="3 of 7 branches missed.">        rows.add(List.of(de ? &quot;Stand bei Analysestart&quot; : &quot;State at analysis start&quot;, switch (binding.state()) {</span>
+<span class="nc bnc" id="L30" title="All 2 branches missed.">            case RESOLVED -&gt; de ? &quot;Versionen aufgelöst&quot; : &quot;Versions resolved&quot;;</span>
+<span class="nc bnc" id="L31" title="All 2 branches missed.">            case MODEL_UNCOMMITTED -&gt; de ? &quot;Modell ohne Git-Commit&quot; : &quot;Model without a Git commit&quot;;</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">            case CATALOGUE_UNRESOLVED -&gt; de ? &quot;Katalogzuordnung ungeklärt&quot; : &quot;Catalogue assignment unresolved&quot;;</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">            case BRIEF_UNASSIGNED -&gt; de ? &quot;Kein Architekturauftrag zugeordnet&quot; : &quot;No architecture brief assigned&quot;;</span>
+<span class="nc bnc" id="L34" title="All 2 branches missed.">            case PROFILE_UNRESOLVED -&gt; de ? &quot;Profilzuordnung ungeklärt&quot; : &quot;Profile assignment unresolved&quot;;</span>
+        }));
+<span class="fc bfc" id="L36" title="All 2 branches covered.">        rows.add(List.of(de ? &quot;Modellquelle&quot; : &quot;Model source&quot;, binding.modelSource()));</span>
+
+<span class="fc" id="L38">        rows.add(List.of(labels.repository(), binding.repositoryId()));</span>
+<span class="fc" id="L39">        rows.add(List.of(labels.workspace(), binding.workspaceScopeKey()));</span>
+<span class="fc" id="L40">        rows.add(List.of(labels.branch(), binding.branch()));</span>
+<span class="fc" id="L41">        rows.add(List.of(labels.basedOnCommit(), recorded(binding.commit(), labels)));</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        rows.add(List.of(de ? &quot;Modellrevision&quot; : &quot;Model revision&quot;, recorded(binding.semanticRevision(), labels)));</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        rows.add(List.of(de ? &quot;SHA-256 des Architekturmodells&quot; : &quot;Architecture model SHA-256&quot;, binding.modelSha256()));</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">        rows.add(List.of(de ? &quot;Katalogzuordnung im Projekt&quot; : &quot;Catalogue assigned to the project&quot;,</span>
+<span class="fc" id="L45">                recorded(binding.catalogueRevision(), labels)));</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">        rows.add(List.of(de ? &quot;Ausgeführte Kataloggeneration&quot; : &quot;Catalogue used for analysis&quot;,</span>
+<span class="fc" id="L47">                recorded(binding.executionCatalogueRevision(), labels)));</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        rows.add(List.of(de ? &quot;Version der Katalogdefinition&quot; : &quot;Catalogue definition version&quot;,</span>
+<span class="fc" id="L49">                recorded(binding.catalogueDefinitionVersion(), labels)));</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        rows.add(List.of(de ? &quot;Version des Architekturauftrags&quot; : &quot;Architecture brief version&quot;,</span>
+<span class="fc" id="L51">                recorded(binding.briefVersion(), labels)));</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        rows.add(List.of(de ? &quot;Beauftragter Analyseumfang&quot; : &quot;Requested analysis scope&quot;, scope(binding.scope(), labels)));</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        if (actualScope != null) {</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">            rows.add(List.of(de ? &quot;Ausgeführter Analyseumfang&quot; : &quot;Executed analysis scope&quot;,</span>
+<span class="fc" id="L55">                    scope(actualScope, labels)));</span>
+        }
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">        if (!binding.rootCodes().isEmpty()) {</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">            rows.add(List.of(de ? &quot;Erfasste Katalogwurzeln&quot; : &quot;Recorded catalogue roots&quot;,</span>
+<span class="fc" id="L59">                    String.join(&quot;, &quot;, binding.rootCodes())));</span>
+        }
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        for (var ref : binding.references()) {</span>
+<span class="fc" id="L62">            var version = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L63">            version.add(ref.sourceId());</span>
+<span class="fc" id="L64">            version.add(recorded(ref.sourceVersionId(), labels));</span>
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">            if (ref.sourceFragmentId() != null) version.add(ref.sourceFragmentId());</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">            for (String field : List.of(&quot;identifier&quot;, &quot;edition&quot;, &quot;section&quot;, &quot;scope&quot;)) {</span>
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">                if (ref.values().containsKey(field)) version.add(ref.values().get(field));</span>
+<span class="fc" id="L68">            }</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">            rows.add(List.of((de ? &quot;Profilreferenz &quot; : &quot;Profile reference &quot;) + ref.id(), String.join(&quot; / &quot;, version)));</span>
+<span class="fc" id="L70">        }</span>
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">        if (binding.profileProblem() != null) {</span>
+<span class="nc bnc" id="L72" title="All 2 branches missed.">            rows.add(List.of(de ? &quot;Profilstatus&quot; : &quot;Profile status&quot;, binding.profileProblem()));</span>
+        }
+<span class="fc" id="L74">        return rows;</span>
+    }
+
+    private static String recorded(Object value, DecisionReportLabels labels) {
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        return value == null ? labels.unknown() : value.toString();</span>
+    }
+
+    private static String scope(AnalysisScope scope, DecisionReportLabels labels) {
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">        String mode = scope.mode() == AnalysisMode.TAXONOMIES_ONLY</span>
+<span class="nc bnc" id="L83" title="All 2 branches missed.">                ? (labels.german() ? &quot;Nur Taxonomien&quot; : &quot;Taxonomies only&quot;)</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">                : (labels.german() ? &quot;Taxonomien und Beziehungen&quot; : &quot;Taxonomies and relations&quot;);</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">        String roots = scope.taxonomyRoots().isEmpty()</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">                ? (labels.german() ? &quot;alle Katalogwurzeln&quot; : &quot;all catalogue roots&quot;)</span>
+<span class="pc" id="L87">                : String.join(&quot;, &quot;, scope.taxonomyRoots());</span>
+<span class="fc" id="L88">        return mode + &quot; (&quot; + roots + &quot;)&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

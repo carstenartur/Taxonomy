@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>KeycloakOidcUserService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.keycloak</a> &gt; <span class="el_source">KeycloakOidcUserService.java</span></div><h1>KeycloakOidcUserService.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.keycloak;
+
+import com.taxonomy.security.service.PrincipalIdentityService;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Profile;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserRequest;
+import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserService;
+import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
+import org.springframework.security.oauth2.core.OAuth2Error;
+import org.springframework.security.oauth2.core.oidc.user.OidcUser;
+import org.springframework.security.oauth2.core.oidc.user.DefaultOidcUser;
+import org.springframework.stereotype.Component;
+
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * Custom {@link OidcUserService} that maps Keycloak OIDC claims to
+ * Spring Security authorities for browser-based sessions.
+ * &lt;p&gt;
+ * After a successful OIDC login, this service:
+ * &lt;ol&gt;
+ *   &lt;li&gt;Loads the standard OidcUser from the UserInfo endpoint&lt;/li&gt;
+ *   &lt;li&gt;Extracts application roles from the configured OIDC role claim path&lt;/li&gt;
+ *   &lt;li&gt;Returns an OidcUser with the correct ROLE_* authorities&lt;/li&gt;
+ * &lt;/ol&gt;
+ */
+@Component
+@Profile(&quot;keycloak&quot;)
+public class KeycloakOidcUserService extends OidcUserService {
+
+    /** The recognized application roles. */
+<span class="fc" id="L38">    private static final Set&lt;String&gt; KNOWN_ROLES = Set.of(&quot;ROLE_READER&quot;, &quot;ROLE_USER&quot;, &quot;ROLE_ARCHITECT&quot;, &quot;ROLE_ADMIN&quot;);</span>
+<span class="fc" id="L39">    @Value(&quot;${taxonomy.keycloak.role-claim-path:realm_access.roles}&quot;)</span>
+    private String roleClaimPath = &quot;realm_access.roles&quot;;
+
+    private final PrincipalIdentityService identities;
+    private final KeycloakPrincipalMode mode;
+
+<span class="fc" id="L45">    public KeycloakOidcUserService(PrincipalIdentityService identities, KeycloakPrincipalMode mode) {</span>
+<span class="fc" id="L46">        this.identities = identities;</span>
+<span class="fc" id="L47">        this.mode = java.util.Objects.requireNonNull(mode);</span>
+<span class="fc" id="L48">    }</span>
+
+    @Override
+    public OidcUser loadUser(OidcUserRequest userRequest) throws OAuth2AuthenticationException {
+<span class="fc" id="L52">        OidcUser oidcUser = super.loadUser(userRequest);</span>
+
+        // Extract realm roles from the ID token claims
+<span class="fc" id="L55">        Set&lt;GrantedAuthority&gt; authorities = new HashSet&lt;&gt;(oidcUser.getAuthorities());</span>
+<span class="fc" id="L56">        authorities.addAll(extractRoles(oidcUser));</span>
+
+<span class="fc bfc" id="L58" title="All 2 branches covered.">        if (mode == KeycloakPrincipalMode.LEGACY) {</span>
+<span class="fc" id="L59">            return new DefaultOidcUser(authorities, oidcUser.getIdToken(), oidcUser.getUserInfo(), &quot;preferred_username&quot;);</span>
+        }
+<span class="pc bpc" id="L61" title="2 of 6 branches missed.">        if (oidcUser.getIssuer() == null || oidcUser.getSubject() == null || oidcUser.getSubject().isBlank())</span>
+<span class="fc" id="L62">            throw new OAuth2AuthenticationException(new OAuth2Error(&quot;invalid_token&quot;));</span>
+<span class="fc" id="L63">        var principal = identities.oidc(oidcUser.getIssuer().toString(), oidcUser.getSubject());</span>
+<span class="fc" id="L64">        return new PrincipalOidcUser(authorities, oidcUser, principal);</span>
+    }
+
+    /** Extracts only explicit known application roles from the configured claim path. */
+    private Collection&lt;GrantedAuthority&gt; extractRoles(OidcUser oidcUser) {
+<span class="fc" id="L69">        Set&lt;GrantedAuthority&gt; roles = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L70">        Object current = oidcUser.getClaims();</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        for (String part : roleClaimPath.split(&quot;\\.&quot;)) {</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">            if (current instanceof Map&lt;?, ?&gt; map) {</span>
+<span class="fc" id="L73">                current = map.get(part);</span>
+            } else {
+<span class="fc" id="L75">                return roles;</span>
+            }
+        }
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        if (current instanceof Collection&lt;?&gt; roleList) {</span>
+<span class="fc" id="L79">            roleList.stream()</span>
+<span class="fc" id="L80">                    .filter(String.class::isInstance)</span>
+<span class="fc" id="L81">                    .map(String.class::cast)</span>
+<span class="fc" id="L82">                    .filter(KNOWN_ROLES::contains)</span>
+<span class="fc" id="L83">                    .map(SimpleGrantedAuthority::new)</span>
+<span class="fc" id="L84">                    .forEach(roles::add);</span>
+        }
+<span class="fc" id="L86">        return roles;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

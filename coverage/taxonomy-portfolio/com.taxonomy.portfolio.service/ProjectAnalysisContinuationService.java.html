@@ -1,0 +1,373 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProjectAnalysisContinuationService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">ProjectAnalysisContinuationService.java</span></div><h1>ProjectAnalysisContinuationService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.analysis.recovery.AnalysisContinuationService;
+import com.taxonomy.dto.AnalysisRecoveryView;
+import com.taxonomy.dto.AnalysisRequest;
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.RelationSearchReport;
+import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisContinuationView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ContinueAnalysisRequest;
+import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import com.taxonomy.portfolio.model.RequirementAnalysisJobItem;
+import com.taxonomy.portfolio.model.SnapshotReference;
+import com.taxonomy.portfolio.repository.AnalysisContinuationReadRow;
+import com.taxonomy.portfolio.repository.ProjectRequirementRepository;
+import com.taxonomy.portfolio.repository.RequirementAnalysisJobItemRepository;
+import com.taxonomy.portfolio.repository.RequirementAnalysisJobRepository;
+import com.taxonomy.portfolio.repository.RequirementAnalysisSnapshotRepository;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceManager;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
+
+/**
+ * Bridges existing project claims to the durable question journal. A new budget
+ * requires a separate, revision-bound user action; verification jobs never share
+ * a journal. Provider work is performed after these short transactions return.
+ */
+@Service
+public class ProjectAnalysisContinuationService {
+<span class="fc" id="L37">    private static final Set&lt;String&gt; BUDGETS = Set.of(&quot;CALL_BUDGET&quot;, &quot;TOTAL_CALL_BUDGET&quot;, &quot;SOURCE_LIMIT&quot;, &quot;WORK_LIMIT&quot;);</span>
+
+    private final AnalysisContinuationService continuations;
+    private final WorkspaceManager workspaces;
+    private final ProjectPortfolioService projects;
+    private final PortfolioAnalysisPersistenceService persistence;
+    private final RequirementAnalysisJobRepository jobs;
+    private final RequirementAnalysisJobItemRepository items;
+    private final ProjectRequirementRepository requirements;
+    private final RequirementAnalysisSnapshotRepository snapshots;
+    private final PortfolioSnapshotEvidenceReader evidence;
+    private final String transport;
+
+    public ProjectAnalysisContinuationService(AnalysisContinuationService continuations,
+            WorkspaceManager workspaces, ProjectPortfolioService projects, PortfolioAnalysisPersistenceService persistence,
+            RequirementAnalysisJobRepository jobs, RequirementAnalysisJobItemRepository items,
+            ProjectRequirementRepository requirements, RequirementAnalysisSnapshotRepository snapshots,
+<span class="fc" id="L54">            PortfolioSnapshotEvidenceReader evidence, @Value(&quot;${taxonomy.analysis.transport.mode:local}&quot;) String transport) {</span>
+<span class="fc" id="L55">        this.continuations = continuations;</span>
+<span class="fc" id="L56">        this.workspaces = workspaces;</span>
+<span class="fc" id="L57">        this.projects = projects;</span>
+<span class="fc" id="L58">        this.persistence = persistence;</span>
+<span class="fc" id="L59">        this.jobs = jobs;</span>
+<span class="fc" id="L60">        this.items = items;</span>
+<span class="fc" id="L61">        this.requirements = requirements;</span>
+<span class="fc" id="L62">        this.snapshots = snapshots;</span>
+<span class="fc" id="L63">        this.evidence = evidence;</span>
+<span class="fc" id="L64">        this.transport = transport;</span>
+<span class="fc" id="L65">    }</span>
+
+    @Transactional
+    public AnalysisContinuationView read(String jobId, Long projectId, Long itemId,
+            String username, WorkspaceContext context) {
+<span class="fc" id="L70">        projects.requireProject(projectId, username, context);</span>
+<span class="fc" id="L71">        var item = items.findContinuationReadRow(itemId, jobId, projectId, PortfolioScope.key(username, context))</span>
+<span class="fc" id="L72">                .orElseThrow(() -&gt; PortfolioException.notFound(&quot;Analysis item not found: &quot; + itemId));</span>
+<span class="fc" id="L73">        return view(item, username, context);</span>
+    }
+
+    /** Locks the existing item; its prior snapshot is the durable continuation instruction. */
+    @Transactional
+    public void prepare(String jobId, Long projectId, Long itemId, ContinueAnalysisRequest request,
+            String username, WorkspaceContext context) {
+<span class="pc bpc" id="L80" title="3 of 6 branches missed.">        if (request == null || request.snapshotId() == null || request.snapshotId().isBlank()</span>
+<span class="pc bpc" id="L81" title="2 of 4 branches missed.">                || request.continuationVersion() == null || request.continuationVersion() &lt; 0) {</span>
+<span class="nc" id="L82">            throw PortfolioException.validation(&quot;snapshotId and continuationVersion are required&quot;);</span>
+        }
+<span class="fc" id="L84">        projects.requireProject(projectId, username, context);</span>
+<span class="fc" id="L85">        String scope = PortfolioScope.key(username, context);</span>
+<span class="fc" id="L86">        var item = requireItem(jobId, projectId, itemId, scope, true);</span>
+        // Lock the current immutable-version pointer as well as the item generation.
+<span class="fc" id="L88">        requirements.findByIdAndProjectIdAndScopeKeyForUpdate(item.getRequirementId(), projectId, scope)</span>
+<span class="pc" id="L89">                .orElseThrow(() -&gt; PortfolioException.notFound(&quot;Requirement not found&quot;));</span>
+<span class="fc" id="L90">        var eligibility = view(item, username, context, false);</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        if (!eligibility.available()) throw PortfolioException.conflict(eligibility.reason());</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        if (!Objects.equals(request.snapshotId(), eligibility.snapshotId())</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">                || !Objects.equals(request.continuationVersion(), eligibility.continuationVersion())) {</span>
+<span class="fc" id="L94">            throw PortfolioException.conflict(&quot;A newer analysis revision exists; refresh before continuing&quot;);</span>
+        }
+<span class="fc" id="L96">        requireProviderBinding(item, username, context);</span>
+<span class="fc" id="L97">        item.prepareBudgetContinuation();</span>
+<span class="fc" id="L98">        item.getJob().markPending();</span>
+<span class="fc" id="L99">    }</span>
+
+    /**
+     * Local only: opening a local session would otherwise bypass the configured
+     * cluster executor. Existing Artemis analyses remain on their original path.
+     */
+    @Transactional
+    public AnalysisContinuationService.Execution begin(PortfolioAnalysisWorkQueue.WorkItem work,
+            AnalysisJobView job, String username, WorkspaceContext context, com.taxonomy.dto.AnalysisModelBinding admittedModel) {
+<span class="fc" id="L108">        String limitation = scopeLimitation(username, context);</span>
+<span class="fc bfc" id="L109" title="All 4 branches covered.">        if (work.continuationSnapshotId() == null &amp;&amp; limitation != null) return null;</span>
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">        if (limitation != null) throw PortfolioException.conflict(limitation);</span>
+
+<span class="fc" id="L112">        String scope = PortfolioScope.key(username, context);</span>
+<span class="pc bpc" id="L113" title="1 of 2 branches missed.">        if (!Objects.equals(scope, work.scopeKey())) throw PortfolioException.notFound(&quot;Analysis item not found&quot;);</span>
+<span class="fc" id="L114">        var item = requireItem(work.jobId(), work.projectId(), work.itemId(), scope, false);</span>
+<span class="pc bpc" id="L115" title="2 of 4 branches missed.">        if (item.getStatus() != AnalysisStatus.RUNNING || item.getJob().getStatus() == AnalysisStatus.CANCELLED</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">                || item.getAttempt() != work.attempt()</span>
+<span class="pc bpc" id="L117" title="1 of 2 branches missed.">                || !Objects.equals(item.getRequirementVersionId(), work.requirementVersionId())) {</span>
+<span class="nc" id="L118">            throw PortfolioException.conflict(&quot;Analysis work item claim is no longer active&quot;);</span>
+        }
+<span class="fc" id="L120">        AnalysisRequest request = new AnalysisRequest();</span>
+<span class="fc" id="L121">        request.setBusinessText(work.requirementText());</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        if (admittedModel != null) request.setAnalysisScope(admittedModel.scope());</span>
+<span class="fc" id="L123">        request.setIncludeArchitectureView(true);</span>
+<span class="fc" id="L124">        request.setMaxArchitectureNodes(job.maxArchitectureNodes());</span>
+<span class="fc" id="L125">        request.setProvider(job.provider());</span>
+<span class="fc" id="L126">        request.setAnalysisLanguage(job.analysisLanguage());</span>
+<span class="pc bpc" id="L127" title="1 of 2 branches missed.">        request.setAnalysisReasonLength(job.analysisReasonLength() == null</span>
+<span class="pc" id="L128">                ? com.taxonomy.dto.AnalysisReasonLength.STANDARD : job.analysisReasonLength());</span>
+<span class="fc" id="L129">        request.setResumable(true);</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        if (work.continuationSnapshotId() == null) {</span>
+            // Stable for the claimed attempt, distinct across retries and independent passes.
+<span class="fc" id="L132">            String identity = String.join(&quot;\n&quot;, scope, work.jobId(), work.itemId().toString(),</span>
+<span class="fc" id="L133">                    work.requirementVersionId().toString(), Integer.toString(work.attempt()));</span>
+<span class="fc" id="L134">            request.setContinuationId(UUID.nameUUIDFromBytes(identity.getBytes(StandardCharsets.UTF_8)).toString());</span>
+<span class="fc" id="L135">            request.setContinuationAction(&quot;START&quot;);</span>
+<span class="fc" id="L136">        } else {</span>
+<span class="fc" id="L137">            var snapshot = requireSnapshot(item, work.continuationSnapshotId());</span>
+<span class="pc bpc" id="L138" title="1 of 2 branches missed.">            if (!Objects.equals(item.getSnapshotId(), snapshot.getId())) {</span>
+<span class="nc" id="L139">                throw PortfolioException.conflict(&quot;The requirement version or continuation snapshot changed&quot;);</span>
+            }
+<span class="fc" id="L141">            AnalysisResult saved = requireAnalysis(item, snapshot.getId());</span>
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">            if (!canResumeVersion(saved, work.requirementVersionId(), item.getRequirement().getCurrentVersionId())) {</span>
+<span class="nc" id="L143">                throw PortfolioException.conflict(&quot;The requirement version or continuation snapshot changed&quot;);</span>
+            }
+<span class="fc" id="L145">            String problem = budgetProblem(saved);</span>
+<span class="pc bpc" id="L146" title="1 of 2 branches missed.">            if (problem == null) problem = questionProblem(saved.getRecovery(), username, context);</span>
+<span class="pc bpc" id="L147" title="1 of 2 branches missed.">            if (problem != null) throw PortfolioException.conflict(problem);</span>
+<span class="fc" id="L148">            requireProviderBinding(item, username, context);</span>
+<span class="fc" id="L149">            rejectCancelledOperation(item);</span>
+<span class="fc" id="L150">            request.setContinuationId(saved.getRecovery().id());</span>
+<span class="fc" id="L151">            request.setContinuationVersion(saved.getRecovery().version());</span>
+<span class="fc" id="L152">            request.setContinuationAction(&quot;CONTINUE&quot;);</span>
+        }
+<span class="fc" id="L154">        return continuations.beginPortfolio(request, username, context, job.maxArchitectureNodes(), admittedModel);</span>
+    }
+
+    private AnalysisContinuationView view(AnalysisContinuationReadRow item, String username, WorkspaceContext context) {
+<span class="fc" id="L158">        String problem = scopeLimitation(username, context);</span>
+<span class="fc" id="L159">        AnalysisRecoveryView recovery = null;</span>
+<span class="pc bpc" id="L160" title="1 of 2 branches missed.">        if (item.snapshotId() == null) {</span>
+<span class="nc bnc" id="L161" title="All 2 branches missed.">            problem = problem == null ? &quot;This item has no saved partial snapshot&quot; : problem;</span>
+        } else {
+<span class="fc" id="L163">            AnalysisResult saved = requireAnalysis(item);</span>
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">            recovery = saved == null ? null : saved.getRecovery();</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">            if (problem == null) problem = budgetProblem(saved);</span>
+<span class="fc bfc" id="L166" title="All 4 branches covered.">            if (problem == null &amp;&amp; !canResumeVersion(saved, item.requirementVersionId(), item.currentRequirementVersionId()))</span>
+<span class="fc" id="L167">                problem = &quot;The requirement version changed; start a new analysis for the current version&quot;;</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">            if (problem == null) {</span>
+<span class="fc" id="L169">                var durable = continuations.read(recovery.id(), username, context);</span>
+<span class="pc bpc" id="L170" title="1 of 2 branches missed.">                if (durable.recovery().version() != recovery.version())</span>
+<span class="nc" id="L171">                    problem = &quot;A newer continuation revision exists; this snapshot cannot authorize another cycle&quot;;</span>
+<span class="fc" id="L172">                else problem = budgetProblem(durable.result());</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">                if (problem == null) problem = questionProblem(recovery, username, context);</span>
+            }
+        }
+<span class="fc bfc" id="L176" title="All 4 branches covered.">        if (problem == null &amp;&amp; (item.itemStatus() != AnalysisStatus.PARTIAL</span>
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">                || item.jobStatus() == AnalysisStatus.CANCELLED))</span>
+<span class="fc" id="L178">            problem = &quot;Only a stopped PARTIAL item can be continued&quot;;</span>
+<span class="fc bfc" id="L179" title="All 4 branches covered.">        if (problem == null &amp;&amp; cancelledOperation(item.idempotencyKey(), item.projectId(), item.scopeKey()))</span>
+<span class="fc" id="L180">            problem = &quot;The Copilot operation was cancelled&quot;;</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">        if (problem == null) {</span>
+            try {
+<span class="fc" id="L183">                persistence.checkRetainedProviderBindingForRead(item.projectId(), item.jobId(), item.provider(),</span>
+<span class="fc" id="L184">                        java.util.List.of(new ProjectProviderBinding.Target(item.requirementId(), item.requirementVersionId())),</span>
+                        username, context);
+<span class="fc" id="L186">            } catch (PortfolioException rejected) {</span>
+<span class="fc" id="L187">                problem = rejected.getMessage();</span>
+<span class="fc" id="L188">            }</span>
+        }
+<span class="fc" id="L190">        return new AnalysisContinuationView(item.snapshotId(), item.requirementVersionId(),</span>
+<span class="pc bpc" id="L191" title="2 of 4 branches missed.">                recovery == null ? null : recovery.id(), recovery == null ? null : recovery.version(),</span>
+<span class="pc bpc" id="L192" title="1 of 4 branches missed.">                recovery == null ? null : recovery.state(), problem == null,</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">                problem == null ? &quot;The saved analysis stopped at a budget limit. Continue one further bounded cycle; accepted open questions remain open.&quot; : problem);</span>
+    }
+
+    private AnalysisContinuationView view(RequirementAnalysisJobItem item, String username, WorkspaceContext context,
+            boolean checkProviderForRead) {
+<span class="fc" id="L198">        String problem = scopeLimitation(username, context);</span>
+<span class="fc" id="L199">        AnalysisRecoveryView recovery = null;</span>
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">        if (item.getSnapshotId() == null) {</span>
+<span class="nc bnc" id="L201" title="All 2 branches missed.">            problem = problem == null ? &quot;This item has no saved partial snapshot&quot; : problem;</span>
+        } else {
+<span class="fc" id="L203">            var snapshot = requireSnapshot(item, item.getSnapshotId());</span>
+<span class="fc" id="L204">            AnalysisResult saved = requireAnalysis(item, snapshot.getId());</span>
+<span class="pc bpc" id="L205" title="1 of 2 branches missed.">            recovery = saved == null ? null : saved.getRecovery();</span>
+<span class="fc bfc" id="L206" title="All 2 branches covered.">            if (problem == null) problem = budgetProblem(saved);</span>
+<span class="fc bfc" id="L207" title="All 4 branches covered.">            if (problem == null &amp;&amp; !canResumeVersion(saved, item.getRequirementVersionId(), item.getRequirement().getCurrentVersionId()))</span>
+<span class="fc" id="L208">                problem = &quot;The requirement version changed; start a new analysis for the current version&quot;;</span>
+<span class="fc bfc" id="L209" title="All 2 branches covered.">            if (problem == null) {</span>
+<span class="fc" id="L210">                var durable = continuations.read(recovery.id(), username, context);</span>
+<span class="pc bpc" id="L211" title="1 of 2 branches missed.">                if (durable.recovery().version() != recovery.version())</span>
+<span class="nc" id="L212">                    problem = &quot;A newer continuation revision exists; this snapshot cannot authorize another cycle&quot;;</span>
+<span class="fc" id="L213">                else problem = budgetProblem(durable.result());</span>
+<span class="fc bfc" id="L214" title="All 2 branches covered.">                if (problem == null) problem = questionProblem(recovery, username, context);</span>
+            }
+        }
+<span class="fc bfc" id="L217" title="All 4 branches covered.">        if (problem == null &amp;&amp; (item.getStatus() != AnalysisStatus.PARTIAL</span>
+<span class="pc bpc" id="L218" title="1 of 2 branches missed.">                || item.getJob().getStatus() == AnalysisStatus.CANCELLED))</span>
+<span class="fc" id="L219">            problem = &quot;Only a stopped PARTIAL item can be continued&quot;;</span>
+<span class="fc bfc" id="L220" title="All 4 branches covered.">        if (problem == null &amp;&amp; cancelledOperation(item)) problem = &quot;The Copilot operation was cancelled&quot;;</span>
+<span class="pc bpc" id="L221" title="1 of 4 branches missed.">        if (problem == null &amp;&amp; checkProviderForRead) {</span>
+            try {
+<span class="nc" id="L223">                persistence.checkRetainedProviderBindingForRead(item.getProjectId(), item.getJobId(),</span>
+<span class="nc" id="L224">                        item.getJob().getProvider(), providerTargets(item), username, context);</span>
+<span class="nc" id="L225">            } catch (PortfolioException rejected) {</span>
+<span class="nc" id="L226">                problem = rejected.getMessage();</span>
+<span class="nc" id="L227">            }</span>
+        }
+<span class="fc" id="L229">        return new AnalysisContinuationView(item.getSnapshotId(), item.getRequirementVersionId(),</span>
+<span class="pc bpc" id="L230" title="2 of 4 branches missed.">                recovery == null ? null : recovery.id(), recovery == null ? null : recovery.version(),</span>
+<span class="pc bpc" id="L231" title="1 of 4 branches missed.">                recovery == null ? null : recovery.state(), problem == null,</span>
+<span class="fc bfc" id="L232" title="All 2 branches covered.">                problem == null ? &quot;The saved analysis stopped at a budget limit. Continue one further bounded cycle; accepted open questions remain open.&quot; : problem);</span>
+    }
+
+    /** The scoped snapshot read has already matched its immutable version to this job item. */
+    private static boolean canResumeVersion(AnalysisResult saved, Long itemVersion, Long currentVersion) {
+<span class="pc bpc" id="L237" title="2 of 6 branches missed.">        return Objects.equals(itemVersion, currentVersion)</span>
+<span class="fc bfc" id="L238" title="All 2 branches covered.">                || (itemVersion != null &amp;&amp; saved != null &amp;&amp; saved.getModelBinding() != null);</span>
+    }
+
+    private void requireProviderBinding(RequirementAnalysisJobItem item, String username, WorkspaceContext context) {
+<span class="fc" id="L242">        persistence.requireRetainedProviderBinding(item.getProjectId(), item.getJobId(), item.getJob().getProvider(),</span>
+<span class="fc" id="L243">                providerTargets(item), username, context);</span>
+<span class="fc" id="L244">    }</span>
+
+    private static java.util.List&lt;ProjectProviderBinding.Target&gt; providerTargets(RequirementAnalysisJobItem item) {
+<span class="fc" id="L247">        return java.util.List.of(new ProjectProviderBinding.Target(item.getRequirementId(), item.getRequirementVersionId()));</span>
+    }
+
+    private String questionProblem(AnalysisRecoveryView recovery, String username, WorkspaceContext context) {
+<span class="fc bfc" id="L251" title="All 2 branches covered.">        return continuations.hasBlockingBudgetQuestions(recovery.id(), username, context)</span>
+<span class="fc" id="L252">                ? &quot;Failed, unassessed or uncertain provider questions require their own decision&quot; : null;</span>
+    }
+
+    private String scopeLimitation(String username, WorkspaceContext context) {
+<span class="fc bfc" id="L256" title="All 2 branches covered.">        if (!&quot;local&quot;.equalsIgnoreCase(transport))</span>
+<span class="fc" id="L257">            return &quot;Budget continuation is available only for local execution; Artemis continuation is not supported on this project path&quot;;</span>
+<span class="pc bpc" id="L258" title="2 of 6 branches missed.">        if (context == null || context.workspaceId() == null || !Objects.equals(username, context.username()))</span>
+<span class="fc" id="L259">            return &quot;Budget continuation requires an owned workspace&quot;;</span>
+<span class="fc" id="L260">        var workspace = workspaces.getWorkspaceById(context.workspaceId());</span>
+<span class="pc bpc" id="L261" title="3 of 6 branches missed.">        if (workspace == null || workspace.isShared() || workspace.isArchived()</span>
+<span class="pc bpc" id="L262" title="1 of 2 branches missed.">                || !Objects.equals(username, workspace.getUsername()))</span>
+<span class="nc" id="L263">            return &quot;Budget continuation requires the original owned, active workspace&quot;;</span>
+<span class="fc" id="L264">        return null;</span>
+    }
+
+    /** Execution limits can advance while accepted clarifications remain open and unchanged. */
+    static String budgetProblem(AnalysisResult analysis) {
+<span class="pc bpc" id="L269" title="2 of 6 branches missed.">        if (analysis == null || !&quot;PARTIAL&quot;.equals(analysis.getStatus()) || analysis.getRecovery() == null)</span>
+<span class="fc" id="L270">            return &quot;This snapshot has no resumable partial analysis&quot;;</span>
+<span class="fc" id="L271">        var recovery = analysis.getRecovery();</span>
+<span class="fc bfc" id="L272" title="All 6 branches covered.">        if (!&quot;STOPPED&quot;.equals(recovery.state()) || recovery.openQuestions().stream().anyMatch(question -&gt; !recordedClarification(question)))</span>
+<span class="fc" id="L273">            return &quot;Failed, unassessed or cancelled assessments require their own decision; budget continuation is unavailable&quot;;</span>
+<span class="fc bfc" id="L274" title="All 2 branches covered.">        boolean clarifications = !recovery.openQuestions().isEmpty();</span>
+<span class="pc bpc" id="L275" title="2 of 4 branches missed.">        if (analysis.getErrorMessage() != null &amp;&amp; !analysis.getErrorMessage().isBlank()</span>
+<span class="fc bfc" id="L276" title="All 2 branches covered.">                &amp;&amp; !analysis.getErrorMessage().startsWith(&quot;RELATION_SEARCH_PARTIAL:&quot;))</span>
+<span class="fc" id="L277">            return &quot;The analysis has another partial-result cause; budget continuation cannot replace that recovery decision&quot;;</span>
+<span class="pc bpc" id="L278" title="1 of 4 branches missed.">        if (analysis.getWarnings() != null &amp;&amp; analysis.getWarnings().stream().anyMatch(warning -&gt;</span>
+<span class="pc bpc" id="L279" title="1 of 4 branches missed.">                warning.startsWith(&quot;ARCHITECTURE_VIEW_INCOMPLETE:&quot;) || warning.startsWith(&quot;RELATION_EVALUATION_FAILED:&quot;)</span>
+<span class="fc" id="L280">                        || java.util.Arrays.stream(com.taxonomy.analysis.service.AnalysisStoppedException.Reason.values())</span>
+<span class="pc bpc" id="L281" title="1 of 2 branches missed.">                                .anyMatch(reason -&gt; warning.startsWith(reason.name() + &quot;:&quot;))))</span>
+<span class="fc" id="L282">            return &quot;The analysis contains an interruption or projection failure in addition to its budget stop&quot;;</span>
+<span class="fc" id="L283">        RelationSearchReport report = analysis.getRelationSearchReport();</span>
+<span class="pc bpc" id="L284" title="4 of 8 branches missed.">        if (report == null || !report.stopReason().isBlank() &amp;&amp; !budgetReason(report.stopReason())</span>
+<span class="fc bfc" id="L285" title="All 2 branches covered.">                || !clarifications &amp;&amp; report.sources().stream().anyMatch(source -&gt; hasText(source.question()))</span>
+<span class="fc bfc" id="L286" title="All 6 branches covered.">                || report.result().unfinished().stream().anyMatch(work -&gt; !budgetReason(work.reason())</span>
+<span class="pc bpc" id="L287" title="2 of 4 branches missed.">                        &amp;&amp; !(clarifications &amp;&amp; &quot;UNRESOLVED&quot;.equals(work.reason()) &amp;&amp; hasText(work.question())))</span>
+<span class="pc bpc" id="L288" title="2 of 6 branches missed.">                || report.warnings().stream().anyMatch(warning -&gt; !budgetWarning(warning)</span>
+<span class="pc bpc" id="L289" title="1 of 2 branches missed.">                        &amp;&amp; !(clarifications &amp;&amp; sourceClarificationWarning(report, warning))))</span>
+<span class="fc" id="L290">            return &quot;This partial result contains an interruption or unaccepted evidence that needs a separate recovery decision&quot;;</span>
+<span class="pc bpc" id="L291" title="1 of 2 branches missed.">        boolean stopped = budgetReason(report.stopReason())</span>
+<span class="fc bfc" id="L292" title="All 2 branches covered.">                || report.result().unfinished().stream().anyMatch(work -&gt; budgetReason(work.reason()))</span>
+<span class="fc bfc" id="L293" title="All 2 branches covered.">                || report.warnings().stream().anyMatch(ProjectAnalysisContinuationService::budgetWarning);</span>
+<span class="fc bfc" id="L294" title="All 2 branches covered.">        return stopped ? null : &quot;No resumable execution budget stop is recorded&quot;;</span>
+    }
+
+    private static boolean recordedClarification(AnalysisRecoveryView.OpenQuestion question) {
+<span class="fc" id="L298">        String prefix = &quot;RELATION_UNRESOLVED:&quot;;</span>
+<span class="fc bfc" id="L299" title="All 2 branches covered.">        return com.taxonomy.analysis.recovery.AnalysisCheckpointSession.isRelationQuestion(question.key())</span>
+<span class="pc bpc" id="L300" title="3 of 6 branches missed.">                &amp;&amp; !question.skipped() &amp;&amp; !question.outcomeUncertain() &amp;&amp; question.error() != null</span>
+<span class="pc bpc" id="L301" title="2 of 4 branches missed.">                &amp;&amp; question.error().startsWith(prefix) &amp;&amp; !question.error().substring(prefix.length()).isBlank();</span>
+    }
+
+    private static boolean sourceClarificationWarning(RelationSearchReport report, String warning) {
+<span class="fc bfc" id="L305" title="All 2 branches covered.">        return report.sources().stream().anyMatch(source -&gt; hasText(source.question())</span>
+<span class="pc bpc" id="L306" title="1 of 2 branches missed.">                &amp;&amp; warning.equals(&quot;SOURCE_UNRESOLVED &quot; + source.node().id() + &quot;: &quot; + source.question()));</span>
+    }
+
+<span class="pc bpc" id="L309" title="1 of 4 branches missed.">    private static boolean hasText(String value) { return value != null &amp;&amp; !value.isBlank(); }</span>
+
+    private static boolean budgetReason(String reason) {
+<span class="pc bpc" id="L312" title="1 of 8 branches missed.">        return reason != null &amp;&amp; BUDGETS.stream().anyMatch(code -&gt; reason.equals(code) || reason.startsWith(code + &quot;:&quot;));</span>
+    }
+
+    private static boolean budgetWarning(String warning) {
+<span class="fc bfc" id="L316" title="All 2 branches covered.">        if (budgetReason(warning)) return true;</span>
+        // A source batch can retain a deferred, never-sent corrective question.
+<span class="pc bpc" id="L318" title="1 of 2 branches missed.">        int separator = warning == null ? -1 : warning.indexOf(&quot;]: &quot;);</span>
+<span class="pc bpc" id="L319" title="4 of 6 branches missed.">        return warning != null &amp;&amp; warning.startsWith(&quot;INVALID_SOURCE_RESPONSE [&quot;) &amp;&amp; separator &gt;= 0</span>
+<span class="pc bnc" id="L320" title="All 2 branches missed.">                &amp;&amp; budgetReason(warning.substring(separator + 3));</span>
+    }
+
+    private RequirementAnalysisJobItem requireItem(String jobId, Long projectId, Long itemId,
+            String scope, boolean lock) {
+<span class="fc bfc" id="L325" title="All 2 branches covered.">        return (lock ? items.findClaimForUpdate(itemId, jobId, projectId, scope)</span>
+<span class="fc" id="L326">                : items.findByIdAndJobIdAndProjectIdAndScopeKey(itemId, jobId, projectId, scope))</span>
+<span class="pc" id="L327">                .orElseThrow(() -&gt; PortfolioException.notFound(&quot;Analysis item not found: &quot; + itemId));</span>
+    }
+
+    private SnapshotReference requireSnapshot(RequirementAnalysisJobItem item, String snapshotId) {
+<span class="fc" id="L331">        var snapshot = snapshots.findReferenceByIdAndProjectIdAndScopeKey(snapshotId, item.getProjectId(), item.getScopeKey())</span>
+<span class="pc" id="L332">                .orElseThrow(() -&gt; PortfolioException.notFound(&quot;Analysis snapshot not found&quot;));</span>
+<span class="pc bpc" id="L333" title="1 of 2 branches missed.">        if (!Objects.equals(snapshot.getJobId(), item.getJobId())</span>
+<span class="pc bpc" id="L334" title="1 of 2 branches missed.">                || !Objects.equals(snapshot.getRequirementId(), item.getRequirementId())</span>
+<span class="pc bpc" id="L335" title="1 of 2 branches missed.">                || !Objects.equals(snapshot.getRequirementVersionId(), item.getRequirementVersionId()))</span>
+<span class="nc" id="L336">            throw PortfolioException.conflict(&quot;The snapshot belongs to another analysis item or requirement version&quot;);</span>
+<span class="fc" id="L337">        return snapshot;</span>
+    }
+
+    private boolean cancelledOperation(RequirementAnalysisJobItem item) {
+<span class="fc" id="L341">        return cancelledOperation(item.getJob().getIdempotencyKey(), item.getProjectId(), item.getScopeKey());</span>
+    }
+
+    private boolean cancelledOperation(String idempotencyKey, Long projectId, String scopeKey) {
+<span class="fc" id="L345">        var operation = CopilotOperationKey.parse(idempotencyKey);</span>
+<span class="fc bfc" id="L346" title="All 2 branches covered.">        return operation.isPresent() &amp;&amp; jobs.findByProjectIdAndScopeKeyOrderByCreatedAtDesc(projectId, scopeKey)</span>
+<span class="fc bfc" id="L347" title="All 2 branches covered.">                .stream().filter(job -&gt; job.getStatus() == AnalysisStatus.CANCELLED)</span>
+<span class="fc bfc" id="L348" title="All 2 branches covered.">                .anyMatch(job -&gt; CopilotOperationKey.parse(job.getIdempotencyKey())</span>
+<span class="fc" id="L349">                        .map(key -&gt; key.operationId().equals(operation.get().operationId())).orElse(false));</span>
+    }
+
+    private AnalysisResult requireAnalysis(AnalysisContinuationReadRow item) {
+<span class="pc bpc" id="L353" title="1 of 2 branches missed.">        if (item.matchedSnapshotId() == null) throw PortfolioException.notFound(&quot;Analysis snapshot not found&quot;);</span>
+<span class="pc bpc" id="L354" title="1 of 2 branches missed.">        if (!Objects.equals(item.snapshotJobId(), item.jobId())</span>
+<span class="pc bpc" id="L355" title="1 of 2 branches missed.">                || !Objects.equals(item.snapshotRequirementId(), item.requirementId())</span>
+<span class="pc bpc" id="L356" title="1 of 2 branches missed.">                || !Objects.equals(item.snapshotRequirementVersionId(), item.requirementVersionId()))</span>
+<span class="nc" id="L357">            throw PortfolioException.conflict(&quot;The snapshot belongs to another analysis item or requirement version&quot;);</span>
+<span class="fc" id="L358">        return evidence.readAnalysis(item.projectId(), item.snapshotId(), item.scopeKey(), item.jobId(),</span>
+<span class="fc" id="L359">                        item.requirementId(), item.requirementVersionId())</span>
+<span class="pc" id="L360">                .orElseThrow(() -&gt; PortfolioException.notFound(&quot;Analysis snapshot not found&quot;)).analysis();</span>
+    }
+
+    private AnalysisResult requireAnalysis(RequirementAnalysisJobItem item, String snapshotId) {
+<span class="fc" id="L364">        return evidence.readAnalysis(item.getProjectId(), snapshotId, item.getScopeKey(), item.getJobId(),</span>
+<span class="fc" id="L365">                        item.getRequirementId(), item.getRequirementVersionId())</span>
+<span class="pc" id="L366">                .orElseThrow(() -&gt; PortfolioException.notFound(&quot;Analysis snapshot not found&quot;)).analysis();</span>
+    }
+
+    private void rejectCancelledOperation(RequirementAnalysisJobItem item) {
+<span class="pc bpc" id="L370" title="1 of 2 branches missed.">        if (cancelledOperation(item)) throw PortfolioException.conflict(&quot;The Copilot operation was cancelled&quot;);</span>
+<span class="fc" id="L371">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

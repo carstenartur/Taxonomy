@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BlockIdentity.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.ast</a> &gt; <span class="el_source">BlockIdentity.java</span></div><h1>BlockIdentity.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.ast;
+
+import java.util.List;
+import java.util.Set;
+
+/**
+ * Semantic identity shared by source patches and three-way merges.
+ * Named blocks use kind plus the first header token; mutable header attributes
+ * (including element type) are values. Relations and association/version blocks
+ * have no separate ID, so their complete composite header identifies them.
+ * Unknown kinds follow the named-block convention and retain the rest of their header.
+ */
+public final class BlockIdentity {
+<span class="fc" id="L14">    private static final Set&lt;String&gt; COMPOSITE_KINDS =</span>
+<span class="fc" id="L15">            Set.of(&quot;relation&quot;, &quot;mapping&quot;, &quot;projectRequirement&quot;, &quot;requirementVersion&quot;,</span>
+                    &quot;solutionTaxonomyCoverage&quot;, &quot;productTaxonomyCoverage&quot;, &quot;projectSolutionDecision&quot;,
+                    &quot;requirementSolutionDecision&quot;, &quot;solutionProductDecision&quot;, &quot;reformulationEvidence&quot;);
+
+    private BlockIdentity() {}
+
+    public static String key(BlockAst block) {
+<span class="fc" id="L22">        List&lt;String&gt; tokens = block.getHeaderTokens();</span>
+<span class="pc bpc" id="L23" title="1 of 2 branches missed.">        if (tokens.isEmpty()) throw new IllegalArgumentException(&quot;Block identity is missing&quot;);</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">        return block.getKind() + &quot;:&quot; + (COMPOSITE_KINDS.contains(block.getKind())</span>
+<span class="fc" id="L25">                ? String.join(&quot; &quot;, tokens) : tokens.getFirst());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GapAnalysisApiController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-architecture</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.controller</a> &gt; <span class="el_source">GapAnalysisApiController.java</span></div><h1>GapAnalysisApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.controller;
+
+import com.taxonomy.workspace.controller.ExplicitRepositoryReadSelection;
+
+import com.taxonomy.dto.ApqcCoverageResult;
+import com.taxonomy.dto.GapAnalysisView;
+import com.taxonomy.architecture.service.ArchitectureGapService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+
+/**
+ * REST API for Architecture Gap Analysis.
+ *
+ * &lt;p&gt;Endpoints:
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@code POST /api/gap/analyze} — Assess explicit obligations in a selected canonical revision&lt;/li&gt;
+ *   &lt;li&gt;{@code GET  /api/gap/apqc-coverage} — APQC process coverage analysis&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+@RestController
+@RequestMapping(&quot;/api/gap&quot;)
+@Tag(name = &quot;Gap Analysis&quot;)
+public class GapAnalysisApiController {
+
+    private final ArchitectureGapService gapService;
+
+    private final ExplicitRepositoryReadSelection contexts;
+<span class="fc" id="L31">    public GapAnalysisApiController(ArchitectureGapService gapService, ExplicitRepositoryReadSelection contexts) {</span>
+<span class="fc" id="L32">        this.gapService = gapService; this.contexts = contexts;</span>
+<span class="fc" id="L33">    }</span>
+    @Operation(summary = &quot;List obligation profiles&quot;,
+            description = &quot;Lists the supported profile identifiers, versions and explicit obligations for scoped gap assessments and recommendations. Selecting a profile does not assert evidence completeness or assess a model.&quot;)
+    @GetMapping(&quot;/profiles&quot;)
+    public java.util.List&lt;com.taxonomy.dto.ObligationProfile&gt; profiles() {
+<span class="fc" id="L38">        return com.taxonomy.architecture.service.ObligationProfiles.all();</span>
+    }
+
+    /**
+     * Request body for gap analysis.
+     */
+<span class="fc" id="L44">    public record GapAnalysisRequest(String profileId, String profileVersion, com.taxonomy.dto.EvidenceCompleteness evidenceCompleteness,</span>
+            String businessText) {}
+
+    @Operation(summary = &quot;Scoped obligation assessment&quot;, description = &quot;Evaluates an explicit profile at an authorized canonical model revision&quot;)
+    @PostMapping(&quot;/analyze&quot;)
+    public ResponseEntity&lt;GapAnalysisView&gt; analyze(@RequestBody GapAnalysisRequest request,
+            @RequestParam String repositoryId, @RequestParam String branch, @RequestParam String commitId,
+            jakarta.servlet.http.HttpServletRequest httpRequest) throws java.io.IOException {
+<span class="fc" id="L52">        var context = contexts.resolve(repositoryId, branch, commitId, httpRequest);</span>
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">        if (request.evidenceCompleteness() == null) throw new org.springframework.web.server.ResponseStatusException(</span>
+                org.springframework.http.HttpStatus.BAD_REQUEST, &quot;evidenceCompleteness must be explicit&quot;);
+        try {
+<span class="fc" id="L56">            return ResponseEntity.ok(gapService.analyze(context, commitId, request.profileId(), request.profileVersion(),</span>
+<span class="fc" id="L57">                    request.evidenceCompleteness(), request.businessText()));</span>
+<span class="nc" id="L58">        } catch (IllegalArgumentException error) {</span>
+<span class="nc" id="L59">            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, error.getMessage());</span>
+        }
+    }
+
+    /**
+     * Analyses which APQC process categories are covered by the current
+     * architecture model.
+     */
+    @Operation(summary = &quot;APQC coverage analysis&quot;,
+               description = &quot;Observes explicit APQC elements and accepted links within the selected model revision&quot;)
+    @GetMapping(&quot;/apqc-coverage&quot;)
+    public ResponseEntity&lt;ApqcCoverageResult&gt; apqcCoverage(@RequestParam String repositoryId, @RequestParam String branch,
+            @RequestParam String commitId, jakarta.servlet.http.HttpServletRequest http) throws java.io.IOException {
+<span class="fc" id="L72">        var context = contexts.resolve(repositoryId, branch, commitId, http);</span>
+<span class="fc" id="L73">        return ResponseEntity.ok(gapService.analyzeApqcCoverage(context, commitId));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

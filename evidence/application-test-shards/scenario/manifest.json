@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "shard": "scenario",
+  "commit": "16fadda9392b99dc699886ef3d65bd24c393df3a",
+  "sourceTree": "f54c9ceb58c52629ae882910527225531a14fe72",
+  "buildId": "43593738569.1.scenario",
+  "reports": [
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.ScenarioArchitectureAcceptanceTest.xml",
+      "className": "com.taxonomy.ScenarioArchitectureAcceptanceTest",
+      "sha256": "d92b8423ad559546fd67b41d40c568a1343ea9ff1b0f0bb56c9440831adfef30",
+      "tests": 2,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    }
+  ],
+  "coverage": {
+    "path": "coverage.exec",
+    "sha256": "2ff4c548592d2b07deef2498ed9b6e85b1d51379629387ab92e3e70ed0204597"
+  },
+  "timing": {
+    "durationSeconds": 1836.769,
+    "suites": [
+      {
+        "className": "com.taxonomy.ScenarioArchitectureAcceptanceTest",
+        "durationSeconds": 1836.769
+      }
+    ]
+  }
+}

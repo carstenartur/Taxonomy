@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ScopedAnalysisAdapterExecution.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.analysis</a> &gt; <span class="el_source">ScopedAnalysisAdapterExecution.java</span></div><h1>ScopedAnalysisAdapterExecution.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.analysis;
+
+import com.taxonomy.analysis.operation.AnalysisAdapterStore;
+import com.taxonomy.provenance.service.DocumentAnalysisExecution;
+import com.taxonomy.security.service.PrincipalIdentityService;
+import com.taxonomy.shared.features.ConditionalOnFeature;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import jakarta.persistence.EntityManager;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.web.server.ResponseStatusException;
+import tools.jackson.databind.ObjectMapper;
+
+import java.io.IOException;
+import java.util.Map;
+import java.util.function.BooleanSupplier;
+import java.util.function.Function;
+import java.util.function.Supplier;
+
+/** Authenticated repository and principal binding for synchronous provider-backed public routes. */
+@Service
+@org.springframework.scheduling.annotation.EnableScheduling
+@ConditionalOnFeature({&quot;analysis&quot;})
+public class ScopedAnalysisAdapterExecution implements DocumentAnalysisExecution {
+    private final WorkspaceResolver workspaces;
+    private final WorkspaceDslReadPort repositories;
+    private final PrincipalIdentityService identities;
+    private final AnalysisAdapterStore store;
+    private final ObjectMapper json;
+    private org.springframework.beans.factory.ObjectProvider&lt;com.taxonomy.analysis.operation.AnalysisChildSourceAuthority&gt; childSources;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void childSources(org.springframework.beans.factory.ObjectProvider&lt;com.taxonomy.analysis.operation.AnalysisChildSourceAuthority&gt; authorities) {
+<span class="fc" id="L43">        this.childSources = authorities;</span>
+<span class="fc" id="L44">    }</span>
+
+    private boolean retainedSourceCurrent(AnalysisAdapterStore.Operation operation) {
+<span class="pc bpc" id="L47" title="1 of 6 branches missed.">        if (operation.resultJson() == null || operation.kind().equals(&quot;DOCUMENT_EXTRACTION&quot;) || operation.kind().equals(&quot;REGULATION_MAPPING&quot;))</span>
+<span class="fc" id="L48">            return true;</span>
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">        var authority = childSources == null ? null : childSources.getIfAvailable();</span>
+<span class="pc bpc" id="L50" title="1 of 4 branches missed.">        return authority != null &amp;&amp; authority.current(operation);</span>
+    }
+
+    public ScopedAnalysisAdapterExecution(WorkspaceResolver workspaces, WorkspaceDslReadPort repositories,
+<span class="fc" id="L54">            PrincipalIdentityService identities, EntityManager em, PlatformTransactionManager transactions, ObjectMapper json) {</span>
+<span class="fc" id="L55">        this.workspaces = workspaces; this.repositories = repositories; this.identities = identities;</span>
+<span class="fc" id="L56">        this.store = new AnalysisAdapterStore(em, transactions); this.json = json;</span>
+<span class="fc" id="L57">    }</span>
+
+    @Override
+    public ResponseEntity&lt;?&gt; execute(String kind, String fingerprint, boolean available, Supplier&lt;?&gt; work, Supplier&lt;?&gt; local) {
+<span class="fc" id="L61">        return execute(kind, fingerprint, available, work, local, () -&gt; true);</span>
+    }
+    public ResponseEntity&lt;?&gt; execute(String kind, String fingerprint, boolean available, Supplier&lt;?&gt; work, Supplier&lt;?&gt; local, BooleanSupplier sourceCurrent) {
+<span class="fc" id="L64">        return executeWithReceipt(kind, fingerprint, available, id -&gt; work.get(), local, sourceCurrent);</span>
+    }
+    public ResponseEntity&lt;?&gt; executeWithReceipt(String kind, String fingerprint, boolean available,
+            Function&lt;String, ?&gt; work, Supplier&lt;?&gt; local, BooleanSupplier sourceCurrent) {
+<span class="fc" id="L68">        var context = workspaces.resolveCurrentRepositoryContextForRead();</span>
+<span class="fc" id="L69">        var owner = scope(context);</span>
+<span class="fc" id="L70">        var handle = repositories.openRead(context);</span>
+<span class="fc" id="L71">        String commit = head(handle);</span>
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">        if (!sourceCurrent.getAsBoolean()) return stale();</span>
+<span class="fc" id="L73">        var attributes = RequestContextHolder.getRequestAttributes();</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">        String key = attributes instanceof ServletRequestAttributes request ? request.getRequest().getHeader(&quot;Idempotency-Key&quot;) : null;</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">        String observer = attributes instanceof ServletRequestAttributes request ? request.getRequest().getHeader(&quot;X-Analysis-Observer&quot;) : null;</span>
+        AnalysisAdapterStore.Admission admission;
+        try {
+<span class="fc" id="L78">            admission = store.admit(owner, kind, commit, fingerprint, key, available, observer);</span>
+<span class="nc" id="L79">        } catch (ResponseStatusException conflict) {</span>
+<span class="nc bnc" id="L80" title="All 2 branches missed.">            if (!HttpStatus.CONFLICT.equals(conflict.getStatusCode())) throw conflict;</span>
+<span class="nc" id="L81">            return ResponseEntity.status(HttpStatus.CONFLICT).cacheControl(CacheControl.noStore()).body(Map.of(&quot;code&quot;,&quot;COMMAND_CONFLICT&quot;));</span>
+<span class="fc" id="L82">        }</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">        if (admission == null) return ResponseEntity.ok(local.get());</span>
+<span class="fc" id="L84">        var accepted = admission.operation();</span>
+<span class="fc" id="L85">        BooleanSupplier current = () -&gt; {</span>
+            // A synchronous provider call can outlive its initiating login binding.
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">            if (!owner.equals(scope(context))) {</span>
+<span class="nc" id="L88">                throw new AccessDeniedException(&quot;Analysis workspace ownership changed&quot;);</span>
+            }
+<span class="pc bpc" id="L90" title="2 of 4 branches missed.">            return commit.equals(head(handle)) &amp;&amp; sourceCurrent.getAsBoolean();</span>
+        };
+<span class="pc bpc" id="L92" title="2 of 6 branches missed.">        if (!admission.claimed()) return current.getAsBoolean() &amp;&amp; retainedSourceCurrent(accepted) ? response(accepted) : stale(accepted);</span>
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">        if (!verifySource(current, accepted, &quot;SOURCE_UNAVAILABLE&quot;))</span>
+<span class="nc" id="L94">            return response(store.settle(owner, accepted.id(), accepted.revision(), null, &quot;STALE_SOURCE&quot;));</span>
+        String payload;
+        try {
+<span class="fc" id="L97">            payload = json.writeValueAsString(work.apply(accepted.id()));</span>
+<span class="fc" id="L98">        } catch (RuntimeException failed) {</span>
+<span class="fc" id="L99">            return response(store.settle(owner, accepted.id(), accepted.revision(), null, &quot;ANALYSIS_FAILED&quot;));</span>
+<span class="fc" id="L100">        }</span>
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">        if (!verifySource(current, accepted, &quot;OUTCOME_UNKNOWN&quot;))</span>
+<span class="nc" id="L102">            return response(store.settle(owner, accepted.id(), accepted.revision(), null, &quot;STALE_SOURCE&quot;));</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">        if (payload.getBytes(java.nio.charset.StandardCharsets.UTF_8).length &gt; com.taxonomy.exchange.backup.PortableRows.MAX_RECORD_BYTES / 4)</span>
+<span class="nc" id="L104">            return response(store.settle(owner, accepted.id(), accepted.revision(), null, &quot;RESULT_TOO_LARGE&quot;));</span>
+<span class="fc" id="L105">        return response(store.settle(owner, accepted.id(), accepted.revision(), payload, null));</span>
+    }
+
+    private boolean verifySource(BooleanSupplier current, AnalysisAdapterStore.Operation accepted, String failureCode) {
+<span class="fc" id="L109">        try { return current.getAsBoolean(); }</span>
+<span class="fc" id="L110">        catch (RuntimeException unavailable) {</span>
+<span class="fc" id="L111">            store.settle(accepted.scope(), accepted.id(), accepted.revision(), null, failureCode);</span>
+<span class="fc" id="L112">            throw unavailable;</span>
+        }
+    }
+
+    private AnalysisAdapterStore.Scope scope(RepositoryContext context) {
+<span class="fc" id="L117">        var auth = SecurityContextHolder.getContext().getAuthentication();</span>
+<span class="fc" id="L118">        var principal = identities.requireCurrent(auth);</span>
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">        if (!context.username().equals(auth.getName()))</span>
+<span class="nc" id="L120">            throw new AccessDeniedException(&quot;Analysis workspace ownership changed&quot;);</span>
+<span class="fc" id="L121">        return new AnalysisAdapterStore.Scope(principal.value().toString(),context.repositoryId(),context.workspaceId(),context.branch());</span>
+    }
+
+    private static String head(WorkspaceDslReadPort.RepositoryRead handle) {
+        try {
+<span class="fc" id="L126">            String commit = handle.currentHead();</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">            if (commit == null) throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;Analysis source is unavailable&quot;);</span>
+<span class="fc" id="L128">            return WorkspaceDslReadPort.normalizeCommitId(commit);</span>
+<span class="nc" id="L129">        } catch (IOException unavailable) { throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,&quot;Analysis source is unavailable&quot;); }</span>
+    }
+
+    @org.springframework.scheduling.annotation.Scheduled(fixedDelayString = &quot;${taxonomy.analysis.retention.sweep-delay:PT1M}&quot;,
+            initialDelayString = &quot;${taxonomy.analysis.retention.sweep-delay:PT1M}&quot;)
+<span class="fc" id="L134">    public void sweep() { store.sweep(System.currentTimeMillis()); }</span>
+
+    AnalysisAdapterStore.Operation readOwned(String id) {
+<span class="fc" id="L137">        var context = workspaces.resolveCurrentRepositoryContextForRead();</span>
+<span class="fc" id="L138">        var operation = store.read(scope(context),id);</span>
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">        if (&quot;EXPIRED&quot;.equals(operation.state())) throw new ResponseStatusException(HttpStatus.GONE, &quot;Analysis operation expired&quot;);</span>
+<span class="pc bpc" id="L140" title="2 of 6 branches missed.">        if (!&quot;COMPLETED&quot;.equals(operation.state()) || !operation.sourceCommit().equals(head(repositories.openRead(context))) || !retainedSourceCurrent(operation))</span>
+<span class="fc" id="L141">            throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;Analysis source or operation changed&quot;);</span>
+<span class="fc" id="L142">        return operation;</span>
+    }
+
+    ResponseEntity&lt;?&gt; status(String id, boolean cancel) {
+<span class="fc" id="L146">        var context = workspaces.resolveCurrentRepositoryContextForRead();</span>
+<span class="fc" id="L147">        var owner = scope(context);</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">        var operation = cancel ? store.cancel(owner,id) : store.read(owner,id);</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        return cancel ? response(operation) : checkedStatus(context, operation);</span>
+    }
+
+    ResponseEntity&lt;?&gt; observe(String token) {
+<span class="fc" id="L153">        var context = workspaces.resolveCurrentRepositoryContextForRead();</span>
+<span class="fc" id="L154">        return checkedStatus(context, store.observe(scope(context), token));</span>
+    }
+
+    private ResponseEntity&lt;?&gt; checkedStatus(RepositoryContext context, AnalysisAdapterStore.Operation operation) {
+<span class="pc bpc" id="L158" title="1 of 6 branches missed.">        if (!&quot;EXPIRED&quot;.equals(operation.state()) &amp;&amp; (!operation.sourceCommit().equals(head(repositories.openRead(context))) || !retainedSourceCurrent(operation)))</span>
+<span class="fc" id="L159">            return stale(operation);</span>
+<span class="fc" id="L160">        return response(operation);</span>
+    }
+
+    private static ResponseEntity&lt;?&gt; stale() {
+<span class="nc" id="L164">        return ResponseEntity.status(409).cacheControl(CacheControl.noStore()).body(Map.of(&quot;code&quot;,&quot;STALE_SOURCE&quot;));</span>
+    }
+
+    private static ResponseEntity&lt;?&gt; stale(AnalysisAdapterStore.Operation operation) {
+<span class="fc" id="L168">        return ResponseEntity.status(HttpStatus.CONFLICT).cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L169">                .header(&quot;X-Analysis-Operation-Id&quot;,operation.id()).header(&quot;X-Analysis-Source-Commit&quot;,operation.sourceCommit())</span>
+<span class="fc" id="L170">                .header(&quot;X-Analysis-Sequence&quot;,Long.toString(operation.revision())).header(&quot;X-Analysis-Phase&quot;,&quot;STALE_SOURCE&quot;)</span>
+<span class="fc" id="L171">                .body(Map.of(&quot;operationId&quot;,operation.id(),&quot;sourceCommit&quot;,operation.sourceCommit(),</span>
+<span class="fc" id="L172">                        &quot;sequence&quot;,operation.revision(),&quot;code&quot;,&quot;STALE_SOURCE&quot;));</span>
+    }
+
+    private ResponseEntity&lt;?&gt; response(AnalysisAdapterStore.Operation o) {
+<span class="pc bpc" id="L176" title="2 of 6 branches missed.">        int status = switch (o.state()) {</span>
+<span class="fc" id="L177">            case &quot;RUNNING&quot; -&gt; 202;</span>
+<span class="fc" id="L178">            case &quot;COMPLETED&quot; -&gt; 200;</span>
+<span class="nc" id="L179">            case &quot;EXPIRED&quot; -&gt; 410;</span>
+<span class="fc" id="L180">            case &quot;CANCELLED&quot; -&gt; 409;</span>
+<span class="pc bpc" id="L181" title="1 of 2 branches missed.">            case &quot;FAILED&quot; -&gt; &quot;STALE_SOURCE&quot;.equals(o.failureCode()) ? 409 : 422;</span>
+<span class="nc" id="L182">            default -&gt; throw new IllegalStateException(&quot;Unknown durable analysis adapter state&quot;);</span>
+        };
+<span class="fc" id="L184">        var builder = ResponseEntity.status(status).cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L185">                .header(&quot;X-Analysis-Operation-Id&quot;,o.id()).header(&quot;X-Analysis-Source-Commit&quot;,o.sourceCommit())</span>
+<span class="fc" id="L186">                .header(&quot;Content-Location&quot;,&quot;/api/analysis-adapters/&quot; + o.id());</span>
+<span class="fc" id="L187">        builder.header(&quot;X-Analysis-Phase&quot;,o.state())</span>
+<span class="fc" id="L188">                .header(&quot;X-Analysis-Sequence&quot;,Long.toString(o.revision()))</span>
+<span class="fc" id="L189">                .header(&quot;X-Analysis-Started-At&quot;,Long.toString(o.createdAt()))</span>
+<span class="fc" id="L190">                .header(&quot;X-Analysis-Updated-At&quot;,Long.toString(o.updatedAt()));</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">        if (status == 202) builder.header(&quot;Retry-After&quot;,&quot;2&quot;);</span>
+<span class="pc bpc" id="L192" title="1 of 2 branches missed.">        if (status == 410) return builder.body(Map.of(&quot;operationId&quot;,o.id(),&quot;code&quot;,&quot;ANALYSIS_EXPIRED&quot;));</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">        if (&quot;ANALYSIS_FAILED&quot;.equals(o.failureCode())) {</span>
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">            if (&quot;DOCUMENT_EXTRACTION&quot;.equals(o.kind()))</span>
+<span class="nc" id="L195">                return builder.body(Map.of(&quot;error&quot;,&quot;AI_EXTRACTION_FAILED&quot;,&quot;message&quot;,&quot;AI-assisted extraction could not be completed&quot;));</span>
+<span class="pc bpc" id="L196" title="1 of 2 branches missed.">            if (&quot;REGULATION_MAPPING&quot;.equals(o.kind()))</span>
+<span class="nc" id="L197">                return builder.body(Map.of(&quot;error&quot;,&quot;REGULATION_MAPPING_FAILED&quot;,&quot;message&quot;,&quot;Regulation mapping could not be completed&quot;));</span>
+        }
+<span class="fc bfc" id="L199" title="All 2 branches covered.">        if (o.resultJson() != null) return builder.body(com.taxonomy.analysis.operation.ChildAnalysisReceipt.publicResult(o.kind(),json.readTree(o.resultJson())));</span>
+<span class="fc" id="L200">        return builder.body(Map.of(&quot;operationId&quot;,o.id(),&quot;state&quot;,o.state(),&quot;phase&quot;,o.state(),&quot;sequence&quot;,o.revision(),</span>
+<span class="fc" id="L201">                &quot;startedAt&quot;,o.createdAt(),&quot;updatedAt&quot;,o.updatedAt(),&quot;sourceCommit&quot;,o.sourceCommit(),</span>
+<span class="fc bfc" id="L202" title="All 2 branches covered.">                &quot;code&quot;,o.failureCode() == null ? o.state() : o.failureCode()));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

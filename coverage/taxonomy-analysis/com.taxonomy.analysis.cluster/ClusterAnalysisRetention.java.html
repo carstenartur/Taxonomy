@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ClusterAnalysisRetention.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.cluster</a> &gt; <span class="el_source">ClusterAnalysisRetention.java</span></div><h1>ClusterAnalysisRetention.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.cluster;
+
+import com.taxonomy.workspace.service.WorkspaceContext;
+import jakarta.persistence.EntityManager;
+import org.springframework.http.HttpStatus;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.time.Duration;
+import java.util.List;
+
+/** Retires operation-owned evidence under its original owner and scope. Portfolio snapshots are independently owned. */
+public final class ClusterAnalysisRetention {
+<span class="fc" id="L15">    private static final long HISTORY = Duration.ofDays(30).toMillis();</span>
+<span class="fc" id="L16">    private static final long TOMBSTONE = Duration.ofDays(90).toMillis();</span>
+    private static final int BATCH = 64;
+<span class="fc" id="L18">    private static final List&lt;String&gt; CHILDREN = List.of(&quot;ClusterAnalysisAttempt&quot;, &quot;ClusterAnalysisCall&quot;,</span>
+            &quot;ClusterAnalysisEvent&quot;, &quot;ClusterAnalysisWork&quot;, &quot;ClusterAnalysisInput&quot;, &quot;AnalysisTaskCompletionRecord&quot;, &quot;AnalysisDispatchIntent&quot;);
+    private static final String DUE = &quot;((r.totalRoots=0 and r.state=CANCELLED and r.updatedAt&lt;=:tombstone)&quot;
+            + &quot; or (r.totalRoots&gt;0 and r.updatedAt&lt;=:history))&quot;;
+    private static final String OWNED = &quot;r.id=:id and r.username=:owner and r.scopeKey=:scope and r.version=:version&quot;;
+
+    private final EntityManager em;
+    private final TransactionTemplate transactions;
+
+<span class="fc" id="L27">    ClusterAnalysisRetention(EntityManager em, TransactionTemplate transactions) {</span>
+<span class="fc" id="L28">        this.em = em;</span>
+<span class="fc" id="L29">        this.transactions = transactions;</span>
+<span class="fc" id="L30">    }</span>
+
+    static ResponseStatusException expired() {
+<span class="fc" id="L33">        var failure = new ResponseStatusException(HttpStatus.GONE, &quot;Analysis operation expired&quot;);</span>
+<span class="fc" id="L34">        failure.getBody().setProperty(&quot;code&quot;, &quot;ANALYSIS_EXPIRED&quot;);</span>
+<span class="fc" id="L35">        return failure;</span>
+    }
+
+    @Scheduled(fixedDelayString = &quot;${taxonomy.analysis.retention.sweep-delay:PT1M}&quot;,
+            initialDelayString = &quot;${taxonomy.analysis.retention.sweep-delay:PT1M}&quot;)
+    public void sweep() {
+<span class="nc" id="L41">        sweep(null, System.currentTimeMillis());</span>
+<span class="nc" id="L42">    }</span>
+
+    public int sweepScope(WorkspaceContext scope, long now) {
+<span class="fc" id="L45">        return sweep(java.util.Objects.requireNonNull(scope), now);</span>
+    }
+
+    private int sweep(WorkspaceContext scope, long now) {
+<span class="fc" id="L49">        var candidates = transactions.execute(status -&gt; {</span>
+<span class="fc" id="L50">            var query = em.createQuery(&quot;select r.id,r.username,r.scopeKey,r.version,r.totalRoots from ClusterAnalysisRun r where &quot;</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">                    + DUE + (scope == null ? &quot;&quot; : &quot; and r.username=:owner and r.scopeKey=:scope&quot;)</span>
+                    + &quot; order by r.updatedAt,r.id&quot;, Object[].class)
+<span class="fc" id="L53">                    .setParameter(&quot;tombstone&quot;, now - TOMBSTONE).setParameter(&quot;history&quot;, now - HISTORY).setMaxResults(BATCH);</span>
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">            if (scope != null) query.setParameter(&quot;owner&quot;, scope.username()).setParameter(&quot;scope&quot;, ClusterAnalysisStore.scopeKey(scope));</span>
+<span class="fc" id="L55">            return query.getResultList();</span>
+        });
+<span class="fc" id="L57">        int changed = 0;</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">        for (var row : candidates) {</span>
+            // An intervening progress update, cleanup or admission changes the version.
+            // The first write fences late workers before any children are removed.
+<span class="fc bfc" id="L61" title="All 2 branches covered.">            boolean expired = ((Integer) row[4]) == 0;</span>
+<span class="fc" id="L62">            boolean applied = transactions.execute(status -&gt; {</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">                var sql = expired ? &quot;delete from ClusterAnalysisRun r where &quot;</span>
+<span class="fc" id="L64">                        : &quot;update ClusterAnalysisRun r set r.state=CANCELLED, r.commandJson='{}', r.viewJson=null,&quot;</span>
+                        + &quot; r.resultJson=null,r.relationPlanJson=null,r.completedRoots=0,r.totalRoots=0,&quot;
+                        + &quot; r.updatedAt=:now,r.revision=r.revision+1,r.version=r.version+1 where &quot;;
+<span class="fc" id="L67">                var write = em.createQuery(sql + OWNED)</span>
+<span class="fc" id="L68">                        .setParameter(&quot;id&quot;, row[0]).setParameter(&quot;owner&quot;, row[1]).setParameter(&quot;scope&quot;, row[2]).setParameter(&quot;version&quot;, row[3]);</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">                if (!expired) write.setParameter(&quot;now&quot;, now);</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">                if (write.executeUpdate() != 1) return false;</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">                for (String entity : CHILDREN) {</span>
+<span class="fc" id="L72">                    em.createQuery(&quot;delete from &quot; + entity + &quot; child where child.operationId=:id&quot;)</span>
+<span class="fc" id="L73">                            .setParameter(&quot;id&quot;, row[0]).executeUpdate();</span>
+<span class="fc" id="L74">                }</span>
+<span class="fc" id="L75">                return true;</span>
+            });
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">            if (applied) changed++;</span>
+<span class="fc" id="L78">        }</span>
+<span class="fc" id="L79">        return changed;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

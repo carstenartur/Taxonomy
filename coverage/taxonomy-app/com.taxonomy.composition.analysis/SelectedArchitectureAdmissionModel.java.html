@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SelectedArchitectureAdmissionModel.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.analysis</a> &gt; <span class="el_source">SelectedArchitectureAdmissionModel.java</span></div><h1>SelectedArchitectureAdmissionModel.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.analysis;
+
+import com.taxonomy.analysis.usecase.AnalysisAdmissionModelPort;
+import com.taxonomy.catalog.definition.RetainedCatalogueDefinitions;
+import com.taxonomy.catalog.definition.RetainedCatalogueDefinitions.AppliedGeneration;
+import com.taxonomy.dsl.command.ArchitectureDslCommands;
+import com.taxonomy.dsl.model.CatalogueDefinition;
+import com.taxonomy.dsl.planning.ArchitectureBrief;
+import com.taxonomy.dto.AnalysisModelBinding;
+import com.taxonomy.dto.AnalysisScope;
+import com.taxonomy.editor.ArchitectureEditorService;
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.model.WorkspaceOverlayScope;
+import com.taxonomy.shared.features.ConditionalOnFeature;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.io.IOException;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+/** Bind the authenticated selection before enqueueing, while the request's routing and access decisions are available. */
+@Service
+@ConditionalOnFeature({&quot;architecture&quot;, &quot;analysis&quot;})
+public class SelectedArchitectureAdmissionModel implements AnalysisAdmissionModelPort {
+    private final WorkspaceResolver workspaces;
+    private final ArchitectureEditorService editor;
+    private final RetainedCatalogueDefinitions definitions;
+
+    public SelectedArchitectureAdmissionModel(WorkspaceResolver workspaces, ArchitectureEditorService editor,
+<span class="fc" id="L37">            RetainedCatalogueDefinitions definitions) {</span>
+<span class="fc" id="L38">        this.workspaces = workspaces;</span>
+<span class="fc" id="L39">        this.editor = editor;</span>
+<span class="fc" id="L40">        this.definitions = definitions;</span>
+<span class="fc" id="L41">    }</span>
+
+    @Override
+    public AnalysisModelBinding capture(WorkspaceContext workspace, String expectedCommit, Long expectedRevision,
+                                        AnalysisScope scope) {
+<span class="fc" id="L46">        RepositoryContext context = workspaces.resolveCurrentRepositoryContextForRead();</span>
+<span class="pc bpc" id="L47" title="1 of 4 branches missed.">        if (workspace == null || !context.username().equals(workspace.username())</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">                || !context.repositoryId().equals(workspace.repositoryId())</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">                || !Objects.equals(context.workspaceId(), workspace.workspaceId())</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">                || !context.branch().equals(workspace.currentBranch())) {</span>
+<span class="fc" id="L51">            throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;Selected architecture context has changed&quot;);</span>
+        }
+
+<span class="fc" id="L54">        var version = select(context, expectedCommit, expectedRevision);</span>
+<span class="fc" id="L55">        var document = version.document();</span>
+<span class="fc" id="L56">        var selected = document.context();</span>
+<span class="fc" id="L57">        var model = new ArchitectureDslCommands().model(document.dsl());</span>
+<span class="fc" id="L58">        var brief = ArchitectureBrief.read(model);</span>
+<span class="fc" id="L59">        String catalogueRevision = model.getCatalogueRevision();</span>
+<span class="pc bpc" id="L60" title="1 of 4 branches missed.">        if (catalogueRevision != null &amp;&amp; catalogueRevision.isBlank()) catalogueRevision = null;</span>
+<span class="fc" id="L61">        var execution = retained(catalogueRevision);</span>
+<span class="fc" id="L62">        CatalogueDefinition definition = execution.map(AppliedGeneration::definition).orElse(null);</span>
+<span class="fc" id="L63">        AnalysisScope requested = AnalysisScope.orDefault(scope);</span>
+<span class="fc" id="L64">        Set&lt;String&gt; roots = Set.of();</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        if (definition != null) {</span>
+<span class="fc" id="L66">            requested.validateRoots(definition.rootCodes());</span>
+<span class="fc" id="L67">            roots = definition.rootCodes().stream().filter(requested::selects).collect(Collectors.toSet());</span>
+        }
+<span class="fc" id="L69">        var references = brief.references().stream().map(ref -&gt; new AnalysisModelBinding.Reference(ref.id(),</span>
+<span class="fc" id="L70">                ref.sourceId(), ref.sourceVersionId(), ref.sourceFragmentId(), ref.values())).toList();</span>
+<span class="fc" id="L71">        var profile = ProfilePreview.decision(brief);</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        String profileProblem = brief.problem() != null ? brief.problem()</span>
+<span class="fc bfc" id="L73" title="All 4 branches covered.">                : brief.present() &amp;&amp; profile != ProfilePreview.Decision.ASSIGNED ? &quot;REFERENCE_PROFILE_&quot; + profile.name() : null;</span>
+<span class="fc bfc" id="L74" title="All 4 branches covered.">        boolean validRules = brief.problem() == null &amp;&amp; profile != ProfilePreview.Decision.CONFLICTING_EDITIONS;</span>
+<span class="fc" id="L75">        return new AnalysisModelBinding(state(version.published(), catalogueRevision, definition, brief, profileProblem), selected.repositoryId(), selected.workspaceScopeKey(),</span>
+<span class="fc" id="L76">                selected.branch(), version.commit(), version.revision(), document.source(), StableIdentityHash.sha256(document.dsl()),</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">                catalogueRevision, definition == null ? null : definition.version(), roots, requested,</span>
+<span class="fc" id="L78">                brief.version(), brief.fields(), references,</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">                validRules ? brief.excludedRelationTypes() : Set.of(), profileProblem, execution.map(AppliedGeneration::revision).orElse(null));</span>
+    }
+
+<span class="fc" id="L82">    private record Selection(ArchitectureEditorService.Document document, String commit, Long revision, boolean published) {}</span>
+
+    ProfilePreview preview(String repository, String workspaceScope, String branch, String expectedCommit,
+                           Long expectedRevision, boolean mayEdit) {
+<span class="fc" id="L86">        var context = workspaces.resolveCurrentRepositoryContextForRead();</span>
+<span class="pc bpc" id="L87" title="2 of 4 branches missed.">        if (!context.repositoryId().equals(repository) || !context.branch().equals(branch)</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">                || !WorkspaceOverlayScope.keyFor(context.workspaceId()).equals(workspaceScope)) {</span>
+<span class="fc" id="L89">            throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;Selected architecture context has changed&quot;);</span>
+        }
+<span class="fc" id="L91">        var selected = select(context, expectedCommit, expectedRevision);</span>
+<span class="fc" id="L92">        var document = selected.document();</span>
+<span class="fc" id="L93">        var brief = ArchitectureBrief.read(new ArchitectureDslCommands().model(document.dsl()));</span>
+<span class="fc" id="L94">        return new ProfilePreview(repository, workspaceScope, branch, selected.commit(), selected.revision(),</span>
+<span class="pc bpc" id="L95" title="1 of 4 branches missed.">                document.source(), com.taxonomy.editor.ArchitectureEditorProjection.editable(document, mayEdit) &amp;&amp; brief.problem() == null,</span>
+<span class="fc" id="L96">                brief, ProfilePreview.decision(brief));</span>
+    }
+
+    private Selection select(RepositoryContext context, String expectedCommit, Long expectedRevision) {
+<span class="fc bfc" id="L100" title="All 6 branches covered.">        if (expectedCommit != null &amp;&amp; !expectedCommit.matches(&quot;[0-9a-f]{40}&quot;)</span>
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">                || expectedRevision != null &amp;&amp; expectedRevision &lt; 0) {</span>
+<span class="fc" id="L102">            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, &quot;Invalid requested architecture version&quot;);</span>
+        }
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        var document = read(context, expectedRevision == null ? expectedCommit : null, expectedRevision);</span>
+<span class="fc" id="L105">        var selected = document.context();</span>
+<span class="pc bpc" id="L106" title="2 of 4 branches missed.">        if (!context.username().equals(selected.actor()) || !context.repositoryId().equals(selected.repositoryId())</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">                || !context.branch().equals(selected.branch())</span>
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">                || !WorkspaceOverlayScope.keyFor(context.workspaceId()).equals(selected.workspaceScopeKey())) {</span>
+<span class="nc" id="L109">            throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;Selected architecture context has changed&quot;);</span>
+        }
+<span class="fc" id="L111">        boolean semantic = &quot;WORKSPACE_REVISION&quot;.equals(document.source());</span>
+<span class="pc bpc" id="L112" title="1 of 4 branches missed.">        if ((!semantic &amp;&amp; !&quot;GIT_CHECKPOINT&quot;.equals(document.source()))</span>
+<span class="fc bfc" id="L113" title="All 4 branches covered.">                || !&quot;READY&quot;.equals(document.projectionState()) &amp;&amp; !&quot;HISTORICAL&quot;.equals(document.projectionState())) {</span>
+<span class="fc" id="L114">            throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;Selected architecture version is unavailable&quot;);</span>
+        }
+<span class="fc bfc" id="L116" title="All 2 branches covered.">        Long revision = semantic ? selected.revision() : null;</span>
+<span class="fc" id="L117">        String commit = selected.commit();</span>
+<span class="fc bfc" id="L118" title="All 6 branches covered.">        boolean published = commit != null &amp;&amp; (!semantic || document.checkpointRevision() == selected.revision());</span>
+        // A reconciliation can advance the workspace's next Git parent before publishing its checkpoint.
+        // For historical journal bytes only a completed receipt identifies their published Git object.
+<span class="fc bfc" id="L121" title="All 4 branches covered.">        if (semantic &amp;&amp; &quot;HISTORICAL&quot;.equals(document.projectionState())) {</span>
+<span class="fc" id="L122">            commit = editor.historicalCheckpoint(context, document, expectedCommit);</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">            published = commit != null;</span>
+        }
+<span class="fc bfc" id="L125" title="All 6 branches covered.">        if (expectedCommit != null &amp;&amp; !expectedCommit.equals(commit)</span>
+<span class="pc bpc" id="L126" title="1 of 2 branches missed.">                || expectedRevision != null &amp;&amp; !expectedRevision.equals(revision)) {</span>
+<span class="fc" id="L127">            throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;Selected architecture version does not match the request&quot;);</span>
+        }
+
+<span class="fc" id="L130">        return new Selection(document, commit, revision, published);</span>
+    }
+
+    private ArchitectureEditorService.Document read(RepositoryContext context, String commit, Long revision) {
+        try {
+<span class="fc" id="L135">            return editor.read(context, commit, revision);</span>
+<span class="nc" id="L136">        } catch (ArchitectureDslCommands.CommandProblem failure) {</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">            var status = &quot;NOT_FOUND&quot;.equals(failure.code()) ? HttpStatus.NOT_FOUND : HttpStatus.CONFLICT;</span>
+<span class="nc" id="L138">            throw new ResponseStatusException(status, failure.getMessage(), failure);</span>
+<span class="fc" id="L139">        } catch (IOException failure) {</span>
+<span class="fc" id="L140">            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, &quot;Cannot read the selected architecture version&quot;, failure);</span>
+        }
+    }
+
+    private Optional&lt;AppliedGeneration&gt; retained(String projectRevision) {
+        try {
+<span class="fc" id="L146">            return definitions.appliedGeneration(projectRevision);</span>
+<span class="nc" id="L147">        } catch (IllegalStateException unreadable) {</span>
+<span class="nc" id="L148">            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, &quot;Cannot read the retained project catalogue&quot;, unreadable);</span>
+        }
+    }
+
+    private static AnalysisModelBinding.State state(boolean published, String projectRevision, CatalogueDefinition definition,
+                                                    ArchitectureBrief.Snapshot brief, String profileProblem) {
+<span class="fc bfc" id="L154" title="All 4 branches covered.">        if (projectRevision == null || definition == null) return AnalysisModelBinding.State.CATALOGUE_UNRESOLVED;</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">        if (!published) return AnalysisModelBinding.State.MODEL_UNCOMMITTED;</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">        if (profileProblem != null) return AnalysisModelBinding.State.PROFILE_UNRESOLVED;</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        if (!brief.present()) return AnalysisModelBinding.State.BRIEF_UNASSIGNED;</span>
+<span class="fc" id="L158">        return AnalysisModelBinding.State.RESOLVED;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

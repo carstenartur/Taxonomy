@@ -1,0 +1,419 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureGraphQueryServiceImpl.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-architecture</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.service</a> &gt; <span class="el_source">ArchitectureGraphQueryServiceImpl.java</span></div><h1>ArchitectureGraphQueryServiceImpl.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.service;
+
+import com.taxonomy.dto.*;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.architecture.service.GraphSnapshotReadService.SelectedGraphSnapshot;
+import com.taxonomy.relations.service.RelationProjectionReadService.Snapshot;
+import com.taxonomy.relations.service.RelationProjectionReadService.SnapshotRelation;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.*;
+import java.util.stream.Collectors;
+import com.taxonomy.dto.ChangeImpactView;
+import com.taxonomy.dto.GraphNeighborhoodView;
+import com.taxonomy.dto.ImpactElement;
+import com.taxonomy.dto.ImpactRelationship;
+import com.taxonomy.dto.RequirementImpactView;
+import com.taxonomy.pipeline.PipelineConstants;
+
+/**
+ * Implementation of {@link ArchitectureGraphQueryService}.
+ *
+ * &lt;p&gt;Traverses taxonomy relations using BFS with relevance decay per hop.
+ * Only Git-present relations of policy types (SUPPORTS, REALIZES, USES) are traversed.
+ */
+@Service
+public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQueryService {
+
+<span class="fc" id="L31">    private static final Logger log = LoggerFactory.getLogger(ArchitectureGraphQueryServiceImpl.class);</span>
+
+    /** Maximum allowed hops (clamped). */
+    private static final int MAX_HOP_LIMIT = 5;
+
+    /** Minimum relevance threshold — anything below is discarded. */
+    static final double MIN_RELEVANCE = 0.20;
+
+    /** Per-hop decay factor. */
+    static final double HOP_DECAY = 0.70;
+
+    // Anchor thresholds from the shared pipeline constants.
+    private static final int ANCHOR_THRESHOLD_HIGH = PipelineConstants.ANCHOR_THRESHOLD_HIGH;
+    private static final int ANCHOR_THRESHOLD_LOW  = PipelineConstants.ANCHOR_THRESHOLD_LOW;
+    private static final int MIN_ANCHORS           = PipelineConstants.MIN_ANCHORS;
+
+    /**
+     * Propagation weights per relation type.
+     * SUPPORTS propagates strongly (service-to-process),
+     * REALIZES medium (capability-to-service),
+     * USES weaker (app-to-service).
+     */
+<span class="fc" id="L53">    static final Map&lt;String, Double&gt; TYPE_WEIGHTS = Map.of(</span>
+<span class="fc" id="L54">            &quot;SUPPORTS&quot;, 0.80,</span>
+<span class="fc" id="L55">            &quot;REALIZES&quot;, 0.75,</span>
+<span class="fc" id="L56">            &quot;USES&quot;, 0.60</span>
+    );
+
+    private final GraphSnapshotReadService snapshots;
+
+<span class="fc" id="L61">    public ArchitectureGraphQueryServiceImpl(GraphSnapshotReadService snapshots) {</span>
+<span class="fc" id="L62">        this.snapshots = snapshots;</span>
+<span class="fc" id="L63">    }</span>
+
+    // ── 1. Requirement Impact ──────────────────────────────────────────────
+
+    @Override
+    @Transactional(readOnly = true)
+    public RequirementImpactView findImpactForRequirement(RepositoryContext context, String commitId, Map&lt;String, Double&gt; scores,
+                                                           String businessText, int maxHops) {
+<span class="fc" id="L71">        RequirementImpactView view = new RequirementImpactView();</span>
+<span class="fc" id="L72">        view.setBusinessText(businessText);</span>
+<span class="fc" id="L73">        int clampedHops = clampHops(maxHops);</span>
+<span class="fc" id="L74">        view.setMaxHops(clampedHops);</span>
+<span class="fc" id="L75">        SelectedGraphSnapshot selected = snapshots.read(context, commitId);</span>
+<span class="fc" id="L76">        Snapshot snapshot = selected.proof();</span>
+<span class="fc" id="L77">        view.setEvidence(evidence(snapshot, maxHops, clampedHops, &quot;git-present-weighted-bfs-v1&quot;));</span>
+
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        if (scores != null) scores.values().forEach(score -&gt; {</span>
+<span class="pc bpc" id="L80" title="4 of 8 branches missed.">            if (score == null || !Double.isFinite(score) || score &lt; 0 || score &gt; 100)</span>
+<span class="nc" id="L81">                throw new IllegalArgumentException(&quot;Scores must be finite percentages&quot;);</span>
+<span class="fc" id="L82">        });</span>
+<span class="fc bfc" id="L83" title="All 4 branches covered.">        if (scores == null || scores.isEmpty()) {</span>
+<span class="fc" id="L84">            view.getNotes().add(&quot;No scores provided; impact analysis cannot be performed.&quot;);</span>
+<span class="fc" id="L85">            view.setEvidence(view.getEvidence().withCompleteness(&quot;NOT_EVALUATED_NO_ANCHORS&quot;));</span>
+<span class="fc" id="L86">            snapshots.verifyHead(selected);</span>
+<span class="fc" id="L87">            return view;</span>
+        }
+
+        // Select anchors using the same logic as RequirementArchitectureViewService
+<span class="fc" id="L91">        List&lt;Map.Entry&lt;String, Double&gt;&gt; anchors = selectAnchors(scores);</span>
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">        if (anchors.isEmpty()) {</span>
+<span class="nc" id="L93">            view.getNotes().add(&quot;No nodes met the anchor threshold; impact view is empty.&quot;);</span>
+<span class="nc" id="L94">            view.setEvidence(view.getEvidence().withCompleteness(&quot;NOT_EVALUATED_NO_ANCHORS&quot;));</span>
+<span class="nc" id="L95">            snapshots.verifyHead(selected);</span>
+<span class="nc" id="L96">            return view;</span>
+        }
+
+        // Build anchor relevance map
+<span class="fc" id="L100">        Map&lt;String, Double&gt; anchorRelevances = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">        for (Map.Entry&lt;String, Double&gt; entry : anchors) {</span>
+<span class="fc" id="L102">            anchorRelevances.put(entry.getKey(), entry.getValue() / 100.0);</span>
+<span class="fc" id="L103">        }</span>
+
+        // BFS traversal from anchors
+<span class="fc" id="L106">        TraversalResult traversal = bfsTraversal(snapshot, anchorRelevances, clampedHops, Direction.BOTH);</span>
+
+        // Convert to view elements
+<span class="fc" id="L109">        view.setImpactedElements(toImpactElements(traversal, selected));</span>
+<span class="fc" id="L110">        view.setTraversedRelationships(traversal.relationships);</span>
+<span class="fc" id="L111">        view.setTotalElements(view.getImpactedElements().size());</span>
+<span class="fc" id="L112">        view.setTotalRelationships(view.getTraversedRelationships().size());</span>
+
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">        if (view.getImpactedElements().isEmpty()) {</span>
+<span class="nc" id="L115">            view.getNotes().add(&quot;Anchors were found but no connected elements via relations in the selected snapshot.&quot;);</span>
+        }
+
+<span class="fc" id="L118">        log.info(&quot;Requirement impact: {} anchors, {} elements, {} relationships (maxHops={})&quot;,</span>
+<span class="fc" id="L119">                anchors.size(), view.getTotalElements(), view.getTotalRelationships(), clampedHops);</span>
+
+<span class="fc" id="L121">        snapshots.verifyHead(selected);</span>
+<span class="fc" id="L122">        return view;</span>
+    }
+
+    // ── 2. Upstream / Downstream ───────────────────────────────────────────
+
+    @Override
+    @Transactional(readOnly = true)
+    public GraphNeighborhoodView findUpstream(RepositoryContext context, String commitId, String nodeCode, int maxHops) {
+<span class="fc" id="L130">        return findNeighborhood(context, commitId, nodeCode, maxHops, Direction.UPSTREAM);</span>
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public GraphNeighborhoodView findDownstream(RepositoryContext context, String commitId, String nodeCode, int maxHops) {
+<span class="fc" id="L136">        return findNeighborhood(context, commitId, nodeCode, maxHops, Direction.DOWNSTREAM);</span>
+    }
+
+    private GraphNeighborhoodView findNeighborhood(RepositoryContext context, String commitId, String nodeCode, int maxHops, Direction direction) {
+<span class="fc" id="L140">        GraphNeighborhoodView view = new GraphNeighborhoodView();</span>
+<span class="fc" id="L141">        view.setOriginNodeCode(nodeCode);</span>
+<span class="fc" id="L142">        view.setDirection(direction.name());</span>
+<span class="fc" id="L143">        int clampedHops = clampHops(maxHops);</span>
+<span class="fc" id="L144">        view.setMaxHops(clampedHops);</span>
+<span class="fc" id="L145">        SelectedGraphSnapshot selected = snapshots.read(context, commitId);</span>
+<span class="fc" id="L146">        Snapshot snapshot = selected.proof();</span>
+<span class="fc" id="L147">        view.setEvidence(evidence(snapshot, maxHops, clampedHops, &quot;git-present-weighted-bfs-v1&quot;));</span>
+
+<span class="fc bfc" id="L149" title="All 4 branches covered.">        if (!selected.nodes().containsKey(nodeCode) &amp;&amp; snapshot.relations().stream().noneMatch(</span>
+<span class="fc bfc" id="L150" title="All 4 branches covered.">                edge -&gt; edge.sourceCode().equals(nodeCode) || edge.targetCode().equals(nodeCode))) {</span>
+<span class="fc" id="L151">            view.getNotes().add(&quot;Node is not declared or connected in the selected snapshot: &quot; + nodeCode);</span>
+        }
+
+<span class="fc" id="L154">        Map&lt;String, Double&gt; startMap = Map.of(nodeCode, 1.0);</span>
+<span class="fc" id="L155">        TraversalResult traversal = bfsTraversal(snapshot, startMap, clampedHops, direction);</span>
+
+        // Remove the origin node from results
+<span class="fc" id="L158">        List&lt;ImpactElement&gt; neighbors = toImpactElements(traversal, selected).stream()</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">                .filter(e -&gt; !e.getNodeCode().equals(nodeCode))</span>
+<span class="fc" id="L160">                .collect(Collectors.toList());</span>
+
+<span class="fc" id="L162">        view.setNeighbors(neighbors);</span>
+<span class="fc" id="L163">        view.setTraversedRelationships(traversal.relationships);</span>
+<span class="fc" id="L164">        view.setTotalNeighbors(neighbors.size());</span>
+<span class="fc" id="L165">        view.setTotalRelationships(traversal.relationships.size());</span>
+
+<span class="fc bfc" id="L167" title="All 2 branches covered.">        if (neighbors.isEmpty()) {</span>
+<span class="fc" id="L168">            view.getNotes().add(&quot;No &quot; + direction.name().toLowerCase() + &quot; neighbors found for &quot; + nodeCode);</span>
+        }
+
+<span class="fc" id="L171">        log.info(&quot;{} query for {}: {} neighbors, {} relationships (maxHops={})&quot;,</span>
+<span class="fc" id="L172">                direction, nodeCode, neighbors.size(), traversal.relationships.size(), clampedHops);</span>
+
+<span class="fc" id="L174">        snapshots.verifyHead(selected);</span>
+<span class="fc" id="L175">        return view;</span>
+    }
+
+    // ── 3. Failure / Change Impact ─────────────────────────────────────────
+
+    @Override
+    @Transactional(readOnly = true)
+    public ChangeImpactView findFailureImpact(RepositoryContext context, String commitId, String nodeCode, int maxHops) {
+<span class="fc" id="L183">        return findFailureImpact(snapshots.read(context, commitId), nodeCode, maxHops);</span>
+    }
+
+    @Override
+    public ChangeImpactView findFailureImpact(SelectedGraphSnapshot selected, String nodeCode, int maxHops) {
+<span class="fc" id="L188">        ChangeImpactView view = new ChangeImpactView();</span>
+<span class="fc" id="L189">        view.setFailedNodeCode(nodeCode);</span>
+<span class="fc" id="L190">        int clampedHops = clampHops(maxHops);</span>
+<span class="fc" id="L191">        view.setMaxHops(clampedHops);</span>
+<span class="fc" id="L192">        Snapshot snapshot = selected.proof();</span>
+<span class="fc" id="L193">        view.setEvidence(evidence(snapshot, maxHops, clampedHops, &quot;git-present-weighted-bfs-v1&quot;));</span>
+
+<span class="pc bpc" id="L195" title="1 of 4 branches missed.">        if (!selected.nodes().containsKey(nodeCode) &amp;&amp; snapshot.relations().stream().noneMatch(</span>
+<span class="pc bpc" id="L196" title="1 of 4 branches missed.">                edge -&gt; edge.sourceCode().equals(nodeCode) || edge.targetCode().equals(nodeCode))) {</span>
+<span class="fc" id="L197">            view.getNotes().add(&quot;Node is not declared or connected in the selected snapshot: &quot; + nodeCode);</span>
+        }
+
+        // Failure propagates through both directions (anything connected is at risk)
+<span class="fc" id="L201">        Map&lt;String, Double&gt; startMap = Map.of(nodeCode, 1.0);</span>
+<span class="fc" id="L202">        TraversalResult traversal = bfsTraversal(snapshot, startMap, clampedHops, Direction.BOTH);</span>
+
+<span class="fc" id="L204">        List&lt;ImpactElement&gt; allAffected = toImpactElements(traversal, selected).stream()</span>
+<span class="fc bfc" id="L205" title="All 2 branches covered.">                .filter(e -&gt; !e.getNodeCode().equals(nodeCode))</span>
+<span class="fc" id="L206">                .collect(Collectors.toList());</span>
+
+        // Split into directly affected (hop 1) and indirectly affected (hop 2+)
+<span class="fc" id="L209">        List&lt;ImpactElement&gt; direct = allAffected.stream()</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">                .filter(e -&gt; e.getHopDistance() == 1)</span>
+<span class="fc" id="L211">                .collect(Collectors.toList());</span>
+<span class="fc" id="L212">        List&lt;ImpactElement&gt; indirect = allAffected.stream()</span>
+<span class="fc bfc" id="L213" title="All 2 branches covered.">                .filter(e -&gt; e.getHopDistance() &gt; 1)</span>
+<span class="fc" id="L214">                .collect(Collectors.toList());</span>
+
+<span class="fc" id="L216">        view.setDirectlyAffected(direct);</span>
+<span class="fc" id="L217">        view.setIndirectlyAffected(indirect);</span>
+<span class="fc" id="L218">        view.setTraversedRelationships(traversal.relationships);</span>
+<span class="fc" id="L219">        view.setTotalAffected(allAffected.size());</span>
+<span class="fc" id="L220">        view.setTotalRelationships(traversal.relationships.size());</span>
+
+<span class="fc bfc" id="L222" title="All 2 branches covered.">        if (allAffected.isEmpty()) {</span>
+<span class="fc" id="L223">            view.getNotes().add(&quot;No connected elements found for &quot; + nodeCode);</span>
+        }
+
+<span class="fc" id="L226">        log.info(&quot;Failure impact for {}: {} direct, {} indirect, {} relationships (maxHops={})&quot;,</span>
+<span class="fc" id="L227">                nodeCode, direct.size(), indirect.size(), traversal.relationships.size(), clampedHops);</span>
+
+<span class="fc" id="L229">        snapshots.verifyHead(selected);</span>
+<span class="fc" id="L230">        return view;</span>
+    }
+
+    // ── Internal Traversal Engine ──────────────────────────────────────────
+
+<span class="fc" id="L235">    private enum Direction { UPSTREAM, DOWNSTREAM, BOTH }</span>
+
+    /**
+     * Intermediate result from BFS traversal.
+     */
+    private static class TraversalResult {
+        final Map&lt;String, Double&gt; relevanceMap;
+        final Map&lt;String, Integer&gt; hopMap;
+        final Map&lt;String, String&gt; reasonMap;
+        final List&lt;ImpactRelationship&gt; relationships;
+
+        TraversalResult(Map&lt;String, Double&gt; relevanceMap, Map&lt;String, Integer&gt; hopMap,
+<span class="fc" id="L247">                        Map&lt;String, String&gt; reasonMap, List&lt;ImpactRelationship&gt; relationships) {</span>
+<span class="fc" id="L248">            this.relevanceMap = relevanceMap;</span>
+<span class="fc" id="L249">            this.hopMap = hopMap;</span>
+<span class="fc" id="L250">            this.reasonMap = reasonMap;</span>
+<span class="fc" id="L251">            this.relationships = relationships;</span>
+<span class="fc" id="L252">        }</span>
+    }
+
+    /**
+     * Generic BFS traversal with relevance propagation and direction control.
+     */
+    private TraversalResult bfsTraversal(Snapshot snapshot, Map&lt;String, Double&gt; startRelevances,
+                                          int maxHops, Direction direction) {
+<span class="fc" id="L260">        Map&lt;String, Double&gt; relevanceMap = new LinkedHashMap&lt;&gt;(startRelevances);</span>
+<span class="fc" id="L261">        Map&lt;String, Integer&gt; hopMap = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L262">        Map&lt;String, String&gt; reasonMap = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L263">        List&lt;ImpactRelationship&gt; relationships = new ArrayList&lt;&gt;();</span>
+
+        // Initialize start nodes
+<span class="fc bfc" id="L266" title="All 2 branches covered.">        for (Map.Entry&lt;String, Double&gt; entry : startRelevances.entrySet()) {</span>
+<span class="fc" id="L267">            hopMap.put(entry.getKey(), 0);</span>
+<span class="fc" id="L268">            reasonMap.put(entry.getKey(), &quot;origin&quot;);</span>
+<span class="fc" id="L269">        }</span>
+
+<span class="fc" id="L271">        Map&lt;String, Double&gt; currentFrontier = new LinkedHashMap&lt;&gt;(startRelevances);</span>
+<span class="fc" id="L272">        Set&lt;String&gt; visitedRelationIds = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L273">        Map&lt;String, List&lt;SnapshotRelation&gt;&gt; adjacency = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L274" title="All 2 branches covered.">        for (var edge : snapshot.relations()) {</span>
+<span class="fc bfc" id="L275" title="All 2 branches covered.">            if (!TYPE_WEIGHTS.containsKey(edge.relationType().name())) continue;</span>
+<span class="fc bfc" id="L276" title="All 2 branches covered.">            if (direction != Direction.UPSTREAM) adjacency.computeIfAbsent(edge.sourceCode(), ignored -&gt; new ArrayList&lt;&gt;()).add(edge);</span>
+<span class="fc bfc" id="L277" title="All 2 branches covered.">            if (direction != Direction.DOWNSTREAM) adjacency.computeIfAbsent(edge.targetCode(), ignored -&gt; new ArrayList&lt;&gt;()).add(edge);</span>
+<span class="fc" id="L278">        }</span>
+
+<span class="fc bfc" id="L280" title="All 2 branches covered.">        for (int hop = 1; hop &lt;= maxHops; hop++) {</span>
+<span class="fc" id="L281">            Map&lt;String, Double&gt; nextFrontier = new LinkedHashMap&lt;&gt;();</span>
+
+            // Freeze each layer's scores: discoveries in this hop are expanded only next hop.
+<span class="fc bfc" id="L284" title="All 2 branches covered.">            for (var frontierEntry : currentFrontier.entrySet()) {</span>
+<span class="fc" id="L285">                String nodeCode = frontierEntry.getKey();</span>
+<span class="fc" id="L286">                double sourceRelevance = frontierEntry.getValue();</span>
+<span class="pc bpc" id="L287" title="1 of 2 branches missed.">                if (sourceRelevance &lt; MIN_RELEVANCE) continue;</span>
+
+<span class="fc" id="L289">                List&lt;SnapshotRelation&gt; relations = adjacency.getOrDefault(nodeCode, List.of());</span>
+
+<span class="fc bfc" id="L291" title="All 2 branches covered.">                for (SnapshotRelation rel : relations) {</span>
+<span class="fc" id="L292">                    String targetCode = determineTarget(rel, nodeCode, direction);</span>
+<span class="pc bpc" id="L293" title="1 of 2 branches missed.">                    if (targetCode == null) continue;</span>
+
+<span class="fc" id="L295">                    Double typeWeight = TYPE_WEIGHTS.get(rel.relationType().name());</span>
+<span class="pc bpc" id="L296" title="1 of 2 branches missed.">                    if (typeWeight == null) continue;</span>
+
+<span class="fc" id="L298">                    double propagated = sourceRelevance * typeWeight;</span>
+<span class="fc bfc" id="L299" title="All 2 branches covered.">                    if (hop &gt; 1) {</span>
+<span class="fc" id="L300">                        propagated *= HOP_DECAY;</span>
+                    }
+
+<span class="fc bfc" id="L303" title="All 2 branches covered.">                    if (propagated &lt; MIN_RELEVANCE) continue;</span>
+
+<span class="fc" id="L305">                    double existing = relevanceMap.getOrDefault(targetCode, 0.0);</span>
+<span class="fc bfc" id="L306" title="All 2 branches covered.">                    if (propagated &gt; existing) {</span>
+<span class="fc" id="L307">                        relevanceMap.put(targetCode, propagated);</span>
+<span class="fc" id="L308">                        hopMap.put(targetCode, hop);</span>
+<span class="fc" id="L309">                        reasonMap.put(targetCode,</span>
+<span class="fc" id="L310">                                &quot;propagated via &quot; + rel.relationType().name() + &quot; from &quot; + nodeCode);</span>
+<span class="fc" id="L311">                        nextFrontier.put(targetCode, propagated);</span>
+                    }
+
+                    // Record traversed relationship (deduplicate by relation ID)
+<span class="fc bfc" id="L315" title="All 2 branches covered.">                    if (visitedRelationIds.add(rel.sourceCode() + &quot;\u0000&quot; + rel.relationType() + &quot;\u0000&quot; + rel.targetCode())) {</span>
+<span class="fc" id="L316">                        ImpactRelationship ir = new ImpactRelationship();</span>
+<span class="fc" id="L317">                        ir.setRelationId(rel.id());</span>
+<span class="fc" id="L318">                        ir.setSourceCode(rel.sourceCode());</span>
+<span class="fc" id="L319">                        ir.setTargetCode(rel.targetCode());</span>
+<span class="fc" id="L320">                        ir.setRelationType(rel.relationType().name());</span>
+<span class="fc" id="L321">                        ir.setPropagatedRelevance(propagated);</span>
+<span class="fc" id="L322">                        ir.setHopDistance(hop);</span>
+<span class="fc" id="L323">                        ir.setEvidence(new GraphEdgeEvidence(rel.authoritativeCommitId(), rel.causationId(),</span>
+<span class="fc" id="L324">                                rel.provenance(), rel.status(), rel.confidence()));</span>
+<span class="fc" id="L325">                        relationships.add(ir);</span>
+                    }
+<span class="fc" id="L327">                }</span>
+<span class="fc" id="L328">            }</span>
+
+<span class="fc" id="L330">            currentFrontier = nextFrontier;</span>
+<span class="fc bfc" id="L331" title="All 2 branches covered.">            if (currentFrontier.isEmpty()) break;</span>
+        }
+
+<span class="fc" id="L334">        return new TraversalResult(relevanceMap, hopMap, reasonMap, relationships);</span>
+    }
+
+    private String determineTarget(SnapshotRelation rel, String nodeCode, Direction direction) {
+<span class="fc bfc" id="L338" title="All 4 branches covered.">        if (direction != Direction.UPSTREAM &amp;&amp; rel.sourceCode().equals(nodeCode)) return rel.targetCode();</span>
+<span class="pc bpc" id="L339" title="2 of 4 branches missed.">        if (direction != Direction.DOWNSTREAM &amp;&amp; rel.targetCode().equals(nodeCode)) return rel.sourceCode();</span>
+<span class="nc" id="L340">        return null;</span>
+    }
+
+    static GraphQueryEvidence evidence(Snapshot snapshot, int requested, int effective, String policy) {
+<span class="fc" id="L344">        var context = snapshot.context();</span>
+<span class="fc" id="L345">        boolean weightedTraversal = &quot;git-present-weighted-bfs-v1&quot;.equals(policy);</span>
+<span class="fc" id="L346">        return new GraphQueryEvidence(context.repositoryId(), context.workspaceId(),</span>
+<span class="fc" id="L347">                com.taxonomy.relations.model.RelationDecisionProjection.scopeKeyFor(context.workspaceId()),</span>
+<span class="fc" id="L348">                context.branch(), snapshot.commitId(), &quot;GIT_BRANCH_PROJECTION&quot;, &quot;READY&quot;, snapshot.relations().size(), policy,</span>
+<span class="fc bfc" id="L349" title="All 4 branches covered.">                requested, effective, weightedTraversal ? MIN_RELEVANCE : 0, weightedTraversal ? HOP_DECAY : 1,</span>
+<span class="fc bfc" id="L350" title="All 4 branches covered.">                weightedTraversal ? ANCHOR_THRESHOLD_HIGH : 0, weightedTraversal ? ANCHOR_THRESHOLD_LOW : 0,</span>
+<span class="fc bfc" id="L351" title="All 4 branches covered.">                weightedTraversal ? MIN_ANCHORS : 0, weightedTraversal ? TYPE_WEIGHTS : Map.of(),</span>
+                &quot;COMPLETE_WITHIN_QUERY_POLICY&quot;,
+                &quot;No path means no path in the selected snapshot under this query policy; it does not establish universal absence.&quot;);
+    }
+
+    // ── Helpers ────────────────────────────────────────────────────────────
+
+    private List&lt;ImpactElement&gt; toImpactElements(TraversalResult traversal, SelectedGraphSnapshot selected) {
+<span class="fc" id="L359">        List&lt;ImpactElement&gt; elements = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L360">        Set&lt;String&gt; endpointCodes = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L361">        selected.proof().relations().forEach(edge -&gt; {</span>
+<span class="fc" id="L362">            endpointCodes.add(edge.sourceCode());</span>
+<span class="fc" id="L363">            endpointCodes.add(edge.targetCode());</span>
+<span class="fc" id="L364">        });</span>
+
+<span class="fc bfc" id="L366" title="All 2 branches covered.">        for (Map.Entry&lt;String, Double&gt; entry : traversal.relevanceMap.entrySet()) {</span>
+<span class="fc" id="L367">            String code = entry.getKey();</span>
+<span class="fc" id="L368">            ImpactElement el = new ImpactElement();</span>
+<span class="fc" id="L369">            el.setNodeCode(code);</span>
+<span class="fc" id="L370">            el.setRelevance(entry.getValue());</span>
+<span class="fc" id="L371">            el.setHopDistance(traversal.hopMap.getOrDefault(code, 0));</span>
+<span class="fc" id="L372">            el.setIncludedBecause(traversal.reasonMap.getOrDefault(code, &quot;unknown&quot;));</span>
+
+<span class="fc" id="L374">            var node = selected.nodes().get(code);</span>
+<span class="pc bpc" id="L375" title="1 of 4 branches missed.">            el.setTitle(node == null || node.title() == null ? code : node.title());</span>
+<span class="fc bfc" id="L376" title="All 2 branches covered.">            el.setTaxonomySheet(node == null ? &quot;&quot; : node.taxonomyRoot());</span>
+<span class="fc" id="L377">            boolean endpoint = endpointCodes.contains(code);</span>
+<span class="fc bfc" id="L378" title="All 2 branches covered.">            el.setNodeEvidence(new GraphNodeEvidence(node != null ? &quot;SELECTED_DSL_ELEMENT&quot;</span>
+<span class="fc bfc" id="L379" title="All 2 branches covered.">                    : endpoint ? &quot;SELECTED_RELATION_ENDPOINT&quot; : &quot;REQUEST_ANCHOR&quot;,</span>
+<span class="fc bfc" id="L380" title="All 6 branches covered.">                    node != null || endpoint ? selected.proof().commitId() : null, node != null));</span>
+
+<span class="fc" id="L382">            elements.add(el);</span>
+<span class="fc" id="L383">        }</span>
+
+        // Sort by relevance descending
+<span class="fc" id="L386">        elements.sort(Comparator.comparingDouble(ImpactElement::getRelevance).reversed());</span>
+
+<span class="fc" id="L388">        return elements;</span>
+    }
+
+    private List&lt;Map.Entry&lt;String, Double&gt;&gt; selectAnchors(Map&lt;String, Double&gt; scores) {
+        // Sort by score descending
+<span class="fc" id="L393">        List&lt;Map.Entry&lt;String, Double&gt;&gt; sorted = scores.entrySet().stream()</span>
+<span class="fc" id="L394">                .sorted(Map.Entry.&lt;String, Double&gt;comparingByValue().reversed())</span>
+<span class="fc" id="L395">                .collect(Collectors.toList());</span>
+
+        // Prefer all nodes above HIGH threshold
+<span class="fc" id="L398">        List&lt;Map.Entry&lt;String, Double&gt;&gt; highAnchors = sorted.stream()</span>
+<span class="fc bfc" id="L399" title="All 2 branches covered.">                .filter(e -&gt; e.getValue() &gt;= ANCHOR_THRESHOLD_HIGH)</span>
+<span class="fc" id="L400">                .collect(Collectors.toList());</span>
+
+<span class="pc bpc" id="L402" title="1 of 2 branches missed.">        if (highAnchors.size() &gt;= MIN_ANCHORS) {</span>
+<span class="nc" id="L403">            return highAnchors;</span>
+        }
+
+        // Fallback: top-N above LOW threshold
+<span class="fc" id="L407">        List&lt;Map.Entry&lt;String, Double&gt;&gt; lowAnchors = sorted.stream()</span>
+<span class="pc bpc" id="L408" title="1 of 2 branches missed.">                .filter(e -&gt; e.getValue() &gt;= ANCHOR_THRESHOLD_LOW)</span>
+<span class="fc" id="L409">                .limit(MIN_ANCHORS)</span>
+<span class="fc" id="L410">                .collect(Collectors.toList());</span>
+
+<span class="fc" id="L412">        return lowAnchors;</span>
+    }
+
+    private int clampHops(int maxHops) {
+<span class="fc" id="L416">        return Math.max(1, Math.min(maxHops, MAX_HOP_LIMIT));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

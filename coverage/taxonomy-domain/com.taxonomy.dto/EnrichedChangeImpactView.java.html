@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>EnrichedChangeImpactView.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">EnrichedChangeImpactView.java</span></div><h1>EnrichedChangeImpactView.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Enriched failure/change impact view that correlates affected elements
+ * with their requirement coverage data.
+ *
+ * &lt;p&gt;Extends the standard {@link ChangeImpactView} data with requirement
+ * information for each affected element and an aggregated risk score.
+ */
+public class EnrichedChangeImpactView {
+
+    private GraphQueryEvidence evidence;
+<span class="fc" id="L16">    public GraphQueryEvidence getEvidence() { return evidence; }</span>
+<span class="fc" id="L17">    public void setEvidence(GraphQueryEvidence evidence) { this.evidence = evidence; }</span>
+
+<span class="fc" id="L19">    private List&lt;String&gt; uncorrelatedElementIds = new ArrayList&lt;&gt;();</span>
+    /** Affected elements without a requirement mapping in the selected revision. */
+<span class="fc" id="L21">    public List&lt;String&gt; getUncorrelatedElementIds() { return uncorrelatedElementIds; }</span>
+<span class="fc" id="L22">    public void setUncorrelatedElementIds(List&lt;String&gt; value) { uncorrelatedElementIds = List.copyOf(value); }</span>
+
+    private String correlationCompleteness;
+<span class="fc" id="L25">    public String getCorrelationCompleteness() { return correlationCompleteness; }</span>
+<span class="fc" id="L26">    public void setCorrelationCompleteness(String value) { this.correlationCompleteness = value; }</span>
+    private String failedNodeCode;
+    private int maxHops;
+<span class="fc" id="L29">    private List&lt;EnrichedImpactElement&gt; directlyAffected = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L30">    private List&lt;EnrichedImpactElement&gt; indirectlyAffected = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L31">    private List&lt;ImpactRelationship&gt; traversedRelationships = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L32">    private List&lt;String&gt; affectedRequirements = new ArrayList&lt;&gt;();</span>
+    private Double riskScore;
+    private int totalAffected;
+    private int totalRelationships;
+<span class="fc" id="L36">    private List&lt;String&gt; notes = new ArrayList&lt;&gt;();</span>
+
+<span class="fc" id="L38">    public EnrichedChangeImpactView() {}</span>
+
+<span class="fc" id="L40">    public String getFailedNodeCode() { return failedNodeCode; }</span>
+<span class="fc" id="L41">    public void setFailedNodeCode(String failedNodeCode) { this.failedNodeCode = failedNodeCode; }</span>
+
+<span class="fc" id="L43">    public int getMaxHops() { return maxHops; }</span>
+<span class="fc" id="L44">    public void setMaxHops(int maxHops) { this.maxHops = maxHops; }</span>
+
+<span class="fc" id="L46">    public List&lt;EnrichedImpactElement&gt; getDirectlyAffected() { return directlyAffected; }</span>
+<span class="fc" id="L47">    public void setDirectlyAffected(List&lt;EnrichedImpactElement&gt; directlyAffected) { this.directlyAffected = directlyAffected; }</span>
+
+<span class="fc" id="L49">    public List&lt;EnrichedImpactElement&gt; getIndirectlyAffected() { return indirectlyAffected; }</span>
+<span class="fc" id="L50">    public void setIndirectlyAffected(List&lt;EnrichedImpactElement&gt; indirectlyAffected) { this.indirectlyAffected = indirectlyAffected; }</span>
+
+<span class="fc" id="L52">    public List&lt;ImpactRelationship&gt; getTraversedRelationships() { return traversedRelationships; }</span>
+<span class="fc" id="L53">    public void setTraversedRelationships(List&lt;ImpactRelationship&gt; traversedRelationships) { this.traversedRelationships = traversedRelationships; }</span>
+
+<span class="fc" id="L55">    public List&lt;String&gt; getAffectedRequirements() { return affectedRequirements; }</span>
+<span class="fc" id="L56">    public void setAffectedRequirements(List&lt;String&gt; affectedRequirements) { this.affectedRequirements = affectedRequirements; }</span>
+
+<span class="fc" id="L58">    public Double getRiskScore() { return riskScore; }</span>
+<span class="fc" id="L59">    public void setRiskScore(Double riskScore) { this.riskScore = riskScore; }</span>
+
+<span class="fc" id="L61">    public int getTotalAffected() { return totalAffected; }</span>
+<span class="fc" id="L62">    public void setTotalAffected(int totalAffected) { this.totalAffected = totalAffected; }</span>
+
+<span class="fc" id="L64">    public int getTotalRelationships() { return totalRelationships; }</span>
+<span class="fc" id="L65">    public void setTotalRelationships(int totalRelationships) { this.totalRelationships = totalRelationships; }</span>
+
+<span class="fc" id="L67">    public List&lt;String&gt; getNotes() { return notes; }</span>
+<span class="nc" id="L68">    public void setNotes(List&lt;String&gt; notes) { this.notes = notes; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

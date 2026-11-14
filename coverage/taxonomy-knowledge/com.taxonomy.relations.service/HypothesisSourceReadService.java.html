@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>HypothesisSourceReadService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.service</a> &gt; <span class="el_source">HypothesisSourceReadService.java</span></div><h1>HypothesisSourceReadService.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.service;
+
+import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
+import com.taxonomy.dsl.parser.TaxDslParser;
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.model.HypothesisStatus;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.model.RelationHypothesis;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+/** Current Git facts with scope-checked review identities. Retained working rows are a separate view. */
+@Service
+public class HypothesisSourceReadService {
+    private final WorkspaceDslReadPort reads;
+    private final HypothesisService hypotheses;
+
+<span class="fc" id="L29">    public HypothesisSourceReadService(WorkspaceDslReadPort reads, HypothesisService hypotheses) {</span>
+<span class="fc" id="L30">        this.reads = reads;</span>
+<span class="fc" id="L31">        this.hypotheses = hypotheses;</span>
+<span class="fc" id="L32">    }</span>
+
+<span class="fc" id="L34">    public record Item(long id, String sourceNodeId, RelationType relationType, String targetNodeId,</span>
+                       HypothesisStatus status, Double confidence) {}
+<span class="fc" id="L36">    public enum State { READY, MISSING, STALE, FAILED }</span>
+<span class="fc" id="L37">    public enum Problem { BRANCH_MISSING, SOURCE_MOVED, DSL_MISSING, BINDING_MISSING, BINDING_AMBIGUOUS, SOURCE_UNAVAILABLE }</span>
+<span class="fc" id="L38">    public record Result(State state, String commit, List&lt;Item&gt; rows, String entityTag, Problem problem) {}</span>
+<span class="fc" id="L39">    private record Identity(String source, RelationType type, String target) {</span>
+        static Identity from(RelationHypothesis row) {
+<span class="fc" id="L41">            return new Identity(row.getSourceNodeId(), row.getRelationType(), row.getTargetNodeId());</span>
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public Result read(RepositoryContext context, String expectedCommit, HypothesisStatus filter) {
+<span class="fc" id="L47">        String head = null;</span>
+        try {
+<span class="fc" id="L49">            var repository = reads.openRead(context);</span>
+<span class="fc" id="L50">            head = repository.currentHead();</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">            if (head == null) return unavailable(State.MISSING, null, Problem.BRANCH_MISSING);</span>
+<span class="fc bfc" id="L52" title="All 4 branches covered.">            if (expectedCommit != null &amp;&amp; !expectedCommit.equals(head)) return unavailable(State.STALE, head, Problem.SOURCE_MOVED);</span>
+<span class="fc" id="L53">            var dsl = repository.dslAtCommit(head);</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">            if (dsl.isEmpty()) return unavailable(State.MISSING, head, Problem.DSL_MISSING);</span>
+<span class="fc" id="L55">            var candidates = hypotheses.findAll(context).stream().collect(Collectors.groupingBy(Identity::from));</span>
+<span class="fc" id="L56">            var items = items(dsl.get(), candidates, filter);</span>
+            // All properties except legacy review IDs are immutable Git content. Include the selected
+            // scope, representation version, filter and ordered IDs so a restored binding changes the ETag.
+<span class="fc" id="L59">            String tag = StableIdentityHash.sha256(java.util.stream.Stream.of(&quot;hypotheses-v1&quot;,</span>
+<span class="fc" id="L60">                            context.repositoryId(), context.scope().name(), java.util.Objects.toString(context.workspaceId(), &quot;&quot;),</span>
+<span class="fc" id="L61">                            context.branch(), head, String.valueOf(filter), items.stream().map(Item::id).toList().toString())</span>
+<span class="fc" id="L62">                    .map(value -&gt; value.length() + &quot;:&quot; + value).collect(Collectors.joining()));</span>
+<span class="fc" id="L63">            return new Result(State.READY, head, items, tag, null);</span>
+<span class="fc" id="L64">        } catch (UnknownBinding missing) {</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">            return unavailable(missing.problem == Problem.BINDING_AMBIGUOUS ? State.STALE : State.MISSING, head, missing.problem);</span>
+<span class="fc" id="L66">        } catch (IOException | RuntimeException invalidSource) {</span>
+<span class="fc" id="L67">            return unavailable(State.FAILED, head, Problem.SOURCE_UNAVAILABLE);</span>
+        }
+    }
+
+    private static Result unavailable(State state, String commit, Problem problem) {
+<span class="fc" id="L72">        return new Result(state, commit, List.of(), null, problem);</span>
+    }
+
+    private static List&lt;Item&gt; items(String dsl, Map&lt;Identity, List&lt;RelationHypothesis&gt;&gt; candidates, HypothesisStatus filter) {
+<span class="fc" id="L76">        requireCompleteBlocks(dsl);</span>
+<span class="fc" id="L77">        List&lt;Item&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L78">        var represented = new HashSet&lt;Long&gt;();</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        for (BlockAst block : ArchitectureSemanticPatch.index(dsl).values()) {</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">            if (!&quot;relation&quot;.equals(block.getKind())) continue;</span>
+<span class="fc" id="L81">            String status = unique(block, &quot;status&quot;);</span>
+<span class="fc" id="L82">            String marker = unique(block, &quot;x-hypothesis-id&quot;);</span>
+<span class="fc" id="L83">            String provenance = unique(block, &quot;provenance&quot;);</span>
+<span class="fc bfc" id="L84" title="All 4 branches covered.">            boolean analyzed = provenance != null &amp;&amp; provenance.startsWith(&quot;analysis-session:&quot;);</span>
+<span class="fc bfc" id="L85" title="All 4 branches covered.">            boolean pending = &quot;provisional&quot;.equalsIgnoreCase(status) || &quot;proposed&quot;.equalsIgnoreCase(status);</span>
+<span class="pc bpc" id="L86" title="1 of 8 branches missed.">            if (marker == null &amp;&amp; !analyzed &amp;&amp; !pending &amp;&amp; !&quot;hypothesis-review&quot;.equals(provenance)) continue;</span>
+<span class="fc bfc" id="L87" title="All 4 branches covered.">            if (status == null || block.getHeaderTokens().size() != 3) throw new IllegalArgumentException();</span>
+<span class="fc" id="L88">            var header = block.getHeaderTokens();</span>
+<span class="fc" id="L89">            var key = new Identity(header.get(0), RelationType.valueOf(header.get(1).toUpperCase(Locale.ROOT)), header.get(2));</span>
+<span class="fc" id="L90">            var decision = HypothesisStatus.valueOf(status.toUpperCase(Locale.ROOT));</span>
+<span class="fc" id="L91">            var matches = candidates.getOrDefault(key, List.of()).stream()</span>
+<span class="fc" id="L92">                    .filter(row -&gt; binds(row, marker, provenance, decision)).toList();</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">            if (matches.isEmpty()) throw new UnknownBinding(Problem.BINDING_MISSING);</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">            if (matches.size() &gt; 1) throw new UnknownBinding(Problem.BINDING_AMBIGUOUS);</span>
+<span class="fc" id="L95">            long id = matches.getFirst().getId();</span>
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">            if (!represented.add(id)) throw new IllegalArgumentException();</span>
+<span class="fc" id="L97">            String value = unique(block, &quot;confidence&quot;);</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">            Double confidence = value == null ? null : Double.valueOf(value);</span>
+<span class="fc bfc" id="L99" title="All 8 branches covered.">            if (confidence != null &amp;&amp; (!Double.isFinite(confidence) || confidence &lt; 0 || confidence &gt; 1)) {</span>
+<span class="fc" id="L100">                throw new IllegalArgumentException();</span>
+            }
+<span class="pc bpc" id="L102" title="1 of 4 branches missed.">            if (filter == null || filter == decision) {</span>
+<span class="fc" id="L103">                result.add(new Item(id, key.source(), key.type(), key.target(), decision, confidence));</span>
+            }
+<span class="fc" id="L105">        }</span>
+<span class="fc" id="L106">        return List.copyOf(result);</span>
+    }
+
+    private static boolean binds(RelationHypothesis row, String marker, String provenance, HypothesisStatus decision) {
+<span class="fc bfc" id="L110" title="All 4 branches covered.">        if (marker != null &amp;&amp; !marker.equals(row.getId().toString())) return false;</span>
+<span class="pc bpc" id="L111" title="1 of 6 branches missed.">        if (provenance == null || !provenance.startsWith(&quot;analysis-session:&quot;)) return marker != null;</span>
+<span class="fc" id="L112">        String origin = provenance.substring(&quot;analysis-session:&quot;.length());</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">        if (origin.equals(row.getAnalysisSessionId())) return true;</span>
+        // The historical direct review publisher records its action and review ID as the session.
+<span class="fc bfc" id="L115" title="All 8 branches covered.">        return marker != null &amp;&amp; ((decision == HypothesisStatus.ACCEPTED &amp;&amp; origin.equals(&quot;accepted-&quot; + marker))</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">                || (decision == HypothesisStatus.REJECTED &amp;&amp; origin.equals(&quot;rejected-&quot; + marker)));</span>
+    }
+
+    private static String unique(BlockAst block, String field) {
+<span class="fc" id="L120">        var values = block.propertyValues(field);</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">        if (values.size() &gt; 1) throw new IllegalArgumentException();</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        return values.isEmpty() ? null : values.getFirst();</span>
+    }
+
+    /** The import parser tolerates incomplete input. An authoritative read cannot turn it into an empty list. */
+    private static void requireCompleteBlocks(String dsl) {
+<span class="fc" id="L127">        int depth = 0;</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        for (String raw : dsl.lines().toList()) {</span>
+<span class="fc" id="L129">            String line = TaxDslParser.withoutComment(raw).strip();</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">            if (line.isEmpty()) continue;</span>
+<span class="fc" id="L131">            int delta = TaxDslParser.blockDelimiter(line);</span>
+<span class="fc bfc" id="L132" title="All 4 branches covered.">            if (depth == 0 &amp;&amp; delta != 1) throw new IllegalArgumentException();</span>
+<span class="fc" id="L133">            depth += delta;</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">            if (depth &gt; 1) throw new IllegalArgumentException();</span>
+<span class="fc" id="L135">        }</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        if (depth != 0) throw new IllegalArgumentException();</span>
+<span class="fc" id="L137">    }</span>
+
+    private static final class UnknownBinding extends RuntimeException {
+        private final Problem problem;
+<span class="fc" id="L141">        UnknownBinding(Problem problem) { this.problem = problem; }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

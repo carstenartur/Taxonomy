@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>IntegrationBackupFiles.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.backup</a> &gt; <span class="el_source">IntegrationBackupFiles.java</span></div><h1>IntegrationBackupFiles.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.backup;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.exchange.ExchangeXml;
+import com.taxonomy.exchange.backup.PortableRows;
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import com.taxonomy.interop.IntegrationFileBinding;
+
+import java.io.*;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.time.DateTimeException;
+import java.time.Instant;
+import java.util.*;
+
+import static com.taxonomy.exchange.backup.PortableRows.*;
+
+/** Binary evidence is streamed as archive entries; only typed references enter portable JSON records. */
+final class IntegrationBackupFiles {
+    // PostgreSQL buffers selected BYTEA values, even when a mapper only reads metadata.
+    private static final String COLUMNS = &quot;e.id,e.scope_id,e.connection_id,e.operation_id,e.actor,e.kind,e.profile,e.profile_version,e.binding_json,&quot;
+            + &quot;e.sha256,e.byte_count,e.media_type,e.filename,e.model_identifier,e.review_fingerprint,e.losses_json,e.created_at,&quot;
+            + &quot;o.actor as source_actor,o.context_json,o.document_json,o.direction,o.base_file_id,o.result_file_id,o.review_fingerprint as source_review&quot;;
+    private final PortableRows rows;
+    private final IntegrationBackupSelection selection;
+    private final ComponentSink sink;
+    private final BackupProfile profile;
+    private final List&lt;Query&gt; queries;
+
+<span class="fc" id="L32">    IntegrationBackupFiles(PortableRows rows, IntegrationBackupSelection selection, ComponentSink sink, BackupProfile profile) {</span>
+<span class="fc" id="L33">        this.rows = rows; this.selection = selection; this.sink = sink; this.profile = profile;</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        String retained = profile.includesHistory() ? &quot;1=1&quot; : &quot;e.kind='BASE' and exists (select 1 from interop_operation p &quot;</span>
+                + &quot;where p.base_file_id=e.id and p.scope_id=e.scope_id and p.connection_id=e.connection_id and p.status not in ('COMPLETED','CANCELLED'))&quot;;
+<span class="fc" id="L36">        queries = selection.queries(COLUMNS, &quot;interop_file e join interop_operation o on o.id=e.operation_id&quot;, retained);</span>
+<span class="fc" id="L37">    }</span>
+    void verify() throws IOException {
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        for (var query : queries) rows.visit(query, row -&gt; {</span>
+<span class="fc" id="L40">            sink.checkpoint(); return metadata(row);</span>
+<span class="fc" id="L41">        }, metadata -&gt; transfer(metadata, false));</span>
+<span class="fc" id="L42">    }</span>
+    void write() throws IOException {
+<span class="fc" id="L44">        rows.writeBatches(sink, &quot;interop&quot;, &quot;files&quot;, profile, queries, this::metadata);</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">        for (var query : queries) rows.visit(query, row -&gt; {</span>
+<span class="fc" id="L46">            sink.checkpoint(); return metadata(row);</span>
+<span class="fc" id="L47">        }, metadata -&gt; transfer(metadata, true));</span>
+<span class="fc" id="L48">    }</span>
+    private void transfer(FileData expected, boolean write) throws IOException {
+        // The primary key bounds eager JDBC buffering to one file, independently of the row fetch size.
+<span class="fc" id="L51">        var query = new Query(&quot;select &quot; + COLUMNS + &quot;,e.content from interop_file e join interop_operation o on o.id=e.operation_id&quot;</span>
+                + &quot; where e.id=? and e.scope_id=? and e.connection_id=?&quot;,
+<span class="fc" id="L53">                List.of(expected.sourceId().value(), expected.scope().scopeId(), expected.connection().value()));</span>
+<span class="fc" id="L54">        boolean[] found = {false};</span>
+<span class="fc" id="L55">        rows.visit(query, row -&gt; {</span>
+<span class="fc" id="L56">            sink.checkpoint();</span>
+<span class="pc bpc" id="L57" title="2 of 4 branches missed.">            if (found[0] || !expected.equals(metadata(row))) throw invalid();</span>
+<span class="fc" id="L58">            found[0] = true;</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">            if (write) {</span>
+<span class="fc" id="L60">                try (InputStream content = row.getBinaryStream(&quot;content&quot;)) {</span>
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">                    if (content == null) throw invalid();</span>
+<span class="fc" id="L62">                    BackupEntry written = sink.write(expected.path(), new BoundedInput(content, expected.bytes()));</span>
+<span class="pc bpc" id="L63" title="2 of 4 branches missed.">                    if (written.length() != expected.bytes() || !written.sha256().equals(expected.sha256())) throw invalid();</span>
+                }
+            } else {
+<span class="fc" id="L66">                verifyContent(row, expected);</span>
+            }
+<span class="fc" id="L68">            return expected;</span>
+<span class="fc" id="L69">        }, ignored -&gt; { });</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">        if (!found[0]) throw invalid();</span>
+<span class="fc" id="L71">    }</span>
+    private FileData metadata(ResultSet row) throws SQLException, IOException {
+        try {
+<span class="fc" id="L74">            String id = text(row, &quot;id&quot;), kind = text(row, &quot;kind&quot;), actor = text(row, &quot;actor&quot;);</span>
+<span class="fc" id="L75">            UUID.fromString(id); UUID.fromString(text(row, &quot;connection_id&quot;)); UUID.fromString(text(row, &quot;operation_id&quot;));</span>
+<span class="fc" id="L76">            String sha = text(row, &quot;sha256&quot;); long bytes = row.getLong(&quot;byte_count&quot;);</span>
+<span class="fc" id="L77">            var context = IntegrationBackupJson.read(text(row, &quot;context_json&quot;), IntegrationContext.class);</span>
+<span class="fc" id="L78">            var document = IntegrationBackupJson.read(text(row, &quot;document_json&quot;), ExchangeDocument.class);</span>
+<span class="fc" id="L79">            var binding = IntegrationFileBinding.plugin(document);</span>
+<span class="pc bpc" id="L80" title="2 of 4 branches missed.">            if (!actor.equals(text(row, &quot;source_actor&quot;)) || !actor.equals(context.actor())</span>
+<span class="pc bpc" id="L81" title="2 of 4 branches missed.">                    || !text(row, &quot;profile&quot;).equals(context.profile()) || !text(row, &quot;profile_version&quot;).equals(context.profileVersion())</span>
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">                    || !text(row, &quot;connection_id&quot;).equals(context.connectionId().toString())</span>
+<span class="pc bpc" id="L83" title="2 of 4 branches missed.">                    || !binding.equals(IntegrationBackupJson.read(text(row, &quot;binding_json&quot;), Map.class))</span>
+<span class="pc bpc" id="L84" title="3 of 6 branches missed.">                    || sha == null || !sha.matches(&quot;[0-9a-f]{64}&quot;) || bytes &lt; 1 || bytes &gt; ExchangeXml.MAX_BYTES) throw invalid();</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">            if (&quot;BASE&quot;.equals(kind)) {</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">                if (!id.equals(text(row, &quot;base_file_id&quot;))) throw invalid();</span>
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">            } else if (&quot;RESULT&quot;.equals(kind)) {</span>
+<span class="pc bpc" id="L88" title="2 of 4 branches missed.">                if (!id.equals(text(row, &quot;result_file_id&quot;)) || text(row, &quot;source_review&quot;) == null</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">                        || !Objects.equals(text(row, &quot;review_fingerprint&quot;), text(row, &quot;source_review&quot;))) throw invalid();</span>
+<span class="nc" id="L90">            } else throw invalid();</span>
+<span class="fc" id="L91">            var losses = IntegrationBackupJson.read(text(row, &quot;losses_json&quot;), MappingLoss[].class);</span>
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">            if (losses == null) throw invalid();</span>
+<span class="fc" id="L93">            String createdAt = Instant.parse(text(row, &quot;created_at&quot;)).toString();</span>
+<span class="fc" id="L94">            return new FileData(new SourceRecordId(&quot;interop.file&quot;, id), selection.scope(row),</span>
+<span class="fc" id="L95">                    reference(row, &quot;interop.connection&quot;, &quot;connection_id&quot;), reference(row, &quot;interop.operation&quot;, &quot;operation_id&quot;), actor, kind,</span>
+<span class="fc" id="L96">                    context.profile(), context.profileVersion(), binding, sha, bytes, text(row, &quot;media_type&quot;), text(row, &quot;filename&quot;),</span>
+<span class="fc" id="L97">                    text(row, &quot;model_identifier&quot;), text(row, &quot;review_fingerprint&quot;), List.of(losses), createdAt,</span>
+                    &quot;data/interop/files/&quot; + id + &quot;.bin&quot;, &quot;MANUAL_REVIEW_REQUIRED&quot;);
+<span class="nc" id="L99">        } catch (IllegalArgumentException | NullPointerException | DateTimeException failure) { throw invalid(); }</span>
+    }
+    private void verifyContent(ResultSet row, FileData metadata) throws SQLException, IOException {
+        MessageDigest digest;
+<span class="pc" id="L103">        try { digest = MessageDigest.getInstance(&quot;SHA-256&quot;); } catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }</span>
+<span class="fc" id="L104">        long bytes = 0;</span>
+<span class="fc" id="L105">        try (InputStream content = row.getBinaryStream(&quot;content&quot;)) {</span>
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">            if (content == null) throw invalid();</span>
+<span class="fc" id="L107">            byte[] buffer = new byte[8192];</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">            for (int count; (count = content.read(buffer)) != -1;) {</span>
+<span class="fc" id="L109">                sink.checkpoint(); bytes += count;</span>
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">                if (bytes &gt; metadata.bytes()) throw invalid();</span>
+<span class="fc" id="L111">                digest.update(buffer, 0, count);</span>
+            }
+        }
+<span class="pc bpc" id="L114" title="1 of 4 branches missed.">        if (bytes != metadata.bytes() || !HexFormat.of().formatHex(digest.digest()).equals(metadata.sha256())) throw invalid();</span>
+<span class="fc" id="L115">    }</span>
+<span class="fc" id="L116">    private static IOException invalid() { return new IOException(&quot;Invalid integration binary evidence&quot;); }</span>
+    private static final class BoundedInput extends FilterInputStream {
+        private final long limit; private long read;
+<span class="fc" id="L119">        BoundedInput(InputStream input, long limit) { super(input); this.limit = limit; }</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">        @Override public int read() throws IOException { int value = in.read(); if (value &gt;= 0) count(1); return value; }</span>
+        @Override public int read(byte[] buffer, int offset, int length) throws IOException {
+<span class="fc bfc" id="L122" title="All 2 branches covered.">            int value = in.read(buffer, offset, length); if (value &gt; 0) count(value); return value;</span>
+        }
+<span class="pc bpc" id="L124" title="2 of 4 branches missed.">        private void count(int count) throws IOException { read += count; if (read &gt; limit || Thread.currentThread().isInterrupted()) throw invalid(); }</span>
+    }
+<span class="fc" id="L126">    record FileData(SourceRecordId sourceId, BackupIntegrationScope scope, SourceRecordId connection, SourceRecordId sourceOperation,</span>
+                    String sourceActor, String kind, String profile, String profileVersion, Map&lt;String, String&gt; sourcePluginBinding,
+                    String sha256, long bytes, String mediaType, String filename, String modelIdentifier, String sourceReviewFingerprint,
+                    List&lt;MappingLoss&gt; losses, String createdAt, String path, String targetExecutionPolicy) { }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

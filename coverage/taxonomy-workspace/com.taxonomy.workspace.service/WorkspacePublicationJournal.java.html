@@ -1,0 +1,306 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkspacePublicationJournal.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">WorkspacePublicationJournal.java</span></div><h1>WorkspacePublicationJournal.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.workspace.service.WorkspacePublicationOperation.Status;
+import com.taxonomy.workspace.service.WorkspacePublicationOperation.Step;
+import jakarta.persistence.EntityManager;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.time.Clock;
+import java.time.Duration;
+import java.util.List;
+import java.util.UUID;
+
+import static com.taxonomy.workspace.service.WorkspacePublicationOperation.Status.*;
+
+/** Each accepted phase commits separately. A worker holds its operation row through the guarded external effect. */
+@Service
+public class WorkspacePublicationJournal {
+<span class="fc" id="L26">    static final long LEASE = Duration.ofMinutes(5).toMillis();</span>
+    private static final int MAX_ATTEMPTS = 6;
+    private final EntityManager entities;
+    private final TransactionTemplate transaction;
+    private final Clock clock;
+    private final RepositoryOperationLeases leases;
+
+    @Autowired
+    public WorkspacePublicationJournal(EntityManager entities, PlatformTransactionManager transactions) {
+<span class="fc" id="L35">        this(entities, transactions, Clock.systemUTC());</span>
+<span class="fc" id="L36">    }</span>
+
+<span class="fc" id="L38">    WorkspacePublicationJournal(EntityManager entities, PlatformTransactionManager transactions, Clock clock) {</span>
+<span class="fc" id="L39">        this.entities = entities;</span>
+<span class="fc" id="L40">        transaction = new TransactionTemplate(transactions);</span>
+<span class="fc" id="L41">        transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);</span>
+<span class="fc" id="L42">        this.clock = clock;</span>
+<span class="fc" id="L43">        leases = new RepositoryOperationLeases(entities,transaction,clock,LEASE,MAX_ATTEMPTS);</span>
+<span class="fc" id="L44">    }</span>
+
+<span class="fc" id="L46">    record Source(String branch, String forkPoint, String central, String local, String tracking, String workspaceOwner) {</span>
+        Source(String branch, String forkPoint, String central, String local, String tracking) {
+<span class="fc" id="L48">            this(branch, forkPoint, central, local, tracking, null);</span>
+<span class="fc" id="L49">        }</span>
+    }
+<span class="fc" id="L51">    record Claim(RepositoryOperationLeases.Claim lease, String executor) {}</span>
+<span class="fc" id="L52">    public record View(String operationId,String causationId,String status,String nextPhase,String originalActor,String lastExecutor,</span>
+                String repositoryId,String workspaceId,String branch,String sourceBranch,String expectedSourceCommit,String expectedLocalCommit,
+                String preparedCommit,String resultCommit,int attempts,String decisionCode,long createdAt,Long lastAttemptAt,Long publishedAt,Long sourceObservedAt,Long completedAt,Long archivedAt,Long pinsReleasedAt,Long redactedAt,String workspaceOwner) {}
+    @FunctionalInterface interface PhaseAction { void run(WorkspacePublicationOperation row,Runnable checkLease) throws IOException; }
+    @FunctionalInterface interface Snapshot { Source capture() throws IOException; }
+
+    View admit(RepositoryContext context, WorkspaceFetchAuthority.Grant grant, boolean keepWorkspace,
+               String key, String cause, Snapshot snapshot) throws IOException {
+<span class="pc bpc" id="L60" title="1 of 4 branches missed.">        if (key != null &amp;&amp; !key.matches(&quot;[A-Za-z0-9._~:-]{1,128}&quot;)) throw invalid(&quot;Invalid publication idempotency key&quot;);</span>
+<span class="pc bpc" id="L61" title="1 of 4 branches missed.">        if (cause != null &amp;&amp; !cause.matches(&quot;[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}&quot;)) throw invalid(&quot;Invalid publication causation ID&quot;);</span>
+        // A keyless legacy request carries no frozen input. Each submission receives its own recoverable operation.
+<span class="fc bfc" id="L63" title="All 2 branches covered.">        String token = key == null ? &quot;generated:&quot; + UUID.randomUUID() : &quot;provided:&quot; + key;</span>
+<span class="fc" id="L64">        String id = com.taxonomy.identity.StableIdentityHash.sha256(String.join(&quot;\u0000&quot;,&quot;workspace.publish&quot;,</span>
+<span class="fc" id="L65">                context.repositoryWorkspaceScopeKey(),grant.principalId(),token));</span>
+<span class="fc" id="L66">        var previous = transaction.execute(tx -&gt; entities.find(WorkspacePublicationOperation.class,id));</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        if (previous != null) return replay(previous,context,grant.principalId(),keepWorkspace,cause);</span>
+<span class="fc" id="L68">        var source = snapshot.capture();</span>
+<span class="fc bfc" id="L69" title="All 4 branches covered.">        if (source.workspaceOwner()!=null &amp;&amp; !source.workspaceOwner().equals(context.username())</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">                &amp;&amp; &quot;LEGACY_OIDC&quot;.equals(grant.loginKind())) {</span>
+<span class="fc" id="L71">            throw new org.springframework.security.access.AccessDeniedException(&quot;Shared synchronization requires a stable principal&quot;);</span>
+        }
+        try {
+<span class="fc" id="L74">            return transaction.execute(tx -&gt; {</span>
+<span class="fc" id="L75">                var row = new WorkspacePublicationOperation();</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">                row.id=id; row.cause=cause == null ? id : UUID.fromString(cause).toString();</span>
+<span class="fc" id="L77">                row.actor=grant.principalId(); row.loginKind=grant.loginKind(); row.binding=grant.bindingKey();</span>
+<span class="fc" id="L78">                row.policy=&quot;ARCHITECTURE_PUBLISH+CONTRIBUTOR&quot;; row.username=context.username();</span>
+<span class="fc" id="L79">                row.capturedWorkspaceOwner=source.workspaceOwner();</span>
+<span class="fc" id="L80">                row.repository=context.repositoryId(); row.workspace=context.workspaceId(); row.localBranch=context.branch();</span>
+<span class="fc" id="L81">                row.sourceBranch=source.branch(); row.forkPoint=source.forkPoint(); row.inputSource=source.central();</span>
+<span class="fc" id="L82">                row.inputLocal=source.local(); row.inputTracking=source.tracking(); row.keepWorkspace=keepWorkspace;</span>
+<span class="fc" id="L83">                row.phase=ADMITTED.name(); row.step=Step.PREPARE; row.createdAt=clock.millis(); row.nextAttemptAt=row.createdAt;</span>
+<span class="fc" id="L84">                entities.persist(row); entities.flush();</span>
+<span class="fc" id="L85">                event(row,row.actor,&quot;ADMITTED&quot;);</span>
+<span class="fc" id="L86">                return view(row);</span>
+            });
+<span class="nc" id="L88">        } catch (RuntimeException failure) {</span>
+<span class="nc" id="L89">            var competing = transaction.execute(tx -&gt; entities.find(WorkspacePublicationOperation.class,id));</span>
+<span class="nc bnc" id="L90" title="All 2 branches missed.">            if (competing == null) throw failure;</span>
+<span class="nc" id="L91">            return replay(competing,context,grant.principalId(),keepWorkspace,cause);</span>
+        }
+    }
+
+    View get(RepositoryContext context,String actor,String id) {
+<span class="fc" id="L96">        return transaction.execute(tx -&gt; view(owned(context,actor,id)));</span>
+    }
+
+    View archive(RepositoryContext selected,String actor,String id) {
+<span class="fc" id="L100">        return transaction.execute(tx -&gt; {</span>
+<span class="fc" id="L101">            owned(selected,actor,id);</span>
+<span class="fc" id="L102">            var row=entities.find(WorkspacePublicationOperation.class,id,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);</span>
+<span class="fc" id="L103">            entities.refresh(row);</span>
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">            if (!row.belongsTo(selected,actor)) throw missing();</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">            if (row.completedAt==null) throw new ResponseStatusException(HttpStatus.CONFLICT,&quot;A live publication cannot be archived&quot;);</span>
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">            if (row.archivedAt==null) {</span>
+<span class="fc" id="L107">                row.archivedAt=clock.millis();row.archivedBy=actor;event(row,actor,&quot;ARCHIVED&quot;);</span>
+            }
+<span class="fc" id="L109">            return view(row);</span>
+        });
+    }
+
+    /** Owner deletion takes this snapshot and retires its receipts in the same transaction as physical workspace deletion. */
+    @org.springframework.transaction.annotation.Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void archiveForWorkspaceRemoval(String workspace,String repository,String owner,java.util.function.Supplier&lt;String&gt; deletingActor) {
+<span class="fc" id="L116">        var ids=entities.createQuery(&quot;&quot;&quot;</span>
+                select p.id from WorkspacePublicationOperation p where p.workspace=:workspace and p.repository=:repository
+                and coalesce(p.capturedWorkspaceOwner,p.username)=:owner and p.archivedAt is null order by p.id&quot;&quot;&quot;,String.class)
+<span class="fc" id="L119">                .setParameter(&quot;workspace&quot;,workspace).setParameter(&quot;repository&quot;,repository).setParameter(&quot;owner&quot;,owner).getResultList();</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        if (ids.isEmpty()) return;</span>
+<span class="fc" id="L121">        String actor=java.util.Objects.requireNonNull(deletingActor.get(),&quot;Authenticated deleting actor&quot;);</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        for (String id:ids) {</span>
+<span class="fc" id="L123">            if (entities.createQuery(&quot;&quot;&quot;</span>
+                    update WorkspacePublicationOperation p set p.archivedAt=:now,p.archivedBy=:actor
+                    where p.id=:id and p.workspace=:workspace and p.repository=:repository and coalesce(p.capturedWorkspaceOwner,p.username)=:owner
+                    and p.archivedAt is null&quot;&quot;&quot;)
+<span class="fc" id="L127">                    .setParameter(&quot;id&quot;,id).setParameter(&quot;workspace&quot;,workspace).setParameter(&quot;repository&quot;,repository)</span>
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">                    .setParameter(&quot;owner&quot;,owner).setParameter(&quot;now&quot;,clock.millis()).setParameter(&quot;actor&quot;,actor).executeUpdate()!=1) continue;</span>
+<span class="fc" id="L129">            var row=entities.find(WorkspacePublicationOperation.class,id);</span>
+<span class="fc" id="L130">            entities.refresh(row);</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">            if (row.completedAt==null) settle(row,DENIED,&quot;WORKSPACE_DELETED&quot;,actor);</span>
+<span class="fc" id="L132">            event(row,actor,&quot;ARCHIVED&quot;);</span>
+<span class="fc" id="L133">        }</span>
+<span class="fc" id="L134">    }</span>
+
+    List&lt;String&gt; due() {
+<span class="fc" id="L137">        return transaction.execute(tx -&gt; entities.createQuery(&quot;&quot;&quot;</span>
+                select p.id from WorkspacePublicationOperation p where p.phase in :states and p.archivedAt is null
+                and p.nextAttemptAt &lt;= :now order by p.nextAttemptAt,p.id&quot;&quot;&quot;,String.class)
+<span class="fc" id="L140">                .setParameter(&quot;states&quot;,List.of(&quot;ADMITTED&quot;,&quot;RUNNING&quot;,&quot;RETRYABLE&quot;)).setParameter(&quot;now&quot;,clock.millis()).setMaxResults(8).getResultList());</span>
+    }
+
+    Claim claim(String id,String executor,boolean explicitRetry) {
+<span class="fc bfc" id="L144" title="All 2 branches covered.">        var claim=leases.claim(WorkspacePublicationOperation.class,id,executor,!explicitRetry,row -&gt; {</span>
+<span class="fc" id="L145">            row.cleanupDueAt=row.completedAt;</span>
+<span class="fc" id="L146">            event(row,executor,row.decision);</span>
+<span class="fc" id="L147">        });</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">        return claim==null ? null : new Claim(claim,executor);</span>
+    }
+
+    View step(Claim claim, PhaseAction action) throws IOException {
+        try {
+<span class="fc" id="L153">            return transaction.execute(tx -&gt; {</span>
+<span class="fc" id="L154">                var row=locked(claim);</span>
+<span class="fc" id="L155">                try { action.run(row,() -&gt; leases.requireCurrent(row,claim.lease())); } catch (IOException failure) { throw new UncheckedIOException(failure); }</span>
+<span class="fc" id="L156">                var applied=row.step;</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">                if (applied==Step.SOURCE_REF) {</span>
+<span class="fc" id="L158">                    row.sourceObservedAt=clock.millis();</span>
+                }
+<span class="fc" id="L160">                event(row,claim.executor(),&quot;APPLIED&quot;);</span>
+<span class="fc" id="L161">                row.step=Step.values()[applied.ordinal()+1];</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">                if (row.step==Step.COMPLETE) settle(row,COMPLETED,&quot;COMPLETED&quot;);</span>
+<span class="fc" id="L163">                else row.nextAttemptAt=clock.millis()+LEASE;</span>
+<span class="fc" id="L164">                return view(row);</span>
+            });
+<span class="fc" id="L166">        } catch (UncheckedIOException failure) { throw failure.getCause(); }</span>
+    }
+
+    View decide(Claim claim,Status status,String decision) {
+<span class="fc" id="L170">        return decide(claim,status,decision,false,null);</span>
+    }
+
+    View decide(Claim claim,Status status,String decision,boolean confirmedSourceAncestor,java.time.Instant sourceTime) {
+<span class="fc" id="L174">        return transaction.execute(tx -&gt; {</span>
+<span class="fc" id="L175">            var row=locked(claim);</span>
+<span class="fc bfc" id="L176" title="All 4 branches covered.">            if (confirmedSourceAncestor &amp;&amp; row.sourceObservedAt==null) row.sourceObservedAt=clock.millis();</span>
+<span class="pc bpc" id="L177" title="3 of 6 branches missed.">            if (confirmedSourceAncestor &amp;&amp; sourceTime!=null &amp;&amp; row.publishedAt==null) row.publishedAt=sourceTime.toEpochMilli();</span>
+<span class="fc bfc" id="L178" title="All 4 branches covered.">            if (status==SUPERSEDED &amp;&amp; row.sourceObservedAt==null) settle(row,MANUAL_REVIEW,&quot;WORKSPACE_ADVANCED_BEFORE_SOURCE&quot;);</span>
+<span class="pc bpc" id="L179" title="1 of 4 branches missed.">            else if (status==RETRYABLE &amp;&amp; row.attempts&gt;=MAX_ATTEMPTS) settle(row,MANUAL_REVIEW,&quot;ATTEMPTS_EXHAUSTED&quot;);</span>
+<span class="fc bfc" id="L180" title="All 4 branches covered.">            else if (status==RETRYABLE || status==AWAITING_AUTHORIZATION) {</span>
+<span class="fc" id="L181">                row.phase=status.name(); row.decision=decision; row.lease=null;</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">                row.nextAttemptAt=status==RETRYABLE ? clock.millis()+Math.min(300_000,1000L &lt;&lt; (row.attempts-1)) : null;</span>
+<span class="fc" id="L183">                event(row,claim.executor(),decision);</span>
+<span class="fc" id="L184">            } else settle(row,status,decision);</span>
+<span class="fc" id="L185">            return view(row);</span>
+        });
+    }
+
+    /** Retain a scope-owned idempotency tombstone and its append-only decision trail after sensitive ref details expire. */
+    void expireDue() {
+<span class="fc" id="L191">        long now=clock.millis();</span>
+<span class="fc" id="L192">        long archiveCutoff=now-Duration.ofDays(30).toMillis();</span>
+<span class="fc" id="L193">        long redactCutoff=now-Duration.ofDays(90).toMillis();</span>
+<span class="fc" id="L194">        var ids=transaction.execute(tx -&gt; entities.createQuery(&quot;&quot;&quot;</span>
+                select p.id from WorkspacePublicationOperation p where
+                    (p.archivedAt is null and (p.completedAt &lt;= :archive
+                        or (p.phase='AWAITING_AUTHORIZATION' and p.lastAttemptAt &lt;= :archive)))
+                    or (p.archivedAt &lt;= :redact and p.redactedAt is null and p.pinsReleasedAt is not null)
+<span class="fc" id="L199">                order by p.id&quot;&quot;&quot;,String.class).setParameter(&quot;archive&quot;,archiveCutoff)</span>
+<span class="fc" id="L200">                .setParameter(&quot;redact&quot;,redactCutoff).setMaxResults(16).getResultList());</span>
+<span class="fc bfc" id="L201" title="All 2 branches covered.">        for (String id:ids) transaction.executeWithoutResult(tx -&gt; {</span>
+<span class="fc" id="L202">            String actor=&quot;system:workspace-publication-retention&quot;;</span>
+<span class="fc" id="L203">            int archived=entities.createQuery(&quot;&quot;&quot;</span>
+                    update WorkspacePublicationOperation p set p.archivedAt=:now,p.archivedBy=:actor
+                    where p.id=:id and p.archivedAt is null and (p.completedAt &lt;= :cutoff
+                        or (p.phase='AWAITING_AUTHORIZATION' and p.lastAttemptAt &lt;= :cutoff))&quot;&quot;&quot;)
+<span class="fc" id="L207">                    .setParameter(&quot;now&quot;,now).setParameter(&quot;actor&quot;,actor).setParameter(&quot;id&quot;,id)</span>
+<span class="fc" id="L208">                    .setParameter(&quot;cutoff&quot;,archiveCutoff).executeUpdate();</span>
+<span class="fc bfc" id="L209" title="All 2 branches covered.">            if (archived==1) {</span>
+<span class="fc" id="L210">                var row=entities.find(WorkspacePublicationOperation.class,id);</span>
+<span class="fc" id="L211">                entities.refresh(row);</span>
+<span class="pc bpc" id="L212" title="1 of 2 branches missed.">                if (row.completedAt==null) settle(row,MANUAL_REVIEW,&quot;AUTHORIZATION_EXPIRED&quot;,actor);</span>
+<span class="fc" id="L213">                event(row,actor,&quot;ARCHIVED&quot;);</span>
+<span class="fc" id="L214">                return;</span>
+            }
+<span class="fc" id="L216">            int redacted=entities.createQuery(&quot;&quot;&quot;</span>
+                    update WorkspacePublicationOperation p set p.redactedAt=:now,p.binding='REDACTED',
+                        p.inputLocal=null,p.inputSource=null,p.inputTracking=null,p.expectedLocal=null,p.expectedTracking=null,
+                        p.preparedLocal=null,p.preparedSource=null,p.preparedTracking=null,p.forkPoint=null,p.mergedDigest=null,
+                        p.centralPortfolioDigest=null,p.localPortfolioDigest=null
+                    where p.id=:id and p.archivedAt &lt;= :cutoff and p.redactedAt is null and p.pinsReleasedAt is not null&quot;&quot;&quot;)
+<span class="fc" id="L222">                    .setParameter(&quot;now&quot;,now).setParameter(&quot;cutoff&quot;,redactCutoff).setParameter(&quot;id&quot;,id).executeUpdate();</span>
+<span class="pc bpc" id="L223" title="1 of 2 branches missed.">            if (redacted==1) event(entities.find(WorkspacePublicationOperation.class,id),actor,&quot;GIT_DETAILS_REDACTED&quot;);</span>
+<span class="fc" id="L224">        });</span>
+<span class="fc" id="L225">    }</span>
+
+    List&lt;String&gt; dueForCleanup() {
+<span class="fc" id="L228">        return transaction.execute(tx -&gt; entities.createQuery(&quot;&quot;&quot;</span>
+                select p.id from WorkspacePublicationOperation p where p.completedAt is not null
+                and p.pinsReleasedAt is null and p.cleanupDueAt &lt;= :now order by p.cleanupDueAt,p.id&quot;&quot;&quot;, String.class)
+<span class="fc" id="L231">                .setParameter(&quot;now&quot;,clock.millis()).setMaxResults(8).getResultList());</span>
+    }
+
+    @FunctionalInterface interface CleanupAction { void release(WorkspacePublicationOperation row) throws IOException; }
+
+    void cleanup(String id, String executor, boolean requested, CleanupAction action) {
+<span class="fc" id="L237">        transaction.executeWithoutResult(tx -&gt; {</span>
+            // A real conditional write serializes concurrent cleaners on HSQL MVCC and server databases.
+<span class="fc bfc" id="L239" title="All 2 branches covered.">            String eligibility=requested ? &quot;&quot; : &quot; and p.cleanupDueAt &lt;= :now&quot;;</span>
+<span class="fc" id="L240">            var query=entities.createQuery(&quot;&quot;&quot;</span>
+                    update WorkspacePublicationOperation p set p.cleanupDueAt=p.cleanupDueAt
+                    where p.id=:id and p.completedAt is not null and p.pinsReleasedAt is null&quot;&quot;&quot; + eligibility)
+<span class="fc" id="L243">                    .setParameter(&quot;id&quot;,id);</span>
+<span class="fc bfc" id="L244" title="All 2 branches covered.">            if (!requested) query.setParameter(&quot;now&quot;,clock.millis());</span>
+<span class="fc bfc" id="L245" title="All 2 branches covered.">            if (query.executeUpdate()!=1) return;</span>
+<span class="fc" id="L246">            var row=entities.find(WorkspacePublicationOperation.class,id);</span>
+<span class="fc" id="L247">            entities.refresh(row);</span>
+            try {
+<span class="fc" id="L249">                action.release(row);</span>
+<span class="fc" id="L250">                row.pinsReleasedAt=clock.millis();</span>
+<span class="fc" id="L251">                row.cleanupDueAt=null;</span>
+<span class="fc" id="L252">                event(row,executor,&quot;PINS_RELEASED&quot;);</span>
+<span class="fc" id="L253">            } catch (WorkspaceFetchAuthority.FreshLoginRequired | org.springframework.security.access.AccessDeniedException unavailable) {</span>
+<span class="fc" id="L254">                row.cleanupDueAt=null;</span>
+<span class="fc" id="L255">                event(row,executor,&quot;PIN_CLEANUP_AUTHORIZATION_REQUIRED&quot;);</span>
+<span class="nc" id="L256">            } catch (IOException unavailable) {</span>
+                // Already removed private refs may safely be retried. Retain evidence and require a scoped operator retry.
+<span class="nc" id="L258">                row.cleanupDueAt=null;</span>
+<span class="nc" id="L259">                event(row,executor,&quot;PIN_CLEANUP_REVIEW_REQUIRED&quot;);</span>
+<span class="fc" id="L260">            }</span>
+<span class="fc" id="L261">        });</span>
+<span class="fc" id="L262">    }</span>
+
+    private WorkspacePublicationOperation locked(Claim claim) {
+<span class="fc" id="L265">        var row=leases.locked(WorkspacePublicationOperation.class,claim.lease());</span>
+<span class="fc" id="L266">        leases.requireCurrent(row,claim.lease());</span>
+<span class="fc" id="L267">        return row;</span>
+    }
+
+    private void settle(WorkspacePublicationOperation row,Status status,String decision) {
+<span class="fc" id="L271">        settle(row,status,decision,row.executor);</span>
+<span class="fc" id="L272">    }</span>
+
+    private void settle(WorkspacePublicationOperation row,Status status,String decision,String actor) {
+<span class="fc" id="L275">        row.phase=status.name();row.decision=decision;row.completedAt=clock.millis();row.lease=null;row.nextAttemptAt=null;</span>
+<span class="fc" id="L276">        row.cleanupDueAt=row.completedAt;</span>
+<span class="fc" id="L277">        event(row,actor,decision);</span>
+<span class="fc" id="L278">    }</span>
+
+    private static View replay(WorkspacePublicationOperation row,RepositoryContext context,String actor,boolean keep,String cause) {
+<span class="pc bpc" id="L281" title="1 of 2 branches missed.">        if (!row.belongsTo(context,actor)) throw missing();</span>
+<span class="fc bfc" id="L282" title="All 2 branches covered.">        if (row.archivedAt!=null) throw new ResponseStatusException(HttpStatus.GONE,&quot;Publication archived&quot;);</span>
+<span class="pc bpc" id="L283" title="2 of 6 branches missed.">        if (row.keepWorkspace!=keep || cause!=null &amp;&amp; !row.cause.equals(UUID.fromString(cause).toString())) throw new ResponseStatusException(HttpStatus.CONFLICT,&quot;Idempotency key belongs to another command&quot;);</span>
+<span class="fc" id="L284">        return view(row);</span>
+    }
+
+    private WorkspacePublicationOperation owned(RepositoryContext context,String actor,String id) {
+<span class="fc" id="L288">        var row=entities.find(WorkspacePublicationOperation.class,id);</span>
+<span class="pc bpc" id="L289" title="1 of 4 branches missed.">        if(row==null || !row.belongsTo(context,actor)) throw missing();</span>
+<span class="fc" id="L290">        return row;</span>
+    }
+
+    private void event(WorkspacePublicationOperation row,String executor,String decision) {
+<span class="fc" id="L294">        entities.persist(new WorkspacePublicationDecision(row,executor,clock.millis(),decision));</span>
+<span class="fc" id="L295">    }</span>
+
+    private static View view(WorkspacePublicationOperation row) {
+<span class="fc bfc" id="L298" title="All 2 branches covered.">        return new View(row.id,row.cause,row.archivedAt==null?row.phase:&quot;ARCHIVED&quot;,row.step.name(),row.actor,row.executor,</span>
+<span class="fc bfc" id="L299" title="All 2 branches covered.">                row.repository,row.workspace,row.localBranch,row.sourceBranch,row.inputSource,row.inputLocal,row.preparedSource,row.sourceObservedAt==null ? null : row.preparedSource,row.attempts,</span>
+<span class="fc" id="L300">                row.decision,row.createdAt,row.lastAttemptAt,row.publishedAt,row.sourceObservedAt,row.completedAt,row.archivedAt,row.pinsReleasedAt,row.redactedAt,row.workspaceOwner());</span>
+    }
+
+<span class="fc" id="L303">    private static ResponseStatusException missing() { return new ResponseStatusException(HttpStatus.NOT_FOUND,&quot;Publication unavailable&quot;); }</span>
+<span class="nc" id="L304">    private static ResponseStatusException invalid(String message) { return new ResponseStatusException(HttpStatus.BAD_REQUEST,message); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

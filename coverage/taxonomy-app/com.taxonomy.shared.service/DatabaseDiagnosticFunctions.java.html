@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DatabaseDiagnosticFunctions.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.shared.service</a> &gt; <span class="el_source">DatabaseDiagnosticFunctions.java</span></div><h1>DatabaseDiagnosticFunctions.java</h1><pre class="source lang-java linenums">package com.taxonomy.shared.service;
+
+import org.hibernate.boot.model.FunctionContributor;
+import org.hibernate.boot.model.FunctionContributions;
+import org.hibernate.dialect.Dialect;
+import org.hibernate.dialect.HSQLDialect;
+import org.hibernate.dialect.OracleDialect;
+import org.hibernate.dialect.PostgreSQLDialect;
+import org.hibernate.dialect.SQLServerDialect;
+import org.hibernate.type.StandardBasicTypes;
+
+/** Read-only diagnostic expressions; no custom Dialect or mapped pseudo-entity. */
+<span class="fc" id="L13">public final class DatabaseDiagnosticFunctions implements FunctionContributor {</span>
+    public static final String VERSION = &quot;taxonomy_database_version&quot;;
+    public static final String STORAGE = &quot;taxonomy_database_storage&quot;;
+    public static final String CURRENT_USER = &quot;taxonomy_database_current_user&quot;;
+    public static final String SESSION_USER = &quot;taxonomy_database_session_user&quot;;
+    public static final String CURRENT_DATABASE = &quot;taxonomy_database_current_database&quot;;
+    public static final String CURRENT_SCHEMA = &quot;taxonomy_database_current_schema&quot;;
+    public static final String ENGINE_START = &quot;taxonomy_database_engine_start&quot;;
+
+    @Override
+    public void contributeFunctions(FunctionContributions contributions) {
+<span class="fc" id="L24">        Dialect dialect = contributions.getDialect();</span>
+<span class="fc" id="L25">        String version = versionExpression(dialect);</span>
+<span class="pc bpc" id="L26" title="1 of 2 branches missed.">        if (version == null) {</span>
+<span class="nc" id="L27">            return;</span>
+        }
+<span class="fc" id="L29">        var text = contributions.getTypeConfiguration().getBasicTypeRegistry()</span>
+<span class="fc" id="L30">                .resolve(StandardBasicTypes.STRING);</span>
+<span class="fc" id="L31">        contributions.getFunctionRegistry().patternDescriptorBuilder(VERSION, version)</span>
+<span class="fc" id="L32">                .setExactArgumentCount(0).setInvariantType(text).register();</span>
+<span class="fc" id="L33">        var identity = identityExpressions(dialect);</span>
+<span class="fc" id="L34">        String[] functions = {CURRENT_USER, SESSION_USER, CURRENT_DATABASE, CURRENT_SCHEMA};</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">        for (int index = 0; index &lt; functions.length; index++) {</span>
+<span class="fc" id="L36">            contributions.getFunctionRegistry().patternDescriptorBuilder(functions[index], identity[index])</span>
+<span class="fc" id="L37">                    .setExactArgumentCount(0).setInvariantType(text).register();</span>
+        }
+<span class="fc" id="L39">        String engineStart = engineStartExpression(dialect);</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        if (engineStart != null) {</span>
+<span class="fc" id="L41">            contributions.getFunctionRegistry().patternDescriptorBuilder(ENGINE_START, engineStart)</span>
+<span class="fc" id="L42">                    .setExactArgumentCount(0).setInvariantType(text).register();</span>
+        }
+<span class="fc bfc" id="L44" title="All 2 branches covered.">        if (!(dialect instanceof HSQLDialect)) {</span>
+<span class="fc" id="L45">            return;</span>
+        }
+<span class="fc" id="L47">        String storage = &quot;(select case when \&quot;VALUE\&quot; like 'mem:%' then 'IN_MEMORY' &quot;</span>
+                    + &quot;when \&quot;VALUE\&quot; like 'file:%' then 'FILE_BACKED' &quot;
+                    + &quot;when \&quot;VALUE\&quot; like 'res:%' then 'READ_ONLY_RESOURCE' &quot;
+                    + &quot;else 'UNKNOWN' end from INFORMATION_SCHEMA.SYSTEM_SESSIONINFO &quot;
+                    + &quot;where \&quot;KEY\&quot; = 'DATABASE')&quot;;
+<span class="fc" id="L52">        contributions.getFunctionRegistry().patternDescriptorBuilder(STORAGE, storage)</span>
+<span class="fc" id="L53">                .setExactArgumentCount(0).setInvariantType(text).register();</span>
+<span class="fc" id="L54">    }</span>
+
+    static String versionExpression(Dialect dialect) {
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        if (dialect instanceof HSQLDialect) {</span>
+<span class="fc" id="L58">            return &quot;database_version()&quot;;</span>
+        }
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        if (dialect instanceof PostgreSQLDialect) {</span>
+<span class="fc" id="L61">            return &quot;current_setting('server_version')&quot;;</span>
+        }
+<span class="fc bfc" id="L63" title="All 2 branches covered.">        if (dialect instanceof SQLServerDialect) {</span>
+<span class="fc" id="L64">            return &quot;cast(serverproperty('ProductVersion') as varchar(128))&quot;;</span>
+        }
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">        if (dialect instanceof OracleDialect) {</span>
+            // VERSION_FULL identifies the database component; PRODUCT is a display name
+            // and may start with &quot;Oracle AI Database&quot; rather than &quot;Oracle Database&quot;.
+            // DISTINCT also tolerates repeated component rows with the same version;
+            // conflicting versions still fail the scalar query instead of picking one.
+<span class="fc" id="L71">            return &quot;(select distinct version_full from product_component_version &quot;</span>
+                    + &quot;where version_full is not null)&quot;;
+        }
+<span class="nc" id="L74">        return null;</span>
+    }
+
+    private static String[] identityExpressions(Dialect dialect) {
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">        if (dialect instanceof SQLServerDialect) {</span>
+            // USER_NAME identifies the effective database principal, which can
+            // differ from the server login (for example dbo or EXECUTE AS).
+<span class="nc" id="L81">            return new String[]{&quot;user_name()&quot;, &quot;original_login()&quot;, &quot;db_name()&quot;, &quot;schema_name()&quot;};</span>
+        }
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">        if (dialect instanceof OracleDialect) {</span>
+            // CON_NAME is the active PDB/container, not a JDBC catalog or service.
+<span class="nc" id="L85">            return new String[]{&quot;sys_context('USERENV', 'CURRENT_USER')&quot;, &quot;sys_context('USERENV', 'SESSION_USER')&quot;,</span>
+                    &quot;sys_context('USERENV', 'CON_NAME')&quot;, &quot;sys_context('USERENV', 'CURRENT_SCHEMA')&quot;};
+        }
+        // HSQLDB and PostgreSQL expose the SQL-standard session attributes.
+<span class="fc" id="L89">        return new String[]{&quot;current_user&quot;, &quot;session_user&quot;, &quot;current_catalog&quot;, &quot;current_schema&quot;};</span>
+    }
+
+    private static String engineStartExpression(Dialect dialect) {
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        if (dialect instanceof PostgreSQLDialect) {</span>
+<span class="fc" id="L94">            return &quot;to_char(pg_postmaster_start_time() at time zone 'UTC', &quot;</span>
+                    + &quot;'YYYY-MM-DD\&quot;T\&quot;HH24:MI:SS.US\&quot;Z\&quot;')&quot;;
+        }
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">        if (dialect instanceof SQLServerDialect) {</span>
+            // The DMV returns server-local datetime, without a timezone.
+<span class="nc" id="L99">            return &quot;(select convert(varchar(33), sqlserver_start_time, 126) from sys.dm_os_sys_info)&quot;;</span>
+        }
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">        if (dialect instanceof OracleDialect) {</span>
+            // DATE has no timezone; do not infer one from the session, DBTIMEZONE
+            // or application host. Missing V$ access is an optional diagnostic.
+<span class="nc" id="L104">            return &quot;(select to_char(startup_time, 'YYYY-MM-DD\&quot;T\&quot;HH24:MI:SS') from v$instance)&quot;;</span>
+        }
+        // The application JVM start is not a measured HSQL database start.
+<span class="fc" id="L107">        return null;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

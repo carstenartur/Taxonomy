@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkspacePublicationOperation.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">WorkspacePublicationOperation.java</span></div><h1>WorkspacePublicationOperation.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Index;
+import jakarta.persistence.Table;
+import java.util.Objects;
+
+/** Recovery evidence for publishing one private working copy to its recorded central branch. */
+@Entity
+@Table(name = &quot;workspace_publication_operation&quot;, indexes = {
+        @Index(name = &quot;ix_ws_publish_due&quot;, columnList = &quot;phase,next_attempt_at&quot;),
+        @Index(name = &quot;ix_ws_publish_archive&quot;, columnList = &quot;archived_at,completed_at&quot;),
+        @Index(name = &quot;ix_ws_publish_cleanup&quot;, columnList = &quot;cleanup_due_at,operation_id&quot;)})
+public class WorkspacePublicationOperation extends LeasedRepositoryOperation {
+<span class="fc" id="L18">    enum Step { PREPARE, CANDIDATES, SOURCE_REF, WORKSPACE_REF, TRACKING_REF, CENTRAL_PORTFOLIO, LOCAL_PORTFOLIO,</span>
+<span class="fc" id="L19">        WORKSPACE_METADATA, SOURCE_METADATA, PROGRESS, COMPLETE }</span>
+<span class="fc" id="L20">    enum Status { ADMITTED, RUNNING, RETRYABLE, AWAITING_AUTHORIZATION, COMPLETED, SUPERSEDED, MANUAL_REVIEW, DENIED }</span>
+
+    @Column(name = &quot;causation_id&quot;, nullable = false, length = 64) String cause;
+    @Column(name = &quot;actor_id&quot;, nullable = false, length = 64) String actor;
+    @Column(name = &quot;actor_scope&quot;, nullable = false) String username;
+    // Older private receipts have an implicit workspace owner equal to their initiating scope.
+    @Column(name = &quot;workspace_owner_scope&quot;) String capturedWorkspaceOwner;
+
+    String workspaceOwner() {
+<span class="fc bfc" id="L29" title="All 2 branches covered.">        return capturedWorkspaceOwner == null ? username : capturedWorkspaceOwner;</span>
+    }
+
+    @Column(name = &quot;login_kind&quot;, nullable = false, length = 12) String loginKind;
+    @Column(name = &quot;binding_key&quot;, nullable = false, length = 64) String binding;
+    @Column(name = &quot;policy_code&quot;, nullable = false, length = 48) String policy;
+    @Column(name = &quot;repository_id&quot;, nullable = false) String repository;
+    @Column(name = &quot;workspace_id&quot;, nullable = false) String workspace;
+    @Column(name = &quot;local_branch&quot;, nullable = false) String localBranch;
+    @Column(name = &quot;source_branch&quot;, nullable = false) String sourceBranch;
+    @Column(name = &quot;keep_workspace&quot;, nullable = false) boolean keepWorkspace;
+    @Column(name = &quot;fork_point&quot;, length = 40) String forkPoint;
+    @Column(name = &quot;input_source&quot;, length = 40) String inputSource;
+    @Column(name = &quot;input_local&quot;, length = 40) String inputLocal;
+    @Column(name = &quot;input_tracking&quot;, length = 40) String inputTracking;
+    @Column(name = &quot;expected_local&quot;, length = 40) String expectedLocal;
+    @Column(name = &quot;expected_tracking&quot;, length = 40) String expectedTracking;
+    @Column(name = &quot;central_portfolio_digest&quot;, length = 64) String centralPortfolioDigest;
+    @Column(name = &quot;local_portfolio_digest&quot;, length = 64) String localPortfolioDigest;
+    @Column(name = &quot;merged_digest&quot;, length = 64) String mergedDigest;
+    @Column(name = &quot;prepared_source&quot;, length = 40) String preparedSource;
+    @Column(name = &quot;prepared_local&quot;, length = 40) String preparedLocal;
+    @Column(name = &quot;prepared_tracking&quot;, length = 40) String preparedTracking;
+    @Enumerated(EnumType.STRING) @Column(name = &quot;operation_step&quot;, nullable = false, length = 28) Step step;
+    @Column(name = &quot;created_at&quot;, nullable = false) long createdAt;
+    @Column(name = &quot;published_at&quot;) Long publishedAt;
+    @Column(name = &quot;source_observed_at&quot;) Long sourceObservedAt;
+    @Column(name = &quot;pins_released_at&quot;) Long pinsReleasedAt;
+    @Column(name = &quot;cleanup_due_at&quot;) Long cleanupDueAt;
+    @Column(name = &quot;redacted_at&quot;) Long redactedAt;
+    @Column(name = &quot;archived_by&quot;, length = 64) String archivedBy;
+
+<span class="fc" id="L61">    protected WorkspacePublicationOperation() { }</span>
+
+<span class="fc" id="L63">    RepositoryContext context() { return RepositoryContext.workspace(repository, workspace, localBranch, username); }</span>
+
+    boolean belongsTo(RepositoryContext selected, String stableActor) {
+<span class="pc bpc" id="L66" title="1 of 4 branches missed.">        return selected.scope() == RepositoryScope.WORKSPACE &amp;&amp; Objects.equals(actor,stableActor)</span>
+<span class="pc bpc" id="L67" title="2 of 4 branches missed.">                &amp;&amp; Objects.equals(username,selected.username()) &amp;&amp; Objects.equals(workspace,selected.workspaceId())</span>
+<span class="pc bpc" id="L68" title="1 of 4 branches missed.">                &amp;&amp; Objects.equals(repository,selected.repositoryId()) &amp;&amp; Objects.equals(localBranch,selected.branch());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

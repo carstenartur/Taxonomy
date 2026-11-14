@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkspaceProvisioningClaim.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">WorkspaceProvisioningClaim.java</span></div><h1>WorkspaceProvisioningClaim.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.storage.DslGitRepository;
+
+import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+
+/** A single worker's bounded claim to the recorded workspace allocation. */
+<span class="fc" id="L15">record WorkspaceProvisioningClaim(UserWorkspace workspace, String worker, Instant startedAt) {</span>
+<span class="fc" id="L16">    private static final Duration LIFETIME = Duration.ofMinutes(15);</span>
+
+    WorkspaceProvisioningClaim(UserWorkspace workspace) {
+<span class="fc" id="L19">        this(workspace, UUID.randomUUID().toString(), Instant.now());</span>
+<span class="fc" id="L20">    }</span>
+
+    void initialize() {
+<span class="fc" id="L23">        workspace.startProvisioningLease(worker, startedAt, startedAt.plus(LIFETIME));</span>
+<span class="fc" id="L24">    }</span>
+
+    void observeLegacyWorker(UserWorkspaceRepository rows) {
+<span class="fc" id="L27">        rows.observeLegacyProvisioning(workspace.getWorkspaceId(), workspace.getUsername(),</span>
+<span class="fc" id="L28">                WorkspaceProvisioningStatus.PROVISIONING, startedAt.plus(LIFETIME));</span>
+<span class="fc" id="L29">    }</span>
+
+    boolean acquire(UserWorkspaceRepository rows) {
+<span class="fc bfc" id="L32" title="All 2 branches covered.">        return rows.claimProvisioning(workspace.getWorkspaceId(), workspace.getUsername(), WorkspaceProvisioningStatus.PROVISIONING,</span>
+<span class="fc" id="L33">                List.of(WorkspaceProvisioningStatus.NOT_PROVISIONED, WorkspaceProvisioningStatus.FAILED),</span>
+<span class="fc" id="L34">                worker, startedAt, startedAt.plus(LIFETIME)) == 1;</span>
+    }
+
+    UserWorkspace apply(UserWorkspaceRepository rows, UserWorkspaceRepository.ProvisioningStep action) throws IOException {
+<span class="fc" id="L38">        return rows.withProvisioningLease(workspace, worker, action);</span>
+    }
+
+    void fail(UserWorkspaceRepository rows, Throwable failure, UserWorkspaceRepository.ProvisioningStep cleanup) {
+        try {
+<span class="fc" id="L43">            apply(rows, current -&gt; {</span>
+                try {
+<span class="fc" id="L45">                    cleanup.apply(current);</span>
+<span class="fc" id="L46">                } catch (IOException | RuntimeException cleanupFailure) {</span>
+<span class="fc" id="L47">                    failure.addSuppressed(cleanupFailure);</span>
+<span class="fc" id="L48">                }</span>
+<span class="fc" id="L49">                current.setProvisioningStatus(WorkspaceProvisioningStatus.FAILED);</span>
+<span class="fc" id="L50">                current.setProvisioningError(message(failure));</span>
+<span class="fc" id="L51">            });</span>
+<span class="fc" id="L52">        } catch (IOException | RuntimeException lostClaimOrDatabaseFailure) {</span>
+<span class="fc" id="L53">            failure.addSuppressed(lostClaimOrDatabaseFailure);</span>
+<span class="fc" id="L54">        }</span>
+<span class="fc" id="L55">    }</span>
+
+    static void markProvisioned(UserWorkspace current, String commit) {
+<span class="fc" id="L58">        current.setCurrentCommit(commit);</span>
+<span class="fc" id="L59">        current.setProvisioningStatus(WorkspaceProvisioningStatus.READY);</span>
+<span class="fc" id="L60">        current.setProvisionedAt(Instant.now());</span>
+<span class="fc" id="L61">        current.setProvisioningError(null);</span>
+<span class="fc" id="L62">    }</span>
+
+    static void adoptIntegrationBase(DslGitRepository repository, String branch, String commit)
+            throws IOException {
+<span class="fc" id="L66">        String existing = repository.getHeadCommit(branch);</span>
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">        if (existing == null) {</span>
+<span class="fc" id="L68">            repository.createBranchAtCommit(branch, commit);</span>
+        } else {
+<span class="nc" id="L70">            repository.verifyExpectedHead(branch, commit);</span>
+        }
+<span class="fc" id="L72">    }</span>
+
+    static String message(Throwable failure) {
+<span class="fc" id="L75">        String message = failure.getMessage();</span>
+<span class="pc bpc" id="L76" title="2 of 4 branches missed.">        if (message == null || message.isBlank()) return failure.getClass().getSimpleName();</span>
+<span class="fc" id="L77">        return message.substring(0, Math.min(message.length(), 255));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

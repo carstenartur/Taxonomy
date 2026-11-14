@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BranchGraphVectors.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.service</a> &gt; <span class="el_source">BranchGraphVectors.java</span></div><h1>BranchGraphVectors.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.service;
+
+import com.taxonomy.catalog.service.LocalEmbeddingService;
+import com.taxonomy.catalog.service.RelationEmbeddingText;
+import com.taxonomy.catalog.snapshot.CatalogueSnapshotService;
+import com.taxonomy.catalog.snapshot.CatalogueSourceIdentity;
+import com.taxonomy.catalog.snapshot.FrozenCatalogueEmbeddingService;
+import com.taxonomy.catalog.snapshot.RootCatalogueSnapshot;
+import com.taxonomy.dto.GraphSearchResult;
+import com.taxonomy.dto.TaxonomyNodeDto;
+import com.taxonomy.error.SearchUnavailableException;
+import com.taxonomy.workspace.service.RepositoryContext;
+import org.springframework.stereotype.Service;
+import tools.jackson.databind.ObjectMapper;
+import java.util.HashMap;
+import java.util.Objects;
+import java.util.stream.Collectors;
+
+/** Operator builds are explicit. Searches never manufacture a generation or fall back to another scope. */
+@Service
+public class BranchGraphVectors {
+<span class="fc" id="L22">    public record Status(String state, String generation, String sourceCommit, String modelKey, int nodes, int relations) { }</span>
+    private final BranchGraphVectorStore store;
+    private final BranchGraphVectorAuthority authority;
+    private final CatalogueSnapshotService snapshots;
+    private final FrozenCatalogueEmbeddingService texts;
+    private final LocalEmbeddingService embeddings;
+    private final ObjectMapper json;
+
+    BranchGraphVectors(BranchGraphVectorStore store, BranchGraphVectorAuthority authority,
+                       CatalogueSnapshotService snapshots, FrozenCatalogueEmbeddingService texts,
+<span class="fc" id="L32">                       LocalEmbeddingService embeddings, ObjectMapper json) {</span>
+<span class="fc" id="L33">        this.store = store;</span>
+<span class="fc" id="L34">        this.authority = authority;</span>
+<span class="fc" id="L35">        this.snapshots = snapshots;</span>
+<span class="fc" id="L36">        this.texts = texts;</span>
+<span class="fc" id="L37">        this.embeddings = embeddings;</span>
+<span class="fc" id="L38">        this.json = json;</span>
+<span class="fc" id="L39">    }</span>
+
+    public Status inspect(RepositoryContext context) {
+<span class="fc" id="L42">        BranchGraphVectorSource current = null;</span>
+<span class="fc" id="L43">        try { current = authority.capture(context).source(); }</span>
+<span class="pc" id="L44">        catch (IllegalStateException unavailable) { /* A missing authority makes any retained generation stale. */ }</span>
+<span class="fc" id="L45">        var s = store.status(context, current);</span>
+<span class="fc" id="L46">        var state = s.state();</span>
+<span class="pc bpc" id="L47" title="1 of 2 branches missed.">        if (state == BranchGraphVectorStore.State.READY) {</span>
+            try {
+<span class="fc" id="L49">                var retained = store.read(context, current);</span>
+<span class="fc" id="L50">                BranchGraphVectorIndex.verifyArchive(retained.index());</span>
+<span class="fc" id="L51">                var confirmed = store.status(context, authority.capture(context).source());</span>
+<span class="pc bpc" id="L52" title="1 of 4 branches missed.">                if (!s.generation().equals(retained.id()) || !retained.id().equals(confirmed.generation())</span>
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">                        || confirmed.state() != state) state = BranchGraphVectorStore.State.STALE;</span>
+<span class="nc" id="L54">            } catch (Exception unavailable) {</span>
+<span class="nc" id="L55">                state = BranchGraphVectorStore.State.FAILED;</span>
+<span class="fc" id="L56">            }</span>
+        }
+<span class="fc" id="L58">        return new Status(state.name(), s.generation(), s.sourceCommit(), s.modelKey(), s.nodeCount(), s.relationCount());</span>
+    }
+
+    public Status rebuild(RepositoryContext context, String expectedCommit) {
+<span class="fc" id="L62">        authority.requireHead(context, expectedCommit);</span>
+<span class="fc" id="L63">        var capture = authority.capture(context);</span>
+<span class="fc" id="L64">        var source = capture.source();</span>
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">        if (!source.commit().equals(expectedCommit)) throw new RelationProjectionOperationsService.RebuildHeadConflictException(expectedCommit, source.commit());</span>
+<span class="fc" id="L66">        String token = store.begin(context, source, capture.modelIdentity());</span>
+        try {
+<span class="fc" id="L68">            var selection = new CatalogueSourceIdentity(context.repositoryId(), context.workspaceId(), context.branch(), expectedCommit);</span>
+<span class="fc" id="L69">            var rootCodes = capture.definition().rootCodes();</span>
+<span class="fc" id="L70">            var roots = texts.decorate(context, selection, snapshots.captureRoots(selection, rootCodes), rootCodes, capture.relations());</span>
+<span class="fc" id="L71">            var nodes = new HashMap&lt;String, RootCatalogueSnapshot.Node&gt;();</span>
+<span class="fc" id="L72">            try (var builder = new BranchGraphVectorIndex.Builder(source.key())) {</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">                for (var root : roots) {</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">                    var definition = root.catalogueDefinition() == null ? com.taxonomy.dsl.model.CatalogueDefinition.standard().spec()</span>
+<span class="pc" id="L75">                            : root.catalogueDefinition();</span>
+<span class="pc bpc" id="L76" title="2 of 4 branches missed.">                    if (!capture.definition().spec().equals(definition) || !source.catalogueRevision().equals(root.catalogueProvenance().id())</span>
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">                            || !source.modelKey().equals(root.embeddings().model().indexKey())) throw new SearchUnavailableException();</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">                    for (var node : root.nodes()) {</span>
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">                        if (nodes.putIfAbsent(node.code(), node) != null) throw new SearchUnavailableException();</span>
+<span class="fc" id="L80">                        String text = root.embeddings().nodeTexts().get(node.code());</span>
+<span class="fc" id="L81">                        builder.node(json.writeValueAsString(GraphSearchService.toFlatDto(node.detached())), text, embeddings.embedDocument(text));</span>
+<span class="fc" id="L82">                    }</span>
+<span class="fc" id="L83">                }</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">                for (var relation : capture.relations().stream().sorted(BranchGraphVectorSource.ORDER).toList()) {</span>
+<span class="fc" id="L85">                    var from = Objects.requireNonNull(nodes.get(relation.sourceCode()));</span>
+<span class="fc" id="L86">                    var to = Objects.requireNonNull(nodes.get(relation.targetCode()));</span>
+<span class="fc" id="L87">                    String text = RelationEmbeddingText.build(from.nameEn(), relation.relationType(), to.nameEn(), null, java.util.Locale.ROOT);</span>
+<span class="fc" id="L88">                    builder.relation(from.code(), to.code(), from.taxonomyRoot(), relation.relationType().name(), text, embeddings.embedDocument(text));</span>
+<span class="fc" id="L89">                }</span>
+<span class="fc" id="L90">                var archive = builder.finish();</span>
+<span class="fc" id="L91">                store.publish(context, source, token, archive, () -&gt; authority.verifyPublication(context, source));</span>
+            }
+<span class="fc" id="L93">            var result = inspect(context);</span>
+<span class="pc bpc" id="L94" title="2 of 4 branches missed.">            if (!&quot;READY&quot;.equals(result.state()) || !token.equals(result.generation())) throw new SearchUnavailableException();</span>
+<span class="fc" id="L95">            return result;</span>
+<span class="nc" id="L96">        } catch (Exception failure) {</span>
+<span class="nc" id="L97">            store.fail(context, token);</span>
+<span class="nc" id="L98">            throw new SearchUnavailableException();</span>
+        }
+    }
+
+    public void purge(RepositoryContext context, String expectedCommit) {
+<span class="nc" id="L103">        store.purge(context, () -&gt; authority.requireHead(context, expectedCommit));</span>
+<span class="nc" id="L104">    }</span>
+
+    GraphSearchResult search(RepositoryContext context, String expectedCommit, String query, int nodeLimit, int relationLimit) throws Exception {
+<span class="fc" id="L107">        var source = authority.capture(context).source();</span>
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">        if (!source.commit().equals(expectedCommit)) throw new SearchUnavailableException();</span>
+<span class="fc" id="L109">        var generation = store.read(context, source);</span>
+<span class="fc" id="L110">        var hits = BranchGraphVectorIndex.search(generation.index(), embeddings.embedQuery(query), nodeLimit, relationLimit);</span>
+<span class="fc" id="L111">        var nodes = hits.nodes().stream().map(text -&gt; json.readValue(text, TaxonomyNodeDto.class)).toList();</span>
+<span class="fc" id="L112">        var roots = hits.relations().stream().collect(Collectors.groupingBy(BranchGraphVectorIndex.RelationHit::root, Collectors.counting()));</span>
+<span class="fc" id="L113">        var types = hits.relations().stream().collect(Collectors.groupingBy(BranchGraphVectorIndex.RelationHit::type, Collectors.counting()));</span>
+<span class="fc" id="L114">        var current = authority.capture(context).source();</span>
+<span class="fc" id="L115">        var published = store.status(context, current);</span>
+<span class="pc bpc" id="L116" title="2 of 4 branches missed.">        if (!source.equals(current) || published.state() != BranchGraphVectorStore.State.READY</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">                || !generation.id().equals(published.generation())) throw new SearchUnavailableException();</span>
+<span class="fc" id="L118">        var provenance = new GraphSearchResult.Source(source.repositoryId(), source.workspaceId(), source.branch(),</span>
+<span class="fc" id="L119">                source.commit(), RelationProjectionReadService.ReadModel.PROJECTION.name(),</span>
+<span class="fc" id="L120">                GraphSearchResult.VectorSource.BRANCH_GENERATION, source.modelKey(), generation.id(), source.key());</span>
+<span class="fc" id="L121">        return new GraphSearchResult(nodes, roots, types, GraphSearchService.buildSummary(roots, types, query), provenance);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

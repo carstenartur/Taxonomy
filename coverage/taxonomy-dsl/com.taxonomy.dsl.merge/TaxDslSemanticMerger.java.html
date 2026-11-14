@@ -1,0 +1,314 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>TaxDslSemanticMerger.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.merge</a> &gt; <span class="el_source">TaxDslSemanticMerger.java</span></div><h1>TaxDslSemanticMerger.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.merge;
+
+import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.dsl.ast.BlockIdentity;
+import com.taxonomy.dsl.ast.DocumentAst;
+import com.taxonomy.dsl.ast.MetaAst;
+import com.taxonomy.dsl.ast.PropertyAst;
+import com.taxonomy.dsl.ast.SourceLocation;
+import com.taxonomy.dsl.parser.TaxDslParser;
+import com.taxonomy.dsl.serializer.TaxDslSerializer;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.function.Function;
+
+/**
+ * Three-way semantic merge for Taxonomy DSL documents.
+ *
+ * &lt;p&gt;Blocks are identified by their kind-aware stable identity rather than by
+ * line numbers. Independent requirements, mappings, solutions and products can
+ * therefore be added on different branches without textual conflicts.
+ * Concurrent edits to the same property remain explicit review conflicts.&lt;/p&gt;
+ */
+public final class TaxDslSemanticMerger {
+
+<span class="fc" id="L33">    private static final SourceLocation GENERATED =</span>
+            new SourceLocation(&quot;semantic-merge&quot;, 1, 1);
+
+    private final TaxDslParser parser;
+    private final TaxDslSerializer serializer;
+
+    public TaxDslSemanticMerger() {
+<span class="fc" id="L40">        this(new TaxDslParser(), new TaxDslSerializer());</span>
+<span class="fc" id="L41">    }</span>
+
+<span class="fc" id="L43">    public TaxDslSemanticMerger(TaxDslParser parser, TaxDslSerializer serializer) {</span>
+<span class="fc" id="L44">        this.parser = Objects.requireNonNull(parser, &quot;parser&quot;);</span>
+<span class="fc" id="L45">        this.serializer = Objects.requireNonNull(serializer, &quot;serializer&quot;);</span>
+<span class="fc" id="L46">    }</span>
+
+    public TaxDslMergeResult merge(String baseText, String oursText, String theirsText) {
+<span class="fc" id="L49">        DocumentAst base = parse(baseText, &quot;merge-base.taxdsl&quot;);</span>
+<span class="fc" id="L50">        DocumentAst ours = parse(oursText, &quot;ours.taxdsl&quot;);</span>
+<span class="fc" id="L51">        DocumentAst theirs = parse(theirsText, &quot;theirs.taxdsl&quot;);</span>
+
+<span class="fc" id="L53">        List&lt;TaxDslMergeConflict&gt; conflicts = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L54">        MetaAst meta = mergeMeta(base.getMeta(), ours.getMeta(), theirs.getMeta(), conflicts);</span>
+
+<span class="fc" id="L56">        Map&lt;String, BlockAst&gt; baseBlocks = index(base.getBlocks(), &quot;base&quot;, conflicts);</span>
+<span class="fc" id="L57">        Map&lt;String, BlockAst&gt; ourBlocks = index(ours.getBlocks(), &quot;ours&quot;, conflicts);</span>
+<span class="fc" id="L58">        Map&lt;String, BlockAst&gt; theirBlocks = index(theirs.getBlocks(), &quot;theirs&quot;, conflicts);</span>
+
+<span class="fc" id="L60">        Set&lt;String&gt; identities = new TreeSet&lt;&gt;();</span>
+<span class="fc" id="L61">        identities.addAll(baseBlocks.keySet());</span>
+<span class="fc" id="L62">        identities.addAll(ourBlocks.keySet());</span>
+<span class="fc" id="L63">        identities.addAll(theirBlocks.keySet());</span>
+
+<span class="fc" id="L65">        List&lt;BlockAst&gt; mergedBlocks = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        for (String identity : identities) {</span>
+<span class="fc" id="L67">            BlockAst merged = mergeBlock(</span>
+                    identity,
+<span class="fc" id="L69">                    baseBlocks.get(identity),</span>
+<span class="fc" id="L70">                    ourBlocks.get(identity),</span>
+<span class="fc" id="L71">                    theirBlocks.get(identity),</span>
+                    conflicts);
+<span class="fc bfc" id="L73" title="All 2 branches covered.">            if (merged != null) mergedBlocks.add(merged);</span>
+<span class="fc" id="L74">        }</span>
+
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        if (!conflicts.isEmpty()) {</span>
+<span class="fc" id="L77">            return new TaxDslMergeResult(null, conflicts);</span>
+        }
+<span class="fc" id="L79">        return new TaxDslMergeResult(</span>
+<span class="fc" id="L80">                serializer.serialize(new DocumentAst(meta, mergedBlocks)),</span>
+<span class="fc" id="L81">                List.of());</span>
+    }
+
+    private DocumentAst parse(String text, String sourceName) {
+<span class="pc bpc" id="L85" title="1 of 4 branches missed.">        if (text == null || text.isBlank()) {</span>
+<span class="fc" id="L86">            return new DocumentAst(</span>
+                    new MetaAst(MetaAst.LANGUAGE_ID, MetaAst.CURRENT_VERSION, &quot;default&quot;, GENERATED),
+<span class="fc" id="L88">                    List.of());</span>
+        }
+<span class="fc" id="L90">        return parser.parse(text, sourceName);</span>
+    }
+
+    private MetaAst mergeMeta(MetaAst base,
+                              MetaAst ours,
+                              MetaAst theirs,
+                              List&lt;TaxDslMergeConflict&gt; conflicts) {
+<span class="fc" id="L97">        String language = mergeScalar(</span>
+<span class="fc" id="L98">                &quot;meta&quot;, &quot;language&quot;, value(base, MetaAst::language),</span>
+<span class="fc" id="L99">                value(ours, MetaAst::language), value(theirs, MetaAst::language), conflicts);</span>
+<span class="fc" id="L100">        String version = mergeScalar(</span>
+<span class="fc" id="L101">                &quot;meta&quot;, &quot;version&quot;, value(base, MetaAst::version),</span>
+<span class="fc" id="L102">                value(ours, MetaAst::version), value(theirs, MetaAst::version), conflicts);</span>
+<span class="fc" id="L103">        String namespace = mergeScalar(</span>
+<span class="fc" id="L104">                &quot;meta&quot;, &quot;namespace&quot;, value(base, MetaAst::namespace),</span>
+<span class="fc" id="L105">                value(ours, MetaAst::namespace), value(theirs, MetaAst::namespace), conflicts);</span>
+<span class="fc" id="L106">        return new MetaAst(</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">                language != null ? language : MetaAst.LANGUAGE_ID,</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">                version != null ? version : MetaAst.CURRENT_VERSION,</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">                namespace != null ? namespace : &quot;default&quot;,</span>
+<span class="fc" id="L110">                mergeScalar(&quot;meta&quot;, &quot;catalogueRevision&quot;, value(base, MetaAst::catalogueRevision),</span>
+<span class="fc" id="L111">                        value(ours, MetaAst::catalogueRevision), value(theirs, MetaAst::catalogueRevision), conflicts),</span>
+<span class="fc" id="L112">                mergeScalar(&quot;meta&quot;, &quot;comparisonCatalogueRevision&quot;, value(base, MetaAst::comparisonCatalogueRevision),</span>
+<span class="fc" id="L113">                        value(ours, MetaAst::comparisonCatalogueRevision), value(theirs, MetaAst::comparisonCatalogueRevision), conflicts),</span>
+                GENERATED);
+    }
+
+    private static &lt;T&gt; String value(T object, Function&lt;T, String&gt; accessor) {
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        return object == null ? null : accessor.apply(object);</span>
+    }
+
+    private Map&lt;String, BlockAst&gt; index(Collection&lt;BlockAst&gt; blocks,
+                                        String side,
+                                        List&lt;TaxDslMergeConflict&gt; conflicts) {
+<span class="fc" id="L124">        Map&lt;String, BlockAst&gt; indexed = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">        for (BlockAst block : blocks) {</span>
+<span class="fc" id="L126">            String identity = identity(block);</span>
+<span class="fc" id="L127">            BlockAst previous = indexed.putIfAbsent(identity, block);</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">            if (previous != null) {</span>
+<span class="fc" id="L129">                conflicts.add(new TaxDslMergeConflict(</span>
+                        identity, null, &quot;duplicate block on &quot; + side,
+                        null,
+<span class="pc bpc" id="L132" title="1 of 2 branches missed.">                        side.equals(&quot;ours&quot;) ? renderBlock(previous) : null,</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">                        side.equals(&quot;theirs&quot;) ? renderBlock(block) : null));</span>
+            }
+<span class="fc" id="L135">        }</span>
+<span class="fc" id="L136">        return indexed;</span>
+    }
+
+    /** Canonical identity shared with semantic patches. */
+    public String identity(BlockAst block) {
+<span class="fc" id="L141">        return BlockIdentity.key(block);</span>
+    }
+
+    private BlockAst mergeBlock(String identity,
+                                BlockAst base,
+                                BlockAst ours,
+                                BlockAst theirs,
+                                List&lt;TaxDslMergeConflict&gt; conflicts) {
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        if (equivalent(ours, theirs)) return copy(ours);</span>
+<span class="fc bfc" id="L150" title="All 2 branches covered.">        if (equivalent(base, ours)) return copy(theirs);</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">        if (equivalent(base, theirs)) return copy(ours);</span>
+
+<span class="pc bpc" id="L153" title="1 of 2 branches missed.">        if (base == null) {</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">            if (ours == null) return copy(theirs);</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">            if (theirs == null) return copy(ours);</span>
+<span class="nc" id="L156">            conflicts.add(blockConflict(identity,</span>
+                    &quot;different blocks added with the same identity&quot;, null, ours, theirs));
+<span class="nc" id="L158">            return null;</span>
+        }
+<span class="pc bpc" id="L160" title="1 of 4 branches missed.">        if (ours == null &amp;&amp; theirs == null) return null;</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        if (ours == null) {</span>
+<span class="fc" id="L162">            conflicts.add(blockConflict(identity,</span>
+                    &quot;deleted in ours but modified in theirs&quot;, base, null, theirs));
+<span class="fc" id="L164">            return null;</span>
+        }
+<span class="pc bpc" id="L166" title="1 of 2 branches missed.">        if (theirs == null) {</span>
+<span class="nc" id="L167">            conflicts.add(blockConflict(identity,</span>
+                    &quot;modified in ours but deleted in theirs&quot;, base, ours, null));
+<span class="nc" id="L169">            return null;</span>
+        }
+
+<span class="fc" id="L172">        int conflictsBefore = conflicts.size();</span>
+<span class="fc" id="L173">        List&lt;String&gt; header = mergeValue(identity, &quot;header&quot;, base.getHeaderTokens(),</span>
+<span class="fc" id="L174">                ours.getHeaderTokens(), theirs.getHeaderTokens(), values -&gt; String.join(&quot; &quot;, values), conflicts);</span>
+<span class="fc" id="L175">        Map&lt;String, List&lt;String&gt;&gt; baseProperties = propertyMap(base);</span>
+<span class="fc" id="L176">        Map&lt;String, List&lt;String&gt;&gt; ourProperties = propertyMap(ours);</span>
+<span class="fc" id="L177">        Map&lt;String, List&lt;String&gt;&gt; theirProperties = propertyMap(theirs);</span>
+<span class="fc" id="L178">        Set&lt;String&gt; keys = new TreeSet&lt;&gt;();</span>
+<span class="fc" id="L179">        keys.addAll(baseProperties.keySet());</span>
+<span class="fc" id="L180">        keys.addAll(ourProperties.keySet());</span>
+<span class="fc" id="L181">        keys.addAll(theirProperties.keySet());</span>
+
+<span class="fc" id="L183">        List&lt;PropertyAst&gt; mergedProperties = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L184" title="All 2 branches covered.">        for (String key : keys) {</span>
+<span class="fc" id="L185">            List&lt;String&gt; baseValues = baseProperties.getOrDefault(key, List.of());</span>
+<span class="fc" id="L186">            List&lt;String&gt; ourValues = ourProperties.getOrDefault(key, List.of());</span>
+<span class="fc" id="L187">            List&lt;String&gt; theirValues = theirProperties.getOrDefault(key, List.of());</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">            List&lt;String&gt; mergedValues = unorderedMembership(ours.getKind(), key)</span>
+<span class="fc" id="L189">                    ? mergeMembership(baseValues, ourValues, theirValues)</span>
+<span class="fc" id="L190">                    : mergeValue(identity, key, baseValues, ourValues, theirValues,</span>
+                            TaxDslSemanticMerger::renderValues, conflicts);
+<span class="fc bfc" id="L192" title="All 2 branches covered.">            if (mergedValues != null) {</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">                for (String value : mergedValues) {</span>
+<span class="fc" id="L194">                    mergedProperties.add(new PropertyAst(key, value, firstBlockLocation(ours, theirs, base)));</span>
+<span class="fc" id="L195">                }</span>
+            }
+<span class="fc" id="L197">        }</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">        if (conflicts.size() &gt; conflictsBefore) return null;</span>
+
+<span class="fc" id="L200">        Map&lt;String, String&gt; extensions = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L201">        mergedProperties.stream().filter(PropertyAst::isExtension)</span>
+<span class="fc" id="L202">                .forEach(property -&gt; extensions.put(property.key(), property.value()));</span>
+<span class="fc" id="L203">        return new BlockAst(ours.getKind(), header, mergedProperties,</span>
+<span class="fc" id="L204">                ours.getChildren(), extensions, firstBlockLocation(ours, theirs, base));</span>
+    }
+
+    /** Only declared memberships are unordered; unknown repeated properties retain sequence semantics. */
+    private static boolean unorderedMembership(String kind, String key) {
+<span class="fc bfc" id="L209" title="All 4 branches covered.">        return &quot;view&quot;.equals(kind) &amp;&amp; &quot;include&quot;.equals(key);</span>
+    }
+
+    private static List&lt;String&gt; mergeMembership(List&lt;String&gt; base, List&lt;String&gt; ours, List&lt;String&gt; theirs) {
+<span class="fc" id="L213">        Set&lt;String&gt; merged = new TreeSet&lt;&gt;(ours);</span>
+<span class="fc" id="L214">        merged.addAll(theirs);</span>
+<span class="fc" id="L215">        Set&lt;String&gt; ourSet = new LinkedHashSet&lt;&gt;(ours);</span>
+<span class="fc" id="L216">        Set&lt;String&gt; theirSet = new LinkedHashSet&lt;&gt;(theirs);</span>
+        // A baseline membership is removed if either branch removed it. Independent new members survive.
+<span class="fc bfc" id="L218" title="All 2 branches covered.">        for (String value : base) {</span>
+<span class="fc bfc" id="L219" title="All 4 branches covered.">            if (!ourSet.contains(value) || !theirSet.contains(value)) merged.remove(value);</span>
+<span class="fc" id="L220">        }</span>
+<span class="fc" id="L221">        return List.copyOf(merged);</span>
+    }
+
+    private static String renderValues(List&lt;String&gt; values) {
+<span class="pc bpc" id="L225" title="1 of 2 branches missed.">        return values.isEmpty() ? null : String.join(&quot;\n&quot;, values);</span>
+    }
+
+    private &lt;T&gt; T mergeValue(String identity, String property, T base, T ours, T theirs,
+                             Function&lt;T, String&gt; render, List&lt;TaxDslMergeConflict&gt; conflicts) {
+<span class="fc bfc" id="L230" title="All 2 branches covered.">        if (Objects.equals(ours, theirs)) return ours;</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">        if (Objects.equals(base, ours)) return theirs;</span>
+<span class="fc bfc" id="L232" title="All 2 branches covered.">        if (Objects.equals(base, theirs)) return ours;</span>
+<span class="fc" id="L233">        conflicts.add(new TaxDslMergeConflict(identity, property, &quot;concurrent property modification&quot;,</span>
+<span class="fc" id="L234">                render.apply(base), render.apply(ours), render.apply(theirs)));</span>
+<span class="fc" id="L235">        return null;</span>
+    }
+
+    private String mergeScalar(String identity,
+                               String property,
+                               String base,
+                               String ours,
+                               String theirs,
+                               List&lt;TaxDslMergeConflict&gt; conflicts) {
+<span class="fc bfc" id="L244" title="All 2 branches covered.">        if (Objects.equals(ours, theirs)) return ours;</span>
+<span class="fc bfc" id="L245" title="All 2 branches covered.">        if (Objects.equals(base, ours)) return theirs;</span>
+<span class="pc bpc" id="L246" title="1 of 2 branches missed.">        if (Objects.equals(base, theirs)) return ours;</span>
+<span class="nc" id="L247">        conflicts.add(new TaxDslMergeConflict(</span>
+                identity, property, &quot;concurrent property modification&quot;, base, ours, theirs));
+<span class="nc" id="L249">        return null;</span>
+    }
+
+    private static SourceLocation firstBlockLocation(BlockAst... blocks) {
+<span class="pc bpc" id="L253" title="1 of 2 branches missed.">        for (BlockAst block : blocks) {</span>
+<span class="pc bpc" id="L254" title="2 of 4 branches missed.">            if (block != null &amp;&amp; block.getSourceLocation() != null) {</span>
+<span class="fc" id="L255">                return block.getSourceLocation();</span>
+            }
+        }
+<span class="nc" id="L258">        return GENERATED;</span>
+    }
+
+    private static Map&lt;String, List&lt;String&gt;&gt; propertyMap(BlockAst block) {
+<span class="fc" id="L262">        Map&lt;String, List&lt;String&gt;&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L263" title="All 2 branches covered.">        for (PropertyAst property : block.getProperties()) {</span>
+<span class="fc" id="L264">            result.computeIfAbsent(property.key(), ignored -&gt; new ArrayList&lt;&gt;()).add(property.value());</span>
+<span class="fc" id="L265">        }</span>
+<span class="fc bfc" id="L266" title="All 2 branches covered.">        result.replaceAll((key, values) -&gt; unorderedMembership(block.getKind(), key)</span>
+<span class="fc" id="L267">                ? List.copyOf(new TreeSet&lt;&gt;(values)) : List.copyOf(values));</span>
+<span class="fc" id="L268">        return result;</span>
+    }
+
+    private static boolean equivalent(BlockAst left, BlockAst right) {
+<span class="fc bfc" id="L272" title="All 2 branches covered.">        if (left == right) return true;</span>
+<span class="fc bfc" id="L273" title="All 4 branches covered.">        if (left == null || right == null) return false;</span>
+<span class="pc bpc" id="L274" title="1 of 2 branches missed.">        return Objects.equals(left.getKind(), right.getKind())</span>
+<span class="fc bfc" id="L275" title="All 2 branches covered.">                &amp;&amp; Objects.equals(left.getHeaderTokens(), right.getHeaderTokens())</span>
+<span class="fc bfc" id="L276" title="All 2 branches covered.">                &amp;&amp; propertyMap(left).equals(propertyMap(right));</span>
+    }
+
+    private static BlockAst copy(BlockAst block) {
+<span class="fc bfc" id="L280" title="All 2 branches covered.">        if (block == null) return null;</span>
+<span class="fc" id="L281">        List&lt;PropertyAst&gt; properties = block.getProperties().stream()</span>
+<span class="fc" id="L282">                .map(property -&gt; new PropertyAst(</span>
+<span class="fc" id="L283">                        property.key(), property.value(), property.sourceLocation()))</span>
+<span class="fc" id="L284">                .toList();</span>
+<span class="fc" id="L285">        return new BlockAst(</span>
+<span class="fc" id="L286">                block.getKind(),</span>
+<span class="fc" id="L287">                List.copyOf(block.getHeaderTokens()),</span>
+                properties,
+<span class="fc" id="L289">                List.copyOf(block.getChildren()),</span>
+<span class="fc" id="L290">                Map.copyOf(block.getExtensions()),</span>
+<span class="fc" id="L291">                block.getSourceLocation());</span>
+    }
+
+    private TaxDslMergeConflict blockConflict(String identity,
+                                               String reason,
+                                               BlockAst base,
+                                               BlockAst ours,
+                                               BlockAst theirs) {
+<span class="fc" id="L299">        return new TaxDslMergeConflict(</span>
+                identity, null, reason,
+<span class="fc" id="L301">                renderBlock(base), renderBlock(ours), renderBlock(theirs));</span>
+    }
+
+    private String renderBlock(BlockAst block) {
+<span class="fc bfc" id="L305" title="All 2 branches covered.">        if (block == null) return null;</span>
+<span class="fc" id="L306">        DocumentAst document = new DocumentAst(</span>
+                new MetaAst(MetaAst.LANGUAGE_ID, MetaAst.CURRENT_VERSION, &quot;merge&quot;, GENERATED),
+<span class="fc" id="L308">                List.of(block));</span>
+<span class="fc" id="L309">        String text = serializer.serialize(document);</span>
+<span class="fc" id="L310">        int start = text.indexOf(&quot;\n\n&quot;);</span>
+<span class="pc bpc" id="L311" title="1 of 2 branches missed.">        return start &gt;= 0 ? text.substring(start + 2).strip() : text.strip();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,492 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkspaceRestoreImporter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.restore</a> &gt; <span class="el_source">WorkspaceRestoreImporter.java</span></div><h1>WorkspaceRestoreImporter.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.restore;
+
+import com.fasterxml.jackson.databind.*;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.taxonomy.backup.*;
+import com.taxonomy.backup.archive.VerifiedBackup;
+import com.taxonomy.exchange.backup.PortableRows;
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.workspace.backup.WorkspaceBackupContributor.*;
+import com.taxonomy.workspace.backup.WorkspaceGitHistoryReferences.*;
+import com.taxonomy.workspace.model.RepositoryOwnerType;
+import com.taxonomy.workspace.service.RepositoryContext;
+import org.eclipse.jgit.lib.Repository;
+import java.io.*;
+import java.nio.*;
+import java.nio.charset.*;
+import java.sql.*;
+import java.time.Instant;
+import java.util.*;
+
+/** Imports compiled workspace history DTOs into one isolated generation. No activation, ACL or dispatch. */
+<span class="fc" id="L22">public final class WorkspaceRestoreImporter {</span>
+<span class="fc" id="L23">    private static final BackupComponentId OWNER=new BackupComponentId(&quot;workspace&quot;);</span>
+    private static final int MAX_ROWS=100_000,MAX_BYTES=32*1024*1024;
+<span class="fc" id="L25">    private static final JsonMapper JSON=JsonMapper.builder().enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).build();</span>
+<span class="fc" id="L26">    private static final List&lt;String&gt; TABLES=List.of(&quot;system_repository&quot;,&quot;user_workspace&quot;,&quot;repository_membership&quot;,&quot;sync_state&quot;,&quot;workspace_branch_sync&quot;,&quot;editor_workspace&quot;,&quot;editor_operation&quot;,&quot;editor_checkpoint&quot;,&quot;architecture_commit_index&quot;,&quot;context_history_record&quot;);</span>
+    public record Result(Map&lt;SourceRecordId,String&gt; editorScopes,int targetRows,int evidenceRows) {
+<span class="fc" id="L28">        public Result {editorScopes=Map.copyOf(editorScopes);}</span>
+    }
+<span class="fc" id="L30">    private record Evidence(String kind,String key,String json,String classification) { }</span>
+<span class="fc" id="L31">    private record TargetRow(String kind,String sourceKey,String table,String keyColumn,Object key,Map&lt;String,Object&gt; columns) { }</span>
+<span class="fc" id="L32">    private record RepoProof(BackupRepositoryKey source,RestoreRepositoryAllocation allocation,BackupRepositoryKey target,String storage,</span>
+            Map&lt;String,String&gt; refs,String head,Map&lt;String,SnapshotContext.WorkingState&gt; working,List&lt;String&gt; required,Map&lt;String,String&gt; mappings,String digest) { }
+
+    public Result restore(VerifiedBackup archive,RestoreTargetGeneration generation,
+                          Map&lt;PrincipalId,RestorePrincipalAllocation&gt; principalAllocations,GitRestoreImporter.Result git,
+                          BackupCheckpoint checkpoint)throws IOException {
+        try {
+<span class="fc" id="L39">            principalAllocations=Map.copyOf(principalAllocations);</span>
+<span class="fc" id="L40">            var identity=new RestoreIdentityImporter().preview(archive,principalAllocations,checkpoint);</span>
+<span class="fc" id="L41">            var model=inspect(archive,generation,identity,principalAllocations,git,checkpoint);</span>
+<span class="fc" id="L42">            generation.requireUnchanged(checkpoint);</span>
+<span class="fc" id="L43">            try(var connection=generation.dataSource().getConnection()) {</span>
+<span class="fc" id="L44">                generation.requireConnection(connection,checkpoint);connection.setAutoCommit(false);connection.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);</span>
+<span class="fc" id="L45">                try(var rollback=new Rollback(connection)) {</span>
+<span class="fc" id="L46">                    requireIdentity(connection,archive,generation,principalAllocations,checkpoint);</span>
+<span class="pc bpc" id="L47" title="1 of 4 branches missed.">                    if (count(connection,&quot;workspace_publication_operation&quot;)!=0 || count(connection,&quot;workspace_publication_decision&quot;)!=0)</span>
+<span class="fc" id="L48">                        throw new IOException(&quot;Isolated target contains publication operations&quot;);</span>
+<span class="fc" id="L49">                    var owner=owner(connection,checkpoint);</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">                    if(owner!=null) {</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">                        if(!owner.equals(List.of(generation.generationId().toString(),archive.archiveSha256(),model.planHash)))throw new IOException(&quot;Workspace owner belongs to another restore plan&quot;);</span>
+<span class="fc" id="L52">                        verify(connection,model,checkpoint);generation.requireConnection(connection,checkpoint);return model.result();</span>
+                    }
+<span class="fc" id="L54">                    requireEmpty(connection,checkpoint);</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">                    for(var row:model.targets.values()) {</span>
+<span class="fc" id="L56">                        checkpoint.check();insertTarget(connection,row,generation,checkpoint);</span>
+<span class="fc" id="L57">                        update(connection,generation,checkpoint,&quot;insert into restore_workspace_mapping(record_kind,record_key,target_table,target_key,target_sha256) values(?,?,?,?,?)&quot;,</span>
+<span class="fc" id="L58">                                row.kind(),row.sourceKey(),row.table(),row.key().toString(),hash(row.columns()));</span>
+<span class="fc" id="L59">                        checkpoint.check();</span>
+<span class="fc" id="L60">                    }</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">                    for(var row:model.evidence.values()) {</span>
+<span class="fc" id="L62">                        checkpoint.check();update(connection,generation,checkpoint,&quot;insert into restore_workspace_evidence(record_kind,record_key,record_json,sha256,classification) values(?,?,?,?,?)&quot;,</span>
+<span class="fc" id="L63">                                row.kind(),row.key(),row.json(),StableIdentityHash.sha256(row.json()),row.classification());</span>
+<span class="fc" id="L64">                    }</span>
+<span class="fc" id="L65">                    update(connection,generation,checkpoint,&quot;insert into restore_workspace_owner(owner_id,generation_id,archive_sha256,plan_sha256) values('workspace',?,?,?)&quot;,generation.generationId().toString(),archive.archiveSha256(),model.planHash);</span>
+<span class="fc" id="L66">                    verify(connection,model,checkpoint);generation.requireConnection(connection,checkpoint);connection.commit();rollback.committed=true;checkpoint.check();return model.result();</span>
+<span class="fc" id="L67">                }</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">            }</span>
+<span class="fc" id="L69">        } catch(InterruptedIOException cancelled){Thread.currentThread().interrupt();throw cancelled;}</span>
+<span class="nc" id="L70">        catch(SQLException|RuntimeException failure){throw new IOException(&quot;Staged workspace owner import failed&quot;);}</span>
+    }
+
+    private static Model inspect(VerifiedBackup archive,RestoreTargetGeneration generation,RestoreIdentityImporter.Result identities,
+            Map&lt;PrincipalId,RestorePrincipalAllocation&gt; principals,GitRestoreImporter.Result git,BackupCheckpoint checkpoint)throws IOException {
+<span class="pc bpc" id="L75" title="4 of 10 branches missed.">        if(!archive.manifest().request().profile().includesHistory()||archive.manifest().components().stream().noneMatch(c-&gt;c.id().equals(OWNER)&amp;&amp;c.version()==1&amp;&amp;c.completeness()==BackupCompleteness.COMPLETE))throw invalid();</span>
+<span class="fc" id="L76">        var model=new Model(generation.generationId());</span>
+<span class="fc" id="L77">        var repositories=read(archive,&quot;repositories&quot;,RepositoryRecord.class,model,r-&gt;new SourceRecordId(&quot;workspace.repository&quot;,r.repositoryId()),checkpoint);</span>
+<span class="fc" id="L78">        var workspaces=read(archive,&quot;workspaces&quot;,WorkspaceRecord.class,model,r-&gt;new SourceRecordId(&quot;workspace.workspace&quot;,r.workspaceId()),checkpoint);</span>
+<span class="fc" id="L79">        var memberships=read(archive,&quot;memberships&quot;,MembershipRecord.class,model,MembershipRecord::sourceId,checkpoint);</span>
+<span class="fc" id="L80">        var sync=read(archive,&quot;synchronization&quot;,SyncRecord.class,model,SyncRecord::sourceId,checkpoint);</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">        var branchProgress = RestoreArchiveRecords.declares(archive, OWNER, &quot;data/workspace/branch-synchronization.ndjson&quot;)</span>
+<span class="fc" id="L82">                ? read(archive,&quot;branch-synchronization&quot;,BranchSyncRecord.class,model,BranchSyncRecord::sourceId,checkpoint)</span>
+<span class="pc" id="L83">                : List.&lt;BranchSyncRecord&gt;of();</span>
+<span class="fc" id="L84">        var workspaceFetches = fetches(archive, &quot;fetch-journal&quot;, &quot;workspace.fetch&quot;, model, checkpoint);</span>
+<span class="fc" id="L85">        var centralFetches = fetches(archive, &quot;central-fetch-journal&quot;, &quot;workspace.central-fetch&quot;, model, checkpoint);</span>
+<span class="fc" id="L86">        boolean hasPublications = RestoreArchiveRecords.declares(archive, OWNER, &quot;data/workspace/publication-journal.ndjson&quot;);</span>
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">        if (hasPublications != RestoreArchiveRecords.declares(archive, OWNER, &quot;data/workspace/publication-decisions.ndjson&quot;)) throw invalid();</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">        var publications = hasPublications</span>
+<span class="fc" id="L89">                ? read(archive,&quot;publication-journal&quot;,PublicationRecord.class,model,PublicationRecord::sourceId,checkpoint)</span>
+<span class="pc" id="L90">                : List.&lt;PublicationRecord&gt;of();</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">        var decisions = hasPublications</span>
+<span class="fc" id="L92">                ? read(archive,&quot;publication-decisions&quot;,PublicationDecisionRecord.class,model,PublicationDecisionRecord::sourceId,checkpoint)</span>
+<span class="pc" id="L93">                : List.&lt;PublicationDecisionRecord&gt;of();</span>
+<span class="fc" id="L94">        var editors=read(archive,&quot;working-states&quot;,WorkingStateRecord.class,model,WorkingStateRecord::sourceId,checkpoint);</span>
+<span class="fc" id="L95">        var operations=read(archive,&quot;operations&quot;,OperationRecord.class,model,OperationRecord::sourceId,checkpoint);</span>
+<span class="fc" id="L96">        var checkpoints=read(archive,&quot;checkpoints&quot;,CheckpointRecord.class,model,CheckpointRecord::sourceId,checkpoint);</span>
+<span class="fc" id="L97">        var index=read(archive,&quot;commit-index&quot;,CommitIndexRecord.class,model,CommitIndexRecord::sourceId,checkpoint);</span>
+<span class="fc" id="L98">        var context=read(archive,&quot;context-history&quot;,ContextHistoryRecord.class,model,ContextHistoryRecord::sourceId,checkpoint);</span>
+<span class="fc" id="L99">        var references=read(archive,&quot;git-commit-references&quot;,CommitReference.class,model,r-&gt;new SourceRecordId(&quot;workspace.git-reference&quot;,r.sourceId().kind()+&quot;:&quot;+r.sourceId().value()+&quot;:&quot;+r.field()),checkpoint);</span>
+<span class="fc" id="L100">        var working=read(archive,&quot;git-working-copy-proofs&quot;,WorkingCopyProof.class,model,WorkingCopyProof::sourceId,checkpoint);</span>
+<span class="fc" id="L101">        var capturedWorking=new HashMap&lt;BackupRepositoryKey,Map&lt;String,SnapshotContext.WorkingState&gt;&gt;();</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        for(var saved:working) {</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">            checkpoint.check();if(capturedWorking.computeIfAbsent(saved.repository(),ignored-&gt;new HashMap&lt;&gt;()).putIfAbsent(saved.branch(),saved.state())!=null)throw invalid();</span>
+<span class="fc" id="L104">        }</span>
+<span class="fc" id="L105">        var sourceKeys=new HashSet&lt;BackupRepositoryKey&gt;();</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        for(var repository:archive.manifest().repositories()) {</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">            checkpoint.check();if(repository.representation()==GitRepresentation.NONE)throw invalid();sourceKeys.add(repository.id());</span>
+<span class="fc" id="L108">            var proof=git.repositories().get(repository.id());</span>
+<span class="pc bpc" id="L109" title="1 of 4 branches missed.">            if(proof==null||!proof.restoredState().requiredCommits().equals(repository.captured().requiredCommits())</span>
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">                    ||!proof.commitMappings().keySet().equals(repository.captured().requiredCommits())</span>
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">                    ||!Objects.equals(proof.restoredState().symbolicHead(),repository.captured().symbolicHead()))throw invalid();</span>
+<span class="pc bpc" id="L112" title="1 of 4 branches missed.">            for(var mapping:proof.commitMappings().entrySet()){checkpoint.check();if(!mapping.getKey().equals(mapping.getValue()))throw invalid();}</span>
+<span class="pc bpc" id="L113" title="1 of 4 branches missed.">            for(var captured:repository.captured().refs().entrySet()){checkpoint.check();if(!Objects.equals(captured.getValue(),proof.restoredState().refs().get(captured.getKey())))throw invalid();}</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">            for(var restored:proof.restoredState().refs().entrySet()) {</span>
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">                checkpoint.check();if(!repository.captured().refs().containsKey(restored.getKey())</span>
+<span class="nc bnc" id="L116" title="All 2 branches missed.">                        &amp;&amp;!restored.getKey().equals(&quot;refs/taxonomy-backup/required/&quot;+restored.getValue()))throw invalid();</span>
+<span class="fc" id="L117">            }</span>
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">            if(!capturedWorking.getOrDefault(repository.id(),Map.of()).equals(repository.captured().workingStates()))throw invalid();</span>
+<span class="fc" id="L119">        }</span>
+<span class="fc" id="L120">        var rows=new WorkspaceRestoreReferences.Rows(repositories,workspaces,memberships,sync,editors,operations,checkpoints,index,context,branchProgress,publications);</span>
+<span class="fc" id="L121">        var commits=WorkspaceRestoreReferences.resolve(rows,references,working,sourceKeys,generation.allocations(),git,checkpoint);</span>
+<span class="fc bfc" id="L122" title="All 4 branches covered.">        var privateScopes=new HashSet&lt;String&gt;();for(var allocation:principals.values())if(allocation.disposition()==RestorePrincipalAllocation.Disposition.QUARANTINE)privateScopes.add(allocation.targetScope());</span>
+<span class="fc" id="L123">        var activeRepositories=new HashSet&lt;String&gt;();var activeWorkspaces=new HashSet&lt;String&gt;();var workspaceById=new HashMap&lt;String,WorkspaceRecord&gt;();</span>
+<span class="fc" id="L124">        var sourceEditorById=new HashMap&lt;SourceRecordId,WorkingStateRecord&gt;();var operationIds=new HashSet&lt;String&gt;();</span>
+        // Personal journal access compares exact actor scopes. Unknown historical actors cannot
+        // become a target user's authority through an accidental matching display/scope string.
+        // Keep the whole editor history together when any actor lacks an explicit usable mapping.
+<span class="fc" id="L128">        var privateEditors=new HashSet&lt;SourceRecordId&gt;();</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        for(var row:operations) {</span>
+<span class="fc" id="L130">            checkpoint.check();String mapped=identities.sourceScopes().get(row.actor());</span>
+<span class="pc bpc" id="L131" title="1 of 4 branches missed.">            if(mapped==null||privateScopes.contains(mapped))privateEditors.add(row.editor());</span>
+<span class="fc" id="L132">        }</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        for(var row:checkpoints) {</span>
+<span class="fc" id="L134">            checkpoint.check();String mapped=identities.sourceScopes().get(row.actor());</span>
+<span class="pc bpc" id="L135" title="1 of 4 branches missed.">            if(mapped==null||privateScopes.contains(mapped))privateEditors.add(row.editor());</span>
+<span class="fc" id="L136">        }</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">        for(var row:repositories) {</span>
+<span class="fc" id="L138">            checkpoint.check();required(row.repositoryId(),255);required(row.defaultBranch(),255);branch(row.defaultBranch());required(row.createdAt(),40);instant(row.createdAt());</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">            if(row.ownerType()!=RepositoryOwnerType.USER) {model.classify(&quot;repositories&quot;,row.repositoryId(),&quot;PRIVATE_QUARANTINE&quot;);continue;}</span>
+<span class="fc" id="L140">            String scope=scope(identities,row.ownerScope());var target=generation.allocations().get(new BackupRepositoryKey(row.repositoryId(),null));</span>
+<span class="pc bpc" id="L141" title="2 of 4 branches missed.">            if(target==null||privateScopes.contains(scope)){model.classify(&quot;repositories&quot;,row.repositoryId(),&quot;PRIVATE_QUARANTINE&quot;);continue;}</span>
+<span class="fc" id="L142">            activeRepositories.add(row.repositoryId());var id=new SourceRecordId(&quot;workspace.repository&quot;,row.repositoryId());</span>
+<span class="pc bpc" id="L143" title="1 of 4 branches missed.">            String upstream=null;if(row.upstreamRepositoryId()!=null){var allocation=generation.allocations().get(new BackupRepositoryKey(row.upstreamRepositoryId(),null));if(allocation==null)throw invalid();upstream=allocation.targetKey().repositoryId();}</span>
+<span class="fc" id="L144">            model.target(&quot;repositories&quot;,row.repositoryId(),&quot;system_repository&quot;,&quot;repository_id&quot;,target.targetKey().repositoryId(),columns(</span>
+<span class="fc" id="L145">                    &quot;id&quot;,model.numeric(id),&quot;repository_id&quot;,target.targetKey().repositoryId(),&quot;storage_repository_name&quot;,target.physicalStorageName(),&quot;slug&quot;,&quot;restored-&quot;+StableIdentityHash.sha256(target.targetKey().repositoryId()).substring(0,24),</span>
+<span class="fc" id="L146">                    &quot;display_name&quot;,row.displayName(),&quot;description&quot;,row.description(),&quot;visibility&quot;,&quot;PRIVATE&quot;,&quot;lifecycle_state&quot;,&quot;ACTIVE&quot;,&quot;owner_type&quot;,&quot;USER&quot;,&quot;owner_id&quot;,scope,</span>
+<span class="fc" id="L147">                    &quot;topology_mode&quot;,&quot;INTERNAL_SHARED&quot;,&quot;default_branch&quot;,row.defaultBranch(),&quot;external_url&quot;,null,&quot;external_auth_token&quot;,null,&quot;upstream_repository_id&quot;,upstream,&quot;upstream_branch&quot;,row.upstreamBranch(),</span>
+<span class="fc" id="L148">                    &quot;fork_point_commit&quot;,commit(commits,id,Field.REPOSITORY_FORK_POINT,row.forkPointCommit()),&quot;last_fetch_at&quot;,timestamp(row.lastFetchAt()),&quot;last_push_at&quot;,timestamp(row.lastPushAt()),</span>
+<span class="fc" id="L149">                    &quot;last_fetch_commit&quot;,commit(commits,id,Field.REPOSITORY_LAST_FETCH,row.lastFetchCommit()),&quot;primary_repo&quot;,false,&quot;created_by&quot;,row.createdBy(),&quot;created_at&quot;,timestamp(row.createdAt()),&quot;updated_at&quot;,timestamp(row.updatedAt()),&quot;version&quot;,0L,&quot;provisioning_error&quot;,null));</span>
+<span class="fc" id="L150">        }</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">        for(var row:workspaces) {</span>
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">            checkpoint.check();if(workspaceById.putIfAbsent(row.workspaceId(),row)!=null)throw invalid();required(row.ownerScope(),255);branch(row.currentBranch());branch(row.baseBranch());branch(row.sourceBranch());branch(row.syncTargetBranch());instant(row.createdAt());</span>
+<span class="pc bpc" id="L153" title="1 of 4 branches missed.">            String scope=scope(identities,row.ownerScope());if(!activeRepositories.contains(row.repositoryId())||privateScopes.contains(scope)){model.classify(&quot;workspaces&quot;,row.workspaceId(),&quot;PRIVATE_QUARANTINE&quot;);continue;}</span>
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">            var target=generation.allocations().get(new BackupRepositoryKey(row.repositoryId(),row.workspaceId()));if(target==null)throw invalid();activeWorkspaces.add(row.workspaceId());</span>
+<span class="fc" id="L155">            var id=new SourceRecordId(&quot;workspace.workspace&quot;,row.workspaceId());model.target(&quot;workspaces&quot;,row.workspaceId(),&quot;user_workspace&quot;,&quot;workspace_id&quot;,target.targetKey().workspaceId(),columns(</span>
+<span class="fc" id="L156">                    &quot;id&quot;,model.numeric(id),&quot;workspace_id&quot;,target.targetKey().workspaceId(),&quot;username&quot;,scope,&quot;display_name&quot;,row.displayName(),&quot;current_branch&quot;,row.currentBranch(),&quot;base_branch&quot;,row.baseBranch(),&quot;shared&quot;,false,&quot;collaborative&quot;,row.collaborative(),</span>
+<span class="fc" id="L157">                    &quot;created_at&quot;,timestamp(row.createdAt()),&quot;last_accessed_at&quot;,timestamp(row.lastAccessedAt()),&quot;provisioning_status&quot;,&quot;READY&quot;,&quot;topology_mode&quot;,&quot;INTERNAL_SHARED&quot;,&quot;source_repository_id&quot;,target.targetKey().repositoryId(),</span>
+<span class="pc bpc" id="L158" title="1 of 2 branches missed.">                    &quot;source_branch&quot;,row.sourceBranch(),&quot;relationship_type&quot;,row.relationshipType()==null?null:row.relationshipType().name(),&quot;base_commit&quot;,commit(commits,id,Field.WORKSPACE_BASE,row.baseCommit()),&quot;current_commit&quot;,commit(commits,id,Field.WORKSPACE_CURRENT,row.currentCommit()),</span>
+<span class="fc" id="L159">                    &quot;last_fetched_commit&quot;,commit(commits,id,Field.WORKSPACE_LAST_FETCHED,row.lastFetchedCommit()),&quot;last_integrated_commit&quot;,commit(commits,id,Field.WORKSPACE_LAST_INTEGRATED,row.lastIntegratedCommit()),&quot;sync_target_branch&quot;,row.syncTargetBranch(),</span>
+<span class="fc" id="L160">                    &quot;provisioned_at&quot;,timestamp(row.provisionedAt()),&quot;description&quot;,row.description(),&quot;archived&quot;,row.archived(),&quot;is_default&quot;,false,&quot;provisioning_error&quot;,null));</span>
+<span class="fc" id="L161">        }</span>
+<span class="pc bpc" id="L162" title="2 of 6 branches missed.">        for(var row:memberships) {checkpoint.check();id(row.sourceId(),&quot;workspace.membership&quot;);if(!sourceKeys.stream().anyMatch(key-&gt;key.repositoryId().equals(row.repositoryId()))||row.role()==null)throw invalid();scope(identities,row.principalScope());instant(row.createdAt());model.classify(&quot;memberships&quot;,row.sourceId().value(),&quot;INERT_SOURCE_AUTHORITY&quot;);}</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">        for(var row:sync) {</span>
+<span class="pc bpc" id="L164" title="2 of 4 branches missed.">            checkpoint.check();var parent=workspaceById.get(row.workspaceId());if(parent==null||!Objects.equals(parent.ownerScope(),row.principalScope()))throw invalid();String scope=scope(identities,row.principalScope());</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">            if(!activeWorkspaces.contains(row.workspaceId())){model.classify(&quot;synchronization&quot;,row.sourceId().value(),&quot;PRIVATE_QUARANTINE&quot;);continue;}</span>
+<span class="pc bpc" id="L166" title="1 of 2 branches missed.">            var target=generation.allocations().get(new BackupRepositoryKey(parent.repositoryId(),row.workspaceId()));required(row.syncStatus(),255);if(row.unpublishedCommitCount()&lt;0)throw invalid();</span>
+<span class="fc" id="L167">            model.target(&quot;synchronization&quot;,row.sourceId().value(),&quot;sync_state&quot;,&quot;workspace_id&quot;,target.targetKey().workspaceId(),columns(&quot;id&quot;,model.numeric(row.sourceId()),&quot;username&quot;,scope,&quot;workspace_id&quot;,target.targetKey().workspaceId(),</span>
+<span class="fc" id="L168">                    &quot;last_synced_commit_id&quot;,commit(commits,row.sourceId(),Field.SYNC_LAST_SYNCED,row.lastSyncedCommit()),&quot;last_sync_timestamp&quot;,timestamp(row.lastSyncAt()),&quot;last_published_commit_id&quot;,commit(commits,row.sourceId(),Field.SYNC_LAST_PUBLISHED,row.lastPublishedCommit()),</span>
+<span class="fc" id="L169">                    &quot;last_publish_timestamp&quot;,timestamp(row.lastPublishAt()),&quot;sync_status&quot;,&quot;RESTORED_REVIEW_REQUIRED&quot;,&quot;unpublished_commit_count&quot;,row.unpublishedCommitCount(),&quot;created_at&quot;,timestamp(row.createdAt()),&quot;updated_at&quot;,timestamp(row.updatedAt())));</span>
+<span class="fc" id="L170">        }</span>
+<span class="fc bfc" id="L171" title="All 2 branches covered.">        for (var row : branchProgress) {</span>
+<span class="fc" id="L172">            checkpoint.check();</span>
+<span class="fc" id="L173">            String actor = scope(identities,row.principalScope());</span>
+<span class="fc" id="L174">            required(row.syncStatus(),255);</span>
+<span class="pc bpc" id="L175" title="1 of 2 branches missed.">            if (row.unpublishedCommitCount() &lt; 0) throw invalid();</span>
+<span class="fc bfc" id="L176" title="All 2 branches covered.">            boolean available = row.workspaceId() == null ? activeRepositories.contains(row.repositoryId())</span>
+<span class="fc" id="L177">                    : activeWorkspaces.contains(row.workspaceId());</span>
+<span class="pc bpc" id="L178" title="1 of 4 branches missed.">            if (!available || privateScopes.contains(actor)) {</span>
+<span class="fc" id="L179">                model.classify(&quot;branch-synchronization&quot;, row.sourceId().value(), &quot;PRIVATE_QUARANTINE&quot;);</span>
+<span class="fc" id="L180">                continue;</span>
+            }
+<span class="fc" id="L182">            var target = generation.allocations().get(new BackupRepositoryKey(row.repositoryId(), row.workspaceId())).targetKey();</span>
+<span class="fc" id="L183">            String key = new com.taxonomy.workspace.model.WorkspaceSyncScope(actor,target.repositoryId(),target.workspaceId(),row.branch()).key();</span>
+<span class="fc" id="L184">            model.target(&quot;branch-synchronization&quot;,row.sourceId().value(),&quot;workspace_branch_sync&quot;,&quot;scope_key&quot;,key,</span>
+<span class="fc" id="L185">                    columns(&quot;scope_key&quot;,key,&quot;username&quot;,actor,&quot;repository_id&quot;,target.repositoryId(),&quot;workspace_id&quot;,target.workspaceId(),</span>
+<span class="fc" id="L186">                            &quot;sync_branch&quot;,row.branch(),&quot;last_synced_commit_id&quot;,commit(commits,row.sourceId(),Field.SYNC_LAST_SYNCED,row.lastSyncedCommit()),</span>
+<span class="fc" id="L187">                            &quot;last_sync_timestamp&quot;,timestamp(row.lastSyncAt()),&quot;last_published_commit_id&quot;,commit(commits,row.sourceId(),Field.SYNC_LAST_PUBLISHED,row.lastPublishedCommit()),</span>
+<span class="fc" id="L188">                            &quot;last_publish_timestamp&quot;,timestamp(row.lastPublishAt()),&quot;sync_status&quot;,&quot;RESTORED_REVIEW_REQUIRED&quot;,</span>
+<span class="fc" id="L189">                            &quot;unpublished_commit_count&quot;,row.unpublishedCommitCount(),&quot;created_at&quot;,timestamp(row.createdAt()),&quot;updated_at&quot;,timestamp(row.updatedAt())));</span>
+<span class="fc" id="L190">        }</span>
+<span class="fc" id="L191">        var capturedRepositories = new HashMap&lt;String,RepositoryRecord&gt;();</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">        for (var row : repositories) capturedRepositories.put(row.repositoryId(),row);</span>
+<span class="fc" id="L193">        var fetches = new ArrayList&lt;&gt;(workspaceFetches);</span>
+<span class="fc" id="L194">        fetches.addAll(centralFetches);</span>
+<span class="fc bfc" id="L195" title="All 2 branches covered.">        for (var row : fetches) {</span>
+<span class="fc" id="L196">            checkpoint.check();</span>
+<span class="fc" id="L197">            boolean central = &quot;workspace.central-fetch&quot;.equals(row.sourceId().kind());</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">            boolean detached = central ? Boolean.TRUE.equals(row.detachedCentralOrigin()) : Boolean.TRUE.equals(row.detachedWorkspace());</span>
+<span class="pc bpc" id="L199" title="1 of 4 branches missed.">            if (detached &amp;&amp; archive.manifest().request().profile() != BackupProfile.INSTALLATION_FULL) throw invalid();</span>
+<span class="fc bfc" id="L200" title="All 2 branches covered.">            if (central) {</span>
+<span class="fc" id="L201">                required(row.repositoryId(),255); required(row.upstreamRepositoryId(),255); required(row.principalScope(),255);</span>
+<span class="pc bpc" id="L202" title="3 of 6 branches missed.">                if (row.workspaceId() != null || row.detachedWorkspace() != null || row.repositoryId().equals(row.upstreamRepositoryId())</span>
+<span class="pc bpc" id="L203" title="2 of 4 branches missed.">                        || row.forkPoint() == null || !row.sourceId().value().matches(&quot;[fp]-[0-9a-f]{62}&quot;)) throw invalid();</span>
+<span class="fc bfc" id="L204" title="All 2 branches covered.">                if (row.sourceId().value().startsWith(&quot;p-&quot;)</span>
+<span class="pc bpc" id="L205" title="1 of 2 branches missed.">                        &amp;&amp; (!row.sourceId().value().equals(row.initialForkOperationId())</span>
+<span class="pc bpc" id="L206" title="2 of 4 branches missed.">                        || !Objects.equals(row.forkPoint(),row.requestedCommit()) || !Objects.equals(row.branch(),row.sourceBranch())</span>
+<span class="pc bpc" id="L207" title="5 of 8 branches missed.">                        || row.expectedCommit() != null || row.selectedTag() != null || row.resultCommit() != null &amp;&amp; !row.resultCommit().equals(row.forkPoint()))) throw invalid();</span>
+<span class="fc" id="L208">                var fork = capturedRepositories.get(row.repositoryId());</span>
+<span class="pc bpc" id="L209" title="1 of 4 branches missed.">                boolean currentOrigin = fork != null &amp;&amp; capturedRepositories.containsKey(row.upstreamRepositoryId())</span>
+<span class="pc bpc" id="L210" title="1 of 2 branches missed.">                        &amp;&amp; row.upstreamRepositoryId().equals(fork.upstreamRepositoryId())</span>
+<span class="pc bpc" id="L211" title="2 of 4 branches missed.">                        &amp;&amp; Objects.equals(row.sourceBranch(),fork.upstreamBranch()) &amp;&amp; Objects.equals(row.forkPoint(),fork.forkPointCommit());</span>
+<span class="pc bpc" id="L212" title="1 of 2 branches missed.">                if (detached == currentOrigin) throw invalid();</span>
+<span class="fc" id="L213">            } else {</span>
+<span class="fc" id="L214">                var parent = workspaceById.get(row.workspaceId());</span>
+<span class="pc bpc" id="L215" title="2 of 4 branches missed.">                if (row.upstreamRepositoryId() != null || row.detachedCentralOrigin() != null</span>
+<span class="pc bpc" id="L216" title="1 of 2 branches missed.">                        || !row.sourceId().value().matches(&quot;[0-9a-f]{64}&quot;)) throw invalid();</span>
+<span class="fc bfc" id="L217" title="All 2 branches covered.">                if (detached) {</span>
+<span class="pc bpc" id="L218" title="1 of 2 branches missed.">                    if (parent != null) throw invalid();</span>
+<span class="fc" id="L219">                    required(row.repositoryId(),255); required(row.workspaceId(),255); required(row.principalScope(),255);</span>
+<span class="pc bpc" id="L220" title="2 of 4 branches missed.">                } else if (parent == null || !parent.repositoryId().equals(row.repositoryId())</span>
+<span class="pc bpc" id="L221" title="1 of 2 branches missed.">                        || !parent.ownerScope().equals(row.principalScope())) throw invalid();</span>
+            }
+<span class="fc bfc" id="L223" title="All 2 branches covered.">            String policy = central ? &quot;ARCHITECTURE_WRITE+CONTRIBUTOR&quot; : &quot;ANALYSIS_RUN+CONTRIBUTOR&quot;;</span>
+<span class="pc bpc" id="L224" title="1 of 2 branches missed.">            if (row.principalId() == null</span>
+<span class="pc bpc" id="L225" title="2 of 4 branches missed.">                    || row.requestedCommit() == null || !row.requestedCommit().matches(&quot;[0-9a-f]{40}&quot;)</span>
+<span class="pc bpc" id="L226" title="3 of 6 branches missed.">                    || row.createdAt() &lt; 0 || row.attempts() &lt; 0 || row.attempts() &gt; 6</span>
+<span class="pc bpc" id="L227" title="3 of 6 branches missed.">                    || row.authorizationKind() == null || !Set.of(&quot;LOCAL&quot;, &quot;OIDC&quot;, &quot;LEGACY_OIDC&quot;).contains(row.authorizationKind()) || !policy.equals(row.requiredPolicy())</span>
+<span class="pc bpc" id="L228" title="1 of 6 branches missed.">                    || (row.archivedAt() == null) != (row.archivedBy() == null)) throw invalid();</span>
+<span class="pc bpc" id="L229" title="2 of 6 branches missed.">            if (row.selectedTag() == null ? row.requestedTagObject() != null || row.resultTagObject() != null</span>
+<span class="pc bpc" id="L230" title="2 of 4 branches missed.">                    : !org.eclipse.jgit.lib.Repository.isValidRefName(&quot;refs/tags/&quot; + row.selectedTag()) || row.requestedTagObject() == null</span>
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">                    || !Objects.equals(row.expectedCommit(),row.requestedCommit())</span>
+<span class="pc bpc" id="L232" title="3 of 4 branches missed.">                    || row.resultTagObject() != null &amp;&amp; !row.resultTagObject().equals(row.requestedTagObject())) throw invalid();</span>
+<span class="fc bfc" id="L233" title="All 2 branches covered.">            for (var commit : Arrays.asList(row.forkPoint(), row.expectedCommit(), row.observedCommit(), row.resultCommit(), row.requestedTagObject(), row.resultTagObject())) {</span>
+<span class="pc bpc" id="L234" title="1 of 4 branches missed.">                if (commit != null &amp;&amp; !commit.matches(&quot;[0-9a-f]{40}&quot;)) throw invalid();</span>
+<span class="fc" id="L235">            }</span>
+<span class="fc" id="L236">            boolean legacy = &quot;LEGACY_OIDC&quot;.equals(row.authorizationKind());</span>
+<span class="fc bfc" id="L237" title="All 2 branches covered.">            if (legacy) {</span>
+<span class="pc bpc" id="L238" title="1 of 2 branches missed.">                if (!row.principalId().matches(&quot;[0-9a-f]{64}&quot;)) throw invalid();</span>
+            } else {
+<span class="pc bpc" id="L240" title="1 of 2 branches missed.">                if (!row.principalId().matches(&quot;[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}&quot;)) throw invalid();</span>
+<span class="fc" id="L241">                var mapped = principals.get(new PrincipalId(UUID.fromString(row.principalId())));</span>
+<span class="pc bpc" id="L242" title="2 of 4 branches missed.">                if (mapped == null || !mapped.targetScope().equals(scope(identities,row.principalScope()))) throw invalid();</span>
+            }
+<span class="pc bpc" id="L244" title="2 of 4 branches missed.">            if (row.phase() == null || !Set.of(&quot;ADMITTED&quot;,&quot;RUNNING&quot;,&quot;RETRYABLE&quot;,&quot;COMPLETED&quot;,&quot;SUPERSEDED&quot;,&quot;MANUAL_REVIEW&quot;,&quot;DENIED&quot;,&quot;AWAITING_AUTHORIZATION&quot;).contains(row.phase())) throw invalid();</span>
+<span class="fc" id="L245">            boolean active = Set.of(&quot;ADMITTED&quot;,&quot;RUNNING&quot;,&quot;RETRYABLE&quot;,&quot;AWAITING_AUTHORIZATION&quot;).contains(row.phase());</span>
+            // Source evidence survives an isolated restore; target leases and authorizations are installation-local.
+            String classification;
+<span class="fc bfc" id="L248" title="All 2 branches covered.">            if (detached) classification = &quot;DETACHED_SOURCE_QUARANTINE&quot;;</span>
+<span class="fc bfc" id="L249" title="All 4 branches covered.">            else if (legacy || (central</span>
+<span class="pc bpc" id="L250" title="2 of 4 branches missed.">                    ? !activeRepositories.contains(row.repositoryId()) || !activeRepositories.contains(row.upstreamRepositoryId())</span>
+<span class="pc bpc" id="L251" title="1 of 2 branches missed.">                    : !activeWorkspaces.contains(row.workspaceId()))) classification = &quot;PRIVATE_QUARANTINE&quot;;</span>
+<span class="pc bpc" id="L252" title="1 of 2 branches missed.">            else classification = active ? &quot;INTERRUPTED_SOURCE_OPERATION&quot; : &quot;HISTORICAL_SOURCE_OPERATION&quot;;</span>
+<span class="fc bfc" id="L253" title="All 2 branches covered.">            model.classify(central ? &quot;central-fetch-journal&quot; : &quot;fetch-journal&quot;,row.sourceId().value(),classification);</span>
+<span class="fc" id="L254">        }</span>
+<span class="fc" id="L255">        classifyPublications(archive.manifest().request().profile(),publications,decisions,workspaceById,activeWorkspaces,</span>
+                identities,principals,model,checkpoint);
+<span class="fc bfc" id="L257" title="All 2 branches covered.">        for(var row:editors) {</span>
+<span class="pc bpc" id="L258" title="3 of 6 branches missed.">            checkpoint.check();sourceEditorById.put(row.sourceId(),row);if(row.semanticRevision()&lt;0||row.checkpointRevision()&lt;0||row.checkpointRevision()&gt;row.semanticRevision())throw invalid();utf8(row.dsl());canonicalUuidOptional(row.interruptedCheckpoint());</span>
+<span class="fc bfc" id="L259" title="All 4 branches covered.">            if(!activeWorkspaces.contains(row.workspaceId())||privateEditors.contains(row.sourceId())){model.classify(&quot;working-states&quot;,row.sourceId().value(),&quot;PRIVATE_QUARANTINE&quot;);continue;}</span>
+<span class="fc" id="L260">            var target=generation.allocations().get(new BackupRepositoryKey(row.repositoryId(),row.workspaceId()));var parent=workspaceById.get(row.workspaceId());String scope=scope(identities,parent.ownerScope());</span>
+<span class="fc" id="L261">            String targetEditor=RepositoryContext.workspace(target.targetKey().repositoryId(),target.targetKey().workspaceId(),row.branch(),scope).repositoryWorkspaceScopeKey();model.editorScopes.put(row.sourceId(),targetEditor);</span>
+<span class="fc" id="L262">            model.target(&quot;working-states&quot;,row.sourceId().value(),&quot;editor_workspace&quot;,&quot;scope_id&quot;,targetEditor,columns(&quot;scope_id&quot;,targetEditor,&quot;repository_id&quot;,target.targetKey().repositoryId(),&quot;workspace_id&quot;,target.targetKey().workspaceId(),&quot;branch&quot;,row.branch(),</span>
+<span class="fc" id="L263">                    &quot;dsl&quot;,&quot;1:&quot;+row.dsl(),&quot;semantic_revision&quot;,row.semanticRevision(),&quot;checkpoint_commit&quot;,commit(commits,row.sourceId(),Field.EDITOR_CHECKPOINT,row.checkpointCommit()),&quot;checkpoint_revision&quot;,row.checkpointRevision(),&quot;row_version&quot;,0L,&quot;pending_checkpoint&quot;,null));</span>
+<span class="fc" id="L264">        }</span>
+<span class="fc bfc" id="L265" title="All 2 branches covered.">        for(var row:operations) {</span>
+<span class="pc bpc" id="L266" title="2 of 4 branches missed.">            checkpoint.check();id(row.sourceId(),&quot;workspace.operation&quot;);id(row.editor(),&quot;workspace.editor&quot;);var parent=sourceEditorById.get(row.editor());if(parent==null||!row.sourceId().value().equals(row.editor().value()+&quot;:&quot;+row.commandId()))throw invalid();</span>
+<span class="fc" id="L267">            canonicalUuid(row.commandId());canonicalUuid(row.correlationId());canonicalUuid(row.causationId());canonicalUuidOptional(row.targetOperationId());required(row.kind(),80);required(row.actor(),320);required(row.rationale(),1000);instant(row.occurredAt());sha(row.fingerprint());</span>
+<span class="pc bpc" id="L268" title="5 of 10 branches missed.">            if(row.previousRevision()&lt;0||row.semanticRevision()!=row.previousRevision()+1||row.semanticRevision()&gt;parent.semanticRevision()||row.bodyVersion()!=1||!operationIds.add(row.sourceId().value()))throw invalid();utf8(row.beforeDsl());utf8(row.afterDsl());utf8(row.affectedIds());</span>
+<span class="fc bfc" id="L269" title="All 2 branches covered.">            String targetEditor=model.editorScopes.get(row.editor());if(targetEditor==null){model.classify(&quot;operations&quot;,row.sourceId().value(),&quot;PRIVATE_QUARANTINE&quot;);continue;}</span>
+<span class="fc" id="L270">            String targetId=targetEditor+&quot;:&quot;+row.commandId();model.target(&quot;operations&quot;,row.sourceId().value(),&quot;editor_operation&quot;,&quot;id&quot;,targetId,columns(&quot;id&quot;,targetId,&quot;scope_id&quot;,targetEditor,&quot;command_id&quot;,row.commandId(),&quot;actor&quot;,scope(identities,row.actor()),&quot;occurred_at&quot;,row.occurredAt(),&quot;rationale&quot;,row.rationale(),</span>
+<span class="fc" id="L271">                    &quot;correlation_id&quot;,row.correlationId(),&quot;causation_id&quot;,row.causationId(),&quot;kind&quot;,row.kind(),&quot;target_operation_id&quot;,row.targetOperationId(),&quot;previous_revision&quot;,row.previousRevision(),&quot;semantic_revision&quot;,row.semanticRevision(),&quot;fingerprint&quot;,row.fingerprint(),&quot;body_version&quot;,row.bodyVersion(),</span>
+<span class="fc" id="L272">                    &quot;before_dsl&quot;,&quot;1:&quot;+row.beforeDsl(),&quot;after_dsl&quot;,&quot;1:&quot;+row.afterDsl(),&quot;affected_ids&quot;,&quot;1:&quot;+row.affectedIds()));</span>
+<span class="fc" id="L273">        }</span>
+<span class="fc bfc" id="L274" title="All 2 branches covered.">        for(var row:checkpoints) {</span>
+<span class="pc bpc" id="L275" title="2 of 4 branches missed.">            checkpoint.check();var parent=sourceEditorById.get(row.editor());if(parent==null||!row.sourceId().value().equals(row.editor().value()+&quot;:&quot;+row.commandId()))throw invalid();canonicalUuid(row.commandId());required(row.actor(),320);required(row.rationale(),1000);instant(row.occurredAt());sha(row.fingerprint());required(row.origin(),40);utf8(row.dsl());</span>
+<span class="pc bpc" id="L276" title="6 of 10 branches missed.">            if(row.fromRevision()&lt;0||row.semanticRevision()&lt;row.fromRevision()||row.semanticRevision()&gt;parent.semanticRevision()||row.commitCreated()&amp;&amp;row.commitId()==null)throw invalid();</span>
+<span class="fc bfc" id="L277" title="All 2 branches covered.">            String targetEditor=model.editorScopes.get(row.editor());if(targetEditor==null){model.classify(&quot;checkpoints&quot;,row.sourceId().value(),&quot;PRIVATE_QUARANTINE&quot;);continue;}</span>
+<span class="fc" id="L278">            String targetId=targetEditor+&quot;:&quot;+row.commandId();model.target(&quot;checkpoints&quot;,row.sourceId().value(),&quot;editor_checkpoint&quot;,&quot;id&quot;,targetId,columns(&quot;id&quot;,targetId,&quot;scope_id&quot;,targetEditor,&quot;command_id&quot;,row.commandId(),&quot;actor&quot;,scope(identities,row.actor()),&quot;occurred_at&quot;,row.occurredAt(),&quot;rationale&quot;,row.rationale(),&quot;fingerprint&quot;,row.fingerprint(),</span>
+<span class="fc" id="L279">                    &quot;from_revision&quot;,row.fromRevision(),&quot;semantic_revision&quot;,row.semanticRevision(),&quot;expected_commit&quot;,commit(commits,row.sourceId(),Field.CHECKPOINT_EXPECTED,row.expectedCommit()),&quot;dsl&quot;,&quot;1:&quot;+row.dsl(),&quot;commit_id&quot;,commit(commits,row.sourceId(),Field.CHECKPOINT_COMMIT,row.commitId()),</span>
+<span class="pc bpc" id="L280" title="1 of 2 branches missed.">                    &quot;completed&quot;,true,&quot;commit_created&quot;,row.commitCreated(),&quot;failure_code&quot;,row.completed()?row.failureCode():&quot;RESTORED_INTERRUPTED&quot;,&quot;origin&quot;,row.origin()));</span>
+<span class="fc" id="L281">        }</span>
+<span class="fc bfc" id="L282" title="All 2 branches covered.">        for(var row:index) {</span>
+<span class="fc" id="L283">            checkpoint.check();var parent=workspaceById.get(row.workspaceId());</span>
+<span class="pc bpc" id="L284" title="2 of 6 branches missed.">            if(row.workspaceId()!=null&amp;&amp;(parent==null||!Objects.equals(parent.repositoryId(),row.repositoryId()))</span>
+<span class="pc bpc" id="L285" title="1 of 2 branches missed.">                    ||!Objects.equals(com.taxonomy.versioning.model.ArchitectureCommitIndex.scopeKeyFor(row.workspaceId()),row.workspaceScope()))throw invalid();branch(row.branch());</span>
+<span class="pc bpc" id="L286" title="1 of 6 branches missed.">            if(row.workspaceId()==null?!activeRepositories.contains(row.repositoryId()):!activeWorkspaces.contains(row.workspaceId())){model.classify(&quot;commit-index&quot;,row.sourceId().value(),&quot;PRIVATE_QUARANTINE&quot;);continue;}</span>
+<span class="fc" id="L287">            var target=generation.allocations().get(new BackupRepositoryKey(row.repositoryId(),row.workspaceId()));var targetId=model.numeric(row.sourceId());model.target(&quot;commit-index&quot;,row.sourceId().value(),&quot;architecture_commit_index&quot;,&quot;id&quot;,targetId,columns(</span>
+<span class="fc" id="L288">                    &quot;id&quot;,targetId,&quot;repository_id&quot;,target.targetKey().repositoryId(),&quot;workspace_id&quot;,target.targetKey().workspaceId(),&quot;workspace_scope_key&quot;,com.taxonomy.versioning.model.ArchitectureCommitIndex.scopeKeyFor(target.targetKey().workspaceId()),&quot;commit_id&quot;,commit(commits,row.sourceId(),Field.INDEX_COMMIT,row.commitId()),&quot;branch&quot;,row.branch(),</span>
+<span class="fc" id="L289">                    &quot;author&quot;,row.author(),&quot;commit_timestamp&quot;,timestamp(row.committedAt()),&quot;message&quot;,row.message(),&quot;changed_files&quot;,row.changedFiles(),&quot;tokenized_change_text&quot;,row.changeText(),&quot;affected_element_ids&quot;,row.affectedElementIds(),&quot;affected_relation_ids&quot;,row.affectedRelationIds(),&quot;indexed_at&quot;,timestamp(row.indexedAt())));</span>
+<span class="fc" id="L290">        }</span>
+<span class="fc bfc" id="L291" title="All 2 branches covered.">        for(var row:context) {checkpoint.check();required(row.principalScope(),255);canonicalUuidOptional(row.fromContext());canonicalUuidOptional(row.toContext());canonicalUuidOptional(row.originContext());instant(row.createdAt());model.classify(&quot;context-history&quot;,row.sourceId().value(),&quot;PRIVATE_HISTORICAL_SOURCE&quot;);}</span>
+<span class="fc" id="L292">        var principalsSorted=new TreeMap&lt;String,RestorePrincipalAllocation&gt;();principals.forEach((id,allocation)-&gt;principalsSorted.put(id.value().toString(),allocation));</span>
+<span class="fc" id="L293">        model.planHash=hash(List.of(gitBinding(git,generation.allocations()),principalsSorted,model.targets.values(),model.evidence.values()));checkpoint.check();return model;</span>
+    }
+
+<span class="fc" id="L296">    private static final Set&lt;String&gt; PUBLICATION_STEPS = Set.of(&quot;PREPARE&quot;,&quot;CANDIDATES&quot;,&quot;SOURCE_REF&quot;,&quot;WORKSPACE_REF&quot;,</span>
+            &quot;TRACKING_REF&quot;,&quot;CENTRAL_PORTFOLIO&quot;,&quot;LOCAL_PORTFOLIO&quot;,&quot;WORKSPACE_METADATA&quot;,&quot;SOURCE_METADATA&quot;,&quot;PROGRESS&quot;,&quot;COMPLETE&quot;);
+
+    private static void classifyPublications(BackupProfile profile,List&lt;PublicationRecord&gt; publications,
+            List&lt;PublicationDecisionRecord&gt; decisions,Map&lt;String,WorkspaceRecord&gt; workspaces,Set&lt;String&gt; activeWorkspaces,
+            RestoreIdentityImporter.Result identities,Map&lt;PrincipalId,RestorePrincipalAllocation&gt; principals,
+            Model model,BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L303">        var byId = new HashMap&lt;SourceRecordId,PublicationRecord&gt;();</span>
+<span class="fc" id="L304">        var classifications = new HashMap&lt;SourceRecordId,String&gt;();</span>
+<span class="fc bfc" id="L305" title="All 2 branches covered.">        for (var row : publications) {</span>
+<span class="fc" id="L306">            checkpoint.check();</span>
+<span class="fc" id="L307">            id(row.sourceId(),&quot;workspace.publication&quot;);</span>
+<span class="fc" id="L308">            sha(row.sourceId().value());</span>
+<span class="pc bpc" id="L309" title="1 of 2 branches missed.">            if (!row.sourceId().value().equals(row.causationId())) canonicalUuid(row.causationId());</span>
+<span class="fc" id="L310">            required(row.repositoryId(),255); required(row.workspaceId(),255); required(row.principalScope(),255);</span>
+<span class="fc" id="L311">            required(row.localBranch(),255); branch(row.localBranch());</span>
+<span class="fc" id="L312">            required(row.sourceBranch(),255); branch(row.sourceBranch());</span>
+<span class="pc bpc" id="L313" title="3 of 6 branches missed.">            if (row.commits()==null || row.step()==null || !PUBLICATION_STEPS.contains(row.step())</span>
+<span class="pc bpc" id="L314" title="3 of 10 branches missed.">                    || row.attempts()&lt;0 || row.createdAt()&lt;0 || (row.archivedAt()==null)!=(row.archivedBy()==null)</span>
+<span class="pc bpc" id="L315" title="1 of 2 branches missed.">                    || !&quot;ARCHITECTURE_PUBLISH+CONTRIBUTOR&quot;.equals(row.requiredPolicy())) throw invalid();</span>
+<span class="fc bfc" id="L316" title="All 2 branches covered.">            for (var digest : Arrays.asList(row.mergedDigest(),row.centralPortfolioDigest(),row.localPortfolioDigest()))</span>
+<span class="fc bfc" id="L317" title="All 2 branches covered.">                if (digest!=null) sha(digest);</span>
+<span class="pc bpc" id="L318" title="1 of 4 branches missed.">            for (var commit : row.commits().recorded().values()) if (!commit.matches(&quot;[a-f0-9]{40}&quot;)) throw invalid();</span>
+<span class="fc bfc" id="L319" title="All 2 branches covered.">            for (var date : Arrays.asList(row.lastAttemptAt(),row.nextAttemptAt(),row.publishedAt(),row.completedAt(),</span>
+<span class="pc bpc" id="L320" title="1 of 4 branches missed.">                    row.archivedAt(),row.sourceObservedAt(),row.pinsReleasedAt(),row.redactedAt())) if (date!=null &amp;&amp; date&lt;0) throw invalid();</span>
+<span class="fc" id="L321">            var parent = workspaces.get(row.workspaceId());</span>
+<span class="fc bfc" id="L322" title="All 2 branches covered.">            if (row.workspaceOwnerScope()!=null) required(row.workspaceOwnerScope(),255);</span>
+<span class="fc" id="L323">            String workspaceOwner = Objects.requireNonNullElse(row.workspaceOwnerScope(),row.principalScope());</span>
+<span class="pc bpc" id="L324" title="1 of 4 branches missed.">            boolean originalWorkspace = parent!=null &amp;&amp; row.repositoryId().equals(parent.repositoryId())</span>
+<span class="fc bfc" id="L325" title="All 2 branches covered.">                    &amp;&amp; workspaceOwner.equals(parent.ownerScope());</span>
+<span class="fc bfc" id="L326" title="All 2 branches covered.">            if (row.detachedWorkspace()) {</span>
+<span class="pc bpc" id="L327" title="3 of 8 branches missed.">                if (profile!=BackupProfile.INSTALLATION_FULL || originalWorkspace || parent!=null &amp;&amp; row.archivedAt()==null) throw invalid();</span>
+<span class="pc bpc" id="L328" title="1 of 2 branches missed.">            } else if (!originalWorkspace) throw invalid();</span>
+
+<span class="fc" id="L330">            boolean legacy = &quot;LEGACY_OIDC&quot;.equals(row.authorizationKind());</span>
+<span class="fc" id="L331">            boolean quarantinedActor = legacy;</span>
+<span class="pc bpc" id="L332" title="1 of 2 branches missed.">            if (legacy) sha(row.originalActor());</span>
+            else {
+<span class="pc bpc" id="L334" title="3 of 4 branches missed.">                if (!&quot;LOCAL&quot;.equals(row.authorizationKind()) &amp;&amp; !&quot;OIDC&quot;.equals(row.authorizationKind())) throw invalid();</span>
+<span class="fc" id="L335">                canonicalUuid(row.originalActor());</span>
+<span class="fc bfc" id="L336" title="All 2 branches covered.">                if (!row.detachedWorkspace()) {</span>
+<span class="fc" id="L337">                    var mapped = principals.get(new PrincipalId(UUID.fromString(row.originalActor())));</span>
+<span class="pc bpc" id="L338" title="2 of 4 branches missed.">                    if (mapped==null || !mapped.targetScope().equals(scope(identities,row.principalScope()))) throw invalid();</span>
+<span class="fc bfc" id="L339" title="All 2 branches covered.">                    quarantinedActor = mapped.disposition()==RestorePrincipalAllocation.Disposition.QUARANTINE;</span>
+                }
+            }
+<span class="pc bpc" id="L342" title="1 of 2 branches missed.">            if (row.executorId()!=null) publicationActor(row.executorId());</span>
+<span class="fc bfc" id="L343" title="All 2 branches covered.">            if (row.archivedBy()!=null) publicationActor(row.archivedBy());</span>
+<span class="pc bpc" id="L344" title="1 of 2 branches missed.">            if (row.decisionCode()!=null) decisionCode(row.decisionCode());</span>
+<span class="pc bpc" id="L345" title="1 of 3 branches missed.">            boolean pending = switch (Objects.requireNonNullElse(row.phase(),&quot;&quot;)) {</span>
+<span class="fc" id="L346">                case &quot;ADMITTED&quot;,&quot;RUNNING&quot;,&quot;RETRYABLE&quot;,&quot;AWAITING_AUTHORIZATION&quot; -&gt; true;</span>
+<span class="fc" id="L347">                case &quot;COMPLETED&quot;,&quot;SUPERSEDED&quot;,&quot;MANUAL_REVIEW&quot;,&quot;DENIED&quot; -&gt; false;</span>
+<span class="nc" id="L348">                default -&gt; throw invalid();</span>
+            };
+            String classification;
+<span class="fc bfc" id="L351" title="All 2 branches covered.">            if (row.detachedWorkspace()) classification = &quot;DETACHED_SOURCE_QUARANTINE&quot;;</span>
+<span class="pc bpc" id="L352" title="1 of 4 branches missed.">            else if (quarantinedActor || !activeWorkspaces.contains(row.workspaceId())) classification = &quot;PRIVATE_QUARANTINE&quot;;</span>
+<span class="pc bpc" id="L353" title="1 of 2 branches missed.">            else classification = pending ? &quot;INTERRUPTED_SOURCE_OPERATION&quot; : &quot;HISTORICAL_SOURCE_OPERATION&quot;;</span>
+<span class="fc" id="L354">            byId.put(row.sourceId(),row);</span>
+<span class="fc" id="L355">            classifications.put(row.sourceId(),classification);</span>
+<span class="fc" id="L356">            model.classify(&quot;publication-journal&quot;,row.sourceId().value(),classification);</span>
+<span class="fc" id="L357">        }</span>
+<span class="fc bfc" id="L358" title="All 2 branches covered.">        for (var event : decisions) {</span>
+<span class="fc" id="L359">            checkpoint.check();</span>
+<span class="fc" id="L360">            id(event.sourceId(),&quot;workspace.publication-decision&quot;);</span>
+<span class="fc" id="L361">            id(event.operation(),&quot;workspace.publication&quot;);</span>
+<span class="fc" id="L362">            var parent = byId.get(event.operation());</span>
+<span class="pc bpc" id="L363" title="1 of 4 branches missed.">            if (!event.sourceId().value().matches(&quot;0|[1-9][0-9]{0,18}&quot;) || parent==null</span>
+<span class="pc bpc" id="L364" title="2 of 4 branches missed.">                    || !parent.originalActor().equals(event.originalActor()) || event.decidedAt()&lt;0</span>
+<span class="pc bpc" id="L365" title="2 of 4 branches missed.">                    || event.step()==null || !PUBLICATION_STEPS.contains(event.step())) throw invalid();</span>
+<span class="fc" id="L366">            publicationActor(event.executorId());</span>
+<span class="fc" id="L367">            decisionCode(event.decisionCode());</span>
+<span class="fc" id="L368">            model.classify(&quot;publication-decisions&quot;,event.sourceId().value(),classifications.get(event.operation()));</span>
+<span class="fc" id="L369">        }</span>
+<span class="fc" id="L370">    }</span>
+
+    private static void publicationActor(String actor) throws IOException {
+<span class="pc bpc" id="L373" title="1 of 2 branches missed.">        if (actor==null) throw invalid();</span>
+<span class="fc bfc" id="L374" title="All 4 branches covered.">        if (!actor.equals(&quot;system:workspace-publication&quot;) &amp;&amp; !actor.equals(&quot;system:workspace-publication-retention&quot;)</span>
+<span class="pc bpc" id="L375" title="1 of 2 branches missed.">                &amp;&amp; !actor.matches(&quot;[a-f0-9]{64}&quot;)) canonicalUuid(actor);</span>
+<span class="fc" id="L376">    }</span>
+
+    private static void decisionCode(String decision) throws IOException {
+<span class="pc bpc" id="L379" title="2 of 4 branches missed.">        if (decision==null || !decision.matches(&quot;[A-Z][A-Z0-9_]{0,47}&quot;)) throw invalid();</span>
+<span class="fc" id="L380">    }</span>
+
+    private static List&lt;FetchRecord&gt; fetches(VerifiedBackup archive, String kind, String sourceKind, Model model,
+                                              BackupCheckpoint checkpoint) throws IOException {
+<span class="pc bpc" id="L384" title="1 of 2 branches missed.">        if (!RestoreArchiveRecords.declares(archive, OWNER, &quot;data/workspace/&quot; + kind + &quot;.ndjson&quot;)) return List.of();</span>
+<span class="fc" id="L385">        var rows = read(archive,kind,FetchRecord.class,model,FetchRecord::sourceId,checkpoint);</span>
+<span class="pc bpc" id="L386" title="1 of 4 branches missed.">        for (var row : rows) if (!sourceKind.equals(row.sourceId().kind())) throw invalid();</span>
+<span class="fc" id="L387">        return rows;</span>
+    }
+
+    private static final class Model {
+<span class="fc" id="L391">        final UUID generation;final Map&lt;String,Evidence&gt; evidence=new LinkedHashMap&lt;&gt;();final Map&lt;String,TargetRow&gt; targets=new LinkedHashMap&lt;&gt;();final Map&lt;SourceRecordId,String&gt; editorScopes=new HashMap&lt;&gt;();int bytes;String planHash;</span>
+<span class="fc" id="L392">        Model(UUID generation){this.generation=generation;}</span>
+        void evidence(String kind,String key,Record row)throws IOException {
+<span class="pc bpc" id="L394" title="1 of 2 branches missed.">            required(key,4096);String json=JSON.writeValueAsString(row);budget(utf8(json));if(evidence.putIfAbsent(kind+&quot;:&quot;+key,new Evidence(kind,key,json,&quot;PRIVATE_PRIMARY&quot;))!=null)throw invalid();</span>
+<span class="fc" id="L395">        }</span>
+<span class="pc bpc" id="L396" title="1 of 2 branches missed.">        void classify(String kind,String key,String classification)throws IOException {var old=evidence.get(kind+&quot;:&quot;+key);if(old==null)throw invalid();evidence.put(kind+&quot;:&quot;+key,new Evidence(kind,key,old.json(),classification));}</span>
+        void target(String kind,String source,String table,String keyColumn,Object key,Map&lt;String,Object&gt; values)throws IOException {
+<span class="pc bpc" id="L398" title="3 of 6 branches missed.">            if(!TABLES.contains(table)||!values.containsKey(keyColumn)||!Objects.equals(values.get(keyColumn),key))throw invalid();</span>
+<span class="pc bpc" id="L399" title="2 of 4 branches missed.">            String unique=table+&quot;:&quot;+key;if(targets.containsKey(unique)||targets.size()&gt;=MAX_ROWS)throw invalid();budget(utf8(JSON.writeValueAsString(values)));targets.put(unique,new TargetRow(kind,source,table,keyColumn,key,values));</span>
+<span class="fc" id="L400">        }</span>
+<span class="fc" id="L401">        long numeric(SourceRecordId source){return Long.parseLong(StableIdentityHash.sha256(generation+&quot;:&quot;+source.kind()+&quot;:&quot;+source.value()).substring(0,15),16)+1;}</span>
+<span class="pc bpc" id="L402" title="2 of 4 branches missed.">        void budget(int size)throws IOException {if(size&gt;MAX_BYTES-bytes||evidence.size()&gt;=MAX_ROWS)throw new IOException(&quot;Workspace restore model budget exceeded&quot;);bytes+=size;}</span>
+<span class="fc" id="L403">        Result result(){return new Result(editorScopes,targets.size(),evidence.size());}</span>
+    }
+    @FunctionalInterface private interface SourceId&lt;T&gt;{SourceRecordId id(T row)throws IOException;}
+    private static &lt;T extends Record&gt;List&lt;T&gt; read(VerifiedBackup archive,String kind,Class&lt;T&gt; type,Model model,SourceId&lt;T&gt; key,BackupCheckpoint checkpoint)throws IOException {
+<span class="pc bpc" id="L407" title="1 of 2 branches missed.">        var result=new ArrayList&lt;T&gt;();RestoreArchiveRecords.read(archive,OWNER,&quot;data/workspace/&quot;+kind+&quot;.ndjson&quot;,kind,type,MAX_ROWS,checkpoint,row-&gt;{var id=key.id(row);if(id==null)throw invalid();model.evidence(kind,id.value(),row);result.add(row);});return List.copyOf(result);</span>
+    }
+<span class="pc bpc" id="L409" title="1 of 2 branches missed.">    private static String scope(RestoreIdentityImporter.Result identities,String source)throws IOException {String target=identities.sourceScopes().get(source);if(target==null)throw new IOException(&quot;Workspace owner identity mapping is incomplete&quot;);return target;}</span>
+<span class="pc bpc" id="L410" title="2 of 6 branches missed.">    private static String commit(Map&lt;WorkspaceRestoreReferences.Slot,String&gt; commits,SourceRecordId id,Field field,String source)throws IOException {if(source==null||source.isBlank())return null;String target=commits.get(new WorkspaceRestoreReferences.Slot(id,field));if(target==null)throw invalid();return target;}</span>
+<span class="pc bpc" id="L411" title="1 of 4 branches missed.">    private static Map&lt;String,Object&gt; columns(Object...pairs){var values=new LinkedHashMap&lt;String,Object&gt;();for(int n=0;n&lt;pairs.length;n+=2)if(values.put((String)pairs[n],pairs[n+1])!=null)throw new IllegalArgumentException(&quot;Duplicate target column&quot;);return Collections.unmodifiableMap(values);}</span>
+    static String gitBinding(GitRestoreImporter.Result git,Map&lt;BackupRepositoryKey,RestoreRepositoryAllocation&gt; allocations)throws IOException {
+<span class="fc" id="L413">        var bound=new ArrayList&lt;RepoProof&gt;();</span>
+<span class="fc bfc" id="L414" title="All 2 branches covered.">        for(var key:git.repositories().keySet()) {</span>
+<span class="fc" id="L415">            var proof=git.repositories().get(key);var state=proof.restoredState();</span>
+<span class="fc" id="L416">            bound.add(new RepoProof(key,allocations.get(key),proof.targetKey(),proof.physicalStorageName(),new TreeMap&lt;&gt;(state.refs()),state.symbolicHead(),</span>
+<span class="fc" id="L417">                    new TreeMap&lt;&gt;(state.workingStates()),state.requiredCommits().stream().sorted().toList(),new TreeMap&lt;&gt;(proof.commitMappings()),proof.repositoryDigest()));</span>
+<span class="fc" id="L418">        }</span>
+<span class="fc" id="L419">        bound.sort(Comparator.comparing(p-&gt;p.source().repositoryId()+&quot;\0&quot;+Objects.toString(p.source().workspaceId(),&quot;&quot;)));return hash(bound);</span>
+    }
+<span class="fc" id="L421">    private static String hash(Object value)throws IOException{return StableIdentityHash.sha256(JSON.writeValueAsString(value));}</span>
+<span class="pc bpc" id="L422" title="2 of 4 branches missed.">    private static void id(SourceRecordId id,String kind)throws IOException {if(id==null||!kind.equals(id.kind()))throw invalid();}</span>
+<span class="pc bpc" id="L423" title="3 of 6 branches missed.">    private static void required(String text,int limit)throws IOException{if(text==null||text.isBlank()||text.length()&gt;limit)throw invalid();}</span>
+<span class="pc bpc" id="L424" title="1 of 4 branches missed.">    private static void branch(String branch)throws IOException {if(branch!=null&amp;&amp;!Repository.isValidRefName(&quot;refs/heads/&quot;+branch))throw invalid();}</span>
+<span class="pc bpc" id="L425" title="2 of 4 branches missed.">    private static void sha(String value)throws IOException {if(value==null||!value.matches(&quot;[a-f0-9]{64}&quot;))throw invalid();}</span>
+<span class="pc bpc" id="L426" title="2 of 4 branches missed.">    private static void canonicalUuid(String value)throws IOException {try{if(value==null||!UUID.fromString(value).toString().equals(value))throw invalid();}catch(IllegalArgumentException failure){throw invalid();}}</span>
+<span class="fc bfc" id="L427" title="All 2 branches covered.">    private static void canonicalUuidOptional(String value)throws IOException {if(value!=null)canonicalUuid(value);}</span>
+<span class="pc bpc" id="L428" title="1 of 2 branches missed.">    private static void instant(String text)throws IOException {try{if(text==null)throw invalid();Instant.parse(text);}catch(RuntimeException failure){throw invalid();}}</span>
+<span class="fc bfc" id="L429" title="All 2 branches covered.">    private static Timestamp timestamp(String text)throws IOException {if(text==null)return null;instant(text);return Timestamp.from(Instant.parse(text));}</span>
+<span class="pc bpc" id="L430" title="1 of 2 branches missed.">    private static int utf8(String value)throws IOException {if(value==null)throw invalid();try{return StandardCharsets.UTF_8.newEncoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT).encode(CharBuffer.wrap(value)).remaining();}catch(CharacterCodingException failure){throw invalid();}}</span>
+<span class="fc" id="L431">    private static IOException invalid(){return new IOException(&quot;Invalid typed workspace history evidence&quot;);}</span>
+<span class="fc" id="L432">    private static PreparedStatement statement(Connection connection,String sql)throws SQLException {var statement=connection.prepareStatement(sql);statement.setMaxRows(MAX_ROWS+1);statement.setQueryTimeout(60);return statement;}</span>
+    private static void update(Connection connection,RestoreTargetGeneration generation,BackupCheckpoint checkpoint,String sql,Object...values)throws SQLException,IOException {
+<span class="fc" id="L434">        generation.requireConnection(connection,checkpoint);</span>
+<span class="fc" id="L435">        try(var statement=statement(connection,sql)) {</span>
+<span class="fc bfc" id="L436" title="All 2 branches covered.">            for(int n=0;n&lt;values.length;n++)statement.setObject(n+1,values[n]);</span>
+            // Mutable routing can change during prepareStatement; prove the held connection immediately before execution.
+<span class="fc" id="L438">            generation.requireConnection(connection,checkpoint);</span>
+<span class="pc bpc" id="L439" title="1 of 2 branches missed.">            if(statement.executeUpdate()!=1)throw new SQLException(&quot;Unexpected workspace restore row count&quot;);</span>
+<span class="fc" id="L440">            generation.requireConnection(connection,checkpoint);</span>
+        }
+<span class="fc" id="L442">    }</span>
+    private static void insertTarget(Connection connection,TargetRow row,RestoreTargetGeneration generation,BackupCheckpoint checkpoint)throws SQLException,IOException {
+<span class="fc" id="L444">        String sql=&quot;insert into &quot;+row.table()+&quot;(&quot;+String.join(&quot;,&quot;,row.columns().keySet())+&quot;) values(&quot;+String.join(&quot;,&quot;,Collections.nCopies(row.columns().size(),&quot;?&quot;))+&quot;)&quot;;</span>
+<span class="fc" id="L445">        update(connection,generation,checkpoint,sql,row.columns().values().toArray());</span>
+<span class="fc" id="L446">    }</span>
+<span class="fc" id="L447">    private static long count(Connection connection,String table)throws SQLException {try(var statement=statement(connection,&quot;select count(*) from &quot;+table);var rows=statement.executeQuery()){rows.next();return rows.getLong(1);}}</span>
+    private static List&lt;String&gt; owner(Connection connection,BackupCheckpoint checkpoint)throws SQLException,IOException {
+<span class="pc bpc" id="L449" title="1 of 2 branches missed.">        if(count(connection,&quot;restore_workspace_owner&quot;)&gt;1)throw new IOException(&quot;Workspace owner inventory proof failed&quot;);</span>
+<span class="pc bpc" id="L450" title="3 of 8 branches missed.">        try(var statement=statement(connection,&quot;select owner_id,generation_id,archive_sha256,plan_sha256 from restore_workspace_owner&quot;);var rows=statement.executeQuery()) {checkpoint.check();if(!rows.next())return null;if(!&quot;workspace&quot;.equals(rows.getString(1)))throw new IOException(&quot;Workspace owner inventory proof failed&quot;);return List.of(rows.getString(2),rows.getString(3),rows.getString(4));}</span>
+    }
+    private static void requireEmpty(Connection connection,BackupCheckpoint checkpoint)throws SQLException,IOException {
+<span class="pc bpc" id="L453" title="1 of 4 branches missed.">        var tables=new ArrayList&lt;&gt;(TABLES);tables.addAll(List.of(&quot;restore_workspace_owner&quot;,&quot;restore_workspace_mapping&quot;,&quot;restore_workspace_evidence&quot;));for(var table:tables){checkpoint.check();if(count(connection,table)!=0)throw new IOException(&quot;Unjournaled workspace target is not empty&quot;);}</span>
+<span class="fc" id="L454">    }</span>
+    private static void requireIdentity(Connection connection,VerifiedBackup archive,RestoreTargetGeneration generation,Map&lt;PrincipalId,RestorePrincipalAllocation&gt; allocations,BackupCheckpoint checkpoint)throws SQLException,IOException {
+<span class="pc bpc" id="L456" title="5 of 10 branches missed.">        try(var statement=statement(connection,&quot;select owner_id,generation_id,archive_sha256 from restore_identity_owner&quot;);var rows=statement.executeQuery()) {checkpoint.check();if(!rows.next()||!&quot;identities&quot;.equals(rows.getString(1))||!generation.generationId().toString().equals(rows.getString(2))||!archive.archiveSha256().equals(rows.getString(3))||rows.next())throw new IOException(&quot;Workspace disabled identity owner proof failed&quot;);}</span>
+<span class="pc bpc" id="L457" title="2 of 4 branches missed.">        if(count(connection,&quot;restore_identity_mapping&quot;)!=allocations.size()||count(connection,&quot;app_principal&quot;)!=allocations.size())throw new IOException(&quot;Workspace disabled identity inventory proof failed&quot;);</span>
+<span class="fc bfc" id="L458" title="All 2 branches covered.">        for(var entry:allocations.entrySet()) {</span>
+<span class="fc" id="L459">            checkpoint.check();var expected=entry.getValue();try(var statement=statement(connection,&quot;select m.target_principal,m.target_scope,m.disposition,p.scope_key,p.enabled from restore_identity_mapping m join app_principal p on p.principal_id=m.target_principal where m.source_principal=?&quot;)) {</span>
+<span class="pc bpc" id="L460" title="7 of 14 branches missed.">                statement.setString(1,entry.getKey().value().toString());try(var rows=statement.executeQuery()){if(!rows.next()||!expected.targetPrincipal().value().toString().equals(rows.getString(1))||!expected.targetScope().equals(rows.getString(2))||!expected.disposition().name().equals(rows.getString(3))||!expected.targetScope().equals(rows.getString(4))||rows.getInt(5)!=0||rows.next())throw new IOException(&quot;Workspace disabled identity mapping proof failed&quot;);}</span>
+            }
+<span class="fc" id="L462">        }</span>
+<span class="fc" id="L463">    }</span>
+    private static void verify(Connection connection,Model model,BackupCheckpoint checkpoint)throws SQLException,IOException {
+<span class="fc bfc" id="L465" title="All 2 branches covered.">        var counts=new HashMap&lt;String,Long&gt;();for(var row:model.targets.values())counts.merge(row.table(),1L,Long::sum);</span>
+<span class="pc bpc" id="L466" title="1 of 4 branches missed.">        for(var table:TABLES){checkpoint.check();if(count(connection,table)!=counts.getOrDefault(table,0L))throw new IOException(&quot;Workspace target inventory proof failed&quot;);}</span>
+<span class="pc bpc" id="L467" title="2 of 4 branches missed.">        if(count(connection,&quot;restore_workspace_mapping&quot;)!=model.targets.size()||count(connection,&quot;restore_workspace_evidence&quot;)!=model.evidence.size())throw new IOException(&quot;Workspace private evidence inventory proof failed&quot;);</span>
+<span class="fc bfc" id="L468" title="All 2 branches covered.">        for(var row:model.targets.values()) {</span>
+<span class="fc" id="L469">            checkpoint.check();try(var statement=statement(connection,&quot;select &quot;+String.join(&quot;,&quot;,row.columns().keySet())+&quot; from &quot;+row.table()+&quot; where &quot;+row.keyColumn()+&quot;=?&quot;)) {</span>
+<span class="pc bpc" id="L470" title="2 of 6 branches missed.">                statement.setObject(1,row.key());try(var rows=statement.executeQuery()) {if(!rows.next())throw proof();int n=1;for(var expected:row.columns().values()){checkpoint.check();field(rows,n++,expected,checkpoint);}if(rows.next())throw proof();}</span>
+            }
+<span class="pc bpc" id="L472" title="5 of 10 branches missed.">            try(var statement=statement(connection,&quot;select target_table,target_key,target_sha256 from restore_workspace_mapping where record_kind=? and record_key=?&quot;)) {statement.setString(1,row.kind());statement.setString(2,row.sourceKey());try(var rows=statement.executeQuery()){if(!rows.next()||!row.table().equals(rows.getString(1))||!row.key().toString().equals(rows.getString(2))||!hash(row.columns()).equals(rows.getString(3))||rows.next())throw proof();}}</span>
+<span class="fc" id="L473">        }</span>
+<span class="fc bfc" id="L474" title="All 2 branches covered.">        for(var expected:model.evidence.values()) {</span>
+<span class="pc bpc" id="L475" title="4 of 8 branches missed.">            checkpoint.check();try(var statement=statement(connection,&quot;select record_json,sha256,classification from restore_workspace_evidence where record_kind=? and record_key=?&quot;)) {statement.setString(1,expected.kind());statement.setString(2,expected.key());try(var rows=statement.executeQuery()) {if(!rows.next())throw proof();try(var reader=rows.getCharacterStream(1)){same(reader,expected.json(),checkpoint);}if(!StableIdentityHash.sha256(expected.json()).equals(rows.getString(2))||!expected.classification().equals(rows.getString(3))||rows.next())throw proof();}}</span>
+<span class="fc" id="L476">        }</span>
+<span class="fc" id="L477">    }</span>
+    private static void field(ResultSet rows,int column,Object expected,BackupCheckpoint checkpoint)throws SQLException,IOException {
+<span class="fc bfc" id="L479" title="All 2 branches covered.">        if(expected instanceof String text){try(var reader=rows.getCharacterStream(column)){same(reader,text,checkpoint);}return;}</span>
+<span class="fc bfc" id="L480" title="All 2 branches covered.">        Object actual=expected instanceof Timestamp?rows.getTimestamp(column):rows.getObject(column);</span>
+<span class="pc bpc" id="L481" title="2 of 6 branches missed.">        if(expected instanceof Number number){if(!(actual instanceof Number value)||number.longValue()!=value.longValue())throw proof();}</span>
+<span class="pc bpc" id="L482" title="1 of 2 branches missed.">        else if(!Objects.equals(expected,actual))throw proof();</span>
+<span class="fc" id="L483">    }</span>
+    private static void same(Reader reader,String expected,BackupCheckpoint checkpoint)throws IOException {
+<span class="pc bpc" id="L485" title="1 of 2 branches missed.">        if(reader==null)throw proof();char[] buffer=new char[4096];int offset=0;</span>
+<span class="pc bpc" id="L486" title="1 of 8 branches missed.">        while(offset&lt;expected.length()){checkpoint.check();int count=reader.read(buffer,0,Math.min(buffer.length,expected.length()-offset));checkpoint.check();if(count&lt;=0)throw proof();for(int n=0;n&lt;count;n++)if(buffer[n]!=expected.charAt(offset+n))throw proof();offset+=count;}</span>
+<span class="pc bpc" id="L487" title="1 of 2 branches missed.">        checkpoint.check();if(reader.read()!=-1)throw proof();checkpoint.check();</span>
+<span class="fc" id="L488">    }</span>
+<span class="fc" id="L489">    private static IOException proof(){return new IOException(&quot;Workspace target or private evidence proof failed&quot;);}</span>
+<span class="fc bfc" id="L490" title="All 2 branches covered.">    private static final class Rollback implements AutoCloseable {final Connection connection;boolean committed;Rollback(Connection connection){this.connection=connection;}public void close()throws SQLException{if(!committed)connection.rollback();}}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>
