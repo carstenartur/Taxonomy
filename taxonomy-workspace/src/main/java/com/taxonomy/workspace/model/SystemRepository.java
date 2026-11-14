@@ -90,6 +90,10 @@ public class SystemRepository {
     @Column(name = "fork_point_commit")
     private String forkPointCommit;
 
+    /** Authenticated principal or verified issuer/subject for this original fork claim only. */
+    @Column(name = "fork_initiator_key", length = 64)
+    private String forkInitiatorKey;
+
     @Column(name = "last_fetch_at")
     private Instant lastFetchAt;
 
@@ -254,6 +258,14 @@ public class SystemRepository {
 
     public void setUpstreamBranch(String upstreamBranch) {
         this.upstreamBranch = upstreamBranch;
+    }
+
+    public String getForkInitiatorKey() {
+        return forkInitiatorKey;
+    }
+
+    public void setForkInitiatorKey(String value) {
+        this.forkInitiatorKey = value;
     }
 
     public String getForkPointCommit() {

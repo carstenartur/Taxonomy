@@ -22,11 +22,11 @@ final class StagedWorkspaceSchema {
     private StagedWorkspaceSchema() { }
 
     static boolean predatesPublications(DataSource database) throws IOException {
-        return missingTablesBefore(database, PUBLICATION, "27.1");
+        return missingTablesBefore(database, PUBLICATION, "32.1");
     }
 
     static boolean predatesHistoryIndex(DataSource database) throws IOException {
-        return missingTablesBefore(database, HISTORY_INDEX, "29");
+        return missingTablesBefore(database, HISTORY_INDEX, "32.3");
     }
 
     private static boolean missingTablesBefore(DataSource database, Set<String> required, String introduced) throws IOException {

@@ -143,7 +143,7 @@ class WorkspaceRestoreImporterTest {
         }
     }
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings = {"27", "27.1", "28"})
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"27", "32", "32.1", "32.2"})
     void centralIndexUsesItsReviewedSharedScopeWithoutInventingAWorkspaceOrPrincipal(String sourceVersion)throws Exception {
         try(var fixture=fixture(sourceVersion,false,false,null)) {
             try (var input = fixture.archive.openEntry("data/workspace/memberships.ndjson")) {
@@ -168,8 +168,8 @@ class WorkspaceRestoreImporterTest {
         var source = database();
         try {
             String version = switch (damage) {
-                case "current-without-index" -> "29";
-                case "installed-without-publication" -> "27.1";
+                case "current-without-index" -> "32.3";
+                case "installed-without-publication" -> "32.1";
                 default -> "27";
             };
             migrateStagedSource(source, version);
@@ -292,7 +292,7 @@ class WorkspaceRestoreImporterTest {
         rows.update("insert into editor_checkpoint(commit_created,completed,from_revision,semantic_revision,command_id,commit_id,expected_commit,occurred_at,origin,fingerprint,scope_id,id,actor,rationale,dsl) values(false,false,0,4,?,?,?,?,'USER','"+"d".repeat(64)+"',?,?,'source-owner','Interrupted save','1:Original checkpoint')",SAVE,commit,commit,TIME,editor,editor+":"+SAVE);
         rows.update("insert into architecture_commit_index(commit_timestamp,indexed_at,commit_id,branch,repository_id,workspace_id,workspace_scope_key,message) values(?,?,?,'main','source-repository','source-workspace','source-workspace','Original indexed commit')",java.sql.Timestamp.from(Instant.parse(TIME)),java.sql.Timestamp.from(Instant.parse(TIME)),commit);
         if(sourceVersion != null)rows.update("insert into architecture_commit_index(commit_timestamp,indexed_at,commit_id,branch,repository_id,workspace_scope_key,message) values(?,?,?,'main','source-repository',?,'Original central commit')",java.sql.Timestamp.from(Instant.parse(TIME)),java.sql.Timestamp.from(Instant.parse(TIME)),commit,
-                "28".equals(sourceVersion) ? com.taxonomy.model.WorkspaceOverlayScope.CENTRAL_STORAGE_KEY : "__shared__");
+                "32.2".equals(sourceVersion) ? com.taxonomy.model.WorkspaceOverlayScope.CENTRAL_STORAGE_KEY : "__shared__");
         rows.update("insert into context_history_record(created_at,from_commit_id,to_commit_id,username,from_context_id,to_context_id,from_branch,to_branch) values(?,?,?,'source-owner',?,?,'main','main')",java.sql.Timestamp.from(Instant.parse(TIME)),commit,commit,UUID.randomUUID().toString(),UUID.randomUUID().toString());
         if(systemOwner)rows.update("update system_repository set owner_type='SYSTEM',owner_id='unmapped-system-label'");
         if(historicalUnknownPrincipal)rows.update("update context_history_record set username='deleted-historical-navigation-label'");
