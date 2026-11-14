@@ -1,5 +1,6 @@
 package com.taxonomy.dsl;
 
+import com.taxonomy.support.AnalysisCatalogueSourceFixture;
 import com.taxonomy.model.HypothesisStatus;
 import com.taxonomy.relations.model.RelationHypothesis;
 import com.taxonomy.model.RelationType;
@@ -27,7 +28,7 @@ import com.taxonomy.dto.ViewContext;
 @SpringBootTest(properties = "spring.datasource.url=jdbc:hsqldb:mem:dsl-api-controller")
 @AutoConfigureMockMvc
 @WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
-class DslApiControllerTest {
+class DslApiControllerTest implements AnalysisCatalogueSourceFixture {
 
     @Autowired
     private MockMvc mockMvc;
