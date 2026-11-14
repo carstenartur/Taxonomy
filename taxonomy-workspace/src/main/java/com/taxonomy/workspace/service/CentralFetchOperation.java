@@ -14,6 +14,16 @@ public class CentralFetchOperation extends RepositoryFetchOperation {
     @Column(name = "target_repository_id", nullable = false, length = 255) String targetRepositoryId;
     @Column(name = "source_repository_id", nullable = false, length = 255) String sourceRepositoryId;
 
+    static String initialId(String repositoryId) {
+        return com.taxonomy.workspace.model.SystemRepository.initialForkOperationId(repositoryId);
+    }
+
+    static boolean initialIdFormat(String id) { return id != null && id.matches("p-[0-9a-f]{62}"); }
+
+    boolean isInitialFork() {
+        return initialIdFormat(id) && id.equals(initialId(targetRepositoryId));
+    }
+
     protected CentralFetchOperation() { }
 
     @Override RepositoryContext context() {

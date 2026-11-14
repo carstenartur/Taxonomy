@@ -181,6 +181,7 @@ class WorkspaceControllerTest extends RetainedPortfolioCatalogue {
     // ── Create workspace ────────────────────────────────────────────
 
     @Test
+    @WithMockUser(username = "workspace-creator", roles = {"USER", "ARCHITECT", "ADMIN"})
     void createWorkspace_returnsOk() throws Exception {
         mockMvc.perform(post("/api/workspace/create")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -239,7 +240,7 @@ class WorkspaceControllerTest extends RetainedPortfolioCatalogue {
 
     @Test
     void syncFromShared_returnsOk() throws Exception {
-        mockMvc.perform(post("/api/workspace/sync-from-shared"))
+        mockMvc.perform(post("/api/workspace/sync-from-shared").with(user(persistedArchitect())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
     }
@@ -248,12 +249,16 @@ class WorkspaceControllerTest extends RetainedPortfolioCatalogue {
 
     @Test
     void publish_returnsOk() throws Exception {
-        String username = "workspace-publisher-" + UUID.randomUUID();
-        accounts.createUser(Map.of("username", username, "roles", List.of("USER", "ARCHITECT", "ADMIN")),
-                UUID.randomUUID().toString(), "test");
-        mockMvc.perform(post("/api/workspace/publish").with(user(users.loadUserByUsername(username))))
+        mockMvc.perform(post("/api/workspace/publish").with(user(persistedArchitect())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
+    }
+
+    private org.springframework.security.core.userdetails.UserDetails persistedArchitect() {
+        String username = "workspace-architect-" + UUID.randomUUID();
+        accounts.createUser(Map.of("username", username, "roles", List.of("USER", "ARCHITECT", "ADMIN")),
+                UUID.randomUUID().toString(), "test");
+        return users.loadUserByUsername(username);
     }
 
     // ── Switch workspace (not found) ────────────────────────────────
