@@ -132,7 +132,13 @@
         commit: function (branch, author, message, text) { return versionPost('/api/dsl/commit', {branch:branch,author:author,message:message}, text, 'text/plain'); },
         compare: function (left, right) { return versionRequest('/api/context/compare' + query({leftBranch:left,rightBranch:right})); },
         merge: function (from, into) { return versionPost('/api/dsl/merge', {fromBranch:from,intoBranch:into}); },
-        deleteBranch: function (name) { return versionRequest('/api/dsl/branch' + query({name:name}), {method:'DELETE'}); },
+        reviewBranchDeletion: function (name) {
+            return versionRequest('/api/dsl/branch/deletion-preview' + query({name:name}), {cache:'no-store'}, {selectedRepository:true});
+        },
+        deleteBranch: function (name, etag) {
+            return versionRequest('/api/dsl/branch' + query({name:name}), {method:'DELETE', headers:{'If-Match':etag}},
+                {selectedRepository:true, acceptedStatuses:[400, 404, 409, 412, 428]});
+        },
         mergeConflicts: function (from, into) { return versionRequest('/api/dsl/merge/conflicts' + query({from:from,into:into})); },
         cherryPickConflicts: function (id, target) { return versionRequest('/api/dsl/cherry-pick/conflicts' + query({commitId:id,targetBranch:target})); },
         resolveMerge: function (from, into, text) { return versionPost('/api/dsl/merge/resolve', {fromBranch:from,intoBranch:into}, text, 'text/plain'); },

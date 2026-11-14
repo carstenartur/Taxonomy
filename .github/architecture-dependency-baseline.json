@@ -1070,7 +1070,7 @@
       "fromPackage": "com.taxonomy.security.access",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 7
+      "classDependencyCount": 9
     },
     {
       "fromContext": "app-composition",

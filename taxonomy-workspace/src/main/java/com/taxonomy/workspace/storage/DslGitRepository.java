@@ -1034,26 +1034,45 @@ public class DslGitRepository implements AutoCloseable {
         return databaseBacked;
     }
 
+    /** These workflow refs are managed by sync/publication and cannot be removed as user variants. */
+    public static boolean isProtectedVariant(String name) {
+        return "draft".equals(name) || "accepted".equals(name) || "main".equals(name) || "sync-base".equals(name);
+    }
+
     /** Delete a non-protected branch and record a queryable reflog entry. */
     public boolean deleteBranch(String branchName) throws IOException {
-        if ("draft".equals(branchName)
-                || "accepted".equals(branchName)
-                || "main".equals(branchName)) {
+        return deleteBranch(branchName, null, null);
+    }
+
+    /** Delete the reviewed ref only if the stored head still matches its exact object ID. */
+    public boolean deleteBranch(String branchName, String expectedHead, String actor) throws IOException {
+        if (isProtectedVariant(branchName)) {
             throw new IllegalArgumentException("Cannot delete protected branch: " + branchName);
         }
-
         String refName = Constants.R_HEADS + branchName;
-        Ref ref = gitRepo.getRefDatabase().exactRef(refName);
-        if (ref == null) {
-            return false;
-        }
+        if (branchName == null || !Repository.isValidRefName(refName)) throw new IllegalArgumentException("Invalid branch");
+        if (expectedHead != null && !ObjectId.isId(expectedHead)) throw new IllegalArgumentException("Invalid expected commit");
 
-        RefUpdate update = gitRepo.updateRef(refName);
-        update.setExpectedOldObjectId(ref.getObjectId());
+        Ref ref = gitRepo.getRefDatabase().exactRef(refName);
+        ObjectId actual = ref == null ? null : ref.getObjectId();
+        if (expectedHead != null && (actual == null || !ObjectId.fromString(expectedHead).equals(actual))) {
+            throw new BranchHeadConflictException(branchName, expectedHead, actual == null ? null : actual.name(),
+                    "The reviewed branch changed");
+        }
+        if (actual == null) return false;
+        if (ref.isSymbolic()) throw new IllegalArgumentException("Cannot delete a symbolic branch");
+
+        RefUpdate update = gitRepo.updateRef(refName, true);
+        update.setExpectedOldObjectId(actual);
         update.setForceUpdate(true);
-        update.setRefLogIdent(systemIdent());
+        update.setRefLogIdent(actor == null ? systemIdent() : personIdent(actor));
         update.setRefLogMessage("branch: deleted " + branchName, true);
         RefUpdate.Result result = update.delete();
+        if (expectedHead != null && (result == RefUpdate.Result.LOCK_FAILURE || result == RefUpdate.Result.REJECTED
+                || result == RefUpdate.Result.REJECTED_CURRENT_BRANCH || result == RefUpdate.Result.NEW)) {
+            throw new BranchHeadConflictException(branchName, expectedHead, getHeadCommit(branchName),
+                    "The reviewed branch could not be deleted at its expected head");
+        }
         if (result != RefUpdate.Result.FORCED
                 && result != RefUpdate.Result.FAST_FORWARD) {
             throw new IOException("Ref deletion failed for " + refName + ": " + result);

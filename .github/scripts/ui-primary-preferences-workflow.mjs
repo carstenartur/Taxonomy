@@ -21,7 +21,7 @@ async function provisionAnalysisWorkspace(page, workspaceId, assert) {
     `Preferences fixture workspace provisioning failed: HTTP ${status}, status ${body?.status || 'missing'}`);
 }
 
-async function selectAnalysisWorkspace(page, workspaceId, assert) {
+export async function selectAnalysisWorkspace(page, workspaceId, assert, destination) {
   // The production fetch wrapper reloads automatically on /switch. Use the
   // authenticated request context so it cannot race our explicit reload below.
   const { headers, path } = await page.evaluate(id => {
@@ -35,13 +35,16 @@ async function selectAnalysisWorkspace(page, workspaceId, assert) {
   const endpoint = new URL(path, page.url()).href;
   const switched = await page.request.post(endpoint, {headers});
   assert(switched.status() === 200, `Unable to select QA analysis workspace: HTTP ${switched.status()}`);
+  const selection = await switched.json();
+  assert(selection.workspaceId === workspaceId, 'The server acknowledged a different workspace');
   await page.evaluate(id => {
     const context = window.__TaxonomyAnalysisSessionContext;
     context.rememberWorkspaceId(id);
   }, workspaceId);
   // Background status reads do not define analysis readiness. Wait for the
   // document, then require the visible UI and exact ready workspace below.
-  await page.reload({ waitUntil: 'domcontentloaded' });
+  if (destination) await page.goto(destination, { waitUntil: 'domcontentloaded' });
+  else await page.reload({ waitUntil: 'domcontentloaded' });
   await page.locator('#mainContent').waitFor({ state: 'visible', timeout: 60_000 });
   await page.evaluate(() => window.TaxonomyI18n?.ready?.());
   await page.waitForFunction(id => {

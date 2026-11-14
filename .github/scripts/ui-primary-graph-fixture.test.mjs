@@ -177,16 +177,36 @@ test('cleanup requires the exact owned resource and makes no central deletion re
 
 const workflowSource = await readFile(new URL('./ui-primary-basic-workflows.mjs', import.meta.url), 'utf8');
 
-async function runScopedGraphWorkflow(basePath, {rejectProjection = false, rejectBrowser = false} = {}) {
-  const origin = 'https://taxonomy.example', requests = [], inspected = [];
+async function runScopedGraphWorkflow(basePath, {rejectProjection = false, rejectBrowser = false, rejectComparison = false, role = 'USER'} = {}) {
+  const origin = 'https://taxonomy.example', requests = [], inspected = [], compared = [];
   const returnUrl = `${origin}${basePath}/?workspaceId=reader-workspace&lang=de#analyze`;
+  const switches = [];
+  let sessionWorkspace = 'reader-workspace';
   let currentUrl = returnUrl, disposed = false, savedFixture = fixture();
-  const window = {TaxonomyI18n: {resolveUrl: path => basePath + path},
+  const window = {TaxonomyAnalysisSession:{state:() => ({ready:true,workspaceId:sessionWorkspace})}, TaxonomyI18n: {resolveUrl: path => basePath + path},
     location: {href: currentUrl}, TaxonomyRoleSurface: {getContext: () => ({roles: ['USER']})}};
   const sandbox = vm.createContext({window, URL, URLSearchParams, process: {env: {}},
     document: {getElementById: () => ({textContent: publishedCommit})},
     basicAuthorization: () => 'Basic fixture-admin', ROLE_ACCOUNTS: {ADMIN: {password: 'fixture'}},
     usingComparisonBranch, navigateToPage: async () => {},
+    selectAnalysisWorkspace: async (page, id, _assert, destination) => {
+      switches.push([sessionWorkspace, id]);
+      sessionWorkspace = id;
+      await page.goto(destination);
+    },
+    runVersionComparisonWorkflow: async ({sourceBranch, workspaceId:expectedWorkspace}) => {
+      assert.equal(expectedWorkspace, workspaceId);
+      assert.equal(sessionWorkspace, workspaceId);
+      const selected = new URL(currentUrl);
+      assert.equal(selected.searchParams.get('repositoryId'), repositoryId);
+      assert.equal(selected.searchParams.get('workspaceId'), workspaceId);
+      assert.equal(selected.searchParams.get('workspaceScopeKey'), workspaceId);
+      assert.equal(selected.searchParams.get('branch'), workspaceBranch);
+      assert.equal(sourceBranch, workspaceBranch);
+      assert.ok(savedFixture.workspaces.has(workspaceId));
+      compared.push(sourceBranch);
+      if (rejectComparison) throw new Error('Comparison failed');
+    },
     request: {newContext: async options => {
       async function perform(method, path, init = {}) {
         const url = new URL(path, options.baseURL);
@@ -219,8 +239,8 @@ async function runScopedGraphWorkflow(basePath, {rejectProjection = false, rejec
     locator: () => ({waitFor: async () => {}}),
     waitForFunction: async (callback, argument) => {assert.ok(callback(argument));}};
   let error;
-  try {await sandbox.verifyGraphEntry({page});} catch (caught) {error = caught;}
-  return {requests, savedFixture, inspected, currentUrl, returnUrl, disposed, error};
+  try {await sandbox.verifyGraphEntry({page, role, evidence:{assert}});} catch (caught) {error = caught;}
+  return {requests, savedFixture, inspected, compared, switches, sessionWorkspace, currentUrl, returnUrl, disposed, error};
 }
 
 for (const basePath of ['', '/taxonomy', '/teams/blue/taxonomy']) {
@@ -268,3 +288,22 @@ for (const failure of [{rejectProjection: true}, {rejectBrowser: true}]) {
     assert.equal(cleanup[0].url.searchParams.get('repositoryId'), repositoryId);
   });
 }
+
+test('the administrator compares versions in the owned working copy before cleanup and returns to the prior URL', async () => {
+  const result = await runScopedGraphWorkflow('/taxonomy', {role:'ADMIN'});
+  assert.ifError(result.error);
+  assert.deepEqual(result.compared, [workspaceBranch]);
+  assert.deepEqual(result.switches, [['reader-workspace', workspaceId], [workspaceId, 'reader-workspace']]);
+  assert.equal(result.sessionWorkspace, 'reader-workspace');
+  assert.equal(result.currentUrl, result.returnUrl);
+  assert.deepEqual([...result.savedFixture.workspaces], ['active-workspace']);
+});
+
+test('a failed version comparison restores the previous analysis workspace before deleting the fixture', async () => {
+  const result = await runScopedGraphWorkflow('/taxonomy', {role:'ADMIN', rejectComparison:true});
+  assert.match(String(result.error), /Comparison failed/);
+  assert.deepEqual(result.switches, [['reader-workspace', workspaceId], [workspaceId, 'reader-workspace']]);
+  assert.equal(result.sessionWorkspace, 'reader-workspace');
+  assert.equal(result.currentUrl, result.returnUrl);
+  assert.deepEqual([...result.savedFixture.workspaces], ['active-workspace']);
+});
