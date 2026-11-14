@@ -2,6 +2,7 @@ package com.taxonomy.security;
 
 import com.taxonomy.security.controller.UserManagementController;
 import com.taxonomy.security.service.UserManagementService;
+import com.taxonomy.security.service.UserManagementService.AuditActor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -21,6 +22,7 @@ import static org.mockito.Mockito.when;
 
 /** REST response and service-boundary contracts, independent of the HTML adapter. */
 class UserManagementControllerTest {
+    private static final AuditActor OPERATOR = new AuditActor("operator", null);
     private static final String PASSWORD = "Rest-adapter-test-password-1139";
     private static final Map<String, Object> ACCOUNT = Map.of(
             "id", 7L, "username", "alice", "enabled", true, "roles", List.of("ROLE_USER"));
@@ -71,20 +73,20 @@ class UserManagementControllerTest {
 
     @Test
     void creationPreservesTheExistingRestRequestAndActorContract() {
-        when(service.createUser(CREATE_REQUEST, "operator")).thenReturn(ACCOUNT);
+        when(service.createUserAs(CREATE_REQUEST, OPERATOR)).thenReturn(ACCOUNT);
 
         ResponseEntity<Object> response = controller.createUser(CREATE_REQUEST, administrator);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(response.getBody()).isEqualTo(ACCOUNT);
         assertThat(response.getBody().toString()).doesNotContain(PASSWORD);
-        verify(service).createUser(CREATE_REQUEST, "operator");
+        verify(service).createUserAs(CREATE_REQUEST, OPERATOR);
         verifyNoMoreInteractions(service);
     }
 
     @Test
     void duplicateUsernameReturnsConflictInsteadOfSuccess() {
-        when(service.createUser(CREATE_REQUEST, "operator"))
+        when(service.createUserAs(CREATE_REQUEST, OPERATOR))
                 .thenThrow(new UserManagementService.ConflictException("Username already exists."));
 
         assertError(controller.createUser(CREATE_REQUEST, administrator),
@@ -93,7 +95,7 @@ class UserManagementControllerTest {
 
     @Test
     void invalidCreationReturnsTheServiceValidationError() {
-        when(service.createUser(CREATE_REQUEST, "operator"))
+        when(service.createUserAs(CREATE_REQUEST, OPERATOR))
                 .thenThrow(new UserManagementService.ValidationException("Invalid role."));
 
         assertError(controller.createUser(CREATE_REQUEST, administrator),
@@ -102,19 +104,19 @@ class UserManagementControllerTest {
 
     @Test
     void updateDelegatesTheRequestedProfileAndActor() {
-        when(service.updateUser(7L, UPDATE_REQUEST, "operator")).thenReturn(ACCOUNT);
+        when(service.updateUserAs(7L, UPDATE_REQUEST, OPERATOR)).thenReturn(ACCOUNT);
 
         ResponseEntity<Object> response = controller.updateUser(7L, UPDATE_REQUEST, administrator);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isEqualTo(ACCOUNT);
-        verify(service).updateUser(7L, UPDATE_REQUEST, "operator");
+        verify(service).updateUserAs(7L, UPDATE_REQUEST, OPERATOR);
         verifyNoMoreInteractions(service);
     }
 
     @Test
     void missingAccountUpdateReturnsNotFoundWithoutABody() {
-        when(service.updateUser(7L, UPDATE_REQUEST, "operator"))
+        when(service.updateUserAs(7L, UPDATE_REQUEST, OPERATOR))
                 .thenThrow(new UserManagementService.NotFoundException("Missing account."));
 
         assertNotFound(controller.updateUser(7L, UPDATE_REQUEST, administrator));
@@ -122,7 +124,7 @@ class UserManagementControllerTest {
 
     @Test
     void lastAdministratorDemotionIsReportedAsBadRequest() {
-        when(service.updateUser(7L, UPDATE_REQUEST, "operator"))
+        when(service.updateUserAs(7L, UPDATE_REQUEST, OPERATOR))
                 .thenThrow(new UserManagementService.ValidationException("Cannot remove the last admin role."));
 
         assertError(controller.updateUser(7L, UPDATE_REQUEST, administrator),
@@ -135,14 +137,14 @@ class UserManagementControllerTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isEqualTo(Map.of("message", "Password changed successfully."));
-        verify(service).changePassword(7L, PASSWORD, "operator");
+        verify(service).changePasswordAs(7L, PASSWORD, OPERATOR);
         verifyNoMoreInteractions(service);
     }
 
     @Test
     void missingAccountPasswordResetReturnsNotFoundWithoutABody() {
         doThrow(new UserManagementService.NotFoundException("Missing account."))
-                .when(service).changePassword(7L, PASSWORD, "operator");
+                .when(service).changePasswordAs(7L, PASSWORD, OPERATOR);
 
         assertNotFound(controller.changePassword(7L, Map.of("password", PASSWORD), administrator));
     }
@@ -150,7 +152,7 @@ class UserManagementControllerTest {
     @Test
     void invalidPasswordReturnsValidationErrorWithoutEchoingTheRequest() {
         doThrow(new UserManagementService.ValidationException("Password is too short."))
-                .when(service).changePassword(7L, PASSWORD, "operator");
+                .when(service).changePasswordAs(7L, PASSWORD, OPERATOR);
 
         assertError(controller.changePassword(7L, Map.of("password", PASSWORD), administrator),
                 HttpStatus.BAD_REQUEST, "Password is too short.");
@@ -159,28 +161,28 @@ class UserManagementControllerTest {
     @Test
     void omittedPasswordStillUsesTheServiceValidationPolicy() {
         doThrow(new UserManagementService.ValidationException("Password is required."))
-                .when(service).changePassword(7L, null, "operator");
+                .when(service).changePasswordAs(7L, null, OPERATOR);
 
         assertError(controller.changePassword(7L, Map.of(), administrator),
                 HttpStatus.BAD_REQUEST, "Password is required.");
-        verify(service).changePassword(7L, null, "operator");
+        verify(service).changePasswordAs(7L, null, OPERATOR);
     }
 
     @Test
     void disablingAnAccountReturnsTheServiceUsernameAndAttributesTheActor() {
-        when(service.disableUser(7L, "operator")).thenReturn("alice");
+        when(service.disableUserAs(7L, OPERATOR)).thenReturn("alice");
 
         ResponseEntity<Object> response = controller.disableUser(7L, administrator);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isEqualTo(Map.of("message", "User 'alice' has been disabled."));
-        verify(service).disableUser(7L, "operator");
+        verify(service).disableUserAs(7L, OPERATOR);
         verifyNoMoreInteractions(service);
     }
 
     @Test
     void missingAccountDisableReturnsNotFoundWithoutABody() {
-        when(service.disableUser(7L, "operator"))
+        when(service.disableUserAs(7L, OPERATOR))
                 .thenThrow(new UserManagementService.NotFoundException("Missing account."));
 
         assertNotFound(controller.disableUser(7L, administrator));
@@ -188,7 +190,7 @@ class UserManagementControllerTest {
 
     @Test
     void lastAdministratorCannotBeDisabledThroughTheRestAdapter() {
-        when(service.disableUser(7L, "operator"))
+        when(service.disableUserAs(7L, OPERATOR))
                 .thenThrow(new UserManagementService.ValidationException("Cannot disable the last admin user."));
 
         assertError(controller.disableUser(7L, administrator),
@@ -198,9 +200,9 @@ class UserManagementControllerTest {
     @Test
     void directInternalCallsRetainTheExistingSystemAuditAttribution() {
         // This exercises direct adapter calls, not anonymous access through Spring Security.
-        when(service.createUser(CREATE_REQUEST, "system")).thenReturn(ACCOUNT);
-        when(service.updateUser(7L, UPDATE_REQUEST, "system")).thenReturn(ACCOUNT);
-        when(service.disableUser(7L, "system")).thenReturn("alice");
+        when(service.createUserAs(CREATE_REQUEST, new AuditActor("system", null))).thenReturn(ACCOUNT);
+        when(service.updateUserAs(7L, UPDATE_REQUEST, new AuditActor("system", null))).thenReturn(ACCOUNT);
+        when(service.disableUserAs(7L, new AuditActor("system", null))).thenReturn("alice");
 
         assertThat(controller.createUser(CREATE_REQUEST, null).getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(controller.updateUser(7L, UPDATE_REQUEST, null).getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -208,10 +210,10 @@ class UserManagementControllerTest {
                 .isEqualTo(HttpStatus.OK);
         assertThat(controller.disableUser(7L, null).getStatusCode()).isEqualTo(HttpStatus.OK);
 
-        verify(service).createUser(CREATE_REQUEST, "system");
-        verify(service).updateUser(7L, UPDATE_REQUEST, "system");
-        verify(service).changePassword(7L, PASSWORD, "system");
-        verify(service).disableUser(7L, "system");
+        verify(service).createUserAs(CREATE_REQUEST, new AuditActor("system", null));
+        verify(service).updateUserAs(7L, UPDATE_REQUEST, new AuditActor("system", null));
+        verify(service).changePasswordAs(7L, PASSWORD, new AuditActor("system", null));
+        verify(service).disableUserAs(7L, new AuditActor("system", null));
         verifyNoMoreInteractions(service);
     }
 
