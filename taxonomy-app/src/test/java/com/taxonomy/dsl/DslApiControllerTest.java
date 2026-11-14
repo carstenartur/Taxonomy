@@ -24,7 +24,7 @@ import com.taxonomy.dto.ViewContext;
 /**
  * Integration tests for the DSL API endpoints.
  */
-@SpringBootTest
+@SpringBootTest(properties = "spring.datasource.url=jdbc:hsqldb:mem:dsl-api-controller")
 @AutoConfigureMockMvc
 @WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
 class DslApiControllerTest {
