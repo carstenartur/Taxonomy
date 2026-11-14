@@ -6,6 +6,8 @@ import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementVersionRequest;
 import com.taxonomy.portfolio.service.PortablePortfolioGitService;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.security.service.DatabaseUserDetailsService;
+import com.taxonomy.security.service.UserManagementService;
 import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
@@ -18,18 +20,23 @@ import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpServletRequest;
-import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -38,13 +45,33 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 
 /** Real Hibernate Git refs and portfolio transactions expose failures that ORM rollback cannot repair. */
 @SpringBootTest
-@WithMockUser(username = "alice", roles = {"USER", "ARCHITECT", "ADMIN"})
 class GitNativeSyncPortfolioAtomicityTest {
     private static final String MODEL = """
             element recorder type Component {
               title: "Recorder";
             }
             """;
+
+    @Autowired JdbcTemplate database;
+    @Autowired UserManagementService accounts;
+    @Autowired DatabaseUserDetailsService users;
+    private String owner;
+
+    @BeforeEach
+    void authenticateWorkspaceOwner() {
+        owner = "portfolio-owner-" + UUID.randomUUID();
+        var profile = Map.<String, Object>of("username", owner, "roles", List.of("USER", "ARCHITECT", "ADMIN"));
+        accounts.createUser(profile, UUID.randomUUID().toString(), "test");
+        var details = users.loadUserByUsername(owner);
+        var context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(details, null, details.getAuthorities()));
+        SecurityContextHolder.setContext(context);
+    }
+
+    @AfterEach
+    void clearWorkspaceOwner() {
+        SecurityContextHolder.clearContext();
+    }
 
     @Autowired GitNativeSyncIntegrationService sync;
     @Autowired PortablePortfolioGitService portfolio;
@@ -64,7 +91,7 @@ class GitNativeSyncPortfolioAtomicityTest {
         var previousRequest = RequestContextHolder.getRequestAttributes();
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
         try {
-            assertThatThrownBy(() -> sync.resolveDiverged("alice", "main", strategy))
+            assertThatThrownBy(() -> sync.resolveDiverged(owner, "main", strategy))
                     .isInstanceOfSatisfying(CommandProblem.class, failure -> {
                         assertThat(failure.code()).isEqualTo("PORTFOLIO_RECONCILIATION_REQUIRED");
                         assertThat(failure.getMessage()).contains("Immutable requirement version 2");
@@ -73,6 +100,12 @@ class GitNativeSyncPortfolioAtomicityTest {
             RequestContextHolder.setRequestAttributes(previousRequest);
         }
 
+        if (strategy == DivergedStrategy.KEEP_MINE) {
+            assertThat(database.queryForList("""
+                    select decision_code from workspace_publication_operation
+                    where workspace_id=? and phase='MANUAL_REVIEW' and completed_at is not null
+                    """, String.class, fixture.local().workspaceId())).containsExactly("RECONCILIATION_REQUIRED");
+        }
         Snapshot after = snapshot(fixture);
         assertThat(after.localHead()).as("a rejected portfolio decision must not advance workspace HEAD")
                 .isEqualTo(before.localHead());
@@ -146,7 +179,7 @@ class GitNativeSyncPortfolioAtomicityTest {
     private void assertRejectedBeforeImport(Fixture fixture,String incoming) throws Exception {
         fixture.source().commitDsl("main",incoming,"shared","Prospective invalid import");
         String localHead=fixture.working().commitDsl("main",fixture.working().getDslAtHead("main")
-                +"\nelement local-note type Component {\n  title: \"Local reviewed note\";\n}\n","alice","Local divergence");
+                +"\nelement local-note type Component {\n  title: \"Local reviewed note\";\n}\n",owner,"Local divergence");
         var workspace=workspaces.findByWorkspaceId(fixture.local().workspaceId()).orElseThrow();
         workspace.setCurrentCommit(localHead);workspaces.saveAndFlush(workspace);
         Snapshot before=snapshot(fixture);
@@ -155,7 +188,7 @@ class GitNativeSyncPortfolioAtomicityTest {
         var previous=RequestContextHolder.getRequestAttributes();
         Throwable failure;
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
-        try { failure=catchThrowable(()->sync.resolveDiverged("alice","main",DivergedStrategy.TAKE_SHARED)); }
+        try { failure=catchThrowable(()->sync.resolveDiverged(owner,"main",DivergedStrategy.TAKE_SHARED)); }
         finally { RequestContextHolder.setRequestAttributes(previous); }
         Snapshot after=snapshot(fixture);
         org.assertj.core.api.SoftAssertions.assertSoftly(checks->{
@@ -178,39 +211,39 @@ class GitNativeSyncPortfolioAtomicityTest {
     private Fixture fixture(boolean divergentVersions,DivergedStrategy strategy) throws Exception {
         String id = UUID.randomUUID().toString();
         var repository = repositories.createCentralRepository("Native sync immutable collision", "native-sync-" + id,
-                "Real publication boundary regression", RepositoryVisibility.PRIVATE, "alice", "main");
-        var local = new WorkspaceContext("alice", "native-sync-" + id, "main", repository.getRepositoryId());
+                "Real publication boundary regression", RepositoryVisibility.PRIVATE, owner, "main");
+        var local = new WorkspaceContext(owner, "native-sync-" + id, "main", repository.getRepositoryId());
         var central = new WorkspaceContext("shared", null, "main", repository.getRepositoryId());
         var workspace = new UserWorkspace();
-        workspace.setWorkspaceId(local.workspaceId()); workspace.setUsername("alice"); workspace.setDisplayName("Native sync collision " + id);
+        workspace.setWorkspaceId(local.workspaceId()); workspace.setUsername(owner); workspace.setDisplayName("Native sync collision " + id);
         workspace.setSourceRepositoryId(repository.getRepositoryId()); workspace.setSourceBranch("main"); workspace.setCurrentBranch("main");
         workspace.setCreatedAt(Instant.now()); workspace.setProvisioningStatus(WorkspaceProvisioningStatus.READY);
         workspaces.saveAndFlush(workspace);
 
         var project = projects.createProject(new CreateProjectRequest("ORDERS", "Orders", null, null, null, null, null, null),
-                "alice", local);
+                owner, local);
         var requirement = projects.createRequirement(project.id(), new CreateRequirementRequest("RETENTION", "Order retention",
-                "Shared immutable first version", null, null, null, null, null, "alice", "Initial reviewed version", null), "alice", local);
-        String base = portfolio.contributeTo(MODEL, "alice", local);
+                "Shared immutable first version", null, null, null, null, null, owner, "Initial reviewed version", null), owner, local);
+        String base = portfolio.contributeTo(MODEL, owner, local);
         portfolio.materialize(base, "shared", central);
         var centralProject = projects.listProjects("shared", central).getFirst();
         var centralRequirement = projects.listRequirements(centralProject.id(), "shared", central).getFirst();
 
         DslGitRepository source = git.getCentralRepository(repository.getRepositoryId());
         DslGitRepository working = git.openWorkspaceRepository(local.workspaceId());
-        String sourceBase = source.commitDsl("main", base, "alice", "Accepted common source");
-        working.commitDsl("main", base, "alice", "Accepted workspace source");
-        working.commitDsl("sync-base", base, "alice", "Accepted semantic base");
+        String sourceBase = source.commitDsl("main", base, owner, "Accepted common source");
+        working.commitDsl("main", base, owner, "Accepted workspace source");
+        working.commitDsl("sync-base", base, owner, "Accepted semantic base");
         repositories.markProvisioningReady(repository.getRepositoryId());
 
         String localHead=working.getHeadCommit("main");
         if(divergentVersions) {
         projects.addRequirementVersion(project.id(), requirement.id(),
-                new CreateRequirementVersionRequest("Local immutable second version", "Reviewed locally", null), "alice", local);
+                new CreateRequirementVersionRequest("Local immutable second version", "Reviewed locally", null), owner, local);
         projects.addRequirementVersion(centralProject.id(), centralRequirement.id(),
                 new CreateRequirementVersionRequest("Central immutable second version", "Reviewed centrally", null), "shared", central);
-        String localDsl = portfolio.contributeTo(MODEL, "alice", local);
-        localHead = working.commitDsl("main", localDsl, "alice", "Local second version");
+        String localDsl = portfolio.contributeTo(MODEL, owner, local);
+        localHead = working.commitDsl("main", localDsl, owner, "Local second version");
         if (strategy == DivergedStrategy.TAKE_SHARED) {
             source.commitDsl("main", portfolio.contributeTo(MODEL, "shared", central), "shared", "Central second version");
         } else {
@@ -227,13 +260,13 @@ class GitNativeSyncPortfolioAtomicityTest {
 
     private Snapshot snapshot(Fixture fixture) throws Exception {
         var row = workspaces.findByWorkspaceId(fixture.local().workspaceId()).orElseThrow();
-        var state = syncStates.findByUsername("alice").map(value -> List.of(
+        var state = syncStates.findByUsername(owner).map(value -> List.of(
                 String.valueOf(value.getLastSyncedCommitId()), String.valueOf(value.getLastPublishedCommitId()),
                 String.valueOf(value.getLastSyncTimestamp()), String.valueOf(value.getLastPublishTimestamp()),
                 String.valueOf(value.getSyncStatus()), Integer.toString(value.getUnpublishedCommitCount()),
                 String.valueOf(value.getUpdatedAt()))).orElse(null);
         return new Snapshot(fixture.working().getHeadCommit("main"), fixture.source().getHeadCommit("main"),
-                fixture.working().getHeadCommit("sync-base"), portfolio.exportPortfolio("alice", fixture.local()),
+                fixture.working().getHeadCommit("sync-base"), portfolio.exportPortfolio(owner, fixture.local()),
                 portfolio.exportPortfolio("shared", fixture.central()),
                 List.of(row.getCurrentCommit(), row.getLastFetchedCommit(), row.getLastIntegratedCommit(), row.getLastAccessedAt().toString()),
                 repositories.getRepository(fixture.local().repositoryId()).getLastPushAt(), state);

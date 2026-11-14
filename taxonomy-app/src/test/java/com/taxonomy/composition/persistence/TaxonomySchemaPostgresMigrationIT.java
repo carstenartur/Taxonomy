@@ -170,10 +170,41 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(tableExists(dataSource, "scoped_requirement_coverage")).isTrue();
         assertThat(tableExists(dataSource, TaxonomySchemaMigrationConfig.HISTORY_TABLE)).isTrue();
         assertSelectedFetchSchema(dataSource);
+        assertPublicationSchema(dataSource);
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "62");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "62", "62.1");
+    }
+
+    @Test
+    void publicationJournalUpgradesAnInstallationWithRetainedForkAuthority() throws Exception {
+        DataSource dataSource = isolatedDataSource("publication_after_fork");
+        migrateJgit(dataSource);
+        installApplicationAtVersion(dataSource, "62");
+        List<String> before = successfulVersions(dataSource);
+        assertThat(before).endsWith("55", "57", "62");
+        execute(dataSource, """
+                insert into system_repository (repository_id, slug, storage_repository_name, owner_id, created_by,
+                    default_branch, version, primary_repo, topology_mode, lifecycle_state, created_at, updated_at,
+                    visibility, owner_type, display_name, fork_initiator_key)
+                values ('journal-upgrade', 'journal-upgrade', 'central-journal-upgrade', 'owner', 'owner',
+                    'draft', 3, false, 'INTERNAL_SHARED', 'FAILED', current_timestamp, current_timestamp,
+                    'PRIVATE', 'USER', 'Retained fork', 'original-actor')
+                """);
+        assertThat(tableExists(dataSource, "scoped_requirement_coverage")).isTrue();
+        assertThat(tableExists(dataSource, "workspace_publication_operation")).isFalse();
+
+        var configuration = Flyway.configure().dataSource(dataSource).load().getConfiguration();
+        TaxonomySchemaMigrationConfig.migrateApplicationSchema(configuration);
+        List<String> upgraded = successfulVersions(dataSource);
+        assertThat(upgraded.subList(0, before.size())).isEqualTo(before);
+        assertThat(upgraded.subList(before.size(), upgraded.size())).contains("62.1");
+        assertThat(singleString(dataSource, "select fork_initiator_key from system_repository where repository_id = 'journal-upgrade' and version = 3"))
+                .isEqualTo("original-actor");
+        assertPublicationSchema(dataSource);
+        TaxonomySchemaMigrationConfig.migrateApplicationSchema(configuration);
+        assertThat(successfulVersions(dataSource)).isEqualTo(upgraded);
     }
 
     @Test
@@ -246,10 +277,11 @@ class TaxonomySchemaPostgresMigrationIT {
                 dataSource, "relation_projection_recovery", "status"))
                 .isTrue();
         assertSelectedFetchSchema(dataSource);
+        assertPublicationSchema(dataSource);
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "62");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "62", "62.1");
         assertIntegrationSchema(dataSource);
         assertInventorySchema(dataSource);
         assertReformulationSchema(dataSource);
@@ -543,6 +575,21 @@ class TaxonomySchemaPostgresMigrationIT {
                 "operation_id");
         assertRecoveryIndex(dataSource, "analysis_task_completion", "idx_analysis_completion_operation", true,
                 "operation_id");
+    }
+
+    private static void assertPublicationSchema(DataSource dataSource) throws SQLException {
+        assertThat(columnExists(dataSource, "workspace_publication_operation", "prepared_source")).isTrue();
+        assertThat(columnExists(dataSource, "workspace_publication_operation", "workspace_owner_scope")).isTrue();
+        assertThat(columnExists(dataSource, "workspace_publication_decision", "original_actor")).isTrue();
+        assertThat(columnExists(dataSource, "workspace_publication_decision", "executor_id")).isTrue();
+        assertRecoveryIndex(dataSource, "workspace_publication_operation", "ix_ws_publish_due", true,
+                "phase", "next_attempt_at");
+        assertRecoveryIndex(dataSource, "workspace_publication_operation", "ix_ws_publish_archive", true,
+                "archived_at", "completed_at");
+        assertRecoveryIndex(dataSource, "workspace_publication_operation", "ix_ws_publish_cleanup", true,
+                "cleanup_due_at", "operation_id");
+        assertRecoveryIndex(dataSource, "workspace_publication_decision", "ix_ws_publish_decision", true,
+                "operation_id", "id");
     }
 
     private static void assertSelectedFetchSchema(DataSource dataSource) throws SQLException {

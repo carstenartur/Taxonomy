@@ -40,7 +40,7 @@ class SystemRepositoryServiceTest {
         repository = mock(SystemRepositoryRepository.class);
         when(repository.save(any(SystemRepository.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        service = new SystemRepositoryService(repository);
+        service = new SystemRepositoryService(repository, mock(jakarta.persistence.EntityManager.class));
     }
 
     @org.junit.jupiter.params.ParameterizedTest
@@ -49,7 +49,7 @@ class SystemRepositoryServiceTest {
     void mismatchedForkClaimsNeverReachGitVerification(String mismatch) {
         var actors = mock(WorkspaceFetchAuthority.class);
         when(actors.currentActor("alice")).thenReturn("stable-alice");
-        service = new SystemRepositoryService(repository, Optional.of(actors));
+        service = new SystemRepositoryService(repository, mock(jakarta.persistence.EntityManager.class), Optional.of(actors));
         var fork = new SystemRepository();
         fork.setRepositoryId("target"); fork.setSlug("fork"); fork.setStorageRepositoryName("central-target");
         fork.setForkInitiatorKey("stable-alice"); fork.setCreatedBy("alice"); fork.setOwnerId("alice");

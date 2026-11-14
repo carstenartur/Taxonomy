@@ -132,7 +132,8 @@ class CentralForkTransferRestartTest {
             var ids = new Selection(source, fork, base, local, intermediate, incoming, selected);
             new ObjectMapper().writeValue(directory.resolve("selected.json").toFile(), ids);
             // The second real catalogue decision runs after durable object copy and before the tracking CAS.
-            var catalogue = new SystemRepositoryService(fixture.rows) {
+            var catalogue = new SystemRepositoryService(fixture.rows,
+                    org.springframework.orm.jpa.SharedEntityManagerCreator.createSharedEntityManager(fixture.persistence.factory)) {
                 private int decisions;
 
                 @Override

@@ -5,6 +5,7 @@ import com.taxonomy.exchange.backup.PortableRows;
 import com.taxonomy.exchange.backup.PortableRows.Query;
 import com.taxonomy.exchange.backup.PrincipalScopeCapture;
 import com.taxonomy.workspace.model.*;
+import com.taxonomy.workspace.backup.WorkspaceGitHistoryReferences.Field;
 import javax.sql.DataSource;
 import java.io.IOException;
 import java.sql.ResultSet;
@@ -36,6 +37,7 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                     + repositories.sql() + " order by id", repositories.parameters()));
             queries.add(new Query("select source_repository_id as repository_id,workspace_id,workspace_id as linked_workspace_id,0 as repository_only,username as principal_scope from user_workspace where "
                     + workspaces.sql() + " order by workspace_id", workspaces.parameters()));
+            var publications = scope.repositories("p.repository_id", "p.workspace_id");
             var branchProgress = scope.repositories("repository_id", "workspace_id");
             queries.add(new Query("select repository_id,workspace_id,workspace_id as linked_workspace_id,0 as repository_only,"
                     + "username as principal_scope from workspace_branch_sync where " + branchProgress.sql()
@@ -64,7 +66,23 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                 queries.add(new Query("select w.repository_id,w.workspace_id,w.scope_id as parent_scope,h.scope_id as child_scope,h.actor as principal_scope from "
                         + table + " h join editor_workspace w on w.scope_id=h.scope_id where " + history.sql() + " order by h.id", history.parameters()));
         }
-        return new PrincipalScopeCapture(rows).capture(queries, row -> {
+        var captured = new HashSet<String>();
+        if (!scope.selectedVersion()) {
+            var selected = scope.repositories("p.repository_id","p.workspace_id");
+            String query = """
+                    select p.repository_id,p.workspace_id,p.workspace_owner_scope,p.actor_scope,
+                           w.workspace_id as parent_workspace,w.source_repository_id as parent_repository,w.username as parent_owner
+                    from workspace_publication_operation p join user_workspace w on w.workspace_id=p.workspace_id
+                        and w.source_repository_id=p.repository_id and w.username=p.workspace_owner_scope
+                    where p.workspace_owner_scope<>p.actor_scope and
+                    """ + selected.sql() + " order by p.operation_id";
+            captured.addAll(new PrincipalScopeCapture(rows).capture(List.of(new Query(query,selected.parameters())),row -> {
+                if (!scope.includesWorkspace(text(row,"repository_id"),text(row,"workspace_id"))
+                        || !samePublicationOwner(row)) throw new IOException("Publication actor belongs to a different working copy");
+                return new PrincipalScopeCapture.Scope(text(row,"actor_scope"));
+            },checkpoint));
+        }
+        captured.addAll(new PrincipalScopeCapture(rows).capture(queries, row -> {
             if (!scope.includesWorkspace(text(row, "repository_id"), text(row, "workspace_id"))
                     || !Objects.equals(text(row, "parent_scope"), text(row, "child_scope")))
                 throw new IOException("Historical actor belongs to a different editor scope");
@@ -73,13 +91,15 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
             // Preserve their raw journal evidence and existing private quarantine.
             if (actor != null && (actor.isBlank() || actor.length() > 255 || actor.chars().anyMatch(Character::isISOControl))) actor = null;
             return new PrincipalScopeCapture.Scope(actor);
-        }, checkpoint);
+        }, checkpoint));
+        return Set.copyOf(captured);
     }
     @Override public int schemaVersion() { return 1; }
     @Override public Set<String> categories() {
         return Set.of("com.taxonomy.workspace.model.SystemRepository", "com.taxonomy.workspace.model.UserWorkspace",
                 "com.taxonomy.workspace.model.RepositoryMembership", "com.taxonomy.workspace.model.SyncState",
                 "com.taxonomy.workspace.service.WorkspaceFetchOperation", "com.taxonomy.workspace.service.CentralFetchOperation",
+                "com.taxonomy.workspace.service.WorkspacePublicationOperation", "com.taxonomy.workspace.service.WorkspacePublicationDecision",
                 "com.taxonomy.workspace.model.WorkspaceBranchSyncState",
                 "com.taxonomy.editor.persistence.EditorWorkspace", "com.taxonomy.editor.persistence.EditorOperation",
                 "com.taxonomy.editor.persistence.EditorCheckpoint", "com.taxonomy.versioning.model.ArchitectureCommitIndex",
@@ -87,7 +107,7 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
     }
     @Override public List<String> omissions(BackupProfile profile) {
         var omissions = new ArrayList<String>();
-        if (!profile.includesHistory()) omissions.add("workspace: editor operations, checkpoint bodies, commit index and context history are excluded");
+        if (!profile.includesHistory()) omissions.add("workspace: editor operations, publication decisions, checkpoint bodies, commit index and context history are excluded");
         if (profile == BackupProfile.SELECTED_VERSION) omissions.add("workspace: current unversioned working copies and routing metadata are excluded; selected Git state is authoritative");
         if (profile != BackupProfile.INSTALLATION_FULL) omissions.add("workspace: cross-context navigation history is outside the selected scope");
         omissions.add("workspace: physical storage names, runtime row versions, provisioning errors, fork acknowledgement authority and remote credentials are target-owned");
@@ -156,6 +176,7 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                     boolean detached = text(r,"current_target") == null || text(r,"current_source") == null;
                     return fetchRecord(r, "workspace.central-fetch", target, null, source, detached);
                 });
+        writePublications(scope, profile, sink);
         var editors = scope.repositories("repository_id","workspace_id");
         write(sink,"working-states",profile,query(scope,false,"select scope_id,repository_id,workspace_id,branch,dsl,semantic_revision,checkpoint_commit,checkpoint_revision,pending_checkpoint from editor_workspace",editors,"scope_id"),
                 scoped(scope,"repository_id","workspace_id",r -> new WorkingStateRecord(reference(r,"workspace.editor","scope_id"),text(r,"repository_id"),text(r,"workspace_id"),text(r,"branch"),document(scope,unframe(text(r,"dsl"))),r.getLong("semantic_revision"),text(r,"checkpoint_commit"),r.getLong("checkpoint_revision"),text(r,"pending_checkpoint"))));
@@ -169,6 +190,65 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
         write(sink,"context-history",profile,profile == BackupProfile.INSTALLATION_FULL ? new Query("select id,username,from_context_id,to_context_id,from_branch,to_branch,from_commit_id,to_commit_id,reason,origin_context_id,created_at from context_history_record order by id",List.of()) : null,
                 r -> new ContextHistoryRecord(reference(r,"workspace.context-history","id"),text(r,"username"),text(r,"from_context_id"),text(r,"to_context_id"),text(r,"from_branch"),text(r,"to_branch"),text(r,"from_commit_id"),text(r,"to_commit_id"),text(r,"reason"),text(r,"origin_context_id"),instant(r,"created_at")));
     }
+    private void writePublications(BackupRowScope scope, BackupProfile profile, ComponentSink sink) throws IOException {
+        var selected = scope.repositories("p.repository_id", "p.workspace_id");
+        String parent = profile == BackupProfile.INSTALLATION_FULL ? "left join" : "join";
+        String workspace = " " + parent + " user_workspace w on w.workspace_id=p.workspace_id";
+        if (profile != BackupProfile.INSTALLATION_FULL)
+            workspace += " and w.source_repository_id=p.repository_id and w.username=coalesce(p.workspace_owner_scope,p.actor_scope)";
+        String fields = "p.repository_id,p.workspace_id,p.workspace_owner_scope,p.actor_scope,p.actor_id,p.archived_at as scope_archived_at,w.workspace_id as parent_workspace,"
+                + "w.source_repository_id as parent_repository,w.username as parent_owner";
+        String operation = "select " + fields + "," + PUBLICATION_COMMITS + """
+                ,p.operation_id,p.causation_id,p.login_kind,p.policy_code,p.local_branch,p.source_branch,p.keep_workspace,
+                 p.merged_digest,p.central_portfolio_digest,p.local_portfolio_digest,p.phase,p.operation_step,p.attempts,p.created_at,p.last_attempt_at,p.next_attempt_at,
+                 p.published_at,p.completed_at,p.archived_at,p.archived_by,p.executor_id,p.decision_code,p.source_observed_at,p.pins_released_at,p.redacted_at
+                 from workspace_publication_operation p""" + workspace;
+        write(sink,"publication-journal",profile,query(scope,false,operation,selected,"p.operation_id"),
+                scoped(scope,"repository_id","workspace_id",r -> new PublicationRecord(reference(r,"workspace.publication","operation_id"),
+                        text(r,"causation_id"),text(r,"actor_id"),text(r,"actor_scope"),text(r,"login_kind"),text(r,"policy_code"),
+                        text(r,"repository_id"),text(r,"workspace_id"),text(r,"local_branch"),text(r,"source_branch"),r.getBoolean("keep_workspace"),
+                        publicationCommits(r),text(r,"merged_digest"),text(r,"central_portfolio_digest"),text(r,"local_portfolio_digest"),text(r,"phase"),text(r,"operation_step"),r.getInt("attempts"),
+                        r.getLong("created_at"),r.getObject("last_attempt_at",Long.class),r.getObject("next_attempt_at",Long.class),
+                        r.getObject("published_at",Long.class),r.getObject("completed_at",Long.class),r.getObject("archived_at",Long.class),
+                        text(r,"archived_by"),text(r,"executor_id"),text(r,"decision_code"),r.getObject("source_observed_at",Long.class),
+                        r.getObject("pins_released_at",Long.class),r.getObject("redacted_at",Long.class),detachedPublication(r),text(r,"workspace_owner_scope"))));
+        String decisions = "select " + fields + """
+                ,d.id,d.operation_id,d.original_actor,d.executor_id,d.decision_at,d.phase_code,d.decision_code,
+                 p.operation_id as parent_operation from workspace_publication_decision d""" + " " + parent
+                + " workspace_publication_operation p on p.operation_id=d.operation_id" + workspace;
+        write(sink,"publication-decisions",profile,query(scope,true,decisions,selected,"d.id"),r -> {
+            if (text(r,"parent_operation") == null || !Objects.equals(text(r,"original_actor"),text(r,"actor_id"))
+                    || !scope.includesWorkspace(text(r,"repository_id"),text(r,"workspace_id")))
+                throw new IOException("Publication decision does not match its original operation");
+            detachedPublication(r);
+            return new PublicationDecisionRecord(reference(r,"workspace.publication-decision","id"),
+                    reference(r,"workspace.publication","operation_id"),text(r,"original_actor"),text(r,"executor_id"),
+                    r.getLong("decision_at"),text(r,"phase_code"),text(r,"decision_code"));
+        });
+    }
+
+    static final String PUBLICATION_COMMITS = "p.fork_point,p.input_source,p.input_local,p.input_tracking,"
+            + "p.expected_local,p.expected_tracking,p.prepared_source,p.prepared_local,p.prepared_tracking";
+    static PublicationCommits publicationCommits(ResultSet r) throws SQLException, IOException {
+        return new PublicationCommits(text(r,"fork_point"),text(r,"input_source"),text(r,"input_local"),text(r,"input_tracking"),
+                text(r,"expected_local"),text(r,"expected_tracking"),text(r,"prepared_source"),text(r,"prepared_local"),text(r,"prepared_tracking"));
+    }
+    private static boolean detachedPublication(ResultSet r) throws SQLException, IOException {
+        if (text(r,"parent_workspace") == null) return true;
+        if (!samePublicationOwner(r)) {
+            if (r.getObject("scope_archived_at") != null) return true;
+            throw new IOException("Publication operation does not match its original working copy");
+        }
+        return false;
+    }
+
+    static boolean samePublicationOwner(ResultSet row) throws SQLException, IOException {
+        return Objects.equals(text(row,"workspace_id"),text(row,"parent_workspace"))
+                && Objects.equals(text(row,"repository_id"),text(row,"parent_repository"))
+                && Objects.equals(Objects.requireNonNullElse(text(row,"workspace_owner_scope"),text(row,"actor_scope")),
+                        text(row,"parent_owner"));
+    }
+
     private static String centralFetchSources(BackupProfile profile) {
         String join = profile == BackupProfile.INSTALLATION_FULL ? "left join" : "join";
         return """
@@ -230,6 +310,33 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                               String phase, int attempts, String decisionCode, long createdAt, Long lastAttemptAt, Long completedAt,
                               String authorizationKind, String requiredPolicy, Long archivedAt, String archivedBy, Boolean detachedWorkspace,
                               String upstreamRepositoryId, String selectedTag, String requestedTagObject, String resultTagObject, Boolean detachedCentralOrigin) { }
+    public record PublicationRecord(SourceRecordId sourceId,String causationId,String originalActor,String principalScope,
+            String authorizationKind,String requiredPolicy,String repositoryId,String workspaceId,String localBranch,String sourceBranch,
+            boolean keepWorkspace,PublicationCommits commits,String mergedDigest,String centralPortfolioDigest,String localPortfolioDigest,
+            String phase,String step,int attempts,long createdAt,
+            Long lastAttemptAt,Long nextAttemptAt,Long publishedAt,Long completedAt,Long archivedAt,String archivedBy,
+            String executorId,String decisionCode,Long sourceObservedAt,Long pinsReleasedAt,Long redactedAt,boolean detachedWorkspace,String workspaceOwnerScope) {
+        public PublicationRecord {
+            if (redactedAt!=null && (archivedAt==null || pinsReleasedAt==null || mergedDigest!=null
+                    || centralPortfolioDigest!=null || localPortfolioDigest!=null || commits==null || !commits.recorded().isEmpty()))
+                throw new IllegalArgumentException("Redacted publication still contains live Git details or lacks its source evidence");
+        }
+    }
+    public record PublicationDecisionRecord(SourceRecordId sourceId,SourceRecordId operation,String originalActor,
+            String executorId,long decidedAt,String step,String decisionCode) { }
+    public record PublicationCommits(String forkPoint,String inputSource,String inputLocal,String inputTracking,String expectedLocal,
+            String expectedTracking,String preparedSource,String preparedLocal,String preparedTracking) {
+        public Map<Field,String> recorded() {
+            var result = new EnumMap<Field,String>(Field.class);
+            result.put(Field.PUBLICATION_FORK_POINT,forkPoint); result.put(Field.PUBLICATION_INPUT_SOURCE,inputSource);
+            result.put(Field.PUBLICATION_INPUT_LOCAL,inputLocal); result.put(Field.PUBLICATION_INPUT_TRACKING,inputTracking);
+            result.put(Field.PUBLICATION_EXPECTED_LOCAL,expectedLocal); result.put(Field.PUBLICATION_EXPECTED_TRACKING,expectedTracking);
+            result.put(Field.PUBLICATION_PREPARED_SOURCE,preparedSource); result.put(Field.PUBLICATION_PREPARED_LOCAL,preparedLocal);
+            result.put(Field.PUBLICATION_PREPARED_TRACKING,preparedTracking);
+            result.values().removeIf(Objects::isNull);
+            return result;
+        }
+    }
     public record BranchSyncRecord(SourceRecordId sourceId, String principalScope, String repositoryId, String workspaceId,
             String branch, String lastSyncedCommit, String lastSyncAt, String lastPublishedCommit, String lastPublishAt,
             String syncStatus, int unpublishedCommitCount, String createdAt, String updatedAt) { }
