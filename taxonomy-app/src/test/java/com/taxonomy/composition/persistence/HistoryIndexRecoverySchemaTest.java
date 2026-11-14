@@ -14,7 +14,7 @@ class HistoryIndexRecoverySchemaTest {
     @Test
     void restoreCreatesARecoverableOperationAndAnIndependentDecisionJournal() throws Exception {
         var db = new DriverManagerDataSource("jdbc:hsqldb:mem:history-" + UUID.randomUUID() + ";hsqldb.tx=mvcc", "sa", "");
-        var migration = new ClassPathResource("db/restore/hsqldb/V29__history_index_recovery.sql");
+        var migration = new ClassPathResource("db/restore/hsqldb/V32.3__history_index_recovery.sql");
         assertThat(migration.exists()).as("retained history maintenance must survive restore").isTrue();
         new ResourceDatabasePopulator(migration).execute(db);
         var config = new org.hibernate.cfg.Configuration().setProperty("hibernate.hbm2ddl.auto", "validate")

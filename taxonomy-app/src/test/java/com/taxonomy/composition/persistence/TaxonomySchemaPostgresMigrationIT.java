@@ -47,14 +47,14 @@ class TaxonomySchemaPostgresMigrationIT {
     void personalWorkspaceOwnerMigrationPreservesLegacyRowsAfterPortableStartup() throws Exception {
         var source = isolatedDataSource("personal_workspace_owner");
         migrateJgit(source);
-        installApplicationAtVersion(source, "60");
+        installApplicationAtVersion(source, "62.4");
         execute(source, """
                 insert into user_workspace(workspace_id,username,created_at,current_branch,archived,is_default,shared,provisioning_status,topology_mode)
                 values ('legacy','same-name',current_timestamp,'draft',false,false,false,'READY','INTERNAL_SHARED')
                 """);
         new com.taxonomy.shared.config.SchemaContractMigration(source).migrate();
         TaxonomySchemaMigrationConfig.migrateApplicationSchema(Flyway.configure().dataSource(source).load().getConfiguration());
-        assertThat(successfulVersions(source)).endsWith("60","61");
+        assertThat(successfulVersions(source)).endsWith("62.4", "62.5");
         assertThat(singleLong(source, "select count(*) from user_workspace where username='same-name' and owner_principal_id is null")).isEqualTo(1);
     }
 
@@ -62,7 +62,7 @@ class TaxonomySchemaPostgresMigrationIT {
     void preservesBothProjectionOwnersDuringUpgrade() throws Exception {
         DataSource dataSource = isolatedDataSource("projection_scope");
         migrateJgit(dataSource);
-        installApplicationAtVersion(dataSource, "57.1");
+        installApplicationAtVersion(dataSource, "62.1");
         RelationProjectionScopeMigrationChecks.verify(dataSource, () -> TaxonomySchemaMigrationConfig.migrateApplicationSchema(
                 Flyway.configure().dataSource(dataSource).load().getConfiguration()));
         assertThat(singleString(dataSource, """
@@ -206,16 +206,24 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "57.1", "58", "59", "60", "61");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "62", "62.1", "62.2", "62.3", "62.4", "62.5");
     }
 
     @Test
-    void publicationJournalUpgradesAnInstallationWithRequirementCoverageAlreadyApplied() throws Exception {
-        DataSource dataSource = isolatedDataSource("publication_after_coverage");
+    void publicationJournalUpgradesAnInstallationWithRetainedForkAuthority() throws Exception {
+        DataSource dataSource = isolatedDataSource("publication_after_fork");
         migrateJgit(dataSource);
-        installApplicationAtVersion(dataSource, "57");
+        installApplicationAtVersion(dataSource, "62");
         List<String> before = successfulVersions(dataSource);
-        assertThat(before).endsWith("55", "57");
+        assertThat(before).endsWith("55", "57", "62");
+        execute(dataSource, """
+                insert into system_repository (repository_id, slug, storage_repository_name, owner_id, created_by,
+                    default_branch, version, primary_repo, topology_mode, lifecycle_state, created_at, updated_at,
+                    visibility, owner_type, display_name, fork_initiator_key)
+                values ('journal-upgrade', 'journal-upgrade', 'central-journal-upgrade', 'owner', 'owner',
+                    'draft', 3, false, 'INTERNAL_SHARED', 'FAILED', current_timestamp, current_timestamp,
+                    'PRIVATE', 'USER', 'Retained fork', 'original-actor')
+                """);
         assertThat(tableExists(dataSource, "scoped_requirement_coverage")).isTrue();
         assertThat(tableExists(dataSource, "workspace_publication_operation")).isFalse();
 
@@ -223,7 +231,9 @@ class TaxonomySchemaPostgresMigrationIT {
         TaxonomySchemaMigrationConfig.migrateApplicationSchema(configuration);
         List<String> upgraded = successfulVersions(dataSource);
         assertThat(upgraded.subList(0, before.size())).isEqualTo(before);
-        assertThat(upgraded.subList(before.size(), upgraded.size())).contains("57.1");
+        assertThat(upgraded.subList(before.size(), upgraded.size())).contains("62.1");
+        assertThat(singleString(dataSource, "select fork_initiator_key from system_repository where repository_id = 'journal-upgrade' and version = 3"))
+                .isEqualTo("original-actor");
         assertPublicationSchema(dataSource);
         TaxonomySchemaMigrationConfig.migrateApplicationSchema(configuration);
         assertThat(successfulVersions(dataSource)).isEqualTo(upgraded);
@@ -303,7 +313,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "57.1", "58", "59", "60", "61");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "62", "62.1", "62.2", "62.3", "62.4", "62.5");
         assertIntegrationSchema(dataSource);
         assertInventorySchema(dataSource);
         assertReformulationSchema(dataSource);

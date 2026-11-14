@@ -61,7 +61,7 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
     }
 
     private Query activeMemberships(Query repositories) throws IOException {
-        if (StagedWorkspaceSchema.missingColumnBefore(database, "repository_membership", "revoked_at", "30")) {
+        if (StagedWorkspaceSchema.missingColumnBefore(database, "repository_membership", "revoked_at", "32.4")) {
             // Before V30 a revoked membership was physically removed.
             return repositories;
         }
@@ -122,7 +122,7 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
         if (!profile.includesHistory()) omissions.add("workspace: editor operations, publication decisions, checkpoint bodies, commit index and context history are excluded");
         if (profile == BackupProfile.SELECTED_VERSION) omissions.add("workspace: current unversioned working copies and routing metadata are excluded; selected Git state is authoritative");
         if (profile != BackupProfile.INSTALLATION_FULL) omissions.add("workspace: cross-context navigation history is outside the selected scope");
-        omissions.add("workspace: physical storage names, runtime row versions, provisioning errors and remote credentials are target-owned");
+        omissions.add("workspace: physical storage names, runtime row versions, provisioning errors, fork acknowledgement authority and remote credentials are target-owned");
         return List.copyOf(omissions);
     }
     @Override public void write(SnapshotContext snapshot, ComponentSink sink) throws IOException {
@@ -137,7 +137,7 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                         text(r,"created_by"),instant(r,"created_at"),instant(r,"updated_at"))));
         var workspaces = scope.repositories("source_repository_id", "workspace_id");
         boolean legacyOwner = !scope.selectedVersion() && StagedWorkspaceSchema.missingColumnBefore(
-                database, "user_workspace", "owner_principal_id", "31");
+                database, "user_workspace", "owner_principal_id", "32.5");
         String ownerColumn = legacyOwner ? "cast(null as varchar(36)) as owner_principal_id" : "owner_principal_id";
         write(sink,"workspaces",profile,query(scope,false,"select workspace_id,username," + ownerColumn + ",display_name,current_branch,base_branch,shared,created_at,last_accessed_at,provisioning_status,topology_mode,source_repository_id,source_branch,relationship_type,base_commit,current_commit,last_fetched_commit,last_integrated_commit,sync_target_branch,provisioned_at,description,archived,is_default,collaborative from user_workspace",workspaces,"workspace_id"),
                 scoped(scope,"source_repository_id","workspace_id",r -> new WorkspaceRecord(text(r,"workspace_id"),text(r,"username"),text(r,"display_name"),text(r,"current_branch"),text(r,"base_branch"),r.getBoolean("shared"),
