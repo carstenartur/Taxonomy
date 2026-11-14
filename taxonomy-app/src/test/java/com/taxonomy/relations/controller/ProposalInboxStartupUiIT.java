@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.openqa.selenium.By;
+import org.openqa.selenium.Dimension;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.interactions.Actions;
@@ -118,6 +119,7 @@ class ProposalInboxStartupUiIT {
                 + "&branch=" + draft + "&lang=de#architecture";
         try (var session = BrowserSession.open(port, downloads)) {
             var driver = session.driver();
+            driver.manage().window().setSize(new Dimension(1440, 1000));
             var wait = new WebDriverWait(driver, Duration.ofSeconds(45));
             driver.get(session.origin() + "/login");
             driver.findElement(By.name("username")).sendKeys("admin");
@@ -137,7 +139,10 @@ class ProposalInboxStartupUiIT {
             assertThat(available.getText()).contains("Auf main angenommen", draft,
                     sourceCommit.substring(0, 8), baseline.substring(0, 8));
             assertThat(draftGit.getHeadCommit(draft)).as("Inspection is read-only").isEqualTo(baseline);
-            available.findElement(By.cssSelector(".proposal-adoption-apply")).click();
+            var apply = available.findElement(By.cssSelector(".proposal-adoption-apply"));
+            ((JavascriptExecutor) driver).executeScript(
+                    "arguments[0].scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});", apply);
+            apply.click();
             String adopted = wait.until(browser -> {
                 try {
                     String head = draftGit.getHeadCommit(draft);
