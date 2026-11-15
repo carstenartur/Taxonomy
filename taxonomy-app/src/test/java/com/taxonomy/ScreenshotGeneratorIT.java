@@ -1991,8 +1991,11 @@ class ScreenshotGeneratorIT {
         Assertions.assertNotNull(cherryPickSourceCommitId,
                 "Cherry-pick source commit ID not captured during buildRichGitHistory()");
 
-        Map<?, ?> result = requestFixture("/api/dsl/cherry-pick?commitId=" + cherryPickSourceCommitId
-                + "&targetBranch=draft", "POST", null, null);
+        String pick = "commitId=" + cherryPickSourceCommitId + "&targetBranch=draft";
+        Map<?, ?> preview = requestFixture("/api/dsl/cherry-pick/preview?" + pick, "GET", null, null);
+        String target = Assertions.assertInstanceOf(String.class, preview.get("targetCommit"));
+        Map<?, ?> result = requestFixture("/api/dsl/cherry-pick?" + pick + "&expectedTargetHead=" + target,
+                "POST", null, null);
         Assertions.assertInstanceOf(String.class, result.get("commitId"),
                 "Cherry-pick must persist a commit: " + result);
         Assertions.assertEquals(cherryPickSourceCommitId, result.get("cherryPickedFrom"));

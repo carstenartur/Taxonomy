@@ -259,11 +259,11 @@ public class DslApiController {
 
     @PostMapping("/cherry-pick")
     @Operation(summary = "Cherry-pick a commit onto a target branch",
-            description = "Applies the changes from a specific commit to the HEAD of the target branch.")
+            description = "Applies the selected commit only to the exact target HEAD reviewed in the cherry-pick preview.")
     public ResponseEntity<Map<String, Object>> cherryPick(
             @RequestParam String commitId,
             @RequestParam(defaultValue = "review") String targetBranch,
-            @RequestParam(required = false) String expectedTargetHead) {
+            @RequestParam String expectedTargetHead) {
         try {
             String newCommitId = dslOps.cherryPick(commitId, targetBranch, expectedTargetHead);
             if (newCommitId == null) {

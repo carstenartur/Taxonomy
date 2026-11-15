@@ -237,12 +237,12 @@ In the **Version History**, select the desired commit and click the transfer act
 <summary>🔧 REST API equivalent (for automation)</summary>
 
 ```
-POST /api/dsl/cherry-pick?commitId={fullCommitSha}&targetBranch=draft
+POST /api/dsl/cherry-pick?commitId={fullCommitSha}&targetBranch=draft&expectedTargetHead={reviewedTargetSha}
 ```
 
 </details>
 
-The operation uses three-way merge logic internally. Use the preview endpoint first to check for conflicts (see [Conflict Detection](#conflict-detection)).
+Read `targetCommit` from the [cherry-pick preview](#cherry-pick-preview) and send that full SHA as `expectedTargetHead`. If the target branch has moved, the request returns HTTP 409. Open a new preview before trying again.
 
 ---
 

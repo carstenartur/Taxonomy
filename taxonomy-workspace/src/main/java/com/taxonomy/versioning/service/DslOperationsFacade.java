@@ -147,14 +147,11 @@ public class DslOperationsFacade {
     }
 
     public String cherryPick(String commitId, String targetBranch) throws IOException {
-        return cherryPick(commitId, targetBranch, null);
+        return version(targetBranch, "Cherry-pick architecture version",
+                () -> resolveRepository().cherryPick(commitId, targetBranch));
     }
 
     public String cherryPick(String commitId, String targetBranch, String expectedTargetHead) throws IOException {
-        if (expectedTargetHead == null) {
-            return version(targetBranch, "Cherry-pick architecture version",
-                    () -> resolveRepository().cherryPick(commitId, targetBranch));
-        }
         String reviewedHead = WorkspaceDslReadPort.normalizeCommitId(expectedTargetHead);
         var target = versionTarget(targetBranch);
         var repository = repositoryFactory.resolveRepository(target);

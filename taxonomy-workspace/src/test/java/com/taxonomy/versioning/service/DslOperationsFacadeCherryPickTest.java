@@ -1,5 +1,7 @@
 package com.taxonomy.versioning.service;
 
+import com.taxonomy.versioning.controller.DslApiController;
+import com.taxonomy.versioning.controller.DslReadWorkspaceContextResolver;
 import com.taxonomy.workspace.service.BranchHeadConflictException;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryStateGuard;
@@ -8,6 +10,7 @@ import com.taxonomy.workspace.service.WorkspaceResolver;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.io.IOException;
 import java.util.Locale;
@@ -20,6 +23,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class DslOperationsFacadeCherryPickTest {
 
@@ -50,6 +55,25 @@ class DslOperationsFacadeCherryPickTest {
     }
 
     @Test
+    void cherryPickHttpRequestWithoutAReviewedTargetLeavesTheBranchUnchanged() throws Exception {
+        try (var repository = new DslGitRepository()) {
+            String reviewedHead = repository.commitDsl("source", "shared architecture\n", "alice", "Base");
+            repository.createBranch("review", "source");
+            String source = repository.commitDsl("source", "source architecture\n", "alice", "Source change");
+            var controller = new DslApiController(facadeFor(repository), mock(WorkspaceResolver.class),
+                    mock(DslReadWorkspaceContextResolver.class));
+            var mvc = MockMvcBuilders.standaloneSetup(controller).build();
+
+            mvc.perform(post("/api/dsl/cherry-pick")
+                            .param("commitId", source)
+                            .param("targetBranch", "review"))
+                    .andExpect(status().isBadRequest());
+
+            assertThat(repository.getHeadCommit("review")).isEqualTo(reviewedHead);
+        }
+    }
+
+    @Test
     void appliesManualConflictResolutionToTheReviewedTargetBranch() throws Exception {
         try (var repository = new DslGitRepository()) {
             repository.commitDsl("source", "shared architecture\n", "alice", "Base");
@@ -74,6 +98,7 @@ class DslOperationsFacadeCherryPickTest {
         when(resolver.resolveCurrentRepositoryContext()).thenReturn(requested);
         var repositories = mock(DslGitRepositoryFactory.class);
         when(repositories.resolveRepository(target)).thenReturn(repository);
+        when(repositories.resolveRepository(requested)).thenReturn(repository);
         return new DslOperationsFacade(repositories, mock(CommitIndexService.class),
                 mock(ConflictDetectionService.class), mock(RepositoryStateGuard.class),
                 mock(RepositoryStateService.class), resolver, versions);
