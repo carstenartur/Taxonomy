@@ -253,6 +253,37 @@ class RepositoryStateServiceTest {
     private static final String USER = "testuser";
 
     @Test
+    void legacyActorOnlyCentralContextKeepsItsOwnOperationAndStaleCheckpoints() throws IOException {
+        String first = gitRepo.commitDsl("draft", SAMPLE_DSL, USER, "first");
+        stateService.recordProjection(USER, first, "draft");
+        stateService.recordIndexBuild(USER, first);
+        gitRepo.commitDsl("draft", SAMPLE_DSL, USER, "second");
+        stateService.beginOperation(USER, "merge");
+
+        // The actor-only guard builds this compatibility context, not SHARED
+        // (which has the different actor "system"). Both must retain user state.
+        var legacy = new WorkspaceContext(USER, null, "draft",
+                WorkspaceContext.LEGACY_REPOSITORY_ID);
+        var state = stateService.getState(USER, "draft", legacy);
+        assertTrue(state.operationInProgress());
+        assertEquals("merge", state.operationKind());
+        assertEquals(first, state.projectionCommit());
+        assertEquals(first, state.indexCommit());
+        assertTrue(state.projectionStale());
+        assertTrue(state.indexStale());
+
+        var view = stateService.getViewContext(USER, "draft", legacy);
+        assertTrue(view.projectionStale());
+        assertTrue(view.indexStale());
+        var projection = stateService.getProjectionState(USER, "draft", legacy);
+        assertEquals(first, projection.projectionCommit());
+        assertEquals(first, projection.indexCommit());
+        assertTrue(projection.projectionStale());
+        assertTrue(projection.indexStale());
+        assertTrue(stateService.isProjectionStale(USER, "draft", legacy));
+    }
+
+    @Test
     void getStateOnEmptyBranchReturnsDefaults() {
         RepositoryState state = stateService.getState(USER, "draft");
 
