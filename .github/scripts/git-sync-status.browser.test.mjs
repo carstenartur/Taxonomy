@@ -557,3 +557,71 @@ test('initial repository discovery preserves a pending read and later repository
     } finally { await page.close(); }
 });
 
+
+
+test('Rebase plan shows exact fetched and live upstream commits and clears a superseded branch', async () => {
+    const page = await fixture();
+    try {
+        const template = await readFile(path.join(resources, 'templates/index.html'), 'utf8');
+        const buttonAndPanel = template.match(/<button id="workspaceRebasePlanButton"[^>]*>[\s\S]*?<\/button>\s*<div id="workspaceRebasePlan"[^>]*><\/div>/)?.[0];
+        assert.ok(buttonAndPanel);
+        await page.evaluate(html => document.body.insertAdjacentHTML('beforeend', html), buttonAndPanel);
+        const state = {syncStatus:'DIVERGED', repositoryId:'origin', workspaceId:'work', branch:'feature'};
+        await syncResponse(page, state);
+        const button = page.locator('#workspaceRebasePlanButton');
+        assert.equal(await button.isVisible(), true);
+        await button.click();
+        const endpoint = '/api/workspace/upstream/rebase-plan';
+        const plan = {status:'REPLAY', repositoryId:'origin', workspaceId:'work', branch:'feature', localCommit:'3'.repeat(40),
+            mergeBase:'1'.repeat(40), upstream:{sourceRepositoryId:'origin',sourceBranch:'main',sourceCommit:'5'.repeat(40),
+                trackedCommit:'4'.repeat(40)},commits:[{id:'2'.repeat(40), subject:'<form>first</form>'},{id:'3'.repeat(40), subject:'second'}]};
+        await page.waitForFunction(path => window.statusReads.some(read => read.pending && read.url.startsWith(path)), endpoint);
+        const url = new URL(await page.evaluate(path => window.statusReads.find(read => read.url.startsWith(path)).url, endpoint), 'http://status.test');
+        assert.equal(url.searchParams.get('branch'), 'feature');
+        assert.equal(url.searchParams.get('repositoryId'), 'origin');
+        assert.equal(url.searchParams.get('workspaceId'), 'work');
+        await answer(page, endpoint, plan);
+        await page.waitForFunction(() => document.querySelectorAll('#workspaceRebasePlan li').length === 2);
+        const panel = page.locator('#workspaceRebasePlan');
+        assert.match(await panel.innerText(), /444444444444/);
+        assert.match(await panel.innerText(), /555555555555/);
+        assert.match(await panel.innerText(), /<form>first<\/form>/);
+        assert.equal(await panel.locator('form').count(), 0);
+        assert.match(await panel.innerText(), /workspace.rebase.conflicts.unchecked/);
+        await button.click();
+        await page.evaluate(() => document.dispatchEvent(new CustomEvent('taxonomy:repository-context-changed',
+            {detail:{selectionChanged:true}})));
+        assert.equal(await panel.innerText(), '');
+        await answer(page, endpoint, plan);
+        assert.equal(await panel.innerText(), '');
+        assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+});
+
+
+test('A central fork plan uses the explicit repository and branch without adopting a working copy', async () => {
+    const page = await fixture();
+    try {
+        const template = await readFile(path.join(resources, 'templates/index.html'), 'utf8');
+        const markup = template.match(/<button id="workspaceRebasePlanButton"[^>]*>[\s\S]*?<\/button>\s*<div id="workspaceRebasePlan"[^>]*><\/div>/)[0];
+        await page.evaluate(html => {
+            document.body.insertAdjacentHTML('beforeend', html);
+            window.TaxonomyContextBar = {getCurrentContext:() => ({mode:'READ_ONLY',branch:'main',commitId:null})};
+        }, markup);
+        await answer(page, '/api/workspace/sync-state', initial);
+        await page.evaluate(() => TaxonomyWorkspaceSync.refresh());
+        await syncResponse(page, {syncStatus:'UP_TO_DATE',repositoryId:'central-fork',workspaceId:null,branch:'main'});
+        await page.locator('#workspaceRebasePlanButton').click();
+        const endpoint = '/api/repositories/central-fork/upstream/rebase-plan';
+        await page.waitForFunction(path => window.statusReads.some(read => read.pending && read.url.startsWith(path)), endpoint);
+        const url = new URL(await page.evaluate(path => window.statusReads.find(read => read.url.startsWith(path)).url, endpoint), 'http://status.test');
+        assert.equal(url.searchParams.get('workspaceScopeKey'), '__shared__');
+        assert.equal(url.searchParams.get('workspaceId'), '');
+        assert.equal(url.searchParams.get('branch'), 'main');
+        await answer(page, endpoint, {status:'FAST_FORWARD',repositoryId:'central-fork',workspaceId:null,branch:'main',
+            localCommit:'1'.repeat(40),mergeBase:'1'.repeat(40),upstream:{sourceRepositoryId:'central',sourceBranch:'main',
+                sourceCommit:'2'.repeat(40),trackedCommit:'2'.repeat(40)},commits:[]});
+        await page.waitForFunction(() => document.querySelector('#workspaceRebasePlan').textContent.includes('FAST_FORWARD'));
+        assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+});

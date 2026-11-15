@@ -17,6 +17,7 @@ window.TaxonomyWorkspaceSync = (function () {
     var POLL_INTERVAL = 15000; // 15 seconds
     var pollTimer = null;
     var pendingRead = null;
+    var planRead = null;
     var pageActive = true;
 
     // ── Initialization ──────────────────────────────────────────────
@@ -27,7 +28,12 @@ window.TaxonomyWorkspaceSync = (function () {
         pollTimer = setInterval(pollSyncState, POLL_INTERVAL);
     }
     document.addEventListener('DOMContentLoaded', startPolling);
+    document.addEventListener('click', function (event) {
+        if (event.target.closest?.('#workspaceRebasePlanButton')) showRebasePlan();
+    });
+    document.addEventListener('taxonomy-api-auth-failure', clearRebasePlan);
     window.addEventListener('pagehide', function () {
+        clearRebasePlan();
         pageActive = false; clearInterval(pollTimer); pollTimer = null;
         if (pendingRead) pendingRead.abort();
     });
@@ -52,6 +58,9 @@ window.TaxonomyWorkspaceSync = (function () {
             if (moveFocus) document.getElementById('contextBarBranch')?.focus({preventScroll: true});
         }
         if (!event.detail?.selectionChanged) return;
+        clearRebasePlan();
+        var planButton = document.getElementById('workspaceRebasePlanButton');
+        if (planButton) planButton.hidden = true;
         syncState = null;
         document.getElementById('syncStatusIndicator')?.remove();
         document.getElementById('syncStatePanel')?.replaceChildren();
@@ -83,7 +92,12 @@ window.TaxonomyWorkspaceSync = (function () {
                 if ((state.branch && context?.branch && state.branch !== context.branch)
                         || (state.repositoryId && repository && state.repositoryId !== repository)
                         || (state.workspaceId && workspace && state.workspaceId !== workspace)) return;
+                if (syncState && (state.repositoryId !== syncState.repositoryId || state.workspaceId !== syncState.workspaceId
+                        || state.branch !== syncState.branch)) clearRebasePlan();
                 syncState = state;
+                var planButton = document.getElementById('workspaceRebasePlanButton');
+                if (planButton) planButton.hidden = !state.repositoryId || !state.branch
+                    || (context?.mode === 'READ_ONLY' && context.commitId != null) || Object.hasOwn(lifecycleLabels, state.syncStatus);
                 renderSyncIndicator(state);
                 renderDirtyIndicator();
                 renderSyncStatePanel(state);
@@ -212,6 +226,64 @@ window.TaxonomyWorkspaceSync = (function () {
         html += '</table>';
 
         panel.innerHTML = html;
+    }
+
+    function clearRebasePlan() {
+        if (planRead) planRead.abort();
+        planRead = null;
+        document.getElementById('workspaceRebasePlan')?.replaceChildren();
+    }
+
+    async function showRebasePlan() {
+        clearRebasePlan();
+        var panel = document.getElementById('workspaceRebasePlan'), source = syncState;
+        if (!panel || !source?.repositoryId || !source.branch) return;
+        var controller = new AbortController();
+        planRead = controller;
+        panel.textContent = t('workspace.rebase.loading');
+        try {
+            var plan = await window.TaxonomyWorkspaceApi.rebasePlan(source, {signal:controller.signal});
+            if (controller.signal.aborted) return;
+            if (plan.repositoryId !== source.repositoryId || plan.branch !== source.branch
+                    || plan.workspaceId !== (source.workspaceId || null)) throw new Error();
+            var details = document.createElement('dl');
+            details.className = 'small mb-2';
+            function field(key, label, commit) {
+                if (!commit) return;
+                var term = document.createElement('dt'), value = document.createElement('dd'), id = document.createElement('code');
+                term.textContent = t('workspace.rebase.' + key);
+                value.textContent = label ? label + ' ' : '';
+                id.textContent = commit;
+                value.append(id);
+                details.append(term, value);
+            }
+            field('local', plan.branch, plan.localCommit);
+            field('live', plan.upstream.sourceRepositoryId + '/' + plan.upstream.sourceBranch, plan.upstream.sourceCommit);
+            field('tracked', plan.upstream.sourceBranch, plan.upstream.trackedCommit);
+            field('base', null, plan.mergeBase);
+            var status = document.createElement('p');
+            status.textContent = t('workspace.rebase.state.' + plan.status);
+            panel.replaceChildren(details, status);
+            if (plan.upstream.sourceCommit !== plan.upstream.trackedCommit && plan.upstream.trackedCommit) {
+                var changed = document.createElement('p');
+                changed.textContent = t('workspace.rebase.upstream.changed');
+                panel.append(changed);
+            }
+            if (plan.commits.length) {
+                var list = document.createElement('ol');
+                plan.commits.forEach(function (commit) {
+                    var row = document.createElement('li'), id = document.createElement('code');
+                    id.textContent = commit.id;
+                    row.append(id, ' ' + commit.subject);
+                    list.append(row);
+                });
+                var conflicts = document.createElement('p');
+                conflicts.textContent = t('workspace.rebase.conflicts.unchecked');
+                panel.append(list, conflicts);
+            }
+        } catch (error) {
+            if (!controller.signal.aborted) panel.textContent = t('workspace.rebase.unavailable');
+        }
     }
 
     function formatTimestamp(ts) {

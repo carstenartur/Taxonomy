@@ -26,6 +26,10 @@ public class CentralForkUpstreamService {
         return open(forkId, actor).inspect();
     }
 
+    public UpstreamRebasePlan rebasePlan(String forkId, String actor, String branch) throws IOException {
+        return UpstreamRebasePlan.read(open(forkId, actor), forkId, null, branch);
+    }
+
     public WorkspaceUpstreamService.Status fetch(String forkId, String actor, WorkspaceUpstreamService.Request request)
             throws IOException {
         return open(forkId, actor).fetch(request);
