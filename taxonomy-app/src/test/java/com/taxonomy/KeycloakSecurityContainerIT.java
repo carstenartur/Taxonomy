@@ -296,6 +296,35 @@ class KeycloakSecurityContainerIT {
                 Map.of("Cookie", sessionCookie, csrfHeader, csrfToken));
         assertThat(withCsrf.statusCode()).isEqualTo(400);
 
+        // Observe the real native details lifecycle without changing its state or the
+        // original wait/assertion. The trace contains no identities, credentials or tokens.
+        ((JavascriptExecutor) driver).executeScript("""
+                window.taxonomyAccountEventTrace = [];
+                const account = document.getElementById('applicationAccount');
+                const record = (name, event) => {
+                    const focus = document.activeElement;
+                    const trace = window.taxonomyAccountEventTrace;
+                    if (trace.length >= 64) return;
+                    trace.push({
+                        name,
+                        open: account?.open === true,
+                        target: event?.target?.id || event?.target?.tagName || '',
+                        focused: focus?.id || focus?.tagName || '',
+                        related: event?.relatedTarget?.id || event?.relatedTarget?.tagName || '',
+                        compact: window.matchMedia('(max-width: 1023.98px)').matches,
+                        navigationOpen: document.getElementById('applicationNavigationMenu')?.open === true
+                    });
+                };
+                record('before-account-click');
+                for (const type of ['pointerdown', 'mousedown', 'focusin',
+                        'focusout', 'mouseup', 'click', 'toggle']) {
+                    document.addEventListener(type, event => {
+                        if (type === 'toggle' ? event.target !== account
+                                : type !== 'focusin' && !account?.contains(event.target)) return;
+                        record(type, event);
+                    }, true);
+                }
+                """);
         var wait = new WebDriverWait(driver, Duration.ofSeconds(30));
         wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("#applicationAccount > summary"))).click();
         WebElement signOut;
@@ -323,8 +352,10 @@ class KeycloakSecurityContainerIT {
                         navigationOpen: document.getElementById('applicationNavigationMenu')?.open
                     });
                     """));
-            throw new AssertionError("The visible account sign-out action did not open: " + menuState,
-                    exception);
+            String eventTrace = String.valueOf(((JavascriptExecutor) driver).executeScript(
+                    "return JSON.stringify(window.taxonomyAccountEventTrace || []);"));
+            throw new AssertionError("The visible account sign-out action did not open: "
+                    + menuState + ", accountEventTrace=" + eventTrace, exception);
         }
         assertThat(driver.findElement(By.id("applicationLogoutForm")).getDomAttribute("action"))
                 .isEqualTo("/logout");
