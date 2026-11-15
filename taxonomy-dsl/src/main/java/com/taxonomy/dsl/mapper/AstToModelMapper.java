@@ -25,6 +25,9 @@ public class AstToModelMapper {
 
         for (BlockAst block : document.getBlocks()) {
             switch (block.getKind()) {
+                case "organization" -> model.getOrganizations().add(new ArchitectureOrganization(
+                        block.getHeaderTokens().size() == 1 ? block.getHeaderTokens().getFirst() : null,
+                        block.property("title"), block.property("parentId")));
                 case "package" -> model.getPackages().add(new ArchitecturePackage(
                         block.getHeaderTokens().isEmpty() ? null : block.getHeaderTokens().getFirst(),
                         block.property("title"), block.property("description"), block.property("parent"),

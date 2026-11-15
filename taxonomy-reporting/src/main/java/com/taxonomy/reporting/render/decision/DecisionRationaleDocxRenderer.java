@@ -189,6 +189,8 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
             if (options.includes(DecisionReportOptions.Section.TITLE_PAGE)) renderTitleEvidence(document, report, labels);
         }
         if (options.includes(DecisionReportOptions.Section.TREE)) {
+            if (options.showResponsibilities() && report.scope().decisionTree().responsibilitiesByCode().isEmpty())
+                writer.paragraph(labels.noResponsibilities());
             if (options.treeLayout() == DecisionReportOptions.TreeLayout.TABLE)
                 new DecisionTreeWordSectionRenderer().write(document, report.scope().decisionTree(), report.languageTag(), options.includes(DecisionReportOptions.Section.CHAPTERS), evidence.linkedReasonCodes());
             else new DecisionTreeLandscapeSection().write(document, report,
@@ -482,6 +484,7 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
                 ? "Jedes folgende Kapitel entspricht genau einem Vaterknoten, dessen direkte Kindknoten mindestens einen von Null verschiedenen Bewertungswert enthalten. Sämtliche direkten Kinder bleiben als geprüfte oder noch ungeprüfte Alternativen sichtbar."
                 : "Each following chapter corresponds to one parent whose direct children contain at least one non-zero score. All direct children remain visible as evaluated or unevaluated alternatives.", false);
 
+        var owners = report.scope().decisionTree().responsibilitiesByCode();
         for (int chapterIndex = 0; chapterIndex < report.chapters().size(); chapterIndex++) {
             DecisionChapter chapter = report.chapters().get(chapterIndex);
             addChapterHeading(document, chapter, labels);
@@ -490,7 +493,7 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
             }
 
             var writer = new WordDocumentWriter(document, labels);
-            var chapterTree = DecisionTreeOverview.from(List.of(chapter));
+            var chapterTree = DecisionTreeOverview.from(List.of(chapter)).withResponsibilities(owners);
             var panels = new DecisionTreeFigureRenderer().renderChapter(chapterTree, report.languageTag(), writer.decisionFigureWidth());
             for (int panelIndex = 0; panelIndex < panels.size(); panelIndex++) {
                 var panel = panels.get(panelIndex);

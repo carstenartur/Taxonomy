@@ -1683,19 +1683,24 @@ class ScreenshotGeneratorIT {
             return false;
         });
 
-        // Navigate to the relations tab and filter to show all proposals
         navigateToTab("relations");
         WebElement panel = driver.findElement(By.id("proposalsPanel"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", panel);
-        // Click the "Accepted" filter button to show accepted proposals
-        js("var btn = document.getElementById('filterAccepted'); if (btn) btn.click();");
-        waitForResult("proposalsTableContainer", ".proposal-table tbody tr", 10);
-        Assertions.assertTrue((Boolean) ((JavascriptExecutor) driver).executeScript(
-                "return Array.from(document.querySelectorAll('#proposalsTableContainer tbody tr')).some(function(row) {" +
-                "  return row.textContent.includes(window._acceptedSourceCode)" +
-                "    && row.textContent.includes(window._acceptedTargetCode)" +
-                "    && row.textContent.includes('ACCEPTED'); });"),
-                "The accepted proposal must be visible in the review queue");
+        js("document.getElementById('filterAccepted').click();");
+        JavascriptExecutor browser = (JavascriptExecutor) driver;
+        Number id = (Number) browser.executeScript("return window._createdProposalId;");
+        By acceptedRow = By.cssSelector("#proposalsTableContainer tr[data-proposal-id='" + id.longValue()
+                + "'][data-status='ACCEPTED']");
+        WebElement row = wait(10).withMessage("The accepted proposal must be visible in the review queue")
+                .until(ExpectedConditions.visibilityOfElementLocated(acceptedRow));
+        Assertions.assertTrue(row.getText().contains((String) browser.executeScript("return window._acceptedSourceCode;")));
+        Assertions.assertTrue(row.getText().contains((String) browser.executeScript("return window._acceptedTargetCode;")));
+        boolean german = driver.findElement(By.tagName("html")).getAttribute("lang").equals("de");
+        Assertions.assertEquals(german ? "Akzeptiert" : "Accepted",
+                row.findElement(By.cssSelector(".proposal-accepted-status")).getText());
+        WebElement check = row.findElement(By.cssSelector(".proposal-adoption-preview"));
+        Assertions.assertTrue(check.isDisplayed(), "The accepted proposal must offer an adoption preview");
+        Assertions.assertEquals(german ? "Übernahme prüfen" : "Check adoption", check.getText());
         saveElementScreenshot(panel, "36-proposal-accepted.png");
     }
 

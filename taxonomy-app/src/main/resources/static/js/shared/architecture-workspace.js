@@ -250,6 +250,12 @@
         el('architectureSourceDescription').textContent = t('architecture.workspace.' + source.kind + '.help');
         dimensions();
         document.dispatchEvent(new CustomEvent('taxonomy:architecture-source-changed', {detail:{source:source,data:workspace.getData(),diagram:workspace.getDiagram(),active:true}}));
+        const panel = el('proposalsPanel');
+        const home = el(source.kind === 'working' ? 'workingProposalInbox' : 'analysisProposalInbox');
+        if (panel?.parentNode && home) {
+            if (panel.parentNode !== home) home.appendChild(panel);
+            panel.hidden = source.kind === 'snapshot';
+        }
     }
     workspace = create({initial:initial, initialize:initializeSource, defaults:{analysis:Object.assign({kind:'analysis'},analysisScope),working:workingScope,snapshot:snapshotScope},
         adapters:{
@@ -284,6 +290,9 @@
                 analysisUrlSource = explicitAnalysisUrlSource(settings.source || settings);
             }
             lens?.suspend();
+            // Keep the old branch's proposals hidden until the selected source has been published.
+            const panel = el('proposalsPanel');
+            if (panel) panel.hidden = true;
             el('architectureWorkspaceError').hidden=true;
             if(source.kind!=='working')window.TaxonomyArchitectureLifecycle?.suspend?.();
             kinds.forEach(function (kind) { el('architecture' + kind[0].toUpperCase() + kind.slice(1) + 'Source').hidden = kind !== source.kind; });

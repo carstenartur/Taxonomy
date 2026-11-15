@@ -32,10 +32,23 @@
         if (target && target.tagName === saved.tag) { target.focus({preventScroll: true}); }
     }
 
+    // Keep organization metadata on the diagram projection and leave catalogue and scores intact.
+    function projectResponsibility(node) {
+        var display = window.TaxonomyResponsibilityDisplay;
+        node.unit = display?.enabled() ? display.entry(node.data.code) : null;
+        node.unitBoundary = !!node.unit && (!node.parent?.unit || node.parent.unit.unitId !== node.unit.unitId
+            || node.parent.unit.sourceId !== node.unit.sourceId);
+    }
+
+    function responsibilityLabel(unit) {
+        return t('views.diagram.responsibleUnit', unit.name);
+    }
+
     function diagramNodeLabel(node, scores, zoomable) {
         var data = node.data;
         var label = data.code + (data.name ? ' – ' + data.name : '');
         if (hasScoreLabel(data.code, scores)) { label += ' · ' + scoreText(data.code, scores[data.code]); }
+        if (node.unit) { label += ' · ' + responsibilityLabel(node.unit); }
         if (!zoomable) {
             label += ' · ' + t(node.children ? 'views.diagram.expanded'
                 : node._children ? 'views.diagram.collapsed' : 'views.diagram.leaf');
@@ -540,6 +553,7 @@
 
     function treeLabel(node) {
         var label = node.data.name ? node.data.code + ' \u2013 ' + node.data.name : node.data.code;
+        if (node.unitBoundary) { label += ' · ' + responsibilityLabel(node.unit); }
         return label + (node._treeEvidenceNumber ? ' [' + node._treeEvidenceNumber + ']' : '');
     }
 
@@ -550,6 +564,7 @@
         var left = [], right = [], columns = [0, 0];
         nodes.forEach(function (node) {
             if (node.data.code === '__root__') return;
+            projectResponsibility(node);
             node._treeLabelWidth = Math.ceil(measure(treeLabel(node), TREE_LABEL_FONT));
             node._treeBadgeWidth = hasScoreLabel(node.data.code, scores)
                 ? Math.ceil(measure(scoreText(node.data.code, scores[node.data.code]), TREE_BADGE_FONT)) + 8 : 0;
@@ -623,7 +638,7 @@
         return tip;
     }
 
-    function showTooltip(event, nodeData, scores) {
+    function showTooltip(event, nodeData, scores, unit) {
         var tip = ensureTooltip();
         var pct = scores ? scores[nodeData.code] : undefined;
         var html = '<strong>' + esc(nodeData.code) + '</strong>';
@@ -634,6 +649,7 @@
         if (pct !== undefined) {
             html += '<br><span class="tax-tooltip-pct">' + esc(scoreText(nodeData.code, pct)) + '</span>';
         }
+        if (unit) { html += '<br>' + esc(responsibilityLabel(unit)); }
         tip.innerHTML = html;
         tip.style.display = 'block';
         tip.style.left = Math.min(event.pageX + 14, window.innerWidth - 220) + 'px';
@@ -790,7 +806,7 @@
         });
 
         paths
-            .on('mousemove', function (event, d) { showTooltip(event, d.data, scores); })
+            .on('mousemove', function (event, d) { showTooltip(event, d.data, scores, d.unit); })
             .on('mouseleave', hideTooltip);
 
         // Labels
@@ -1041,7 +1057,7 @@
                     treeNavigation.selectNode(d);
                     toggleDiagramBranch(d, update);
                 })
-                .on('mousemove', function (event, d) { showTooltip(event, d.data, scores); })
+                .on('mousemove', function (event, d) { showTooltip(event, d.data, scores, d.unit); })
                 .on('mouseleave', hideTooltip);
 
             // Merge enter + update
@@ -1060,11 +1076,9 @@
                 })
                 .attr('stroke', function (d) { return d.data.code === '__root__' ? 'none' : '#555'; });
 
+            drawUnitStripes(nodeUpdate, function () { return -7; }, function () { return 14; }, 7);
             nodeUpdate.select('text.tv-label')
-                .text(function (d) {
-                    if (d.data.code === '__root__') { return ''; }
-                    return d.data.name ? d.data.code + ' \u2013 ' + d.data.name : d.data.code;
-                })
+                .text(function (d) { return d.data.code === '__root__' ? '' : treeLabel(d); })
                 .attr('x', 10)
                 .attr('text-anchor', 'start');
             nodeUpdate.select('text.tv-score')
@@ -1241,7 +1255,13 @@
             function size(node) {
                 var label = node.data.code + (node.data.name ? ' – ' + node.data.name : '');
                 if (hasScoreLabel(node.data.code, scores)) { label += ' · ' + scoreText(node.data.code, scores[node.data.code]); }
+                projectResponsibility(node);
                 node.lines = decisionLines(label, measure, textWidth);
+                node.titleLineCount = node.lines.length;
+                // Paginated output may start mid-branch. Reserve wrapping space before the page split.
+                if (node.unitBoundary || (node.unit && metrics.pageContext)) {
+                    node.lines = node.lines.concat(decisionLines(responsibilityLabel(node.unit), measure, textWidth));
+                }
                 // Bold measurement conservatively bounds regular labels; action and stroke get their own padding.
                 node.contextHeight = node.parent && node.parent.data.code !== '__root__'
                     ? Math.max(36, Math.max(
@@ -1315,6 +1335,13 @@
     }
 
     /** Each node fits one landscape page at 14px type, with its parent code as continuation context. */
+    function drawUnitStripes(selection, top, height, x) {
+        selection.selectAll('rect.diagram-unit-stripe').data(function (node) { return node.unit ? [node] : []; })
+            .join(function (enter) { return enter.insert('rect', 'circle'); }).attr('class', 'diagram-unit-stripe').attr('aria-hidden', 'true').attr('pointer-events', 'none')
+            .attr('x', x).attr('y', top).attr('width', 3).attr('height', height)
+            .attr('fill', function (node) { return node.unit.color; });
+    }
+
     function buildDecisionPrintPages(layout, doc) {
         var pages = [];
         var continuationKey = layout.singleSheet ? 'views.diagram.printSection' : 'views.diagram.printContinue';
@@ -1342,6 +1369,7 @@
                     for (var line = 0; line < node.lines.length; line += lineLimit) {
                         var fragment = Object.assign({}, node);
                         fragment.lines = node.lines.slice(line, line + lineLimit);
+                        fragment.titleLineCount = Math.max(0, node.titleLineCount - line);
                         fragment.nodeHeight = fragment.lines.length * 20 + node.contextHeight;
                         fragment.fragment = line > 0;
                         fragment.box = Object.assign({}, node.box, {top: node.box.top + line * 20, bottom: node.box.top + line * 20 + fragment.nodeHeight});
@@ -1455,8 +1483,17 @@
             decisionSvgElement(doc, group, 'rect', {class: 'decision-print-card', x: box.left + 1, y: box.top + 1,
                 width: box.right - box.left - 2, height: box.bottom - box.top - 2, rx: 6, fill: '#FFFFFF', stroke: '#334155', 'stroke-width': 2});
             decisionSvgElement(doc, group, 'circle', {cx: node.y + offsetX, cy: node.x + offsetY, r: 7, fill: '#fff', stroke: '#334155', 'stroke-width': 1.5});
+            if (node.unit) {
+                decisionSvgElement(doc, group, 'rect', {class:'diagram-unit-stripe', x:box.left + 2, y:box.top + 5,
+                    width:3, height:box.bottom - box.top - 10, fill:node.unit.color});
+            }
             node.lines.forEach(function (line, lineIndex) {
-                decisionSvgElement(doc, group, 'text', {x: node.y + offsetX + 12, y: box.top + 16 + lineIndex * 20, fill: '#111827', 'font-size': 14, 'font-family': 'Arial, Helvetica, sans-serif'}, line);
+                var isUnit = lineIndex >= node.titleLineCount;
+                if (isUnit && !node.unitBoundary && included.has(node.parent)) return;
+                var attrs = {x: node.y + offsetX + 12, y: box.top + 16 + lineIndex * 20, fill: '#111827',
+                    'font-size': 14, 'font-family':'Arial, Helvetica, sans-serif'};
+                if (isUnit) attrs.class = 'diagram-unit-name';
+                decisionSvgElement(doc, group, 'text', attrs, line);
             });
             if (nodePage && node.parent && node.parent.data.code !== '__root__') {
                 decisionLines(t(layout.singleSheet ? 'views.diagram.printSectionParent' : 'views.diagram.printParent', node.parent.data.code, nodePage[node.parent.data.code]), layout.measure, layout.textWidth).forEach(function (line, index) {
@@ -1701,6 +1738,8 @@
 
     function installDiagramPrintControls(container, print) {
         var toolbar = container.querySelector('.tax-diagram-controls');
+        var display = window.TaxonomyResponsibilityDisplay;
+        if (display) toolbar.insertBefore(display.control(), toolbar.querySelector('.tax-diagram-hint'));
         var mode = document.createElement('select');
         mode.className = 'form-select form-select-sm tax-diagram-print-mode';
         mode.setAttribute('aria-label', t('views.diagram.printMode'));
@@ -1790,7 +1829,7 @@
             // Reflow complete names and percentages into measured cards, so page boundaries
             // never slice a label or a glyph. The live SVG/Canvas hierarchy stays untouched.
             var layout = layoutDecisionPanels(root, scores || {}, areas, decisionMeasure(), data,
-                {textWidth: 174, cardWidth: 210, columnPitch: 240, columnsPerPage: 4});
+                {textWidth: 174, cardWidth: 210, columnPitch: 240, columnsPerPage: 4, pageContext: true});
             if (options.mode !== 'pages') { return buildDecisionPrintSheets(layout, doc, 'tree-print-page', options); }
             var pages = buildDecisionPrintPages(layout, doc);
             pages.forEach(function (page) { page.className = 'diagram-print-page tree-print-page'; });
@@ -1913,7 +1952,7 @@
         // Reflow print cards at the same measured 14px type: four ordinary levels
         // fit landscape paper without changing screen dimensions or scaling text.
         var printLayout = layoutDecisionPanels(printRoot, scores, panelAreas, measureDecisionText, visibleAreas,
-            {textWidth: 174, cardWidth: 210, columnPitch: 240, columnsPerPage: 4});
+            {textWidth: 174, cardWidth: 210, columnPitch: 240, columnsPerPage: 4, pageContext: true});
         var containerWidth = container.clientWidth || 800;
 
         var svgWrapper = document.createElement('div');
@@ -2077,7 +2116,7 @@
                     decisionNavigation.selectNode(d);
                     toggleDiagramBranch(d, dmUpdate);
                 })
-                .on('mousemove', function (event, d) { showTooltip(event, d.data, scores); })
+                .on('mousemove', function (event, d) { showTooltip(event, d.data, scores, d.unit); })
                 .on('mouseleave', hideTooltip);
 
             var nodeUpdate = nodeEnter.merge(node);
@@ -2087,6 +2126,8 @@
                 .attr('transform', function (d) { return 'translate(' + d.y + ',' + d.x + ')'; })
                 .style('opacity', function (d) { return d.data.code === '__root__' ? 0 : 1; });
 
+            drawUnitStripes(nodeUpdate.select('.dm-node-control'), function (d) { return -d.nodeHeight / 2 + 5; },
+                function (d) { return d.nodeHeight - 10; }, -7);
             nodeUpdate.select('.dm-card')
                 .attr('x', -9).attr('y', function (d) { return -d.nodeHeight / 2 + 1; })
                 .attr('width', 260).attr('height', function (d) { return d.nodeHeight - 2; })
@@ -2103,7 +2144,10 @@
                 .style('font-weight', '400')
                 .each(function (d) {
                     var label = d3.select(this); label.selectAll('tspan').remove();
-                    d.lines.forEach(function (line, index) { label.append('tspan').attr('x', 12).attr('dy', index ? 20 : 0).text(line); });
+                    d.lines.forEach(function (line, index) {
+                        label.append('tspan').attr('x', 12).attr('dy', index ? 20 : 0)
+                            .attr('class', index >= d.titleLineCount ? 'diagram-unit-name' : null).text(line);
+                    });
                 });
             nodeUpdate.select('.dm-reason-action')
                 .attr('transform', function (d) { return 'translate(0,' + (d.nodeHeight / 2 - 8) + ')'; });
@@ -2462,6 +2506,10 @@
                     ctx.restore();
                 }
 
+                if (d.unit) {
+                    ctx.fillStyle = d.unit.color;
+                    ctx.fillRect(nx + 7, ny - 7, 3, 14);
+                }
                 // Label
                 var label = treeLabel(d);
                 ctx.fillStyle = '#333';
@@ -2530,7 +2578,7 @@
             var hit = hitTest(mx, my);
             if (hit) {
                 canvas.style.cursor = (hit.children || hit._children) ? 'pointer' : 'default';
-                showTooltip(event, hit.data, scores);
+                showTooltip(event, hit.data, scores, hit.unit);
             } else {
                 canvas.style.cursor = 'default';
                 hideTooltip();
@@ -2697,6 +2745,9 @@
                 nodeG.appendChild(toggle);
             }
 
+            if (d.unit) {
+                decisionSvgElement(document, nodeG, 'rect', {class:'diagram-unit-stripe', x:7, y:-7, width:3, height:14, fill:d.unit.color});
+            }
             var text = document.createElementNS(svgNS, 'text');
             text.setAttribute('dy', '0.31em');
             var label = treeLabel(d);

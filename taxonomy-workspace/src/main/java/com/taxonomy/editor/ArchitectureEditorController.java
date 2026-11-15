@@ -237,6 +237,8 @@ public class ArchitectureEditorController {
             case "DELETE_PLANNING" -> new SemanticCommand(new DeleteRequirementPlanning(body.id(), planning(body).entryId()));
             case "CREATE_PACKAGE" -> new SemanticCommand(new CreateArchitecturePackage("pkg-" + body.metadata().commandId(), body.properties()));
             case "UPDATE_PACKAGE" -> new SemanticCommand(new UpdateArchitecturePackage(body.id(), body.properties()));
+            case "UPSERT_ORGANIZATION" -> new SemanticCommand(new UpsertOrganization(body.id(), body.properties()));
+            case "DELETE_ORGANIZATION" -> new SemanticCommand(new DeleteOrganization(body.id()));
             case "DELETE_PACKAGE" -> new SemanticCommand(new DeleteArchitecturePackage(body.id()));
             case "SET_PACKAGE_PLACEMENTS" -> new SemanticCommand(new SetArchitecturePackagePlacements(body.placements(), body.completeParentScopes()));
             case "UPSERT_REQUIREMENT_MAPPING" -> new SemanticCommand(new UpsertRequirementMapping(body.sourceId(), body.targetId(), body.metadata().rationale(), body.properties()));

@@ -86,6 +86,32 @@ test('empty search cancels pending work, clears results and cannot revive old re
     assert.equal(area.innerHTML, '');
 });
 
+test('initial source hydration preserves in-flight reference catalogue searches', async () => {
+    for (const mode of ['fulltext', 'semantic', 'hybrid', 'similar']) {
+        const f = searchFixture();
+        const area = f.document.getElementById('searchResultsArea');
+        if (mode === 'similar') f.window.TaxonomySearch.findSimilar('CP');
+        else f.window.TaxonomySearch.performSearch('capability', mode, 10);
+        f.window.__TaxonomyAnalysisSessionContext = {runtime: {workspaceId: 'initial-workspace'}};
+        f.window.TaxonomyContextBar = {getCurrentContext: () => ({branch: 'draft', commitId: 'initial'})};
+        f.document.fire('taxonomy:repository-context-changed', {detail: {selectionChanged: false}});
+        f.pending.resolve({ok: true, json: async () => [{code: 'CP', nameEn: 'Capability'}]});
+        await tick();
+        assert.equal(area.dataset.totalResults, '1', mode);
+    }
+});
+
+test('a repository selection change still discards a pending catalogue search', async () => {
+    const f = searchFixture();
+    const area = f.document.getElementById('searchResultsArea');
+    f.window.TaxonomySearch.performSearch('capability', 'semantic', 10);
+    f.document.fire('taxonomy:repository-context-changed', {detail: {selectionChanged: true}});
+    f.pending.resolve({ok: true, json: async () => [{code: 'CP'}]});
+    await tick();
+    assert.equal(area.style.display, 'none');
+    assert.equal(area.innerHTML, '');
+});
+
 test('search errors and empty results are announced with translated messages', async () => {
     for (const failed of [true, false]) {
         const f = searchFixture(); f.window.TaxonomySearch.performSearch('query', 'fulltext', 20);
