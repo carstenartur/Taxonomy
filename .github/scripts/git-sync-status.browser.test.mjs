@@ -625,3 +625,48 @@ test('A central fork plan uses the explicit repository and branch without adopti
         assert.deepEqual(page.errors, []);
     } finally { await page.close(); }
 });
+
+
+test('A delayed rebase plan is rejected after the same branch advances, and a fresh plan is retained', async () => {
+    const page = await fixture();
+    try {
+        const template = await readFile(path.join(resources, 'templates/index.html'), 'utf8');
+        const markup = template.match(/<button id="workspaceRebasePlanButton"[^>]*>[\s\S]*?<\/button>\s*<div id="workspaceRebasePlan"[^>]*><\/div>/)?.[0];
+        assert.ok(markup);
+        await page.evaluate(html => document.body.insertAdjacentHTML('beforeend', html), markup);
+        const state = {syncStatus:'DIVERGED', repositoryId:'origin', workspaceId:'work', branch:'feature',
+            unpublishedCommitCount:1, lastSyncedCommitId:'1'.repeat(40)};
+        const endpoint = '/api/workspace/upstream/rebase-plan';
+        const plan = {status:'FAST_FORWARD', repositoryId:'origin', workspaceId:'work', branch:'feature',
+            localCommit:'2'.repeat(40), mergeBase:'2'.repeat(40),
+            upstream:{sourceRepositoryId:'origin', sourceBranch:'main', sourceCommit:'3'.repeat(40),
+                trackedCommit:'3'.repeat(40)}, commits:[]};
+        const panel = page.locator('#workspaceRebasePlan');
+        await syncResponse(page, state);
+        await page.locator('#workspaceRebasePlanButton').click();
+        await page.waitForFunction(path => window.statusReads.some(read => read.pending && read.url.startsWith(path)), endpoint);
+
+        // A fetch or a competing commit advances the same selected branch while the old GET is pending.
+        await page.evaluate(() => TaxonomyWorkspaceSync.refresh());
+        const newer = {...state, unpublishedCommitCount:2, lastSyncedCommitId:'2'.repeat(40)};
+        await syncResponse(page, newer);
+        assert.equal(await panel.innerText(), '');
+        await answer(page, endpoint, {...plan, localCommit:'1'.repeat(40)});
+        await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 0)));
+        assert.equal(await panel.innerText(), '', 'A late plan may not repaint the newer observation');
+
+        await page.locator('#workspaceRebasePlanButton').click();
+        await page.waitForFunction(path => window.statusReads.some(read => read.pending && read.url.startsWith(path)), endpoint);
+        await answer(page, endpoint, plan);
+        await page.waitForFunction(() => document.querySelector('#workspaceRebasePlan')?.textContent.includes('FAST_FORWARD'));
+        await page.evaluate(() => TaxonomyWorkspaceSync.refresh());
+        await syncResponse(page, {...newer});
+        assert.match(await panel.innerText(), /FAST_FORWARD/, 'An identical refresh retains the valid plan');
+
+        // A new commit with the same branch and count also invalidates an already displayed plan.
+        await page.evaluate(() => TaxonomyWorkspaceSync.refresh());
+        await syncResponse(page, {...newer, lastSyncedCommitId:'4'.repeat(40)});
+        assert.equal(await panel.innerText(), '');
+        assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+});
