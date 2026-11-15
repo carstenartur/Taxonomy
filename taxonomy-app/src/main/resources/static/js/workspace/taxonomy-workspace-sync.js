@@ -92,8 +92,9 @@ window.TaxonomyWorkspaceSync = (function () {
                 if ((state.branch && context?.branch && state.branch !== context.branch)
                         || (state.repositoryId && repository && state.repositoryId !== repository)
                         || (state.workspaceId && workspace && state.workspaceId !== workspace)) return;
-                if (syncState && (state.repositoryId !== syncState.repositoryId || state.workspaceId !== syncState.workspaceId
-                        || state.branch !== syncState.branch)) clearRebasePlan();
+                // A later observation may advance Git refs without changing the selected branch.
+                // Treat any changed sync observation as a new plan authority; do not show a stale plan.
+                if (syncState && JSON.stringify(state) !== JSON.stringify(syncState)) clearRebasePlan();
                 syncState = state;
                 var planButton = document.getElementById('workspaceRebasePlanButton');
                 if (planButton) planButton.hidden = !state.repositoryId || !state.branch
@@ -238,12 +239,14 @@ window.TaxonomyWorkspaceSync = (function () {
         clearRebasePlan();
         var panel = document.getElementById('workspaceRebasePlan'), source = syncState;
         if (!panel || !source?.repositoryId || !source.branch) return;
+        var observedSource = JSON.stringify(source);
         var controller = new AbortController();
         planRead = controller;
         panel.textContent = t('workspace.rebase.loading');
         try {
             var plan = await window.TaxonomyWorkspaceApi.rebasePlan(source, {signal:controller.signal});
-            if (controller.signal.aborted) return;
+            if (controller.signal.aborted || planRead !== controller
+                    || JSON.stringify(syncState) !== observedSource) return;
             if (plan.repositoryId !== source.repositoryId || plan.branch !== source.branch
                     || plan.workspaceId !== (source.workspaceId || null)) throw new Error();
             var details = document.createElement('dl');
@@ -282,7 +285,9 @@ window.TaxonomyWorkspaceSync = (function () {
                 panel.append(list, conflicts);
             }
         } catch (error) {
-            if (!controller.signal.aborted) panel.textContent = t('workspace.rebase.unavailable');
+            if (!controller.signal.aborted && planRead === controller
+                    && JSON.stringify(syncState) === observedSource)
+                panel.textContent = t('workspace.rebase.unavailable');
         }
     }
 
