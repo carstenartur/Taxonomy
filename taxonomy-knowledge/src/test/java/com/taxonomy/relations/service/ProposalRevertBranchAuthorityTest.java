@@ -10,6 +10,7 @@ import com.taxonomy.workspace.service.BranchHeadConflictException;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.storage.DslWorkspaceVersionAdapter;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -20,6 +21,39 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
 class ProposalRevertBranchAuthorityTest {
+    @Test
+    void inheritedAcceptedReviewCannotReopenTheCentralInboxOnAnotherBranch() throws Exception {
+        var primary = RepositoryContext.centralWrite("repository-a", "main", "reviewer");
+        var draft = RepositoryContext.centralWrite("repository-a", "draft", "reviewer");
+        var row = new ProposalReviewStateStore.ProposalSnapshot(17L, "APP-1", "SVC-1", RelationType.USES,
+                ProposalStatus.ACCEPTED, 0.8, "reviewed", "generated");
+        var store = mock(ProposalReviewStateStore.class);
+        when(store.require(17L, draft)).thenReturn(row);
+        var copied = "relation APP-1 USES SVC-1 {\n  status: accepted;\n  provenance: proposal-review;\n"
+                + "  x-proposal-id: 17;\n  x-proposal-review-branch: main;\n  x-proposal-review-scope: "
+                + ProposalBranchAdoptionService.reviewOrigin(primary).get("x-proposal-review-scope") + ";\n}\n";
+        try (var repositories = new DslGitRepositoryFactory(null)) {
+            var git = repositories.resolveRepository(primary);
+            String initial = git.commitDsl("main", copied, "reviewer", "Accept proposal");
+            assertThat(git.createBranch("draft", "main")).isEqualTo(initial);
+            var commands = new ArchitectureRelationGitCommandService(new DslWorkspaceVersionAdapter(repositories));
+            var projection = mock(RelationDecisionProjectionService.class);
+            var mutation = new GitAuthoritativeRelationMutationService(commands, projection, mock(), mock(), mock());
+            var service = new GitAuthoritativeProposalReviewService(store, mutation);
+            assertThatThrownBy(() -> service.revert(17L, draft, initial, new CommandMetadata("revert-17")))
+                    .isInstanceOf(IllegalStateException.class);
+            assertThat(git.getHeadCommit("draft")).isEqualTo(initial);
+            assertThat(git.getHeadCommit("main")).isEqualTo(initial);
+            verifyNoInteractions(projection);
+            verify(store, never()).transition(any(), any(), any(), any());
+            var originalUndo = new RemoveRelation(new RelationIdentity("APP-1", "USES", "SVC-1"),
+                    new CommandMetadata("undo-on-main"), Map.of("x-proposal-id", "17", "status", "accepted",
+                    "provenance", "proposal-review"), ProposalBranchAdoptionService.reviewOrigin(primary));
+            assertThat(commands.execute(primary, initial, originalUndo).commitCreated()).isTrue();
+            assertThat(git.getHeadCommit("draft")).isEqualTo(initial);
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"accepted", "rejected"})
     void ownedDecisionCanBeRemovedAtItsExpectedHeadWithoutChangingOtherSource(String status) throws Exception {

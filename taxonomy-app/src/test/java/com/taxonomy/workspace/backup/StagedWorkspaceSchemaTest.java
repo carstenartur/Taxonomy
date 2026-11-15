@@ -3,6 +3,7 @@ package com.taxonomy.workspace.backup;
 import com.taxonomy.security.persistence.PrincipalSchemaMigration;
 import org.flywaydb.core.Flyway;
 import org.hsqldb.jdbc.JDBCDataSource;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -13,9 +14,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class StagedWorkspaceSchemaTest {
+    private final JDBCDataSource database = newDatabase();
+
+    @AfterEach
+    void shutdownDatabase() {
+        new JdbcTemplate(database).execute("SHUTDOWN");
+    }
+
     @Test
     void recognizesOnlyValidatedPrePublicationHistory() throws IOException {
-        var database = database();
         assertThat(StagedWorkspaceSchema.predatesPublications(database)).isFalse();
 
         migrateBusinessSchema(database, "1");
@@ -33,7 +40,7 @@ class StagedWorkspaceSchemaTest {
 
     @Test
     void missingPublicationTablesAfterTheirMigrationAreNeverTreatedAsLegacy() throws IOException {
-        var database = migratedDatabase("32.1");
+        migrateDatabaseTo("32.1");
         assertThat(StagedWorkspaceSchema.predatesPublications(database)).isFalse();
 
         var rows = new JdbcTemplate(database);
@@ -47,13 +54,12 @@ class StagedWorkspaceSchemaTest {
 
     @Test
     void recognizesTheProjectionScopeMigrationAsPredatingTheHistoryIndex() throws IOException {
-        var database = migratedDatabase("32.2");
+        migrateDatabaseTo("32.2");
         assertThat(StagedWorkspaceSchema.predatesHistoryIndex(database)).isTrue();
     }
 
     @Test
     void onlyAnExistingTableWithVerifiedOlderHistoryCanOmitAColumn() throws IOException {
-        var database = database();
         assertThat(StagedWorkspaceSchema.missingColumnBefore(database, "system_repository", "fork_initiator_key", "32"))
                 .isFalse();
 
@@ -73,19 +79,17 @@ class StagedWorkspaceSchemaTest {
                 .isFalse();
     }
 
-    private static JDBCDataSource database() {
+    private static JDBCDataSource newDatabase() {
         var database = new JDBCDataSource();
         database.setUrl("jdbc:hsqldb:mem:staged-workspace-schema-" + UUID.randomUUID());
         database.setUser("sa");
         return database;
     }
 
-    private static JDBCDataSource migratedDatabase(String target) {
-        var database = database();
+    private void migrateDatabaseTo(String target) {
         migrateBusinessSchema(database, "1");
         PrincipalSchemaMigration.migrate(database);
         migrateBusinessSchema(database, target);
-        return database;
     }
 
     private static void migrateBusinessSchema(JDBCDataSource database, String target) {

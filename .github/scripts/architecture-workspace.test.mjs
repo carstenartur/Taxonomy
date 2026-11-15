@@ -491,3 +491,33 @@ test('retrying failed initial metadata preserves a subsequently opened working e
     assert.equal(JSON.stringify(api.getSource()), selected);
     assert.equal(f.headers.length, publications, 'Metadata retry cannot relabel the visible editor');
 });
+
+test('the same proposal inbox follows the working source and returns to Relations with its filter', async () => {
+    const template = await readFile(new URL('../../taxonomy-app/src/main/resources/templates/index.html',import.meta.url),'utf8');
+    const mounted = await mountedWorkspace('analysis', false, {beforeMount(context) {
+        const get = id => context.document.getElementById(id);
+        for (const id of ['analysisProposalInbox','workingProposalInbox']) {
+            get(id).appendChild = function (node) { node.parentNode = this; };
+        }
+        get('analysisProposalInbox').appendChild(get('proposalsPanel'));
+        get('proposalsPanel').filterButton = get('filterAccepted');
+        get('filterAccepted').pressed = true;
+        context.TaxonomyArchitectureSnapshot = {mount:() => ({activate() {}, suspend() {}, getSource:() => ({}),
+            getData:() => null, getDiagram:() => null})};
+    }});
+    await mounted.ready();
+    const workspace = mounted.context.TaxonomyArchitectureWorkspace;
+    const get = id => mounted.context.document.getElementById(id);
+    const panel = get('proposalsPanel');
+    for (const kind of ['working','snapshot','analysis','working','analysis']) {
+        assert.ok(await workspace.open(kind));
+        assert.equal(panel.parentNode,get(kind === 'working' ? 'workingProposalInbox' : 'analysisProposalInbox'),kind);
+        assert.equal(panel.hidden,kind === 'snapshot',kind);
+        assert.equal(get('architectureWorkingSource').hidden,kind !== 'working');
+        assert.equal(panel.filterButton,get('filterAccepted'));
+        assert.ok(panel.filterButton.pressed,'The selected filter survives moving the same subtree');
+    }
+    assert.equal(template.match(/id="proposalsPanel"/g)?.length,1);
+    assert.match(template,/id="subtab-arch-relations"[\s\S]*?id="analysisProposalInbox"[^>]*>\s*<div id="proposalsPanel"/);
+    assert.match(template,/id="architectureWorkingSource"[^>]*>[\s\S]*?id="workingProposalInbox"[^>]*><\/div>[\s\S]*?architecture-editor :: surface/);
+});
