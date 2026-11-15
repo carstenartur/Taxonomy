@@ -1,0 +1,30 @@
+name: Start complete Taxonomy verification for issue 1352
+
+on:
+  push:
+    branches: [maintenance/cancel-obsolete-actions-2026-11-15]
+    paths: [.github/workflows/verify-issue-1352-once.yml]
+
+permissions: {}
+
+jobs:
+  dispatch:
+    if: github.repository == 'carstenartur/Taxonomy' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch the full Maven test-local reactor on main
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_PROMPT_DISABLED: '1'
+        run: |
+          set -euo pipefail
+          expected=94760366e47173edc3436b15812deda0c81b833e
+          current=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
+          [[ "$current" == "$expected" ]]
+          printf 'Starting complete test-local verification on %s\n' "$current"
+          gh workflow run ci-cd.yml --repo "$GITHUB_REPOSITORY" --ref main -f verify_test_local=true
