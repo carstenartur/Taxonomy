@@ -27,6 +27,26 @@ class OnnxDisclosureInteractionContractTest {
                 .isLessThan(helper.indexOf("summary.click();"));
     }
 
+    @Test
+    void searchHelperRechecksViewportAndRetriesAnInterceptedNativeClick() throws Exception {
+        String source = Files.readString(locateOnnxSeleniumSource());
+        String helper = between(source,
+                "private void clickWhenUnobscured(By locator) {",
+                "private void executeUiSearch(String mode, String query) {");
+
+        assertThat(helper)
+                .contains("ignoring(StaleElementReferenceException.class)")
+                .contains("ignoring(ElementClickInterceptedException.class)")
+                .contains("rect.width<=0||rect.height<=0")
+                .contains("x>=innerWidth||y>=innerHeight")
+                .contains("document.elementFromPoint(x,y)")
+                .contains("element.click();")
+                .doesNotContain("arguments[0].click()")
+                .doesNotContain("target.click()");
+        assertThat(helper.indexOf("document.elementFromPoint(x,y)"))
+                .isLessThan(helper.indexOf("element.click();"));
+    }
+
     private static Path locateOnnxSeleniumSource() {
         Path current = Path.of(System.getProperty(
                         "maven.multiModuleProjectDirectory", "."))
