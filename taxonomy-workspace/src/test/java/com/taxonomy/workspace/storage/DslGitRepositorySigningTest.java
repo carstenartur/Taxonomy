@@ -229,9 +229,9 @@ class DslGitRepositorySigningTest {
             String lastSource = source.commitDsl("last", theirsDsl, "bob", "Last source");
             String ours = repository.commitDsl("main", oursDsl, "alice", "First transfer",
                     CommitProvenance.capture("publish", source, "workspace", "first", firstSource, null));
-            repository.commitDsl("incoming", theirsDsl, "bob", "Last transfer",
+            repository.commitDsl("incoming", baseDsl, "bob", "Prior transfer",
                     CommitProvenance.capture("publish", source, "workspace", "last", lastSource, null));
-            String pickedSource = addNote(repository, "incoming");
+            String pickedSource = commitDslAndNote(repository, "incoming", theirsDsl, "Keep this file");
 
             String picked = repository.cherryPick(pickedSource, "main");
 
@@ -306,17 +306,72 @@ class DslGitRepositorySigningTest {
         }
     }
 
+    @Test
+    void manualPickPreservesPickedSidecarAndSignedProvenanceAtReviewedHead() throws Exception {
+        try (var repo = new DslGitRepository().withSignatureService(SigningTestKeys.createService(keys), "workspace")) {
+            String base = repo.commitDsl("target", "# base", "alice", "base");
+            repo.createBranchAtCommit("source", base);
+            String target = repo.commitDsl("target", "# ours", "alice", "local");
+            String picked = commitDslAndNote(repo, "source", "# theirs", "Keep this file");
+
+            var preview = repo.inspectCherryPick(picked, target);
+            assertThat(preview.conflictingPaths()).containsExactly(DslGitRepository.DSL_FILENAME);
+            assertThat(preview.canResolveDsl()).isTrue();
+            String resolved = repo.resolveCherryPick(picked, "target", target, "# agreed", "carsten");
+
+            assertThat(repo.getDslAtCommit(resolved)).isEqualTo("# agreed");
+            assertThat(repo.verifyCommit(resolved).status()).isEqualTo(VERIFIED);
+            var evidence = repo.getProvenance(resolved).sources().getFirst();
+            assertThat(evidence.commitId()).isEqualTo(picked);
+            assertThat(evidence.baseCommitId()).isEqualTo(base);
+            assertNote(repo, resolved);
+            try (var walk = new RevWalk(repo.getGitRepository())) {
+                var commit = walk.parseCommit(ObjectId.fromString(resolved));
+                assertThat(commit.getParents()).extracting(parent -> parent.name()).containsExactly(target);
+                assertThat(commit.getCommitterIdent().getName()).isEqualTo("carsten");
+            }
+            assertThatThrownBy(() -> repo.resolveCherryPick(picked, "target", target, "# stale", "carsten"))
+                    .isInstanceOf(com.taxonomy.workspace.service.BranchHeadConflictException.class);
+            assertThatThrownBy(() -> repo.cherryPick(picked, "target", target))
+                    .isInstanceOf(com.taxonomy.workspace.service.BranchHeadConflictException.class);
+            assertThat(repo.getHeadCommit("target")).isEqualTo(resolved);
+        }
+    }
+
+    @Test
+    void aSidecarConflictCannotBeResolvedBySubmittingOnlyDsl() throws Exception {
+        try (var repo = new DslGitRepository()) {
+            String base = repo.commitDsl("target", "# base", "alice", "base");
+            repo.createBranchAtCommit("source", base);
+            String target = commitDslAndNote(repo, "target", "# ours", "our note");
+            String picked = commitDslAndNote(repo, "source", "# theirs", "their note");
+
+            var preview = repo.inspectCherryPick(picked, target);
+            assertThat(preview.conflictingPaths()).containsExactly(DslGitRepository.DSL_FILENAME, "notes.txt");
+            assertThat(preview.canResolveDsl()).isFalse();
+            assertThat(repo.resolveCherryPick(picked, "target", target, "# agreed", "carsten")).isNull();
+            assertThat(repo.getHeadCommit("target")).isEqualTo(target);
+        }
+    }
+
     private static String addNote(DslGitRepository repository, String branch) throws IOException {
+        return commitDslAndNote(repository, branch, null, "Keep this file");
+    }
+
+    private static String commitDslAndNote(DslGitRepository repository, String branch, String dsl, String note)
+            throws IOException {
         var git = repository.getGitRepository();
         try (var walk = new RevWalk(git); var inserter = git.newObjectInserter(); var treeWalk = new TreeWalk(git)) {
             var parent = walk.parseCommit(ObjectId.fromString(repository.getHeadCommit(branch)));
             var tree = new TreeFormatter();
             treeWalk.addTree(parent.getTree());
             while (treeWalk.next()) {
-                tree.append(treeWalk.getNameString(), treeWalk.getFileMode(0), treeWalk.getObjectId(0));
+                var content = dsl != null && DslGitRepository.DSL_FILENAME.equals(treeWalk.getNameString())
+                        ? inserter.insert(Constants.OBJ_BLOB, dsl.getBytes(StandardCharsets.UTF_8)) : treeWalk.getObjectId(0);
+                tree.append(treeWalk.getNameString(), treeWalk.getFileMode(0), content);
             }
             tree.append("notes.txt", FileMode.REGULAR_FILE,
-                    inserter.insert(Constants.OBJ_BLOB, "Keep this file".getBytes(StandardCharsets.UTF_8)));
+                    inserter.insert(Constants.OBJ_BLOB, note.getBytes(StandardCharsets.UTF_8)));
             var commit = new CommitBuilder();
             commit.setTreeId(inserter.insert(tree));
             commit.setParentId(parent);

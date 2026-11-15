@@ -295,25 +295,25 @@ window.TaxonomyActionGuards = (function () {
      */
     function showCherryPickPreview(commitId, targetBranch, onProceed) {
         var current = window.TaxonomyApiClient.captureContext();
-        var proceed = onProceed;
-        onProceed = proceed ? function () { if (current()) proceed(); } : null;
         window.TaxonomyDslApi.cherryPickPreview(commitId, targetBranch)
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (preview) {
+                if (!current()) return;
                 if (!preview) {
                     showCherryPickPreviewModal(t('guard.cherrypick.preview.failed'),
-                        'warning', commitId, targetBranch, onProceed);
+                        'warning', commitId, targetBranch, null);
                     return;
                 }
                 if (!preview.canCherryPick) {
                     // Distinguish real conflicts from non-conflict failures
                     var hasWarnings = preview.warnings && preview.warnings.length > 0;
-                    var isInputError = !preview.targetCommit;
+                    var isInputError = !preview.canResolveDsl;
 
                     if (isInputError) {
                         // Non-conflict failure — show warning, not conflict modal
                         var warnMsg = hasWarnings ? preview.warnings.join('; ') :
                             t('guard.cherrypick.cannot.proceed', commitId.substring(0, 7));
+                        if (preview.conflictingPaths?.length) warnMsg += ' (' + preview.conflictingPaths.join(', ') + ')';
                         showCherryPickPreviewModal(warnMsg, 'danger', commitId, targetBranch, null);
                     } else if (window.TaxonomyMergeResolution) {
                         window.TaxonomyMergeResolution.showCherryPickConflict(commitId, targetBranch);
@@ -322,16 +322,18 @@ window.TaxonomyActionGuards = (function () {
                             t('guard.cherrypick.conflict.expected', commitId.substring(0, 7), targetBranch),
                             'danger', commitId, targetBranch, null);
                     }
-                } else {
+                } else if (preview.targetCommit) {
+                    var apply = onProceed && function () { if (current()) onProceed(preview.targetCommit); };
+                    var target = targetBranch + ' @ ' + preview.targetCommit.substring(0, 12);
                     showCherryPickPreviewModal(
-                        t('guard.cherrypick.clean', commitId.substring(0, 7), targetBranch),
-                        'success', commitId, targetBranch, onProceed);
+                        t('guard.cherrypick.clean', commitId.substring(0, 12), target),
+                        'success', commitId, target, apply);
                 }
             })
             .catch(function (error) {
                 if (!current() || error?.code === 'ABORTED' || [401,403].includes(error?.status)) return;
                 showCherryPickPreviewModal(t('guard.cherrypick.preview.unavailable'),
-                    'warning', commitId, targetBranch, onProceed);
+                    'warning', commitId, targetBranch, null);
             });
     }
 

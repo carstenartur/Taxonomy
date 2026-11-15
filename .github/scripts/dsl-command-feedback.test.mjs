@@ -80,7 +80,7 @@ function harness(reply, locale) {
         dispatchEvent(event) { events.push(event); }
     };
     const context = vm.createContext({
-        console, document, URL, Request, Response, Headers, AbortController,
+        console, document, URL, URLSearchParams, Request, Response, Headers, AbortController,
         CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
         location: new URL('https://taxonomy.example.test/taxonomy/'),
         TaxonomyI18n: { t: (key, ...args) => [key, ...args.map(String)].join(': ') },
@@ -99,9 +99,12 @@ function harness(reply, locale) {
         }
     });
     context.window = context;
+    context.confirm = () => true;
     if (locale) vm.runInContext(i18nSource, context, { filename: 'taxonomy-i18n.js' });
     vm.runInContext(transportSource, context, { filename: 'taxonomy-api-client.js' });
     vm.runInContext(readFileSync(new URL('api/dsl-api.js', sourceRoot), 'utf8'), context, {filename:'dsl-api.js'});
+    vm.runInContext(readFileSync(new URL('shared/taxonomy-action-guards.js', sourceRoot), 'utf8'),
+        context, {filename:'taxonomy-action-guards.js'});
     const hook = 'window.__commands = { parse: parseDsl, validate: validateDsl, commit: commitDsl, materialize: materializeDsl, '
         + 'incremental: materializeIncremental, branch: createBranch, merge: mergeBranch, '
         + 'diff: function () { return loadDiff("before-commit", "after-commit"); }, '
@@ -130,8 +133,21 @@ function harness(reply, locale) {
     };
 }
 
+test('an unavailable cherry-pick preview offers no blind write', async () => {
+    const h = harness(() => response({error: 'unavailable'}, 500));
+    h.context.__commands.cherryPick();
+    for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve));
+    assert.equal(h.calls.length, 1);
+    assert.match(h.calls[0].input, /cherry-pick\/preview/);
+    assert.equal(h.calls.some(call => call.init?.method === 'POST'), false);
+});
+
 function commandReply(command, result) {
     return (input, init = {}) => {
+        if (input.startsWith('/api/dsl/merge/preview')) return response({canMerge:true});
+        if (input.startsWith('/api/dsl/cherry-pick/preview')) {
+            return response({canCherryPick:true, targetCommit:'a'.repeat(40)});
+        }
         if (input.startsWith('/api/dsl/history')) return response(history);
         if (input === '/api/dsl/branches' && (init.method || 'GET') === 'GET') {
             return response([{ name: 'draft' }, { name: 'review' }]);
@@ -159,7 +175,7 @@ for (const command of ['commit', 'materialize', 'incremental', 'branch', 'merge'
             await h.run(command);
             assertFailure(h, status);
             assert.match(h.status.textContent, /The requested change could not be applied/);
-            assert.equal(h.calls.length, command === 'incremental' ? 2 : 1,
+            assert.equal(h.calls.length, ['incremental', 'cherryPick', 'merge'].includes(command) ? 2 : 1,
                 'failed commands are not retried and do not refresh successful-operation state');
         });
     }
@@ -225,6 +241,9 @@ for (const [command, body] of Object.entries(successes)) {
         assert.equal(h.nodes.get('dslMessageInput').value, command === 'commit' ? '' : originalMessage);
         const writes = h.calls.filter(call => call.init?.method === 'POST');
         assert.equal(writes.length, 1);
+        if (command === 'cherryPick') {
+            assert.equal(new URL(writes[0].input, 'https://example.test').searchParams.get('expectedTargetHead'), 'a'.repeat(40));
+        }
         assert.equal(writes[0].init.credentials, 'same-origin');
         assert.equal(writes[0].init.headers.get('X-CSRF-TOKEN'), 'fixture-csrf');
         assert.ok(writes[0].init.headers.get('X-Request-ID'));

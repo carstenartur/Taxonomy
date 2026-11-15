@@ -14,6 +14,18 @@ window.TaxonomyMergeResolution = (function () {
 
     var currentConflict = null; // Stores current conflict context
 
+    function dismissCherryPick() {
+        if (currentConflict?.type !== 'cherry-pick') return;
+        currentConflict = null;
+        hideModal('mergeConflictModal');
+        populateConflictModal({});
+    }
+
+    document.addEventListener('taxonomy:repository-context-changed', function (event) {
+        if (event.detail?.selectionChanged) dismissCherryPick();
+    });
+    window.addEventListener('pagehide', dismissCherryPick);
+
     // ── Initialization ──────────────────────────────────────────────
 
     document.addEventListener('DOMContentLoaded', function () {
@@ -100,7 +112,8 @@ window.TaxonomyMergeResolution = (function () {
      * @param {string} targetBranch — target branch
      */
     function showCherryPickConflict(commitId, targetBranch) {
-        currentConflict = { type: 'cherry-pick', commitId: commitId, targetBranch: targetBranch };
+        currentConflict = { type: 'cherry-pick', commitId: commitId, targetBranch: targetBranch,
+            current: window.TaxonomyApiClient.captureContext() };
         var conflict = currentConflict;
 
         window.TaxonomyVersioningApi.cherryPickConflicts(commitId, targetBranch)
@@ -114,6 +127,8 @@ window.TaxonomyMergeResolution = (function () {
                     }
                     return;
                 }
+                if (!data.targetCommit) return;
+                conflict.targetCommit = data.targetCommit;
                 populateConflictModal(data);
                 // Update modal title for cherry-pick context
                 var titleEl = document.getElementById('mergeConflictModalLabel');
@@ -136,7 +151,16 @@ window.TaxonomyMergeResolution = (function () {
         var resolved = document.getElementById('conflictResolvedContent');
 
         // textContent already escapes HTML, so use raw labels (no escapeHtml)
-        if (oursLabel) oursLabel.textContent = t('merge.ours.label', data.oursLabel || 'target');
+        var target = data.oursLabel || 'target';
+        if (data.targetCommit) target += ' @ ' + data.targetCommit.substring(0, 12);
+        if (oursLabel) oursLabel.textContent = t('merge.ours.label', target);
+        var basePanel = document.getElementById('conflictBasePanel');
+        var base = document.getElementById('conflictBaseContent');
+        if (basePanel && base) {
+            basePanel.hidden = data.baseContent == null;
+            basePanel.open = false;
+            base.textContent = data.baseContent || '';
+        }
         if (theirsLabel) theirsLabel.textContent = t('merge.theirs.label', data.theirsLabel || 'source');
         if (oursContent) oursContent.textContent = data.oursContent || '';
         if (theirsContent) theirsContent.textContent = data.theirsContent || '';
@@ -155,9 +179,10 @@ window.TaxonomyMergeResolution = (function () {
         }
 
         var conflict = currentConflict;
+        if (conflict.type === 'cherry-pick' && (!conflict.targetCommit || !conflict.current())) return;
         var operation = conflict.type === 'merge'
             ? window.TaxonomyVersioningApi.resolveMerge(conflict.fromBranch, conflict.intoBranch, resolved.value)
-            : window.TaxonomyVersioningApi.resolveCherryPick(conflict.commitId, conflict.targetBranch, resolved.value);
+            : window.TaxonomyVersioningApi.resolveCherryPick(conflict.commitId, conflict.targetBranch, conflict.targetCommit, resolved.value);
         operation
         .then(function (r) { return r.json(); })
         .then(function (data) {

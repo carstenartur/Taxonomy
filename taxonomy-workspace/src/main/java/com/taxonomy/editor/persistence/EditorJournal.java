@@ -95,30 +95,34 @@ public class EditorJournal {
 
     // Declare the domain rejection so Spring's repository interceptor preserves it after transaction rollback.
     public <T> T locked(RepositoryContext context, State initial, Function<Session, T> action) throws CommandProblem {
+        return locked(context, initial, action, false);
+    }
+
+    /** Claim the physical editor row before performing an external Git write on its reviewed state. */
+    public <T> T controlLocked(RepositoryContext context, State initial, Function<Session, T> action) throws CommandProblem {
+        return locked(context, initial, action, true);
+    }
+
+    private <T> T locked(RepositoryContext context, State initial, Function<Session, T> action, boolean control) {
         String scope = scope(context);
         boolean[] initializing = {false};
         // Two application instances can race on the very first accepted command.
         // The primary key chooses the initializer; retry only after that transaction rolled back.
         try {
-            return transact(context, scope, initial, action, initializing);
+            return transact(transaction, context, scope, initial, action, initializing, control);
         } catch (PersistenceException | org.springframework.dao.DataIntegrityViolationException failure) {
             // Only retry a failed initializer insert. Once the application action has started,
             // it may have published a Git version; replaying it would repeat an external side effect.
             if (!initializing[0] || read(context) == null) throw failure;
-            return transact(context, scope, initial, action, new boolean[1]);
+            return transact(transaction, context, scope, initial, action, new boolean[1], control);
         }
-    }
-
-    private <T> T transact(RepositoryContext context, String scope, State initial, Function<Session, T> action,
-                           boolean[] initializing) {
-        return transact(transaction, context, scope, initial, action, initializing);
     }
 
     /** Reviewed integration records and canonical edits participate in the caller's single database transaction. */
     public <T> T joinedLocked(RepositoryContext context, State initial, Function<Session, T> action) throws CommandProblem {
         if (!org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive())
             throw new IllegalStateException("A durable integration transaction is required");
-        return transact(joinedTransaction, context, scope(context), initial, action, new boolean[1]);
+        return transact(joinedTransaction, context, scope(context), initial, action, new boolean[1], false);
     }
 
     /** Control writes need physical row ownership even where MVCC ignores SELECT FOR UPDATE. */
@@ -127,11 +131,6 @@ public class EditorJournal {
         if (!org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive())
             throw new IllegalStateException("A durable control transaction is required");
         return transact(joinedTransaction, context, scope(context), initial, action, new boolean[1], true);
-    }
-
-    private <T> T transact(TransactionTemplate template, RepositoryContext context, String scope, State initial,
-                           Function<Session, T> action, boolean[] initializing) {
-        return transact(template, context, scope, initial, action, initializing, false);
     }
 
     private <T> T transact(TransactionTemplate template, RepositoryContext context, String scope, State initial,

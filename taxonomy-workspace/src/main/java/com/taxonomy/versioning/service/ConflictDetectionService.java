@@ -74,6 +74,9 @@ public class ConflictDetectionService {
      * @param commitId       the commit to cherry-pick
      * @param targetBranch   the target branch
      * @param targetCommit   HEAD commit of target branch
+     * @param baseCommit     first parent of the picked commit, or null for a root
+     * @param conflictingPaths paths that need a resolution
+     * @param canResolveDsl whether editing the architecture DSL can resolve the complete conflict
      * @param warnings       any warnings about the cherry-pick
      */
     public record CherryPickPreview(
@@ -81,8 +84,16 @@ public class ConflictDetectionService {
             String commitId,
             String targetBranch,
             String targetCommit,
-            List<String> warnings
-    ) {}
+            List<String> warnings,
+            String baseCommit,
+            List<String> conflictingPaths,
+            boolean canResolveDsl
+    ) {
+        public CherryPickPreview(boolean canCherryPick, String commitId, String targetBranch,
+                                String targetCommit, List<String> warnings) {
+            this(canCherryPick, commitId, targetBranch, targetCommit, warnings, null, List.of(), false);
+        }
+    }
 
     /**
      * Preview a merge to check for conflicts.
@@ -171,7 +182,8 @@ public class ConflictDetectionService {
      * @param theirsLabel   label for "their" side (e.g. source branch name)
      * @param oursContent   DSL content from the target branch HEAD
      * @param theirsContent DSL content from the source branch HEAD (or cherry-pick commit)
-     * @param baseContent   DSL content from the common ancestor (may be null)
+     * @param baseContent   DSL content from the patch base when available
+     * @param targetCommit  immutable target whose DSL is displayed
      */
     public record ConflictDetails(
             String conflictType,
@@ -179,8 +191,14 @@ public class ConflictDetectionService {
             String theirsLabel,
             String oursContent,
             String theirsContent,
-            String baseContent
-    ) {}
+            String baseContent,
+            String targetCommit
+    ) {
+        public ConflictDetails(String conflictType, String oursLabel, String theirsLabel, String oursContent,
+                               String theirsContent, String baseContent) {
+            this(conflictType, oursLabel, theirsLabel, oursContent, theirsContent, baseContent, null);
+        }
+    }
 
     /**
      * Get conflict details for a merge that would conflict.
@@ -222,8 +240,8 @@ public class ConflictDetectionService {
             }
 
             DslGitRepository repo = resolveRepository(ctx);
-            String oursContent = repo.getDslAtHead(intoBranch);
-            String theirsContent = repo.getDslAtHead(fromBranch);
+            String oursContent = repo.getDslAtCommit(preview.intoCommit());
+            String theirsContent = repo.getDslAtCommit(preview.fromCommit());
 
             return new ConflictDetails(
                     "merge",
@@ -231,7 +249,7 @@ public class ConflictDetectionService {
                     fromBranch,
                     oursContent != null ? oursContent : "",
                     theirsContent != null ? theirsContent : "",
-                    null
+                    null, preview.intoCommit()
             );
         } catch (Exception e) {
             log.error("Failed to get merge conflict details '{}' → '{}'", fromBranch, intoBranch, e);
@@ -264,19 +282,12 @@ public class ConflictDetectionService {
     public ConflictDetails getCherryPickConflictDetails(String commitId, String targetBranch, WorkspaceContext ctx) {
         try {
             CherryPickPreview preview = previewCherryPick(commitId, targetBranch, ctx);
-            if (preview.canCherryPick()) {
-                return null; // No conflict
-            }
-
-            // Non-conflict failures (missing target branch, invalid commit)
-            // should not be presented as conflicts.
-            if (preview.targetCommit() == null) {
-                return null;
-            }
+            if (!preview.canResolveDsl()) return null;
 
             DslGitRepository repo = resolveRepository(ctx);
-            String oursContent = repo.getDslAtHead(targetBranch);
+            String oursContent = repo.getDslAtCommit(preview.targetCommit());
             String theirsContent = repo.getDslAtCommit(commitId);
+            String baseContent = preview.baseCommit() == null ? "" : repo.getDslAtCommit(preview.baseCommit());
 
             return new ConflictDetails(
                     "cherry-pick",
@@ -284,7 +295,7 @@ public class ConflictDetectionService {
                     "commit " + commitId.substring(0, Math.min(7, commitId.length())),
                     oursContent != null ? oursContent : "",
                     theirsContent != null ? theirsContent : "",
-                    null
+                    baseContent, preview.targetCommit()
             );
         } catch (Exception e) {
             log.error("Failed to get cherry-pick conflict details {} → '{}'", commitId, targetBranch, e);
@@ -316,35 +327,19 @@ public class ConflictDetectionService {
      */
     public CherryPickPreview previewCherryPick(String commitId, String targetBranch, WorkspaceContext ctx) {
         try {
-            var repo = resolveRepository(ctx).getGitRepository();
-            String targetRefName = Constants.R_HEADS + targetBranch;
-            Ref targetRef = repo.getRefDatabase().exactRef(targetRefName);
-
-            if (targetRef == null) {
+            var storage = resolveRepository(ctx);
+            String targetCommit = storage.getHeadCommit(targetBranch);
+            if (targetCommit == null) {
                 return new CherryPickPreview(false, commitId, targetBranch, null,
                         List.of("Target branch '" + targetBranch + "' not found"));
             }
-
-            String targetCommit = targetRef.getObjectId().name();
-
-            try (RevWalk walk = new RevWalk(repo)) {
-                RevCommit pickCommit = walk.parseCommit(
-                        org.eclipse.jgit.lib.ObjectId.fromString(commitId));
-                RevCommit targetHead = walk.parseCommit(targetRef.getObjectId());
-
-                // Try three-way merge (dry run) — mirrors the merge order used
-                // in DslGitRepository.cherryPick() for consistent conflict prediction
-                ThreeWayMerger merger = MergeStrategy.RECURSIVE.newMerger(repo, true);
-                boolean success = merger.merge(targetHead, pickCommit);
-
-                if (success) {
-                    return new CherryPickPreview(true, commitId, targetBranch, targetCommit,
-                            List.of());
-                } else {
-                    return new CherryPickPreview(false, commitId, targetBranch, targetCommit,
-                            List.of("Cherry-pick would result in conflicts"));
-                }
-            }
+            var change = storage.inspectCherryPick(commitId, targetCommit);
+            boolean clean = change.resultTree() != null;
+            return new CherryPickPreview(clean, commitId, targetBranch, targetCommit,
+                    clean ? List.of() : List.of("Cherry-pick would result in conflicts"),
+                    change.baseCommit(), change.conflictingPaths(), change.canResolveDsl());
+        } catch (IllegalArgumentException e) {
+            return new CherryPickPreview(false, commitId, targetBranch, null, List.of(e.getMessage()));
         } catch (Exception e) {
             log.error("Failed to preview cherry-pick {} → '{}'", commitId, targetBranch, e);
             return new CherryPickPreview(false, commitId, targetBranch, null,

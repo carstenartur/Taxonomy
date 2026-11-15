@@ -3,6 +3,7 @@ package com.taxonomy.editor;
 import com.taxonomy.dsl.command.ArchitectureCommand.*;
 import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
 import com.taxonomy.editor.ArchitectureCommandPort.*;
+import com.taxonomy.workspace.service.BranchHeadConflictException;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryScope;
 import org.junit.jupiter.api.Test;
@@ -17,6 +18,67 @@ import static org.assertj.core.api.Assertions.*;
 
 class ArchitectureEditorVersionContextTest {
     private final RepositoryContext context = RepositoryContext.workspace("context-repository", "context-workspace", "draft", "alice");
+
+    @Test void reviewedGitActionSeedsTheFirstWorkspaceJournalAndImportsItsExactResult() throws Exception {
+        try (var fixture = fixture()) {
+            var repository = fixture.repositories.resolveRepository(context);
+            String head = repository.commitDsl("draft", model("Original"), "alice", "Seed draft");
+            assertThat(fixture.journal.read(context)).isNull();
+            String applied = fixture.service.versionAtHead(context, head, "Reviewed change", () ->
+                    repository.commitDsl("draft", model("Adopted"), "alice", "Apply reviewed change"));
+            var imported = fixture.journal.read(context);
+            assertThat(imported.state().checkpointCommit()).isEqualTo(applied);
+            assertThat(imported.state().dsl()).contains("Adopted");
+            assertThat(imported.state().checkpointRevision()).isEqualTo(imported.state().revision());
+            assertThat(imported.operations()).extracting("kind").containsExactly("VERSION_IMPORT");
+            assertThat(repository.getCommitCount("draft")).isEqualTo(2);
+            assertThat(fixture.service.versionAtHead(context, applied, "Conflict", () -> null)).isNull();
+            assertThat(fixture.journal.read(context).state()).isEqualTo(imported.state());
+        }
+    }
+
+    @Test void reviewedGitActionPreservesLaterEditsAndAPendingCheckpoint() throws Exception {
+        try (var fixture = fixture()) {
+            var repository = fixture.repositories.resolveRepository(context);
+            String head = repository.commitDsl("draft", model("Original"), "alice", "Seed draft");
+            var update = new Command(fixture.service.read(context, null).context(), metadata(),
+                    new SemanticCommand(new DeleteArchitectureElement("arch-context")));
+            fixture.service.execute(context, update);
+            var modified = fixture.journal.read(context);
+            assertThatThrownBy(() -> fixture.service.versionAtHead(context, head, "Reviewed change", () -> {
+                throw new AssertionError("Must preserve uncheckpointed edits");
+            })).isInstanceOf(BranchHeadConflictException.class);
+            assertThat(fixture.journal.read(context).state()).isEqualTo(modified.state());
+            fixture.journal.locked(context, modified.state(),
+                    session -> session.prepare(metadata(), context.username(), "pending-checkpoint"));
+            var pending = fixture.journal.read(context);
+            assertThat(pending.state().pendingCheckpoint()).isNotNull();
+            assertThatThrownBy(() -> fixture.service.versionAtHead(context, head, "Reviewed change", () -> {
+                throw new AssertionError("Must not resume the pending checkpoint");
+            })).isInstanceOf(BranchHeadConflictException.class);
+            assertThat(fixture.journal.read(context).state()).isEqualTo(pending.state());
+            assertThat(repository.getHeadCommit("draft")).isEqualTo(head);
+            assertThat(repository.getCommitCount("draft")).isOne();
+        }
+    }
+
+    @Test void reviewedGitActionRejectsMovedHeadsAndRefusesToImportAnotherWritersCommit() throws Exception {
+        try (var fixture = fixture()) {
+            var repository = fixture.repositories.resolveRepository(context);
+            String head = repository.commitDsl("draft", model("Original"), "alice", "Seed draft");
+            String moved = repository.commitDsl("draft", model("Independent"), "bob", "Independent change");
+            assertThatThrownBy(() -> fixture.service.versionAtHead(context, head, "Stale review", () -> {
+                throw new AssertionError("A stale action cannot run");
+            })).isInstanceOf(BranchHeadConflictException.class);
+            assertThatThrownBy(() -> fixture.service.versionAtHead(context, moved, "Wrong result", () -> head))
+                    .isInstanceOf(BranchHeadConflictException.class);
+            assertThatThrownBy(() -> fixture.service.versionAtHead(context, moved, "Changed despite conflict", () -> {
+                repository.commitDsl("draft", model("Independent again"), "bob", "Concurrent change");
+                return null;
+            })).isInstanceOf(BranchHeadConflictException.class);
+            assertThat(fixture.journal.read(context)).isNull();
+        }
+    }
 
     @Test void aGitVersionContextCannotBeReusedAsAWorkspaceWriteContext() throws Exception {
         try (var fixture = fixture()) {
@@ -155,6 +217,12 @@ class ArchitectureEditorVersionContextTest {
             assertThat(repository.getHeadCommit("release")).isEqualTo(commit);
             assertThat(repository.getDslAtHead("release")).contains("Versioned Git model");
             assertThat(repository.getCommitCount("release")).isEqualTo(1);
+            String reviewed = fixture.service.versionAtHead(selected, commit, "Reviewed Git version", () ->
+                    repository.commitDsl("release", model("Reviewed"), "owner", "Reviewed Git version"));
+            assertThat(repository.getHeadCommit("release")).isEqualTo(reviewed);
+            assertThatThrownBy(() -> fixture.service.versionAtHead(selected, commit, "Stale version", () -> {
+                throw new AssertionError("A stale action cannot run");
+            })).isInstanceOf(BranchHeadConflictException.class);
             assertThat(fixture.service.read(selected, null).source()).isEqualTo("GIT_CHECKPOINT");
         }
     }
@@ -164,6 +232,9 @@ class ArchitectureEditorVersionContextTest {
             var selected = RepositoryContext.centralRead("read-only-repository", "release", "reader");
             var repository = fixture.repositories.resolveRepository(selected);
             String head = repository.commitDsl("release", model("Published model"), "owner", "Seed central");
+            assertThatThrownBy(() -> fixture.service.versionAtHead(selected, head, "Attempt reviewed write", () -> {
+                throw new AssertionError("A read selection cannot run a Git write");
+            })).isInstanceOf(AccessDeniedException.class);
             assertThatThrownBy(() -> fixture.service.version(selected, "Attempt central write", () ->
                     repository.commitDsl("release", model("Unauthorized change"), "reader", "Attempt central write")))
                     .isInstanceOf(AccessDeniedException.class);

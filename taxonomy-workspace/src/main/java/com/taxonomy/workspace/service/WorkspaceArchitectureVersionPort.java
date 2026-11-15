@@ -8,6 +8,14 @@ public interface WorkspaceArchitectureVersionPort {
     interface GitAction<T> { T run() throws IOException; }
     <T> T version(RepositoryContext context, String rationale, GitAction<T> action) throws IOException;
 
+    /** Run a reviewed Git write without first checkpointing edits accepted after its preview.
+     * The action must compare-and-set the target from expectedHead and return its resulting commit,
+     * or null when the Git operation declined to write. */
+    default String versionAtHead(RepositoryContext context, String expectedHead, String rationale,
+                                 GitAction<String> action) throws IOException {
+        return version(context, rationale, action);
+    }
+
     /** Apply an already prepared version under the editor journal lock, preserving edits accepted after preparation. */
     default <T> T applyPreparedVersion(RepositoryContext context, String expectedHead, String candidate, String rationale,
                                        GitAction<T> action) throws IOException {

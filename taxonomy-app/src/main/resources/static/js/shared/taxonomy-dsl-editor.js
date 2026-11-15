@@ -649,17 +649,17 @@
 
         // Use preview dialog if available
         if (window.TaxonomyActionGuards) {
-            window.TaxonomyActionGuards.showCherryPickPreview(commitId, targetBranch, function () {
-                executeCherryPick(commitId, targetBranch);
+            window.TaxonomyActionGuards.showCherryPickPreview(commitId, targetBranch, function (targetHead) {
+                executeCherryPick(commitId, targetBranch, targetHead);
             });
         } else {
-            executeCherryPick(commitId, targetBranch);
+            showStatus(t('guard.cherrypick.preview.unavailable'), 'error');
         }
     }
 
-    function executeCherryPick(commitId, targetBranch) {
+    function executeCherryPick(commitId, targetBranch, targetHead) {
         showStatus(t('dsl.cherrypick.progress', commitId.substring(0, 8), targetBranch), 'info');
-        return requestDslJson(window.TaxonomyDslApi.cherryPick(commitId, targetBranch))
+        return requestDslJson(window.TaxonomyDslApi.cherryPick(commitId, targetBranch, targetHead))
             .then(function (data) {
                 if (data.error) {
                     showStatus(t('dsl.cherrypick.failed', data.error), 'error');
