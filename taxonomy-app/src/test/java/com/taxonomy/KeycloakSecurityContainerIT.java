@@ -11,6 +11,7 @@ import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.Keys;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.ui.ExpectedConditions;
@@ -315,9 +316,9 @@ class KeycloakSecurityContainerIT {
                         navigationOpen: document.getElementById('applicationNavigationMenu')?.open === true
                     });
                 };
-                record('before-account-click');
+                record('before-account-activation');
                 for (const type of ['pointerdown', 'mousedown', 'focusin',
-                        'focusout', 'mouseup', 'click', 'toggle']) {
+                        'focusout', 'mouseup', 'click', 'keydown', 'keyup', 'toggle']) {
                     document.addEventListener(type, event => {
                         if (type === 'toggle' ? event.target !== account
                                 : type !== 'focusin' && !account?.contains(event.target)) return;
@@ -328,7 +329,8 @@ class KeycloakSecurityContainerIT {
         var wait = new WebDriverWait(driver, Duration.ofSeconds(30));
         // The Projects heading renders while the initial portfolio load still covers the toolbar.
         wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("portfolioBusy")));
-        wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("#applicationAccount > summary"))).click();
+        wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("#applicationAccount > summary")))
+                .sendKeys(Keys.ENTER);
         WebElement signOut;
         try {
             signOut = wait.until(ExpectedConditions.elementToBeClickable(
@@ -363,7 +365,7 @@ class KeycloakSecurityContainerIT {
                 .isEqualTo("/logout");
         assertThat(signOut.getAccessibleName()).isEqualTo("Sign out of single sign-on");
         assertThat(driver.findElement(By.id("applicationLogoutScope")).isDisplayed()).isTrue();
-        signOut.click();
+        signOut.sendKeys(Keys.ENTER);
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("username")));
         assertThat(driver.getCurrentUrl()).startsWith(KEYCLOAK_ORIGIN);
 
