@@ -8,6 +8,7 @@ import com.taxonomy.workspace.service.WorkspaceResolver;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.dto.ProjectionState;
+import com.taxonomy.dto.RepositoryReadiness;
 import com.taxonomy.dto.RepositoryState;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
@@ -121,10 +122,45 @@ class RepositoryStateServiceTest {
         assertEquals(hasProgress ? head : null, state.indexCommit());
         assertFalse(state.operationInProgress());
         assertNull(state.operationKind());
+        assertEquals(hasProgress ? RepositoryReadiness.UNVERIFIED : RepositoryReadiness.MISSING,
+                state.projectionReadiness());
+        assertEquals(hasProgress ? RepositoryReadiness.UNVERIFIED : RepositoryReadiness.MISSING,
+                state.indexReadiness());
         if (workspaceId != null) {
             verify(navigation).getScopedWorkspaceState(selected);
         }
         verifyNoMoreInteractions(navigation);
+    }
+
+    @Test
+    void readinessUsesTheSelectedBranchAndDistinguishesAnUnavailableGitRead() throws IOException {
+        var selected = new WorkspaceContext(USER, "work", "review", "repo");
+        var factory = mock(DslGitRepositoryFactory.class);
+        var navigation = mock(WorkspaceManager.class);
+        var progress = new UserWorkspaceState(USER, 10);
+        String first = gitRepo.commitDsl("review", SAMPLE_DSL, USER, "first");
+        gitRepo.commitDsl("review", SAMPLE_DSL, USER, "second");
+        when(factory.resolveRepository(selected)).thenReturn(gitRepo);
+        when(navigation.getScopedWorkspaceState(selected)).thenReturn(progress);
+        var service = new RepositoryStateService(factory, navigation, mock(SystemRepositoryService.class));
+
+        progress.recordProjection(first, "draft");
+        assertEquals(RepositoryReadiness.MISSING, service.readSelectedState(selected).projectionReadiness());
+        progress.recordProjection(first, "review");
+        assertEquals(RepositoryReadiness.STALE, service.readSelectedState(selected).projectionReadiness());
+        assertEquals(RepositoryReadiness.STALE, service.readSelectedViewContext(selected).orElseThrow().projectionReadiness());
+
+        var unavailable = mock(DslGitRepository.class);
+        when(unavailable.getHeadCommitInfo("review")).thenThrow(new IOException("unavailable"));
+        when(factory.resolveRepository(selected)).thenReturn(unavailable);
+        var failed = service.readSelectedState(selected);
+        assertEquals(RepositoryReadiness.FAILED, failed.projectionReadiness());
+        assertEquals(RepositoryReadiness.FAILED, failed.indexReadiness());
+        assertFalse(failed.projectionStale());
+        assertFalse(failed.indexStale());
+        var failedView = service.getViewContext(USER, "review", selected);
+        assertEquals(RepositoryReadiness.FAILED, failedView.projectionReadiness());
+        assertEquals(RepositoryReadiness.FAILED, failedView.indexReadiness());
     }
 
     // ── getState ────────────────────────────────────────────────────

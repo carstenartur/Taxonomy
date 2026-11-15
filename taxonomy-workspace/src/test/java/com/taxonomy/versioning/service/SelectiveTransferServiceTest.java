@@ -106,7 +106,7 @@ class SelectiveTransferServiceTest {
         var state = new UserWorkspaceState(PERSONAL.username(), 10);
         state.setCurrentContext(editableContext("target"));
         when(navService.getEditableTransferTarget(PERSONAL, null)).thenReturn(
-                new ContextNavigationService.TransferTarget(state, state.getNavigationSelection(), "target"));
+                new ContextNavigationService.TransferTarget(state.legacyNavigation(), state.legacyNavigation().getNavigationSelection(), "target"));
         transferService = new SelectiveTransferService(factory, navService, workspaceResolver);
     }
 

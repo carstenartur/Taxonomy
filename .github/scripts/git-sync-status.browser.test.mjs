@@ -190,13 +190,13 @@ for (const prefix of ['', '/taxonomy']) test(`root-shell reload pins original st
 });
 
 const initial = {syncStatus: 'UP_TO_DATE', unpublishedCommitCount: 0};
-async function fixture() {
+async function fixture(messages = {}) {
     const page = await browser.newPage();
     page.errors = [];
     page.on('pageerror', error => page.errors.push(error.message));
     await page.setContent('<html lang="en"><body><div id="gitStatusBar"></div><div id="syncStatePanel"></div></body></html>');
-    await page.evaluate(() => {
-        window.TaxonomyI18n = {t: (key, count) => ({
+    await page.evaluate(messages => {
+        window.TaxonomyI18n = {t: (key, count) => messages[key] || ({
             'workspace.sync.status.synced': 'synced', 'workspace.sync.status.ahead': `${count} ahead`,
             'workspace.sync.panel.uptodate': 'Up to date', 'workspace.sync.panel.ahead': `${count} unpublished`,
             'workspace.sync.indicator': 'Sync'
@@ -220,7 +220,7 @@ async function fixture() {
                         headers: {'Content-Type': 'application/json'}}));
                 }});
         });
-    });
+    }, messages);
     await page.addScriptTag({path: path.join(resources, 'static/js/api/taxonomy-api-client.js')});
     await page.addScriptTag({path: path.join(resources, 'static/js/api/workspace-api.js')});
     await page.addScriptTag({path: path.join(resources, 'static/js/workspace/taxonomy-git-status.js')});
@@ -247,6 +247,73 @@ async function gitResponse(page, headCommit = 'abcdef012345') {
     await answer(page, '/api/git/state', {currentBranch: 'draft', headCommit, branches: []});
     await page.waitForFunction(head => document.querySelector('.git-sha')?.textContent === head.slice(0, 7), headCommit);
 }
+
+for (const [language, projection, index, fresh, missing, stale, failed, unverified] of [
+    ['en', 'Projection', 'Index', 'fresh', 'no checkpoint', 'STALE', 'unavailable', 'unverified'],
+    ['de', 'Projektion', 'Index', 'aktuell', 'kein Prüfpunkt', 'VERALTET', 'nicht verfügbar', 'nicht bestätigt']
+]) {
+    test('Git and view badges report selected-source readiness (' + language + ')', async () => {
+        const bundle = language === 'de' ? 'messages_de.properties' : 'messages.properties';
+        const lines = await readFile(path.join(resources, 'i18n', bundle), 'utf8');
+        const messages = Object.fromEntries(lines.split('\n').map(line => line.match(/^([^#!\s][^=]*)=(.*)$/))
+            .filter(Boolean).map(([, key, value]) => [key, value.replace(/\\u([a-f0-9]{4})/gi,
+                (_, code) => String.fromCharCode(parseInt(code, 16)))]));
+        const page = await fixture(messages);
+        const head = 'a'.repeat(40);
+        try {
+            await page.evaluate(() => document.body.insertAdjacentHTML('beforeend', '<div id="viewContext"></div>'));
+            await page.addScriptTag({path: path.join(resources, 'static/js/versioning/taxonomy-viewcontext.js')});
+            const state = {currentBranch: 'draft', headCommit: head, projectionStale: false, indexStale: false};
+            for (const [position, [source, projectionStatus, indexStatus]] of [
+                [{...state, projectionReadiness: 'FRESH', indexReadiness: 'MISSING'}, fresh, missing],
+                [{...state, projectionReadiness: 'STALE', indexReadiness: 'MISSING'}, stale, missing],
+                [{...state, headCommit: null, projectionReadiness: 'FAILED', indexReadiness: 'FAILED'}, failed, failed],
+                [state, unverified, unverified]
+            ].entries()) {
+                if (position > 0) await page.evaluate(() => { TaxonomyGitStatus.refresh(); });
+                await page.evaluate(() => {
+                    window.viewRead = TaxonomyViewContext.fetchAndRender('viewContext', 'draft');
+                });
+                await answer(page, '/api/git/state', source);
+                await answer(page, '/api/git/state', source);
+                await page.evaluate(() => window.viewRead);
+                const expectedProjection = projection + ': ' + projectionStatus;
+                const expectedIndex = index + ': ' + indexStatus;
+                for (const id of ['gitStatusBar', 'viewContext']) {
+                    const badge = await page.locator('#' + id).innerText();
+                    assert.ok(badge.includes(expectedProjection), badge);
+                    assert.ok(badge.includes(expectedIndex), badge);
+                }
+            }
+            assert.deepEqual(page.errors, []);
+        } finally { await page.close(); }
+    });
+}
+
+test('a superseded view request cannot replace a direct render or restore a hidden badge', async () => {
+    const page = await fixture();
+    try {
+        await page.evaluate(() => document.body.insertAdjacentHTML('beforeend', '<div id="viewContext"></div>'));
+        await page.addScriptTag({path: path.join(resources, 'static/js/versioning/taxonomy-viewcontext.js')});
+        await gitResponse(page);
+        for (const replace of ['render', 'hide']) {
+            await page.evaluate(replace => {
+                window.viewRead = TaxonomyViewContext.fetchAndRender('viewContext', 'old');
+                if (replace === 'render') TaxonomyViewContext.render('viewContext', {basedOnBranch: 'new'});
+                else TaxonomyViewContext.hide('viewContext');
+            }, replace);
+            await answer(page, '/api/git/state', {currentBranch: 'old', headCommit: 'abcdef012345'});
+            await page.evaluate(() => window.viewRead);
+            const badge = page.locator('#viewContext');
+            if (replace === 'render') assert.equal(await badge.locator('strong').innerText(), 'new');
+            else {
+                assert.equal(await badge.innerHTML(), '');
+                assert.ok((await badge.getAttribute('class')).split(' ').includes('d-none'));
+            }
+        }
+        assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+});
 
 test('initial context adoption immediately replaces a pending Git read for the default branch', async () => {
     const page = await fixture();

@@ -1946,7 +1946,7 @@
 
         // Update URL hash without adding to browser history
         if (history.replaceState) {
-            history.replaceState(null, '', '#' + pageName);
+            history.replaceState(history.state, '', '#' + pageName);
         }
 
         // Fetch and render ViewContext for views that display architecture data

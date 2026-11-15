@@ -7,15 +7,22 @@ import com.taxonomy.dto.ContextMode;
 import com.taxonomy.dto.ContextRef;
 import com.taxonomy.dto.NavigationReason;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
-import com.taxonomy.workspace.service.WorkspaceManager;
 
 /**
  * Unit tests for {@link ContextNavigationService}.
@@ -44,14 +51,18 @@ class ContextNavigationServiceTest {
 
     @BeforeEach
     void setUp() {
+        configureNavigation(50);
+    }
+
+    private void configureNavigation(int historyLimit) {
         var factory = new DslGitRepositoryFactory(null);
         gitRepo = factory.getSystemRepository();
         UserWorkspaceRepository wsRepo = mock(UserWorkspaceRepository.class);
-        workspaceManager = new WorkspaceManager(wsRepo, 50,
+        workspaceManager = new WorkspaceManager(wsRepo, historyLimit,
                 mock(com.taxonomy.workspace.service.SystemRepositoryService.class), gitRepo);
         stateService = new RepositoryStateService(factory, workspaceManager,
                 mock(com.taxonomy.workspace.service.SystemRepositoryService.class));
-        navService = new ContextNavigationService(factory, stateService, workspaceManager, 50);
+        navService = new ContextNavigationService(factory, stateService, workspaceManager, historyLimit);
     }
 
     // ── getCurrentContext ────────────────────────────────────────────
@@ -235,6 +246,65 @@ class ContextNavigationServiceTest {
 
         navService.back(USER);
         assertEquals(0, navService.getHistory(USER).size());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void navigationRestoresThePriorReadOnlyStandAndKeepsItsOrigin(boolean returnToOrigin) throws IOException {
+        gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
+        ContextRef draft = navService.getCurrentContext(USER);
+        ContextRef first = navService.openReadOnly(USER, "draft", null, "original search", "original match");
+        ContextRef second = navService.openReadOnly(USER, "draft", first.commitId(), null, null);
+
+        ContextRef restored = returnToOrigin ? navService.returnToOrigin(USER) : navService.back(USER);
+        assertAll(
+                () -> assertNotEquals(first.contextId(), restored.contextId()),
+                () -> assertNotEquals(second.contextId(), restored.contextId()),
+                () -> assertEquals(first.branch(), restored.branch()),
+                () -> assertEquals(first.commitId(), restored.commitId()),
+                () -> assertEquals(ContextMode.READ_ONLY, restored.mode()),
+                () -> assertEquals(draft.contextId(), restored.originContextId()),
+                () -> assertEquals(first.openedFromSearch(), restored.openedFromSearch()),
+                () -> assertEquals(first.matchedElementId(), restored.matchedElementId()));
+        assertEquals(ContextMode.EDITABLE, navService.back(USER).mode());
+    }
+
+    @Test
+    void simultaneousCommandsForOneContextIdentityCanOnlyRestoreOnce() throws Exception {
+        gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
+        ContextRef snapshot = navService.openReadOnly(USER, "draft", null, null, null);
+        var start = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var back = executor.submit(() -> navigationStatus(start, snapshot.contextId(), false));
+            var origin = executor.submit(() -> navigationStatus(start, snapshot.contextId(), true));
+            start.countDown();
+            assertEquals(List.of(200, 409), List.of(back.get(5, TimeUnit.SECONDS), origin.get(5, TimeUnit.SECONDS))
+                    .stream().sorted().toList());
+        }
+        assertEquals(ContextMode.EDITABLE, navService.getCurrentContext(USER).mode());
+    }
+
+    @Test
+    void disabledHistoryStillAllowsReturnToTheImmediateOrigin() throws IOException {
+        configureNavigation(0);
+        gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
+        ContextRef snapshot = navService.openReadOnly(USER, "draft", null, null, null);
+        assertTrue(navService.getHistory(USER).isEmpty());
+        assertEquals(snapshot, navService.back(USER));
+        assertEquals(ContextMode.EDITABLE, navService.returnToOrigin(USER).mode());
+        assertTrue(navService.getHistory(USER).isEmpty());
+    }
+
+    private int navigationStatus(CountDownLatch start, String currentContext, boolean returnToOrigin)
+            throws InterruptedException {
+        start.await();
+        try {
+            if (returnToOrigin) navService.returnToOrigin(USER, WorkspaceContext.SHARED, currentContext);
+            else navService.back(USER, WorkspaceContext.SHARED, currentContext);
+            return 200;
+        } catch (ResponseStatusException error) {
+            return error.getStatusCode().value();
+        }
     }
 
     // ── getHistory ──────────────────────────────────────────────────

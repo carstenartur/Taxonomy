@@ -437,6 +437,74 @@ test('a source snapshot selection fences a pending body within the same project 
   await assert.rejects(pending, error => error.code === 'ABORTED');
 });
 
+test('normal context calls route a cursor per document and preserve the matching workspace on reload', async () => {
+  const header = 'X-Taxonomy-Navigation-Cursor';
+  const previous = 'X-Taxonomy-Navigation-Previous';
+  const workspace = 'workspace A/1';
+  const calls = [];
+  const history = { state: {existing: 'preserved'}, replaceState(state) { this.state = state; } };
+  let nonce = 0;
+  async function documentApp() {
+    return loadWorkspaceFeatures(async (url, init) => {
+      calls.push({url, headers: init.headers});
+      return Response.json({});
+    }, context => {
+      context.window.history = history;
+      context.crypto.getRandomValues = bytes => bytes.fill(++nonce);
+    });
+  }
+
+  const first = await documentApp();
+  await first.client.request('/api/context/open', {method: 'POST'});
+  assert.match(calls[0].url, /\/api\/context\/current\?/);
+  assert.match(calls[1].url, /\/api\/context\/open\?/);
+  await first.client.request('/api/context/copy-back/apply', {method: 'POST'});
+  await first.client.request('/api/dsl/operation/check');
+  await first.client.request('/api/analyze-stream');
+  await first.client.request('https://outside.example.test/api/context/current');
+  const original = calls[0].headers.get(header);
+  assert.match(original, /^[a-f0-9-]{36}$/);
+  assert.deepEqual(calls.map(call => call.headers.get(header)), [original, original, original, original, null, null]);
+  assert.equal(history.state.existing, 'preserved');
+  assert.equal(history.state.taxonomyNavigation.workspace, workspace);
+  assert.equal(history.state.taxonomyNavigation.cursor, original);
+
+  const second = await documentApp();
+  await second.client.request('/api/context/current', {}, {pinnedWorkspaceId: 'other'});
+  assert.equal(calls.at(-1).headers.get(previous), null);
+  await second.context.window.TaxonomyContextApi.current();
+  const resumed = calls.at(-1).headers;
+  assert.notEqual(resumed.get(header), original);
+  assert.equal(resumed.get(previous), original);
+  assert.equal(history.state.taxonomyNavigation.cursor, resumed.get(header));
+  await second.context.window.TaxonomyContextApi.current();
+  assert.equal(calls.at(-1).headers.get(previous), resumed.get(header));
+});
+
+test('expired navigation emits one warning and replaces the obsolete predecessor', async () => {
+  const prior = '874c1d26-1ef8-454b-8382-faeb24bf5e55';
+  const history = {state: {taxonomyNavigation: {workspace: 'workspace A/1', cursor: prior}},
+    replaceState(state) { this.state = state; }};
+  const calls = [], warnings = [];
+  const app = await loadWorkspaceFeatures(async (_url, init) => {
+    calls.push(init.headers);
+    return Response.json({mode: 'EDITABLE'}, {
+      headers: calls.length === 1 ? {'X-Taxonomy-Navigation-Reset': 'true'} : {}
+    });
+  }, context => {
+    context.window.history = history;
+    context.crypto.getRandomValues = bytes => bytes.fill(1);
+    context.window.TaxonomyI18n = { t: key => key };
+    context.window.TaxonomyOperationResult = { showWarning: (...message) => warnings.push(message) };
+  });
+  await app.context.window.TaxonomyContextApi.current();
+  await app.context.window.TaxonomyContextApi.current();
+  const previous = 'X-Taxonomy-Navigation-Previous';
+  assert.equal(calls[0].get(previous), prior);
+  assert.equal(calls[1].get(previous), history.state.taxonomyNavigation.cursor);
+  assert.equal(warnings.length, 1);
+});
+
 test('actual session routing retains query pins and central scope beneath explicit header and policy pins', async () => {
   const calls = [];
   const app = loadClient(async (url, init) => {calls.push({url,init}); return Response.json({ready:true});});
@@ -802,6 +870,45 @@ test('back follows a pending context open without showing its superseded variant
   await backing;
   assert.equal(bar.getCurrentContext().branch, 'original-branch');
 });
+
+for (const [action, route] of [['back', 'back'], ['returnToOrigin', 'return-to-origin']]) {
+  test(`${action} submits the context visible when the action was invoked`, async () => {
+    const requests = [];
+    const opened = {contextId:'visible-snapshot', branch:'review', commitId:'7654321', mode:'READ_ONLY'};
+    const app = await loadVersioningFeatures(url => {
+      const target = new URL(url, 'https://taxonomy.example.test');
+      requests.push(target);
+      return Promise.resolve(Response.json(opened));
+    });
+    const bar = app.window.TaxonomyContextBar;
+    await bar.open(opened.branch, opened.commitId, true);
+    await bar[action]();
+    assert.equal(requests.at(-1).pathname, '/taxonomy/api/context/' + route);
+    assert.equal(requests.at(-1).searchParams.get('expectedContextId'), opened.contextId);
+  });
+
+  test(`two queued ${action} commands reconcile the successful transition after a conflict`, async () => {
+    const opened = {contextId:'visible-snapshot', branch:'review', commitId:'7654321', mode:'READ_ONLY'};
+    const restored = {contextId:'new-draft', branch:'draft', commitId:'1234567', mode:'EDITABLE'};
+    const requests = [];
+    const app = await loadVersioningFeatures(url => {
+      const target = new URL(url, 'https://taxonomy.example.test');
+      requests.push(target);
+      if (target.pathname.endsWith('/open')) return Response.json(opened);
+      if (target.pathname.endsWith('/current')) return Response.json(restored);
+      const attempts = requests.filter(request => request.pathname.endsWith('/' + route));
+      return attempts.length === 1 ? Response.json(restored) : Response.json({error:'context changed'}, {status:409});
+    });
+    const bar = app.window.TaxonomyContextBar;
+    await bar.open(opened.branch, opened.commitId, true);
+    await Promise.all([bar[action](), bar[action]()]);
+    const navigation = requests.filter(request => request.pathname.endsWith('/' + route));
+    assert.deepEqual(navigation.map(request => request.searchParams.get('expectedContextId')), [opened.contextId, opened.contextId]);
+    assert.equal(requests.at(-1).pathname, '/taxonomy/api/context/current');
+    assert.equal(bar.getCurrentContext().contextId, restored.contextId);
+    assert.equal(app.errors.length, 1);
+  });
+}
 
 test('a queued context open cannot mutate a different workspace after a pin change', async () => {
   const pending = [];

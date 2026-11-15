@@ -1,6 +1,7 @@
 package com.taxonomy.versioning.controller;
 
 import com.taxonomy.dto.ContextMode;
+import com.taxonomy.dto.ContextRef;
 import com.taxonomy.dto.TransferSelection;
 import com.taxonomy.versioning.service.ContextCompareService;
 import com.taxonomy.versioning.service.ContextNavigationService;
@@ -21,10 +22,14 @@ import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.server.ResponseStatusException;
@@ -36,6 +41,11 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class ContextNavigationPinTest {
     private static final String USER = "alice";
@@ -101,10 +111,10 @@ class ContextNavigationPinTest {
         assertEquals(original.contextId(), readOnly.originContextId());
         var guard = new RepositoryStateGuard(state, navigation);
         assertFalse(guard.checkWriteOperation(resolver.resolveCurrentContext(), "commit").allowed());
-        assertEquals(oldCommit, controller.back().getBody().commitId());
+        assertEquals(oldCommit, controller.back(null).getBody().commitId());
         assertEquals(1, controller.getHistory().getBody().size());
         controller.openContext("review", oldCommit, true, null, null);
-        assertEquals(oldCommit, controller.returnToOrigin().getBody().commitId());
+        assertEquals(oldCommit, controller.returnToOrigin(null).getBody().commitId());
         assertNotEquals(oldCommit, oldRepo.commitDsl("review", "moved source", USER, "moved source"));
         assertEquals("from-old-tab", controller.createVariant("from-old-tab").getBody().get("branch"));
         assertEquals(oldCommit, oldRepo.getHeadCommit("from-old-tab"));
@@ -115,6 +125,92 @@ class ContextNavigationPinTest {
         assertTrue(guard.checkWriteOperation(resolver.resolveCurrentContext(), "commit").allowed());
         assertEquals(1, controller.getHistory().getBody().size());
         assertEquals("newer", manager.findActiveWorkspace(USER).getWorkspaceId());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"back", "return-to-origin"})
+    void staleNavigationCommandsCannotMoveTheCurrentWorkspaceContext(String action) throws Exception {
+        DslGitRepository repository = workspace("working", USER, "repo-a");
+        String commit = repository.commitDsl("review", TARGET_DSL, USER, "test snapshot");
+        pin("working");
+        ContextRef first = controller.openContext("review", commit, true, null, null).getBody();
+        ContextRef current = controller.openContext("review", commit, true, null, null).getBody();
+        var before = controller.getHistory().getBody();
+        var mvc = MockMvcBuilders.standaloneSetup(controller).build();
+
+        mvc.perform(post("/api/context/" + action).header("X-Taxonomy-Workspace-Id", "working")
+                        .param("expectedContextId", first.contextId()))
+                .andExpect(status().isConflict());
+        pin("working");
+        assertEquals(current, controller.getCurrentContext().getBody());
+        assertEquals(before, controller.getHistory().getBody());
+
+        mvc.perform(post("/api/context/" + action).header("X-Taxonomy-Workspace-Id", "working")
+                        .param("expectedContextId", current.contextId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.branch").value(first.branch()))
+                .andExpect(jsonPath("$.commitId").value(first.commitId()))
+                .andExpect(jsonPath("$.mode").value("READ_ONLY"))
+                .andExpect(jsonPath("$.originContextId").value(first.originContextId()));
+        pin("working");
+        ContextRef restored = controller.getCurrentContext().getBody();
+        assertNotEquals(first.contextId(), restored.contextId());
+        mvc.perform(post("/api/context/" + action).header("X-Taxonomy-Workspace-Id", "working")
+                        .param("expectedContextId", first.contextId()))
+                .andExpect(status().isConflict());
+        pin("working");
+        assertEquals(restored, controller.getCurrentContext().getBody());
+    }
+
+    @Test
+    void browserDocumentsHaveIndependentCursorsAndCanResumeOnlyWithinTheirSession() throws Exception {
+        DslGitRepository repository = workspace("working", USER, "repo-a");
+        String commit = repository.commitDsl("review", TARGET_DSL, USER, "test snapshot");
+        var mvc = MockMvcBuilders.standaloneSetup(controller).build();
+        var session = new MockHttpSession();
+        String a = "87a46d57-b89c-4fd1-bcd8-7561f3efec2b";
+        String b = "a0d563b5-3c5f-4c99-a36e-022a2ba6bdae";
+        String reloaded = "165a80bc-1728-453f-9dbd-cc1f4a379526";
+        String header = "X-Taxonomy-Navigation-Cursor";
+
+        mvc.perform(post("/api/context/open").session(session).header("X-Taxonomy-Workspace-Id", "working")
+                        .header(header, a).param("branch", "review").param("commitId", commit))
+                .andExpect(status().isConflict());
+        mvc.perform(get("/api/context/current").session(session).header("X-Taxonomy-Workspace-Id", "working")
+                        .header(header, a))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.mode").value("EDITABLE"));
+        mvc.perform(post("/api/context/open").session(session).header("X-Taxonomy-Workspace-Id", "working")
+                        .header(header, a).param("branch", "review").param("commitId", commit))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.mode").value("READ_ONLY"));
+        mvc.perform(get("/api/context/current").session(session).header("X-Taxonomy-Workspace-Id", "working")
+                        .header(header, b))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.mode").value("EDITABLE"));
+        mvc.perform(get("/api/context/current").session(session).header("X-Taxonomy-Workspace-Id", "working")
+                        .header(header, reloaded).header("X-Taxonomy-Navigation-Previous", a))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.commitId").value(commit))
+                .andExpect(jsonPath("$.mode").value("READ_ONLY"));
+        mvc.perform(post("/api/context/back").session(session).header("X-Taxonomy-Workspace-Id", "working")
+                        .header(header, reloaded))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.mode").value("EDITABLE"));
+        mvc.perform(get("/api/context/current").session(session).header("X-Taxonomy-Workspace-Id", "working")
+                        .header(header, a))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.commitId").value(commit));
+        var laterSession = new MockHttpSession();
+        mvc.perform(get("/api/context/history").session(laterSession).header("X-Taxonomy-Workspace-Id", "working")
+                        .header(header, reloaded))
+                .andExpect(status().isConflict());
+        mvc.perform(get("/api/context/current").session(laterSession).header("X-Taxonomy-Workspace-Id", "working")
+                        .header(header, reloaded).header("X-Taxonomy-Navigation-Previous", a))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-Taxonomy-Navigation-Reset", "true"))
+                .andExpect(jsonPath("$.mode").value("EDITABLE"));
+        mvc.perform(get("/api/context/current").session(laterSession).header("X-Taxonomy-Workspace-Id", "working")
+                        .header(header, reloaded).header("X-Taxonomy-Navigation-Previous", reloaded))
+                .andExpect(status().isOk())
+                .andExpect(header().doesNotExist("X-Taxonomy-Navigation-Reset"))
+                .andExpect(jsonPath("$.mode").value("EDITABLE"));
+        mvc.perform(get("/api/context/current").session(session).header("X-Taxonomy-Workspace-Id", "working"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.mode").value("EDITABLE"));
     }
 
     @Test
@@ -128,8 +224,8 @@ class ContextNavigationPinTest {
         assertAll(
                 () -> assertThrows(AccessDeniedException.class, controller::getCurrentContext),
                 () -> assertThrows(AccessDeniedException.class, controller::getHistory),
-                () -> assertThrows(AccessDeniedException.class, controller::back),
-                () -> assertThrows(AccessDeniedException.class, controller::returnToOrigin),
+                () -> assertThrows(AccessDeniedException.class, () -> controller.back(null)),
+                () -> assertThrows(AccessDeniedException.class, () -> controller.returnToOrigin(null)),
                 () -> assertThrows(AccessDeniedException.class,
                         () -> controller.openContext("review", "other-commit", false, null, null)),
                 () -> assertThrows(AccessDeniedException.class, () -> controller.createVariant("not-mine")));
