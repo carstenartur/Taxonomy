@@ -100,7 +100,7 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
     public RepositoryState getState(String username, String branch, WorkspaceContext ctx) {
         UserWorkspaceState selected = selectedProgress(ctx);
         return readState(username, branch, ctx,
-                WorkspaceContext.SHARED.equals(ctx) ? resolveState(username) : selected, selected);
+                usesLegacyUserProgress(ctx) ? resolveState(username) : selected, selected);
     }
 
     /** Read the selected Git branch and its existing workspace progress without provisioning. */
@@ -181,7 +181,7 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
      */
     public ViewContext getViewContext(String username, String branch, WorkspaceContext ctx) {
         UserWorkspaceState selected = selectedProgress(ctx);
-        UserWorkspaceState ws = WorkspaceContext.SHARED.equals(ctx) ? resolveState(username) : selected;
+        UserWorkspaceState ws = usesLegacyUserProgress(ctx) ? resolveState(username) : selected;
         DslGitRepository repo = resolveRepository(ctx);
         try {
             DslCommit headInfo = repo.getHeadCommitInfo(branch);
@@ -372,9 +372,22 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
         return workspaceManager.getOrCreateWorkspace(username);
     }
 
-    /** Legacy shared reads preserve their user state; explicitly selected reads must not borrow it. */
+    /**
+     * The legacy, actor-only APIs construct a central compatibility context with the
+     * calling user's name and requested branch. Comparing the entire context to
+     * WorkspaceContext.SHARED (whose actor is "system") would incorrectly discard
+     * the user's operation and freshness state.
+     *
+     * An explicitly selected repository, including one without a workspace ID,
+     * must never inherit those legacy per-user checkpoints or operation locks.
+     */
+    private static boolean usesLegacyUserProgress(WorkspaceContext context) {
+        return context.workspaceId() == null
+                && WorkspaceContext.LEGACY_REPOSITORY_ID.equals(context.repositoryId());
+    }
+
     private UserWorkspaceState stateForRead(String username, WorkspaceContext context) {
-        return WorkspaceContext.SHARED.equals(context) ? resolveState(username) : selectedProgress(context);
+        return usesLegacyUserProgress(context) ? resolveState(username) : selectedProgress(context);
     }
 
     private UserWorkspaceState requireState(String username) {
