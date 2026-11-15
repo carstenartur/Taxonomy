@@ -517,7 +517,9 @@ public class DslApiController {
 
     private static ResponseEntity<Map<String, Object>> cherryPickHeadConflict(BranchHeadConflictException conflict) {
         Map<String, Object> details = new LinkedHashMap<>();
-        details.put("error", "The target branch changed. Reopen the cherry-pick preview before applying changes.");
+        details.put("error", Objects.equals(conflict.getExpectedHeadCommit(), conflict.getActualHeadCommit())
+                ? "The editor has pending work or a different checkpoint. Review the editor state and reopen the cherry-pick preview."
+                : "The target branch changed. Reopen the cherry-pick preview before applying changes.");
         details.put("targetBranch", conflict.getBranch());
         details.put("expectedTargetHead", conflict.getExpectedHeadCommit());
         details.put("actualTargetHead", conflict.getActualHeadCommit());

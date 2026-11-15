@@ -162,6 +162,10 @@ class DslApiControllerBranchCoverageTest {
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
             assertThat(response.getBody()).containsEntry("expectedTargetHead", "old").containsEntry("actualTargetHead", "new");
         }
+        var pending = new com.taxonomy.workspace.service.BranchHeadConflictException("review", "old", "old", "pending edits");
+        when(dslOps.cherryPick("source", "review", "old")).thenThrow(pending);
+        assertThat(controller.cherryPick("source", "review", "old").getBody().get("error").toString())
+                .contains("editor").doesNotContain("branch changed");
         when(dslOps.cherryPick("merge", "review", null)).thenThrow(new IllegalArgumentException("mainline required"));
         assertThat(controller.cherryPick("merge", "review", null).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(controller.cherryPickResolve("source", "review", "new", "edited", null).getStatusCode())
