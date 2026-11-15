@@ -21,6 +21,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ModuleOwnedTestPlacementTest {
 
     private static final Set<String> ALLOWED_APP_OWNED = Set.of(
+            // Requires app-owned principal migration and restore-business Flyway history.
+            "workspace/backup/StagedWorkspaceSchemaTest.java",
             "workspace/controller/ExternalSyncControllerTest.java",
             "workspace/controller/WorkspaceAccessSecurityIT.java",
             "workspace/controller/WorkspaceControllerTest.java",
