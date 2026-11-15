@@ -37,7 +37,7 @@ jobs:
               b5cbf8022bee05ab3e0b09ccd3babfd16eea6748) ;;
               *) continue ;;
             esac
-            if gh run cancel "$run_id" --repo "$repo"; then
+            if gh api --method POST "repos/$repo/actions/runs/$run_id/force-cancel" >/dev/null; then
               accepted=$((accepted + 1))
             else
               failures=$((failures + 1))
