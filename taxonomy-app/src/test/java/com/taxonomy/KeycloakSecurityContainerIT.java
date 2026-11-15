@@ -326,6 +326,8 @@ class KeycloakSecurityContainerIT {
                 }
                 """);
         var wait = new WebDriverWait(driver, Duration.ofSeconds(30));
+        // The Projects heading renders while the initial portfolio load still covers the toolbar.
+        wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("portfolioBusy")));
         wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("#applicationAccount > summary"))).click();
         WebElement signOut;
         try {

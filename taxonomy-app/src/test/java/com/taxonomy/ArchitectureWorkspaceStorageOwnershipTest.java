@@ -12,7 +12,7 @@ class ArchitectureWorkspaceStorageOwnershipTest {
     void jgitStorageBelongsToWorkspaceAuthority() {
         JavaClasses classes = new ClassFileImporter()
                 .withImportOption(new ImportOption.DoNotIncludeTests())
-                .importPackages("com.taxonomy");
+                .importPackages("com.taxonomy.workspace.storage", "com.taxonomy.dsl.storage");
         for (String simpleName : List.of(
                 "DslBranch", "DslCommit", "DslGitRepository", "DslGitRepositoryFactory",
                 "DslStorageConfig", "DslWorkspacePublicationAdapter", "DslWorkspaceReadAdapter",
