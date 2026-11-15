@@ -683,11 +683,31 @@
                 </configuration></execution></executions>
             </plugin></plugins></build>
         </profile>
-        <!-- The full demo and architecture cycle check each need a fresh fork.
+        <!-- The full demo and ArchUnit importers each need a fresh fork.
              Explicit -Dtest selections retain their normal execution. -->
         <profile>
             <id>product-demo-isolation</id>
             <activation><property><name>!test</name></property></activation>
+            <properties>
+                <!-- Keep application class-graph imports out of the shared test JVM. -->
+                <taxonomy.app.architectureScannerTests>
+                    **/ArchitectureApplicationSchemaCompositionTest.java,
+                    **/ArchitectureCommitHistoryOwnershipTest.java,
+                    **/ArchitectureCompletionTest.java,
+                    **/ArchitectureContextDependencyRatchetTest.java,
+                    **/ArchitectureCycleBoundaryTest.java,
+                    **/ArchitectureCycleRuleRegressionTest.java,
+                    **/ArchitectureDecisionReportBoundaryTest.java,
+                    **/ArchitectureDerivationModuleTest.java,
+                    **/ArchitectureDslCompositionBoundaryTest.java,
+                    **/ArchitectureEditorBoundaryTest.java,
+                    **/ArchitectureInteropModuleTest.java,
+                    **/ArchitectureKnowledgeModuleTest.java,
+                    **/ArchitectureTest.java,
+                    **/ArchitectureWorkspaceAuthorityBoundaryTest.java,
+                    **/ArchitectureWorkspaceStorageOwnershipTest.java
+                </taxonomy.app.architectureScannerTests>
+            </properties>
             <build><plugins><plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
@@ -698,7 +718,7 @@
                             <excludes>
                                 <exclude>**/*$*</exclude>
                                 <exclude>${taxonomy.productDemo.defaultTestExclude}</exclude>
-                                <exclude>**/ArchitectureCycleBoundaryTest.java</exclude>
+                                <exclude>${taxonomy.app.architectureScannerTests}</exclude>
                             </excludes>
                         </configuration>
                     </execution>
@@ -716,11 +736,11 @@
                         </configuration>
                     </execution>
                     <execution>
-                        <id>architecture-cycles-isolated</id>
+                        <id>architecture-scanners-isolated</id>
                         <phase>${taxonomy.productDemo.testPhase}</phase>
                         <goals><goal>test</goal></goals>
                         <configuration>
-                            <test>ArchitectureCycleBoundaryTest</test>
+                            <test>${taxonomy.app.architectureScannerTests}</test>
                             <forkCount>1</forkCount>
                             <reuseForks>false</reuseForks>
                             <failIfNoTests>true</failIfNoTests>
