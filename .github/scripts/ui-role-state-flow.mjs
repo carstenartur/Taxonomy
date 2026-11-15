@@ -112,14 +112,21 @@ async function measureArchitectTask(page, proposal) {
   const variantInput = page.locator('#variantNameInput');
   await variantInput.waitFor({ state: 'visible', timeout: 10_000 });
   await variantInput.fill(variantName);
-  await page.locator('#createVariantModal .btn-success').click();
+  const variantEndpoint = new URL(await page.evaluate(() =>
+    window.TaxonomyI18n.resolveUrl('/api/context/variant')), page.url());
+  const [creationReceipt] = await Promise.all([
+    page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return response.request().method() === 'POST' && url.origin === variantEndpoint.origin
+        && url.pathname === variantEndpoint.pathname && url.searchParams.get('name') === variantName;
+    }),
+    page.locator('#createVariantModal .btn-success').click()
+  ]);
+  assert(creationReceipt.status() === 200, `Creating QA variant returned ${creationReceipt.status()}`);
   await page.locator('#createVariantModal').waitFor({ state: 'hidden', timeout: 20_000 });
-  const currentContext = await page.evaluate(async () => {
-    const response = await fetch('/api/context/current');
-    return response.json();
-  });
-  assert(currentContext.branch?.includes(variantName),
-    `Variant creation did not switch context to ${variantName}`);
+  const {branch: createdBranch, context: currentContext} = await creationReceipt.json();
+  assert(createdBranch === variantName && currentContext?.branch === variantName,
+    `Variant creation did not acknowledge ${variantName}`);
   assert(currentContext.contextId && currentContext.originBranch === originContext.branch
     && (currentContext.originCommitId ?? null) === originContext.commitId,
   'QA variant did not retain the original branch and commit');
@@ -128,6 +135,10 @@ async function measureArchitectTask(page, proposal) {
     const current = window.TaxonomyContextBar.getCurrentContext();
     return current?.contextId === contextId && current.branch === branch;
   }, { contextId: currentContext.contextId, branch: currentContext.branch }, { timeout: 20_000 });
+  const observedVariant = await page.evaluate(() => window.TaxonomyContextApi.current());
+  assert(observedVariant?.contextId === currentContext.contextId && observedVariant.branch === currentContext.branch
+    && (observedVariant.commitId ?? null) === (currentContext.commitId ?? null),
+  'The current tab did not retain the context acknowledged by variant creation');
   const pageOrigin = new URL(page.url()).origin;
   const returnPath = new URL(await page.evaluate(() =>
     window.TaxonomyI18n.resolveUrl('/api/context/return-to-origin')), pageOrigin).pathname;
