@@ -1,0 +1,47 @@
+name: Cancel obsolete Taxonomy runs from November 11
+
+on:
+  push:
+    branches: [maintenance/cancel-obsolete-actions-2026-11-15]
+    paths: [.github/workflows/cancel-obsolete-runs-2026-11-15.yml]
+
+permissions: {}
+
+jobs:
+  cancel-obsolete:
+    if: github.repository == 'carstenartur/Taxonomy'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel obsolete queued runs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_PROMPT_DISABLED: '1'
+        run: |
+          set -euo pipefail
+          repo=carstenartur/Taxonomy
+          candidates=$(gh api --paginate "repos/$repo/actions/runs?status=queued&created=2026-11-11&per_page=100" \
+            --jq '.workflow_runs[] | select(.status == "queued" and .run_attempt == 1) | [.id, .head_sha] | @tsv')
+          accepted=0
+          failures=0
+          while IFS=$'\t' read -r run_id head_sha; do
+            case "$head_sha" in
+              93c7193056a5f6b56e9bb7581c1a96894bbe16e4|\
+              e912baa3b8e35c74c2cf34aa4de01ce185ea708d|\
+              0b23da1a9c584f4fc7a0500c54ab2b780c03c77f|\
+              ed19eb3b007bc5682e52888937140174b6e1b3c4|\
+              4a32dfe0568dae38144b1e7a62e1c014beb74cf9|\
+              b5cbf8022bee05ab3e0b09ccd3babfd16eea6748) ;;
+              *) continue ;;
+            esac
+            if gh run cancel "$run_id" --repo "$repo"; then
+              accepted=$((accepted + 1))
+            else
+              failures=$((failures + 1))
+            fi
+          done <<< "$candidates"
+          printf 'Cancellation requests accepted: %s. Failed: %s.\n' "$accepted" "$failures"
+          (( failures == 0 ))
