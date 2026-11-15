@@ -446,6 +446,7 @@ class OnnxSeleniumIT {
     private void clickWhenUnobscured(By locator) {
         new WebDriverWait(driver, Duration.ofSeconds(10))
                 .ignoring(StaleElementReferenceException.class)
+                .ignoring(ElementClickInterceptedException.class)
                 .until(currentDriver -> {
                     WebElement element = currentDriver.findElement(locator);
                     ((JavascriptExecutor) currentDriver).executeScript(
@@ -455,8 +456,11 @@ class OnnxSeleniumIT {
                             .executeScript(
                                     "const target=arguments[0];"
                                             + "const rect=target.getBoundingClientRect();"
-                                            + "const top=document.elementFromPoint("
-                                            + "rect.left+rect.width/2,rect.top+rect.height/2);"
+                                            + "const x=rect.left+rect.width/2;"
+                                            + "const y=rect.top+rect.height/2;"
+                                            + "if(rect.width<=0||rect.height<=0||x<0||y<0"
+                                            + "||x>=innerWidth||y>=innerHeight) return false;"
+                                            + "const top=document.elementFromPoint(x,y);"
                                             + "return top===target || target.contains(top);",
                                     element);
                     if (!Boolean.TRUE.equals(unobscured)
