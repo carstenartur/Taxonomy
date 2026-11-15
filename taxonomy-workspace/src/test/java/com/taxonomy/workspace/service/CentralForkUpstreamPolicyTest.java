@@ -114,6 +114,21 @@ class CentralForkUpstreamPolicyTest {
     }
 
     @Test
+    void forkPlanUsesOnlyItsNamedBranchAndStopsWhenContributionRightsAreLost() throws Exception {
+        service.fetch("fork", ACTOR, new WorkspaceUpstreamService.Request(incoming, base));
+        target.createBranchAtCommit("review", base);
+        mvc.perform(get(API + "/rebase-plan").param("branch", "review")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.repositoryId").value("fork")).andExpect(jsonPath("$.localCommit").value(base))
+                .andExpect(jsonPath("$.status").value("FAST_FORWARD")).andExpect(jsonPath("$.commits").isEmpty());
+        mvc.perform(get(API + "/rebase-plan").param("branch", "missing")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("NO_LOCAL_BRANCH")).andExpect(jsonPath("$.localCommit").isEmpty());
+        when(memberships.canContribute(fork, ACTOR)).thenReturn(false);
+        assertThatThrownBy(() -> mvc.perform(get(API + "/rebase-plan").param("branch", "review")))
+                .hasRootCauseInstanceOf(AccessDeniedException.class);
+        assertThat(target.getHeadCommit("review")).isEqualTo(base);
+    }
+
+    @Test
     void forkFetchAndSelectedTagHaveScopedDurableReceipts() throws Exception {
         String fetchBody = "{\"sourceCommit\":\"" + incoming + "\",\"expectedTrackedCommit\":\"" + base + "\"}";
         var commit = mvc.perform(post(API + "/fetch").contentType(MediaType.APPLICATION_JSON)

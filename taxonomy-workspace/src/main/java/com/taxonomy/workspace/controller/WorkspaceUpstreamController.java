@@ -5,6 +5,8 @@ import com.taxonomy.workspace.service.WorkspaceResolver;
 import com.taxonomy.workspace.service.WorkspaceFetchJournal;
 import com.taxonomy.workspace.service.WorkspaceFetchRecovery;
 import com.taxonomy.workspace.service.WorkspaceUpstreamService;
+import com.taxonomy.workspace.service.UpstreamRebasePlan;
+import org.springframework.http.CacheControl;
 import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -40,6 +42,15 @@ public class WorkspaceUpstreamController {
             description = "Returns the source branch tip and the destination tracking ref for an owned personal working copy.")
     public WorkspaceUpstreamService.Status inspect() throws IOException {
         return upstream.inspect(resolver.resolveCurrentRepositoryContextForRead());
+    }
+
+    @GetMapping("/rebase-plan")
+    @Operation(summary = "Plan a local branch rebase onto its fetched upstream",
+            description = "Returns the captured tracking commit, common base and ordered local replay candidates. "
+                    + "This read does not fetch objects, check content conflicts or change a branch.")
+    public ResponseEntity<UpstreamRebasePlan> rebasePlan() throws IOException {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(upstream.rebasePlan(resolver.resolveUnambiguousRepositoryForRead()));
     }
 
     @PostMapping("/fetch")

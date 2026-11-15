@@ -80,6 +80,15 @@
             return post('/api/workspace/' + encodeURIComponent(id) + '/switch', options).then(acknowledge);
         },
         syncState: function (options) { return get('/api/workspace/sync-state', options); },
+        rebasePlan: function (source, options) {
+            var workspace = source.workspaceId || '';
+            var path = workspace ? '/api/workspace/upstream/rebase-plan'
+                : '/api/repositories/' + encodeURIComponent(source.repositoryId) + '/upstream/rebase-plan';
+            var selection = new URLSearchParams({repositoryId:source.repositoryId, workspaceId:workspace,
+                workspaceScopeKey:workspace || '__shared__', branch:source.branch});
+            return request(path + '?' + selection, {method:'GET', cache:'no-store'},
+                Object.assign({}, options, {pinnedWorkspaceId:workspace}));
+        },
         localChanges: function (branch, options) { return get('/api/workspace/local-changes?branch=' + encodeURIComponent(branch), options); },
         syncFromShared: function (branch, options) {
             var headers = options && options.idempotencyKey ? {'Idempotency-Key': options.idempotencyKey} : {};
