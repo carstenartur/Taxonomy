@@ -140,6 +140,13 @@ public record ArchitectureReportDocument(
                 out.writeBoolean(n.selectedForImpact());
                 field(out, n.parentId());
                 out.writeBoolean(n.container());
+                var assignment = n.responsibility();
+                if (assignment != null) {
+                    field(out, "organizational-responsibility-v1");
+                    field(out, assignment.unitId());
+                    field(out, assignment.name());
+                    field(out, assignment.sourceId());
+                }
             }
             for (var e :
                     graph.edges().stream().sorted(Comparator.comparing(DiagramEdge::id)).toList()) {

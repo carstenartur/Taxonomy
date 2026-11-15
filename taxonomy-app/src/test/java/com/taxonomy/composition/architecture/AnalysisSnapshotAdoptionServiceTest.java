@@ -1,5 +1,7 @@
 package com.taxonomy.composition.architecture;
 
+import com.taxonomy.dsl.model.CatalogueDefinition;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
 import com.taxonomy.dto.*;
 import com.taxonomy.editor.*;
 import com.taxonomy.editor.ArchitectureCommandPort.*;
@@ -125,6 +127,50 @@ class AnalysisSnapshotAdoptionServiceTest {
         when(snapshots.getSnapshot(1L,"snapshot-old","alice",new WorkspaceContext("alice",null,"other","repo-a"))).thenReturn(snapshot);
         assertCode(() -> service.preview(target,request(wrongBranch,null)), "SOURCE_IDENTITY_MISMATCH");
         assertThat(fixture.journal.read(target)).isNull();
+    }
+
+    @Test void adoptsNonPrefixedCodeFromARetainedCustomTaxonomyAndReportsStableUnitDifferences() throws Exception {
+        var resolver = mock(CatalogueDefinitionResolver.class);
+        var definition = new CatalogueDefinition("custom-v1", true,
+                List.of(new CatalogueDefinition.Root("Administration", "AS", "AdministrativeService")), List.of());
+        when(resolver.forRevision("retained")).thenReturn(definition);
+        when(resolver.forModel(any())).thenReturn(definition);
+        when(resolver.analysisNodes("retained")).thenReturn(List.of(
+                new CatalogueDefinitionResolver.Node("PROCESS.1", "AS", "AS", "Plan", null, 1),
+                new CatalogueDefinitionResolver.Node("PROCESS.2", "AS", "AS", "Operate", null, 2)));
+        service.setCatalogueDefinitionResolver(resolver);
+        fixture.service.setCatalogueDefinitionResolver(resolver);
+        fixture.repositories.resolveRepository(target).commitDsl("draft", """
+                organization local {
+                  title: "Operations";
+                }
+                element PROCESS.2 type AdministrativeService {
+                  title: "Existing service";
+                  x-responsible-organization-id: "local";
+                }
+                """, "alice", "Working architecture");
+        List<RequirementElementView> elements = new ArrayList<>();
+        for (String code : List.of("PROCESS.1", "PROCESS.2")) {
+            var element = new RequirementElementView();
+            element.setNodeCode(code); element.setTaxonomySheet("AS"); element.setTitle(code);
+            elements.add(element);
+        }
+        snapshot.analysis().getArchitectureView().setIncludedElements(elements);
+        var unit = new TaxonomyResponsibilityLookup.Assignment("catalogue-team", "Operations", "AS");
+        snapshot.analysis().setModelBinding(new AnalysisModelBinding(AnalysisModelBinding.State.BRIEF_UNASSIGNED, "repo-a",
+                "__shared__", "draft", "a".repeat(40), null, "GIT_CHECKPOINT", "b".repeat(64), "retained", "custom-v1",
+                Set.of("AS"), AnalysisScope.full(), null, Map.of(), List.of(), Set.of(), null, "retained",
+                Map.of("PROCESS.1", unit, "PROCESS.2", unit)));
+        var request = request(ref, null);
+        var preview = service.preview(target, request);
+        assertThat(preview.summary().differences()).filteredOn(diff -> diff.field().equals("responsibility"))
+                .singleElement().satisfies(diff -> {
+                    assertThat(diff.existingValue()).contains("local");
+                    assertThat(diff.sourceValue()).contains("catalogue-team");
+                });
+        var adopted = service.adopt(target, new AnalysisSnapshotAdoptionService.Request(request.context(), request.metadata(), ref, preview.fingerprint()));
+        assertThat(adopted.accepted().change().dsl()).contains("element PROCESS.1 type AdministrativeService",
+                "x-captured-responsibility-unit: \"catalogue-team\"", "x-responsible-organization-id: \"local\"");
     }
     @Test void privateSourceOwnershipAndRepositoryMembershipAreAuthoritative() throws Exception {
         when(workspaces.findByWorkspaceId("bob-copy")).thenReturn(Optional.of(workspace("bob-copy","bob")));

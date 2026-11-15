@@ -109,17 +109,20 @@ class ArchitectureEditorControllerTest {
                 "ops", null, properties, null, null, null, null, null, null);
         var delete = new ArchitectureEditorController.WireCommand(base.context(), base.metadata(), "DELETE_ORGANIZATION",
                 "ops", null, Map.of(), null, null, null, null, null, null);
+        var assignment = new ArchitectureEditorController.WireCommand(base.context(), base.metadata(), "SET_CATALOGUE_RESPONSIBILITY",
+                "BP-1000", null, Map.of("organization", "ops"), null, null, null, null, null, null);
         when(resolver.resolveCurrentRepositoryContext()).thenReturn(scope);
         when(service.preview(eq(scope), any())).thenThrow(new CommandProblem("DISPATCHED", "", "", java.util.List.of()));
-        for (var request : java.util.List.of(upsert, delete)) {
+        for (var request : java.util.List.of(upsert, delete, assignment)) {
             assertThatThrownBy(() -> controller.preview(request, "\"workspace-revision-0\"", null))
                     .isInstanceOfSatisfying(CommandProblem.class, error -> assertThat(error.code()).isEqualTo("DISPATCHED"));
         }
         var captured = org.mockito.ArgumentCaptor.forClass(Command.class);
-        verify(service, times(2)).preview(eq(scope), captured.capture());
+        verify(service, times(3)).preview(eq(scope), captured.capture());
         assertThat(captured.getAllValues()).extracting(command -> ((SemanticCommand) command.operation()).command())
                 .containsExactly(new com.taxonomy.dsl.command.ArchitectureCommand.UpsertOrganization("ops", properties),
-                        new com.taxonomy.dsl.command.ArchitectureCommand.DeleteOrganization("ops"));
+                        new com.taxonomy.dsl.command.ArchitectureCommand.DeleteOrganization("ops"),
+                        new com.taxonomy.dsl.command.ArchitectureCommand.SetCatalogueResponsibility("BP-1000", "ops"));
     }
 
     @Test void packageWireUsesTypedCommandAndExactRevision() throws Exception {
@@ -168,6 +171,21 @@ class ArchitectureEditorControllerTest {
         authenticate("ROLE_ARCHITECT");
         prepareDocument(Context.version(scope, null));
         assertThat(controller.read("repo-a", "workspace-a", "draft", null, null).getBody().mayEdit()).isFalse();
+    }
+
+    @Test
+    void catalogueReadsThePinnedRevisionAndOnlyTheLiveWorkspaceIsEditable() throws Exception {
+        authenticate("ROLE_ARCHITECT");
+        var context = Context.of(scope, HEAD, 3L);
+        prepareDocument(context);
+        var historical = "organization ops {\n title: \"Earlier team\";\n}\n";
+        when(service.read(scope, null, 3L)).thenReturn(new ArchitectureEditorService.Document(context, historical,
+                "READY", java.util.List.of(), java.util.List.of(), 3, null, "WORKSPACE_REVISION"));
+        assertThat(controller.catalogueDirectory("repo-a", "workspace-a", "draft", null, null).getBody().editable()).isTrue();
+        var pinned = controller.catalogueDirectory("repo-a", "workspace-a", "draft", null, 3L).getBody();
+        assertThat(pinned.editable()).isFalse();
+        assertThat(pinned.organizations()).extracting(com.taxonomy.dsl.model.ArchitectureOrganization::title)
+                .containsExactly("Earlier team");
     }
 
     private void prepareDocument(Context context) throws Exception {

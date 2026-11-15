@@ -60,8 +60,7 @@ public class SelectedArchitectureAdmissionModel implements AnalysisAdmissionMode
         var selected = document.context();
         var model = new ArchitectureDslCommands().model(document.dsl());
         var brief = ArchitectureBrief.read(model);
-        String catalogueRevision = model.getCatalogueRevision();
-        if (catalogueRevision != null && catalogueRevision.isBlank()) catalogueRevision = null;
+        String catalogueRevision = model.responsibilityCatalogueRevision();
         var execution = retained(catalogueRevision);
         CatalogueDefinition definition = execution.map(AppliedGeneration::definition).orElse(null);
         AnalysisScope requested = AnalysisScope.orDefault(scope);
@@ -76,11 +75,20 @@ public class SelectedArchitectureAdmissionModel implements AnalysisAdmissionMode
         String profileProblem = brief.problem() != null ? brief.problem()
                 : brief.present() && profile != ProfilePreview.Decision.ASSIGNED ? "REFERENCE_PROFILE_" + profile.name() : null;
         boolean validRules = brief.problem() == null && profile != ProfilePreview.Decision.CONFLICTING_EDITIONS;
+        Map<String, Assignment> responsibilities = Map.of();
+        if (definition != null && !model.getCatalogueResponsibilities().isEmpty()) {
+            var nodes = definitions.analysisNodes(execution.orElseThrow().revision());
+            var assigned = ArchitectureResponsibility.forAnalysis(model,
+                    com.taxonomy.dsl.model.CatalogueDefinitionResolver.parentLinks(nodes));
+            responsibilities = nodes.stream().filter(node -> requested.selects(node.root()) && assigned.containsKey(node.code()))
+                    .collect(Collectors.toUnmodifiableMap(node -> node.code(), node -> assigned.get(node.code())));
+        }
         return new AnalysisModelBinding(state(version.published(), catalogueRevision, definition, brief, profileProblem), selected.repositoryId(), selected.workspaceScopeKey(),
                 selected.branch(), version.commit(), version.revision(), document.source(), StableIdentityHash.sha256(document.dsl()),
                 catalogueRevision, definition == null ? null : definition.version(), roots, requested,
                 brief.version(), brief.fields(), references,
-                validRules ? brief.excludedRelationTypes() : Set.of(), profileProblem, execution.map(AppliedGeneration::revision).orElse(null));
+                validRules ? brief.excludedRelationTypes() : Set.of(), profileProblem,
+                execution.map(AppliedGeneration::revision).orElse(null), responsibilities);
     }
 
     @Override
@@ -142,22 +150,28 @@ public class SelectedArchitectureAdmissionModel implements AnalysisAdmissionMode
     private Map<String, Assignment> assignments(ArchitectureEditorService.Document document, String executionCatalogue,
                                                boolean live) {
         var model = new ArchitectureDslCommands().model(document.dsl());
-        String revision = model.getCatalogueRevision();
+        String revision = model.responsibilityCatalogueRevision();
         if (revision != null && executionCatalogue != null && !revision.equals(executionCatalogue))
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The architecture and decision catalogue revisions differ");
         if (revision == null) revision = executionCatalogue;
-        boolean assigned = model.getElements().stream().anyMatch(element ->
-                element.getExtensions().containsKey(ArchitectureOrganization.RESPONSIBLE_ID)
-                        || element.getExtensions().containsKey("x-responsible-organization"));
-        if (!assigned) return Map.of();
+        if (!hasResponsibilities(model)) return Map.of();
         if (live && revision == null) revision = retained(null).map(AppliedGeneration::revision).orElse(null);
         try {
-            return ArchitectureResponsibility.forAnalysis(model, definitions.analysisParents(model, revision));
+            var parents = model.getCatalogueResponsibilities().isEmpty() ? definitions.analysisParents(model, revision)
+                    : com.taxonomy.dsl.model.CatalogueDefinitionResolver.parentLinks(definitions.analysisNodes(revision));
+            return ArchitectureResponsibility.forAnalysis(model, parents);
         } catch (java.util.NoSuchElementException unavailable) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "The recorded decision catalogue is unavailable", unavailable);
         } catch (IllegalStateException unreadable) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Cannot read the recorded decision catalogue", unreadable);
         }
+    }
+
+    private static boolean hasResponsibilities(com.taxonomy.dsl.model.CanonicalArchitectureModel model) {
+        return !model.getCatalogueResponsibilities().isEmpty() || model.getElements().stream().anyMatch(element ->
+                element.getExtensions().containsKey(ArchitectureOrganization.RESPONSIBLE_ID)
+                        || element.getExtensions().containsKey(ArchitectureOrganization.CAPTURED_UNIT)
+                        || element.getExtensions().containsKey("x-responsible-organization"));
     }
 
     private record Selection(ArchitectureEditorService.Document document, String commit, Long revision, boolean published) {}

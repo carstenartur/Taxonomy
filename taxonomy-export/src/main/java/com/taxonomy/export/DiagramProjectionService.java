@@ -157,7 +157,8 @@ public class DiagramProjectionService {
                     el.getTaxonomyDepth(),
                     el.isSelectedForImpact(),
                     parentId,
-                    false));
+                    false,
+                    el.getResponsibility()));
         }
 
         List<DiagramEdge> edges = new ArrayList<>();

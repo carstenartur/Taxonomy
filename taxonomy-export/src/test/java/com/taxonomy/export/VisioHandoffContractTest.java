@@ -25,6 +25,29 @@ import static org.junit.jupiter.api.Assertions.*;
 @org.junit.jupiter.api.parallel.Isolated("Temporarily changes the default timezone to verify ZIP reproducibility")
 @org.junit.jupiter.api.parallel.Execution(org.junit.jupiter.api.parallel.ExecutionMode.SAME_THREAD)
 class VisioHandoffContractTest {
+    @Test
+    void responsibleUnitIsVisibleAndRetainedInOverviewAndImpactShapeData() throws Exception {
+        var assignment = new com.taxonomy.dto.TaxonomyResponsibilityLookup.Assignment("unit-42", "Küste & Ops", "CP-1000");
+        var graph = new DiagramModel("Captured responsibilities", List.of(
+                new DiagramNode("CP-1023", "Capability A", "Capabilities", .8, true, 1, 2, true, null, false, assignment),
+                new DiagramNode("CP-1024", "Capability B", "Capabilities", .6, false, 1)),
+                List.of(), new DiagramLayout("LR", true));
+        var parts = parts(new VisioPackageBuilder().build(new VisioDiagramService().convert(graph)));
+
+        for (var pageName : List.of("visio/pages/page1.xml", "visio/pages/page2.xml")) {
+            var page = parts.get(pageName);
+            var assigned = shapeData(page).get("CP-1023");
+            assertEquals("Capability A", assigned.get("taxonomy.label"));
+            assertEquals(assignment.unitId(), assigned.get("taxonomy.responsibilityUnitId"));
+            assertEquals(assignment.name(), assigned.get("taxonomy.responsibilityName"));
+            assertEquals(assignment.sourceId(), assigned.get("taxonomy.responsibilitySourceId"));
+            assertEquals(assignment.color(), assigned.get("taxonomy.responsibilityColor"));
+            assertTrue(page.contains("Unit: Küste &amp; Ops"));
+            assertTrue(page.contains("N=\"LineColor\" V=\"" + assignment.color() + "\""));
+        }
+        assertFalse(shapeData(parts.get("visio/pages/page1.xml")).get("CP-1024").containsKey("taxonomy.responsibilityUnitId"));
+    }
+
     @TempDir Path renderDirectory;
     private static final String NS = "http://schemas.microsoft.com/office/visio/2012/main";
     private static final JsonMapper JSON = new JsonMapper();

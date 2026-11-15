@@ -792,8 +792,7 @@
     }
 
     function responsibilityViewVisible() {
-        return (S.currentView === 'tree' || S.currentView === 'decision')
-            && !document.getElementById('leftPanel')?.classList?.contains('d-none');
+        return !document.getElementById('leftPanel')?.classList?.contains('d-none');
     }
 
     var responsibilityFrame = null;
@@ -807,20 +806,50 @@
     document.addEventListener('taxonomy:responsibility-display-changed', refreshResponsibilities);
     document.addEventListener('taxonomy:page-activated', refreshResponsibilities);
     document.addEventListener('taxonomy:entity-context-changed', function () {
-        if (window.TaxonomyResponsibilityDisplay?.enabled()) refreshResponsibilities();
+        if (window.TaxonomyResponsibilityDisplay?.enabled() || S.currentModelBinding) refreshResponsibilities();
     });
+
+    function renderResponsibilitySummary(display, data, scores) {
+        const summary = document.getElementById('taxonomyResponsibilitySummary');
+        if (!summary) return;
+        const units = [...display.matched(data, scores).values()].sort((a, b) => a.name.localeCompare(b.name));
+        summary.hidden = !units.length;
+        summary.replaceChildren();
+        if (!units.length) return;
+        const heading = document.createElement('h2');
+        heading.className = 'h6 mb-1';
+        heading.textContent = t('responsibility.affected');
+        const list = document.createElement('ul');
+        list.className = 'list-unstyled d-flex flex-wrap gap-2 mb-0';
+        for (const unit of units) {
+            const item = document.createElement('li');
+            item.className = 'taxonomy-responsibility-label';
+            item.textContent = t('responsibility.affected.count', unit.name, unit.count);
+            item.style.setProperty('--responsible-unit-color', unit.color);
+            list.append(item);
+        }
+        summary.append(heading, list);
+    }
 
     function renderView(data, scores) {
         refreshAnalysisDuration();
         if (!data || data.length === 0) { return; }
         const container = document.getElementById('taxonomyTree');
         const responsibilities = window.TaxonomyResponsibilityDisplay;
-        if (responsibilities?.enabled() && responsibilityViewVisible()) responsibilities.bindAnalysis();
+        const diagram = ['sunburst', 'tree', 'decision'].includes(S.currentView);
+        if (responsibilities && responsibilityViewVisible()) {
+            responsibilities.bindAnalysis(Boolean(S.currentModelBinding && scores && Object.keys(scores).length));
+            renderResponsibilitySummary(responsibilities, data, scores);
+            const control = document.getElementById('taxonomyResponsibilityControl');
+            if (control) {
+                if (!control.firstChild && !diagram) control.appendChild(responsibilities.control());
+                control.hidden = diagram;
+            }
+        }
         window.TaxonomyViews?.prepareDiagramContext?.(container, {
             analysisKey: diagramContextGeneration, view: S.currentView, treeRoot: S.currentTreeRoot
         });
         container.removeAttribute('data-view-rendered');
-        const diagram = ['sunburst', 'tree', 'decision'].includes(S.currentView);
         const filter = document.getElementById('diagramRelevanceFilter');
         let diagramData = data;
         if (window.TaxonomyViews) {
@@ -1673,6 +1702,7 @@
         const hasChildren = node.children && node.children.length > 0;
         const pct = scores ? (scores[node.code] !== undefined ? scores[node.code] : null) : null;
         const reason = S.currentReasons ? (S.currentReasons[node.code] || null) : null;
+        const unit = window.TaxonomyResponsibilityDisplay?.entry(node.code);
         const presentation = pct !== null && SC().describeScore
             ? SC().describeScore(node.code, pct) : null;
 
@@ -1693,6 +1723,7 @@
         if (Number.isFinite(pct) && pct >= 0 && reason) {
             ariaLabel += ', ' + t('browse.node.reason', reason);
         }
+        if (unit) ariaLabel += ', ' + t('views.diagram.responsibleUnit', unit.name);
         wrapper.setAttribute('aria-label', ariaLabel);
         if (hasChildren) {
             wrapper.setAttribute('aria-expanded', 'false');
@@ -1737,6 +1768,16 @@
             name.title = node.description;
         }
         header.appendChild(name);
+
+        if (unit) {
+            const responsibility = document.createElement('span');
+            responsibility.className = 'taxonomy-responsibility-label';
+            responsibility.textContent = unit.name;
+            responsibility.title = t('responsibility.source', unit.sourceId);
+            responsibility.setAttribute('aria-hidden', 'true');
+            responsibility.style.setProperty('--responsible-unit-color', unit.color);
+            header.appendChild(responsibility);
+        }
 
         // Percentage badge (if analysed)
         if (pct !== null) {

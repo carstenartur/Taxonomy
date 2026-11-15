@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 
@@ -30,22 +31,54 @@ public class RetainedCatalogueDefinitions implements com.taxonomy.dsl.model.Cata
 
     @Override
     public java.util.Map<String, String> parentsForModel(com.taxonomy.dsl.model.CanonicalArchitectureModel model) {
-        return hierarchy == null ? java.util.Map.of() : hierarchy.parentsFor(model);
+        if (hierarchy == null) return Map.of();
+        if (!model.getCatalogueResponsibilities().isEmpty()) {
+            return appliedGeneration(model.responsibilityCatalogueRevision()).map(generation ->
+                    analysisParents(model, generation.revision())).orElseGet(Map::of);
+        }
+        return hierarchy.parentsFor(model);
     }
 
     public Map<String, String> analysisParents(CanonicalArchitectureModel model, String revision) {
         if (revision == null || hierarchy == null) return Map.of();
+        return hierarchy.parentsFor(model, revision, forGeneration(archivedHierarchy(revision)));
+    }
+
+    private CatalogueSourceJournal.Snapshot archivedHierarchy(String revision) {
         var snapshot = sources.findRevision(revision).orElseThrow();
         if (snapshot.workbook().use() != CatalogueSourceJournal.Use.APPLIED
                 || snapshot.overlay().use() != CatalogueSourceJournal.Use.APPLIED
                 && snapshot.overlay().use() != CatalogueSourceJournal.Use.NOT_USED)
             throw new NoSuchElementException("The archived catalogue hierarchy was not retained");
-        return hierarchy.parentsFor(model, revision, forGeneration(snapshot));
+        return snapshot;
+    }
+
+    @Override
+    public List<Node> analysisNodes(String revision) {
+        if (revision == null || hierarchy == null) return List.of();
+        archivedHierarchy(revision);
+        return hierarchy.catalogueNodes(revision);
+    }
+
+    @Override
+    public AssignmentTarget assignmentTarget(CanonicalArchitectureModel model, String code) {
+        return hierarchy == null ? new AssignmentTarget(false, null)
+                : appliedGeneration(model.responsibilityCatalogueRevision()).map(generation -> new AssignmentTarget(
+                        hierarchy.contains(generation.revision(), code), model.getCatalogueRevision() == null
+                                || model.getCatalogueRevision().isBlank() ? generation.revision() : null))
+                .orElseGet(() -> new AssignmentTarget(false, null));
+    }
+
+    @Override
+    public List<Node> catalogueNodes(CanonicalArchitectureModel model) {
+        if (hierarchy == null) return List.of();
+        return appliedGeneration(model.responsibilityCatalogueRevision())
+                .map(generation -> analysisNodes(generation.revision())).orElseGet(List::of);
     }
 
     @Override
     public CatalogueDefinition forModel(com.taxonomy.dsl.model.CanonicalArchitectureModel model) {
-        String revision = model.getCatalogueRevision();
+        String revision = model.responsibilityCatalogueRevision();
         if (revision == null) return CatalogueDefinition.standard();
         return forGeneration(generation(revision));
     }
