@@ -37,6 +37,17 @@ class EmbeddingLifecycleSafetyTest {
                 .isEqualTo("${TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD:false}");
     }
 
+    @Test
+    void applicationTestContextsRequireExplicitEmbeddingOptIn() throws Exception {
+        Properties properties = new Properties();
+        try (InputStream stream = getClass().getResourceAsStream("/config/application.properties")) {
+            assertThat(stream).isNotNull();
+            properties.load(stream);
+        }
+
+        assertThat(properties.getProperty("embedding.enabled")).isEqualTo("false");
+    }
+
     @SuppressWarnings("unchecked")
     @Test
     void hibernateSearchBridgeDoesNotBuildTextOrEmbedWhenDisabled() throws Exception {
