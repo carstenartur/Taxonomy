@@ -58,7 +58,8 @@ public class CentralForkUpstreamController {
     }
 
     @RequestMapping(path = "/rebase-plan", method = RequestMethod.HEAD)
-    @Operation(summary = "Read the current rebase plan ref validator")
+    @Operation(summary = "Read the current rebase plan ref validator",
+            description = "Checks the live local, upstream and tracking Git refs for the selected central fork and returns an ETag without fetching or changing any ref. Requires current source and destination access.")
     public ResponseEntity<Void> rebasePlanRefTag(@PathVariable String repositoryId, @RequestParam String branch) throws IOException {
         String tag = upstream.rebasePlanRefTag(repositoryId, resolver.resolveCurrentUsername(), branch);
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).eTag(tag).build();
