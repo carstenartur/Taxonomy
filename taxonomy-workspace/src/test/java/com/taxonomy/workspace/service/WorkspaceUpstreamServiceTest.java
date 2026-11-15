@@ -7,6 +7,7 @@ import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.GitHistoryTransfer;
 import com.taxonomy.workspace.storage.GitUpstreamRef;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,6 +22,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
 
@@ -86,6 +88,39 @@ class WorkspaceUpstreamServiceTest {
     }
 
     @AfterEach void close() { if (database != null) database.close(); repositories.close(); }
+
+    @Test
+    void planValidatorTracksIndependentLocalSourceAndTrackingRefMoves() throws Exception {
+        service.fetch(selected, new WorkspaceUpstreamService.Request(incoming, null));
+        clearInvocations(rows);
+        String initial = rebasePlanTag();
+
+        target.commitDsl("draft", "independent local edit", "alice", "Move the local branch");
+        String movedLocal = rebasePlanTag();
+        assertThat(movedLocal).isNotEqualTo(initial);
+
+        String later = source.commitDsl("main", "independent upstream edit", "owner", "Move the source branch");
+        String movedSource = rebasePlanTag();
+        assertThat(movedSource).isNotEqualTo(movedLocal);
+
+        GitHistoryTransfer.copyCommitClosure(source, target, later, List.of(incoming));
+        tracked.advance(target, incoming, later, "owner");
+        String movedTracking = rebasePlanTag();
+        assertThat(movedTracking).isNotEqualTo(movedSource);
+        assertThat(rebasePlanTag()).isEqualTo(movedTracking);
+        assertThat(workspace.getCurrentCommit()).isEqualTo(local);
+        assertThat(workspace.getLastFetchedCommit()).isEqualTo(incoming);
+        verify(rows, never()).save(any());
+    }
+
+    private String rebasePlanTag() throws Exception {
+        String path = "/api/workspace/upstream/rebase-plan";
+        String tag = mvc.perform(get(path)).andExpect(status().isOk())
+                .andExpect(header().exists("ETag")).andReturn().getResponse().getHeader("ETag");
+        mvc.perform(head(path)).andExpect(status().isOk()).andExpect(content().string(""))
+                .andExpect(header().string("Cache-Control", "no-store")).andExpect(header().string("ETag", tag));
+        return tag;
+    }
 
     @Test
     void planUsesOnlyTheCapturedTrackingCommitAndListsLocalCommitsOldestFirst() throws Exception {

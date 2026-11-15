@@ -64,7 +64,9 @@ class ApiPermissionsSecurityTest {
     @ValueSource(strings = {"/api/workspace/upstream/rebase-plan", "/api/repositories/fork/upstream/rebase-plan"})
     void inspectingAReplayPlanRequiresArchitectureRead(String path) throws Exception {
         mvc.perform(get(path)).andExpect(status().isUnauthorized());
+        mvc.perform(head(path)).andExpect(status().isUnauthorized());
         mvc.perform(get(path).with(user("reader").roles("READER"))).andExpect(status().isOk());
+        mvc.perform(head(path).with(user("reader").roles("READER"))).andExpect(status().isOk());
     }
 
     @ParameterizedTest

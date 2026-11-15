@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -52,8 +53,15 @@ public class CentralForkUpstreamController {
             description = "Returns the captured tracking commit, common base and ordered local replay candidates. "
                     + "This read does not fetch objects, check content conflicts or change a branch.")
     public ResponseEntity<UpstreamRebasePlan> rebasePlan(@PathVariable String repositoryId, @RequestParam String branch) throws IOException {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
-                .body(upstream.rebasePlan(repositoryId, resolver.resolveCurrentUsername(), branch));
+        var plan = upstream.rebasePlan(repositoryId, resolver.resolveCurrentUsername(), branch);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).eTag(plan.refTag()).body(plan);
+    }
+
+    @RequestMapping(path = "/rebase-plan", method = RequestMethod.HEAD)
+    @Operation(summary = "Read the current rebase plan ref validator")
+    public ResponseEntity<Void> rebasePlanRefTag(@PathVariable String repositoryId, @RequestParam String branch) throws IOException {
+        String tag = upstream.rebasePlanRefTag(repositoryId, resolver.resolveCurrentUsername(), branch);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).eTag(tag).build();
     }
 
     @PostMapping("/fetch")

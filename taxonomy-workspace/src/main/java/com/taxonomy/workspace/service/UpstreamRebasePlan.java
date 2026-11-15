@@ -1,5 +1,6 @@
 package com.taxonomy.workspace.service;
 
+import com.taxonomy.identity.StableIdentityHash;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
@@ -22,30 +23,63 @@ public record UpstreamRebasePlan(String repositoryId, String workspaceId, String
 
     private static final int MAX_REPLAY_COMMITS = 200;
 
+    private record Refs(String localCommit, WorkspaceUpstreamService.Status upstream) {}
+
     static UpstreamRebasePlan read(GitUpstreamTransfer transfer, String repositoryId, String workspaceId,
                                   String branch) throws IOException {
         var reauthorize = transfer.reauthorize();
         reauthorize.run();
         try {
-            if (branch == null || !Repository.isValidRefName(Constants.R_HEADS + branch)
-                    || branch.startsWith(DslGitRepository.EXTERNAL_SYNC_BRANCH_PREFIX)) {
-                throw new IllegalArgumentException("An exact local branch is required");
-            }
-            var upstream = transfer.inspect();
-            var target = transfer.target();
-            var local = target.readFreshRef(Constants.R_HEADS + branch);
-            String head = local == null || local.isSymbolic() || local.getObjectId() == null
-                    ? null : local.getObjectId().name();
-            var plan = new UpstreamRebasePlan(repositoryId, workspaceId, branch, head, upstream,
-                    head == null ? State.NO_LOCAL_BRANCH : State.NO_TRACKING, null, List.of());
-            if (head != null && upstream.trackedCommit() != null) {
-                return plan.inspectHistory(target.getGitRepository());
+            var refs = readRefs(transfer, branch);
+            var plan = new UpstreamRebasePlan(repositoryId, workspaceId, branch, refs.localCommit(), refs.upstream(),
+                    refs.localCommit() == null ? State.NO_LOCAL_BRANCH : State.NO_TRACKING, null, List.of());
+            if (refs.localCommit() != null && refs.upstream().trackedCommit() != null) {
+                return plan.inspectHistory(transfer.target().getGitRepository());
             }
             return plan;
         } finally {
             // Recheck authority before releasing either the plan or an inspection error.
             reauthorize.run();
         }
+    }
+
+    static String readRefTag(GitUpstreamTransfer transfer, String repositoryId, String workspaceId,
+                             String branch) throws IOException {
+        var reauthorize = transfer.reauthorize();
+        reauthorize.run();
+        try {
+            return refTag(repositoryId, workspaceId, branch, readRefs(transfer, branch));
+        } finally {
+            reauthorize.run();
+        }
+    }
+
+    private static Refs readRefs(GitUpstreamTransfer transfer, String branch) throws IOException {
+        if (branch == null || !Repository.isValidRefName(Constants.R_HEADS + branch)
+                || branch.startsWith(DslGitRepository.EXTERNAL_SYNC_BRANCH_PREFIX)) {
+            throw new IllegalArgumentException("An exact local branch is required");
+        }
+        var upstream = transfer.inspect();
+        var local = transfer.target().readFreshRef(Constants.R_HEADS + branch);
+        String head = local == null || local.isSymbolic() || local.getObjectId() == null
+                ? null : local.getObjectId().name();
+        return new Refs(head, upstream);
+    }
+
+    public String refTag() {
+        return refTag(repositoryId, workspaceId, branch, new Refs(localCommit, upstream));
+    }
+
+    private static String refTag(String repositoryId, String workspaceId, String branch, Refs refs) {
+        var upstream = refs.upstream();
+        var identity = new StringBuilder();
+        for (String value : new String[]{repositoryId, workspaceId, branch, refs.localCommit(),
+                upstream.sourceRepositoryId(), upstream.sourceBranch(), upstream.sourceCommit(),
+                upstream.trackingRef(), upstream.trackedCommit()}) {
+            if (value == null) identity.append("-:");
+            else identity.append(value.length()).append(':').append(value);
+        }
+        return "W/\"" + StableIdentityHash.sha256(identity.toString()) + "\"";
     }
 
     private UpstreamRebasePlan inspectHistory(Repository repository) throws IOException {

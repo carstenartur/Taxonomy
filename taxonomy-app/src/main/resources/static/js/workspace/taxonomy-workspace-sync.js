@@ -18,6 +18,8 @@ window.TaxonomyWorkspaceSync = (function () {
     var pollTimer = null;
     var pendingRead = null;
     var planRead = null;
+    var planTag = null;
+    var planCheck = null;
     var pageActive = true;
 
     // ── Initialization ──────────────────────────────────────────────
@@ -96,6 +98,7 @@ window.TaxonomyWorkspaceSync = (function () {
                 // Treat any changed sync observation as a new plan authority; do not show a stale plan.
                 if (syncState && JSON.stringify(state) !== JSON.stringify(syncState)) clearRebasePlan();
                 syncState = state;
+                checkVisibleRebasePlan(state);
                 var planButton = document.getElementById('workspaceRebasePlanButton');
                 if (planButton) planButton.hidden = !state.repositoryId || !state.branch
                     || (context?.mode === 'READ_ONLY' && context.commitId != null) || Object.hasOwn(lifecycleLabels, state.syncStatus);
@@ -231,8 +234,26 @@ window.TaxonomyWorkspaceSync = (function () {
 
     function clearRebasePlan() {
         if (planRead) planRead.abort();
+        if (planCheck) planCheck.abort();
         planRead = null;
+        planCheck = null;
+        planTag = null;
         document.getElementById('workspaceRebasePlan')?.replaceChildren();
+    }
+
+    async function checkVisibleRebasePlan(source) {
+        if (planTag === null) return;
+        if (planCheck) planCheck.abort();
+        var check = new AbortController(), expected = planTag;
+        planCheck = check;
+        try {
+            var live = await window.TaxonomyWorkspaceApi.rebasePlanRefTag(source, {signal:check.signal});
+            if (planCheck === check && live !== expected) clearRebasePlan();
+        } catch (error) {
+            if (planCheck === check) clearRebasePlan();
+        } finally {
+            if (planCheck === check) planCheck = null;
+        }
     }
 
     async function showRebasePlan() {
@@ -243,12 +264,21 @@ window.TaxonomyWorkspaceSync = (function () {
         var controller = new AbortController();
         planRead = controller;
         panel.textContent = t('workspace.rebase.loading');
+        function current() {
+            return !controller.signal.aborted && planRead === controller && JSON.stringify(syncState) === observedSource;
+        }
         try {
-            var plan = await window.TaxonomyWorkspaceApi.rebasePlan(source, {signal:controller.signal});
-            if (controller.signal.aborted || planRead !== controller
-                    || JSON.stringify(syncState) !== observedSource) return;
-            if (plan.repositoryId !== source.repositoryId || plan.branch !== source.branch
+            var {plan, etag} = await window.TaxonomyWorkspaceApi.rebasePlan(
+                source, {signal:controller.signal, includeETag:true});
+            if (!current()) return;
+            if (!etag || plan.repositoryId !== source.repositoryId || plan.branch !== source.branch
                     || plan.workspaceId !== (source.workspaceId || null)) throw new Error();
+            var liveTag = await window.TaxonomyWorkspaceApi.rebasePlanRefTag(source, {signal:controller.signal});
+            if (!current()) return;
+            if (liveTag !== etag) {
+                clearRebasePlan();
+                return;
+            }
             var details = document.createElement('dl');
             details.className = 'small mb-2';
             function field(key, label, commit) {
@@ -284,10 +314,9 @@ window.TaxonomyWorkspaceSync = (function () {
                 conflicts.textContent = t('workspace.rebase.conflicts.unchecked');
                 panel.append(list, conflicts);
             }
+            planTag = etag;
         } catch (error) {
-            if (!controller.signal.aborted && planRead === controller
-                    && JSON.stringify(syncState) === observedSource)
-                panel.textContent = t('workspace.rebase.unavailable');
+            if (current()) panel.textContent = t('workspace.rebase.unavailable');
         }
     }
 
