@@ -79,7 +79,8 @@ final class PdfDiagramPages {
             double height = nodes.stream().mapToDouble(n -> n.y() + n.height()).max().orElseThrow() - y + INSET;
             List<DiagramSceneNode> translated = nodes.stream().map(n -> new DiagramSceneNode(
                     n.id(), n.label(), n.type(), n.relevance(), n.anchor(), n.layer(), n.depth(),
-                    n.selectedForImpact(), n.parentId(), n.container(), n.x() - x, n.y() - y, n.width(), n.height())).toList();
+                    n.selectedForImpact(), n.parentId(), n.container(), n.x() - x, n.y() - y, n.width(), n.height(),
+                    n.responsibility())).toList();
             List<DiagramSceneEdge> translatedEdges = edges.get(panels.size()).stream().map(e -> new DiagramSceneEdge(
                     e.id(), e.sourceId(), e.targetId(), e.relationType(), e.relevance(), e.relationCategory(),
                     e.sourceX() - x, e.sourceY() - y, e.targetX() - x, e.targetY() - y, e.metadata())).toList();

@@ -229,7 +229,7 @@ public class ConfigurableDiagramSelectionPolicy implements DiagramSelectionPolic
                 // Multiple children: mark as container
                 result.add(new DiagramNode(n.id(), n.label(), n.type(),
                         n.relevance(), n.anchor(), n.layer(),
-                        n.depth(), n.selectedForImpact(), n.parentId(), true));
+                        n.depth(), n.selectedForImpact(), n.parentId(), true, n.responsibility()));
             } else {
                 // Single child but collapse disabled — keep as normal node
                 result.add(n);
@@ -256,7 +256,8 @@ public class ConfigurableDiagramSelectionPolicy implements DiagramSelectionPolic
             String parent = parents.get(node.id());
             if (Objects.equals(parent, node.parentId())) return node;
             return new DiagramNode(node.id(), node.label(), node.type(), node.relevance(),
-                    node.anchor(), node.layer(), node.depth(), node.selectedForImpact(), parent, node.container());
+                    node.anchor(), node.layer(), node.depth(), node.selectedForImpact(), parent, node.container(),
+                    node.responsibility());
         }).toList();
     }
 

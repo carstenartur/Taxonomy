@@ -166,7 +166,7 @@
                     </div>
                 </fieldset>
             </form>
-            <section th:replace="~{fragments/architecture-organization-directory :: directory}"></section>
+            <section th:replace="~{fragments/architecture-organization-directory :: directory('editorDirectory', 'editorOrganizationDirectory')}"></section>
             <section id="editorBrief" aria-labelledby="editorBriefTitle">
                 <h2 id="editorBriefTitle" data-i18n="editor.brief.title">Architecture brief</h2>
                 <p id="editorBriefStatus" role="status"></p>

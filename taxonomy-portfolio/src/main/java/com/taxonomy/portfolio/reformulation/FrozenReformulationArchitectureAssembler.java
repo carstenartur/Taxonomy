@@ -51,6 +51,13 @@ final class FrozenReformulationArchitectureAssembler {
 
         var names = new HashMap<String, TaxonomyNodeDto>();
         for (var root : catalogue) index(root, names);
+        var view = payload.getArchitectureView();
+        var assignments = new HashMap<String, TaxonomyResponsibilityLookup.Assignment>();
+        if (view != null && view.getIncludedElements() != null) {
+            for (var element : view.getIncludedElements()) {
+                if (element.getResponsibility() != null) assignments.putIfAbsent(element.getNodeCode(), element.getResponsibility());
+            }
+        }
         var nodes = new ArrayList<DiagramNode>();
         var nodeIds = new HashSet<String>();
         var elementDetails = new ArrayList<String>();
@@ -65,7 +72,7 @@ final class FrozenReformulationArchitectureAssembler {
             nodes.add(new DiagramNode(element.nodeCode(), label,
                     Objects.toString(element.taxonomyRoot(), "Unknown"), element.relevance(),
                     element.directScore() > 0, 0, node.getLevel(), element.selectedForImpact(),
-                    parent, false));
+                    parent, false, assignments.get(element.nodeCode())));
             elementDetails.add(element.nodeCode() + " — " + label + " · " + Objects.toString(element.presenceReason(), "")
                     + " · " + Objects.toString(baseline.language().equals("de") ? node.getDescriptionDe() : node.getDescriptionEn(), "")
                     + " · " + element.reviewStatus());
@@ -84,7 +91,6 @@ final class FrozenReformulationArchitectureAssembler {
                     + " · " + relation.relationType() + " · " + Objects.toString(relation.presenceReason(), "")
                     + " · " + relation.reviewStatus());
         }
-        var view = payload.getArchitectureView();
         if (view != null && view.getIncludedRelationships() != null) {
             record Direction(String source, String target, String type) {}
             var represented = new HashMap<Direction, Integer>();

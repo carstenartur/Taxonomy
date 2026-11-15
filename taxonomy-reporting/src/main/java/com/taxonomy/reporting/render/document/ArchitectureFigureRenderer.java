@@ -121,12 +121,20 @@ public final class ArchitectureFigureRenderer {
                         (float) (node.x() + node.width() - scoreWidth - 10),
                         (float) node.y() + 23);
                 g.setFont(new Font("SansSerif", Font.PLAIN, 20));
-                drawTitle(
-                        g,
-                        node.label(),
-                        (float) node.x() + 10,
-                        (float) node.y() + 47,
-                        (int) node.width() - 20);
+                var assignment = node.responsibility();
+                float x = (float) node.x() + 10;
+                float titleY = (float) node.y() + 47;
+                int textWidth = (int) node.width() - 20;
+                if (assignment == null) {
+                    drawTitle(g, node.label(), x, titleY, textWidth);
+                } else {
+                    drawBounded(g, node.label(), x, titleY, textWidth);
+                    g.setColor(Color.decode(assignment.color()));
+                    g.fill(new Ellipse2D.Double(x, node.y() + 62, 9, 9));
+                    g.setColor(new Color(0x334155));
+                    g.setFont(new Font("SansSerif", Font.PLAIN, 16));
+                    drawBounded(g, assignment.name(), x + 14, (float) node.y() + 72, textWidth - 14);
+                }
             }
             // Compact stable IDs cross-reference the adjacent native relation key and full
             // inventory.

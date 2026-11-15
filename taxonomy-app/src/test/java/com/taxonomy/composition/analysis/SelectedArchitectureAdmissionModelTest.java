@@ -3,11 +3,13 @@ package com.taxonomy.composition.analysis;
 import com.taxonomy.catalog.definition.RetainedCatalogueDefinitions;
 import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
 import com.taxonomy.dsl.model.CatalogueDefinition;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver.Node;
 import com.taxonomy.dsl.model.ProjectCatalogue;
 import com.taxonomy.dsl.planning.ArchitectureBrief;
 import com.taxonomy.dto.AnalysisMode;
 import com.taxonomy.dto.AnalysisModelBinding;
 import com.taxonomy.dto.AnalysisScope;
+import com.taxonomy.dto.TaxonomyResponsibilityLookup.Assignment;
 import com.taxonomy.editor.ArchitectureCommandPort.Context;
 import com.taxonomy.editor.ArchitectureEditorService;
 import com.taxonomy.editor.ArchitectureEditorService.Document;
@@ -162,6 +164,41 @@ class SelectedArchitectureAdmissionModelTest {
         assertEquals(A.toString(), frozen.analysisCatalogueRevision());
         verify(sources, times(2)).current();
         verify(definitions, never()).current();
+    }
+
+    @Test void catalogueResponsibilityIsCapturedBeforeArchitectureAndOnlyInTheRequestedTaxonomy() throws Exception {
+        String original = ProjectCatalogue.initial("administration", A) + """
+                organization operations {
+                  title: "Operations";
+                }
+                organization information {
+                  title: "Information management";
+                }
+                catalogueResponsibility BP {
+                  organization: "operations";
+                }
+                catalogueResponsibility IP {
+                  organization: "information";
+                }
+                """;
+        var scope = new AnalysisScope(Set.of("BP"), AnalysisMode.TAXONOMIES_ONLY);
+        retain(A, CatalogueDefinition.standard());
+        doReturn(List.of(catalogueNode("BP", "BP", null), catalogueNode("IP", "IP", null),
+                catalogueNode("BP-1000", "BP", "BP"), catalogueNode("PROCESS.1", "BP", "BP-1000"),
+                catalogueNode("IP-2000", "IP", "IP"))).when(definitions).analysisNodes(A.toString());
+        when(editor.read(PROJECT, FIRST, null)).thenReturn(git(FIRST, original));
+        when(editor.read(PROJECT, SECOND, null)).thenReturn(git(SECOND, original.replace("Operations", "New team name")));
+        var old = admission.capture(WORKSPACE, FIRST, null, scope);
+        assertEquals(Set.of("BP", "BP-1000", "PROCESS.1"), old.responsibilities().keySet());
+        assertEquals(new Assignment("operations", "Operations", "BP"), old.responsibilities().get("PROCESS.1"));
+        assertEquals("New team name", admission.capture(WORKSPACE, SECOND, null, scope).responsibilities().get("PROCESS.1").name());
+        assertEquals("Operations", admission.resolve(old).get("PROCESS.1").name());
+        var json = tools.jackson.databind.json.JsonMapper.builder().build();
+        assertEquals(old, json.readValue(json.writeValueAsBytes(old), AnalysisModelBinding.class));
+    }
+
+    private static Node catalogueNode(String code, String root, String parent) {
+        return new Node(code, root, parent, code, null, null);
     }
 
     @Test void aPreexistingJsonBindingKeepsItsRecordedPinAndAnUnretainedCurrentGenerationClaimsNoExecutionBasis() throws Exception {

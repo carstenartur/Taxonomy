@@ -10,6 +10,8 @@ import com.taxonomy.dsl.mapper.AstToModelMapper;
 import com.taxonomy.dsl.model.ArchitectureOrganization;
 import com.taxonomy.dsl.model.CanonicalArchitectureModel;
 import com.taxonomy.dsl.model.CatalogueDefinition;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver.AssignmentTarget;
+import com.taxonomy.dsl.model.CatalogueResponsibility;
 import com.taxonomy.dsl.parser.TaxDslParser;
 import com.taxonomy.dsl.validation.DslValidator;
 
@@ -20,11 +22,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 
 /** Strict commands layered over the tolerant import parser. No persistence or renderer dependencies. */
 public final class ArchitectureDslCommands {
     private final com.taxonomy.dsl.planning.PlanningInformation planning;
     private final CatalogueDefinition catalogue;
+    private final Function<String, AssignmentTarget> catalogueNodes;
     public ArchitectureDslCommands() { this(new com.taxonomy.dsl.planning.PlanningInformation()); }
     public ArchitectureDslCommands(com.taxonomy.dsl.planning.PlanningInformation planning) {
         this(planning, CatalogueDefinition.standard());
@@ -33,8 +37,16 @@ public final class ArchitectureDslCommands {
         this(new com.taxonomy.dsl.planning.PlanningInformation(), catalogue);
     }
     public ArchitectureDslCommands(com.taxonomy.dsl.planning.PlanningInformation planning, CatalogueDefinition catalogue) {
+        this(planning, catalogue, code -> new AssignmentTarget(catalogue.rootCodes().contains(catalogue.rootFromId(code)), null));
+    }
+    public ArchitectureDslCommands(CatalogueDefinition catalogue, Function<String, AssignmentTarget> catalogueNodes) {
+        this(new com.taxonomy.dsl.planning.PlanningInformation(), catalogue, catalogueNodes);
+    }
+    private ArchitectureDslCommands(com.taxonomy.dsl.planning.PlanningInformation planning, CatalogueDefinition catalogue,
+                                    Function<String, AssignmentTarget> catalogueNodes) {
         this.planning = Objects.requireNonNull(planning);
         this.catalogue = Objects.requireNonNull(catalogue);
+        this.catalogueNodes = Objects.requireNonNull(catalogueNodes);
     }
 
     public static final Set<String> ELEMENT_PROPERTIES = Set.of("title", "description",
@@ -123,6 +135,7 @@ public final class ArchitectureDslCommands {
             case SetArchitecturePackagePlacements placements -> placePackages(source, blocks, placements);
             case UpsertOrganization organization -> upsertOrganization(source, blocks, organization);
             case DeleteOrganization organization -> deleteOrganization(source, blocks, organization.id());
+            case SetCatalogueResponsibility assignment -> setCatalogueResponsibility(source, blocks, assignment);
             case DeleteArchitecturePackage delete -> deletePackage(source, blocks, delete.id());
             case UpsertRequirementMapping mapping -> upsertMapping(source, blocks, mapping);
             case DeleteRequirementMapping mapping -> deleteMapping(source, blocks, mapping);
@@ -148,6 +161,7 @@ public final class ArchitectureDslCommands {
         if (original.stream().anyMatch(change -> !change.id().startsWith("element:")
                 && !change.id().startsWith("relation:") && !change.id().startsWith("package:")
                 && !change.id().startsWith("organization:")
+                && !change.id().startsWith(CatalogueResponsibility.KIND + ":")
                 && !change.id().startsWith("mapping:")
                 && !ArchitectureBrief.ownsChange(before, after, change.id())
                 && !AnalysisSnapshotAdoption.isAdoptionView(change)
@@ -209,6 +223,9 @@ public final class ArchitectureDslCommands {
                 requireSingleProperty(block, "title");
             } else if ("element".equals(block.getKind())) {
                 requireSingleProperty(block, ArchitectureOrganization.RESPONSIBLE_ID);
+            } else if (CatalogueResponsibility.KIND.equals(block.getKind())) {
+                requireSingleProperty(block, CatalogueResponsibility.ORGANIZATION);
+                requireSingleProperty(block, CatalogueResponsibility.REVISION);
             }
         }
         ArchitectureOrganization.validate(new AstToModelMapper().map(ast),
@@ -240,10 +257,40 @@ public final class ArchitectureDslCommands {
         return ArchitectureSemanticPatch.replace(source, existing, null);
     }
 
+    private String setCatalogueResponsibility(String source, Map<String, BlockAst> blocks, SetCatalogueResponsibility command) {
+        token(command.code(), "code");
+        var existing = blocks.get(CatalogueResponsibility.KIND + ":" + command.code());
+        String organization = command.organizationId();
+        if (organization == null || organization.isEmpty())
+            return existing == null ? source : ArchitectureSemanticPatch.replace(source, existing, null);
+        var target = catalogueNodes.apply(command.code());
+        if (!target.known())
+            throw problem("UNKNOWN_CATALOGUE_NODE", "code", "Unknown catalogue element: " + command.code());
+        requireOrganization(blocks, organization);
+        var properties = new LinkedHashMap<>(Map.of(CatalogueResponsibility.ORGANIZATION, organization));
+        if (target.catalogueRevision() != null) properties.put(CatalogueResponsibility.REVISION, target.catalogueRevision());
+        var replacement = block(CatalogueResponsibility.KIND, List.of(command.code()), properties, existing);
+        String next = ArchitectureSemanticPatch.replace(source, existing, replacement);
+        validateOrganizations(next);
+        return next;
+    }
+
     private static void requireOrganization(Map<String, BlockAst> blocks, String id) {
         if (id != null && !id.isEmpty() && !blocks.containsKey("organization:" + id))
             throw problem("UNKNOWN_ORGANIZATION", ArchitectureOrganization.RESPONSIBLE_ID, "Unknown organization: " + id);
     }
+
+    String retainSnapshotResponsibility(String source, BlockAst element, SnapshotResponsibility responsibility) {
+        if (present(element.property(ArchitectureOrganization.RESPONSIBLE_ID))
+                || present(element.property("x-responsible-organization"))
+                || present(element.property(ArchitectureOrganization.CAPTURED_NAME))) return source;
+        var properties = Map.of(ArchitectureOrganization.CAPTURED_UNIT, responsibility.unitId(),
+                ArchitectureOrganization.CAPTURED_NAME, responsibility.name(),
+                ArchitectureOrganization.CAPTURED_SOURCE, responsibility.sourceId());
+        return ArchitectureSemanticPatch.replace(source, element, block("element", element.getHeaderTokens(), properties, element));
+    }
+
+    private static boolean present(String value) { return value != null && !value.isBlank(); }
 
     private String createPackage(String source, Map<String, BlockAst> blocks, CreateArchitecturePackage command) {
         token(command.id(), "id");
@@ -583,7 +630,9 @@ public final class ArchitectureDslCommands {
                 };
             } else if ("organization".equals(removed.getKind())) {
                 references = "organization".equals(candidate.getKind()) && candidate.propertyValues("parentId").contains(id)
-                        || "element".equals(candidate.getKind()) && candidate.propertyValues(ArchitectureOrganization.RESPONSIBLE_ID).contains(id);
+                        || "element".equals(candidate.getKind()) && candidate.propertyValues(ArchitectureOrganization.RESPONSIBLE_ID).contains(id)
+                        || CatalogueResponsibility.KIND.equals(candidate.getKind())
+                            && candidate.propertyValues(CatalogueResponsibility.ORGANIZATION).contains(id);
             } else if ("package".equals(removed.getKind())) {
                 references = "package".equals(candidate.getKind()) && id.equals(candidate.property("parent"))
                         || "element".equals(candidate.getKind()) && id.equals(candidate.property("package"));

@@ -19,7 +19,7 @@ window.TaxonomyResponsibilityDisplay = (function () {
         const names = new Map((view.model.organizations || []).map(org => [org.id, org.title]));
         const result = new Map();
         for (const [code, row] of Object.entries(view.hierarchy || {})) {
-            const name = names.get(row.organizationId) || row.legacyOrganization;
+            const name = row.capturedName || names.get(row.organizationId) || row.legacyOrganization;
             if (name && row.sourceElementId) {
                 result.set(code, unit(row.organizationId || 'legacy:' + name, name, row.sourceElementId));
             }
@@ -41,7 +41,7 @@ window.TaxonomyResponsibilityDisplay = (function () {
                     || (chrome.workspaceScopeKey && chrome.workspaceScopeKey !== workspace)) return null;
             const pin = {expectedCommit:b.commit, expectedSemanticRevision:b.semanticRevision, modelSha256:b.modelSha256,
                 catalogueRevision:b.executionCatalogueRevision || b.catalogueRevision};
-            return {key:JSON.stringify([b.repositoryId, workspace, b.branch, generation, pin]), scope:b, pin};
+            return {key:JSON.stringify([b.repositoryId, workspace, b.branch, generation, pin, b.scope?.taxonomyRoots]), scope:b, pin};
         }
         // Imported and historical results without evidence cannot use the current workspace's units.
         if (state.lastAnalyzedText != null || state.lastAnalysisStatus || state.analysisOperationId
@@ -65,9 +65,7 @@ window.TaxonomyResponsibilityDisplay = (function () {
     }
 
     document.addEventListener?.('taxonomy:repository-context-changed', function (event) {
-        if (!enabled || !event.detail?.selectionChanged) return;
-        analysis = null;
-        announce();
+        if (event.detail?.selectionChanged) invalidate();
     });
 
     function setEnabled(value) {
@@ -92,14 +90,20 @@ window.TaxonomyResponsibilityDisplay = (function () {
         return label;
     }
 
-    function bindAnalysis() {
-        if (!enabled) return;
+    function bindAnalysis(showAffected = false) {
+        if (!enabled && !showAffected) return;
         const selected = selection();
         if (analysis && analysis.key === (selected?.key || '')) return analysis.request;
         const current = {key:selected?.key || '', entries:new Map(), message:selected ? 'responsibility.loading' : 'responsibility.unbound'};
         analysis = current;
         updateControls();
         if (!selected) return;
+        const captured = selected.scope?.responsibilities;
+        if (captured && Object.keys(captured).length) {
+            loadEntries(current, captured);
+            announce();
+            return;
+        }
         current.request = (async () => {
             try {
                 const scope = selected.scope || await window.TaxonomyArchitectureWorkspace.analysisScope();
@@ -109,24 +113,55 @@ window.TaxonomyResponsibilityDisplay = (function () {
                 }
                 const values = await window.ArchitectureEditorApi.analysisResponsibilities(scope, selected.pin);
                 if (analysis !== current) return;
-                for (const [code, value] of Object.entries(values)) {
-                    if (value?.unitId && value.name && value.sourceId) {
-                        current.entries.set(code, unit(value.unitId, value.name, value.sourceId));
-                    }
-                }
-                current.message = current.entries.size ? null : 'responsibility.none';
+                loadEntries(current, values);
             } catch (_) {
                 if (analysis !== current) return;
                 current.message = 'responsibility.unavailable';
             }
             if (selection()?.key !== current.key) {
-                bindAnalysis();
+                bindAnalysis(showAffected);
             }
             announce();
         })();
         return current.request;
     }
 
-    return {enabled:() => enabled, setEnabled, control, bindAnalysis, fromEditor,
+    function loadEntries(current, values) {
+        for (const [code, value] of Object.entries(values)) {
+            if (value?.unitId && value.name && value.sourceId) {
+                current.entries.set(code, unit(value.unitId, value.name, value.sourceId));
+            }
+        }
+        current.message = current.entries.size ? null : 'responsibility.none';
+    }
+
+    function matched(taxonomies, scores) {
+        const binding = window.TaxonomyState?.currentModelBinding;
+        if (!binding || !scores || !analysis?.entries.size || analysis.key !== selection()?.key) return new Map();
+        const roots = binding.scope?.taxonomyRoots || [];
+        const nodes = taxonomies.filter(root => !roots.length || roots.includes(root.code));
+        const units = new Map();
+        while (nodes.length) {
+            const node = nodes.pop();
+            for (const child of node.children || []) nodes.push(child);
+            const assignment = analysis.entries.get(node.code);
+            const assessment = window.TaxonomyState.analysisCoverage?.nodes?.[node.code];
+            if (!assignment || !(scores[node.code] > 0) || (assessment && assessment.state !== 'RELEVANT')
+                    || window.TaxonomyUtils.isTaxonomyContainer(node)) continue;
+            const {unitId, name, color} = assignment;
+            if (!units.has(unitId)) units.set(unitId, {name, color, count: 0});
+            units.get(unitId).count++;
+        }
+        return units;
+    }
+
+    function invalidate() {
+        analysis = null;
+        announce();
+    }
+
+    return {enabled:() => enabled, setEnabled, control, bindAnalysis, fromEditor, invalidate, matched,
+        unit:assignment => assignment?.unitId && assignment.name && assignment.sourceId
+            ? unit(assignment.unitId, assignment.name, assignment.sourceId) : null,
         entry:code => enabled && analysis?.entries.get(code) || null};
 }());

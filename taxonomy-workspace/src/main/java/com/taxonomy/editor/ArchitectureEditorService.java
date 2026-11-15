@@ -74,7 +74,12 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
 
     private ArchitectureDslCommands transformer(String source) {
         var model = new ArchitectureDslCommands().model(source);
-        return new ArchitectureDslCommands(catalogues.forModel(model));
+        return new ArchitectureDslCommands(catalogues.forModel(model), code -> catalogues.assignmentTarget(model, code));
+    }
+
+    List<com.taxonomy.dsl.model.CatalogueDefinitionResolver.Node> catalogueNodes(
+            com.taxonomy.dsl.model.CanonicalArchitectureModel model) {
+        return catalogues.catalogueNodes(model);
     }
     // A normal block identity always contains ':', including unknown extension block kinds.
     private static final String DOCUMENT_SOURCE_CONFLICT = "$document";
@@ -912,6 +917,10 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
                 case DeleteArchitecturePackage p -> parts.add(p.id());
                 case UpsertOrganization organization -> { parts.add(organization.id()); properties(parts, organization.properties()); }
                 case DeleteOrganization organization -> parts.add(organization.id());
+                case SetCatalogueResponsibility assignment -> {
+                    parts.add(assignment.code());
+                    parts.add(Objects.toString(assignment.organizationId(), ""));
+                }
                 case SetArchitecturePackagePlacements p -> {
                     p.placements().forEach(v -> { parts.add(v.kind().name()); parts.add(v.memberId()); parts.add(v.parentPackageId()); parts.add(Integer.toString(v.position())); });
                     parts.addAll(p.completeParentScopes().stream().sorted().toList());

@@ -122,6 +122,7 @@ public final class ArchitectureReportDocxRenderer {
                                                         percent(e.getRelevance()),
                                                         value(e.getIncludedBecause(), labels)))
                                 .toList());
+                ArchitectureWordSectionRenderer.writeResponsibilities(w, labels, graph);
             }
             if (nodeReasons != null && !nodeReasons.isEmpty()) {
                 w.heading(labels.recordedNodeReasons(), 1, null);

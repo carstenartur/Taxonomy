@@ -14,7 +14,13 @@ import java.util.Set;
 
 /** The working tree and effective responsibility are derived from the same revision. */
 public final class ArchitectureResponsibility {
-    public record Entry(String parentId, String organizationId, String sourceElementId, String legacyOrganization) {}
+    public record Entry(String parentId, String organizationId, String sourceElementId, String legacyOrganization,
+                        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+                        String capturedName) {
+        Entry(String parentId, String organizationId, String sourceElementId, String legacyOrganization) {
+            this(parentId, organizationId, sourceElementId, legacyOrganization, null);
+        }
+    }
 
     private ArchitectureResponsibility() {}
 
@@ -51,8 +57,14 @@ public final class ArchitectureResponsibility {
                 var row = new Entry(parents.get(id), null, null, null);
                 if (unit != null && !unit.isBlank()) row = new Entry(row.parentId(), unit, id, null);
                 else if (legacy != null && !legacy.isBlank()) row = new Entry(row.parentId(), null, id, legacy);
+                else if (fields.containsKey(ArchitectureOrganization.CAPTURED_UNIT)
+                        && fields.containsKey(ArchitectureOrganization.CAPTURED_NAME)
+                        && fields.containsKey(ArchitectureOrganization.CAPTURED_SOURCE)) {
+                    row = new Entry(row.parentId(), fields.get(ArchitectureOrganization.CAPTURED_UNIT),
+                            fields.get(ArchitectureOrganization.CAPTURED_SOURCE), null, fields.get(ArchitectureOrganization.CAPTURED_NAME));
+                }
                 else if (inherited != null) row = new Entry(row.parentId(), inherited.organizationId(),
-                        inherited.sourceElementId(), inherited.legacyOrganization());
+                        inherited.sourceElementId(), inherited.legacyOrganization(), inherited.capturedName());
                 resolved.put(id, row);
                 inherited = row;
             }
@@ -62,21 +74,66 @@ public final class ArchitectureResponsibility {
 
     /** Project stable display identities onto the full decision catalogue, including unadopted descendants. */
     public static Map<String, Assignment> forAnalysis(CanonicalArchitectureModel model, Map<String, String> catalogueParents) {
+        var titles = organizationTitles(model);
+        if (!model.getCatalogueResponsibilities().isEmpty()) return Map.copyOf(catalogue(model, catalogueParents, titles));
+        var resolved = resolve(model, catalogueParents);
+        var architecture = namedAssignments(titles, resolved);
+        // An explicitly modeled node owns its effective state, including an unassigned state.
+        inherit(catalogueParents, architecture, new HashSet<>(resolved.keySet()));
+        return Map.copyOf(architecture);
+    }
+
+    static Map<String, Entry> forEditor(CanonicalArchitectureModel model, Map<String, String> architectureParents,
+                                        Map<String, String> catalogueParents) {
+        var resolved = resolve(model, architectureParents);
+        if (model.getCatalogueResponsibilities().isEmpty()) return resolved;
+        var catalogue = catalogue(model, catalogueParents, organizationTitles(model));
+        resolved.replaceAll((code, entry) -> {
+            var unit = catalogue.get(code);
+            return entry.sourceElementId() != null || unit == null ? entry
+                    : new Entry(entry.parentId(), unit.unitId(), unit.sourceId(), null);
+        });
+        return resolved;
+    }
+
+    static Map<String, Assignment> namedAssignments(CanonicalArchitectureModel model, Map<String, Entry> entries) {
+        return namedAssignments(organizationTitles(model), entries);
+    }
+
+    private static Map<String, String> organizationTitles(CanonicalArchitectureModel model) {
         var titles = new HashMap<String, String>();
         model.getOrganizations().forEach(unit -> titles.put(unit.id(), unit.title()));
-        var assignments = new LinkedHashMap<String, Assignment>();
-        var resolved = resolve(model, catalogueParents);
-        for (var item : resolved.entrySet()) {
-            var entry = item.getValue();
+        return titles;
+    }
+
+    private static Map<String, Assignment> namedAssignments(Map<String, String> titles, Map<String, Entry> entries) {
+        var named = new LinkedHashMap<String, Assignment>();
+        entries.forEach((code, entry) -> {
             String unit = entry.organizationId();
-            String title = unit == null ? entry.legacyOrganization() : titles.get(unit);
+            String name = entry.capturedName() != null ? entry.capturedName()
+                    : unit == null ? entry.legacyOrganization() : titles.get(unit);
+            if (name != null && !name.isBlank()) {
+                named.put(code, new Assignment(unit == null ? "legacy:" + name : unit, name, entry.sourceElementId()));
+            }
+        });
+        return named;
+    }
+
+    private static Map<String, Assignment> catalogue(CanonicalArchitectureModel model, Map<String, String> parents,
+                                                     Map<String, String> titles) {
+        var catalogue = new LinkedHashMap<String, Assignment>();
+        for (var rule : model.getCatalogueResponsibilities()) {
+            String title = titles.get(rule.organizationId());
             if (title != null && !title.isBlank()) {
-                assignments.put(item.getKey(), new Assignment(unit == null ? "legacy:" + title : unit, title, entry.sourceElementId()));
+                catalogue.put(rule.code(), new Assignment(rule.organizationId(), title, rule.code()));
             }
         }
-        // An explicitly modeled node owns its effective state, including an unassigned state.
+        if (!catalogue.isEmpty()) inherit(parents, catalogue, new HashSet<>(catalogue.keySet()));
+        return catalogue;
+    }
+
+    private static void inherit(Map<String, String> catalogueParents, Map<String, Assignment> assignments, Set<String> known) {
         // Memoize positive and negative results so shared paths are traversed only once.
-        var known = new HashSet<>(resolved.keySet());
         for (String code : catalogueParents.keySet()) {
             if (known.contains(code)) continue;
             var path = new java.util.LinkedHashSet<String>();
@@ -87,7 +144,6 @@ public final class ArchitectureResponsibility {
             if (inherited != null) path.forEach(id -> assignments.put(id, inherited));
             known.addAll(path);
         }
-        return Map.copyOf(assignments);
     }
 
     private record CataloguePath(String root, String code) {}

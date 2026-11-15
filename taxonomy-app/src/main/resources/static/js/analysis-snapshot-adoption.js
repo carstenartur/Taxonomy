@@ -44,8 +44,10 @@ window.AnalysisSnapshotAdoption = function (options) {
             summary.addedRelations.length,summary.reusedRelations.length,summary.conflicts.length)];
         if (result.existing) text.push(t('adoption.existing'));
         summary.differences.forEach(function (item) {
-            text.push(item.id + ' · ' + item.field + '\n' + t('adoption.preserve') + ': ' + (item.existingValue || '')
-                + '\n' + t('adoption.recorded') + ': ' + (item.sourceValue || ''));
+            text.push(item.id + ' · ' + (item.field === 'responsibility' ? t('responsibility.unit') : item.field)
+                + '\n' + t('adoption.preserve') + ': ' + (item.existingValue || '')
+                + '\n' + t('adoption.recorded') + ': ' + (item.sourceValue || (item.field === 'responsibility'
+                    ? t('editor.organizationUnassigned') : '')));
         });
         summary.conflicts.forEach(function (conflict) { text.push(conflict); });
         el('adoptionSummary').textContent = text.join('\n\n');

@@ -10,6 +10,9 @@ import java.util.regex.Pattern;
 /** A named organizational unit in one versioned architecture directory. */
 public record ArchitectureOrganization(String id, String title, String parentId) {
     public static final String RESPONSIBLE_ID = "x-responsible-organization-id";
+    public static final String CAPTURED_UNIT = "x-captured-responsibility-unit";
+    public static final String CAPTURED_NAME = "x-captured-responsibility-name";
+    public static final String CAPTURED_SOURCE = "x-captured-responsibility-source";
     private static final Pattern IDENTIFIER = Pattern.compile("[A-Za-z0-9][A-Za-z0-9_.-]{0,127}");
 
     public ArchitectureOrganization {
@@ -53,6 +56,20 @@ public record ArchitectureOrganization(String id, String title, String parentId)
             String id = element.getExtensions().get(RESPONSIBLE_ID);
             if (id != null && !id.isEmpty() && !units.containsKey(id))
                 error.accept("UNKNOWN_ORGANIZATION", "Element " + element.getId() + " references unknown organization " + id);
+        }
+        Set<String> assignedCodes = new HashSet<>();
+        String revision = model.responsibilityCatalogueRevision();
+        for (var assignment : model.getCatalogueResponsibilities()) {
+            String code = assignment.code();
+            if (code == null || !IDENTIFIER.matcher(code).matches())
+                error.accept("INVALID_CATALOGUE_CODE", "A catalogue responsibility requires one catalogue code");
+            else if (!assignedCodes.add(code))
+                error.accept("DUPLICATE_CATALOGUE_RESPONSIBILITY", "Duplicate catalogue responsibility: " + code);
+            if (!units.containsKey(assignment.organizationId()))
+                error.accept("UNKNOWN_ORGANIZATION", "Catalogue code " + code + " references unknown organization " + assignment.organizationId());
+            if (assignment.catalogueRevision() != null && (!assignment.catalogueRevision().equals(revision)
+                    || revision.isBlank() || revision.length() > 128))
+                error.accept("INVALID_CATALOGUE_REVISION", "Catalogue assignments must refer to one retained revision");
         }
     }
 }

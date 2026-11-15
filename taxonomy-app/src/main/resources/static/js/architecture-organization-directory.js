@@ -2,8 +2,8 @@
 (function () {
     'use strict';
 
-    function create({ root, t, stage }) {
-        const control = key => root.querySelector('#editorDirectory' + key);
+    function create({ root, t, stage, prefix = 'editorDirectory' }) {
+        const control = key => root.querySelector('#' + prefix + key);
         const list = control('Units');
         const form = control('Form');
         const name = control('Name');

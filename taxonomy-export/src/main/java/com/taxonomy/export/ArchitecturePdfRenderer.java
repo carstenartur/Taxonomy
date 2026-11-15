@@ -280,11 +280,19 @@ public final class ArchitecturePdfRenderer {
                     width - 3 * inset - scoreWidth, 1).getFirst();
             text(stream, theme.nodeText(node.type(), "#0f172a"), BOLD, small, x + inset, top - 15 * scale, id);
             text(stream, theme.nodeText(node.type(), "#0f172a"), REGULAR, small, x + width - inset - scoreWidth, top - 15 * scale, score);
+            var assignment = node.responsibility();
             List<String> labelLines = PdfDiagramText.wrap(node.label(), REGULAR, 10 * scale,
-                    width - 2 * inset, 2);
+                    width - 2 * inset, assignment == null ? 2 : 1);
             for (int index = 0; index < labelLines.size(); index++) {
                 text(stream, theme.nodeText(node.type(), "#0f172a"), REGULAR, 10 * scale, x + inset,
                         top - (34 + index * 13) * scale, labelLines.get(index));
+            }
+            if (assignment != null) {
+                stream.setNonStrokingColor(Color.decode(assignment.color()));
+                stream.addRect(x + inset, y + 32 * scale, 5 * scale, 5 * scale);
+                stream.fill();
+                text(stream, theme.nodeText(node.type(), "#0f172a"), REGULAR, small, x + 2 * inset, y + 32 * scale,
+                        PdfDiagramText.wrap(assignment.name(), REGULAR, small, width - 3 * inset, 1).getFirst());
             }
             // Two separate footer lines leave the complete taxonomy name room to wrap safely.
             String type = PdfDiagramText.wrap(node.type(), REGULAR, small, width - 2 * inset, 1).getFirst();
@@ -365,6 +373,7 @@ public final class ArchitecturePdfRenderer {
                     + (node.container() ? " | Container" : ""));
             lines.add(node.label());
             lines.add(node.type() + language.text(" | Parent: ", " | Übergeordnet: ") + (node.parentId() == null ? language.text("not included", "nicht enthalten") : node.parentId()));
+            lines.addAll(DiagramPresentation.responsibilityDetails(node.responsibility(), language));
             String reason = nodeReasons.get(node.id());
             if (reason != null && !reason.isBlank()) lines.add(language.text("Explanation: ", "Begründung: ") + reason);
         }

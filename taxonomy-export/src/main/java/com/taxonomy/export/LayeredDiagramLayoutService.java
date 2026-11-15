@@ -88,7 +88,8 @@ public class LayeredDiagramLayoutService {
                         layerStartX + subcolumn * (NODE_WIDTH + SUBCOLUMN_GAP),
                         firstRowY + row * (NODE_HEIGHT + ROW_GAP),
                         NODE_WIDTH,
-                        NODE_HEIGHT);
+                        NODE_HEIGHT,
+                        node.responsibility());
                 sceneNodes.add(sceneNode);
                 byId.put(sceneNode.id(), sceneNode);
             }

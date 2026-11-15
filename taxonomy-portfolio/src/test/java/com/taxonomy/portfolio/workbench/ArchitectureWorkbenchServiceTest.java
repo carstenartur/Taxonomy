@@ -4,6 +4,7 @@ import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.RequirementArchitectureView;
 import com.taxonomy.dto.RequirementElementView;
 import com.taxonomy.dto.RequirementRelationshipView;
+import com.taxonomy.dto.TaxonomyResponsibilityLookup.Assignment;
 import com.taxonomy.export.DiagramProjectionService;
 import com.taxonomy.export.LayeredDiagramLayoutService;
 import com.taxonomy.export.SvgDiagramRenderer;
@@ -99,6 +100,27 @@ class ArchitectureWorkbenchServiceTest {
 
         verify(persistenceService, times(3))
                 .getSnapshot(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT);
+    }
+
+    @Test
+    void diagramExportsShowTheCapturedAssignmentWithItsOriginalSource() throws Exception {
+        var snapshot = snapshotWithArchitecture();
+        var assignment = new Assignment("unit-42", "Küste & Betrieb", "CP-1000");
+        var element = snapshot.analysis().getArchitectureView().getIncludedElements().getFirst();
+        element.setResponsibility(assignment);
+        prepareSnapshot(snapshot);
+        var projection = service.load(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT);
+
+        assertThat(projection.scene().nodes()).anySatisfy(node -> {
+            assertThat(node.id()).isEqualTo(element.getNodeCode());
+            assertThat(node.label()).isEqualTo(element.getTitle());
+            assertThat(node.responsibility()).isEqualTo(assignment);
+        });
+        String svg = service.renderSvg(projection, java.util.Locale.UK);
+        assertThat(svg).contains("Küste &amp; Betrieb", "unit-42", "CP-1000", assignment.color());
+        try (var pdf = Loader.loadPDF(service.renderPdf(projection, java.util.Locale.UK))) {
+            assertThat(new PDFTextStripper().getText(pdf)).contains("Kueste & Betrieb", "unit-42", "CP-1000");
+        }
     }
 
     @Test

@@ -126,16 +126,25 @@ public class SvgDiagramRenderer {
         }
         for (var node : scene.nodes()) {
             double nodeTextWidth = node.width() - 28;
+            var assignment = node.responsibility();
+            String ownerDetails = assignment == null ? "" : "\n" + String.join("\n", DiagramPresentation.responsibilityDetails(assignment, language));
             svg.append("<a xlink:href=\"#").append(nodeReferences.get(node.id())).append("\"><g class=\"architecture-node\" data-node-id=\"").append(xml(node.id()))
                 .append("\" transform=\"translate(").append(number(node.x())).append(',').append(number(node.y())).append(")\">")
                 .append("<title>").append(xml(node.id() + " | " + node.label() + " | " + node.type()
-                        + language.text(" | Depth ", " | Tiefe ") + node.depth() + (node.container() ? " | Container" : ""))).append("</title>\n")
+                        + language.text(" | Depth ", " | Tiefe ") + node.depth() + (node.container() ? " | Container" : "")
+                        + ownerDetails)).append("</title>\n")
                 .append("<rect width=\"").append(number(node.width())).append("\" height=\"").append(number(node.height()))
                 .append("\" rx=\"10\" fill=\"").append(theme.nodeFill(node.type())).append("\" stroke=\"")
                 .append(theme.nodeBorder(node.type(), node.anchor())).append("\" stroke-width=\"").append(node.anchor() ? "3" : "1.3").append("\"/>\n");
             text(svg, 14, 17, "start", 10, true, theme.nodeText(node.type(), "#334155"), DiagramTextWrapper.wrapMeasured(node.id(), font(10, true), nodeTextWidth, 1, language.text("ID unrecorded", "Kennung nicht aufgezeichnet")).getFirst());
-            var labels = DiagramTextWrapper.wrapMeasured(node.label(), font(13, false), nodeTextWidth, 2, language.text("Unnamed architecture element", "Unbenanntes Architekturelement"));
+            var labels = DiagramTextWrapper.wrapMeasured(node.label(), font(13, false), nodeTextWidth, assignment == null ? 2 : 1,
+                    language.text("Unnamed architecture element", "Unbenanntes Architekturelement"));
             for (int i = 0; i < labels.size(); i++) text(svg, 14, 36 + i * 17, "start", 13, false, theme.nodeText(node.type(), "#0f172a"), labels.get(i));
+            if (assignment != null) {
+                svg.append("<circle cx=\"18\" cy=\"52\" r=\"4\" fill=\"").append(assignment.color()).append("\"/>\n");
+                text(svg, 26, 56, "start", 11, false, theme.nodeText(node.type(), "#0f172a"),
+                        DiagramTextWrapper.wrapMeasured(assignment.name(), font(11, false), nodeTextWidth - 12, 1, "").getFirst());
+            }
             text(svg, 14, 72, "start", 10, false, theme.nodeText(node.type(), "#475569"), DiagramTextWrapper.wrapMeasured(
                     node.type() + " · " + language.percent(node.relevance()), font(10, false), nodeTextWidth, 1, language.text("Unclassified", "Nicht klassifiziert")).getFirst());
             svg.append("</g></a>\n");
@@ -183,6 +192,7 @@ public class SvgDiagramRenderer {
             parts.add(node.label());
             parts.add((node.type() == null ? language.text("Unclassified", "Nicht klassifiziert") : node.type()) + language.text(" | Parent: ", " | Übergeordnet: ")
                     + (node.parentId() == null ? language.text("not included", "nicht enthalten") : node.parentId()));
+            parts.addAll(DiagramPresentation.responsibilityDetails(node.responsibility(), language));
             String reason = nodeReasons.get(node.id());
             if (reason != null && !reason.isBlank()) parts.add(language.text("Explanation: ", "Begründung: ") + reason);
             appendEvidence(lines, "node", node.id(), nodeReferences.get(node.id()), parts);

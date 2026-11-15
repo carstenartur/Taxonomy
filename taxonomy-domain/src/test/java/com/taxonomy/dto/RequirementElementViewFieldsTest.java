@@ -8,6 +8,17 @@ import static org.junit.jupiter.api.Assertions.*;
 class RequirementElementViewFieldsTest {
 
     @Test
+    void responsibilityRetainsTheCapturedAssignment() {
+        RequirementElementView view = new RequirementElementView();
+        assertNull(view.getResponsibility());
+
+        var responsibility = new TaxonomyResponsibilityLookup.Assignment("org-1", "Operations", "CP-1000");
+        view.setResponsibility(responsibility);
+
+        assertEquals(responsibility, view.getResponsibility());
+    }
+
+    @Test
     void originFieldRoundTrips() {
         RequirementElementView view = new RequirementElementView();
         assertNull(view.getOrigin());

@@ -58,8 +58,15 @@ final class AnalysisSnapshotAdoption {
                     throw problem("SNAPSHOT_TYPE_CONFLICT", "Existing element identity has a different type: " + element.id());
                 if (existing.getProperties().stream().map(PropertyAst::key).distinct().count() != existing.getProperties().size())
                     throw problem("DUPLICATE_PROPERTY", "Existing element has ambiguous properties");
-            } else next = commands.apply(next, new CreateArchitectureElement(element.id(), element.type(),
-                    Map.of("title", element.title(), "description", element.description()))).dsl();
+            } else {
+                next = commands.apply(next, new CreateArchitectureElement(element.id(), element.type(),
+                        Map.of("title", element.title(), "description", element.description()))).dsl();
+            }
+            if (element.responsibility() != null) {
+                // Earlier inserts can move source offsets. Use the current block for the exact replacement.
+                var current = ArchitectureSemanticPatch.index(next).get("element:" + element.id());
+                next = commands.retainSnapshotResponsibility(next, current, element.responsibility());
+            }
         }
         for (var relation : adoption.relations().stream().sorted(Comparator.comparing(RelationKey::id)).toList()) {
             commands.validateRelation(ArchitectureSemanticPatch.index(next), relation);

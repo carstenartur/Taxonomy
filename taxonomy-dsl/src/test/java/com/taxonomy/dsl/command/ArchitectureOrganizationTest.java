@@ -12,6 +12,15 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.*;
 
 class ArchitectureOrganizationTest {
+    @Test void theFirstAssignmentInAnUnpinnedProjectRetainsItsAppliedCatalogue() {
+        var commands = new ArchitectureDslCommands(com.taxonomy.dsl.model.CatalogueDefinition.standard(),
+                code -> new com.taxonomy.dsl.model.CatalogueDefinitionResolver.AssignmentTarget(
+                        "BP-1000".equals(code), "applied-catalogue"));
+        String source = "organization ops {\n  title: \"Operations\";\n}\n";
+        String edited = commands.apply(source, new SetCatalogueResponsibility("BP-1000", "ops")).dsl();
+        assertThat(commands.model(edited).responsibilityCatalogueRevision()).isEqualTo("applied-catalogue");
+        assertThat(commands.inverse(edited, source, edited).dsl()).isEqualTo(source);
+    }
     private final ArchitectureDslCommands commands = new ArchitectureDslCommands();
     private static final String LEGACY = """
             element system type System {
@@ -20,6 +29,42 @@ class ArchitectureOrganizationTest {
             }
             """;
     private static final String REF = "x-responsible-organization-id";
+    private static final String CATALOGUE = """
+            organization ops {
+              title: "Operations";
+            }
+
+            catalogueResponsibility BP-1 {
+              organization: ops;
+            }
+            """;
+
+    @Test
+    void catalogueAssignmentSurvivesCanonicalRoundTripWithoutArchitectureElements() {
+        var model = commands.model(CATALOGUE);
+        assertThat(model.getElements()).isEmpty();
+        var source = new TaxDslSerializer().serialize(new ModelToAstMapper().toDocument(model, "test"));
+        assertThat(source).contains("catalogueResponsibility BP-1").contains("organization: \"ops\";");
+        commands.validateReconciledSource(source);
+    }
+
+    @Test
+    void catalogueAssignmentPreventsDeletingTheOrganizationItReferences() {
+        assertThatThrownBy(() -> commands.apply(CATALOGUE, new DeleteOrganization("ops")))
+                .isInstanceOfSatisfying(ArchitectureDslCommands.CommandProblem.class,
+                        error -> assertThat(error.dependencies()).contains("catalogueResponsibility:BP-1"));
+    }
+
+    @Test
+    void changingAndClearingCatalogueAssignmentUsesTheNormalUndoPatch() {
+        String original = commands.apply(CATALOGUE, new UpsertOrganization("delivery", Map.of("title", "Delivery"))).dsl();
+        var update = commands.apply(original, new SetCatalogueResponsibility("BP-1", "delivery"));
+        assertThat(commands.model(update.dsl()).getCatalogueResponsibilities())
+                .containsExactly(new com.taxonomy.dsl.model.CatalogueResponsibility("BP-1", "delivery"));
+        var cleared = commands.apply(update.dsl(), new SetCatalogueResponsibility("BP-1", ""));
+        assertThat(commands.model(cleared.dsl()).getCatalogueResponsibilities()).isEmpty();
+        assertThat(commands.inverse(cleared.dsl(), update.dsl(), cleared.dsl()).dsl()).isEqualTo(update.dsl());
+    }
 
     @Test
     void directoryAndAssignmentRoundTripWithoutChangingLegacyText() {

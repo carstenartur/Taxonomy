@@ -45,6 +45,14 @@
             text(group, prefix + '-node-meta', 12, node.metaY === undefined ? node.height - 8 : node.metaY, node.meta, node.textColor);
             if (node.hotspot) text(group, prefix + '-hotspot-mark', node.width - 13, 80, '⚠', '#b42318').setAttribute('text-anchor', 'end');
         }
+        if (node.responsibleUnit) {
+            var unit = node.responsibleUnit;
+            var y = node.compact ? 53 : 60;
+            group.appendChild(element('circle', { cx: 16, cy: y - 4, r: 4, fill: unit.color, stroke: node.textColor }));
+            var name = Array.from(unit.name);
+            var caption = name.length > 28 ? name.slice(0, 27).join('') + '…' : unit.name;
+            text(group, prefix + '-node-responsibility', 25, y, caption, node.textColor).setAttribute('font-size', '11');
+        }
         if (node.tooltip) { var title = element('title'); title.textContent = node.tooltip; group.appendChild(title); }
         activate(group, function () { if (callbacks.select) callbacks.select(node.id); }, callbacks.focus && function () { callbacks.focus(node.id); });
         parent.appendChild(group); return group;

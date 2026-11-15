@@ -14,6 +14,7 @@ import com.taxonomy.dsl.model.CanonicalArchitectureModel;
 import com.taxonomy.dsl.model.CatalogueDefinition;
 import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
 import com.taxonomy.dsl.validation.DslValidator;
+import com.taxonomy.dto.TaxonomyResponsibilityLookup.Assignment;
 import com.taxonomy.export.LayeredDiagramLayoutService;
 import org.springframework.stereotype.Component;
 
@@ -99,7 +100,12 @@ public class ArchitectureEditorProjection {
         requireLayoutRevision(document, strategy, layoutRevision);
         CanonicalArchitectureModel model = new ArchitectureDslCommands().model(document.dsl());
         var catalogue = catalogues.forModel(model);
-        DiagramModel diagram = selectView(diagram(model, document.context().branch(), catalogue), model, selectedViewId);
+        var architectureParents = catalogues.parentsForModel(model);
+        var catalogueParents = model.getCatalogueResponsibilities().isEmpty() ? Map.<String, String>of()
+                : com.taxonomy.dsl.model.CatalogueDefinitionResolver.parentLinks(catalogues.catalogueNodes(model));
+        var hierarchy = ArchitectureResponsibility.forEditor(model, architectureParents, catalogueParents);
+        var assignments = ArchitectureResponsibility.namedAssignments(model, hierarchy);
+        DiagramModel diagram = selectView(diagram(model, document.context().branch(), catalogue, assignments), model, selectedViewId);
         var referenceModel = layoutReference == null ? null : new ArchitectureDslCommands().model(layoutReference.dsl());
         DiagramModel reference = referenceModel == null ? null : diagram(referenceModel, document.context().branch(), catalogues.forModel(referenceModel));
         DiagramScene scene = layout.layout(diagram, strategy, reference);
@@ -115,7 +121,7 @@ public class ArchitectureEditorProjection {
         return new View(document, model, scene, schema, editable(document, mayEdit),
                 model.getElements().stream().map(element -> new SearchEntry(element.getId(),
                         (element.getId() + " " + element.getTitle() + " " + element.getType()).toLowerCase(java.util.Locale.ROOT))).toList(), null,
-                ArchitectureResponsibility.resolve(model, catalogues.parentsForModel(model)));
+                hierarchy);
     }
 
     public static boolean editable(ArchitectureEditorService.Document document, boolean mayEdit) {
@@ -144,6 +150,11 @@ public class ArchitectureEditorProjection {
     }
 
     static DiagramModel diagram(CanonicalArchitectureModel model, String branch, CatalogueDefinition catalogue) {
+        return diagram(model, branch, catalogue, Map.of());
+    }
+
+    private static DiagramModel diagram(CanonicalArchitectureModel model, String branch, CatalogueDefinition catalogue,
+                                        Map<String, Assignment> assignments) {
         Map<String, String> parents = new java.util.LinkedHashMap<>();
         model.getRelations().stream().filter(relation -> "CONTAINS".equals(relation.getRelationType()))
                 .forEach(relation -> parents.putIfAbsent(relation.getTargetId(), relation.getSourceId()));
@@ -153,7 +164,7 @@ public class ArchitectureEditorProjection {
         List<DiagramNode> nodes = model.getElements().stream().map(element -> new DiagramNode(
                 element.getId(), element.getTitle(), element.getType(), 0, false,
                 typeRanks.getOrDefault(element.getType(), 0), 0, false,
-                parents.get(element.getId()), false)).toList();
+                parents.get(element.getId()), false, assignments.get(element.getId()))).toList();
         List<DiagramEdge> edges = model.getRelations().stream().map(relation -> new DiagramEdge(
                 relation.getSourceId() + " " + relation.getRelationType() + " " + relation.getTargetId(),
                 relation.getSourceId(), relation.getTargetId(), relation.getRelationType(), 0)).toList();

@@ -14,7 +14,18 @@ public sealed interface ArchitectureCommand {
         public ReviewRequirementRealization { Objects.requireNonNull(requirementId); Objects.requireNonNull(review); }
     }
     /** Internal frozen-source intent. The server builds this; it is absent from the public wire union. */
-    record SnapshotElement(String id, String type, String title, String description) {}
+    record SnapshotResponsibility(String unitId, String name, String sourceId) {
+        public SnapshotResponsibility {
+            Objects.requireNonNull(unitId);
+            Objects.requireNonNull(name);
+            Objects.requireNonNull(sourceId);
+        }
+    }
+    record SnapshotElement(String id, String type, String title, String description, SnapshotResponsibility responsibility) {
+        public SnapshotElement(String id, String type, String title, String description) {
+            this(id, type, title, description, null);
+        }
+    }
     record AdoptAnalysisSnapshot(String viewId, String title, String description, String graphFingerprint,
                                  List<SnapshotElement> elements, List<RelationKey> relations,
                                  Map<String, String> provenance) implements ArchitectureCommand {
@@ -74,6 +85,7 @@ public sealed interface ArchitectureCommand {
         public UpsertOrganization { properties = copyProperties(properties); }
     }
     record DeleteOrganization(String id) implements ArchitectureCommand {}
+    record SetCatalogueResponsibility(String code, String organizationId) implements ArchitectureCommand {}
     record UpsertRequirementMapping(String requirementIdentity, String elementId, String rationale,
                                     Map<String, String> exchangeProperties) implements ArchitectureCommand {
         public UpsertRequirementMapping { exchangeProperties = copyProperties(exchangeProperties); }

@@ -758,6 +758,7 @@
         var rootData = { code: '__root__', name: 'Taxonomy', children: contentRoots(data) };
         var hierarchy = d3.hierarchy(rootData)
             .sum(function (d) { return (!d.children || !d.children.length) ? 1 : 0; });
+        hierarchy.eachBefore(projectResponsibility);
         d3.partition().size([2 * Math.PI, radius])(hierarchy);
         var currentZoom = hierarchy;
         (readState.focusPath || []).some(function (code) {
@@ -795,6 +796,9 @@
             .data(hierarchy.descendants().slice(1))
             .join('path')
             .attr('fill', function (d) { return nodeColor(d.data.code, colorMap, scores); })
+            .attr('stroke', function (d) { return d.unit?.color || null; })
+            .attr('stroke-width', function (d) { return d.unit ? 2 : null; })
+            .attr('stroke-opacity', function (d) { return arcVisible(d.current) ? 1 : 0; })
             .attr('fill-opacity', function (d) { return arcVisible(d.current) ? (d.children ? 0.85 : 0.7) : 0; })
             .attr('pointer-events', function (d) { return arcVisible(d.current) ? 'auto' : 'none'; })
             .attr('d', function (d) { return arc(d.current); })
@@ -854,6 +858,7 @@
             {key: 'views.back', run: function () { if (currentZoom.parent) { clicked(null, currentZoom.parent); } }},
             {key: 'views.diagram.overview', run: function () { clicked(null, hierarchy); }}
         ], 'views.diagram.keyboard');
+        if (window.TaxonomyResponsibilityDisplay) sunControls.append(window.TaxonomyResponsibilityDisplay.control());
         var backControl = sunControls.querySelector('button');
         backControl.disabled = currentZoom === hierarchy;
         centerGroup.attr('aria-hidden', 'true'); // The equivalent native Back button is in the local controls.
@@ -886,6 +891,7 @@
                     return +this.getAttribute('fill-opacity') || arcVisible(d.target);
                 })
                 .attr('fill-opacity', function (d) { return arcVisible(d.target) ? (d.children ? 0.85 : 0.7) : 0; })
+                .attr('stroke-opacity', function (d) { return arcVisible(d.target) ? 1 : 0; })
                 .attr('pointer-events', function (d) { return arcVisible(d.target) ? 'auto' : 'none'; })
                 .attrTween('d', function (d) { return function () { return arc(d.current); }; });
 

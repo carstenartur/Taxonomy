@@ -12,7 +12,16 @@ window.ArchitectureEditorRenderer = function (element, onSelect, onRelation, onS
             nodes: (scene.nodes || []).map(function (node) {
                 var type = Object.hasOwn(roots, node.type) ? roots[node.type] : node.type;
                 var color = palette.layer(type);
-                return Object.assign({}, node, { color: color, textColor: diagram.readableTextColor(color) });
+                var styledNode = Object.assign({}, node, { color: color, textColor: diagram.readableTextColor(color) });
+                var display = window.TaxonomyResponsibilityDisplay;
+                var unit = node.responsibility && display?.enabled() && display.unit?.(node.responsibility);
+                if (unit) {
+                    styledNode.responsibleUnit = unit;
+                    styledNode.ariaLabel = (node.label || node.id) + ' · ' + node.id + ' · '
+                        + window.TaxonomyI18n.t('views.diagram.responsibleUnit', unit.name);
+                    styledNode.tooltip = styledNode.ariaLabel + '\n' + window.TaxonomyI18n.t('responsibility.source', unit.sourceId);
+                }
+                return styledNode;
             }),
             edges: (scene.edges || []).map(function (edge) {
                 return Object.assign({}, edge, { color: palette.relation(edge.relationType) });

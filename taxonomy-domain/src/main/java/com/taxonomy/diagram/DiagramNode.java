@@ -1,5 +1,8 @@
 package com.taxonomy.diagram;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.taxonomy.dto.TaxonomyResponsibilityLookup.Assignment;
+
 /**
  * Represents a single node in a neutral diagram model.
  *
@@ -17,6 +20,7 @@ package com.taxonomy.diagram;
  *                          semantically valid architecture element.  Export formats such as
  *                          ArchiMate must skip container-only nodes (or map them to a
  *                          grouping construct) to avoid false architecture semantics.
+ * @param responsibility    effective organizational assignment from this node's source evidence
  */
 public record DiagramNode(
     String id,
@@ -28,7 +32,8 @@ public record DiagramNode(
     int depth,
     boolean selectedForImpact,
     String parentId,
-    boolean container
+    boolean container,
+    @JsonInclude(JsonInclude.Include.NON_NULL) Assignment responsibility
 ) {
     /**
      * Backward-compatible constructor for existing code that does not need
@@ -36,6 +41,11 @@ public record DiagramNode(
      */
     public DiagramNode(String id, String label, String type,
                        double relevance, boolean anchor, int layer) {
-        this(id, label, type, relevance, anchor, layer, 0, false, null, false);
+        this(id, label, type, relevance, anchor, layer, 0, false, null, false, null);
+    }
+
+    public DiagramNode(String id, String label, String type, double relevance, boolean anchor, int layer,
+                       int depth, boolean selectedForImpact, String parentId, boolean container) {
+        this(id, label, type, relevance, anchor, layer, depth, selectedForImpact, parentId, container, null);
     }
 }

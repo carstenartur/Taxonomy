@@ -700,11 +700,17 @@
         ready:ready,
         selectedContext:function () { return state.suspended ? null : clone(state.overview?.context || null); },
         selectedAnalysisModel:function () {
-            var selected = state.suspended ? null : state.overview;
+            if (state.suspended) return null;
+            if (state.selection.commit) return {expectedCommit:state.selection.commit};
+            if (state.selection.revision !== null) {
+                var revision = Number(state.selection.revision);
+                return {expectedSemanticRevision:/^\d+$/.test(state.selection.revision) && Number.isSafeInteger(revision) ? revision : -1};
+            }
+            var selected = state.overview;
             if (selected?.source === 'GIT_CHECKPOINT' && selected.context?.commit)
                 return {expectedCommit:selected.context.commit};
-            if (selected?.source === 'WORKSPACE_REVISION' && Number.isSafeInteger(selected.context?.revision))
-                return {expectedSemanticRevision:selected.context.revision};
+            if (selected?.source === 'WORKSPACE_REVISION' && Number.isSafeInteger(state.context?.revision))
+                return {expectedSemanticRevision:state.context.revision};
             return null;
         },
         suspend:function(){state.suspended=true;state.sequence++;clearHistory();invalidateStand();if(root)root.hidden=true;},

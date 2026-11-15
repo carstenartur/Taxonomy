@@ -118,19 +118,24 @@
             const color = palette.layer(node.type);
             const textColor = common.readableTextColor(color);
             const metadata = (data.elements || {})[node.id] || {};
+            const unit = node.responsibility && window.TaxonomyResponsibilityDisplay?.unit?.(node.responsibility);
+            const responsibilityLabel = unit ? t('views.diagram.responsibleUnit', unit.name) : '';
             return Object.assign({}, node, {
                 context: node.context === undefined ? !node.anchor : Boolean(node.context),
-                searchText: [node.id, node.label, node.type].join(' '),
+                searchText: [node.id, node.label, node.type].join(' ') + (unit ? ' ' + unit.name : ''),
                 prefix: 'architecture',
                 className: 'architecture-node' + (node.anchor ? ' is-anchor' : ''),
                 color: color,
                 textColor: textColor,
-                ariaLabel: t('workbench.ui.nodeLabel', node.id, node.label, node.type, relevanceText(node.relevance)),
+                ariaLabel: t('workbench.ui.nodeLabel', node.id, node.label, node.type, relevanceText(node.relevance))
+                    + (unit ? ' · ' + responsibilityLabel : ''),
                 score: (node.anchor ? '★ ' : '') + relevanceText(node.relevance) + '%',
                 scoreFill: common.rgba(textColor, textColor === '#ffffff' ? 0.18 : 0.12),
-                titleLines: common.wrapLabel(node.label, 32, 2),
+                titleLines: common.wrapLabel(node.label, 32, unit ? 1 : 2),
+                responsibleUnit: unit,
                 meta: (node.anchor ? t('workbench.ui.directMatch') : t('workbench.ui.hop', hops.get(node.id))) + ' · ' + node.type,
                 tooltip: node.id + ' — ' + node.label + '\n' + node.type + '\n' + relevanceText(node.relevance) + '%'
+                    + (unit ? '\n' + responsibilityLabel + '\n' + t('responsibility.source', unit.sourceId) : '')
                     + (metadata.presenceReason ? '\n' + metadata.presenceReason : '')
             });
         });
@@ -314,7 +319,8 @@
 
     function renderNodeDetails(node) {
         const metadata = projection.elements[node.id] || {};
-        detailRows([
+        const unit = node.responsibility;
+        const rows = [
             [t('workbench.ui.detail.element'), node.id],
             [t('workbench.ui.detail.title'), node.label],
             [t('workbench.ui.detail.layer'), node.type],
@@ -328,7 +334,12 @@
             [t('workbench.ui.detail.evidence'), metadata.actionEvidence],
             [t('workbench.ui.detail.hierarchy'), metadata.hierarchyPath],
             [t('workbench.ui.detail.decision'), metadata.decisionComment]
-        ]);
+        ];
+        if (unit) {
+            rows.push([t('responsibility.unit'), unit.name + ' (' + unit.unitId + ')']);
+            rows.push([t('responsibility.assignmentSource'), unit.sourceId]);
+        }
+        detailRows(rows);
     }
 
     function renderEdgeDetails(edge) {

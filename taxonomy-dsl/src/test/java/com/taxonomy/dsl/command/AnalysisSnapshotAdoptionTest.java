@@ -30,6 +30,45 @@ class AnalysisSnapshotAdoptionTest {
                 + "relation system CONTAINS component {\n status: \"accepted\";\n provenance: \"reviewed\";\n x-focus-evidence: \"evidence\";\n}\n";
         assertThat(dsl.apply(before, adoption("a".repeat(64))).dsl()).startsWith(before);
     }
+    @Test void newElementsCarryTheFrozenUnitAndExistingLocalAssignmentsStayInPlace() {
+        String before = """
+                organization local {
+                  title: "Local team";
+                }
+                element system type System {
+                  title: "Existing system";
+                  x-responsible-organization-id: "local";
+                }
+                element component type Component {
+                  title: "Existing component";
+                }
+                """;
+        var unit = new SnapshotResponsibility("operations", "Operations", "BP");
+        var command = new AdoptAnalysisSnapshot("analysis-owned", "Retained analysis", "", "a".repeat(64),
+                List.of(new SnapshotElement("system", "System", "Captured system", "", unit),
+                        new SnapshotElement("component", "Component", "Captured component", "", unit),
+                        new SnapshotElement("new-component", "Component", "New component", "", unit)),
+                List.of(relation), Map.of());
+        String after = dsl.apply(before, command).dsl();
+        var adopted = dsl.model(after);
+        assertThat(adopted.getOrganizations()).extracting(com.taxonomy.dsl.model.ArchitectureOrganization::title)
+                .containsExactly("Local team");
+        String property = com.taxonomy.dsl.model.ArchitectureOrganization.RESPONSIBLE_ID;
+        assertThat(adopted.getElements()).filteredOn(element -> element.getId().equals("system"))
+                .singleElement().satisfies(element -> assertThat(element.getExtensions()).containsEntry(property, "local"));
+        assertThat(adopted.getElements()).filteredOn(element -> !element.getId().equals("system"))
+                .hasSize(2).allSatisfy(element -> assertThat(element.getExtensions())
+                        .containsEntry("x-captured-responsibility-unit", "operations")
+                        .containsEntry("x-captured-responsibility-name", "Operations")
+                        .containsEntry("x-captured-responsibility-source", "BP"));
+        var later = new AdoptAnalysisSnapshot("analysis-later", "Later analysis", "", "b".repeat(64),
+                List.of(new SnapshotElement("component", "Component", "Later component", "",
+                        new SnapshotResponsibility("new-team", "New team", "BP-2"))), List.of(), Map.of());
+        assertThat(dsl.model(dsl.apply(after, later).dsl()).getElements()).filteredOn(element -> element.getId().equals("component"))
+                .singleElement().satisfies(element -> assertThat(element.getExtensions())
+                        .containsEntry("x-captured-responsibility-unit", "operations"));
+        assertThat(dsl.inverse(after, before, after).dsl()).isEqualTo(before);
+    }
     @Test void adoptionIsInvertibleAndLaterDependenciesPreventUnsafeUndo() {
         String after = dsl.apply("", adoption("a".repeat(64))).dsl();
         String undone = dsl.inverse(after, "", after).dsl();
