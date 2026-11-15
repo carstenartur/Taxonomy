@@ -446,10 +446,11 @@ class OnnxSeleniumIT {
     private void clickWhenUnobscured(By locator) {
         new WebDriverWait(driver, Duration.ofSeconds(10))
                 .ignoring(StaleElementReferenceException.class)
+                .ignoring(ElementClickInterceptedException.class)
                 .until(currentDriver -> {
                     WebElement element = currentDriver.findElement(locator);
                     ((JavascriptExecutor) currentDriver).executeScript(
-                            "arguments[0].scrollIntoView({block:'center', inline:'nearest'});",
+                            "arguments[0].scrollIntoView({behavior:'instant', block:'center', inline:'nearest'});",
                             element);
                     Boolean unobscured = (Boolean) ((JavascriptExecutor) currentDriver)
                             .executeScript(
