@@ -5,11 +5,13 @@ import com.taxonomy.workspace.storage.GitUpstreamRef;
 import org.eclipse.jgit.lib.CommitBuilder;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.PersonIdent;
+import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.TreeFormatter;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 
 import static com.taxonomy.workspace.service.UpstreamRebasePlan.State.*;
@@ -20,6 +22,23 @@ class UpstreamRebasePlanTest {
     private final GitUpstreamRef tracking = new GitUpstreamRef("origin", "main");
 
     @AfterEach void close() { store.close(); }
+
+    @Test
+    void rechecksAuthorityBeforeReadingGitAndAfterComputingThePlan() throws Exception {
+        var events = new ArrayList<String>();
+        try (var repository = new DslGitRepository() {
+            @Override
+            public Ref readFreshRef(String name) throws IOException {
+                events.add(name);
+                return super.readFreshRef(name);
+            }
+        }) {
+            var transfer = new GitUpstreamTransfer(tracking, repository, repository, null, "owner",
+                    () -> events.add("authorize"));
+            assertThat(UpstreamRebasePlan.read(transfer, "fork", null, "review").status()).isEqualTo(NO_LOCAL_BRANCH);
+            assertThat(events).containsExactly("authorize", "refs/heads/main", tracking.name(), "refs/heads/review", "authorize");
+        }
+    }
 
     @Test
     void distinguishesAnAlreadyIntegratedTipFromALocalMergeThatCannotBeReplayedLinearly() throws Exception {

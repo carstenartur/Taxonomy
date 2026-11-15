@@ -24,21 +24,28 @@ public record UpstreamRebasePlan(String repositoryId, String workspaceId, String
 
     static UpstreamRebasePlan read(GitUpstreamTransfer transfer, String repositoryId, String workspaceId,
                                   String branch) throws IOException {
-        if (branch == null || !Repository.isValidRefName(Constants.R_HEADS + branch)
-                || branch.startsWith(DslGitRepository.EXTERNAL_SYNC_BRANCH_PREFIX)) {
-            throw new IllegalArgumentException("An exact local branch is required");
+        var reauthorize = transfer.reauthorize();
+        reauthorize.run();
+        try {
+            if (branch == null || !Repository.isValidRefName(Constants.R_HEADS + branch)
+                    || branch.startsWith(DslGitRepository.EXTERNAL_SYNC_BRANCH_PREFIX)) {
+                throw new IllegalArgumentException("An exact local branch is required");
+            }
+            var upstream = transfer.inspect();
+            var target = transfer.target();
+            var local = target.readFreshRef(Constants.R_HEADS + branch);
+            String head = local == null || local.isSymbolic() || local.getObjectId() == null
+                    ? null : local.getObjectId().name();
+            var plan = new UpstreamRebasePlan(repositoryId, workspaceId, branch, head, upstream,
+                    head == null ? State.NO_LOCAL_BRANCH : State.NO_TRACKING, null, List.of());
+            if (head != null && upstream.trackedCommit() != null) {
+                return plan.inspectHistory(target.getGitRepository());
+            }
+            return plan;
+        } finally {
+            // Recheck authority before releasing either the plan or an inspection error.
+            reauthorize.run();
         }
-        var upstream = transfer.inspect();
-        var target = transfer.target();
-        var local = target.readFreshRef(Constants.R_HEADS + branch);
-        String head = local == null || local.isSymbolic() || local.getObjectId() == null ? null : local.getObjectId().name();
-        var plan = new UpstreamRebasePlan(repositoryId, workspaceId, branch, head, upstream,
-                head == null ? State.NO_LOCAL_BRANCH : State.NO_TRACKING, null, List.of());
-        if (head != null && upstream.trackedCommit() != null) {
-            plan = plan.inspectHistory(target.getGitRepository());
-        }
-        transfer.reauthorize().run();
-        return plan;
     }
 
     private UpstreamRebasePlan inspectHistory(Repository repository) throws IOException {
