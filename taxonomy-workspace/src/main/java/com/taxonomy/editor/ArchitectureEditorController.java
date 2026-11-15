@@ -139,10 +139,19 @@ public class ArchitectureEditorController {
 
     @GetMapping("/api/architecture/editor/catalogue-responsibilities")
     @ResponseBody
-    @io.swagger.v3.oas.annotations.Operation(summary = "Read organizational assignments on catalogue elements")
-    public ResponseEntity<CatalogueDirectory> catalogueDirectory(@RequestParam(required = false) String repositoryId,
-            @RequestParam(required = false) String workspaceScopeKey, @RequestParam(required = false) String branch,
-            @RequestParam(required = false) String commit, @RequestParam(required = false) Long revision) throws IOException {
+    @io.swagger.v3.oas.annotations.Operation(summary = "Read organizational assignments on catalogue elements",
+            description = "Returns catalogue elements, organizations and their assignments for the authorized workspace state, retained semantic revision or Git checkpoint.")
+    public ResponseEntity<CatalogueDirectory> catalogueDirectory(
+            @Parameter(description = "Optional repository pin that must match the authenticated context.")
+            @RequestParam(required = false) String repositoryId,
+            @Parameter(description = "Optional workspace scope pin that must match the authenticated context.")
+            @RequestParam(required = false) String workspaceScopeKey,
+            @Parameter(description = "Optional branch pin that must match the authenticated context.")
+            @RequestParam(required = false) String branch,
+            @Parameter(description = "Exact retained Git checkpoint SHA. Omit to read semantic workspace state.")
+            @RequestParam(required = false) String commit,
+            @Parameter(description = "Retained semantic workspace revision number.")
+            @RequestParam(required = false) Long revision) throws IOException {
         var context = readContext(repositoryId, workspaceScopeKey, branch);
         var document = service.read(context, commit, revision);
         var model = new ArchitectureDslCommands().model(document.dsl());

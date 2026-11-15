@@ -1,5 +1,6 @@
 package com.taxonomy.composition.architecture;
 
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
 import com.taxonomy.security.config.AuthorizationRulesConfigurer;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.*;
@@ -41,6 +42,7 @@ class AnalysisSnapshotAdoptionSecurityTest {
     @Import({AuthorizationRulesConfigurer.class,AnalysisSnapshotAdoptionController.class})
     static class Fixture {
         @Bean AnalysisSnapshotAdoptionService service() { return mock(AnalysisSnapshotAdoptionService.class); }
+        @Bean CatalogueDefinitionResolver catalogueDefinitionResolver() { return CatalogueDefinitionResolver.standard(); }
         @Bean WorkspaceResolver resolver() { return mock(WorkspaceResolver.class); }
         @Bean SecurityFilterChain chain(HttpSecurity http,AuthorizationRulesConfigurer rules) throws Exception {
             http.authorizeHttpRequests(rules::configure).exceptionHandling(errors -> errors.authenticationEntryPoint((request,response,error) -> response.setStatus(401)));
