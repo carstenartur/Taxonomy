@@ -33,13 +33,14 @@ public final class HypothesisBranchMigrationContract {
             assertThat(scalar(database, "SELECT branch_name FROM relation_hypothesis WHERE id=1")).isEqualTo("main");
             assertThat(scalar(database, "SELECT branch_name FROM relation_hypothesis WHERE id=2")).isEqualTo("main");
             assertThat(scalar(database, "SELECT branch_name FROM relation_evidence WHERE id=1")).isEqualTo("main");
+            verifyCentralAndNamedWorkspaceEvidence(database, migration);
             insertExact(database, 3, "Main"); // Git ref comparisons must remain case-sensitive.
             insertExact(database, 4, "draft");
-            try (var connection=database.getConnection(); var insert=connection.prepareStatement("INSERT INTO relation_hypothesis (id,repository_id,workspace_scope_key,branch_name,source_node_id,target_node_id,relation_type,analysis_session_scope_key) VALUES (6,'repo','__shared__',?,'BP','CP','SUPPORTS','__unspecified__')")) {
+            try (var connection=database.getConnection(); var insert=connection.prepareStatement("INSERT INTO relation_hypothesis (id,repository_id,workspace_scope_key,branch_name,source_node_id,target_node_id,relation_type,analysis_session_scope_key) VALUES (6,'repo',' central',?,'BP','CP','SUPPORTS','__unspecified__')")) {
                 insert.setNString(1, "レビュー/Δ"); insert.executeUpdate();
             }
             assertThat(scalar(database,"SELECT branch_name FROM relation_hypothesis WHERE id=6")).isEqualTo("レビュー/Δ");
-            try(var connection=database.getConnection();var insert=connection.prepareStatement("INSERT INTO relation_hypothesis (id,repository_id,workspace_scope_key,branch_name,source_node_id,target_node_id,relation_type,analysis_session_scope_key) VALUES (7,'repo','__shared__',?,'BP','CP','SUPPORTS','__unspecified__')")) {
+            try(var connection=database.getConnection();var insert=connection.prepareStatement("INSERT INTO relation_hypothesis (id,repository_id,workspace_scope_key,branch_name,source_node_id,target_node_id,relation_type,analysis_session_scope_key) VALUES (7,'repo',' central',?,'BP','CP','SUPPORTS','__unspecified__')")) {
                 insert.setNString(1,"枝".repeat(255)); insert.executeUpdate();
             }
             assertThat(scalar(database,"SELECT branch_name FROM relation_hypothesis WHERE id=7")).isEqualTo("枝".repeat(255));
@@ -167,8 +168,29 @@ public final class HypothesisBranchMigrationContract {
         sql(database, "CREATE TABLE relation_hypothesis(id BIGINT PRIMARY KEY, repository_id VARCHAR(255), workspace_id VARCHAR(255), source_node_id VARCHAR(255), target_node_id VARCHAR(255), relation_type VARCHAR(255), analysis_session_id VARCHAR(255), project_id INTEGER, requirement_id INTEGER, analysis_snapshot_id VARCHAR(36))".replace("BIGINT", product.contains("Oracle") ? "NUMBER(19)" : "BIGINT"));
         sql(database, "CREATE TABLE relation_evidence(id BIGINT PRIMARY KEY, hypothesis_id BIGINT)".replace("BIGINT", product.contains("Oracle") ? "NUMBER(19)" : "BIGINT"));
     }
+    private static void verifyCentralAndNamedWorkspaceEvidence(DataSource database, SchemaContractMigration migration)
+            throws SQLException {
+        // Install the same relation, session and branch in the working copy after upgrading the central parent.
+        sql(database, """
+                INSERT INTO relation_hypothesis (id,repository_id,workspace_id,workspace_scope_key,branch_name,
+                    source_node_id,target_node_id,relation_type,analysis_session_scope_key)
+                VALUES (8,'repo','__shared__','__shared__','main','BP','CP','SUPPORTS','__unspecified__')
+                """);
+        sql(database, """
+                INSERT INTO relation_evidence (id,hypothesis_id,repository_id,workspace_scope_key,branch_name)
+                VALUES (8,8,'repo','__shared__','main')
+                """);
+        migration.migrate();
+        assertThat(scalar(database, "SELECT workspace_scope_key FROM relation_evidence WHERE id=1"))
+                .isEqualTo(" central");
+        assertThat(scalar(database, "SELECT workspace_scope_key FROM relation_evidence WHERE id=8"))
+                .isEqualTo("__shared__");
+        assertThatThrownBy(() -> sql(database, "UPDATE relation_evidence SET hypothesis_id=1 WHERE id=8"))
+                .isInstanceOf(SQLException.class);
+    }
+
     private static void insertExact(DataSource database, int id, String branch) throws SQLException {
-        sql(database, "INSERT INTO relation_hypothesis (id,repository_id,workspace_scope_key,branch_name,source_node_id,target_node_id,relation_type,analysis_session_scope_key) VALUES (" + id + ",'repo','__shared__','" + branch + "','BP','CP','SUPPORTS','__unspecified__')");
+        sql(database, "INSERT INTO relation_hypothesis (id,repository_id,workspace_scope_key,branch_name,source_node_id,target_node_id,relation_type,analysis_session_scope_key) VALUES (" + id + ",'repo',' central','" + branch + "','BP','CP','SUPPORTS','__unspecified__')");
     }
     public static void reset(DataSource database) throws SQLException {
         for (String table : List.of("relation_evidence", "relation_hypothesis", "req_analysis_snapshot", "project_requirement", "arch_project", "system_repository")) {

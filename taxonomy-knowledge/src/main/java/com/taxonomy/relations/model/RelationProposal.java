@@ -44,7 +44,7 @@ import java.time.Instant;
         })
 public class RelationProposal {
 
-    public static final String SHARED_SCOPE_KEY = WorkspaceOverlayScope.CENTRAL_SCOPE_KEY;
+    public static final String SHARED_SCOPE_KEY = WorkspaceOverlayScope.CENTRAL_STORAGE_KEY;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -119,7 +119,7 @@ public class RelationProposal {
     }
 
     public static String scopeKeyFor(String workspaceId) {
-        return WorkspaceOverlayScope.keyFor(workspaceId);
+        return WorkspaceOverlayScope.storageKeyFor(workspaceId);
     }
 
     public Long getId() { return id; }

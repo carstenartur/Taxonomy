@@ -27,7 +27,7 @@ final class CommitIndexSchemaMigrator {
             CommitIndexSchemaMigrator.class);
 
     private static final String TABLE = "architecture_commit_index";
-    private static final String CENTRAL_SCOPE = "__shared__";
+    private static final String CENTRAL_SCOPE = com.taxonomy.model.WorkspaceOverlayScope.CENTRAL_STORAGE_KEY;
     private static final Set<String> LEGACY_UNIQUE_COLUMNS = Set.of("commit_id");
     private static final Set<String> TARGET_UNIQUE_COLUMNS = Set.of(
             "repository_id",
@@ -77,7 +77,6 @@ final class CommitIndexSchemaMigrator {
 
         normalizeOptionalColumn(connection, table, "repository_id");
         normalizeOptionalColumn(connection, table, "workspace_id");
-        normalizeOptionalColumn(connection, table, "workspace_scope_key");
         normalizeOptionalColumn(connection, table, "branch");
         normalizeOptionalColumn(connection, table, "commit_id");
 

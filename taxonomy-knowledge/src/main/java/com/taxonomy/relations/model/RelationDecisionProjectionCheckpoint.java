@@ -37,7 +37,7 @@ import java.time.Instant;
                 }))
 public class RelationDecisionProjectionCheckpoint {
 
-    public static final String CENTRAL_SCOPE_KEY = WorkspaceOverlayScope.CENTRAL_SCOPE_KEY;
+    public static final String CENTRAL_SCOPE_KEY = WorkspaceOverlayScope.CENTRAL_STORAGE_KEY;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -94,7 +94,7 @@ public class RelationDecisionProjectionCheckpoint {
     }
 
     public static String scopeKeyFor(String workspaceId) {
-        return WorkspaceOverlayScope.keyFor(workspaceId);
+        return WorkspaceOverlayScope.storageKeyFor(workspaceId);
     }
 
     public Long getId() {

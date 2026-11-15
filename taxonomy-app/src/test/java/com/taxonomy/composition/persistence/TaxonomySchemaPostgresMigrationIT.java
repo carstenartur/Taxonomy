@@ -44,6 +44,15 @@ class TaxonomySchemaPostgresMigrationIT {
             .withPassword("taxonomy");
 
     @Test
+    void preservesBothProjectionOwnersDuringUpgrade() throws Exception {
+        DataSource dataSource = isolatedDataSource("projection_scope");
+        migrateJgit(dataSource);
+        installApplicationAtVersion(dataSource, "62.1");
+        RelationProjectionScopeMigrationChecks.verify(dataSource, () -> TaxonomySchemaMigrationConfig.migrateApplicationSchema(
+                Flyway.configure().dataSource(dataSource).load().getConfiguration()));
+    }
+
+    @Test
     void verifiedLegacyOwnershipOnAnIsolatedSchema() throws Exception {
         LegacyOwnershipDatabaseContract.verify(isolatedDataSource("legacy_ownership"), "boolean");
     }
@@ -174,7 +183,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "62", "62.1");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "62", "62.1", "62.2");
     }
 
     @Test
@@ -281,7 +290,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "62", "62.1");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "62", "62.1", "62.2");
         assertIntegrationSchema(dataSource);
         assertInventorySchema(dataSource);
         assertReformulationSchema(dataSource);

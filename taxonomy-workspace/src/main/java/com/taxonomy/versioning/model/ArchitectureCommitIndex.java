@@ -49,7 +49,7 @@ import java.time.Instant;
                }))
 public class ArchitectureCommitIndex {
 
-    public static final String CENTRAL_SCOPE_KEY = WorkspaceOverlayScope.CENTRAL_SCOPE_KEY;
+    public static final String CENTRAL_SCOPE_KEY = WorkspaceOverlayScope.CENTRAL_STORAGE_KEY;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -137,7 +137,12 @@ public class ArchitectureCommitIndex {
     }
 
     public static String scopeKeyFor(String workspaceId) {
-        return WorkspaceOverlayScope.keyFor(workspaceId);
+        return WorkspaceOverlayScope.storageKeyFor(workspaceId);
+    }
+
+    /** Both archive generations are verifiable against the separately recorded nullable workspace ID. */
+    public static boolean matchesArchivedScope(String workspaceId, String archivedKey) {
+        return scopeKeyFor(workspaceId).equals(archivedKey) || WorkspaceOverlayScope.keyFor(workspaceId).equals(archivedKey);
     }
 
     public Long getId() { return id; }

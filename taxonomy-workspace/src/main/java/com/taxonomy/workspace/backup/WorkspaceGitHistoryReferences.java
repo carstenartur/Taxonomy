@@ -68,6 +68,7 @@ public final class WorkspaceGitHistoryReferences {
             .thenComparing(BackupRepositoryKey::workspaceId, Comparator.nullsFirst(Comparator.naturalOrder()));
     private static final int MAX_REFERENCES = 100_000;
     private static final int MAX_MEMBERSHIP_PROBES = 200_000;
+    private final DataSource database;
     private final PortableRows rows;
     private final ExistingGitBackupRepositories repositories;
     private final int maximumReferences;
@@ -75,6 +76,7 @@ public final class WorkspaceGitHistoryReferences {
         this(database, repositories, MAX_REFERENCES);
     }
     public WorkspaceGitHistoryReferences(DataSource database, ExistingGitBackupRepositories repositories, int maximumReferences) {
+        this.database = database;
         rows = new PortableRows(database); this.repositories = Objects.requireNonNull(repositories);
         if (maximumReferences < 1 || maximumReferences > MAX_REFERENCES) throw new IllegalArgumentException("Invalid commit reference budget");
         this.maximumReferences = maximumReferences;
@@ -124,21 +126,23 @@ public final class WorkspaceGitHistoryReferences {
                 result.resolve(record, Field.SYNC_LAST_SYNCED, related, text(row, "last_synced_commit_id"));
                 result.resolve(record, Field.SYNC_LAST_PUBLISHED, related, text(row, "last_published_commit_id"));
             });
-            read("select p.operation_id,p.repository_id,p.workspace_id,p.workspace_owner_scope,p.actor_scope,"
-                            + "w.workspace_id as parent_workspace,w.source_repository_id as parent_repository,w.username as parent_owner,"
-                            + WorkspaceBackupContributor.PUBLICATION_COMMITS
-                            + " from workspace_publication_operation p join user_workspace w on w.workspace_id=p.workspace_id"
-                            + " and w.source_repository_id=p.repository_id and w.username=coalesce(p.workspace_owner_scope,p.actor_scope)",
-                    scope.repositories("p.repository_id","p.workspace_id"), "p.operation_id", checkpoint, row -> {
-                var local = result.key(row, "repository_id", "workspace_id");
-                if (!WorkspaceBackupContributor.samePublicationOwner(row))
-                    throw new IOException("Publication Git evidence belongs to a different working copy");
-                var source = reference(row, "workspace.publication", "operation_id");
-                for (var commit : WorkspaceBackupContributor.publicationCommits(row).recorded().entrySet()) {
-                    var candidates = publicationOwners(commit.getKey(), local, result.keys);
-                    if (!candidates.isEmpty()) result.resolve(source, commit.getKey(), candidates, commit.getValue());
-                }
-            });
+            if (!StagedWorkspaceSchema.predatesPublications(database)) {
+                read("select p.operation_id,p.repository_id,p.workspace_id,p.workspace_owner_scope,p.actor_scope,"
+                                + "w.workspace_id as parent_workspace,w.source_repository_id as parent_repository,w.username as parent_owner,"
+                                + WorkspaceBackupContributor.PUBLICATION_COMMITS
+                                + " from workspace_publication_operation p join user_workspace w on w.workspace_id=p.workspace_id"
+                                + " and w.source_repository_id=p.repository_id and w.username=coalesce(p.workspace_owner_scope,p.actor_scope)",
+                        scope.repositories("p.repository_id","p.workspace_id"), "p.operation_id", checkpoint, row -> {
+                    var local = result.key(row, "repository_id", "workspace_id");
+                    if (!WorkspaceBackupContributor.samePublicationOwner(row))
+                        throw new IOException("Publication Git evidence belongs to a different working copy");
+                    var source = reference(row, "workspace.publication", "operation_id");
+                    for (var commit : WorkspaceBackupContributor.publicationCommits(row).recorded().entrySet()) {
+                        var candidates = publicationOwners(commit.getKey(), local, result.keys);
+                        if (!candidates.isEmpty()) result.resolve(source, commit.getKey(), candidates, commit.getValue());
+                    }
+                });
+            }
             read("select scope_id,repository_id,workspace_id,branch,semantic_revision,checkpoint_commit,checkpoint_revision,dsl,pending_checkpoint from editor_workspace",
                     scope.repositories("repository_id", "workspace_id"), "scope_id", checkpoint, row -> {
                 var key = result.key(row, "repository_id", "workspace_id");

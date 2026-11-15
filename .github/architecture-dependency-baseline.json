@@ -1237,13 +1237,6 @@
       "fromContext": "architecture",
       "fromPackage": "com.taxonomy.architecture.service",
       "toContext": "knowledge",
-      "toPackage": "com.taxonomy.relations.model",
-      "classDependencyCount": 1
-    },
-    {
-      "fromContext": "architecture",
-      "fromPackage": "com.taxonomy.architecture.service",
-      "toContext": "knowledge",
       "toPackage": "com.taxonomy.relations.repository",
       "classDependencyCount": 2
     },

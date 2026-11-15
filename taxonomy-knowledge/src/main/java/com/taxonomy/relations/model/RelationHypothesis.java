@@ -52,7 +52,7 @@ import java.time.Instant;
                        columnNames = {"id", "repository_id", "workspace_scope_key", "branch_name"}) })
 public class RelationHypothesis {
 
-    public static final String CENTRAL_SCOPE_KEY = WorkspaceOverlayScope.CENTRAL_SCOPE_KEY;
+    public static final String CENTRAL_SCOPE_KEY = WorkspaceOverlayScope.CENTRAL_STORAGE_KEY;
     public static final String UNSPECIFIED_SESSION_SCOPE_KEY = "__unspecified__";
 
     @Id
@@ -144,7 +144,7 @@ public class RelationHypothesis {
     }
 
     public static String scopeKeyFor(String workspaceId) {
-        return WorkspaceOverlayScope.keyFor(workspaceId);
+        return WorkspaceOverlayScope.storageKeyFor(workspaceId);
     }
 
     public static String sessionScopeKeyFor(String analysisSessionId) {

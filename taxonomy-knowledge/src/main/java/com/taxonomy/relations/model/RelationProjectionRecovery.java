@@ -61,7 +61,7 @@ public class RelationProjectionRecovery {
     private String workspaceId;
 
     @Column(name = "workspace_scope_key", nullable = false, length = 255)
-    private String workspaceScopeKey = WorkspaceOverlayScope.CENTRAL_SCOPE_KEY;
+    private String workspaceScopeKey = WorkspaceOverlayScope.CENTRAL_STORAGE_KEY;
 
     @Column(name = "branch", nullable = false, length = 255)
     private String branch;
@@ -121,7 +121,7 @@ public class RelationProjectionRecovery {
     private void synchronize() {
         repositoryId = requireText(repositoryId, "repositoryId");
         workspaceId = normalizeOptional(workspaceId);
-        workspaceScopeKey = WorkspaceOverlayScope.keyFor(workspaceId);
+        workspaceScopeKey = WorkspaceOverlayScope.storageKeyFor(workspaceId);
         branch = requireText(branch, "branch");
         previousHeadCommit = normalizeCommitId(
                 previousHeadCommit, "previousHeadCommit", true);
@@ -194,7 +194,7 @@ public class RelationProjectionRecovery {
 
     public void setWorkspaceId(String workspaceId) {
         this.workspaceId = normalizeOptional(workspaceId);
-        this.workspaceScopeKey = WorkspaceOverlayScope.keyFor(this.workspaceId);
+        this.workspaceScopeKey = WorkspaceOverlayScope.storageKeyFor(this.workspaceId);
     }
 
     public String getWorkspaceScopeKey() {

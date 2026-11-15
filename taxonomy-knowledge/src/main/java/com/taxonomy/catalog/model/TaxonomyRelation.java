@@ -53,7 +53,7 @@ import org.hibernate.search.mapper.pojo.mapping.definition.annotation.TypeBindin
 @TypeBinding(binder = @TypeBinderRef(type = RelationEmbeddingBinder.class))
 public class TaxonomyRelation {
 
-    public static final String SHARED_SCOPE_KEY = WorkspaceOverlayScope.CENTRAL_SCOPE_KEY;
+    public static final String SHARED_SCOPE_KEY = WorkspaceOverlayScope.CENTRAL_STORAGE_KEY;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -122,7 +122,7 @@ public class TaxonomyRelation {
     }
 
     public static String scopeKeyFor(String workspaceId) {
-        return WorkspaceOverlayScope.keyFor(workspaceId);
+        return WorkspaceOverlayScope.storageKeyFor(workspaceId);
     }
 
     public Long getId() { return id; }

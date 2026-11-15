@@ -109,6 +109,7 @@ class CommitIndexHibernateSearchTest {
 
     @Test
     void identicalCommitAndBranchCanExistInIndependentTenantScopes() {
+        var reservedLookingCopy = RepositoryContext.workspace(centralA.repositoryId(), "__shared__", "draft", "admin");
         String sharedCommit = "a".repeat(40);
         indexRepository.save(createEntry(
                 centralA, sharedCommit, "draft", "Central A", "CP-7777", "CP-7777", ""));
@@ -119,10 +120,16 @@ class CommitIndexHibernateSearchTest {
         indexRepository.save(createEntry(
                 workspaceA2, sharedCommit, "draft", "Workspace A2", "CP-7777", "CP-7777", ""));
 
+        indexRepository.save(createEntry(
+                reservedLookingCopy, sharedCommit, "draft", "Reserved-looking copy", "CP-7777", "CP-7777", ""));
+
+        assertOnlyMessage(reservedLookingCopy, "Reserved-looking copy");
         assertOnlyMessage(centralA, "Central A");
         assertOnlyMessage(centralB, "Central B");
         assertOnlyMessage(workspaceA1, "Workspace A1");
         assertOnlyMessage(workspaceA2, "Workspace A2");
+        assertThat(commitIndexService.purge(centralA)).isEqualTo(1);
+        assertOnlyMessage(reservedLookingCopy, "Reserved-looking copy");
     }
 
     @Test
