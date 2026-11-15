@@ -130,7 +130,8 @@
                 includedBecause: String(node.includedBecause || node.presenceReason || ''),
                 responsibleUnit: node.responsibility && window.TaxonomyResponsibilityDisplay?.unit(node.responsibility)
             };
-            normalized.searchText = [normalized.id, normalized.title, normalized.sheetLabel, normalized.responsibleUnit?.name].join(' ');
+            normalized.searchText = [normalized.id, normalized.title, normalized.sheetLabel].join(' ');
+            if (normalized.responsibleUnit) normalized.searchText += ' ' + normalized.responsibleUnit.name;
             byId.set(id, normalized);
         });
         return Array.from(byId.values());

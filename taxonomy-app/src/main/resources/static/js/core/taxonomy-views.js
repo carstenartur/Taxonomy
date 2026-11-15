@@ -758,7 +758,6 @@
         var rootData = { code: '__root__', name: 'Taxonomy', children: contentRoots(data) };
         var hierarchy = d3.hierarchy(rootData)
             .sum(function (d) { return (!d.children || !d.children.length) ? 1 : 0; });
-        hierarchy.eachBefore(projectResponsibility);
         d3.partition().size([2 * Math.PI, radius])(hierarchy);
         var currentZoom = hierarchy;
         (readState.focusPath || []).some(function (code) {
@@ -769,6 +768,7 @@
 
         // Restore the focused branch directly, without animating from the overview again.
         hierarchy.each(function (d) {
+            projectResponsibility(d);
             d.current = currentZoom === hierarchy ? { x0: d.x0, x1: d.x1, y0: d.y0, y1: d.y1 }
                 : projectedArc(d, currentZoom);
         });
