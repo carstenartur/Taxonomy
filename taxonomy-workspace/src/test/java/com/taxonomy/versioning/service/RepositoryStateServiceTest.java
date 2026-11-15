@@ -85,6 +85,91 @@ class RepositoryStateServiceTest {
         org.mockito.Mockito.verifyNoMoreInteractions(navigation);
     }
 
+
+    @Test
+    void contextualMetadataUsesOnlySelectedProgressAcrossAllPublicReadPaths() throws IOException {
+        var selected = new WorkspaceContext(USER, "work-B", "review", "repo-B");
+        var factory = mock(DslGitRepositoryFactory.class);
+        var navigation = mock(WorkspaceManager.class);
+        String head = gitRepo.commitDsl("review", SAMPLE_DSL, USER, "selected review");
+        when(factory.resolveRepository(selected)).thenReturn(gitRepo);
+
+        var active = new UserWorkspaceState(USER, 10);
+        active.recordProjection("b".repeat(40), "draft");
+        active.recordIndexBuild("b".repeat(40));
+        active.beginOperation("merge");
+        when(navigation.getOrCreateWorkspace(USER)).thenReturn(active);
+
+        var progress = new UserWorkspaceState(USER, 10);
+        progress.recordProjection(head, "review");
+        progress.recordIndexBuild(head);
+        when(navigation.getScopedWorkspaceState(selected)).thenReturn(progress);
+        var service = new RepositoryStateService(factory, navigation, mock(SystemRepositoryService.class));
+
+        RepositoryState state = service.getState(USER, "review", selected);
+        assertEquals(head, state.projectionCommit());
+        assertEquals("review", state.projectionBranch());
+        assertEquals(head, state.indexCommit());
+        assertFalse(state.operationInProgress());
+        assertNull(state.operationKind());
+        assertFalse(state.projectionStale());
+        assertFalse(state.indexStale());
+        assertEquals(RepositoryReadiness.UNVERIFIED, state.projectionReadiness());
+        assertEquals(RepositoryReadiness.UNVERIFIED, state.indexReadiness());
+
+        ViewContext context = service.getViewContext(USER, "review", selected);
+        assertFalse(context.projectionStale());
+        assertFalse(context.indexStale());
+        assertEquals(RepositoryReadiness.UNVERIFIED, context.projectionReadiness());
+        assertEquals(RepositoryReadiness.UNVERIFIED, context.indexReadiness());
+
+        ProjectionState diagnostics = service.getProjectionState(USER, "review", selected);
+        assertEquals(head, diagnostics.projectionCommit());
+        assertEquals(head, diagnostics.indexCommit());
+        assertFalse(diagnostics.projectionStale());
+        assertFalse(diagnostics.indexStale());
+        assertFalse(service.isProjectionStale(USER, "review", selected));
+        verify(navigation, org.mockito.Mockito.never()).getOrCreateWorkspace(USER);
+    }
+
+    @Test
+    void unavailableSelectedProgressCannotInheritAnActiveCopyOperationOrCheckpoint() throws IOException {
+        var selected = new WorkspaceContext(USER, "not-loaded", "review", "repo-B");
+        var factory = mock(DslGitRepositoryFactory.class);
+        var navigation = mock(WorkspaceManager.class);
+        gitRepo.commitDsl("review", SAMPLE_DSL, USER, "selected review");
+        when(factory.resolveRepository(selected)).thenReturn(gitRepo);
+        var active = new UserWorkspaceState(USER, 10);
+        active.recordProjection("b".repeat(40), "draft");
+        active.recordIndexBuild("b".repeat(40));
+        active.beginOperation("merge");
+        when(navigation.getOrCreateWorkspace(USER)).thenReturn(active);
+        var service = new RepositoryStateService(factory, navigation, mock(SystemRepositoryService.class));
+
+        RepositoryState state = service.getState(USER, "review", selected);
+        assertNull(state.projectionCommit());
+        assertNull(state.indexCommit());
+        assertFalse(state.operationInProgress());
+        assertFalse(state.projectionStale());
+        assertFalse(state.indexStale());
+        assertEquals(RepositoryReadiness.MISSING, state.projectionReadiness());
+        assertEquals(RepositoryReadiness.MISSING, state.indexReadiness());
+
+        ViewContext context = service.getViewContext(USER, "review", selected);
+        assertFalse(context.projectionStale());
+        assertFalse(context.indexStale());
+        assertEquals(RepositoryReadiness.MISSING, context.projectionReadiness());
+        assertEquals(RepositoryReadiness.MISSING, context.indexReadiness());
+
+        ProjectionState diagnostics = service.getProjectionState(USER, "review", selected);
+        assertNull(diagnostics.projectionCommit());
+        assertNull(diagnostics.indexCommit());
+        assertFalse(diagnostics.projectionStale());
+        assertFalse(diagnostics.indexStale());
+        assertFalse(service.isProjectionStale(USER, "review", selected));
+        verify(navigation, org.mockito.Mockito.never()).getOrCreateWorkspace(USER);
+    }
+
     @ParameterizedTest
     @NullSource
     @ValueSource(strings = {"selected-copy", "uncached-copy"})
@@ -166,6 +251,37 @@ class RepositoryStateServiceTest {
     // ── getState ────────────────────────────────────────────────────
 
     private static final String USER = "testuser";
+
+    @Test
+    void legacyActorOnlyCentralContextKeepsItsOwnOperationAndStaleCheckpoints() throws IOException {
+        String first = gitRepo.commitDsl("draft", SAMPLE_DSL, USER, "first");
+        stateService.recordProjection(USER, first, "draft");
+        stateService.recordIndexBuild(USER, first);
+        gitRepo.commitDsl("draft", SAMPLE_DSL, USER, "second");
+        stateService.beginOperation(USER, "merge");
+
+        // The actor-only guard builds this compatibility context, not SHARED
+        // (which has the different actor "system"). Both must retain user state.
+        var legacy = new WorkspaceContext(USER, null, "draft",
+                WorkspaceContext.LEGACY_REPOSITORY_ID);
+        var state = stateService.getState(USER, "draft", legacy);
+        assertTrue(state.operationInProgress());
+        assertEquals("merge", state.operationKind());
+        assertEquals(first, state.projectionCommit());
+        assertEquals(first, state.indexCommit());
+        assertTrue(state.projectionStale());
+        assertTrue(state.indexStale());
+
+        var view = stateService.getViewContext(USER, "draft", legacy);
+        assertTrue(view.projectionStale());
+        assertTrue(view.indexStale());
+        var projection = stateService.getProjectionState(USER, "draft", legacy);
+        assertEquals(first, projection.projectionCommit());
+        assertEquals(first, projection.indexCommit());
+        assertTrue(projection.projectionStale());
+        assertTrue(projection.indexStale());
+        assertTrue(stateService.isProjectionStale(USER, "draft", legacy));
+    }
 
     @Test
     void getStateOnEmptyBranchReturnsDefaults() {

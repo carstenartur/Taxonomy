@@ -98,7 +98,9 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
      * @return the full repository state
      */
     public RepositoryState getState(String username, String branch, WorkspaceContext ctx) {
-        return readState(username, branch, ctx, resolveState(username), selectedProgress(ctx));
+        UserWorkspaceState selected = selectedProgress(ctx);
+        return readState(username, branch, ctx,
+                usesLegacyUserProgress(ctx) ? resolveState(username) : selected, selected);
     }
 
     /** Read the selected Git branch and its existing workspace progress without provisioning. */
@@ -178,13 +180,13 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
      * @return the view context metadata
      */
     public ViewContext getViewContext(String username, String branch, WorkspaceContext ctx) {
-        UserWorkspaceState ws = resolveState(username);
+        UserWorkspaceState selected = selectedProgress(ctx);
+        UserWorkspaceState ws = usesLegacyUserProgress(ctx) ? resolveState(username) : selected;
         DslGitRepository repo = resolveRepository(ctx);
         try {
             DslCommit headInfo = repo.getHeadCommitInfo(branch);
             String headCommit = headInfo != null ? headInfo.commitId() : null;
 
-            UserWorkspaceState progress = selectedProgress(ctx);
             return new ViewContext(
                     headCommit,
                     branch,
@@ -192,8 +194,8 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
                     true,
                     isProjectionStaleForCommit(ws, headCommit),
                     isIndexStale(ws, headCommit),
-                    projectionReadiness(progress, branch, headCommit),
-                    indexReadiness(progress, headCommit)
+                    projectionReadiness(selected, branch, headCommit),
+                    indexReadiness(selected, headCommit)
             );
         } catch (IOException e) {
             log.error("Failed to build view context for user '{}', branch '{}'", username, branch, e);
@@ -267,7 +269,7 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
      * @return true if projection is stale
      */
     public boolean isProjectionStale(String username, String branch, WorkspaceContext ctx) {
-        UserWorkspaceState ws = resolveState(username);
+        UserWorkspaceState ws = stateForRead(username, ctx);
         try {
             String headCommit = resolveRepository(ctx).getHeadCommit(branch);
             return isProjectionStaleForCommit(ws, headCommit);
@@ -301,7 +303,7 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
      * @return the projection state
      */
     public ProjectionState getProjectionState(String username, String branch, WorkspaceContext ctx) {
-        UserWorkspaceState ws = resolveState(username);
+        UserWorkspaceState ws = stateForRead(username, ctx);
         try {
             String headCommit = resolveRepository(ctx).getHeadCommit(branch);
             return new ProjectionState(
@@ -368,6 +370,24 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
 
     private UserWorkspaceState resolveState(String username) {
         return workspaceManager.getOrCreateWorkspace(username);
+    }
+
+    /**
+     * The legacy, actor-only APIs construct a central compatibility context with the
+     * calling user's name and requested branch. Comparing the entire context to
+     * WorkspaceContext.SHARED (whose actor is "system") would incorrectly discard
+     * the user's operation and freshness state.
+     *
+     * An explicitly selected repository, including one without a workspace ID,
+     * must never inherit those legacy per-user checkpoints or operation locks.
+     */
+    private static boolean usesLegacyUserProgress(WorkspaceContext context) {
+        return context.workspaceId() == null
+                && WorkspaceContext.LEGACY_REPOSITORY_ID.equals(context.repositoryId());
+    }
+
+    private UserWorkspaceState stateForRead(String username, WorkspaceContext context) {
+        return usesLegacyUserProgress(context) ? resolveState(username) : selectedProgress(context);
     }
 
     private UserWorkspaceState requireState(String username) {
