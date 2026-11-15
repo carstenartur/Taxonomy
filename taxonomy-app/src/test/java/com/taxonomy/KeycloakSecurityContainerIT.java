@@ -14,6 +14,7 @@ import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.Keys;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
+import org.openqa.selenium.interactions.Actions;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import org.testcontainers.containers.GenericContainer;
@@ -312,6 +313,8 @@ class KeycloakSecurityContainerIT {
                         target: event?.target?.id || event?.target?.tagName || '',
                         focused: focus?.id || focus?.tagName || '',
                         related: event?.relatedTarget?.id || event?.relatedTarget?.tagName || '',
+                        summaryEnter: name === 'keydown' && event.isTrusted && event.key === 'Enter'
+                            && event.target === account?.querySelector(':scope > summary'),
                         compact: window.matchMedia('(max-width: 1023.98px)').matches,
                         navigationOpen: document.getElementById('applicationNavigationMenu')?.open === true
                     });
@@ -329,8 +332,12 @@ class KeycloakSecurityContainerIT {
         var wait = new WebDriverWait(driver, Duration.ofSeconds(30));
         // The Projects heading renders while the initial portfolio load still covers the toolbar.
         wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("portfolioBusy")));
-        wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("#applicationAccount > summary")))
-                .sendKeys(Keys.ENTER);
+        var accountSummary = wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("#applicationAccount > summary")));
+        accountSummary.sendKeys(Keys.ENTER);
+        // The remote element command can focus the summary without delivering the gesture.
+        if (!accountSummaryReceivedEnter() && accountSummary.equals(driver.switchTo().activeElement())) {
+            new Actions(driver).sendKeys(Keys.ENTER).perform();
+        }
         WebElement signOut;
         try {
             signOut = wait.until(ExpectedConditions.elementToBeClickable(
@@ -361,6 +368,7 @@ class KeycloakSecurityContainerIT {
             throw new AssertionError("The visible account sign-out action did not open: "
                     + menuState + ", accountEventTrace=" + eventTrace, exception);
         }
+        assertThat(accountSummaryReceivedEnter()).as("The account summary received a native Enter").isTrue();
         assertThat(driver.findElement(By.id("applicationLogoutForm")).getDomAttribute("action"))
                 .isEqualTo("/logout");
         assertThat(signOut.getAccessibleName()).isEqualTo("Sign out of single sign-on");
@@ -374,6 +382,11 @@ class KeycloakSecurityContainerIT {
                 Map.of("Cookie", sessionCookie));
         assertThat(staleSession.statusCode()).isNotEqualTo(200);
         assertThat(sessionInventory().get("sessionCount").intValue()).isZero();
+    }
+
+    private boolean accountSummaryReceivedEnter() {
+        return Boolean.TRUE.equals(((JavascriptExecutor) driver).executeScript(
+                "return window.taxonomyAccountEventTrace?.some(event => event.summaryEnter) === true;"));
     }
 
     @Test
