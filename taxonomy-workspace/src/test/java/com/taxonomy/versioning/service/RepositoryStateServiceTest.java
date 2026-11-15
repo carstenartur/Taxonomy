@@ -85,6 +85,91 @@ class RepositoryStateServiceTest {
         org.mockito.Mockito.verifyNoMoreInteractions(navigation);
     }
 
+
+    @Test
+    void contextualMetadataUsesOnlySelectedProgressAcrossAllPublicReadPaths() throws IOException {
+        var selected = new WorkspaceContext(USER, "work-B", "review", "repo-B");
+        var factory = mock(DslGitRepositoryFactory.class);
+        var navigation = mock(WorkspaceManager.class);
+        String head = gitRepo.commitDsl("review", SAMPLE_DSL, USER, "selected review");
+        when(factory.resolveRepository(selected)).thenReturn(gitRepo);
+
+        var active = new UserWorkspaceState(USER, 10);
+        active.recordProjection("b".repeat(40), "draft");
+        active.recordIndexBuild("b".repeat(40));
+        active.beginOperation("merge");
+        when(navigation.getOrCreateWorkspace(USER)).thenReturn(active);
+
+        var progress = new UserWorkspaceState(USER, 10);
+        progress.recordProjection(head, "review");
+        progress.recordIndexBuild(head);
+        when(navigation.getScopedWorkspaceState(selected)).thenReturn(progress);
+        var service = new RepositoryStateService(factory, navigation, mock(SystemRepositoryService.class));
+
+        RepositoryState state = service.getState(USER, "review", selected);
+        assertEquals(head, state.projectionCommit());
+        assertEquals("review", state.projectionBranch());
+        assertEquals(head, state.indexCommit());
+        assertFalse(state.operationInProgress());
+        assertNull(state.operationKind());
+        assertFalse(state.projectionStale());
+        assertFalse(state.indexStale());
+        assertEquals(RepositoryReadiness.UNVERIFIED, state.projectionReadiness());
+        assertEquals(RepositoryReadiness.UNVERIFIED, state.indexReadiness());
+
+        ViewContext context = service.getViewContext(USER, "review", selected);
+        assertFalse(context.projectionStale());
+        assertFalse(context.indexStale());
+        assertEquals(RepositoryReadiness.UNVERIFIED, context.projectionReadiness());
+        assertEquals(RepositoryReadiness.UNVERIFIED, context.indexReadiness());
+
+        ProjectionState diagnostics = service.getProjectionState(USER, "review", selected);
+        assertEquals(head, diagnostics.projectionCommit());
+        assertEquals(head, diagnostics.indexCommit());
+        assertFalse(diagnostics.projectionStale());
+        assertFalse(diagnostics.indexStale());
+        assertFalse(service.isProjectionStale(USER, "review", selected));
+        verify(navigation, org.mockito.Mockito.never()).getOrCreateWorkspace(USER);
+    }
+
+    @Test
+    void unavailableSelectedProgressCannotInheritAnActiveCopyOperationOrCheckpoint() throws IOException {
+        var selected = new WorkspaceContext(USER, "not-loaded", "review", "repo-B");
+        var factory = mock(DslGitRepositoryFactory.class);
+        var navigation = mock(WorkspaceManager.class);
+        gitRepo.commitDsl("review", SAMPLE_DSL, USER, "selected review");
+        when(factory.resolveRepository(selected)).thenReturn(gitRepo);
+        var active = new UserWorkspaceState(USER, 10);
+        active.recordProjection("b".repeat(40), "draft");
+        active.recordIndexBuild("b".repeat(40));
+        active.beginOperation("merge");
+        when(navigation.getOrCreateWorkspace(USER)).thenReturn(active);
+        var service = new RepositoryStateService(factory, navigation, mock(SystemRepositoryService.class));
+
+        RepositoryState state = service.getState(USER, "review", selected);
+        assertNull(state.projectionCommit());
+        assertNull(state.indexCommit());
+        assertFalse(state.operationInProgress());
+        assertFalse(state.projectionStale());
+        assertFalse(state.indexStale());
+        assertEquals(RepositoryReadiness.MISSING, state.projectionReadiness());
+        assertEquals(RepositoryReadiness.MISSING, state.indexReadiness());
+
+        ViewContext context = service.getViewContext(USER, "review", selected);
+        assertFalse(context.projectionStale());
+        assertFalse(context.indexStale());
+        assertEquals(RepositoryReadiness.MISSING, context.projectionReadiness());
+        assertEquals(RepositoryReadiness.MISSING, context.indexReadiness());
+
+        ProjectionState diagnostics = service.getProjectionState(USER, "review", selected);
+        assertNull(diagnostics.projectionCommit());
+        assertNull(diagnostics.indexCommit());
+        assertFalse(diagnostics.projectionStale());
+        assertFalse(diagnostics.indexStale());
+        assertFalse(service.isProjectionStale(USER, "review", selected));
+        verify(navigation, org.mockito.Mockito.never()).getOrCreateWorkspace(USER);
+    }
+
     @ParameterizedTest
     @NullSource
     @ValueSource(strings = {"selected-copy", "uncached-copy"})
