@@ -298,7 +298,34 @@ class KeycloakSecurityContainerIT {
 
         var wait = new WebDriverWait(driver, Duration.ofSeconds(30));
         wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("#applicationAccount > summary"))).click();
-        var signOut = wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("#applicationLogoutForm button")));
+        WebElement signOut;
+        try {
+            signOut = wait.until(ExpectedConditions.elementToBeClickable(
+                    By.cssSelector("#applicationLogoutForm button")));
+        } catch (org.openqa.selenium.TimeoutException exception) {
+            String menuState = String.valueOf(((JavascriptExecutor) driver).executeScript("""
+                    const account = document.getElementById('applicationAccount');
+                    const logout = document.querySelector('#applicationLogoutForm button');
+                    const rect = logout?.getBoundingClientRect();
+                    const style = logout ? getComputedStyle(logout) : null;
+                    return JSON.stringify({
+                        accountOpen: account?.open,
+                        accountRectCount: account?.getClientRects().length,
+                        logoutRectCount: logout?.getClientRects().length,
+                        logoutDisplay: style?.display,
+                        logoutVisibility: style?.visibility,
+                        logoutRect: rect && {
+                            x: rect.x, y: rect.y, width: rect.width, height: rect.height
+                        },
+                        focusedElement: document.activeElement?.tagName,
+                        focusedElementId: document.activeElement?.id,
+                        focusWithinAccount: account?.contains(document.activeElement),
+                        navigationOpen: document.getElementById('applicationNavigationMenu')?.open
+                    });
+                    """));
+            throw new AssertionError("The visible account sign-out action did not open: " + menuState,
+                    exception);
+        }
         assertThat(driver.findElement(By.id("applicationLogoutForm")).getDomAttribute("action"))
                 .isEqualTo("/logout");
         assertThat(signOut.getAccessibleName()).isEqualTo("Sign out of single sign-on");
