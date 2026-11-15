@@ -683,8 +683,8 @@
                 </configuration></execution></executions>
             </plugin></plugins></build>
         </profile>
-        <!-- The memory-sensitive A0-to-A1 demo must not inherit the heap retained
-             by earlier Spring contexts. Explicit -Dtest selections stay unchanged. -->
+        <!-- The full demo and architecture cycle check each need a fresh fork.
+             Explicit -Dtest selections retain their normal execution. -->
         <profile>
             <id>product-demo-isolation</id>
             <activation><property><name>!test</name></property></activation>
@@ -698,6 +698,7 @@
                             <excludes>
                                 <exclude>**/*$*</exclude>
                                 <exclude>${taxonomy.productDemo.defaultTestExclude}</exclude>
+                                <exclude>**/ArchitectureCycleBoundaryTest.java</exclude>
                             </excludes>
                         </configuration>
                     </execution>
@@ -712,6 +713,18 @@
                             <failIfNoTests>true</failIfNoTests>
                             <failIfNoSpecifiedTests>true</failIfNoSpecifiedTests>
                             <reportNameSuffix>product-demo-isolated</reportNameSuffix>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>architecture-cycles-isolated</id>
+                        <phase>${taxonomy.productDemo.testPhase}</phase>
+                        <goals><goal>test</goal></goals>
+                        <configuration>
+                            <test>ArchitectureCycleBoundaryTest</test>
+                            <forkCount>1</forkCount>
+                            <reuseForks>false</reuseForks>
+                            <failIfNoTests>true</failIfNoTests>
+                            <failIfNoSpecifiedTests>true</failIfNoSpecifiedTests>
                         </configuration>
                     </execution>
                 </executions>
