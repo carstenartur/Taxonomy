@@ -704,6 +704,9 @@ public class DslGitRepository implements AutoCloseable {
      * after every commit has merged and the caller has revalidated current authority and
      * upstream refs. A conflict never partially rewrites the branch.</p>
      */
+    @FunctionalInterface
+    public interface RebaseGuard { void revalidate() throws IOException; }
+
     public record RebasedCommit(String originalCommit, String replacementCommit) { }
 
     public record RebaseReplay(String originalHead, String newHead, String conflictCommit,
@@ -713,7 +716,7 @@ public class DslGitRepository implements AutoCloseable {
 
     public RebaseReplay replayLinearHistory(String branch, String expectedHead, String mergeBase,
                                            String trackedCommit, List<String> orderedCommits,
-                                           String actor, Runnable reauthorizeAndCheckUpstream) throws IOException {
+                                           String actor, RebaseGuard reauthorizeAndCheckUpstream) throws IOException {
         Objects.requireNonNull(orderedCommits, "orderedCommits");
         Objects.requireNonNull(reauthorizeAndCheckUpstream, "reauthorizeAndCheckUpstream");
         if (branch == null || !Repository.isValidRefName(Constants.R_HEADS + branch)
@@ -730,7 +733,7 @@ public class DslGitRepository implements AutoCloseable {
         }
 
         synchronized (gitRepo) {
-            reauthorizeAndCheckUpstream.run();
+            reauthorizeAndCheckUpstream.revalidate();
             verifyExpectedHead(branch, expectedHead);
             try (var walk = new RevWalk(gitRepo)) {
                 var original = walk.parseCommit(ObjectId.fromString(expectedHead));
@@ -789,7 +792,7 @@ public class DslGitRepository implements AutoCloseable {
 
                 // No user branch has moved so far. Check both authority and all upstream refs
                 // again before the single forced (non-fast-forward) compare-and-set publication.
-                reauthorizeAndCheckUpstream.run();
+                reauthorizeAndCheckUpstream.revalidate();
                 verifyExpectedHead(branch, expectedHead);
                 updateRef(Constants.R_HEADS + branch, tip, original, true,
                         personIdent(actor), "rebase: " + original.name() + " onto " + fetched.name());
