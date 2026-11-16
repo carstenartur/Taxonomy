@@ -8,6 +8,7 @@ import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import com.taxonomy.workspace.service.WorkspaceUpstreamService;
 import com.taxonomy.workspace.service.UpstreamRebasePlan;
+import com.taxonomy.workspace.storage.DslGitRepository;
 import org.springframework.http.CacheControl;
 import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -63,6 +64,16 @@ public class CentralForkUpstreamController {
     public ResponseEntity<Void> rebasePlanRefTag(@PathVariable String repositoryId, @RequestParam String branch) throws IOException {
         String tag = upstream.rebasePlanRefTag(repositoryId, resolver.resolveCurrentUsername(), branch);
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).eTag(tag).build();
+    }
+
+    @PostMapping("/rebase")
+    @Operation(summary = "Apply a reviewed linear rebase on one central fork branch",
+            description = "Requires current source and destination contributor permissions and an exact ref-bound "
+                    + "plan. Publishes the branch once or returns a conflict without mutation. "
+                    + "No automatic adoption or conflict resolution is enabled.")
+    public DslGitRepository.RebaseReplay rebase(@PathVariable String repositoryId, @RequestParam String branch,
+            @RequestBody UpstreamRebasePlan.ApplyRequest request) throws IOException {
+        return upstream.rebase(repositoryId, resolver.resolveCurrentUsername(), branch, request);
     }
 
     @PostMapping("/fetch")
