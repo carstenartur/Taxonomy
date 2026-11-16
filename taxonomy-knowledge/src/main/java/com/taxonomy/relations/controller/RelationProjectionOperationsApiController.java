@@ -281,6 +281,7 @@ public class RelationProjectionOperationsApiController {
 
     /** Central projection operations require repository-maintainer authority. */
     private RepositoryContext writableContext(RepositoryContext context) {
+        if (context == null) return null;
         if (context.scope() == RepositoryScope.WORKSPACE
                 || context.scope() == RepositoryScope.FORK) {
             return context;
