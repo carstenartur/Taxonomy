@@ -64,25 +64,25 @@ class IntegrationPublicationSecurityTest extends PublicationIntegrationFixture {
     }
     @Test void craftedPcsAndWrongActorBranchAndScopeCannotPublish() throws Exception {
         var pcs = store.create(context, UUID.randomUUID(), store.read(context, connection).organizationId(), "Unverified PCS", "sparx-oslc-am-2.0", "2", AuthorityMode.BIDIRECTIONAL, PublicationContractProvider.SCOPE.externalScope(), null, "unverified");
-        mvc.perform(get("/api/integrations/" + pcs.id()).param("repositoryId", context.repositoryId()).param("workspaceId", context.workspaceId()).param("branch", context.branch()).with(user(context.username()).roles("ARCHITECT")))
+        performAsRequest(mvc, get("/api/integrations/" + pcs.id()).param("repositoryId", context.repositoryId()).param("workspaceId", context.workspaceId()).param("branch", context.branch()).with(authentication(ownerLogin())))
                 .andExpect(status().isOk()).andExpect(jsonPath("publicationAvailability.reasonCode").value("PUBLICATION_GUARANTEES_UNVERIFIED"));
         var request = new PublicationPreviewRequest(UUID.randomUUID(), state(), PublicationMode.PUSH, PublicationContractProvider.SCOPE, provider.revision());
-        mvc.perform(post("/api/integrations/" + pcs.id() + "/publication-previews").param("repositoryId", context.repositoryId()).param("workspaceId", context.workspaceId()).param("branch", context.branch())
-                .with(user(context.username()).roles("ARCHITECT")).with(csrf()).contentType("application/json").content(json.write(request)))
+        performAsRequest(mvc, post("/api/integrations/" + pcs.id() + "/publication-previews").param("repositoryId", context.repositoryId()).param("workspaceId", context.workspaceId()).param("branch", context.branch())
+                .with(authentication(ownerLogin())).with(csrf()).contentType("application/json").content(json.write(request)))
                 .andExpect(status().isConflict()).andExpect(jsonPath("code").value("PUBLICATION_GUARANTEES_UNVERIFIED"));
         var p = preview(PublicationMode.PUSH);
         String path = "/api/integrations/" + connection + "/operations/" + p.operationId() + "/retry";
-        mvc.perform(post(path).param("repositoryId", context.repositoryId()).param("workspaceId", context.workspaceId()).param("branch", context.branch())
+        performAsRequest(mvc, post(path).param("repositoryId", context.repositoryId()).param("workspaceId", context.workspaceId()).param("branch", context.branch())
                 .with(user("intruder").roles("ARCHITECT")).with(csrf()).contentType("application/json").content("{}")) .andExpect(status().isForbidden());
         var before = publication.publication(context, connection, p.operationId());
-        mvc.perform(post(path).param("repositoryId", context.repositoryId()).param("workspaceId", context.workspaceId()).param("branch", "moved-branch")
-                .with(user(context.username()).roles("ARCHITECT")).with(csrf()).contentType("application/json").content("{}"))
+        performAsRequest(mvc, post(path).param("repositoryId", context.repositoryId()).param("workspaceId", context.workspaceId()).param("branch", "moved-branch")
+                .with(authentication(ownerLogin())).with(csrf()).contentType("application/json").content("{}"))
                 .andExpect(status().isConflict()).andExpect(jsonPath("code").value("INTERNAL_STATE_CHANGED"));
         assertEquals(before, publication.publication(context, connection, p.operationId()));
         assertEquals(0, provider.writes.get());
         var foreignScope = new PublicationScope(PublicationContractProvider.SCOPE.externalScope(), "urn:other:model", "all");
         assertThrows(com.taxonomy.interop.IntegrationProblem.class, () -> publication.previewPublication(context, connection, new PublicationPreviewRequest(UUID.randomUUID(), state(), PublicationMode.PUSH, foreignScope, provider.revision())));
-        mvc.perform(post(path).with(user(context.username()).roles("USER")).with(csrf()).contentType("application/json").content("{}")) .andExpect(status().isForbidden());
+        performAsRequest(mvc, post(path).with(user(context.username()).roles("USER")).with(csrf()).contentType("application/json").content("{}")) .andExpect(status().isForbidden());
         assertEquals(0, provider.writes.get());
     }
 }

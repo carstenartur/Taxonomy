@@ -200,7 +200,7 @@ public class AnalysisWorkingDraftService {
         UserWorkspace workspace = workspaceManager.getWorkspaceById(requestedWorkspace);
         if (workspace == null
                 || workspace.getUsername() == null
-                || (!workspace.getUsername().equals(username) && !workspace.isCollaborative())
+                || (!actorAccess.owns(username, workspace) && !workspace.isCollaborative())
                 || workspace.isArchived()
                 || workspace.isShared()) {
             throw new AccessDeniedException("Workspace is not available to the current user");
@@ -220,7 +220,7 @@ public class AnalysisWorkingDraftService {
             actorAccess.requireActive(username);
         }
         // Sharing the architecture never changes the username of an analysis draft.
-        if (!workspace.getUsername().equals(username) && !(workspace.isCollaborative() && membership != null
+        if (!actorAccess.owns(username, workspace) && !(workspace.isCollaborative() && membership != null
                 && membership.canCollaborate(sourceRepository, username))) {
             throw new AccessDeniedException("Workspace is not available to the current user");
         }

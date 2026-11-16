@@ -1,5 +1,6 @@
 package com.taxonomy;
 
+import com.taxonomy.testsupport.WithLocalTestUser;
 import com.taxonomy.support.AnalysisCatalogueSourceFixture;
 import com.taxonomy.analysis.service.AnalysisMemoryGuard;
 import com.taxonomy.dto.TaxonomyNodeDto;
@@ -23,7 +24,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.security.test.context.support.WithUserDetails;
 
 @SpringBootTest
@@ -38,7 +38,7 @@ import org.springframework.security.test.context.support.WithUserDetails;
     "mistral.api.key=",
     "embedding.enabled=false"
 })
-@WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
+@WithLocalTestUser(roles = {"USER", "ARCHITECT", "ADMIN"})
 class TaxonomyApplicationTests implements AnalysisCatalogueSourceFixture {
 
     @Autowired
@@ -345,7 +345,7 @@ class TaxonomyApplicationTests implements AnalysisCatalogueSourceFixture {
     }
 
     @Test
-    @WithMockUser(roles = "ADMIN")
+    @WithLocalTestUser(username = "app-info-admin", roles = "ADMIN")
     void adminVerifyUsesAuthenticatedAdminRole() throws Exception {
         mockMvc.perform(post("/api/admin/verify")
                         .contentType(MediaType.APPLICATION_JSON)

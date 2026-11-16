@@ -4,6 +4,7 @@ import com.taxonomy.TaxonomyApplication;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.portfolio.PortfolioAnalysisWorkspace;
+import com.taxonomy.testsupport.LocalTestLogin;
 import com.taxonomy.portfolio.dto.PortfolioDtos.*;
 import com.taxonomy.portfolio.model.PortfolioTypes.*;
 import com.taxonomy.portfolio.service.*;
@@ -42,6 +43,7 @@ public final class ReformulationReportChecks {
                 "--spring.jpa.hibernate.ddl-auto=update", "--spring.jpa.properties.hibernate.search.backend.directory.type=local-heap",
                 "--embedding.enabled=false", "--taxonomy.init.async=false", "--llm.mock=true",
                 "--taxonomy.admin-password="+PASSWORD,"--taxonomy.security.require-password-change=false")) {
+            LocalTestLogin.loginExisting(app, "admin", PASSWORD);
             ObjectMapper json=app.getBean(ObjectMapper.class);
             var proposals=app.getBean(ReformulationService.class); var projects=app.getBean(ProjectPortfolioService.class);
             var adoption=app.getBean(ReformulationAdoptionService.class); var workspaces=app.getBean(WorkspaceManager.class);

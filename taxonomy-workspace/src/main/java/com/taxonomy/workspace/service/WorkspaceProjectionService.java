@@ -2,7 +2,6 @@ package com.taxonomy.workspace.service;
 
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
-import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.model.WorkspaceProjection;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.repository.WorkspaceProjectionRepository;
@@ -14,6 +13,7 @@ import java.io.IOException;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -37,11 +37,20 @@ public class WorkspaceProjectionService {
     private final WorkspaceManager workspaceManager;
     private final DslGitRepositoryFactory repositoryFactory;
     private final UserWorkspaceRepository workspaceRepository;
+    private final WorkspaceActorAccess actors;
 
     public WorkspaceProjectionService(WorkspaceProjectionRepository projectionRepository,
                                       WorkspaceManager workspaceManager,
                                       DslGitRepositoryFactory repositoryFactory,
                                       UserWorkspaceRepository workspaceRepository) {
+        this(projectionRepository, workspaceManager, repositoryFactory, workspaceRepository, WorkspaceActorAccess.unavailable());
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public WorkspaceProjectionService(WorkspaceProjectionRepository projectionRepository,
+                                      WorkspaceManager workspaceManager, DslGitRepositoryFactory repositoryFactory,
+                                      UserWorkspaceRepository workspaceRepository, WorkspaceActorAccess actors) {
+        this.actors = actors;
         this.projectionRepository = projectionRepository;
         this.workspaceManager = workspaceManager;
         this.repositoryFactory = repositoryFactory;
@@ -62,38 +71,49 @@ public class WorkspaceProjectionService {
     /**
      * Get or create the persistent projection record for a user.
      *
-     * <p>If no projection exists, a new record is created with default values
-     * and linked to the user's workspace. If persistence fails, the error
-     * is logged and an unsaved instance is returned as a best-effort fallback.
+     * <p>A new persisted record is linked to the current user's authorized personal workspace.
+     * If that slot is unavailable, return an unsaved projection for the caller.
      *
      * @param username the authenticated user's username
      * @return the projection entity (never null)
      */
     public WorkspaceProjection getOrCreateProjection(String username) {
-        return projectionRepository.findByUsername(username)
-                .orElseGet(() -> createProjection(username));
+        return writableProjection(username).orElseGet(() -> newProjection(username, UUID.randomUUID().toString()));
     }
 
-    private WorkspaceProjection createProjection(String username) {
-        log.info("Creating projection record for user '{}'", username);
+    private boolean ownsProjection(String username, WorkspaceProjection projection) {
+        return workspaceRepository.findByWorkspaceId(projection.getWorkspaceId())
+                .filter(workspace -> !workspace.isShared() && !workspace.isArchived())
+                .filter(workspace -> actors.owns(username, workspace)).isPresent();
+    }
+
+    private Optional<WorkspaceProjection> readableProjection(String username) {
+        return projectionRepository.findByUsername(username).filter(projection -> ownsProjection(username, projection));
+    }
+
+    private Optional<WorkspaceProjection> writableProjection(String username) {
+        var existing = projectionRepository.findByUsername(username);
+        if (existing.isPresent()) {
+            // The per-user slot can still belong to a different stable owner, including after a workspace switch.
+            return existing.filter(projection -> ownsProjection(username, projection));
+        }
+        var workspace = workspaceManager.findUserWorkspace(username);
+        if (workspace == null || workspace.isShared() || workspace.isArchived()) return Optional.empty();
+        var projection = newProjection(username, workspace.getWorkspaceId());
+        try {
+            return Optional.of(projectionRepository.save(projection));
+        } catch (Exception e) {
+            log.warn("Could not persist projection for user '{}': {}", username, e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    private WorkspaceProjection newProjection(String username, String workspaceId) {
         WorkspaceProjection projection = new WorkspaceProjection();
         projection.setUsername(username);
-        // Link to existing UserWorkspace if available; otherwise generate a new ID
-        String wsId = workspaceRepository.findByUsernameAndSharedFalse(username)
-                .map(UserWorkspace::getWorkspaceId)
-                .orElseGet(() -> UUID.randomUUID().toString());
-        projection.setWorkspaceId(wsId);
-        projection.setStale(false);
+        projection.setWorkspaceId(workspaceId);
         projection.setCreatedAt(Instant.now());
-        try {
-            return projectionRepository.save(projection);
-        } catch (Exception e) {
-            // Non-fatal: in-memory state still works; subsequent calls will
-            // retry persistence via the orElseGet path.
-            log.warn("Could not persist projection for user '{}': {}",
-                    username, e.getMessage());
-            return projection;
-        }
+        return projection;
     }
 
     /**
@@ -108,15 +128,16 @@ public class WorkspaceProjectionService {
      */
     public void recordProjection(String username, String commitId, String branch) {
         try {
-            WorkspaceProjection projection = getOrCreateProjection(username);
-            projection.setProjectionCommitId(commitId);
-            projection.setProjectionBranch(branch);
-            projection.setProjectionTimestamp(Instant.now());
-            projection.setStale(false);
-            projection.setUpdatedAt(Instant.now());
-            projectionRepository.save(projection);
-            log.info("User '{}': recorded projection: branch='{}', commit='{}'",
-                    username, branch, abbreviateSha(commitId));
+            writableProjection(username).ifPresent(projection -> {
+                projection.setProjectionCommitId(commitId);
+                projection.setProjectionBranch(branch);
+                projection.setProjectionTimestamp(Instant.now());
+                projection.setStale(false);
+                projection.setUpdatedAt(Instant.now());
+                projectionRepository.save(projection);
+                log.info("User '{}': recorded projection: branch='{}', commit='{}'",
+                        username, branch, abbreviateSha(commitId));
+            });
         } catch (Exception e) {
             log.warn("Could not record projection for user '{}': {}", username, e.getMessage());
         }
@@ -139,13 +160,13 @@ public class WorkspaceProjectionService {
      */
     public void recordIndexBuild(String username, String commitId) {
         try {
-            WorkspaceProjection projection = getOrCreateProjection(username);
-            projection.setIndexCommitId(commitId);
-            projection.setIndexTimestamp(Instant.now());
-            projection.setUpdatedAt(Instant.now());
-            projectionRepository.save(projection);
-            log.info("User '{}': recorded index build: commit='{}'",
-                    username, abbreviateSha(commitId));
+            writableProjection(username).ifPresent(projection -> {
+                projection.setIndexCommitId(commitId);
+                projection.setIndexTimestamp(Instant.now());
+                projection.setUpdatedAt(Instant.now());
+                projectionRepository.save(projection);
+                log.info("User '{}': recorded index build: commit='{}'", username, abbreviateSha(commitId));
+            });
         } catch (Exception e) {
             log.warn("Could not record index build for user '{}': {}", username, e.getMessage());
         }
@@ -190,7 +211,7 @@ public class WorkspaceProjectionService {
         // Also check persistent record for a more recent commit
         WorkspaceProjection projection = null;
         try {
-            projection = projectionRepository.findByUsername(username).orElse(null);
+            projection = readableProjection(username).orElse(null);
             String persistedCommit = projection == null ? null : projection.getProjectionCommitId();
             if (persistedCommit != null) {
                 projCommit = persistedCommit;
@@ -246,7 +267,7 @@ public class WorkspaceProjectionService {
         info.put("lastIndexTimestamp", ws == null ? null : ws.getLastIndexTimestamp());
 
         try {
-            WorkspaceProjection projection = projectionRepository.findByUsername(username).orElse(null);
+            WorkspaceProjection projection = readableProjection(username).orElse(null);
             info.put("persistedProjectionCommit", projection == null ? null : projection.getProjectionCommitId());
             info.put("persistedProjectionBranch", projection == null ? null : projection.getProjectionBranch());
             info.put("persistedProjectionTimestamp", projection == null ? null : projection.getProjectionTimestamp());

@@ -1,5 +1,6 @@
 package com.taxonomy.dsl;
 
+import com.taxonomy.testsupport.WithLocalTestUser;
 import com.taxonomy.dsl.export.DslMaterializeService;
 import com.taxonomy.architecture.repository.ArchitectureDslDocumentRepository;
 import com.taxonomy.workspace.service.RepositoryContext;
@@ -14,14 +15,13 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
-import org.springframework.security.test.context.support.WithMockUser;
 
 /**
  * Tests for {@link DslMaterializeService}.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
+@WithLocalTestUser(roles = {"USER", "ARCHITECT", "ADMIN"})
 class DslMaterializeServiceTest {
 
     @Autowired

@@ -359,6 +359,50 @@ class GitNativeSyncSourceAuthorityTest {
     }
 
     @org.junit.jupiter.api.Test
+    void scheduledPullResumesForItsRecordedWorkspaceOwnerWithOnlySourceReadAuthority() throws Exception {
+        var context = RepositoryContext.workspace("private-source", "old-copy", "main", "alice");
+        var principal = java.util.UUID.randomUUID();
+        var grant = new WorkspaceFetchAuthority.Grant(principal.toString(), "LOCAL", "a".repeat(64));
+        var authority = mock(WorkspacePublicationAuthority.class);
+        when(authority.authorizePublication("alice")).thenReturn(grant);
+        try (var fixture = new Fixture();
+             var database = publicationDatabase("jdbc:hsqldb:mem:owner-pull-" + java.util.UUID.randomUUID(), "create")) {
+            var workspace = fixture.rows.findByWorkspaceId("old-copy").orElseThrow();
+            workspace.assignOwnerPrincipal(principal);
+            fixture.member.setRole(RepositoryRole.READER);
+            String forkPoint = fixture.source.getHeadCommit("draft");
+            String reviewed = fixture.source.commitDsl("draft", dsl("Reviewed pull"), "owner", "Review source");
+            String before = fixture.local.getHeadCommit("main");
+            var initial = new WorkspacePublicationRecovery(publicationJournal(database), authority);
+            var paused = initial.submitPull(context, true, "owner-pull", null,
+                    () -> new WorkspacePublicationJournal.Source("draft", forkPoint, reviewed, before, null),
+                    (row, authorize) -> {
+                        if (row.step == WorkspacePublicationOperation.Step.WORKSPACE_REF) throw new IOException("Pause before ref update");
+                        fixture.service.applyPublicationPhase(row, authorize);
+                    });
+            assertEquals("RETRYABLE", paused.status());
+            assertEquals(before, fixture.local.getHeadCommit("main"));
+            assertNotNull(fixture.local.findPreparedDslCommit(paused.operationId(), "main"));
+            assertNotNull(fixture.local.findPreparedDslCommit(paused.operationId(), "sync-base"));
+
+            var clock = java.time.Clock.fixed(java.time.Instant.ofEpochMilli(paused.createdAt()).plusSeconds(120), java.time.ZoneOffset.UTC);
+            var journal = new WorkspacePublicationJournal(org.springframework.orm.jpa.SharedEntityManagerCreator.createSharedEntityManager(database),
+                    new org.springframework.orm.jpa.JpaTransactionManager(database), clock);
+            fixture.service.configurePublications(new WorkspacePublicationRecovery(journal, authority));
+            fixture.service.recoverDuePublications();
+
+            var completed = journal.get(context, grant.principalId(), paused.operationId());
+            assertEquals("COMPLETED", completed.status(), completed.decisionCode());
+            assertEquals(completed.resultCommit(), fixture.local.getHeadCommit("main"));
+            assertEquals(reviewed, workspace.getLastIntegratedCommit());
+            assertEquals(reviewed, fixture.source.getHeadCommit("draft"));
+            assertNotNull(completed.pinsReleasedAt());
+            assertNull(fixture.local.findPreparedDslCommit(paused.operationId(), "main"));
+            assertNull(fixture.local.findPreparedDslCommit(paused.operationId(), "sync-base"));
+        }
+    }
+
+    @org.junit.jupiter.api.Test
     void repeatingAnInterruptedPublishDoesNotAdoptACommitWrittenByAnotherPublisher() throws Exception {
         var config=new org.hibernate.cfg.Configuration().addAnnotatedClass(WorkspacePublicationOperation.class)
                 .addAnnotatedClass(WorkspacePublicationDecision.class).setProperty("hibernate.connection.url",

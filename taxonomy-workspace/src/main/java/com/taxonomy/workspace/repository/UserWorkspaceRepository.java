@@ -114,18 +114,21 @@ public interface UserWorkspaceRepository extends JpaRepository<UserWorkspace, Lo
             from UserWorkspace workspace
             where workspace.workspaceId = :workspaceId
               and workspace.archived = false
-              and (workspace.username = :username or workspace.shared = true)
+              and (workspace.shared = true or (workspace.username = :username
+                   and (workspace.ownerPrincipalId is null or workspace.ownerPrincipalId = :principalId)))
             """)
     long countVisibleWorkspaceMetadata(
             @Param("workspaceId") String workspaceId,
-            @Param("username") String username);
+            @Param("username") String username, @Param("principalId") String principalId);
 
     @Query("""
             select count(w) from UserWorkspace w
             where w.workspaceId=:workspace and w.username=:actor and w.sourceRepositoryId=:repository
               and w.shared=false and w.archived=false
+              and (w.ownerPrincipalId is null or w.ownerPrincipalId=:principalId)
             """)
-    long countOwnedPrivateWorkspace(@Param("workspace") String workspace, @Param("actor") String actor, @Param("repository") String repository);
+    long countOwnedPrivateWorkspace(@Param("workspace") String workspace, @Param("actor") String actor,
+                                  @Param("repository") String repository, @Param("principalId") String principalId);
 
     /** Scalar preflight keeps metadata out of the persistence context before the journal lock. */
     @Query("""

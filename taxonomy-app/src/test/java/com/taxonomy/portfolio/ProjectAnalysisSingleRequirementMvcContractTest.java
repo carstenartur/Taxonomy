@@ -6,6 +6,7 @@ import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobView;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
 import com.taxonomy.portfolio.service.ProjectRequirementAnalysisService;
+import com.taxonomy.testsupport.LocalTestLogin;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
@@ -14,8 +15,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.ApplicationContext;
 import org.springframework.http.MediaType;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -25,6 +26,7 @@ import java.util.List;
 
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -58,6 +60,9 @@ class ProjectAnalysisSingleRequirementMvcContractTest {
     @Autowired
     private MockMvc mockMvc;
 
+    @Autowired
+    private ApplicationContext applicationContext;
+
     @MockitoBean
     private ProjectRequirementAnalysisService analysisService;
 
@@ -76,8 +81,8 @@ class ProjectAnalysisSingleRequirementMvcContractTest {
     }
 
     @Test
-    @WithMockUser(username = "architect", roles = "ARCHITECT")
     void returnsAcceptedJobAndCanonicalLocation() throws Exception {
+        var actor = LocalTestLogin.authentication(applicationContext, CONTEXT.username(), "ARCHITECT");
         AnalysisJobView job = new AnalysisJobView(
                 "job-1",
                 41L,
@@ -107,6 +112,7 @@ class ProjectAnalysisSingleRequirementMvcContractTest {
                 .thenReturn(job);
 
         mockMvc.perform(post("/api/projects/{projectId}/requirements/{requirementId}/analyses", 41L, 7L)
+                        .with(authentication(actor))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""

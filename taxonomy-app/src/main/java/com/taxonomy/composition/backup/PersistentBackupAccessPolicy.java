@@ -42,7 +42,7 @@ public final class PersistentBackupAccessPolicy implements BackupAccessPolicy {
                 .filter(workspace -> selected.workspaceId().equals(workspace.getWorkspaceId()))
                 .filter(workspace -> selected.repositoryId().equals(workspace.getSourceRepositoryId()))
                 .filter(workspace -> !workspace.isArchived() && workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.READY)
-                .filter(workspace -> workspace.isShared() || identity.scopeKey().equals(workspace.getUsername()))
+                .filter(workspace -> workspace.isShared() || workspace.matchesOwner(identity.scopeKey(), principal.value().toString()))
                 .isPresent();
     }
 

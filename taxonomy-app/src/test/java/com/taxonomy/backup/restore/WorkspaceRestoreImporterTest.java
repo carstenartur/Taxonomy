@@ -73,6 +73,8 @@ class WorkspaceRestoreImporterTest {
             assertThat(target.queryForObject("select source_repository_id from user_workspace",String.class)).isEqualTo("target-repository");
             assertThat(target.queryForObject("select workspace_id from user_workspace",String.class)).isEqualTo("target-workspace");
             assertThat(target.queryForObject("select collaborative from user_workspace",Boolean.class)).isTrue();
+            assertThat(target.queryForObject("select owner_principal_id from user_workspace",String.class))
+                    .isEqualTo(fixture.principals.get(principal).targetPrincipal().value().toString());
             assertThat(target.queryForObject("select current_commit from user_workspace",String.class)).isEqualTo(fixture.commit);
             assertThat(target.queryForObject("select dsl from editor_workspace",String.class)).isEqualTo("1:"+RAW);
             assertThat(target.queryForObject("select scope_id from editor_workspace",String.class)).isEqualTo(targetEditor);
@@ -139,7 +141,7 @@ class WorkspaceRestoreImporterTest {
         }
     }
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings = {"27", "32", "32.1", "32.2"})
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"27", "32", "32.1", "32.2", "32.3", "32.4"})
     void centralIndexUsesItsReviewedSharedScopeWithoutInventingAWorkspaceOrPrincipal(String sourceVersion)throws Exception {
         try(var fixture=fixture(sourceVersion,false,false,null)) {
             try (var input = fixture.archive.openEntry("data/workspace/memberships.ndjson")) {
@@ -149,6 +151,7 @@ class WorkspaceRestoreImporterTest {
             }
             var result=new WorkspaceRestoreImporter().restore(fixture.archive,fixture.generation(),fixture.principals,fixture.git,()->{});
             var target=new JdbcTemplate(fixture.target);
+            assertThat(target.queryForObject("select owner_principal_id from user_workspace",String.class)).isNull();
             assertThat(target.queryForObject("select count(*) from architecture_commit_index",Long.class)).isEqualTo(2);
             assertThat(target.queryForObject("select workspace_scope_key from architecture_commit_index where workspace_id is null",String.class)).isEqualTo(com.taxonomy.versioning.model.ArchitectureCommitIndex.scopeKeyFor(null));
             assertThat(target.queryForObject("select repository_id from architecture_commit_index where workspace_id is null",String.class)).isEqualTo("target-repository");
@@ -276,6 +279,7 @@ class WorkspaceRestoreImporterTest {
         rows.update("insert into app_principal(principal_id,scope_key,enabled) values(?,'source-owner',1)",principal.value().toString());
         rows.update("insert into system_repository(repository_id,slug,display_name,visibility,lifecycle_state,owner_type,owner_id,topology_mode,default_branch,fork_point_commit,last_fetch_commit,primary_repo,created_at,version) values('source-repository','source-slug','Original','PUBLIC','ACTIVE','USER','source-owner','INTERNAL_SHARED','main',?,?,true,?,0)",commit,commit,java.sql.Timestamp.from(Instant.parse(TIME)));
         rows.update("insert into user_workspace(workspace_id,username,display_name,current_branch,base_branch,shared,collaborative,created_at,provisioning_status,topology_mode,source_repository_id,source_branch,relationship_type,base_commit,current_commit,last_fetched_commit,last_integrated_commit,sync_target_branch,archived,is_default) values('source-workspace','source-owner','Original work','main','main',true,true,?,'READY','INTERNAL_SHARED','source-repository','main','WORKING_COPY',?,?,?,?,'main',false,true)",java.sql.Timestamp.from(Instant.parse(TIME)),commit,commit,commit,commit);
+        if (sourceVersion == null) rows.update("update user_workspace set owner_principal_id=?", principal.value().toString());
         rows.update("insert into repository_membership(repository_id,username,repository_role,created_at,created_by,version) values('source-repository','source-owner','OWNER',?,'source-owner',0)",java.sql.Timestamp.from(Instant.parse(TIME)));
         rows.update("insert into sync_state(username,workspace_id,last_synced_commit_id,last_published_commit_id,sync_status,unpublished_commit_count,created_at) values('source-owner','source-workspace',?,?,'SYNCED',0,?)",commit,commit,java.sql.Timestamp.from(Instant.parse(TIME)));
         rows.update("insert into editor_workspace values(4,0,7,?,?,?,'source-repository','source-workspace','main',?)",SAVE,commit,editor,"1:"+RAW);
@@ -283,7 +287,9 @@ class WorkspaceRestoreImporterTest {
         rows.update("insert into editor_checkpoint(commit_created,completed,from_revision,semantic_revision,command_id,commit_id,expected_commit,occurred_at,origin,fingerprint,scope_id,id,actor,rationale,dsl) values(false,false,0,4,?,?,?,?,'USER','"+"d".repeat(64)+"',?,?,'source-owner','Interrupted save','1:Original checkpoint')",SAVE,commit,commit,TIME,editor,editor+":"+SAVE);
         rows.update("insert into architecture_commit_index(commit_timestamp,indexed_at,commit_id,branch,repository_id,workspace_id,workspace_scope_key,message) values(?,?,?,'main','source-repository','source-workspace','source-workspace','Original indexed commit')",java.sql.Timestamp.from(Instant.parse(TIME)),java.sql.Timestamp.from(Instant.parse(TIME)),commit);
         if(sourceVersion != null)rows.update("insert into architecture_commit_index(commit_timestamp,indexed_at,commit_id,branch,repository_id,workspace_scope_key,message) values(?,?,?,'main','source-repository',?,'Original central commit')",java.sql.Timestamp.from(Instant.parse(TIME)),java.sql.Timestamp.from(Instant.parse(TIME)),commit,
-                "32.2".equals(sourceVersion) ? com.taxonomy.model.WorkspaceOverlayScope.CENTRAL_STORAGE_KEY : "__shared__");
+                org.flywaydb.core.api.MigrationVersion.fromVersion(sourceVersion)
+                        .compareTo(org.flywaydb.core.api.MigrationVersion.fromVersion("32.2")) >= 0
+                        ? com.taxonomy.model.WorkspaceOverlayScope.CENTRAL_STORAGE_KEY : "__shared__");
         rows.update("insert into context_history_record(created_at,from_commit_id,to_commit_id,username,from_context_id,to_context_id,from_branch,to_branch) values(?,?,?,'source-owner',?,?,'main','main')",java.sql.Timestamp.from(Instant.parse(TIME)),commit,commit,UUID.randomUUID().toString(),UUID.randomUUID().toString());
         if(systemOwner)rows.update("update system_repository set owner_type='SYSTEM',owner_id='unmapped-system-label'");
         if(historicalUnknownPrincipal)rows.update("update context_history_record set username='deleted-historical-navigation-label'");

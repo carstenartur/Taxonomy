@@ -1,5 +1,6 @@
 package com.taxonomy.interop;
 
+import com.taxonomy.testsupport.LocalTestLogin;
 import com.taxonomy.TaxonomyApplication;
 import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
 import com.taxonomy.editor.ArchitectureEditorService;
@@ -46,6 +47,7 @@ public final class NativeRequirementMappingRestartDriver {
                 "--spring.jpa.hibernate.ddl-auto=update", "--spring.jpa.properties.hibernate.search.backend.directory.type=local-heap",
                 "--embedding.enabled=false", "--taxonomy.init.async=false",
                 "--gemini.api.key=", "--openai.api.key=", "--deepseek.api.key=", "--qwen.api.key=", "--llama.api.key=", "--mistral.api.key=")) {
+            LocalTestLogin.login(app, ACTOR, "ARCHITECT");
             var integrations = app.getBean(IntegrationService.class);
             var projects = app.getBean(ProjectPortfolioService.class);
             var editor = app.getBean(ArchitectureEditorService.class);

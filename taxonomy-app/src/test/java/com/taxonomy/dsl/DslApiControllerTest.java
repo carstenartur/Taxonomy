@@ -1,5 +1,6 @@
 package com.taxonomy.dsl;
 
+import com.taxonomy.testsupport.WithLocalTestUser;
 import com.taxonomy.support.AnalysisCatalogueSourceFixture;
 import com.taxonomy.model.HypothesisStatus;
 import com.taxonomy.relations.model.RelationHypothesis;
@@ -18,7 +19,6 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-import org.springframework.security.test.context.support.WithMockUser;
 import com.taxonomy.architecture.model.ArchitectureDslDocument;
 import com.taxonomy.dto.ViewContext;
 
@@ -27,7 +27,7 @@ import com.taxonomy.dto.ViewContext;
  */
 @SpringBootTest(properties = "spring.datasource.url=jdbc:hsqldb:mem:dsl-api-controller")
 @AutoConfigureMockMvc
-@WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
+@WithLocalTestUser(roles = {"USER", "ARCHITECT", "ADMIN"})
 class DslApiControllerTest implements AnalysisCatalogueSourceFixture {
 
     @Autowired
@@ -864,7 +864,7 @@ class DslApiControllerTest implements AnalysisCatalogueSourceFixture {
     }
 
     @Test
-    @WithMockUser(username = "hypothesis-apply-user", roles = {"USER", "ARCHITECT", "ADMIN"})
+    @WithLocalTestUser(username = "hypothesis-apply-user", roles = {"USER", "ARCHITECT", "ADMIN"})
     void applyHypothesisForSession() throws Exception {
         // Create a hypothesis
         RelationHypothesis h = new RelationHypothesis();

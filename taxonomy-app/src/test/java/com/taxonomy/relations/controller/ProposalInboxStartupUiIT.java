@@ -7,6 +7,7 @@ import com.taxonomy.relations.service.GitAuthoritativeProposalReviewService;
 import com.taxonomy.relations.service.RelationProjectionOperationsService;
 import com.taxonomy.relations.service.RelationProposalService;
 import com.taxonomy.testsupport.BrowserSession;
+import com.taxonomy.testsupport.LocalTestLogin;
 import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.service.ArchitectureRepositoryProvisioningService;
 import com.taxonomy.workspace.service.RepositoryContext;
@@ -29,6 +30,7 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.ApplicationContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -50,6 +52,7 @@ class ProposalInboxStartupUiIT {
     private static final String PASSWORD = "Proposal-" + UUID.randomUUID();
     @LocalServerPort int port;
     @Autowired ObjectMapper json;
+    @Autowired ApplicationContext applicationContext;
     @Autowired ArchitectureRepositoryProvisioningService provisioning;
     @Autowired DslGitRepositoryFactory repositories;
     @Autowired RepositoryWorkspaceService workingCopies;
@@ -95,6 +98,12 @@ class ProposalInboxStartupUiIT {
 
     @Test
     void acceptedOnMainIsVisibleOnDraftStartupAndCanBeExplicitlyAdopted(@TempDir Path downloads) throws Exception {
+        try (var ignored = LocalTestLogin.openExisting(applicationContext, "admin", PASSWORD)) {
+            exerciseDraftAdoption(downloads);
+        }
+    }
+
+    private void exerciseDraftAdoption(Path downloads) throws Exception {
         var repository = provisioning.createRepository("Proposal review", "adopt-" + UUID.randomUUID(),
                 "Branch adoption", RepositoryVisibility.PRIVATE, "admin", "main");
         String repositoryId = repository.getRepositoryId();

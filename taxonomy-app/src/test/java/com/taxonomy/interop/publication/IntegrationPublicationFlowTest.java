@@ -22,6 +22,13 @@ class IntegrationPublicationFlowTest extends PublicationIntegrationFixture {
     @Test
     @Timeout(value = 30, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
     void realHttpPushCreatesUpdatesAndDeletesWithCommonCheckpoint() throws Exception {
+        asOwner(() -> {
+            verifyHttpPushCreatesUpdatesAndDeletes();
+            return null;
+        }).call();
+    }
+
+    private void verifyHttpPushCreatesUpdatesAndDeletes() throws Exception {
         edit(new CreateArchitectureElement("system-a", "System", Map.of("title", "First")));
         var first = publication.publish(context, connection, review(preview(PublicationMode.PUSH)));
         assertEquals(PublicationPhase.COMPLETED, first.phase());

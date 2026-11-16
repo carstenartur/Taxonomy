@@ -1,5 +1,6 @@
 package com.taxonomy;
 
+import com.taxonomy.testsupport.LocalTestLogin;
 import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
@@ -15,6 +16,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.ApplicationContext;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.test.context.support.WithUserDetails;
 import org.springframework.test.web.servlet.MockMvc;
@@ -36,7 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /** Exercises the same screenshot fixture against real controllers, repository routing and Git storage. */
 @SpringBootTest(properties = {
         "taxonomy.features.multi-repository-api.enabled=true",
-        "taxonomy.admin-password=local-graph-fixture-password",
+        "taxonomy.admin-password=" + SavedGraphHttpFixtureTest.ADMIN_PASSWORD,
         "spring.datasource.url=jdbc:hsqldb:mem:saved-graph-http-fixture;shutdown=true"
 })
 @ActiveProfiles("hsqldb")
@@ -45,6 +47,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WithUserDetails(SavedGraphHttpFixtureTest.USER)
 class SavedGraphHttpFixtureTest {
     static final String USER = "admin";
+    static final String ADMIN_PASSWORD = "local-graph-fixture-password";
     private static final String DSL = """
             meta {
               language: "taxdsl";
@@ -63,6 +66,7 @@ class SavedGraphHttpFixtureTest {
             """;
 
     @Autowired private MockMvc mvc;
+    @Autowired private ApplicationContext applicationContext;
     @Autowired private ArchitectureRepositoryProvisioningService provisioning;
     @Autowired private RepositoryWorkspaceService workspaces;
     @Autowired private WorkspaceManager workspaceManager;
@@ -120,7 +124,7 @@ class SavedGraphHttpFixtureTest {
             SavedGraphHttpFixture.remove(this::http, saved);
         }
         assertThat(workspaceRepository.findByWorkspaceId(saved.workspaceId())).isEmpty();
-        assertThat(workspaceManager.findActiveWorkspace(USER).getWorkspaceId()).isEqualTo(active.getWorkspaceId());
+        assertOriginalWorkspaceIsActive();
         assertThat(git.getCentralRepository(saved.repositoryId()).getHeadCommit(branch)).isEqualTo(saved.commitId());
     }
 
@@ -151,7 +155,7 @@ class SavedGraphHttpFixtureTest {
         assertThat(workspaceRepository.findByWorkspaceId(fixtureWorkspace.get())).isEmpty();
         assertThat(git.getCentralRepository(repositories.getPrimaryRepository().getRepositoryId()).getHeadCommit(branch)).isNull();
         assertThat(git.openWorkspaceRepository(active.getWorkspaceId()).getHeadCommit(branch)).isEqualTo(privateHead);
-        assertThat(workspaceManager.findActiveWorkspace(USER).getWorkspaceId()).isEqualTo(active.getWorkspaceId());
+        assertOriginalWorkspaceIsActive();
     }
 
     @ParameterizedTest
@@ -186,6 +190,15 @@ class SavedGraphHttpFixtureTest {
             assertThat(central.getHeadCommit(branch)).isEqualTo(head);
         } finally {
             central.deleteBranch(branch);
+        }
+    }
+
+    private void assertOriginalWorkspaceIsActive() {
+        try (var ignored = LocalTestLogin.openExisting(applicationContext, USER, ADMIN_PASSWORD)) {
+            assertThat(workspaceManager.findActiveWorkspace(USER))
+                    .isNotNull()
+                    .extracting(UserWorkspace::getWorkspaceId)
+                    .isEqualTo(active.getWorkspaceId());
         }
     }
 

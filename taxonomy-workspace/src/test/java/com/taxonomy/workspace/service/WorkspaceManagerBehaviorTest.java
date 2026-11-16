@@ -45,6 +45,84 @@ class WorkspaceManagerBehaviorTest {
                 20,
                 mock(SystemRepositoryService.class),
                 mock(DslGitRepository.class));
+        manager.configureActorAccess(WorkspaceProvisioningTestClaims.fixtureOwners());
+    }
+
+    @Test
+    void explicitAndImplicitCreationWriteTheVerifiedOwnerDuringTheFirstSave() {
+        var identity = mock(WorkspaceActorAccess.class);
+        var principalId = java.util.UUID.randomUUID();
+        when(identity.currentOwnerPrincipal("alice")).thenReturn(Optional.of(principalId));
+        manager.configureActorAccess(identity);
+        when(repository.existsByUsername("alice")).thenReturn(false);
+
+        var explicit = manager.createWorkspace("alice", "Manual", "First");
+        manager.getOrCreateWorkspace("alice");
+
+        var saved = ArgumentCaptor.forClass(UserWorkspace.class);
+        verify(repository, org.mockito.Mockito.times(2)).save(saved.capture());
+        assertSame(explicit, saved.getAllValues().getFirst());
+        assertTrue(saved.getAllValues().stream().allMatch(row -> row.getOwnerPrincipalId().equals(principalId.toString())));
+    }
+
+    @Test
+    void unavailableOwnerCannotCreateMetadataOrDefaultNavigationState() {
+        manager.configureActorAccess(WorkspaceActorAccess.unavailable());
+        when(repository.existsByUsername("alice")).thenReturn(false);
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+                () -> manager.createWorkspace("alice", "Manual", null));
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+                () -> manager.getOrCreateWorkspace("alice"));
+        verify(repository, never()).save(any());
+        assertEquals(0, manager.getActiveWorkspaceCount());
+    }
+
+    @Test
+    void stableOwnerSurvivesSeparateHibernateSessionsAndLegacyMetadataRemainsUnbound() {
+        var principalId = java.util.UUID.randomUUID();
+        var key = java.util.UUID.randomUUID();
+        var configuration = new org.hibernate.cfg.Configuration().addAnnotatedClass(UserWorkspace.class)
+                .setProperty("hibernate.connection.url", "jdbc:hsqldb:mem:workspace-owner-" + key)
+                .setProperty("hibernate.connection.username", "SA")
+                .setProperty("hibernate.connection.password", "")
+                .setProperty("hibernate.hbm2ddl.auto", "create-drop")
+                .setProperty("hibernate.search.enabled", "false");
+        var owned = workspace("first", "alice");
+        var legacy = workspace("legacy", "alice");
+        owned.setCreatedAt(java.time.Instant.now());
+        legacy.setCreatedAt(java.time.Instant.now());
+        owned.setDisplayName("New");
+        legacy.setDisplayName("Old");
+        owned.assignOwnerPrincipal(principalId);
+        try (var sessions = configuration.buildSessionFactory()) {
+            sessions.inTransaction(db -> { db.persist(owned); db.persist(legacy); });
+            sessions.inTransaction(db -> {
+                var stored = db.find(UserWorkspace.class, owned.getId());
+                assertEquals(principalId.toString(), stored.getOwnerPrincipalId());
+                assertThrows(IllegalStateException.class, () -> stored.assignOwnerPrincipal(key));
+                var old = db.find(UserWorkspace.class, legacy.getId());
+                old.setDescription("Updated without relinking");
+            });
+            sessions.inTransaction(db -> assertNull(db.find(UserWorkspace.class, legacy.getId()).getOwnerPrincipalId()));
+        }
+    }
+
+    @Test
+    void recycledRoutingScopeCannotReuseThePreviousPrincipalsNavigation() {
+        var identities = mock(WorkspaceActorAccess.class);
+        var first = java.util.UUID.randomUUID();
+        var later = java.util.UUID.randomUUID();
+        when(identities.currentNavigationPrincipal("same-scope")).thenReturn(Optional.of(first));
+        manager.configureActorAccess(identities);
+        var selected = manager.getOrCreateWorkspace("same-scope", "private-selection");
+        assertSame(selected, manager.getWorkspace("same-scope"));
+
+        when(identities.currentNavigationPrincipal("same-scope")).thenReturn(Optional.of(later));
+        assertNull(manager.getWorkspace("same-scope"));
+        var newSelection = manager.getOrCreateWorkspace("same-scope", "private-selection");
+        org.junit.jupiter.api.Assertions.assertNotSame(selected, newSelection);
+        when(identities.currentNavigationPrincipal("same-scope")).thenReturn(Optional.of(first));
+        assertSame(selected, manager.getWorkspace("same-scope"));
     }
 
     @Test

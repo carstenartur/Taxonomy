@@ -80,6 +80,8 @@ final class SchemaContractMigrator {
                 migrateProjectionKeys(connection);
                 TableRef membership = findTable(connection, "repository_membership");
                 if (membership != null) ensureMembershipRevocationColumn(connection, membership);
+                TableRef userWorkspace = findTable(connection, "user_workspace");
+                if (userWorkspace != null) ensureColumn(connection, userWorkspace, "owner_principal_id", "VARCHAR(36)");
                 ensurePasswordChangeColumn(connection);
                 connection.commit();
                 log.info("Verified repository, workspace, hypothesis and account schema contracts");

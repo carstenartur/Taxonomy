@@ -4,14 +4,13 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.http.MediaType;
 import java.util.*;
 import static org.assertj.core.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-@SpringBootTest @AutoConfigureMockMvc @WithMockUser(username="architect",roles="ARCHITECT")
+@SpringBootTest @AutoConfigureMockMvc
 @Tag("ci-app-shard-domain-integration")
 class ReformulationQuestionWorkflowTest extends ReformulationWorkflowFixture {
     tools.jackson.databind.JsonNode answer(String id,long revision,String q,String action,List<String> values,String other,int status) throws Exception {
