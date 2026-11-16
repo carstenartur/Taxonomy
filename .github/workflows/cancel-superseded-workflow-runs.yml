@@ -1,4 +1,4 @@
-name: Cancel Superseded Workflow Runs
+name: Retry Stalled Maven Verification
 
 on:
   push:
@@ -10,12 +10,12 @@ permissions:
   pull-requests: read
 
 jobs:
-  cancel:
+  retry:
     if: github.repository == 'carstenartur/Taxonomy'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     steps:
-      - name: Cancel queued runs of merged pull requests with no jobs
+      - name: Retry the queued Maven run for the checked pull request head
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -24,127 +24,62 @@ jobs:
           set -euo pipefail
           
           repo=carstenartur/Taxonomy
-          [[ "$GITHUB_REPOSITORY" == "$repo" && "$GITHUB_REF" == "refs/heads/ops/cancel-superseded-workflow-runs-20261116" ]]
+          [ "$GITHUB_REPOSITORY" = "$repo" ]
+          [ "$GITHUB_REF" = "refs/heads/ops/cancel-superseded-workflow-runs-20261116" ]
           
-          while IFS='|' read -r number branch; do
-            gh api "repos/$repo/pulls/$number" |
-              jq -e --arg branch "$branch" '.merged and .state == "closed" and .head.ref == $branch' >/dev/null
-            gh api --method GET "repos/$repo/pulls" -f state=open -f head="carstenartur:$branch" |
-              jq -e 'type == "array" and length == 0' >/dev/null
-          done <<'MERGED_PULLS'
-          1465|implementation/analysis-admission
-          1464|implementation/versioned-architecture-brief
-          1463|implementation/catalogue-defined-roots
-          1462|implementation/compact-project-catalogue
-          1461|implementation/verified-ci-reload-and-package-sources
-          MERGED_PULLS
+          head=59ed3e0b4e48455105915f47464904e35d18f3c6
+          base=4170234158e429fac50a7497411ef21420320060
+          run_id=43884230447
+          endpoint="repos/$repo/actions/runs/$run_id"
           
-          oldest_active_epoch="$(date -u -d '3 days ago' +%s)"
-          candidates="$(mktemp)"
-          trap 'rm -f "$candidates"' EXIT
-          
-          eligible() {
-            local endpoint="$1" branch="$2" head="$3" event="$4" last_updated="$5"
-            gh api "$endpoint" |
-              jq -e --arg branch "$branch" --arg head "$head" --arg event "$event" \
-                --arg last_updated "$last_updated" --argjson cutoff "$oldest_active_epoch" \
-                '.head_branch == $branch and .head_sha == $head and .event == $event
-                 and .status == "queued" and .run_attempt == 1 and .updated_at == $last_updated
-                 and (.created_at | fromdateiso8601) < $cutoff' >/dev/null &&
-            gh api "$endpoint/jobs?per_page=1" | jq -e '.total_count == 0' >/dev/null
+          verify_pr() {
+            gh api "repos/$repo/pulls/1540" |
+              jq -e --arg head "$head" --arg base "$base" \
+                '.state == "open" and .draft == false and .head.sha == $head
+                 and .base.ref == "main" and .base.sha == $base' >/dev/null
           }
           
-          while IFS='|' read -r id branch head event last_updated; do
-            endpoint="repos/$repo/actions/runs/$id"
-            if eligible "$endpoint" "$branch" "$head" "$event" "$last_updated"; then
-              if gh api --method POST "$endpoint/cancel" >/dev/null; then
-                printf 'Cancellation requested for %s\n' "$id"
-              else
-                printf 'Cancellation request failed for %s\n' "$id"
-              fi
-              printf '%s|%s|%s|%s|%s\n' "$id" "$branch" "$head" "$event" "$last_updated" >> "$candidates"
-            fi
-          done <<'VERIFIED_RUNS'
-          43097608314|implementation/analysis-admission|93c7193056a5f6b56e9bb7581c1a96894bbe16e4|pull_request|2026-11-11T20:42:16Z
-          43097607112|implementation/analysis-admission|93c7193056a5f6b56e9bb7581c1a96894bbe16e4|pull_request|2026-11-11T20:42:15Z
-          43097607130|implementation/analysis-admission|93c7193056a5f6b56e9bb7581c1a96894bbe16e4|pull_request|2026-11-11T20:42:15Z
-          43097607125|implementation/analysis-admission|93c7193056a5f6b56e9bb7581c1a96894bbe16e4|pull_request|2026-11-11T20:42:15Z
-          43097607110|implementation/analysis-admission|93c7193056a5f6b56e9bb7581c1a96894bbe16e4|pull_request|2026-11-11T20:42:15Z
-          43097607207|implementation/analysis-admission|93c7193056a5f6b56e9bb7581c1a96894bbe16e4|pull_request|2026-11-11T20:42:15Z
-          43097607109|implementation/analysis-admission|93c7193056a5f6b56e9bb7581c1a96894bbe16e4|pull_request|2026-11-11T20:42:15Z
-          43097607134|implementation/analysis-admission|93c7193056a5f6b56e9bb7581c1a96894bbe16e4|pull_request|2026-11-11T20:42:15Z
-          43097607310|implementation/analysis-admission|93c7193056a5f6b56e9bb7581c1a96894bbe16e4|pull_request|2026-11-11T20:42:15Z
-          43097607123|implementation/analysis-admission|93c7193056a5f6b56e9bb7581c1a96894bbe16e4|pull_request|2026-11-11T20:42:15Z
-          43097600804|implementation/analysis-admission|93c7193056a5f6b56e9bb7581c1a96894bbe16e4|push|2026-11-11T20:42:11Z
-          43096612768|implementation/analysis-admission|e912baa3b8e35c74c2cf34aa4de01ce185ea708d|pull_request|2026-11-11T20:32:01Z
-          43096612788|implementation/analysis-admission|e912baa3b8e35c74c2cf34aa4de01ce185ea708d|pull_request|2026-11-11T20:32:01Z
-          43096612831|implementation/analysis-admission|e912baa3b8e35c74c2cf34aa4de01ce185ea708d|pull_request|2026-11-11T20:32:01Z
-          43096612749|implementation/analysis-admission|e912baa3b8e35c74c2cf34aa4de01ce185ea708d|pull_request|2026-11-11T20:32:01Z
-          43096612847|implementation/analysis-admission|e912baa3b8e35c74c2cf34aa4de01ce185ea708d|pull_request|2026-11-11T20:32:01Z
-          43096612755|implementation/analysis-admission|e912baa3b8e35c74c2cf34aa4de01ce185ea708d|pull_request|2026-11-11T20:32:01Z
-          43096612856|implementation/analysis-admission|e912baa3b8e35c74c2cf34aa4de01ce185ea708d|pull_request|2026-11-11T20:32:01Z
-          43096612849|implementation/analysis-admission|e912baa3b8e35c74c2cf34aa4de01ce185ea708d|pull_request|2026-11-11T20:32:01Z
-          43096612938|implementation/analysis-admission|e912baa3b8e35c74c2cf34aa4de01ce185ea708d|pull_request|2026-11-11T20:32:01Z
-          43096612923|implementation/analysis-admission|e912baa3b8e35c74c2cf34aa4de01ce185ea708d|pull_request|2026-11-11T20:32:01Z
-          43096606635|implementation/analysis-admission|e912baa3b8e35c74c2cf34aa4de01ce185ea708d|push|2026-11-11T20:31:57Z
-          43096546298|implementation/versioned-architecture-brief|0b23da1a9c584f4fc7a0500c54ab2b780c03c77f|pull_request|2026-11-11T20:31:19Z
-          43096546320|implementation/versioned-architecture-brief|0b23da1a9c584f4fc7a0500c54ab2b780c03c77f|pull_request|2026-11-11T20:31:19Z
-          43096546310|implementation/versioned-architecture-brief|0b23da1a9c584f4fc7a0500c54ab2b780c03c77f|pull_request|2026-11-11T20:31:19Z
-          43096546273|implementation/versioned-architecture-brief|0b23da1a9c584f4fc7a0500c54ab2b780c03c77f|pull_request|2026-11-11T20:31:19Z
-          43096546401|implementation/versioned-architecture-brief|0b23da1a9c584f4fc7a0500c54ab2b780c03c77f|pull_request|2026-11-11T20:31:19Z
-          43096546254|implementation/versioned-architecture-brief|0b23da1a9c584f4fc7a0500c54ab2b780c03c77f|pull_request|2026-11-11T20:31:19Z
-          43096546322|implementation/versioned-architecture-brief|0b23da1a9c584f4fc7a0500c54ab2b780c03c77f|pull_request|2026-11-11T20:31:19Z
-          43096546389|implementation/versioned-architecture-brief|0b23da1a9c584f4fc7a0500c54ab2b780c03c77f|pull_request|2026-11-11T20:31:19Z
-          43096546397|implementation/versioned-architecture-brief|0b23da1a9c584f4fc7a0500c54ab2b780c03c77f|pull_request|2026-11-11T20:31:19Z
-          43096546566|implementation/versioned-architecture-brief|0b23da1a9c584f4fc7a0500c54ab2b780c03c77f|pull_request|2026-11-11T20:31:19Z
-          43096540642|implementation/versioned-architecture-brief|0b23da1a9c584f4fc7a0500c54ab2b780c03c77f|push|2026-11-11T20:31:16Z
-          43096473697|implementation/catalogue-defined-roots|ed19eb3b007bc5682e52888937140174b6e1b3c4|pull_request|2026-11-11T20:30:36Z
-          43096473491|implementation/catalogue-defined-roots|ed19eb3b007bc5682e52888937140174b6e1b3c4|pull_request|2026-11-11T20:30:35Z
-          43096473565|implementation/catalogue-defined-roots|ed19eb3b007bc5682e52888937140174b6e1b3c4|pull_request|2026-11-11T20:30:35Z
-          43096473547|implementation/catalogue-defined-roots|ed19eb3b007bc5682e52888937140174b6e1b3c4|pull_request|2026-11-11T20:30:35Z
-          43096473614|implementation/catalogue-defined-roots|ed19eb3b007bc5682e52888937140174b6e1b3c4|pull_request|2026-11-11T20:30:35Z
-          43096473651|implementation/catalogue-defined-roots|ed19eb3b007bc5682e52888937140174b6e1b3c4|pull_request|2026-11-11T20:30:35Z
-          43096473557|implementation/catalogue-defined-roots|ed19eb3b007bc5682e52888937140174b6e1b3c4|pull_request|2026-11-11T20:30:35Z
-          43096473605|implementation/catalogue-defined-roots|ed19eb3b007bc5682e52888937140174b6e1b3c4|pull_request|2026-11-11T20:30:35Z
-          43096473585|implementation/catalogue-defined-roots|ed19eb3b007bc5682e52888937140174b6e1b3c4|pull_request|2026-11-11T20:30:35Z
-          43096473564|implementation/catalogue-defined-roots|ed19eb3b007bc5682e52888937140174b6e1b3c4|pull_request|2026-11-11T20:30:35Z
-          43096469017|implementation/catalogue-defined-roots|ed19eb3b007bc5682e52888937140174b6e1b3c4|push|2026-11-11T20:30:33Z
-          43096395664|implementation/compact-project-catalogue|4a32dfe0568dae38144b1e7a62e1c014beb74cf9|pull_request|2026-11-11T20:29:52Z
-          43096395680|implementation/compact-project-catalogue|4a32dfe0568dae38144b1e7a62e1c014beb74cf9|pull_request|2026-11-11T20:29:52Z
-          43096395668|implementation/compact-project-catalogue|4a32dfe0568dae38144b1e7a62e1c014beb74cf9|pull_request|2026-11-11T20:29:52Z
-          43096395666|implementation/compact-project-catalogue|4a32dfe0568dae38144b1e7a62e1c014beb74cf9|pull_request|2026-11-11T20:29:52Z
-          43096395704|implementation/compact-project-catalogue|4a32dfe0568dae38144b1e7a62e1c014beb74cf9|pull_request|2026-11-11T20:29:52Z
-          43096395667|implementation/compact-project-catalogue|4a32dfe0568dae38144b1e7a62e1c014beb74cf9|pull_request|2026-11-11T20:29:52Z
-          43096395654|implementation/compact-project-catalogue|4a32dfe0568dae38144b1e7a62e1c014beb74cf9|pull_request|2026-11-11T20:29:52Z
-          43096395705|implementation/compact-project-catalogue|4a32dfe0568dae38144b1e7a62e1c014beb74cf9|pull_request|2026-11-11T20:29:52Z
-          43096395670|implementation/compact-project-catalogue|4a32dfe0568dae38144b1e7a62e1c014beb74cf9|pull_request|2026-11-11T20:29:52Z
-          43096395758|implementation/compact-project-catalogue|4a32dfe0568dae38144b1e7a62e1c014beb74cf9|pull_request|2026-11-11T20:29:52Z
-          43096388812|implementation/compact-project-catalogue|4a32dfe0568dae38144b1e7a62e1c014beb74cf9|push|2026-11-11T20:29:48Z
-          43096320413|implementation/verified-ci-reload-and-package-sources|b5cbf8022bee05ab3e0b09ccd3babfd16eea6748|pull_request|2026-11-11T20:29:05Z
-          43096320411|implementation/verified-ci-reload-and-package-sources|b5cbf8022bee05ab3e0b09ccd3babfd16eea6748|pull_request|2026-11-11T20:29:05Z
-          43096320286|implementation/verified-ci-reload-and-package-sources|b5cbf8022bee05ab3e0b09ccd3babfd16eea6748|pull_request|2026-11-11T20:29:05Z
-          43096320444|implementation/verified-ci-reload-and-package-sources|b5cbf8022bee05ab3e0b09ccd3babfd16eea6748|pull_request|2026-11-11T20:29:05Z
-          43096320436|implementation/verified-ci-reload-and-package-sources|b5cbf8022bee05ab3e0b09ccd3babfd16eea6748|pull_request|2026-11-11T20:29:05Z
-          43096320477|implementation/verified-ci-reload-and-package-sources|b5cbf8022bee05ab3e0b09ccd3babfd16eea6748|pull_request|2026-11-11T20:29:05Z
-          43096320277|implementation/verified-ci-reload-and-package-sources|b5cbf8022bee05ab3e0b09ccd3babfd16eea6748|pull_request|2026-11-11T20:29:05Z
-          43096320511|implementation/verified-ci-reload-and-package-sources|b5cbf8022bee05ab3e0b09ccd3babfd16eea6748|pull_request|2026-11-11T20:29:05Z
-          43096320281|implementation/verified-ci-reload-and-package-sources|b5cbf8022bee05ab3e0b09ccd3babfd16eea6748|pull_request|2026-11-11T20:29:05Z
-          43096320323|implementation/verified-ci-reload-and-package-sources|b5cbf8022bee05ab3e0b09ccd3babfd16eea6748|pull_request|2026-11-11T20:29:05Z
-          43096314636|implementation/verified-ci-reload-and-package-sources|b5cbf8022bee05ab3e0b09ccd3babfd16eea6748|push|2026-11-11T20:29:01Z
-          VERIFIED_RUNS
+          stalled() {
+            gh api "$endpoint" |
+              jq -e --arg head "$head" --argjson id "$run_id" \
+                '.id == $id and .head_sha == $head and .event == "pull_request"
+                 and .run_attempt == 1 and .status == "queued"
+                 and .updated_at == "2026-11-16T14:19:38Z"
+                 and now - (.updated_at | fromdateiso8601) >= 1800' >/dev/null &&
+            gh api "$endpoint/jobs?per_page=100" |
+              jq -e '.total_count == 10
+                and ([.jobs[] | select(.status == "queued" and (.runner_id // 0) == 0)] | length) == 8
+                and ([.jobs[] | select(.status == "completed")] | length) == 2' >/dev/null
+          }
           
-          if [[ -s "$candidates" ]]; then
-            sleep 20
+          verify_pr
+          if ! stalled; then
+            echo "The pinned Maven run has changed. Check its current jobs."
+            exit 0
           fi
-          failures=0
-          while IFS='|' read -r id branch head event last_updated; do
-            endpoint="repos/$repo/actions/runs/$id"
-            if eligible "$endpoint" "$branch" "$head" "$event" "$last_updated"; then
-              if gh api --method POST "$endpoint/force-cancel" >/dev/null; then
-                printf 'Force cancellation requested for %s\n' "$id"
-              else
-                failures=$((failures + 1))
-              fi
-            fi
-          done < "$candidates"
-          (( failures == 0 ))
+          
+          if ! gh api --method POST "$endpoint/cancel" >/dev/null; then
+            verify_pr
+            stalled
+            gh api --method POST "$endpoint/force-cancel" >/dev/null
+          fi
+          echo "Cancellation requested for Maven run $run_id."
+          
+          for attempt in $(seq 1 20); do
+            state="$(gh api "$endpoint" --jq '.status + ":" + (.conclusion // "")')"
+            case "$state" in
+              completed:cancelled)
+                verify_pr
+                gh api --method POST "$endpoint/rerun" >/dev/null
+                echo "Restart requested for Maven run $run_id at $head."
+                exit 0
+                ;;
+              completed:*)
+                echo "Maven run $run_id completed with $state."
+                exit 0
+                ;;
+            esac
+            sleep 3
+          done
+          echo "::error::Cancellation pending for Maven run $run_id."
+          exit 1
