@@ -79,7 +79,11 @@ final class SchemaContractMigrator {
                 migrateHypothesisUniqueness(connection);
                 migrateProjectionKeys(connection);
                 TableRef membership = findTable(connection, "repository_membership");
-                if (membership != null) ensureMembershipRevocationColumn(connection, membership);
+                if (membership != null) {
+                    ensureMembershipRevocationColumn(connection, membership);
+                    ensureColumn(connection, membership, "holder_principal_id", "VARCHAR(36)");
+                    ensureColumn(connection, membership, "grantor_principal_id", "VARCHAR(36)");
+                }
                 TableRef userWorkspace = findTable(connection, "user_workspace");
                 if (userWorkspace != null) ensureColumn(connection, userWorkspace, "owner_principal_id", "VARCHAR(36)");
                 ensurePasswordChangeColumn(connection);

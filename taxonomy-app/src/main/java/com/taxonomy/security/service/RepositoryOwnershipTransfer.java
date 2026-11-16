@@ -71,7 +71,7 @@ public class RepositoryOwnershipTransfer {
         identities.requireCurrent(authentication);
         if (!identities.hasCurrentLoginForScope(successor)) throw new ResponseStatusException(HttpStatus.CONFLICT, "The target is no longer active");
         try {
-            memberships.transferPersonalOwnership(repository, expectedVersion, scope, successor.scopeKey());
+            memberships.transferPersonalOwnership(repository, expectedVersion, scope, successor.scopeKey(), actor.value(), target.value());
             repositories.saveAndFlush(repository);
             // Revalidate the exact initiating login and the successor after waiting for the catalogue fence.
             if (!actor.equals(identities.requireCurrent(authentication)) || !identities.hasCurrentLoginForScope(successor)) {

@@ -143,6 +143,11 @@ public class WorkspaceFetchRecovery {
             checkLease.run();
         };
         authorize.run();
+        return RepositoryMembershipIdentity.RecordedActor.during(operation.username, original,
+                () -> applyVerified(operation, authorize));
+    }
+
+    private WorkspaceUpstreamService.Status applyVerified(RepositoryFetchOperation operation, Runnable authorize) throws IOException {
         if (operation instanceof CentralFetchOperation central && CentralFetchOperation.initialIdFormat(operation.id)) {
             if (!central.isInitialFork()) throw new AccessDeniedException("Invalid initial fork operation");
             return initialTransfers.apply(central, authorize);

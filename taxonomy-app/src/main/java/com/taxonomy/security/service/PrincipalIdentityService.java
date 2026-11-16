@@ -74,6 +74,16 @@ public final class PrincipalIdentityService {
                 principal.value().toString()).stream().findFirst();
     }
 
+    /** Resolve a new grant's routing scope only through an existing, exact and currently usable binding. */
+    public Optional<AppPrincipal> findActiveForScope(String scope) {
+        var matches = jdbc.query("select principal_id,scope_key from app_principal where scope_key=? and enabled=1",
+                (row, number) -> new AppPrincipal(new PrincipalId(UUID.fromString(row.getString(1))),
+                        row.getString(2), true), scope);
+        return matches.size() == 1 ? Optional.of(matches.getFirst())
+                .filter(principal -> scope.equals(principal.scopeKey())).filter(this::hasCurrentLoginForScope)
+                : Optional.empty();
+    }
+
     public boolean isEnabled(PrincipalId principal) {
         if (find(principal).filter(AppPrincipal::enabled).isEmpty()) return false;
         var bindings = jdbc.query("select binding_kind, subject_id from principal_binding where principal_id=? and enabled=1",

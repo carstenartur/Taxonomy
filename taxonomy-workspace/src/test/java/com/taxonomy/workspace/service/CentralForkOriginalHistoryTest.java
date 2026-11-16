@@ -408,7 +408,8 @@ class CentralForkOriginalHistoryTest {
         }
     }
 
-    enum InitialLoss { BEFORE_TRACKING, BEFORE_BRANCH, DENIED, OTHER_IDENTITY, FOREIGN_REF, WORKER, RACING_WORKERS, SOURCE_REWRITTEN }
+    enum InitialLoss { BEFORE_TRACKING, BEFORE_BRANCH, DENIED, OTHER_IDENTITY, FOREIGN_REF, WORKER, WORKER_BOUND_GRANT,
+        RACING_WORKERS, SOURCE_REWRITTEN }
 
     @ParameterizedTest
     @EnumSource(InitialLoss.class)
@@ -419,12 +420,20 @@ class CentralForkOriginalHistoryTest {
         var grant = new WorkspaceFetchAuthority.Grant(principal, "LOCAL", "original-binding");
         when(actors.currentActor(actor)).thenReturn(principal);
         when(actors.authorize(actor, RepositoryScope.CENTRAL_WRITE)).thenReturn(grant);
+        RepositoryMembershipIdentity identities = null;
+        if (loss == InitialLoss.WORKER_BOUND_GRANT) {
+            identities = mock(RepositoryMembershipIdentity.class);
+            when(identities.currentActor(OWNER)).thenReturn(java.util.Optional.of(java.util.UUID.randomUUID()));
+            when(identities.activeHolder(actor)).thenReturn(java.util.Optional.of(java.util.UUID.fromString(principal)));
+            when(identities.currentActor(actor)).thenReturn(java.util.Optional.of(java.util.UUID.fromString(principal)));
+        }
         var clock = java.time.Clock.fixed(java.time.Instant.now(), java.time.ZoneOffset.UTC);
         String sourceId, targetId, captured, id;
-        try (var f = new Fixture(database, GitCommitSignatureService.disabled(), actors)) {
+        try (var f = new Fixture(database, GitCommitSignatureService.disabled(), actors, identities)) {
             var source = f.createSource(RepositoryVisibility.PRIVATE);
             sourceId = source.getRepositoryId();
-            f.memberships.assignRole(sourceId, actor, com.taxonomy.workspace.model.RepositoryRole.CONTRIBUTOR, OWNER);
+            var membership = f.memberships.assignRole(sourceId, actor, RepositoryRole.CONTRIBUTOR, OWNER);
+            if (identities != null) assertEquals(principal, membership.getHolderPrincipalId());
             captured = f.git.getCentralRepository(sourceId).commitDsl("main", "original", OWNER, "Original");
             var hooked = mock(DslGitRepositoryFactory.class, delegatesTo(f.git));
             doAnswer(call -> {
@@ -460,7 +469,7 @@ class CentralForkOriginalHistoryTest {
             assertEquals(loss == InitialLoss.BEFORE_BRANCH ? captured : null,new GitUpstreamRef(sourceId,"main").head(target));
             assertEquals(409,assertThrows(ResponseStatusException.class, () -> f.service.createFork(sourceId,"main","Fork","retained",null,null,actor)).getStatusCode().value());
         }
-        try (var f = new Fixture(database,GitCommitSignatureService.disabled(),actors)) {
+        try (var f = new Fixture(database,GitCommitSignatureService.disabled(),actors,identities)) {
             var later = java.time.Clock.offset(clock,java.time.Duration.ofMinutes(6));
             var journal = f.useInitialJournal(actors, f.git, later);
             var scope = RepositoryContext.centralWrite(targetId,"main",actor);
@@ -515,9 +524,17 @@ class CentralForkOriginalHistoryTest {
                         assertTrue(a.get(30,TimeUnit.SECONDS));
                         assertTrue(b.get(30,TimeUnit.SECONDS));
                     }
-                } else if (loss == InitialLoss.WORKER) {
+                } else if (loss == InitialLoss.WORKER || loss == InitialLoss.WORKER_BOUND_GRANT) {
+                    if (identities != null) {
+                        when(identities.currentActor(actor)).thenReturn(java.util.Optional.empty());
+                        assertFalse(f.memberships.canContribute(f.catalog.getRepository(sourceId), actor));
+                    }
                     var worker = new WorkspaceFetchRecovery(journal,null,actors,null);
                     worker.useInitialTransfers(f.initial); worker.recoverDue();
+                    if (identities != null) {
+                        assertFalse(f.memberships.canContribute(f.catalog.getRepository(sourceId), actor));
+                        when(identities.currentActor(actor)).thenReturn(java.util.Optional.of(java.util.UUID.fromString(principal)));
+                    }
                 } else if (loss == InitialLoss.BEFORE_BRANCH) {
                     var resolver = mock(WorkspaceResolver.class);
                     when(resolver.resolveCurrentUsername()).thenReturn(actor);
@@ -554,6 +571,11 @@ class CentralForkOriginalHistoryTest {
         }
 
         Fixture(String database, GitCommitSignatureService signatures, WorkspaceFetchAuthority actors) {
+            this(database, signatures, actors, null);
+        }
+
+        Fixture(String database, GitCommitSignatureService signatures, WorkspaceFetchAuthority actors,
+                RepositoryMembershipIdentity identities) {
             persistence = new EditorPersistenceFixture(database, SystemRepository.class, RepositoryMembership.class, CentralFetchOperation.class, WorkspaceFetchOperation.class);
             var transactionManager = new JpaTransactionManager(persistence.factory);
             var entities = SharedEntityManagerCreator.createSharedEntityManager(persistence.factory);
@@ -562,7 +584,8 @@ class CentralForkOriginalHistoryTest {
             rows = repositories.getRepository(SystemRepositoryRepository.class);
             catalog = transactional(new SystemRepositoryService(rows, entities, java.util.Optional.ofNullable(actors)),
                     SystemRepositoryService.class, transactions);
-            memberships = transactional(new RepositoryMembershipService(repositories.getRepository(RepositoryMembershipRepository.class)),
+            memberships = transactional(new RepositoryMembershipService(repositories.getRepository(RepositoryMembershipRepository.class),
+                            java.util.Optional.empty(), java.util.Optional.ofNullable(identities)),
                     RepositoryMembershipService.class, transactions);
             git = new DslGitRepositoryFactory(new DefaultHibernateRepositoryFactory(persistence.factory), catalog, signatures);
             service = new ArchitectureRepositoryProvisioningService(catalog, memberships, git, namespace -> "meta { language: \"taxdsl\"; }\n");
