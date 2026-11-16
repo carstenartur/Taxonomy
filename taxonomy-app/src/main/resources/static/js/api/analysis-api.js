@@ -6,9 +6,7 @@ window.AnalysisApi = (function () {
     function snapshot(context) {
         var scope = context || {};
         var workspace = scope.workspaceScopeKey;
-        if (workspace === undefined && (scope.workspaceId === null || typeof scope.workspaceId === 'string')) {
-            workspace = scope.workspaceId || '__shared__';
-        }
+        if (workspace === undefined && typeof scope.workspaceId === 'string') workspace = scope.workspaceId || '__shared__';
         var commit = scope.commit || scope.commitId;
         if (typeof scope.repositoryId !== 'string' || !scope.repositoryId.trim()
                 || typeof scope.branch !== 'string' || !scope.branch.trim()

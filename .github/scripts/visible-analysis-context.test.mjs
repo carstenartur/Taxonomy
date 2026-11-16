@@ -48,14 +48,17 @@ test('an exact private graph pin survives the shared display key', async () => {
     assert.equal(calls[0].options.pinnedWorkspaceId, '__shared__');
     assert.equal(new URL(calls[0].url,'https://example.test').searchParams.get('commitId'), scope.commit);
 });
-test('a graph scope with an explicit null workspace pins central without a display key', async () => {
+for (const [label, workspace] of [
+    ['central display key with a nullable workspace ID', {workspaceId:null, workspaceScopeKey:'__shared__'}],
+    ['explicit empty workspace pin', {workspaceId:''}]
+]) test(`graph transport pins central with the ${label}`, async () => {
     const context = vm.createContext({URL, URLSearchParams, TaxonomyI18n:{t:key=>key}});
     const calls = [];
     context.window = context;
     context.TaxonomyApiClient = {getJson:async (url, options) => {calls.push({url,options});}};
     vm.runInContext(src('api/analysis-api.js'), context);
     await context.AnalysisApi.graphUpstream('UA-1574', 2, {
-        repositoryId:A.repositoryId, workspaceId:null, branch:A.branch, commit:A.commit
+        repositoryId:A.repositoryId, branch:A.branch, commit:A.commit, ...workspace
     });
     assert.equal(calls[0].options.pinnedWorkspaceId, '');
     assert.equal(new URL(calls[0].url,'https://example.test').searchParams.get('workspaceId'), '');
