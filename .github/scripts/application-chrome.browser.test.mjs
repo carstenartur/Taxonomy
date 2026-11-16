@@ -176,6 +176,22 @@ for(const mode of ['index','projects'])test(`${mode}: the existing compact conte
         assert.deepEqual(page.errors,[]);
     }finally{await page.close();}
 });
+test('standalone shell links retain the actual source workspace behind the shared display key', async () => {
+    const page = await fixture({mode:'requirement',locale:'de'});
+    try {
+        const link = page.locator('#applicationProjectsLink');
+        for (const [workspaceId, expected] of [['__shared__','__shared__'], [null,'']]) {
+            await page.evaluate(workspaceId => TaxonomyAppChrome.updateContext({source:{
+                repositoryId:'repo', workspaceId, workspaceScopeKey:'__shared__',
+                branch:'draft', projectId:42, requirementId:7, snapshotId:'snapshot-v2'
+            }}), workspaceId);
+            const destination = new URL(await link.getAttribute('href'),'http://chrome.test');
+            assert.equal(destination.searchParams.get('sourceWorkspaceId'), expected);
+            assert.equal(destination.searchParams.get('sourceSnapshotId'), 'snapshot-v2');
+        }
+        assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+});
 test('the shared Projects link retains the mounted project and workspace before and after loading',async()=>{
     const page=await fixture({mode:'requirement',locale:'de'});try{
         await page.evaluate(()=>{

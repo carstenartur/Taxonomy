@@ -1161,7 +1161,7 @@
             projectKey:state.portfolio?.project?.projectKey,requirementKey:summary.requirementKey,
             snapshotId:summary.id || state.selectedSnapshotId,requirementVersionId:summary.requirementVersionId,
             requirementVersion:summary.requirementVersionNumber,repositoryId:snapshot.exportProvenance?.repositoryId || current.repositoryId,
-            workspaceScopeKey:summary.workspaceId || '__shared__',branch:summary.branchName};
+            workspaceId:summary.workspaceId ?? '',workspaceScopeKey:summary.workspaceId || '__shared__',branch:summary.branchName};
     }
     async function loadSnapshots(requirementId) {
         state.selectedRequirementId = requirementId;

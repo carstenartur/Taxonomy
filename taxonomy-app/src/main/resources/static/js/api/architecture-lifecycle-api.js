@@ -8,8 +8,9 @@ window.TaxonomyArchitectureLifecycleApi = (function () {
         ['repositoryId', 'workspaceScopeKey', 'branch'].forEach(function (key) {
             if (scope[key] !== undefined && scope[key] !== null) params.set(key, scope[key]);
         });
-        if (scope.workspaceScopeKey !== undefined) params.set('workspaceId', scope.workspaceScopeKey === '__shared__' ? '' : scope.workspaceScopeKey);
-        else if (scope.workspaceId !== undefined) params.set('workspaceId', scope.workspaceId);
+        var workspace = scope.workspaceId !== undefined ? (scope.workspaceId ?? '')
+            : scope.workspaceScopeKey === '__shared__' ? '' : scope.workspaceScopeKey;
+        if (workspace !== undefined) params.set('workspaceId', workspace);
         return params;
     }
     function policy(params) { return params.has('workspaceId') ? {pinnedWorkspaceId:params.get('workspaceId')} : {}; }

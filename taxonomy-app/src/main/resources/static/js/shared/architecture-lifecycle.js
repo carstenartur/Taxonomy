@@ -12,11 +12,29 @@
     var overviewRead, interruptedOverviewSequence;
     var state = {suspended:false, overview:null, sequence:0, generation:0, selection:selectionFromUrl(), context:null, observed:null, history:null};
     function t(key) { return window.TaxonomyI18n.t.apply(null, arguments); }
-    function clone(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
+    function preserveWorkspacePin(context, selected) {
+        if (context?.workspaceId === undefined && selected?.workspaceId === '__shared__'
+                && context?.workspaceScopeKey === '__shared__'
+                && (selected.repositoryId == null || context.repositoryId === selected.repositoryId)
+                && (selected.branch == null || context.branch === selected.branch)) {
+            // Keep transport identity out of the legacy command DTO serialized from this context.
+            Object.defineProperty(context, 'workspaceId', {value:selected.workspaceId});
+        }
+        return context;
+    }
+    function clone(value) {
+        if (value == null) return value;
+        var copy = preserveWorkspacePin(JSON.parse(JSON.stringify(value)), value);
+        if (copy.context) preserveWorkspacePin(copy.context, value.context);
+        return copy;
+    }
+    function workspaceId(context) {
+        return context.workspaceId ?? (context.workspaceScopeKey === '__shared__' ? '' : context.workspaceScopeKey);
+    }
     function scope() { return window.TaxonomyArchitectureWorkflow?.getScope() || {}; }
     function scopeKey(value) {
         value = value || {};
-        return JSON.stringify([value.repositoryId || '', value.workspaceScopeKey || value.workspaceId || '__shared__', value.branch || '']);
+        return JSON.stringify([value.repositoryId || '', workspaceId(value) ?? null, value.branch || '']);
     }
     function contextKey(value) {
         value = value || {};
@@ -57,7 +75,7 @@
         ++state.sequence;
         state.context = clone(context || scope()); state.selection = next; state.observed = null;
         resetOverview(); if (changed) clearHistory(); invalidateStand();
-        publishContext({architecture:{repositoryId:state.context.repositoryId,workspaceScopeKey:state.context.workspaceScopeKey || state.context.workspaceId,branch:state.context.branch,modelStand:null,commit:null,revision:null}});
+        publishContext({architecture:{repositoryId:state.context.repositoryId,workspaceId:workspaceId(state.context),workspaceScopeKey:state.context.workspaceScopeKey || state.context.workspaceId,branch:state.context.branch,modelStand:null,commit:null,revision:null}});
         if (root) root.hidden = true;
     }
     function failedSelection(error) {
@@ -82,6 +100,7 @@
             var value = await api.overview(requested, selected.commit, selected.revision);
             if (ticket !== state.sequence || state.suspended) return null;
             if (state.observed) value.mayEdit = Boolean(value.mayEdit && state.observed.mayEdit);
+            preserveWorkspacePin(value.context, requested);
             if (state.overview && (contextKey(value.context) !== contextKey(state.overview.context)
                     || value.source !== state.overview.source || value.mayEdit !== state.overview.mayEdit)) invalidateStand();
             state.overview = value; state.context = clone(value.context);
@@ -247,7 +266,7 @@
         var stand = value.source === 'GIT_CHECKPOINT' ? t('editor.selectedVersion', checkpoint)
             : t('editor.revision', c.revision) + ' · ' + t('editor.lastCheckpoint', checkpoint);
         var facts = {architecture:{repositoryId:c.repositoryId, title:value.architectureTitle, branch:c.branch,
-            workspaceScopeKey:c.workspaceScopeKey, modelStand:stand, commit:c.commit, revision:c.revision}, editable:Boolean(value.mayEdit), publicationState:value.publicationState || value.projectionState};
+            workspaceId:workspaceId(c), workspaceScopeKey:c.workspaceScopeKey, modelStand:stand, commit:c.commit, revision:c.revision}, editable:Boolean(value.mayEdit), publicationState:value.publicationState || value.projectionState};
         var current = window.TaxonomyAppChrome?.getContext() || {};
         var project = selectedProject(value,current).project;
         if (!Object.prototype.hasOwnProperty.call(current,'project') && project && !historicalSelection()) facts.project = {id:project.id,key:project.projectKey,title:project.title};
@@ -325,7 +344,7 @@
                 var link = node('a', subject || (commit || '').substring(0, 12));
                 var url = new URL(window.TaxonomyI18n.resolveUrl('/architecture/editor'), location.href);
                 Object.entries(token.context).forEach(function (pair) { if (['repositoryId','workspaceScopeKey','branch'].includes(pair[0])) url.searchParams.set(pair[0],pair[1]); });
-                url.searchParams.set('workspaceId',token.context.workspaceScopeKey === '__shared__' ? '' : token.context.workspaceScopeKey);
+                url.searchParams.set('workspaceId', workspaceId(token.context));
                 url.searchParams.set('commit',commit); url.searchParams.set('lang',window.TaxonomyI18n.getLocale()); link.href = url.pathname + url.search;
                 var details = node('details'); details.append(node('summary', t('lifecycle.history.details')),
                     node('pre', message), node('p', [entry.author, entry.timestamp || entry.occurredAt, commit].filter(Boolean).join(' · ')));
@@ -381,6 +400,7 @@
             afterSuccess:function (result, reconciled) {
                 var current = valid();
                 uncertain = false;
+                preserveWorkspacePin(publicationOf(result)?.context, captured.context);
                 if (pendingPublication(result)) {
                     pending = clone(publicationOf(result)); shell.message.textContent = ''; showPublicationRecovery(shell.message,result);
                     if (current) publishChanged(result, reconciled); else ensure();
@@ -478,7 +498,7 @@
             try {
                 var result = await api.previewReconciliation(request);
                 if (!fence.ensure() || ticket !== edit) return;
-                if (contextKey(result.context) !== contextKey(captured.context)) throw staleError();
+                if (contextKey(preserveWorkspacePin(result.context, request.context)) !== contextKey(captured.context)) throw staleError();
                 headCommit = result.headCommit; conflicts.replaceChildren();
                 (result.conflicts || []).forEach(function (conflict, index) {
                     var group = node('fieldset'); group.append(node('legend', conflict.id));
@@ -538,6 +558,7 @@
         try {
             // A known completed write awaiting its source confirmation is never sent again.
             var result = retained.completed || await api.saveRequirement(retained.request);
+            preserveWorkspacePin(publicationOf(result)?.context, retained.request.context);
             retained.uncertain = false;
             retained.publication = clone(publicationOf(result));
             if (!pendingPublication(result)) retained.completed = result;

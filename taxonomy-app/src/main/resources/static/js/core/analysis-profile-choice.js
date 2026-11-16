@@ -23,13 +23,14 @@
             if (ticket !== generation) return;
             var scope = await workspace.analysisScope();
             var session = window.TaxonomyAnalysisSession?.state?.();
-            if (ticket !== generation || !session?.ready || (session.workspaceId || '__shared__') !== scope.workspaceScopeKey) return;
+            var workspacePin = scope.workspaceId ?? (scope.workspaceScopeKey === '__shared__' ? '' : scope.workspaceScopeKey);
+            if (ticket !== generation || !session?.ready || (session.workspaceId || '') !== workspacePin) return;
             var model = lifecycle.selectedAnalysisModel();
             var selected = lifecycle.selectedContext();
             if (model && (!selected || ['repositoryId','workspaceScopeKey','branch'].some(function (key) {
                 return scope[key] !== selected[key];
             }))) return;
-            var key = JSON.stringify([scope.repositoryId, scope.workspaceScopeKey, scope.branch, model]);
+            var key = JSON.stringify([scope.repositoryId, workspacePin, scope.branch, model]);
             if (!pending || pending.key !== key) {
                 var request = {key:key, result:window.ArchitectureEditorApi.analysisBrief(scope, model)};
                 pending = request;
@@ -43,7 +44,7 @@
                     || (model?.expectedSemanticRevision != null && model.expectedSemanticRevision !== result.semanticRevision)
                     || JSON.stringify(model) !== JSON.stringify(lifecycle.selectedAnalysisModel())) return;
             var source = {kind:'working', repositoryId:scope.repositoryId, workspaceScopeKey:scope.workspaceScopeKey,
-                workspaceId:scope.workspaceScopeKey === '__shared__' ? '' : scope.workspaceScopeKey, branch:scope.branch};
+                workspaceId:workspacePin, branch:scope.branch};
             if (result.semanticRevision != null) source.revision = String(result.semanticRevision);
             else if (result.commit) source.commit = result.commit;
             else return;

@@ -9,7 +9,7 @@ const [client, choice] = await Promise.all(['api/architecture-editor-api.js','co
 const drain = () => new Promise(resolve => setImmediate(resolve));
 const scope = {repositoryId:'public-service-project', workspaceScopeKey:'workspace A', branch:'planning/design'};
 
-function fixture(features = ['architecture', 'analysis']) {
+function fixture(features = ['architecture', 'analysis'], selectedScope = scope) {
     const nodes = new Map(), events = new Map(), pending = [], opened = [];
     const element = id => {
         if (!nodes.has(id)) nodes.set(id, {hidden:true, handlers:new Map(), addEventListener(name, cb) { this.handlers.set(name, cb); },
@@ -19,10 +19,10 @@ function fixture(features = ['architecture', 'analysis']) {
     const document = {getElementById:element, addEventListener:(name, cb) => events.set(name, cb)};
     let model = {expectedSemanticRevision:4}, ready = true, notify;
     const location = new URL('https://example.test/app/?workspaceId=workspace+A#analyze');
-    const window = {TaxonomyCapabilities:{load:async () => ({features})}, TaxonomyAnalysisSession:{state:() => ({ready, workspaceId:scope.workspaceScopeKey})},
-        TaxonomyArchitectureLifecycle:{ready:async () => null, selectedContext:() => scope,
+    const window = {TaxonomyCapabilities:{load:async () => ({features})}, TaxonomyAnalysisSession:{state:() => ({ready, workspaceId:selectedScope.workspaceId ?? selectedScope.workspaceScopeKey})},
+        TaxonomyArchitectureLifecycle:{ready:async () => null, selectedContext:() => selectedScope,
             selectedAnalysisModel:() => model, onStandChange:cb => { notify = cb; }},
-        TaxonomyArchitectureWorkspace:{analysisScope:async () => scope,
+        TaxonomyArchitectureWorkspace:{analysisScope:async () => selectedScope,
             open:async (kind, {source}) => { opened.push({kind, source:JSON.parse(JSON.stringify(source))}); return true; }},
         TaxonomyArchitectureWorkspaceController:{urlFor(url, source, path) {
             url.pathname = path; url.hash = 'architecture'; url.search = new URLSearchParams(source); return url.href; }},
@@ -33,7 +33,7 @@ function fixture(features = ['architecture', 'analysis']) {
     vm.runInNewContext(choice, ctx);
     return {element, events, pending, opened, refresh:() => notify(), setModel:next => { model = next; },
         setReady:next => { ready = next; }, response(overrides = {}) {
-            return {...scope, commit:'a'.repeat(40), semanticRevision:4, editable:true, decision:'OPEN', ...overrides};
+            return {...selectedScope, commit:'a'.repeat(40), semanticRevision:4, editable:true, decision:'OPEN', ...overrides};
         }};
 }
 
@@ -69,6 +69,17 @@ test('an editable open profile opens its exact semantic revision in the existing
     assert.equal(f.opened[0].kind, 'working');
     assert.deepEqual(f.opened[0].source, {...scope, kind:'working', workspaceId:scope.workspaceScopeKey, revision:'4'});
     assert.equal(f.element('editorBriefTitle').focused, true);
+});
+
+test('profile editor link keeps the private workspace with the shared display key', async () => {
+    const privateScope = {...scope, workspaceId:'__shared__', workspaceScopeKey:'__shared__'};
+    const f = fixture(undefined, privateScope);
+    await drain();
+    assert.equal(f.pending[0].options.pinnedWorkspaceId, '__shared__');
+    f.pending[0].resolve(f.response());
+    await drain();
+    const link = f.element('analysisProfileEditor');
+    assert.equal(new URL(link.href).searchParams.get('workspaceId'), '__shared__');
 });
 
 test('a stale response cannot restore an editor link after changing version, tab or source', async () => {

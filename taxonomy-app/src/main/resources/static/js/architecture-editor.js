@@ -54,9 +54,9 @@
         report:report,selectedView:function () { return selectedView; },
         onBusy:function (value) { busy = value; permissions(); },
         onSelectView:async function (id) { selectedView = id; await load(context(),view.document.source === 'GIT_CHECKPOINT' ? context().commit : context().revision,true); },
-        onAccepted:async function (result) {
+        onAccepted:async function (result, origin) {
             selectedView = result.viewId;
-            await load(result.accepted ? result.accepted.context : context(),null);
+            await load(preserveWorkspacePin(result.accepted?.context, origin) || context(), null);
             renderer.fit({initial:true});
         }
     });
@@ -64,6 +64,21 @@
     function t(key) { return window.TaxonomyI18n.t.apply(null, arguments); }
     function short(commit) { return commit ? commit.substring(0, 12) : t('editor.emptyBranch'); }
     function context() { return view.document.context; }
+    function workspaceId(scope) {
+        return scope.workspaceId !== undefined ? (scope.workspaceId ?? '')
+            : scope.workspaceScopeKey === '__shared__' ? '' : scope.workspaceScopeKey;
+    }
+    function preserveWorkspacePin(confirmed, origin) {
+        // Server contexts retain the legacy display key. Keep the verified
+        // transport identity without adding it to the command JSON.
+        if (confirmed?.workspaceId === undefined && origin?.workspaceId === '__shared__'
+                && confirmed?.workspaceScopeKey === '__shared__'
+                && (origin.repositoryId == null || confirmed.repositoryId === origin.repositoryId)
+                && (origin.branch == null || confirmed.branch === origin.branch)) {
+            Object.defineProperty(confirmed, 'workspaceId', {value:origin.workspaceId});
+        }
+        return confirmed;
+    }
     var admbwUrl = null, admbwRequest = null, admbwScope = null;
     var admbwChecked = false, admbwNativeRequest = null;
     function renderAdmbwExport() {
@@ -180,7 +195,7 @@
     }
     function scopeFromUrl() {
         var result = {};
-        ['repositoryId', 'workspaceScopeKey', 'branch'].forEach(function (key) { if (activeSource[key] !== undefined) result[key] = activeSource[key]; });
+        ['repositoryId', 'workspaceId', 'workspaceScopeKey', 'branch'].forEach(function (key) { if (activeSource[key] !== undefined) result[key] = activeSource[key]; });
         if (!result.workspaceScopeKey && activeSource.workspaceId !== undefined) result.workspaceScopeKey = activeSource.workspaceId || '__shared__';
         return result;
     }
@@ -190,7 +205,7 @@
         ['repositoryId', 'workspaceScopeKey', 'branch'].forEach(function (key) {
             if (context()[key]) url.searchParams.set(key, context()[key]); else url.searchParams.delete(key);
         });
-        url.searchParams.set('workspaceId', context().workspaceScopeKey === '__shared__' ? '' : context().workspaceScopeKey);
+        url.searchParams.set('workspaceId', workspaceId(context()));
         url.searchParams.delete('commit'); url.searchParams.delete('revision');
         if (view.document.source === 'GIT_CHECKPOINT') url.searchParams.set('commit', context().commit);
         else url.searchParams.set('revision', context().revision);
@@ -246,7 +261,8 @@
             if ((view && !sameScope(scope, context())) || /^[a-f0-9]{40}$/i.test(String(commit))) layoutRevision = null;
             var next = await api.load(scope, commit, loader.signal, layout, layoutRevision, selectedView);
             if (ticket !== generation || !active) return false;
-            if (!view || !sameScope(view.document.context, next.document.context)) {
+            var confirmed = preserveWorkspacePin(next.document.context, scope);
+            if (!view || !sameScope(view.document.context, confirmed)) {
                 tree.reset();
                 directory?.reset();
                 el('editorSearch').value = '';
@@ -273,7 +289,7 @@
         window.TaxonomyArchitectureWorkflow?.showEditor(c,adoptionPanel.getSource());
         var contextLabel = view.document.source === 'GIT_CHECKPOINT' ? t('editor.selectedVersion', short(c.commit))
             : t('editor.revision', c.revision) + ' · ' + t('editor.lastCheckpoint', short(c.commit));
-        window.TaxonomyAppChrome?.updateContext({architecture:{repositoryId:c.repositoryId, workspaceScopeKey:c.workspaceScopeKey, branch:c.branch, modelStand:contextLabel,commit:c.commit,revision:c.revision}, editable:Boolean(view.mayEdit), source:adoptionPanel.getSource()}, 'working');
+        window.TaxonomyAppChrome?.updateContext({architecture:{repositoryId:c.repositoryId, workspaceId:workspaceId(c), workspaceScopeKey:c.workspaceScopeKey, branch:c.branch, modelStand:contextLabel,commit:c.commit,revision:c.revision}, editable:Boolean(view.mayEdit), source:adoptionPanel.getSource()}, 'working');
         el('editorContext').hidden = Boolean(window.TaxonomyAppChrome);
         el('editorContext').textContent = c.repositoryId + ' / ' + c.workspaceScopeKey + ' / ' + c.branch + ' · ' + contextLabel + ' · ' + c.actor;
         // The overview must capture the identity just published by this editor.
@@ -349,7 +365,7 @@
         var language = new URLSearchParams(location.search).get('lang');
         if (language) url.searchParams.set('lang',language);
         ['repositoryId','workspaceScopeKey','branch'].forEach(function (key) { url.searchParams.set(key,c[key]); });
-        url.searchParams.set('workspaceId',c.workspaceScopeKey);
+        url.searchParams.set('workspaceId',workspaceId(c));
         url.searchParams.set('architectureSource','working');
         url.hash = 'architecture';
         el('editorCollaborationLink').value = url.href;
@@ -571,7 +587,8 @@
             causationId: causation || id, rationale: el('editorRationale').value };
     }
     function sameScope(a, b) {
-        return a && b && ['repositoryId', 'workspaceScopeKey', 'branch'].every(function (key) { return a[key] === b[key]; });
+        return a && b && workspaceId(a) === workspaceId(b)
+            && ['repositoryId', 'workspaceScopeKey', 'branch'].every(function (key) { return a[key] === b[key]; });
     }
     function canUndoFocus(item) {
         return view && view.mayEdit && item.accepted && sameScope(item.accepted.context, context()) && item.accepted.context.actor === context().actor;
@@ -593,8 +610,9 @@
             // An uncertain transport result retains both the exact command ID and its successful preview.
             var result = await api.execute(item[key]);
             if (ticket !== generation) return;
+            var confirmed = preserveWorkspacePin(result.context, item[key].context);
             if (undo) focusPanel.undone(item.id); else focusPanel.accepted(item.id, result);
-            var ok = await load(result.context, result.context.revision, true);
+            var ok = await load(confirmed, confirmed.revision, true);
             if (ok) setStatus(t('editor.accepted', result.context.revision));
         } catch (error) {
             if (ticket !== generation) return;
@@ -739,7 +757,8 @@
             pending = null; dialog.close();
             if (selectedView && accepted.change?.changes?.some(function (change) { return change.id === 'view:' + selectedView && change.after == null; })) selectedView = null;
             if (acceptedCommand.kind === 'CREATE_ELEMENT') selected = 'arch-' + acceptedCommand.metadata.commandId;
-            var ok = await load(accepted.context, accepted.context.revision);
+            var confirmed = preserveWorkspacePin(accepted.context, acceptedCommand.context);
+            var ok = await load(confirmed, confirmed.revision);
             if (ok) { setStatus(t('editor.accepted', accepted.context.revision) + ' · ' + t('editor.projection.' + accepted.projectionState)); renderer.focus(); }
         } catch (error) {
             if (ticket !== generation) return;
@@ -803,7 +822,8 @@
         try {
             var workspace = await api.createWorkspace(context());
             selected = null; pending = null;
-            await load({ repositoryId: workspace.sourceRepositoryId, workspaceScopeKey: workspace.workspaceId, branch: workspace.currentBranch }, null);
+            await load({ repositoryId: workspace.sourceRepositoryId, workspaceId: workspace.workspaceId,
+                workspaceScopeKey: workspace.workspaceId, branch: workspace.currentBranch }, null);
             renderer.fit({ initial: true });
         } catch (error) { report(error); }
         finally { busy = false; permissions(); el('editorWorkspace').disabled = false; }
@@ -832,7 +852,7 @@
     function getSource() {
         var result = Object.assign({}, activeSource, view ? context() : null, {kind:'working',element:selected,viewId:selectedView,layout:layout,layoutRevision:layoutRevision});
         if (view) {
-            result.workspaceId = context().workspaceScopeKey === '__shared__' ? '' : context().workspaceScopeKey;
+            result.workspaceId = workspaceId(context());
             if (view.document.source === 'GIT_CHECKPOINT') result.revision = null;
             else result.commit = null;
         }
@@ -845,6 +865,8 @@
         if (view && !source.commit && String(source.revision ?? '') !== String(current.revision ?? '')) return false;
         if ((source.commit || null) !== (current.commit || null)) return false;
         if ((source.viewId || null) !== (current.viewId || null)) return false;
+        var requestedWorkspace = workspaceId(source);
+        if (requestedWorkspace !== undefined && requestedWorkspace !== current.workspaceId) return false;
         return ['repositoryId','workspaceScopeKey','branch','commit','revision','viewId','layout','layoutRevision'].every(function (key) {
             return source[key] === undefined || String(source[key] ?? '') === String(current[key] ?? '');
         });

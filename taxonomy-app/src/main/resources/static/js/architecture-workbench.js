@@ -447,7 +447,7 @@
             requirementId:data.requirementId,requirementKey:data.requirementKey,requirementTitle:data.requirementTitle,
             snapshotId:data.snapshotId,requirementVersionId:data.exportProvenance?.requirementVersionId,
             requirementVersion:data.requirementVersionNumber,repositoryId:data.exportProvenance?.repositoryId,
-            workspaceScopeKey:data.workspaceId || '__shared__',branch:data.branchName},editable:false}, 'snapshot');
+            workspaceId:data.workspaceId ?? '',workspaceScopeKey:data.workspaceId || '__shared__',branch:data.branchName},editable:false}, 'snapshot');
     }
     function render(data, initialState, session) {
         scene = prepareScene(data, t);
@@ -617,15 +617,15 @@
             if (normalized[key] !== undefined && normalized[key] !== null) normalized[key] = String(normalized[key]);
         });
         if (source.workspaceScopeKey !== undefined || source.workspaceId !== undefined) {
-            const workspace = source.workspaceScopeKey || source.workspaceId || '__shared__';
-            normalized.workspaceScopeKey = String(workspace);
-            normalized.workspaceId = workspace === '__shared__' ? '' : String(workspace);
+            const scopeKey = source.workspaceScopeKey || source.workspaceId || '__shared__';
+            normalized.workspaceScopeKey = String(scopeKey);
+            normalized.workspaceId = String(source.workspaceId ?? (scopeKey === '__shared__' ? '' : scopeKey));
         }
         return normalized;
     }
     function keyForSource(source) {
         const normalized = normalizeSource(source);
-        return JSON.stringify(['repositoryId','workspaceScopeKey','branch','projectId','snapshotId'].map(function(key) { return normalized[key] ?? ''; }));
+        return JSON.stringify(['repositoryId','workspaceId','branch','projectId','snapshotId'].map(function(key) { return normalized[key] ?? null; }));
     }
     function getSource() {
         const data = projection;

@@ -201,8 +201,8 @@
                 var name = 'source' + key.charAt(0).toUpperCase() + key.slice(1), value = state.source?.[key];
                 if (present(value)) target.searchParams.set(name, value); else target.searchParams.delete(name);
             });
-            if (state.source?.workspaceScopeKey) target.searchParams.set('sourceWorkspaceId', state.source.workspaceScopeKey === '__shared__' ? '' : state.source.workspaceScopeKey);
-            else if (state.source?.workspaceId !== undefined) target.searchParams.set('sourceWorkspaceId', state.source.workspaceId || '');
+            if (state.source?.workspaceId !== undefined) target.searchParams.set('sourceWorkspaceId', state.source.workspaceId ?? '');
+            else if (state.source?.workspaceScopeKey) target.searchParams.set('sourceWorkspaceId', state.source.workspaceScopeKey === '__shared__' ? '' : state.source.workspaceScopeKey);
             else target.searchParams.delete('sourceWorkspaceId');
         }
         target.searchParams.set('lang', window.TaxonomyI18n.getLocale());

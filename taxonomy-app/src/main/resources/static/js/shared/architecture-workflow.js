@@ -44,13 +44,17 @@
         }
         return value;
     }
+    // The legacy display key names central only when the source omits its actual workspace ID.
+    function workspaceId(context) {
+        return context.workspaceId !== undefined ? (context.workspaceId ?? '')
+            : context.workspaceScopeKey === '__shared__' ? '' : context.workspaceScopeKey;
+    }
     function setScope(context) {
         if (!context) return;
         var previous = [repositoryPin, branchPin, workspacePin];
         if (context.repositoryId !== undefined) repositoryPin = context.repositoryId;
         if (context.branch !== undefined) branchPin = context.branch;
-        if (context.workspaceScopeKey !== undefined) workspacePin = context.workspaceScopeKey === '__shared__' ? '' : context.workspaceScopeKey;
-        else if (context.workspaceId !== undefined) workspacePin = context.workspaceId;
+        if (workspaceId(context) !== undefined) workspacePin = workspaceId(context);
         if (previous[0] !== repositoryPin || previous[1] !== branchPin || previous[2] !== workspacePin) initialStatusScope = false;
         decorateLinks();
     }
@@ -58,8 +62,7 @@
         context=context || {};
         var previous = [repositoryPin, branchPin, workspacePin];
         repositoryPin=context.repositoryId ?? null;branchPin=context.branch ?? null;
-        workspacePin=context.workspaceScopeKey !== undefined ? (context.workspaceScopeKey==='__shared__'?'':context.workspaceScopeKey)
-            : context.workspaceId ?? null;
+        workspacePin=workspaceId(context) ?? null;
         if (previous[0] !== repositoryPin || previous[1] !== branchPin || previous[2] !== workspacePin) initialStatusScope = false;
         decorateLinks();
     }
@@ -72,7 +75,7 @@
         })) return false;
         var workspace = query.get('workspaceId'), scope = query.get('workspaceScopeKey');
         return (workspace === null || workspace === '' || workspace.trim() === workspace)
-            && (workspace === null || scope === null || workspace === (scope === '__shared__' ? '' : scope));
+            && (workspace === null || scope === null || (workspace || '__shared__') === scope);
     }
     function statusOptions(target, input, options) {
         var request = typeof Request === 'function' && input instanceof Request;
@@ -134,7 +137,7 @@
         if (!source?.repositoryId || !source.workspaceScopeKey || !source.branch) return null;
         return pathUrl('/architecture/editor', {
             repositoryId: source.repositoryId,
-            workspaceId: source.workspaceScopeKey === '__shared__' ? '' : source.workspaceScopeKey,
+            workspaceId: workspaceId(source),
             workspaceScopeKey: source.workspaceScopeKey,
             branch: source.branch,
             ...version,
@@ -184,7 +187,7 @@
             if (!positive(source.projectId) || !positive(source.requirementId) || !snapshotId(source.snapshotId)
                     || !source.repositoryId || !source.branch || !source.workspaceScopeKey) return null;
             return sourceLinks(source.projectId,source.requirementId,source.snapshotId,
-                source.workspaceScopeKey === '__shared__' ? '' : source.workspaceScopeKey,source.repositoryId,source.branch);
+                workspaceId(source),source.repositoryId,source.branch);
         }
         var current = new URLSearchParams(window.location.search);
         var project = current.get('sourceProjectId'), requirement = current.get('sourceRequirementId');
@@ -228,8 +231,8 @@
         root.hidden = false;
     }
     function showEditor(context, source) {
-        if (context && context.workspaceScopeKey !== undefined) {
-            workspacePin = context.workspaceScopeKey === '__shared__' ? '' : context.workspaceScopeKey;
+        if (context && workspaceId(context) !== undefined) {
+            workspacePin = workspaceId(context);
             repositoryPin = context.repositoryId; branchPin = context.branch;
         }
         decorateLinks();

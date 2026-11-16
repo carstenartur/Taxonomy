@@ -21,9 +21,9 @@ window.TaxonomyPortfolioApi = (function () {
         const headers = {};
         const policy = Object.assign({}, options);
         if (scope.workspaceScopeKey !== undefined || scope.workspaceId !== undefined) {
-            const workspace = scope.workspaceScopeKey || scope.workspaceId || '__shared__';
-            const workspaceId = workspace === '__shared__' ? '' : String(workspace);
-            target.searchParams.set('workspaceScopeKey',workspace === '__shared__' ? '__shared__' : String(workspace));
+            const scopeKey = scope.workspaceScopeKey || scope.workspaceId || '__shared__';
+            const workspaceId = String(scope.workspaceId ?? (scopeKey === '__shared__' ? '' : scopeKey));
+            target.searchParams.set('workspaceScopeKey', scopeKey);
             target.searchParams.set('workspaceId',workspaceId);
             headers['X-Taxonomy-Workspace-Id'] = workspaceId;
             policy.pinnedWorkspaceId = workspaceId;

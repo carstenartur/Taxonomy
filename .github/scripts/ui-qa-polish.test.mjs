@@ -11,7 +11,7 @@ const [source, sharedSource] = await Promise.all([
 
 // Mount the production adapter and observe its real shared-controller callback.
 // Drawing is outside this localization contract; preparation and layout stay real.
-async function workbench(messages, count) {
+async function workbench(messages, count, selection = { projectId:'1', snapshotId:'quantity-test' }) {
     const elements = new Map();
     function element() {
         return { textContent: '', value: '', dataset: {}, style: {},
@@ -33,16 +33,18 @@ async function workbench(messages, count) {
         relationType: 'SUPPORTS', sourceX: 330 + index * 300, sourceY: 143,
         targetX: 100 + ((index + 1) % count) * 300, targetY: 143
     }));
+    const requests = [];
     const context = vm.createContext({
         document: { getElementById: () => null, addEventListener() {}, dispatchEvent() {}, createElement: element },
         window: { TaxonomyI18n: {
             t: key => { assert.ok(key in messages, `missing translation: ${key}`); return messages[key]; },
             ready: () => Promise.resolve(), getLocale: () => 'en', formatEnum: value => value || ''
         } },
-        ArchitectureWorkbenchApi: { load: async () => ({
-            projectId: '1', snapshotId: 'quantity-test', elements: {}, relations: {}, warnings: [],
-            scene: { title: 'workbench.ui.elements', width: 1000, height: 420, nodes, edges }
-        }) },
+        ArchitectureWorkbenchApi: { load: async (projectId, snapshotId, source) => {
+            requests.push(source.workspaceId);
+            return { projectId, snapshotId, workspaceId:source.workspaceId, elements: {}, relations: {}, warnings: [],
+                scene: { title: 'workbench.ui.elements', width: 1000, height: 420, nodes, edges } };
+        } },
         AbortController, CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options?.detail; } }
     });
     vm.runInContext(sharedSource, context);
@@ -56,13 +58,13 @@ async function workbench(messages, count) {
             options.onChange({ state, model, matches: [] });
         };
         return { render(scene, initialState) { state = initialState; publish(scene); },
-            getState: () => ({ ...state }), fit() {}, captureViewport: () => ({ x: 0, y: 0, k: 1 }) };
+            getState: () => ({ ...state }), fit() {}, setActive() {}, destroy() {}, restoreSession() {},
+            captureSession: () => ({state}), captureViewport: () => ({ x: 0, y: 0, k: 1 }) };
     };
     vm.runInContext(source, context);
     const adapter = context.window.TaxonomyArchitectureSnapshot.mount(root);
-    assert.equal(await adapter.activate({ projectId: '1', snapshotId: 'quantity-test' }), true,
-        elements.get('architectureAlert')?.textContent);
-    return { elements, empty() { publish({ nodes: [], edges: [] }); } };
+    assert.equal(await adapter.activate(selection), true, elements.get('architectureAlert')?.textContent);
+    return { elements, adapter, requests, empty() { publish({ nodes: [], edges: [] }); } };
 }
 
 for (const [locale, suffix, expected] of [
@@ -73,6 +75,18 @@ for (const [locale, suffix, expected] of [
     const messages = Object.fromEntries(bundle.split(/\r?\n/)
         .filter(line => line.startsWith('workbench.ui.'))
         .map(line => [line.slice(0, line.indexOf('=')), line.slice(line.indexOf('=') + 1)]));
+    test(`${locale}: a retained snapshot is reused only within its actual workspace`, async () => {
+        const central = {projectId:'1', snapshotId:'quantity-test', repositoryId:'repo', branch:'draft',
+            workspaceScopeKey:'__shared__', workspaceId:''};
+        const privateCopy = {...central, workspaceId:'__shared__'};
+        const { adapter, requests } = await workbench(messages, 1, privateCopy);
+        assert.equal(adapter.getData().workspaceId, '__shared__');
+        assert.equal(await adapter.activate(central), true);
+        assert.equal(adapter.getData().workspaceId, '');
+        assert.equal(await adapter.activate(privateCopy), true);
+        assert.equal(adapter.getData().workspaceId, '__shared__');
+        assert.deepEqual(requests, ['__shared__', '']);
+    });
     for (const count of [0, 1, 2, 11]) {
         test(`${locale}: Workbench quantities use the correct form for ${count}`, async () => {
             const mounted = await workbench(messages, count);

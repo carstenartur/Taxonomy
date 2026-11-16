@@ -36,6 +36,38 @@ test('explicit committed visible B is captured after A suspends and rejects stal
 test('an unsuspended disagreeing lifecycle cannot certify a different visible model',async()=>{
     const f=fixture();f.setVisible(B);await assert.rejects(()=>f.api.captureContext());
 });
+test('an exact private graph pin survives the shared display key', async () => {
+    const context = vm.createContext({URL, URLSearchParams, TaxonomyI18n:{t:key=>key}});
+    const scope = {...A, workspaceScopeKey:'__shared__', workspaceId:'__shared__'};
+    const calls = [];
+    context.window = context;
+    context.TaxonomyAppChrome = {getContext:() => ({architecture:scope})};
+    context.TaxonomyApiClient = {getJson:async (url, options) => {calls.push({url,options});}};
+    vm.runInContext(src('api/analysis-api.js'), context);
+    await context.AnalysisApi.graphUpstream('UA-1574', 2, await context.AnalysisApi.captureContext());
+    assert.equal(calls[0].options.pinnedWorkspaceId, '__shared__');
+    assert.equal(new URL(calls[0].url,'https://example.test').searchParams.get('commitId'), scope.commit);
+});
+test('a graph scope with an explicit null workspace pins central without a display key', async () => {
+    const context = vm.createContext({URL, URLSearchParams, TaxonomyI18n:{t:key=>key}});
+    const calls = [];
+    context.window = context;
+    context.TaxonomyApiClient = {getJson:async (url, options) => {calls.push({url,options});}};
+    vm.runInContext(src('api/analysis-api.js'), context);
+    await context.AnalysisApi.graphUpstream('UA-1574', 2, {
+        repositoryId:A.repositoryId, workspaceId:null, branch:A.branch, commit:A.commit
+    });
+    assert.equal(calls[0].options.pinnedWorkspaceId, '');
+    assert.equal(new URL(calls[0].url,'https://example.test').searchParams.get('workspaceId'), '');
+});
+test('current graph evidence distinguishes central from the same-named private workspace', async () => {
+    const app = fixture();
+    app.suspend();
+    const scope = {...A, workspaceScopeKey:'__shared__', workspaceId:'__shared__'};
+    app.setVisible(scope);
+    assert.equal(await app.context.TaxonomyGraph.isCurrentEvidence(scope, {...scope, workspaceId:null}), false);
+    assert.equal(await app.context.TaxonomyGraph.isCurrentEvidence(scope, {...scope}), true);
+});
 test('lifecycle exposes only the active selected context and hides it on suspend',async()=>{
     const context=vm.createContext({URL,URLSearchParams,location:new URL('https://fixture.test/'),
         document:{getElementById:()=>null,addEventListener(){}},TaxonomyI18n:{ready:async()=>{},t:key=>key},

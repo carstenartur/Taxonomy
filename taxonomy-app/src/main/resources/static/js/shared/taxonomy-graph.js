@@ -95,8 +95,8 @@
     function evidenceTuple(value) {
         if (!value) return null;
         var workspace = Object.hasOwn(value, 'workspaceId')
-            ? value.workspaceId || '__shared__' : value.workspaceScopeKey;
-        if (value.workspaceScopeKey && value.workspaceScopeKey !== workspace) return null;
+            ? value.workspaceId ?? '' : value.workspaceScopeKey === '__shared__' ? '' : value.workspaceScopeKey;
+        if (value.workspaceScopeKey && value.workspaceScopeKey !== (workspace || '__shared__')) return null;
         return [value.repositoryId, workspace, value.branch, value.commitId || value.commit];
     }
 
@@ -105,7 +105,8 @@
             var current = evidenceTuple(await AnalysisApi.captureContext());
             var expected = evidenceTuple(context), returned = evidenceTuple(evidence);
             return Boolean(current && expected && returned && expected.every(function (value, index) {
-                return typeof value === 'string' && value.length > 0 && value === current[index] && value === returned[index];
+                return typeof value === 'string' && (index === 1 || value.length > 0)
+                    && value === current[index] && value === returned[index];
             }));
         } catch (error) { return false; }
     }

@@ -2,11 +2,14 @@
 window.ArchitectureWorkbenchApi = (function () {
     'use strict';
 
+    function workspaceId(source) {
+        return source.workspaceId ?? (source.workspaceScopeKey === '__shared__' ? '' : source.workspaceScopeKey);
+    }
+
     function sourceOptions(signal, source) {
         const options = {signal: signal};
         if (source && (source.workspaceScopeKey !== undefined || source.workspaceId !== undefined)) {
-            const workspace = source.workspaceScopeKey || source.workspaceId || '__shared__';
-            options.pinnedWorkspaceId = workspace === '__shared__' ? '' : String(workspace);
+            options.pinnedWorkspaceId = String(workspaceId(source) ?? '');
         }
         return options;
     }
@@ -31,7 +34,9 @@ window.ArchitectureWorkbenchApi = (function () {
         if (source) {
             const target = new URL(path, window.location.href);
             ['repositoryId','workspaceScopeKey','workspaceId','branch'].forEach(function(key){if(source[key]!==undefined && source[key]!==null)target.searchParams.set(key,source[key]);});
-            if(source.workspaceScopeKey)target.searchParams.set('workspaceId',source.workspaceScopeKey==='__shared__'?'':source.workspaceScopeKey);
+            if (source.workspaceScopeKey || source.workspaceId !== undefined) {
+                target.searchParams.set('workspaceId', workspaceId(source) ?? '');
+            }
             return target.pathname+target.search;
         }
         return window.TaxonomyArchitectureWorkflow?.scopeUrl(path) || path;

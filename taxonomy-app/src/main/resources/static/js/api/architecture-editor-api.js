@@ -2,14 +2,17 @@
 window.ArchitectureEditorApi = (function () {
     'use strict';
     var base = '/api/architecture/editor';
+    function workspaceId(context) {
+        return context?.workspaceId !== undefined ? (context.workspaceId ?? '')
+            : context?.workspaceScopeKey === '__shared__' ? '' : context?.workspaceScopeKey;
+    }
     function query(context, revision, layout, layoutRevision, viewId) {
         var params = new URLSearchParams();
         ['repositoryId', 'workspaceScopeKey', 'branch'].forEach(function (key) {
             if (context && context[key]) params.set(key, context[key]);
         });
-        if (context && context.workspaceScopeKey) {
-            params.set('workspaceId', context.workspaceScopeKey === '__shared__' ? '' : context.workspaceScopeKey);
-        }
+        var workspace = workspaceId(context);
+        if (workspace !== undefined) params.set('workspaceId', workspace);
         if (revision !== null && revision !== undefined) {
             params.set(/^[a-f0-9]{40}$/i.test(String(revision)) ? 'commit' : 'revision', revision);
         }
@@ -28,7 +31,8 @@ window.ArchitectureEditorApi = (function () {
         return base + '.admbw.json?' + params;
     }
     function exactPolicy(context) {
-        return context && context.workspaceScopeKey !== undefined ? {pinnedWorkspaceId:context.workspaceScopeKey === '__shared__' ? '' : context.workspaceScopeKey} : {};
+        var workspace = workspaceId(context);
+        return workspace === undefined ? {} : {pinnedWorkspaceId:workspace};
     }
     function write(path, body, context, policy) {
         var headers = { 'Content-Type': 'application/json' };

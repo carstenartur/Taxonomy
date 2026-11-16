@@ -79,6 +79,7 @@ for (const [operation, change, announce, status, expected] of [
     ['execute', 'pagehide', true, 412, 'ABORTED'],
     ['execute', 'authentication', true, 412, 'ABORTED'],
     ['execute', 'workspaceScopeKey', true, 412, 'ABORTED'],
+    ['execute', 'workspaceId', true, 412, 'ABORTED'],
     ['preview', 'modelStand', false, 412, 'ABORTED'],
     ['previewAdoption', 'branch', true, 200, 'ABORTED']
 ]) test(`${operation} after ${change} change (announced ${announce}, HTTP ${status}) yields ${expected}`, async t => {

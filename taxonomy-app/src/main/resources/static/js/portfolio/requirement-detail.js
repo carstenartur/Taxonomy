@@ -545,7 +545,7 @@
             requirementId:summary.requirementId,requirementKey:summary.requirementKey || (String(summary.requirementId) === String(state.requirement.id) ? state.requirement.requirementKey : null),snapshotId:summary.id,
             requirementVersionId:summary.requirementVersionId,requirementVersion:summary.requirementVersionNumber,
             repositoryId:window.TaxonomyArchitectureWorkflow?.getScope()?.repositoryId,
-            workspaceScopeKey:summary.workspaceId || '__shared__',branch:summary.branchName}});
+            workspaceId:summary.workspaceId ?? '',workspaceScopeKey:summary.workspaceId || '__shared__',branch:summary.branchName}});
         target.classList.add('portfolio-snapshot-detail');
         target.innerHTML = `<div class="d-flex flex-wrap justify-content-between gap-2 align-items-start">`
             + `<div><h2 class="h4 mb-1">${escapeHtml(t('snapshot'))} v${summary.requirementVersionNumber}</h2>`
@@ -1094,7 +1094,8 @@
         const context=saved.publication?.context || {};
         const url=new URL(applicationUrl('/projects/'+saved.projectId+'/requirements/'+saved.requirementId),window.location.href);
         if(context.repositoryId) url.searchParams.set('repositoryId',context.repositoryId);
-        if(context.workspaceScopeKey!==undefined) url.searchParams.set('workspaceId',context.workspaceScopeKey==='__shared__'?'':context.workspaceScopeKey);
+        if (context.workspaceId !== undefined) url.searchParams.set('workspaceId', context.workspaceId ?? '');
+        else if (context.workspaceScopeKey !== undefined) url.searchParams.set('workspaceId', context.workspaceScopeKey === '__shared__' ? '' : context.workspaceScopeKey);
         if(context.branch) url.searchParams.set('branch',context.branch);link.href=url.href;
         document.getElementById('detailInfo').appendChild(link);
     }
