@@ -238,12 +238,12 @@ Im **Versionsverlauf** wählen Sie den gewünschten Commit und klicken Sie auf d
 <summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
 ```
-POST /api/dsl/cherry-pick?commitId={fullCommitSha}&targetBranch=draft
+POST /api/dsl/cherry-pick?commitId={fullCommitSha}&targetBranch=draft&expectedTargetHead={reviewedTargetSha}
 ```
 
 </details>
 
-Die Operation verwendet intern Drei-Wege-Merge-Logik. Verwenden Sie zuerst den Vorschau-Endpunkt, um auf Konflikte zu prüfen (siehe [Konflikterkennung](#konflikterkennung)).
+Übernehmen Sie die vollständige SHA aus `targetCommit` der [Cherry-Pick-Vorschau](#cherry-pick-vorschau) als `expectedTargetHead`. Wenn sich der Zielbranch inzwischen geändert hat, liefert der Aufruf HTTP 409. Öffnen Sie vor dem nächsten Versuch eine neue Vorschau.
 
 ---
 

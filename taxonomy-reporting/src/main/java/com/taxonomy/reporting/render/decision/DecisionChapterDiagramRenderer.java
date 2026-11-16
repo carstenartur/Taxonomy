@@ -22,6 +22,9 @@ import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.function.BiConsumer;
+import com.taxonomy.dto.TaxonomyResponsibilityLookup.Assignment;
 
 /**
  * Deterministically renders one-level parent/children decision diagrams.
@@ -51,10 +54,17 @@ public class DecisionChapterDiagramRenderer {
             int panelCount,
             byte[] png,
             String svg,
-            String altText) {
+            String altText, String responsibilityCaption) {
+        public DiagramPanel(int panelNumber, int panelCount, byte[] png, String svg, String altText) {
+            this(panelNumber, panelCount, png, svg, altText, "");
+        }
     }
 
     public List<DiagramPanel> render(DecisionChapter chapter, String languageTag) {
+        return render(chapter, languageTag, Map.of());
+    }
+
+    public List<DiagramPanel> render(DecisionChapter chapter, String languageTag, Map<String, Assignment> owners) {
         DecisionReportLabels labels = new DecisionReportLabels(languageTag);
         List<ChildDecision> children = chapter.children();
         int panelCount = Math.max(1,
@@ -65,12 +75,24 @@ public class DecisionChapterDiagramRenderer {
             int to = Math.min(children.size(), from + CHILDREN_PER_PANEL);
             List<ChildDecision> panelChildren = children.subList(from, to);
             String altText = altText(chapter, panelChildren, labels, panel + 1, panelCount);
+            var unitNames = new ArrayList<String>();
+            if (!owners.isEmpty()) {
+                var codes = new ArrayList<String>();
+                codes.add(chapter.parentCode());
+                panelChildren.forEach(child -> codes.add(child.code()));
+                for (String code : codes) {
+                    var owner = owners.get(code);
+                    if (owner != null) unitNames.add(code + " · " + owner.name());
+                }
+            }
+            String caption = unitNames.isEmpty() ? "" : labels.responsibility() + ": " + String.join("; ", unitNames);
+            if (!caption.isEmpty()) altText += " " + caption;
             panels.add(new DiagramPanel(
                     panel + 1,
                     panelCount,
-                    renderPng(chapter, panelChildren, labels, panel + 1, panelCount),
-                    renderSvg(chapter, panelChildren, labels, panel + 1, panelCount),
-                    altText));
+                    renderPng(chapter, panelChildren, labels, panel + 1, panelCount, owners),
+                    renderSvg(chapter, panelChildren, labels, panel + 1, panelCount, owners, altText),
+                    altText, caption));
         }
         return List.copyOf(panels);
     }
@@ -80,7 +102,7 @@ public class DecisionChapterDiagramRenderer {
             List<ChildDecision> children,
             DecisionReportLabels labels,
             int panelNumber,
-            int panelCount) {
+            int panelCount, Map<String, Assignment> owners) {
         BufferedImage image = new BufferedImage(WIDTH, height(children.size()), BufferedImage.TYPE_INT_ARGB);
         Graphics2D graphics = image.createGraphics();
         try {
@@ -131,6 +153,10 @@ public class DecisionChapterDiagramRenderer {
                 drawChild(graphics, cards.get(index), children.get(index), labels);
             }
 
+            markUnits(parentCard, cards, chapter, children, owners, (card, owner) -> {
+                graphics.setColor(Color.decode(owner.color()));
+                graphics.fillRoundRect(card.x + 4, card.y + 8, 5, card.height - 16, 4, 4);
+            });
             graphics.setColor(GRAY_600);
             graphics.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 15));
             String legend = labels.german()
@@ -239,6 +265,17 @@ public class DecisionChapterDiagramRenderer {
         return result;
     }
 
+    private static void markUnits(Card parent, List<Card> cards, DecisionChapter chapter, List<ChildDecision> children,
+            Map<String, Assignment> owners, BiConsumer<Card, Assignment> paint) {
+        if (owners.isEmpty()) return;
+        var parentOwner = owners.get(chapter.parentCode());
+        if (parentOwner != null) paint.accept(parent, parentOwner);
+        for (int i = 0; i < children.size(); i++) {
+            var owner = owners.get(children.get(i).code());
+            if (owner != null) paint.accept(cards.get(i), owner);
+        }
+    }
+
     private CardStyle style(ChildDecision child) {
         if (child.disposition() == Disposition.NOT_EVALUATED) {
             return new CardStyle(WHITE, GRAY_600, GRAY_900, GRAY_600, true);
@@ -257,7 +294,7 @@ public class DecisionChapterDiagramRenderer {
             List<ChildDecision> children,
             DecisionReportLabels labels,
             int panelNumber,
-            int panelCount) {
+            int panelCount, Map<String, Assignment> owners, String altText) {
         String idPrefix = "decision-chapter-" + chapter.number()
                 + "-panel-" + panelNumber;
         String titleId = idPrefix + "-title";
@@ -272,8 +309,7 @@ public class DecisionChapterDiagramRenderer {
                 .append(xml(labels.parentNode() + " " + chapter.parentCode()))
                 .append("</title>");
         svg.append("<desc id=\"").append(descriptionId).append("\">")
-                .append(xml(altText(
-                        chapter, children, labels, panelNumber, panelCount)))
+                .append(xml(altText))
                 .append("</desc>");
         svg.append("<rect width=\"1200\" height=\"").append(height(children.size())).append("\" fill=\"#ffffff\"/>");
         String heading = labels.parentNode() + " " + chapter.parentCode()
@@ -340,6 +376,10 @@ public class DecisionChapterDiagramRenderer {
                 ? "Absoluter Relevanzwert · lokaler Anteil am Vaterwert · Status des Pfades"
                 : "Absolute relevance score · local share of parent score · path status";
         svg.append(text(50, height(children.size()) - 30, legend, 15, false, "#64707c", "start"));
+        markUnits(parent, cards, chapter, children, owners, (card, owner) -> svg
+                .append("<rect class=\"responsibility-marker\" x=\"").append(card.x + 4)
+                .append("\" y=\"").append(card.y + 8).append("\" width=\"5\" height=\"").append(card.height - 16)
+                .append("\" rx=\"2\" fill=\"").append(owner.color()).append("\"><title>").append(xml(owner.name())).append("</title></rect>"));
         svg.append("</svg>");
         return svg.toString();
     }

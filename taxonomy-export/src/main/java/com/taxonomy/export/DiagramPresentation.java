@@ -1,6 +1,7 @@
 package com.taxonomy.export;
 
 import com.taxonomy.diagram.DiagramScene;
+import com.taxonomy.dto.TaxonomyResponsibilityLookup.Assignment;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
@@ -12,6 +13,13 @@ import java.util.TreeMap;
 /** Presentation only: colors and counts never imply model acceptance or change graph evidence. */
 public final class DiagramPresentation {
     private DiagramPresentation() { }
+
+    static List<String> responsibilityDetails(Assignment assignment, DiagramLanguage language) {
+        if (assignment == null) return List.of();
+        return List.of(
+                language.text("Responsible unit: ", "Zuständige Einheit: ") + assignment.name() + " (" + assignment.unitId() + ")",
+                language.text("Assignment source: ", "Quelle der Zuweisung: ") + assignment.sourceId());
+    }
 
     public static String fill(String type) {
         return switch (layer(type)) {

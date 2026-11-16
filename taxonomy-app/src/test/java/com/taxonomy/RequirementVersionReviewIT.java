@@ -8,6 +8,8 @@ import org.junit.jupiter.api.io.TempDir;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Dimension;
 import org.openqa.selenium.Keys;
+import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -168,5 +170,39 @@ class RequirementVersionReviewIT {
         assertThat(page.driver().findElements(By.cssSelector("#versionList .active"))).hasSize(1);
         assertThat(page.driver().findElement(By.id("versionDetail")).getDomProperty("textContent"))
                 .contains("Original").doesNotContain("Revised");
+    }
+
+    @Test void reopenedAnalysisLinksToTheOriginalTextAndModelAfterBothAdvance() {
+        var fixture = new PortfolioRequirementFixture(page);
+        fixture.setVersions("Record the original pump readings.", "Record the revised pump readings.");
+        fixture.updateBaseline("Record only the latest readings.", "Pump control");
+        String originalCommit = "a".repeat(40);
+        var oldSnapshot = Map.of("id", "historic-impact", "projectId", 1, "requirementId", 2,
+                "requirementVersionId", 11, "requirementVersionNumber", 1, "status", "SUCCESS",
+                "workspaceId", "qa-copy", "branchName", "draft", "commitSha", originalCommit);
+        var newSnapshot = Map.of("id", "latest-impact", "projectId", 1, "requirementId", 2,
+                "requirementVersionId", 13, "requirementVersionNumber", 3, "status", "SUCCESS",
+                "workspaceId", "qa-copy", "branchName", "draft", "commitSha", "b".repeat(40));
+        page.route("GET", PortfolioRequirementFixture.REQUIREMENT + "/snapshots", request ->
+                PortfolioClientTestPage.json(200, List.of(newSnapshot, oldSnapshot)));
+        page.route("GET", PortfolioRequirementFixture.ROOT + "/snapshots/historic-impact", request ->
+                PortfolioClientTestPage.json(200, Map.of("summary", oldSnapshot, "analysis", Map.of("modelBinding",
+                        Map.of("repositoryId", "control-architecture", "workspaceScopeKey", "qa-copy",
+                                "branch", "draft", "commit", originalCommit, "modelSource", "GIT_CHECKPOINT")))));
+        fixture.open("de", "&snapshot=historic-impact");
+        fixture.click("analyses-tab");
+
+        var evidence = fixture.wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("snapshotImpactEvidence")));
+        var model = evidence.findElement(By.cssSelector("a.snapshot-impact-model"));
+        var link = UriComponentsBuilder.fromUriString(model.getDomAttribute("href")).build();
+        assertThat(link.getQueryParams().toSingleValueMap())
+                .containsEntry("repositoryId", "control-architecture").containsEntry("workspaceScopeKey", "qa-copy")
+                .containsEntry("branch", "draft").containsEntry("commit", originalCommit).doesNotContainKey("revision");
+        fixture.click(By.cssSelector("#snapshotImpactEvidence [data-snapshot-version='11']"));
+        fixture.wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("versionDetail")));
+        assertThat(page.driver().findElement(By.id("versionDetail")).getText())
+                .contains("Record the original pump readings.").doesNotContain("Record only the latest readings.");
+        assertThat(page.driver().getCurrentUrl()).contains("snapshot=historic-impact", "repositoryId=control-architecture",
+                "workspaceScopeKey=qa-copy", "branch=draft");
     }
 }

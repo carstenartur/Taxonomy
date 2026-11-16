@@ -20,7 +20,26 @@ public class AnalysisResult {
 
     private AnalysisModelBinding modelBinding;
     public AnalysisModelBinding getModelBinding() { return modelBinding; }
-    public void setModelBinding(AnalysisModelBinding value) { modelBinding = value; }
+    public void setModelBinding(AnalysisModelBinding value) {
+        modelBinding = value;
+        attachResponsibilities();
+    }
+
+    /** Affected units are derived only from comparable positive assessments in the admitted scope. */
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY)
+    public Map<String, TaxonomyResponsibilityLookup.Assignment> getMatchedResponsibilities() {
+        if (modelBinding == null || modelBinding.responsibilities().isEmpty()) return Map.of();
+        var matched = new LinkedHashMap<String, TaxonomyResponsibilityLookup.Assignment>();
+        getScores().forEach((code, score) -> {
+            if (score <= 0 || modelBinding.rootCodes().contains(code)) return;
+            var assignment = modelBinding.responsibilities().get(code);
+            var assessment = analysisCoverage == null ? null : analysisCoverage.nodes().get(code);
+            if (assignment != null && (assessment == null || assessment.state() == AnalysisCoverage.State.RELEVANT))
+                matched.put(code, assignment);
+        });
+        return matched;
+    }
 
     private AnalysisScope analysisScope = AnalysisScope.full();
     public AnalysisScope getAnalysisScope() { return analysisScope; }
@@ -329,7 +348,20 @@ public class AnalysisResult {
     public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
 
     public RequirementArchitectureView getArchitectureView() { return architectureView; }
-    public void setArchitectureView(RequirementArchitectureView architectureView) { this.architectureView = architectureView; }
+    public void setArchitectureView(RequirementArchitectureView architectureView) {
+        this.architectureView = architectureView;
+        attachResponsibilities();
+    }
+
+    private void attachResponsibilities() {
+        if (modelBinding == null || modelBinding.responsibilities().isEmpty() || architectureView == null
+                || architectureView.getIncludedElements() == null) return;
+        architectureView.getIncludedElements().forEach(element -> {
+            if (element != null && element.getNodeCode() != null) {
+                element.setResponsibility(modelBinding.responsibilities().get(element.getNodeCode()));
+            }
+        });
+    }
 
     public List<TaxonomyDiscrepancy> getDiscrepancies() { return discrepancies; }
     public void setDiscrepancies(List<TaxonomyDiscrepancy> discrepancies) {

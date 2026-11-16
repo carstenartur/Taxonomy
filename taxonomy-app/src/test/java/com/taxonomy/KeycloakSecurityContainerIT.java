@@ -63,6 +63,7 @@ class KeycloakSecurityContainerIT {
     private static final String ISSUER = KEYCLOAK_ORIGIN + "/realms/" + REALM;
     private static final String CLIENT_ID = "taxonomy-app";
     private static final String CLIENT_SECRET = "taxonomy-test-secret";
+    private static final String PROJECTS_PATH = "/projects";
     private static final String GIT_PROPOSAL_REVIEW_PATH =
             "/api/architecture/proposals/1/accept";
     private static final String KEYCLOAK_IMAGE = System.getProperty(
@@ -102,7 +103,7 @@ class KeycloakSecurityContainerIT {
         malformedRoleClaimToken = passwordToken(
                 "taxonomy-malformed-claims", "taxonomy-malformed-secret", "user", "user");
 
-        browserSession = ContainerTestUtils.startBrowser(network);
+        browserSession = ContainerTestUtils.startBrowser(network, "--headless=new");
         driver = browserSession.driver();
         driver.manage().window().setSize(new org.openqa.selenium.Dimension(1400, 900));
     }
@@ -295,21 +296,26 @@ class KeycloakSecurityContainerIT {
                 Map.of("Cookie", sessionCookie, csrfHeader, csrfToken));
         assertThat(withCsrf.statusCode()).isEqualTo(400);
 
-        ((JavascriptExecutor) driver).executeScript("""
-                const form = document.createElement('form');
-                form.method = 'post';
-                form.action = '/logout';
-                const csrf = document.createElement('input');
-                csrf.type = 'hidden';
-                csrf.name = '_csrf';
-                csrf.value = arguments[0];
-                form.appendChild(csrf);
-                document.body.appendChild(form);
-                form.submit();
-                """, csrfToken);
-
-        new WebDriverWait(driver, Duration.ofSeconds(30))
-                .until(ExpectedConditions.visibilityOfElementLocated(By.id("username")));
+        var wait = new WebDriverWait(driver, Duration.ofSeconds(30));
+        // The Projects heading renders while the initial portfolio load still covers the toolbar.
+        wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("portfolioBusy")));
+        WebElement summary = wait.until(ExpectedConditions.presenceOfElementLocated(
+                By.cssSelector("#applicationAccount > summary")));
+        // Exercise the actual disclosure and form in the OIDC flow. The application-chrome
+        // browser contract covers delivery of trusted mouse and keyboard input.
+        var browser = (JavascriptExecutor) driver;
+        browser.executeScript("arguments[0].click();", summary);
+        assertThat(driver.findElement(By.id("applicationAccount")).getDomProperty("open"))
+                .as("The account disclosure opens")
+                .isEqualTo("true");
+        WebElement signOut = wait.until(ExpectedConditions.elementToBeClickable(
+                By.cssSelector("#applicationLogoutForm button")));
+        assertThat(driver.findElement(By.id("applicationLogoutForm")).getDomAttribute("action"))
+                .isEqualTo("/logout");
+        assertThat(signOut.getAccessibleName()).isEqualTo("Sign out of single sign-on");
+        assertThat(driver.findElement(By.id("applicationLogoutScope")).isDisplayed()).isTrue();
+        browser.executeScript("arguments[0].click();", signOut);
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("username")));
         assertThat(driver.getCurrentUrl()).startsWith(KEYCLOAK_ORIGIN);
 
         HttpResponse<String> staleSession = appRequest(
@@ -457,17 +463,17 @@ class KeycloakSecurityContainerIT {
     }
 
     private void loginBrowser(String username, String password) {
-        driver.get(ContainerTestUtils.APP_ORIGIN
-                + "/oauth2/authorization/keycloak");
+        // The Projects page exercises the same account menu without the analysis welcome dialog.
+        driver.get(ContainerTestUtils.APP_ORIGIN + PROJECTS_PATH);
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(30));
         WebElement usernameField = wait.until(
                 ExpectedConditions.visibilityOfElementLocated(By.id("username")));
         usernameField.sendKeys(username);
         driver.findElement(By.id("password")).sendKeys(password);
         driver.findElement(By.id("kc-login")).click();
-        wait.until(currentDriver -> currentDriver.getCurrentUrl()
-                .startsWith(ContainerTestUtils.APP_ORIGIN));
-        wait.until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("projectListHeading")));
+        assertThat(driver.getCurrentUrl()).startsWith(ContainerTestUtils.APP_ORIGIN);
+        assertThat(URI.create(driver.getCurrentUrl()).getPath()).isEqualTo(PROJECTS_PATH);
     }
 
     private String browserMeta(String name, String fallback) {

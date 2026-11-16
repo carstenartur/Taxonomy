@@ -27,7 +27,11 @@ window.TaxonomyDslApi = (function () {
         materialize: function (branch, value) { return text('/materialize' + (branch ? '?branch=' + encodeURIComponent(branch) : ''), value, {retries:0}); },
         materializeIncremental: function (after, before) { return post('/materialize-incremental?afterDocId=' + encodeURIComponent(after) + '&beforeDocId=' + encodeURIComponent(before)); },
         createBranch: function (name, from) { return post('/branches?name=' + encodeURIComponent(name) + '&fromBranch=' + encodeURIComponent(from)); },
-        cherryPick: function (commit, branch) { return post('/cherry-pick?commitId=' + encodeURIComponent(commit) + '&targetBranch=' + encodeURIComponent(branch)); },
+        cherryPick: function (commit, branch, targetHead) {
+            var query = new URLSearchParams({commitId: commit, targetBranch: branch});
+            if (targetHead) query.set('expectedTargetHead', targetHead);
+            return post('/cherry-pick?' + query);
+        },
         merge: function (from, into) { return post('/merge?fromBranch=' + encodeURIComponent(from) + '&intoBranch=' + encodeURIComponent(into)); },
         parse: function (value, options) { return text('/parse', value, options); },
         validate: function (value, options) { return text('/validate', value, options); },

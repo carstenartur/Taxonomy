@@ -1,17 +1,10 @@
 package com.taxonomy.workspace.service;
 
-import com.taxonomy.dto.ContextHistoryEntry;
-import com.taxonomy.dto.ContextMode;
 import com.taxonomy.dto.ContextRef;
-
-import java.time.Instant;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Deque;
-import java.util.List;
-import java.util.UUID;
 import com.taxonomy.versioning.service.ContextNavigationService;
 import com.taxonomy.versioning.service.RepositoryStateService;
+
+import java.time.Instant;
 
 /**
  * Per-user in-memory workspace state.
@@ -34,13 +27,7 @@ import com.taxonomy.versioning.service.RepositoryStateService;
 public class UserWorkspaceState {
 
     private final String username;
-    private final int maxHistory;
-
-    // Context navigation state
-    private volatile NavigationSelection navigation;
-    private final Deque<ContextHistoryEntry> history = new ArrayDeque<>();
-
-    public record NavigationSelection(ContextRef current, ContextRef origin) {}
+    private final WorkspaceNavigation legacyNavigation;
 
     // Projection tracking (per-workspace freshness)
     private volatile String lastProjectionCommit;
@@ -58,63 +45,18 @@ public class UserWorkspaceState {
 
     UserWorkspaceState(String username, int maxHistory, String branch) {
         this.username = username;
-        this.maxHistory = maxHistory;
-        ContextRef current = new ContextRef(
-                UUID.randomUUID().toString(),
-                branch == null || branch.isBlank() ? "draft" : branch,
-                null,
-                Instant.now(),
-                ContextMode.EDITABLE,
-                null, null, null, null, null, false
-        );
-        this.navigation = new NavigationSelection(current, null);
+        this.legacyNavigation = new WorkspaceNavigation(maxHistory, branch);
     }
 
-    // ── Username ────────────────────────────────────────────────────
+    public String getUsername() { return username; }
 
-    public String getUsername() {
-        return username;
-    }
+    public WorkspaceNavigation legacyNavigation() { return legacyNavigation; }
 
-    // ── Context navigation ──────────────────────────────────────────
+    public ContextRef getCurrentContext() { return legacyNavigation.getCurrentContext(); }
 
-    public ContextRef getCurrentContext() {
-        return navigation.current();
-    }
+    public void setCurrentContext(ContextRef context) { legacyNavigation.setCurrentContext(context); }
 
-    /** Read the current selection and its recorded origin together. */
-    public NavigationSelection getNavigationSelection() {
-        return navigation;
-    }
-
-    public synchronized void setCurrentContext(ContextRef ctx) {
-        ContextRef previous = navigation.current();
-        ContextRef origin = previous.contextId().equals(ctx.originContextId()) ? previous : null;
-        this.navigation = new NavigationSelection(ctx, origin);
-    }
-
-    public List<ContextHistoryEntry> getHistory() {
-        return new ArrayList<>(history);
-    }
-
-    public void addHistoryEntry(ContextHistoryEntry entry) {
-        history.addLast(entry);
-        while (history.size() > maxHistory) {
-            history.pollFirst();
-        }
-    }
-
-    public ContextHistoryEntry peekLastHistory() {
-        return history.peekLast();
-    }
-
-    public ContextHistoryEntry pollLastHistory() {
-        return history.pollLast();
-    }
-
-    public boolean isHistoryEmpty() {
-        return history.isEmpty();
-    }
+    public boolean isHistoryEmpty() { return legacyNavigation.isHistoryEmpty(); }
 
     // ── Projection tracking ─────────────────────────────────────────
 

@@ -24,11 +24,18 @@ final class VisioEvidencePages {
             String id = value(values, "taxonomy.id");
             String key = value(values, "taxonomy.displayKey");
             String identity = key + " | " + id;
+            String unitName = value(values, "taxonomy.responsibilityName");
+            boolean assigned = values.containsKey("taxonomy.responsibilityUnitId");
             boolean clipped = !VisioPresentation.display(label, 24, 3).replace("\n", "").equals(label.replace("\n", ""))
-                    || !VisioPresentation.display(identity, 24, 1).replace("\n", "").equals(identity.replace("\n", ""));
+                    || !VisioPresentation.display(identity, 24, 1).replace("\n", "").equals(identity.replace("\n", ""))
+                    || (assigned && !VisioPresentation.nodeFooter("", unitName, 24).equals("Unit: " + unitName));
             if (reasons.isEmpty() && !clipped) continue;
             var fields = new ArrayList<String>();
             fields.add(key + " · " + id + " · " + label);
+            if (assigned) {
+                fields.add("Responsible unit: " + unitName + " (" + value(values, "taxonomy.responsibilityUnitId") + ")");
+                fields.add("Assignment source: " + value(values, "taxonomy.responsibilitySourceId"));
+            }
             fields.addAll(reasons);
             entries.add(new Entry(key, fields, values));
         }

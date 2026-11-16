@@ -342,7 +342,7 @@
       "fromPackage": "com.taxonomy.composition.analysis",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.editor",
-      "classDependencyCount": 7
+      "classDependencyCount": 8
     },
     {
       "fromContext": "app-composition",
@@ -1070,7 +1070,7 @@
       "fromPackage": "com.taxonomy.security.access",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 9
+      "classDependencyCount": 11
     },
     {
       "fromContext": "app-composition",
@@ -1503,15 +1503,29 @@
       "fromContext": "knowledge",
       "fromPackage": "com.taxonomy.relations.controller",
       "toContext": "workspace",
+      "toPackage": "com.taxonomy.editor",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "knowledge",
+      "fromPackage": "com.taxonomy.relations.controller",
+      "toContext": "workspace",
       "toPackage": "com.taxonomy.versioning.service",
-      "classDependencyCount": 3
+      "classDependencyCount": 4
+    },
+    {
+      "fromContext": "knowledge",
+      "fromPackage": "com.taxonomy.relations.controller",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.model",
+      "classDependencyCount": 1
     },
     {
       "fromContext": "knowledge",
       "fromPackage": "com.taxonomy.relations.controller",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 55
+      "classDependencyCount": 63
     },
     {
       "fromContext": "knowledge",
@@ -1525,7 +1539,7 @@
       "fromPackage": "com.taxonomy.relations.service",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 80
+      "classDependencyCount": 85
     },
     {
       "fromContext": "knowledge",

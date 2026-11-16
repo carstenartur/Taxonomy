@@ -17,6 +17,9 @@ window.TaxonomyWorkspaceSync = (function () {
     var POLL_INTERVAL = 15000; // 15 seconds
     var pollTimer = null;
     var pendingRead = null;
+    var planRead = null;
+    var planTag = null;
+    var planCheck = null;
     var pageActive = true;
 
     // ── Initialization ──────────────────────────────────────────────
@@ -27,7 +30,12 @@ window.TaxonomyWorkspaceSync = (function () {
         pollTimer = setInterval(pollSyncState, POLL_INTERVAL);
     }
     document.addEventListener('DOMContentLoaded', startPolling);
+    document.addEventListener('click', function (event) {
+        if (event.target.closest?.('#workspaceRebasePlanButton')) showRebasePlan();
+    });
+    document.addEventListener('taxonomy-api-auth-failure', clearRebasePlan);
     window.addEventListener('pagehide', function () {
+        clearRebasePlan();
         pageActive = false; clearInterval(pollTimer); pollTimer = null;
         if (pendingRead) pendingRead.abort();
     });
@@ -52,6 +60,9 @@ window.TaxonomyWorkspaceSync = (function () {
             if (moveFocus) document.getElementById('contextBarBranch')?.focus({preventScroll: true});
         }
         if (!event.detail?.selectionChanged) return;
+        clearRebasePlan();
+        var planButton = document.getElementById('workspaceRebasePlanButton');
+        if (planButton) planButton.hidden = true;
         syncState = null;
         document.getElementById('syncStatusIndicator')?.remove();
         document.getElementById('syncStatePanel')?.replaceChildren();
@@ -83,7 +94,14 @@ window.TaxonomyWorkspaceSync = (function () {
                 if ((state.branch && context?.branch && state.branch !== context.branch)
                         || (state.repositoryId && repository && state.repositoryId !== repository)
                         || (state.workspaceId && workspace && state.workspaceId !== workspace)) return;
+                // A later observation may advance Git refs without changing the selected branch.
+                // Treat any changed sync observation as a new plan authority; do not show a stale plan.
+                if (syncState && JSON.stringify(state) !== JSON.stringify(syncState)) clearRebasePlan();
                 syncState = state;
+                checkVisibleRebasePlan(state);
+                var planButton = document.getElementById('workspaceRebasePlanButton');
+                if (planButton) planButton.hidden = !state.repositoryId || !state.branch
+                    || (context?.mode === 'READ_ONLY' && context.commitId != null) || Object.hasOwn(lifecycleLabels, state.syncStatus);
                 renderSyncIndicator(state);
                 renderDirtyIndicator();
                 renderSyncStatePanel(state);
@@ -212,6 +230,94 @@ window.TaxonomyWorkspaceSync = (function () {
         html += '</table>';
 
         panel.innerHTML = html;
+    }
+
+    function clearRebasePlan() {
+        if (planRead) planRead.abort();
+        if (planCheck) planCheck.abort();
+        planRead = null;
+        planCheck = null;
+        planTag = null;
+        document.getElementById('workspaceRebasePlan')?.replaceChildren();
+    }
+
+    async function checkVisibleRebasePlan(source) {
+        if (planTag === null) return;
+        if (planCheck) planCheck.abort();
+        var check = new AbortController(), expected = planTag;
+        planCheck = check;
+        try {
+            var live = await window.TaxonomyWorkspaceApi.rebasePlanRefTag(source, {signal:check.signal});
+            if (planCheck === check && live !== expected) clearRebasePlan();
+        } catch (error) {
+            if (planCheck === check) clearRebasePlan();
+        } finally {
+            if (planCheck === check) planCheck = null;
+        }
+    }
+
+    async function showRebasePlan() {
+        clearRebasePlan();
+        var panel = document.getElementById('workspaceRebasePlan'), source = syncState;
+        if (!panel || !source?.repositoryId || !source.branch) return;
+        var observedSource = JSON.stringify(source);
+        var controller = new AbortController();
+        planRead = controller;
+        panel.textContent = t('workspace.rebase.loading');
+        function current() {
+            return !controller.signal.aborted && planRead === controller && JSON.stringify(syncState) === observedSource;
+        }
+        try {
+            var {plan, etag} = await window.TaxonomyWorkspaceApi.rebasePlan(
+                source, {signal:controller.signal, includeETag:true});
+            if (!current()) return;
+            if (!etag || plan.repositoryId !== source.repositoryId || plan.branch !== source.branch
+                    || plan.workspaceId !== (source.workspaceId || null)) throw new Error();
+            var liveTag = await window.TaxonomyWorkspaceApi.rebasePlanRefTag(source, {signal:controller.signal});
+            if (!current()) return;
+            if (liveTag !== etag) {
+                clearRebasePlan();
+                return;
+            }
+            var details = document.createElement('dl');
+            details.className = 'small mb-2';
+            function field(key, label, commit) {
+                if (!commit) return;
+                var term = document.createElement('dt'), value = document.createElement('dd'), id = document.createElement('code');
+                term.textContent = t('workspace.rebase.' + key);
+                value.textContent = label ? label + ' ' : '';
+                id.textContent = commit;
+                value.append(id);
+                details.append(term, value);
+            }
+            field('local', plan.branch, plan.localCommit);
+            field('live', plan.upstream.sourceRepositoryId + '/' + plan.upstream.sourceBranch, plan.upstream.sourceCommit);
+            field('tracked', plan.upstream.sourceBranch, plan.upstream.trackedCommit);
+            field('base', null, plan.mergeBase);
+            var status = document.createElement('p');
+            status.textContent = t('workspace.rebase.state.' + plan.status);
+            panel.replaceChildren(details, status);
+            if (plan.upstream.sourceCommit !== plan.upstream.trackedCommit && plan.upstream.trackedCommit) {
+                var changed = document.createElement('p');
+                changed.textContent = t('workspace.rebase.upstream.changed');
+                panel.append(changed);
+            }
+            if (plan.commits.length) {
+                var list = document.createElement('ol');
+                plan.commits.forEach(function (commit) {
+                    var row = document.createElement('li'), id = document.createElement('code');
+                    id.textContent = commit.id;
+                    row.append(id, ' ' + commit.subject);
+                    list.append(row);
+                });
+                var conflicts = document.createElement('p');
+                conflicts.textContent = t('workspace.rebase.conflicts.unchecked');
+                panel.append(list, conflicts);
+            }
+            planTag = etag;
+        } catch (error) {
+            if (current()) panel.textContent = t('workspace.rebase.unavailable');
+        }
     }
 
     function formatTimestamp(ts) {

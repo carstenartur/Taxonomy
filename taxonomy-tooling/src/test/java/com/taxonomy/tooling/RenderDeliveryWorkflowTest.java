@@ -14,6 +14,7 @@ import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -113,6 +114,32 @@ class RenderDeliveryWorkflowTest {
               "java-version: '25'",
               "ref: ${{ github.event.workflow_run.head_sha }}");
     }
+  }
+
+  @Test
+  void publishedReportsAllowAnHourForPagesDeployment() throws Exception {
+    String workflow = Files.readString(root().resolve(".github/workflows/delivery.yml"));
+    String job =
+        workflow.substring(
+            workflow.indexOf("  publish-reports:"), workflow.indexOf("  publish-image:"));
+    String verify = block(job, "Verify published GitHub Pages evidence");
+    int attempts = number(verify, "--attempts (\\d+)");
+    int intervalSeconds = number(verify, "--interval-seconds (\\d+)");
+    int retrySeconds = (attempts - 1) * intervalSeconds;
+    assertThat(retrySeconds)
+        .as("Pages can queue its build and deploy jobs separately")
+        .isGreaterThanOrEqualTo(3600);
+    int timeoutMinutes = number(job, "(?m)^    timeout-minutes: (\\d+)$");
+    assertThat(timeoutMinutes * 60 - retrySeconds)
+        .as("The job also needs time to stage, push and verify the reports")
+        .isGreaterThanOrEqualTo(900);
+    assertThat(verify).contains("verify-quality-publication", "--expected-commit \"$EXPECTED_SHA\"");
+  }
+
+  private static int number(String text, String pattern) {
+    var match = Pattern.compile(pattern).matcher(text);
+    assertThat(match.find()).as("Missing configuration matching %s", pattern).isTrue();
+    return Integer.parseInt(match.group(1));
   }
 
   private ShellResult shell(String step, Map<String, String> overrides) throws Exception {

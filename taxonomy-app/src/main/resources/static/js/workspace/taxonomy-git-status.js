@@ -134,23 +134,9 @@
 
         parts.push('<span class="git-sep">│</span>');
 
-        // Projection status
-        var projDot = state.projectionStale ? 'stale' : 'fresh';
-        parts.push(
-            '<span class="git-indicator">' +
-            '<span class="dot ' + projDot + '"></span> ' + t('git.projection') + ': ' + (state.projectionStale ? t('git.stale') : t('git.fresh')) +
-            '</span>'
-        );
-
+        parts.push(readinessIndicator('projection', state.projectionReadiness, state.projectionStale));
         parts.push('<span class="git-sep">│</span>');
-
-        // Index status
-        var idxDot = state.indexStale ? 'stale' : 'fresh';
-        parts.push(
-            '<span class="git-indicator">' +
-            '<span class="dot ' + idxDot + '"></span> ' + t('git.index') + ': ' + (state.indexStale ? t('git.stale') : t('git.fresh')) +
-            '</span>'
-        );
+        parts.push(readinessIndicator('index', state.indexReadiness, state.indexStale));
 
         // Branch count (shown as "variants")
         if (state.branches && state.branches.length > 0) {
@@ -189,6 +175,13 @@
         if (window.TaxonomyActionGuards) {
             window.TaxonomyActionGuards.guardAll(state);
         }
+    }
+
+    function readinessIndicator(kind, evidence, stale) {
+        var status = evidence ? evidence.toLowerCase() : stale ? 'stale' : 'unverified';
+        var dot = status === 'fresh' ? 'fresh' : 'stale';
+        return '<span class="git-indicator"><span class="dot ' + dot + '"></span> '
+            + escapeHtml(t('git.' + kind)) + ': ' + escapeHtml(t('git.' + status)) + '</span>';
     }
 
     function renderError(msg) {

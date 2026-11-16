@@ -13,6 +13,13 @@ public final class DecisionReportLabels {
     }
 
     public boolean german() { return german; }
+    public String responsibility() { return german ? "Zuständig" : "Responsible unit"; }
+    public String organizationalResponsibilities() { return german ? "Organisatorische Zuständigkeiten" : "Organizational responsibilities"; }
+    public String responsibilitySource() { return german ? "Quelle der Zuweisung" : "Assignment source"; }
+    public String responsibilityUnitId() { return german ? "Kennung der Einheit" : "Unit ID"; }
+    public String noResponsibilities() { return german ? "Für diese Auswahl liegen keine Zuständigkeitsangaben vor."
+            : "No responsibility information is available for this selection."; }
+
 
     public String subtitle() { return german ? "Nachvollziehbare KI-gestützte Zuordnung einer Anforderung zur Taxonomiehierarchie" : "Traceable AI-assisted mapping of a requirement to the taxonomy hierarchy"; }
     public String documentStatus() { return german ? "Dokumentstatus" : "Document status"; }

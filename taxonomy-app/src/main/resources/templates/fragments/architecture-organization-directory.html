@@ -1,0 +1,22 @@
+<section xmlns:th="http://www.thymeleaf.org" th:fragment="directory(prefix, sectionId)" id="editorOrganizationDirectory"
+         th:id="${sectionId}" aria-labelledby="editorDirectoryHeading" th:attr="aria-labelledby=${prefix + 'Heading'}">
+    <h2 id="editorDirectoryHeading" th:id="${prefix + 'Heading'}" data-i18n="editor.directory.title">Organization directory</h2>
+    <p id="editorDirectoryEmpty" th:id="${prefix + 'Empty'}" data-i18n="editor.directory.empty">No organizational units have been recorded.</p>
+    <label for="editorDirectoryUnits" th:for="${prefix + 'Units'}" id="editorDirectoryUnitsLabel" th:id="${prefix + 'UnitsLabel'}" data-i18n="editor.directory.units" hidden>Organizational units</label>
+    <select id="editorDirectoryUnits" th:id="${prefix + 'Units'}" size="5" hidden></select>
+    <button id="editorDirectoryNew" th:id="${prefix + 'New'}" type="button" data-i18n="editor.directory.new" hidden>New organizational unit</button>
+    <form id="editorDirectoryForm" th:id="${prefix + 'Form'}" hidden>
+        <fieldset id="editorDirectoryFields" th:id="${prefix + 'Fields'}" disabled>
+            <label for="editorDirectoryName" th:for="${prefix + 'Name'}" data-i18n="editor.name">Name</label>
+            <input id="editorDirectoryName" th:id="${prefix + 'Name'}" required maxlength="8000" autocomplete="off"/>
+            <label for="editorDirectoryParent" th:for="${prefix + 'Parent'}" data-i18n="editor.directory.parent">Parent unit</label>
+            <select id="editorDirectoryParent" th:id="${prefix + 'Parent'}"></select>
+            <label for="editorDirectoryReason" th:for="${prefix + 'Reason'}" data-i18n="editor.rationale">Reason for the command</label>
+            <input id="editorDirectoryReason" th:id="${prefix + 'Reason'}" required maxlength="1000"/>
+            <div class="editor-toolbar">
+                <button id="editorDirectorySave" th:id="${prefix + 'Save'}" type="submit" data-i18n="editor.preview">Preview change</button>
+                <button id="editorDirectoryDelete" th:id="${prefix + 'Delete'}" type="button" disabled data-i18n="editor.delete">Preview deletion</button>
+            </div>
+        </fieldset>
+    </form>
+</section>

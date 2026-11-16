@@ -134,8 +134,14 @@ function fixture(page, fetcher, {lifecycle = false} = {}) {
         }
     });
     context.window = context;
-    context.history = {replaceState(_state, _title, url) {context.location = new URL(url, context.location);},
-        pushState(_state, _title, url) {context.location = new URL(url, context.location);}};
+    context.history = {
+        state: null,
+        replaceState(state, _title, url) {
+            this.state = state;
+            if (url != null) context.location = new URL(url, context.location);
+        },
+        pushState(state, title, url) { this.replaceState(state, title, url); }
+    };
     vm.createContext(context);
     const load = name => vm.runInContext(source(name), context, {filename: name});
     load('shared/architecture-workflow.js');
@@ -679,6 +685,12 @@ async function snapshot(mode) {
     assert.equal(reads[0].url.searchParams.get('workspaceId'), 'workspace-A');
     assert.equal(reads[0].url.searchParams.get('repositoryId'), 'repository-A');
     assert.equal(reads[0].url.searchParams.get('branch'), 'draft');
+    const contextRead = app.requests.find(request => request.url.pathname === '/taxonomy/api/context/current');
+    const cursor = contextRead.options.headers.get('X-Taxonomy-Navigation-Cursor');
+    assert.ok(cursor, 'The selected workspace uses a tab navigation cursor');
+    assert.equal(app.context.history.state?.taxonomyNavigation?.cursor, cursor,
+        'Publishing the saved snapshot URL preserves the tab navigation cursor');
+    assert.equal(app.context.history.state.taxonomyNavigation.workspace, 'workspace-A');
     if (changeSource) {
         assert.equal(app.context.TaxonomyArchitectureWorkspace.getData(), null,
             'An actual subsequent branch change must discard the obsolete snapshot');

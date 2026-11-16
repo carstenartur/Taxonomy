@@ -76,9 +76,13 @@ public class VisioDiagramService {
                 double x = MARGIN_X + layerIdx * H_GAP;
                 double y = MARGIN_Y + i * V_GAP;
 
+                var assignment = node.responsibility();
+                String owner = assignment == null ? null : assignment.name();
                 VisioShape shape = new VisioShape(
                         shapeId,
-                        VisioPresentation.display("N" + shapeId + " | " + node.id(), 24, 1) + "\n" + VisioPresentation.display(node.label(), 24, 3) + "\nDepth " + node.depth(),
+                        VisioPresentation.display("N" + shapeId + " | " + node.id(), 24, 1) + "\n"
+                                + VisioPresentation.display(node.label(), 24, 3) + "\n"
+                                + VisioPresentation.nodeFooter(Integer.toString(node.depth()), owner, 24),
                         x, y,
                         SHAPE_WIDTH, SHAPE_HEIGHT,
                         node.type(),
@@ -97,6 +101,12 @@ public class VisioDiagramService {
                 values.put("taxonomy.depth", VisioProperty.number(node.depth()));
                 values.put("taxonomy.layer", VisioProperty.number(node.layer()));
                 if (node.parentId() != null) values.put("taxonomy.parentId", VisioProperty.text(node.parentId()));
+                if (assignment != null) {
+                    values.put("taxonomy.responsibilityUnitId", VisioProperty.text(assignment.unitId()));
+                    values.put("taxonomy.responsibilityName", VisioProperty.text(assignment.name()));
+                    values.put("taxonomy.responsibilitySourceId", VisioProperty.text(assignment.sourceId()));
+                    values.put("taxonomy.responsibilityColor", VisioProperty.text(assignment.color()));
+                }
                 page.getShapes().add(shape);
                 if (node.container()) doc.getLosses().add(new VisioLoss("element", node.id(), "container", "MAPPED",
                         "Explicit visual container rendered with native membership for present descendants; it remains non-semantic and retains original parent identity in shape data."));

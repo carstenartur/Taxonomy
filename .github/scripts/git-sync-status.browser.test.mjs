@@ -190,13 +190,13 @@ for (const prefix of ['', '/taxonomy']) test(`root-shell reload pins original st
 });
 
 const initial = {syncStatus: 'UP_TO_DATE', unpublishedCommitCount: 0};
-async function fixture() {
+async function fixture(messages = {}) {
     const page = await browser.newPage();
     page.errors = [];
     page.on('pageerror', error => page.errors.push(error.message));
     await page.setContent('<html lang="en"><body><div id="gitStatusBar"></div><div id="syncStatePanel"></div></body></html>');
-    await page.evaluate(() => {
-        window.TaxonomyI18n = {t: (key, count) => ({
+    await page.evaluate(messages => {
+        window.TaxonomyI18n = {t: (key, count) => messages[key] || ({
             'workspace.sync.status.synced': 'synced', 'workspace.sync.status.ahead': `${count} ahead`,
             'workspace.sync.panel.uptodate': 'Up to date', 'workspace.sync.panel.ahead': `${count} unpublished`,
             'workspace.sync.indicator': 'Sync'
@@ -212,15 +212,15 @@ async function fixture() {
         };
         window.clearInterval = id => window.statusTimers.delete(id);
         window.statusReads = [];
-        window.fetch = url => new Promise(resolve => {
-            window.statusReads.push({url: String(url), pending: true,
-                answer(value, status = 200) {
+        window.fetch = (url, init) => new Promise(resolve => {
+            window.statusReads.push({url: String(url), method: init?.method || 'GET', pending: true,
+                answer(value, status = 200, headers) {
                     this.pending = false;
-                    resolve(new Response(JSON.stringify(value), {status,
-                        headers: {'Content-Type': 'application/json'}}));
+                    resolve(new Response(this.method === 'HEAD' ? null : JSON.stringify(value), {status,
+                        headers: {'Content-Type': 'application/json', ...headers}}));
                 }});
         });
-    });
+    }, messages);
     await page.addScriptTag({path: path.join(resources, 'static/js/api/taxonomy-api-client.js')});
     await page.addScriptTag({path: path.join(resources, 'static/js/api/workspace-api.js')});
     await page.addScriptTag({path: path.join(resources, 'static/js/workspace/taxonomy-git-status.js')});
@@ -229,12 +229,22 @@ async function fixture() {
     return page;
 }
 
-async function answer(page, endpoint, value, status = 200) {
-    await page.evaluate(({endpoint, value, status}) => {
-        const request = window.statusReads.find(read => read.pending && read.url.split('?')[0] === endpoint);
+async function answer(page, endpoint, value, status = 200, {method, headers} = {}) {
+    await page.evaluate(({endpoint, value, status, method, headers}) => {
+        const request = window.statusReads.find(read => read.pending && read.url.split('?')[0] === endpoint
+            && (!method || read.method === method));
         if (!request) throw new Error('Expected a pending production poll: ' + endpoint);
-        request.answer(value, status);
-    }, {endpoint, value, status});
+        request.answer(value, status, headers);
+    }, {endpoint, value, status, method, headers});
+}
+async function answerPlanHead(page, endpoint, tag) {
+    await page.waitForFunction(path => window.statusReads.some(read =>
+        read.pending && read.method === 'HEAD' && read.url.split('?')[0] === path), endpoint);
+    await answer(page, endpoint, null, 200, {method:'HEAD', headers:{ETag:tag}});
+}
+async function answerCurrentPlan(page, endpoint, plan, tag = 'W/"current-plan"') {
+    await answer(page, endpoint, plan, 200, {method:'GET', headers:{ETag:tag}});
+    await answerPlanHead(page, endpoint, tag);
 }
 async function syncResponse(page, value = initial) {
     await answer(page, '/api/workspace/sync-state', value);
@@ -247,6 +257,73 @@ async function gitResponse(page, headCommit = 'abcdef012345') {
     await answer(page, '/api/git/state', {currentBranch: 'draft', headCommit, branches: []});
     await page.waitForFunction(head => document.querySelector('.git-sha')?.textContent === head.slice(0, 7), headCommit);
 }
+
+for (const [language, projection, index, fresh, missing, stale, failed, unverified] of [
+    ['en', 'Projection', 'Index', 'fresh', 'no checkpoint', 'STALE', 'unavailable', 'unverified'],
+    ['de', 'Projektion', 'Index', 'aktuell', 'kein Prüfpunkt', 'VERALTET', 'nicht verfügbar', 'nicht bestätigt']
+]) {
+    test('Git and view badges report selected-source readiness (' + language + ')', async () => {
+        const bundle = language === 'de' ? 'messages_de.properties' : 'messages.properties';
+        const lines = await readFile(path.join(resources, 'i18n', bundle), 'utf8');
+        const messages = Object.fromEntries(lines.split('\n').map(line => line.match(/^([^#!\s][^=]*)=(.*)$/))
+            .filter(Boolean).map(([, key, value]) => [key, value.replace(/\\u([a-f0-9]{4})/gi,
+                (_, code) => String.fromCharCode(parseInt(code, 16)))]));
+        const page = await fixture(messages);
+        const head = 'a'.repeat(40);
+        try {
+            await page.evaluate(() => document.body.insertAdjacentHTML('beforeend', '<div id="viewContext"></div>'));
+            await page.addScriptTag({path: path.join(resources, 'static/js/versioning/taxonomy-viewcontext.js')});
+            const state = {currentBranch: 'draft', headCommit: head, projectionStale: false, indexStale: false};
+            for (const [position, [source, projectionStatus, indexStatus]] of [
+                [{...state, projectionReadiness: 'FRESH', indexReadiness: 'MISSING'}, fresh, missing],
+                [{...state, projectionReadiness: 'STALE', indexReadiness: 'MISSING'}, stale, missing],
+                [{...state, headCommit: null, projectionReadiness: 'FAILED', indexReadiness: 'FAILED'}, failed, failed],
+                [state, unverified, unverified]
+            ].entries()) {
+                if (position > 0) await page.evaluate(() => { TaxonomyGitStatus.refresh(); });
+                await page.evaluate(() => {
+                    window.viewRead = TaxonomyViewContext.fetchAndRender('viewContext', 'draft');
+                });
+                await answer(page, '/api/git/state', source);
+                await answer(page, '/api/git/state', source);
+                await page.evaluate(() => window.viewRead);
+                const expectedProjection = projection + ': ' + projectionStatus;
+                const expectedIndex = index + ': ' + indexStatus;
+                for (const id of ['gitStatusBar', 'viewContext']) {
+                    const badge = await page.locator('#' + id).innerText();
+                    assert.ok(badge.includes(expectedProjection), badge);
+                    assert.ok(badge.includes(expectedIndex), badge);
+                }
+            }
+            assert.deepEqual(page.errors, []);
+        } finally { await page.close(); }
+    });
+}
+
+test('a superseded view request cannot replace a direct render or restore a hidden badge', async () => {
+    const page = await fixture();
+    try {
+        await page.evaluate(() => document.body.insertAdjacentHTML('beforeend', '<div id="viewContext"></div>'));
+        await page.addScriptTag({path: path.join(resources, 'static/js/versioning/taxonomy-viewcontext.js')});
+        await gitResponse(page);
+        for (const replace of ['render', 'hide']) {
+            await page.evaluate(replace => {
+                window.viewRead = TaxonomyViewContext.fetchAndRender('viewContext', 'old');
+                if (replace === 'render') TaxonomyViewContext.render('viewContext', {basedOnBranch: 'new'});
+                else TaxonomyViewContext.hide('viewContext');
+            }, replace);
+            await answer(page, '/api/git/state', {currentBranch: 'old', headCommit: 'abcdef012345'});
+            await page.evaluate(() => window.viewRead);
+            const badge = page.locator('#viewContext');
+            if (replace === 'render') assert.equal(await badge.locator('strong').innerText(), 'new');
+            else {
+                assert.equal(await badge.innerHTML(), '');
+                assert.ok((await badge.getAttribute('class')).split(' ').includes('d-none'));
+            }
+        }
+        assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+});
 
 test('initial context adoption immediately replaces a pending Git read for the default branch', async () => {
     const page = await fixture();
@@ -490,3 +567,155 @@ test('initial repository discovery preserves a pending read and later repository
     } finally { await page.close(); }
 });
 
+
+
+test('Rebase plan shows exact fetched and live upstream commits and clears a superseded branch', async () => {
+    const page = await fixture();
+    try {
+        const template = await readFile(path.join(resources, 'templates/index.html'), 'utf8');
+        const buttonAndPanel = template.match(/<button id="workspaceRebasePlanButton"[^>]*>[\s\S]*?<\/button>\s*<div id="workspaceRebasePlan"[^>]*><\/div>/)?.[0];
+        assert.ok(buttonAndPanel);
+        await page.evaluate(html => document.body.insertAdjacentHTML('beforeend', html), buttonAndPanel);
+        const state = {syncStatus:'DIVERGED', repositoryId:'origin', workspaceId:'work', branch:'feature'};
+        await syncResponse(page, state);
+        const button = page.locator('#workspaceRebasePlanButton');
+        assert.equal(await button.isVisible(), true);
+        await button.click();
+        const endpoint = '/api/workspace/upstream/rebase-plan';
+        const plan = {status:'REPLAY', repositoryId:'origin', workspaceId:'work', branch:'feature', localCommit:'3'.repeat(40),
+            mergeBase:'1'.repeat(40), upstream:{sourceRepositoryId:'origin',sourceBranch:'main',sourceCommit:'5'.repeat(40),
+                trackedCommit:'4'.repeat(40)},commits:[{id:'2'.repeat(40), subject:'<form>first</form>'},{id:'3'.repeat(40), subject:'second'}]};
+        await page.waitForFunction(path => window.statusReads.some(read => read.pending && read.url.startsWith(path)), endpoint);
+        const url = new URL(await page.evaluate(path => window.statusReads.find(read => read.url.startsWith(path)).url, endpoint), 'http://status.test');
+        assert.equal(url.searchParams.get('branch'), 'feature');
+        assert.equal(url.searchParams.get('repositoryId'), 'origin');
+        assert.equal(url.searchParams.get('workspaceId'), 'work');
+        await answerCurrentPlan(page, endpoint, plan);
+        await page.waitForFunction(() => document.querySelectorAll('#workspaceRebasePlan li').length === 2);
+        const panel = page.locator('#workspaceRebasePlan');
+        assert.match(await panel.innerText(), /444444444444/);
+        assert.match(await panel.innerText(), /555555555555/);
+        assert.match(await panel.innerText(), /<form>first<\/form>/);
+        assert.equal(await panel.locator('form').count(), 0);
+        assert.match(await panel.innerText(), /workspace.rebase.conflicts.unchecked/);
+        await button.click();
+        await page.evaluate(() => document.dispatchEvent(new CustomEvent('taxonomy:repository-context-changed',
+            {detail:{selectionChanged:true}})));
+        assert.equal(await panel.innerText(), '');
+        await answer(page, endpoint, plan);
+        assert.equal(await panel.innerText(), '');
+        assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+});
+
+
+test('A central fork plan uses the explicit repository and branch without adopting a working copy', async () => {
+    const page = await fixture();
+    try {
+        const template = await readFile(path.join(resources, 'templates/index.html'), 'utf8');
+        const markup = template.match(/<button id="workspaceRebasePlanButton"[^>]*>[\s\S]*?<\/button>\s*<div id="workspaceRebasePlan"[^>]*><\/div>/)[0];
+        await page.evaluate(html => {
+            document.body.insertAdjacentHTML('beforeend', html);
+            window.TaxonomyContextBar = {getCurrentContext:() => ({mode:'READ_ONLY',branch:'main',commitId:null})};
+        }, markup);
+        await answer(page, '/api/workspace/sync-state', initial);
+        await page.evaluate(() => TaxonomyWorkspaceSync.refresh());
+        await syncResponse(page, {syncStatus:'UP_TO_DATE',repositoryId:'central-fork',workspaceId:null,branch:'main'});
+        await page.locator('#workspaceRebasePlanButton').click();
+        const endpoint = '/api/repositories/central-fork/upstream/rebase-plan';
+        await page.waitForFunction(path => window.statusReads.some(read => read.pending && read.url.startsWith(path)), endpoint);
+        const url = new URL(await page.evaluate(path => window.statusReads.find(read => read.url.startsWith(path)).url, endpoint), 'http://status.test');
+        assert.equal(url.searchParams.get('workspaceScopeKey'), '__shared__');
+        assert.equal(url.searchParams.get('workspaceId'), '');
+        assert.equal(url.searchParams.get('branch'), 'main');
+        await answerCurrentPlan(page, endpoint, {status:'FAST_FORWARD',repositoryId:'central-fork',workspaceId:null,branch:'main',
+            localCommit:'1'.repeat(40),mergeBase:'1'.repeat(40),upstream:{sourceRepositoryId:'central',sourceBranch:'main',
+                sourceCommit:'2'.repeat(40),trackedCommit:'2'.repeat(40)},commits:[]});
+        await page.waitForFunction(() => document.querySelector('#workspaceRebasePlan').textContent.includes('FAST_FORWARD'));
+        assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+});
+
+
+test('A delayed rebase plan is rejected after the same branch advances, and a fresh plan is retained', async () => {
+    const page = await fixture();
+    try {
+        const template = await readFile(path.join(resources, 'templates/index.html'), 'utf8');
+        const markup = template.match(/<button id="workspaceRebasePlanButton"[^>]*>[\s\S]*?<\/button>\s*<div id="workspaceRebasePlan"[^>]*><\/div>/)?.[0];
+        assert.ok(markup);
+        await page.evaluate(html => document.body.insertAdjacentHTML('beforeend', html), markup);
+        const state = {syncStatus:'DIVERGED', repositoryId:'origin', workspaceId:'work', branch:'feature',
+            unpublishedCommitCount:1, lastSyncedCommitId:'1'.repeat(40)};
+        const endpoint = '/api/workspace/upstream/rebase-plan';
+        const plan = {status:'FAST_FORWARD', repositoryId:'origin', workspaceId:'work', branch:'feature',
+            localCommit:'2'.repeat(40), mergeBase:'2'.repeat(40),
+            upstream:{sourceRepositoryId:'origin', sourceBranch:'main', sourceCommit:'3'.repeat(40),
+                trackedCommit:'3'.repeat(40)}, commits:[]};
+        const panel = page.locator('#workspaceRebasePlan');
+        await syncResponse(page, state);
+        await page.locator('#workspaceRebasePlanButton').click();
+        await page.waitForFunction(path => window.statusReads.some(read => read.pending && read.url.startsWith(path)), endpoint);
+
+        // A fetch or a competing commit advances the same selected branch while the old GET is pending.
+        await page.evaluate(() => TaxonomyWorkspaceSync.refresh());
+        const newer = {...state, unpublishedCommitCount:2, lastSyncedCommitId:'2'.repeat(40)};
+        await syncResponse(page, newer);
+        assert.equal(await panel.innerText(), '');
+        await answer(page, endpoint, {...plan, localCommit:'1'.repeat(40)});
+        await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 0)));
+        assert.equal(await panel.innerText(), '', 'A late plan may not repaint the newer observation');
+
+        await page.locator('#workspaceRebasePlanButton').click();
+        await page.waitForFunction(path => window.statusReads.some(read => read.pending && read.url.startsWith(path)), endpoint);
+        await answerCurrentPlan(page, endpoint, plan);
+        await page.waitForFunction(() => document.querySelector('#workspaceRebasePlan')?.textContent.includes('FAST_FORWARD'));
+        await page.evaluate(() => TaxonomyWorkspaceSync.refresh());
+        await syncResponse(page, {...newer});
+        await answerPlanHead(page, endpoint, 'W/"current-plan"');
+        assert.match(await panel.innerText(), /FAST_FORWARD/, 'An identical refresh retains the valid plan');
+
+        // A new commit with the same branch and count also invalidates an already displayed plan.
+        await page.evaluate(() => TaxonomyWorkspaceSync.refresh());
+        await syncResponse(page, {...newer, lastSyncedCommitId:'4'.repeat(40)});
+        assert.equal(await panel.innerText(), '');
+        assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+});
+
+test('Live ref changes invalidate a pending or visible plan with an unchanged sync row', async () => {
+    const page = await fixture();
+    try {
+        const template = await readFile(path.join(resources, 'templates/index.html'), 'utf8');
+        const markup = template.match(/<button id="workspaceRebasePlanButton"[^>]*>[\s\S]*?<\/button>\s*<div id="workspaceRebasePlan"[^>]*><\/div>/)[0];
+        await page.evaluate(html => document.body.insertAdjacentHTML('beforeend', html), markup);
+        const state = {syncStatus:'DIVERGED', repositoryId:'origin', workspaceId:'work', branch:'feature',
+            unpublishedCommitCount:1, lastSyncedCommitId:'1'.repeat(40)};
+        const endpoint = '/api/workspace/upstream/rebase-plan';
+        const plan = {status:'FAST_FORWARD', repositoryId:'origin', workspaceId:'work', branch:'feature',
+            localCommit:'2'.repeat(40), mergeBase:'2'.repeat(40),
+            upstream:{sourceRepositoryId:'origin', sourceBranch:'main', sourceCommit:'3'.repeat(40),
+                trackedCommit:'3'.repeat(40)}, commits:[]};
+        const button = page.locator('#workspaceRebasePlanButton'), panel = page.locator('#workspaceRebasePlan');
+        await syncResponse(page, state);
+
+        await button.click();
+        await answer(page, endpoint, plan, 200, {method:'GET', headers:{ETag:'W/"old-local"'}});
+        await answerPlanHead(page, endpoint, 'W/"new-local"');
+        await page.waitForFunction(() => document.querySelector('#workspaceRebasePlan').textContent === '');
+
+        await button.click();
+        await answerCurrentPlan(page, endpoint, {...plan, localCommit:'4'.repeat(40)}, 'W/"new-local"');
+        await page.waitForFunction(() => document.querySelector('#workspaceRebasePlan').textContent.includes('4'.repeat(40)));
+
+        await page.evaluate(() => TaxonomyWorkspaceSync.refresh());
+        await syncResponse(page, {...state});
+        await answerPlanHead(page, endpoint, 'W/"new-tracking"');
+        await page.waitForFunction(() => document.querySelector('#workspaceRebasePlan').textContent === '');
+
+        const planReads = await page.evaluate(path => statusReads.filter(read => read.url.startsWith(path))
+            .map(read => new URL(read.url, 'http://status.test').search), endpoint);
+        assert.equal(new Set(planReads).size, 1, 'GET and HEAD use the same exact pinned selection');
+        assert.deepEqual(await page.evaluate(() => TaxonomyWorkspaceSync.getSyncState()), state);
+        assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+});
