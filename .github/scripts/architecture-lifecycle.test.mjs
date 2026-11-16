@@ -33,7 +33,10 @@ async function fixture(firstOutcome='unknown', editor=false) {
         history:{replaceState(_state, _title, url) { location.href=String(url); }},
         TaxonomyI18n:{t:key=>key, ready:()=>Promise.resolve()},
         TaxonomyAppChrome:{getContext:()=>chrome, updateContext() {}, refreshNavigation() {}},
-        TaxonomyArchitectureWorkflow:{getScope:()=>copy(activeScope), setScope:value=>{activeScope=copy(value);}},
+        TaxonomyArchitectureWorkflow:{getScope:()=>copy(activeScope), setScope:value=>{
+            activeScope=copy(value);
+            if (value.workspaceId !== undefined) activeScope.workspaceId = value.workspaceId;
+        }},
         TaxonomyApiClient:{
             getJson:async()=>copy(current),
             request:async(url, options)=>{
@@ -269,6 +272,37 @@ for(const cancellation of ['authentication','pagehide','deadline']) {
     });
 }
 
+test('lifecycle refresh keeps the confirmed workspace behind the legacy shared display key', async () => {
+    const app = await fixture();
+    const legacyResponse = {...originalContext, workspaceScopeKey:'__shared__'};
+    const reads = [];
+    app.setRead(async (url, options) => {
+        reads.push({url: new URL(url,'https://example.test'), workspaceId: options.pinnedWorkspaceId});
+        return overview(legacyResponse);
+    });
+    const selected = {...legacyResponse, workspaceId:'__shared__'};
+    await app.lifecycle.refresh(selected, selected.commit);
+    assert.equal(app.lifecycle.selectedContext().workspaceId, '__shared__');
+    let notifications = 0;
+    app.lifecycle.onStandChange(() => notifications++);
+    await app.lifecycle.refresh();
+    assert.equal(notifications, 1, 'a confirmation should not also invalidate the unchanged stand');
+    assert.deepEqual(reads.map(read => read.workspaceId), ['__shared__','__shared__']);
+    assert.ok(reads.every(read => read.url.searchParams.get('commit') === selected.commit));
+    assert.ok(reads.every(read => read.url.searchParams.get('workspaceId') === '__shared__'));
+});
+test('requirement publication and refresh keep the operation’s actual workspace', async () => {
+    const app = await fixture('completed');
+    const legacy = {...originalContext, workspaceScopeKey:'__shared__'};
+    await app.changeStand(legacy);
+    await app.lifecycle.refresh({...legacy, workspaceId:'__shared__'}, null);
+    const result = await app.lifecycle.saveRequirement(app.command);
+    const write = app.writes.at(-1);
+    assert.equal(new URL(write.url, 'https://example.test').searchParams.get('workspaceId'), '__shared__');
+    assert.equal(Object.hasOwn(JSON.parse(write.options.body).context,'workspaceId'), false);
+    assert.equal(result.publication.context.workspaceId, '__shared__');
+    assert.equal(app.lifecycle.selectedContext().workspaceId, '__shared__');
+});
 test('suspending working lifecycle prevents a late overview from restoring departed scope',async()=>{
     const value=await fixture();const resolve=value.deferRead();
     const pending=value.lifecycle.refresh(originalContext,null);

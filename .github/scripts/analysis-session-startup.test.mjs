@@ -706,6 +706,18 @@ test('browser history confirms the exact private analysis workspace before loadi
   await h.session.whenInitialized();
   assert.equal(h.runtime.workspaceId,'ws-a'); assert.deepEqual(draftCalls,[true]);
 });
+test('browser history asks the server to confirm the private workspace named __shared__', async () => {
+  const calls = [];
+  const h = createStartupHarness(Promise.resolve({workspaceId:'ws-b'}), async () => null,
+    historyMetadata(async options => {
+      calls.push(options.pinnedWorkspaceId);
+      return {workspaceId:'__shared__',sourceRepositoryId:'repo-a',currentBranch:'draft',
+        provisioningStatus:'READY',archived:false,shared:false};
+    }, historyAddress.replaceAll('ws-a', '__shared__')));
+  await h.session.whenInitialized();
+  assert.deepEqual(calls, ['__shared__']);
+  assert.equal(h.runtime.workspaceId, '__shared__');
+});
 for (const mismatch of ['foreign repository','revoked access','branch moved','archived','shared workspace']) {
   test('browser history leaves the analysis draft unresolved on ' + mismatch, async () => {
     const result = {workspaceId:'ws-a',sourceRepositoryId:'repo-a',currentBranch:'draft',provisioningStatus:'READY',archived:false,shared:false};

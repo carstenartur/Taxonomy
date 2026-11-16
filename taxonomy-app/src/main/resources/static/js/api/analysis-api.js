@@ -15,8 +15,10 @@ window.AnalysisApi = (function () {
             throw new Error(window.TaxonomyI18n?.t('analysis.evidence.selectVersion')
                 || 'Select a retained architecture version before evaluating its graph.');
         }
-        return Object.freeze({repositoryId:scope.repositoryId, workspaceScopeKey:workspace,
-            branch:scope.branch, commit:commit});
+        var snapshot = {repositoryId:scope.repositoryId, workspaceScopeKey:workspace,
+            branch:scope.branch, commit:commit};
+        if (scope.workspaceId === '__shared__' && workspace === '__shared__') snapshot.workspaceId = scope.workspaceId;
+        return Object.freeze(snapshot);
     }
 
     async function captureContext() {
@@ -35,7 +37,7 @@ window.AnalysisApi = (function () {
 
     function scoped(path, context, values) {
         var source = snapshot(context), query = new URLSearchParams(values || {});
-        var workspace = source.workspaceScopeKey === '__shared__' ? '' : source.workspaceScopeKey;
+        var workspace = source.workspaceId ?? (source.workspaceScopeKey === '__shared__' ? '' : source.workspaceScopeKey);
         query.set('repositoryId', source.repositoryId); query.set('branch', source.branch);
         query.set('commitId', source.commit); query.set('workspaceId', workspace);
         return {url:path + '?' + query, policy:{pinnedWorkspaceId:workspace, retries:0}};

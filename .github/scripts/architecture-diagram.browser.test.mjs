@@ -335,7 +335,7 @@ async function snapshotFixture(locale = 'en', standaloneUrl = null) {
         document.querySelector('header').classList.add('architecture-source-actions');
         window.TaxonomyI18n = { t: key => ({ 'archview.policy.title.defaultImpact': locale === 'de' ? 'Architektur-Wirkungsansicht' : 'Architecture Impact View' }[key] || key), ready: () => Promise.resolve(), getLocale: () => locale, formatEnum: value => value || '' };
         window.snapshotRequests = [];
-        window.snapshotData = source => ({ projectId: Number(source.projectId), requirementId:source.requirementId,snapshotId: source.snapshotId, workspaceId: source.workspaceId || source.workspaceScopeKey || '', branchName: source.branch, exportProvenance: { repositoryId: source.repositoryId,requirementVersionId:source.requirementVersionId }, policyTitleKey: 'archview.policy.title.defaultImpact', elements: {}, relations: {}, warnings: [], scene: {
+        window.snapshotData = source => ({ projectId: Number(source.projectId), requirementId:source.requirementId,snapshotId: source.snapshotId, workspaceId: source.workspaceId ?? (source.workspaceScopeKey === '__shared__' ? '' : source.workspaceScopeKey) ?? '', branchName: source.branch, exportProvenance: { repositoryId: source.repositoryId,requirementVersionId:source.requirementVersionId }, policyTitleKey: 'archview.policy.title.defaultImpact', elements: {}, relations: {}, warnings: [], scene: {
             width: 1100, height: 420, nodes: [
                 { id:'A',label:'Capability evidence',type:'Capabilities',layer:0,anchor:true,relevance:0.9,x:100,y:100,width:230,height:86 },
                 { id:'B',label:'Context service',type:'Services',layer:1,anchor:false,relevance:0.5,x:500,y:100,width:230,height:86 },
@@ -352,7 +352,7 @@ async function snapshotFixture(locale = 'en', standaloneUrl = null) {
     await page.evaluate(() => { window.snapshotAdapter = TaxonomyArchitectureSnapshot.mount(document.body); window.sourceA = {kind:'snapshot',projectId:'42',snapshotId:'snapshot-A',repositoryId:'repository-A',workspaceId:'private-A',branch:'review/A'}; });
     return page;
 }
-for(const workspace of ['private-A',''])test(`standalone snapshot keeps exact source pins and rejects URL object keys (${workspace||'shared'})`,async()=>{
+for(const workspace of ['private-A','', '__shared__'])test(`standalone snapshot keeps exact source pins and rejects URL object keys (${workspace||'shared'})`,async()=>{
     const pins={repositoryId:'repository-A',workspaceId:workspace,workspaceScopeKey:workspace||'__shared__',branch:'review/A',
         projectId:'42',requirementId:'7',requirementVersionId:'9',snapshotId:'snapshot-A',element:'A',
         commit:'a'.repeat(40),revision:'17',viewId:'view-A',layout:'stable',layoutRevision:'3',

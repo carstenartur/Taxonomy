@@ -170,20 +170,24 @@ async function fixture(standaloneUrl=null){
     return page;
 }
 
-test('working tree selects a role and accepts or clears a stable organization override through preview', async () => {
+for (const workspaceId of ['private-a', '__shared__'])
+test(`working tree updates a responsibility through preview, accept and reload in ${workspaceId}`, async () => {
     const page = await fixture();
     try {
-        await page.evaluate(async () => {
+        await page.evaluate(async workspaceId => {
             const original = ArchitectureEditorApi.load;
             const property = 'x-responsible-organization-id';
             let override = '', revision = 7, sequence = 0;
             window.responsibilityPreviews = [];
             window.responsibilityAccepted = [];
+            window.responsibilityReadPins = [];
+            window.responsibilityWritePins = [];
             crypto.randomUUID = () => '00000000-0000-4000-8000-' + String(++sequence).padStart(12, '0');
             TaxonomyI18n.t = (key, ...args) => [key, ...args].join(' ');
             ArchitectureEditorApi.exportUrl = () => '/export';
             ArchitectureEditorApi.load = async (...args) => {
                 const view = await original(...args);
+                responsibilityReadPins.push(args[0].workspaceId ?? (args[0].workspaceScopeKey === '__shared__' ? '' : args[0].workspaceScopeKey));
                 view.document.context.revision = revision;
                 view.document.context.writeMode = 'PRIVATE_WORKSPACE';
                 view.schema.elementTypes = ['BusinessRole'];
@@ -209,13 +213,14 @@ test('working tree selects a role and accepts or clears a stable organization ov
                 return {context:command.context, change:{changes:[{id:command.id, before:override, after:command.properties[property]}]}};
             };
             ArchitectureEditorApi.execute = async command => {
-                responsibilityAccepted.push(structuredClone(command));
+                responsibilityWritePins.push(command.context.workspaceId ?? command.context.workspaceScopeKey);
+                responsibilityAccepted.push(JSON.parse(JSON.stringify(command)));
                 override = command.properties[property];
                 return {context:{...command.context, revision:++revision}, projectionState:'READY'};
             };
             window.editor = TaxonomyArchitectureEditor.mount(document.getElementById('architectureWorkingSource'));
-            await editor.activate({kind:'working', repositoryId:'repo', workspaceScopeKey:'private-a', branch:'draft/a'});
-        });
+            await editor.activate({kind:'working', repositoryId:'repo', workspaceId, workspaceScopeKey:workspaceId, branch:'draft/a'});
+        }, workspaceId);
 
         const parent = page.locator('#editorTree [data-toggle-id="BR-1002"]');
         assert.equal(await parent.isVisible(), true);
@@ -243,6 +248,9 @@ test('working tree selects a role and accepts or clears a stable organization ov
                 !document.querySelector('#editorPreviewDialog').open && !document.querySelector('#editorPreviewElement').disabled, index + 1);
             assert.deepEqual(await page.evaluate(() => responsibilityAccepted.at(-1)), preview);
             assert.equal(await page.locator('#editorOrganization').inputValue(), value);
+            assert.equal(await page.evaluate(() => responsibilityWritePins.at(-1)), workspaceId);
+            assert.equal(await page.evaluate(() => responsibilityReadPins.at(-1)), workspaceId);
+            assert.equal(await page.evaluate(() => Object.hasOwn(responsibilityAccepted.at(-1).context, 'workspaceId')), false);
         }
         assert.equal(await page.locator('#editorResponsibilitySource').innerText(), inherited);
         assert.equal(await page.locator('#editorTree [data-select-id="BR-1081"]').getAttribute('aria-current'), 'true');
@@ -263,7 +271,7 @@ test('the working editor supplies its authoritative taxonomy type mapping to the
         assert.deepEqual(actual,{Capability:'CP',System:'SY'});
     }finally{await page.close();}
 });
-for(const workspace of ['private-a',''])test(`standalone editor keeps source pins and rejects URL object keys (${workspace||'shared'})`,async()=>{
+for(const workspace of ['private-a','', '__shared__'])test(`standalone editor keeps source pins and rejects URL object keys (${workspace||'shared'})`,async()=>{
     const pins={repositoryId:'repo',workspaceId:workspace,workspaceScopeKey:workspace||'__shared__',branch:'draft/a',
         projectId:'42',requirementId:'7',requirementVersionId:'9',snapshotId:'snapshot-A',revision:'17',
         viewId:'view-A',layout:'stable',layoutRevision:'3',sourceRepositoryId:'source-repo',
@@ -280,11 +288,36 @@ for(const workspace of ['private-a',''])test(`standalone editor keeps source pin
         assert.equal(actual.kind,'working');
         for(const key of ['__proto__','constructor','prototype','hasOwnProperty','mayEdit','unexpected'])
             assert.equal(Object.hasOwn(actual,key),false,'Untrusted URL property escaped into source: '+key);
-        assert.deepEqual(await page.evaluate(()=>loaded[0]),{scope:{repositoryId:'repo',workspaceScopeKey:workspace||'__shared__',branch:'draft/a'},revision:'17',layout:'stable',layoutRevision:'3',viewId:'view-A'});
+        assert.deepEqual(await page.evaluate(()=>loaded[0]),{scope:{repositoryId:'repo',workspaceId:workspace,workspaceScopeKey:workspace||'__shared__',branch:'draft/a'},revision:'17',layout:'stable',layoutRevision:'3',viewId:'view-A'});
         assert.equal(new URL(page.url()).searchParams.get('lang'),'de');
         await page.evaluate(()=>window.dispatchEvent(new PopStateEvent('popstate')));
         assert.equal(await page.evaluate(()=>Object.hasOwn(document.body.__architectureEditor.getSource(),'constructor')),false,'History replay must keep the same safe source boundary');
     }finally{await page.close();}
+});
+test('workspace-only editor deep link retains the private pin after the backend resolves repository and branch', async () => {
+    const page = await fixture('http://editor.test/taxonomy/architecture/editor?workspaceId=__shared__&lang=de');
+    try {
+        await page.waitForFunction(() => document.body.__architectureEditor?.getData());
+        const source = await page.evaluate(() => document.body.__architectureEditor.getSource());
+        assert.equal(source.repositoryId, 'repo');
+        assert.equal(source.branch, 'draft/a');
+        assert.equal(source.workspaceId, '__shared__');
+        const restored = await page.evaluate(() => navigation.at(-1).url);
+        assert.equal(new URL(restored).searchParams.get('workspaceId'), '__shared__');
+    } finally { await page.close(); }
+});
+test('legacy central editor selection does not reuse the private workspace behind the shared display key', async () => {
+    const page = await fixture('http://editor.test/taxonomy/architecture/editor?workspaceId=__shared__&lang=de');
+    try {
+        await page.waitForFunction(() => document.body.__architectureEditor?.getData());
+        const current = await page.evaluate(async () => {
+            const editor = document.body.__architectureEditor;
+            const {workspaceId, ...legacyCentral} = editor.getSource();
+            await editor.activate(legacyCentral);
+            return {reads:loaded.length, workspaceId:editor.getSource().workspaceId};
+        });
+        assert.deepEqual(current, {reads:2, workspaceId:''});
+    } finally { await page.close(); }
 });
 test('embedded editor loads only when activated and retains an unaccepted form across suspension',async()=>{
     const page=await fixture();try{

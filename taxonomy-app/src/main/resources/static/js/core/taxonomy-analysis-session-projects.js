@@ -138,7 +138,8 @@
         var target=new URL(applicationUrl('/projects/'+result.saved.projectId+'/requirements/'+result.saved.requirementId),window.location.href);
         var context=result.saved.publication?.context||{};
         if(context.repositoryId)target.searchParams.set('repositoryId',context.repositoryId);
-        if(context.workspaceScopeKey!==undefined)target.searchParams.set('workspaceId',context.workspaceScopeKey==='__shared__'?'':context.workspaceScopeKey);
+        if (context.workspaceId !== undefined) target.searchParams.set('workspaceId', context.workspaceId ?? '');
+        else if (context.workspaceScopeKey !== undefined) target.searchParams.set('workspaceId', context.workspaceScopeKey === '__shared__' ? '' : context.workspaceScopeKey);
         if(context.branch)target.searchParams.set('branch',context.branch);link.href=target.href;parts.error.appendChild(link);parts.error.focus();
     }
 
@@ -667,7 +668,7 @@
             return values.length === 1 && values[0] && values[0] === values[0].trim();
         })) return null;
         var id = query.get('workspaceId');
-        if (id === '__shared__' || query.get('workspaceScopeKey') !== id) return null;
+        if (query.get('workspaceScopeKey') !== id) return null;
         return {workspaceId:id, repositoryId:query.get('repositoryId'), branch:query.get('branch')};
     }
 

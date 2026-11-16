@@ -138,6 +138,12 @@ for (const prefix of ['', '/taxonomy']) for (const query of [
     assert.deepEqual(requests.map(request => request.url), [prefix + '/api/git/state?branch=draft', prefix + '/api/context/current']);
 });
 
+test('cold status reads preserve the actual workspace even when it matches the legacy display key', async () => {
+    const {context, requests} = boot('?workspaceId=__shared__&workspaceScopeKey=__shared__&repositoryId=repo&branch=draft');
+    await context.fetch('/api/context/current');
+    assert.equal(requests[0].options.headers.get('X-Taxonomy-Workspace-Id'), '__shared__');
+});
+
 for (const query of ['', '?workspaceId=', '?workspaceId=&workspaceScopeKey=__shared__', '?workspaceScopeKey=__shared__'])
     test(`initial central or unpinned status reads preserve the exact selection (${query || 'absent'})`, async () => {
         const {context, requests} = boot(query);
@@ -447,6 +453,75 @@ test('an inaccessible requested project does not silently display a different po
 });
 test('creating a project overrides the older navigation target', () => {
     assert.equal(boot('?projectId=12').api.preferredProject([{id: 12}, {id: 17}], 17, 12).id, 17);
+});
+for (const [label, pin, expected] of [
+    ['private workspace named __shared__', {workspaceId:'__shared__'}, '__shared__'],
+    ['explicit central', {workspaceId:''}, ''],
+    ['nullable central', {workspaceId:null}, ''],
+    ['legacy central', {}, '']
+]) {
+    const scope = {repositoryId:'repo-source', workspaceScopeKey:'__shared__', branch:'draft/source', ...pin};
+    test(`named portfolio and architecture reads preserve ${label}`, async () => {
+        const {context, requests} = boot('', '/taxonomy');
+        canonicalFixture.install(context, [
+            'api/portfolio-api.js', 'api/architecture-workbench-api.js',
+            'api/architecture-lifecycle-api.js', 'api/architecture-editor-api.js'
+        ]);
+        context.TaxonomyArchitectureWorkflow.replaceScope(scope);
+        const commit = 'a'.repeat(40);
+        const methods = [
+            ['/api/projects/12', () => context.TaxonomyPortfolioApi.getProject(12)],
+            ['/api/projects/12/architecture-workbench/snapshot-v2', () => context.ArchitectureWorkbenchApi.load(12, 'snapshot-v2', scope)],
+            ['/api/architecture/lifecycle', () => context.TaxonomyArchitectureLifecycleApi.overview(scope, commit)],
+            ['/api/architecture/editor', () => context.ArchitectureEditorApi.load(scope, commit)]
+        ];
+        for (const [path, invoke] of methods) {
+            await invoke();
+            const request = requests.findLast(item => url(item.url).pathname === '/taxonomy' + path);
+            assert.ok(request, path);
+            const params = url(request.url).searchParams;
+            assert.equal(params.get('workspaceId'), expected, path);
+            assert.equal(params.get('repositoryId'), 'repo-source', path);
+            assert.equal(params.get('branch'), 'draft/source', path);
+            assert.equal(request.options.headers.get('X-Taxonomy-Workspace-Id'), expected, path);
+            if (path.startsWith('/api/architecture/')) assert.equal(params.get('commit'), commit);
+        }
+        const download = context.ArchitectureWorkbenchApi.architectureWordUrl(12, 'snapshot-v2', scope);
+        assert.equal(url(download).searchParams.get('workspaceId'), expected);
+        assert.equal(url(download).pathname, '/taxonomy/api/projects/12/snapshots/snapshot-v2/architecture-report/docx');
+    });
+
+    test(`versioned architecture links preserve ${label}`, () => {
+        const {api} = boot('', '/taxonomy');
+        api.setScope(scope);
+        assert.equal(url(api.portfolioUrl(12)).searchParams.get('workspaceId'), expected);
+        const commit = 'a'.repeat(40);
+        const checkpoint = url(api.checkpointUrl({...scope, commit}, 'UA-1574'));
+        assert.equal(checkpoint.searchParams.get('workspaceId'), expected);
+        assert.equal(checkpoint.searchParams.get('commit'), commit);
+        assert.equal(checkpoint.searchParams.get('branch'), 'draft/source');
+        const revision = url(api.modelRevisionUrl({...scope, semanticRevision:17}, 'UA-1574'));
+        assert.equal(revision.searchParams.get('workspaceId'), expected);
+        assert.equal(revision.searchParams.get('revision'), '17');
+        const retained = api.editorSourceLinks({...scope, projectId:12, requirementId:34, snapshotId:'snapshot-v2'});
+        assert.equal(url(retained.snapshot).searchParams.get('workspaceId'), expected);
+    });
+}
+
+test('direct editor and lifecycle reads treat an explicit null workspace as central without a display key', async () => {
+    const {context, requests} = boot('', '/taxonomy');
+    canonicalFixture.install(context, ['api/architecture-lifecycle-api.js','api/architecture-editor-api.js']);
+    const scope = {repositoryId:'repo-source', workspaceId:null, branch:'draft/source'};
+    const commit = 'a'.repeat(40);
+    await context.ArchitectureEditorApi.load(scope, commit);
+    await context.TaxonomyArchitectureLifecycleApi.overview(scope, commit);
+    assert.equal(requests.length, 2);
+    for (const request of requests) {
+        const params = url(request.url).searchParams;
+        assert.equal(params.get('workspaceId'), '');
+        assert.equal(params.get('commit'), commit);
+        assert.equal(request.options.headers.get('X-Taxonomy-Workspace-Id'), '');
+    }
 });
 test('editor transport preserves an explicit shared pin', async () => {
     const editorSource = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/api/architecture-editor-api.js', import.meta.url), 'utf8');

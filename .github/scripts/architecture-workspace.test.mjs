@@ -24,6 +24,24 @@ test('legacy source links retain private scope, exact version, selection and mou
         assert.equal(result.searchParams.get('architectureSource'), kind);
     }
 });
+test('architecture source switches keep private and central stands with the same display scope distinct', async () => {
+    const api = await boot();
+    const commit = 'a'.repeat(40);
+    const fromUrl = new URL(`https://example.test/taxonomy/architecture/editor?repositoryId=repo&workspaceId=__shared__&workspaceScopeKey=__shared__&branch=draft&commit=${commit}`);
+    const privateStand = api.parseSource(fromUrl);
+    const centralStand = {...privateStand, workspaceId:''};
+    const workspace = api.create({initial:privateStand, adapters:{working:{activate:async () => {}}}});
+    for (const [source, expected] of [[privateStand, '__shared__'], [{...centralStand, workspaceId:null}, ''], [centralStand, ''], [privateStand, '__shared__']]) {
+        await workspace.open('working', {source});
+        const restored = new URL(api.urlFor(fromUrl, workspace.getSource(), '/taxonomy/'));
+        assert.equal(restored.searchParams.get('workspaceId'), expected);
+        assert.equal(restored.searchParams.get('commit'), commit);
+        assert.equal(restored.searchParams.get('branch'), 'draft');
+        assert.equal(restored.searchParams.get('workspaceScopeKey'), '__shared__');
+    }
+    await workspace.open('working', {workspaceScopeKey:'__shared__'});
+    assert.equal(workspace.getSource().workspaceId, '', 'a legacy selector supplying only the shared marker still opens central');
+});
 test('source switches retain mounted adapters and keep selection local to its source', async () => {
     const api = await boot(), calls = [], drafts = {text: 'unaccepted requirement'};
     const analysis = {activate: async source => calls.push(['analysis',source.element]), suspend: () => calls.push(['suspend']), getData: () => drafts};
@@ -206,6 +224,26 @@ for(const loaderOnly of [false,true])test('analysis waits for '+(loaderOnly?'the
     assert.equal(fixture.context.TaxonomyArchitectureWorkspace.getSource().workspaceScopeKey,'A');
     assert.equal(fixture.metadata.length,1);assert.equal(fixture.metadata[0].workspaceScopeKey,'A');
     assert.equal(fixture.scopes.at(-1).branch,'analysis-branch');
+});
+
+test('analysis metadata refreshes when the actual workspace changes under the same display key', async () => {
+    const f = await mountedWorkspace('analysis', false, {page:'analyze', overview:async source => ({context:{
+        repositoryId:source.workspaceId ? 'private-repository' : 'central-repository',
+        workspaceScopeKey:source.workspaceScopeKey,branch:'main'
+    }})});
+    await f.ready();
+    const api = f.context.TaxonomyArchitectureWorkspace;
+    const select = workspaceId => { f.context.TaxonomyAnalysisSession = {
+        whenInitialized:async () => true, state:() => ({workspaceId,version:1})
+    }; };
+    select('');
+    assert.equal(await api.ready(), true);
+    assert.equal(f.scopes.at(-1).repositoryId, 'central-repository');
+    select('__shared__');
+    assert.equal(await api.ready(), true);
+    assert.equal(f.scopes.at(-1).repositoryId, 'private-repository');
+    assert.equal(f.metadata.at(-1).workspaceId, '__shared__');
+    assert.equal(f.metadata.at(-1).repositoryId, undefined, 'do not admit the old central repository pin');
 });
 
 test('initial Working activation waits for the retained session before admitting its exact canonical editor read', async () => {

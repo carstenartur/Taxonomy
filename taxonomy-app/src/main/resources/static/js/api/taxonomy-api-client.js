@@ -323,6 +323,11 @@ window.TaxonomyApiClient = (function () {
         return true;
     }
 
+    function observedWorkspace(source) {
+        return source?.workspaceId !== undefined ? (source.workspaceId ?? '')
+            : source?.workspaceScopeKey === '__shared__' ? '' : source?.workspaceScopeKey;
+    }
+
     function navigationIdentity(ignoreModelStand) {
         var value = window.TaxonomyContextBar?.getCurrentContext?.();
         var chrome = window.TaxonomyAppChrome?.getContext?.() || {};
@@ -330,9 +335,9 @@ window.TaxonomyApiClient = (function () {
         return JSON.stringify([value?.contextId, value?.branch, value?.commitId,
             window.TaxonomyContextBar?.getSelectionGeneration?.(),
             chrome.project?.id, chrome.requirement?.id, chrome.requirement?.version,
-            chrome.architecture?.repositoryId, chrome.architecture?.workspaceScopeKey,
+            chrome.architecture?.repositoryId, chrome.architecture?.workspaceScopeKey, observedWorkspace(chrome.architecture),
             chrome.architecture?.branch, ignoreModelStand ? null : chrome.architecture?.modelStand,
-            chrome.source?.repositoryId, chrome.source?.workspaceScopeKey, chrome.source?.branch,
+            chrome.source?.repositoryId, chrome.source?.workspaceScopeKey, observedWorkspace(chrome.source), chrome.source?.branch,
             chrome.source?.modelStand, chrome.source?.snapshotId, chrome.source?.projectId,
             chrome.source?.requirementId, chrome.source?.requirementVersionId, chrome.source?.commit,
             chrome.source?.revision, source.workspaceId, source.repositoryId, source.branch, source.commitId]);

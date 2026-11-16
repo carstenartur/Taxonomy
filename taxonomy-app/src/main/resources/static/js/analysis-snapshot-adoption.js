@@ -69,9 +69,10 @@ window.AnalysisSnapshotAdoption = function (options) {
         if (busy || locked || !pending) return;
         setBusy(true);
         try {
-            var result = await options.api.adoptSnapshot(pending);
+            var request = pending;
+            var result = await options.api.adoptSnapshot(request);
             pending = null;
-            if (options.onAccepted) await options.onAccepted(result);
+            if (options.onAccepted) await options.onAccepted(result, request.context);
         } catch (error) {
             options.report(error);
             // Timeouts and transport/server failures may follow durable acceptance: retain this exact intent.

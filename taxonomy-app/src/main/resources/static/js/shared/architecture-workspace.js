@@ -16,6 +16,17 @@
         if (!value.workspaceScopeKey && value.workspaceId !== undefined) value.workspaceScopeKey = value.workspaceId || '__shared__';
         return value;
     }
+    function selectedWorkspaceId(source) {
+        return source.workspaceId !== undefined ? (source.workspaceId ?? '')
+            : source.workspaceScopeKey === '__shared__' ? '' : source.workspaceScopeKey;
+    }
+    function completeWorkspacePin(source) {
+        var workspace = selectedWorkspaceId(source);
+        if (workspace !== undefined) {
+            source.workspaceId = workspace;
+            source.workspaceScopeKey ??= workspace || '__shared__';
+        }
+    }
     function urlFor(url, source, path) {
         var target = new URL(url.href);
         if (path) target.pathname = path;
@@ -41,8 +52,8 @@
             var next = Object.assign({}, settings.source || retained[kind] || options.defaults?.[kind] || {}, {kind:kind});
             pinKeys.forEach(function (key) { if (settings[key] !== undefined) next[key] = settings[key]; });
             if (settings.workspaceId !== undefined && settings.workspaceScopeKey === undefined) next.workspaceScopeKey = settings.workspaceId || '__shared__';
-            if (next.workspaceScopeKey !== undefined) next.workspaceId = next.workspaceScopeKey === '__shared__' ? '' : next.workspaceScopeKey;
-            else if (next.workspaceId !== undefined) next.workspaceScopeKey = next.workspaceId || '__shared__';
+            if (settings.workspaceScopeKey !== undefined && settings.workspaceId === undefined) delete next.workspaceId;
+            completeWorkspacePin(next);
             if (options.initialize && await options.initialize() === false) return false;
             if (ticket !== generation) return false;
             if (active && prior?.canLeave && !await prior.canLeave(next, {retain:kind !== current.kind})) return false;
@@ -87,8 +98,7 @@
         if (!contextKeys.some(function (key) { return source[key] !== undefined; })) return null;
         var value = {kind:'analysis'};
         pinKeys.forEach(function (key) { if (source[key] !== undefined) value[key] = source[key]; });
-        if (value.workspaceScopeKey !== undefined) value.workspaceId = value.workspaceScopeKey === '__shared__' ? '' : value.workspaceScopeKey;
-        else if (value.workspaceId !== undefined) value.workspaceScopeKey = value.workspaceId || '__shared__';
+        completeWorkspacePin(value);
         return value;
     }
     function sourceForUrl(source) {
@@ -101,7 +111,7 @@
         });
         return value;
     }
-    var analysisGeneration = 0, analysisMetadata = null, sourceInitialization = null, sourceActivation = null;
+    var analysisGeneration = 0, analysisMetadata = null, analysisMetadataWorkspace = null, sourceInitialization = null, sourceActivation = null;
     var workingScope = Object.assign({kind:'working'}, initialScope);
     var snapshotScope = Object.assign({kind:'snapshot'}, initialScope);
     ['repositoryId','workspaceId','workspaceScopeKey','branch','projectId','requirementId','requirementVersionId','snapshotId'].forEach(function (key) {
@@ -159,9 +169,10 @@
         var saved = session?.state?.();
         var workspaceId = saved?.workspaceId || '';
         var scopeKey = workspaceId || '__shared__';
-        var retained = analysisScope.workspaceScopeKey === scopeKey || analysisScope.workspaceScopeKey === undefined ? analysisScope : {};
+        var retainedWorkspace = selectedWorkspaceId(analysisScope);
+        var retained = retainedWorkspace === workspaceId || retainedWorkspace === undefined ? analysisScope : {};
         var exact = Object.assign({},retained,{workspaceId:workspaceId,workspaceScopeKey:scopeKey});
-        if (analysisMetadata && analysisMetadata.context.workspaceScopeKey === exact.workspaceScopeKey) {
+        if (analysisMetadata && analysisMetadataWorkspace === workspaceId) {
             return Object.assign({},exact,{repositoryId:analysisMetadata.context.repositoryId,branch:analysisMetadata.context.branch});
         }
         // Metadata resolves this retained analysis session independently of the displayed editor/snapshot.
@@ -169,6 +180,7 @@
         var value = await window.TaxonomyArchitectureLifecycleApi.overview(exact);
         if ((window.TaxonomyAnalysisSession?.state?.().workspaceId || '') !== workspaceId) return resolveAnalysisScope();
         analysisMetadata = value;
+        analysisMetadataWorkspace = workspaceId;
         return Object.assign({},exact,{repositoryId:value.context.repositoryId,branch:value.context.branch});
     }
     async function restoreAnalysisContext(page) {
@@ -185,7 +197,7 @@
         analysisScope = resolved;
         window.TaxonomyArchitectureWorkflow?.replaceScope(analysisScope);
         window.TaxonomyAppChrome?.updateContext?.({architecture:{repositoryId:resolved.repositoryId,
-            workspaceScopeKey:resolved.workspaceScopeKey,branch:resolved.branch,title:analysisMetadata?.architectureTitle,
+            workspaceId:resolved.workspaceId,workspaceScopeKey:resolved.workspaceScopeKey,branch:resolved.branch,title:analysisMetadata?.architectureTitle,
             modelStand:null,commit:null,revision:null},editable:false},'analysis');
         window.TaxonomyAppChrome?.activateContext?.('analysis');
         if (page) {

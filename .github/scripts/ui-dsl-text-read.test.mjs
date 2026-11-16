@@ -129,14 +129,15 @@ test('initial DSL read waits for resolved workspace, context and branch selectio
  h.calls[0].resolve(response('initial architecture'));await settle();assert.equal(h.view.state.doc.toString(),'initial architecture');
 });
 
-test('direct editor startup reads the project selected by asynchronous source restoration', async () => {
+for (const workspaceId of ['resolved-workspace', '__shared__'])
+test(`direct editor startup reads the selected project in ${workspaceId}`, async () => {
  const h = startupHarness(), source = deferred();
  h.window.TaxonomyArchitectureWorkspace = {ready: () => source.promise};
  h.resolveWorkspace();
  h.resolveContext({branch:'draft', commitId:null, mode:'EDITABLE'});
  await settle();
  assert.equal(h.calls.length, 0, 'No project read before its repository is resolved');
- const architecture = {repositoryId:'retained-project', workspaceScopeKey:'resolved-workspace', branch:'project-branch'};
+ const architecture = {repositoryId:'retained-project', workspaceId, workspaceScopeKey:workspaceId, branch:'project-branch'};
  h.window.TaxonomyAppChrome = {getContext: () => ({architecture})};
  source.resolve(true);
  await settle();

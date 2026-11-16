@@ -152,13 +152,13 @@
         } else if (selected && (!visible || (visible.repositoryId === selected.repositoryId
                 && visible.branch === selected.branch && visible.workspaceScopeKey === selected.workspaceScopeKey))) {
             scope.repositoryId = selected.repositoryId;
-            scope.workspaceId = selected.workspaceScopeKey === '__shared__' ? '' : selected.workspaceScopeKey;
+            scope.workspaceId = selected.workspaceId ?? (selected.workspaceScopeKey === '__shared__' ? '' : selected.workspaceScopeKey);
             scope.branch = selected.branch;
             if (lifecycle.state()?.source === 'GIT_CHECKPOINT') scope.commit = selected.commit;
             else scope.revision = selected.revision;
         } else if (visible?.repositoryId && visible.branch) {
             scope.repositoryId = visible.repositoryId;
-            scope.workspaceId = visible.workspaceScopeKey === '__shared__' ? '' : visible.workspaceScopeKey;
+            scope.workspaceId = visible.workspaceId ?? (visible.workspaceScopeKey === '__shared__' ? '' : visible.workspaceScopeKey);
             scope.branch = visible.branch;
             scope.commit = visible.commit;
         } else {
