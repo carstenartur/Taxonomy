@@ -160,7 +160,10 @@
         mergeConflicts: function (from, into) { return versionRequest('/api/dsl/merge/conflicts' + query({from:from,into:into})); },
         cherryPickConflicts: function (id, target) { return versionRequest('/api/dsl/cherry-pick/conflicts' + query({commitId:id,targetBranch:target})); },
         resolveMerge: function (from, into, text) { return versionPost('/api/dsl/merge/resolve', {fromBranch:from,intoBranch:into}, text, 'text/plain'); },
-        resolveCherryPick: function (id, target, text) { return versionPost('/api/dsl/cherry-pick/resolve', {commitId:id,targetBranch:target}, text, 'text/plain'); },
+        resolveCherryPick: function (id, target, targetHead, text) {
+            return versionPost('/api/dsl/cherry-pick/resolve',
+                {commitId:id, targetBranch:target, expectedTargetHead:targetHead}, text, 'text/plain');
+        },
         resolveDiverged: function (strategy, branch) { return versionPost('/api/workspace/resolve-diverged', {strategy:strategy,userBranch:branch}); },
         copyBackPreview: function (selection) { return versionPost('/api/context/copy-back/preview', {}, JSON.stringify(selection), 'application/json'); },
         copyBackApply: function (selection, contextId) { return versionPost('/api/context/copy-back/apply', contextId ? {expectedContextId:contextId} : {}, JSON.stringify(selection), 'application/json'); }

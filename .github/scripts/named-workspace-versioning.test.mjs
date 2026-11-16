@@ -51,6 +51,37 @@ test('named versioning owns encoded routes and preserves domain conflict statuse
  assert.equal(new URL(calls[1].url,'https://example.test').searchParams.get('expectedContextId'),'context/c');
  assert.equal(calls[2].init.body,'plain DSL');assert.equal(calls[2].init.headers.get('Content-Type'),'text/plain');
 });
+test('cherry-pick conflict choices stay bound to the displayed target commit', async () => {
+  const calls = [], target = 'b'.repeat(40), source = 'a'.repeat(40);
+  const h = harness(async (url, init) => {
+    calls.push({url:new URL(url, 'https://example.test'), init});
+    return init.method === 'POST'
+      ? Response.json({error:'The target moved'}, {status:409})
+      : Response.json({targetCommit:target, oursContent:'draft text', theirsContent:'source text', baseContent:'base text'});
+  });
+  let onResolve;
+  h.node('conflictResolveBtn').addEventListener = (type, listener) => { if (type === 'click') onResolve = listener; };
+  h.context.document.querySelectorAll = () => [];
+  h.load('workspace/taxonomy-merge-resolution.js');
+  h.context.document.dispatchEvent(new Event('DOMContentLoaded'));
+  h.context.window.TaxonomyMergeResolution.showCherryPickConflict(source, 'team/draft');
+  await settle(); await settle();
+  assert.equal(h.node('conflictBaseContent').textContent, 'base text');
+  h.node('conflictResolvedContent').value = 'manual resolution';
+  onResolve(); await settle(); await settle();
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].url.searchParams.get('expectedTargetHead'), target);
+  assert.equal(calls[1].url.searchParams.get('commitId'), source);
+  assert.equal(calls[1].init.body, 'manual resolution');
+  assert.equal(h.node('conflictResolvedContent').value, 'manual resolution');
+  const switched = new Event('taxonomy:repository-context-changed');
+  switched.detail = {selectionChanged:true};
+  h.context.document.dispatchEvent(switched);
+  onResolve(); await settle();
+  assert.equal(calls.length, 2, 'the old dialog cannot write into the new workspace');
+  assert.equal(h.node('conflictResolvedContent').value, '');
+});
+
 test('variant integration binds both branch names accepted by the merge controller',async()=>{
  const calls=[];const h=harness(async(url,init)=>{
   const request=new URL(url,'https://example.test');calls.push({request,init});

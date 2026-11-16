@@ -2367,6 +2367,10 @@
                         <pre id="conflictTheirsContent" class="border rounded p-2 bg-light" style="max-height:300px; overflow:auto; font-size:0.75rem;"></pre>
                     </div>
                 </div>
+                <details id="conflictBasePanel" class="mt-2" hidden>
+                    <summary th:text="#{conflict.base.label}">Common base</summary>
+                    <pre id="conflictBaseContent" class="border rounded p-2 bg-light overflow-auto small"></pre>
+                </details>
                 <div class="mt-3">
                     <h6 th:text="#{conflict.resolved.label}">Resolved Content</h6>
                     <textarea id="conflictResolvedContent" class="form-control font-monospace" rows="10"
