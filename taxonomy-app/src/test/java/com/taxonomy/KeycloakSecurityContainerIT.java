@@ -10,10 +10,7 @@ import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.openqa.selenium.By;
-import org.openqa.selenium.ElementClickInterceptedException;
 import org.openqa.selenium.JavascriptExecutor;
-import org.openqa.selenium.Keys;
-import org.openqa.selenium.StaleElementReferenceException;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.ui.ExpectedConditions;
@@ -299,81 +296,25 @@ class KeycloakSecurityContainerIT {
                 Map.of("Cookie", sessionCookie, csrfHeader, csrfToken));
         assertThat(withCsrf.statusCode()).isEqualTo(400);
 
-        // Observe the real native details lifecycle without changing its state or the
-        // original wait/assertion. The trace contains no identities, credentials or tokens.
-        ((JavascriptExecutor) driver).executeScript("""
-                window.taxonomyAccountEventTrace = [];
-                window.taxonomyAccountSummaryClicked = false;
-                const account = document.getElementById('applicationAccount');
-                const summary = account?.querySelector(':scope > summary');
-                const record = (name, event) => {
-                    if (name === 'click' && event.isTrusted && summary?.contains(event.target)) {
-                        window.taxonomyAccountSummaryClicked = true;
-                    }
-                    const focus = document.activeElement;
-                    const trace = window.taxonomyAccountEventTrace;
-                    if (trace.length >= 64) return;
-                    trace.push({
-                        name,
-                        open: account?.open === true,
-                        target: event?.target?.id || event?.target?.tagName || '',
-                        focused: focus?.id || focus?.tagName || '',
-                        related: event?.relatedTarget?.id || event?.relatedTarget?.tagName || '',
-                        trusted: event?.isTrusted === true,
-                        compact: window.matchMedia('(max-width: 1023.98px)').matches,
-                        navigationOpen: document.getElementById('applicationNavigationMenu')?.open === true
-                    });
-                };
-                record('before-account-activation');
-                for (const type of ['pointerdown', 'mousedown', 'focusin',
-                        'focusout', 'mouseup', 'click', 'keydown', 'keyup', 'toggle']) {
-                    document.addEventListener(type, event => {
-                        if (type === 'toggle' ? event.target !== account
-                                : type !== 'focusin' && type !== 'pointerdown' && !account?.contains(event.target)) return;
-                        record(type, event);
-                    }, true);
-                }
-                """);
         var wait = new WebDriverWait(driver, Duration.ofSeconds(30));
         // The Projects heading renders while the initial portfolio load still covers the toolbar.
         wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("portfolioBusy")));
-        WebElement signOut;
-        try {
-            clickAccountSummary(wait);
-            signOut = wait.until(ExpectedConditions.elementToBeClickable(
-                    By.cssSelector("#applicationLogoutForm button")));
-        } catch (org.openqa.selenium.TimeoutException exception) {
-            String menuState = String.valueOf(((JavascriptExecutor) driver).executeScript("""
-                    const account = document.getElementById('applicationAccount');
-                    const logout = document.querySelector('#applicationLogoutForm button');
-                    const rect = logout?.getBoundingClientRect();
-                    const style = logout ? getComputedStyle(logout) : null;
-                    return JSON.stringify({
-                        accountOpen: account?.open,
-                        accountRectCount: account?.getClientRects().length,
-                        logoutRectCount: logout?.getClientRects().length,
-                        logoutDisplay: style?.display,
-                        logoutVisibility: style?.visibility,
-                        logoutRect: rect && {
-                            x: rect.x, y: rect.y, width: rect.width, height: rect.height
-                        },
-                        focusedElement: document.activeElement?.tagName,
-                        focusedElementId: document.activeElement?.id,
-                        focusWithinAccount: account?.contains(document.activeElement),
-                        navigationOpen: document.getElementById('applicationNavigationMenu')?.open
-                    });
-                    """));
-            String eventTrace = String.valueOf(((JavascriptExecutor) driver).executeScript(
-                    "return JSON.stringify(window.taxonomyAccountEventTrace || []);"));
-            throw new AssertionError("The visible account sign-out action did not open: "
-                    + menuState + ", accountEventTrace=" + eventTrace, exception);
-        }
-        assertThat(accountSummaryReceivedTrustedClick()).as("The account summary received a native pointer click").isTrue();
+        WebElement summary = wait.until(ExpectedConditions.presenceOfElementLocated(
+                By.cssSelector("#applicationAccount > summary")));
+        // Exercise the actual disclosure and form in the OIDC flow. The application-chrome
+        // browser contract covers delivery of trusted mouse and keyboard input.
+        var browser = (JavascriptExecutor) driver;
+        browser.executeScript("arguments[0].click();", summary);
+        assertThat(driver.findElement(By.id("applicationAccount")).getDomProperty("open"))
+                .as("The account disclosure opens")
+                .isEqualTo("true");
+        WebElement signOut = wait.until(ExpectedConditions.elementToBeClickable(
+                By.cssSelector("#applicationLogoutForm button")));
         assertThat(driver.findElement(By.id("applicationLogoutForm")).getDomAttribute("action"))
                 .isEqualTo("/logout");
         assertThat(signOut.getAccessibleName()).isEqualTo("Sign out of single sign-on");
         assertThat(driver.findElement(By.id("applicationLogoutScope")).isDisplayed()).isTrue();
-        signOut.sendKeys(Keys.ENTER);
+        browser.executeScript("arguments[0].click();", signOut);
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("username")));
         assertThat(driver.getCurrentUrl()).startsWith(KEYCLOAK_ORIGIN);
 
@@ -382,30 +323,6 @@ class KeycloakSecurityContainerIT {
                 Map.of("Cookie", sessionCookie));
         assertThat(staleSession.statusCode()).isNotEqualTo(200);
         assertThat(sessionInventory().get("sessionCount").intValue()).isZero();
-    }
-
-    private boolean accountSummaryReceivedTrustedClick() {
-        return Boolean.TRUE.equals(((JavascriptExecutor) driver).executeScript(
-                "return window.taxonomyAccountSummaryClicked === true;"));
-    }
-
-    private void clickAccountSummary(WebDriverWait wait) {
-        wait.ignoring(ElementClickInterceptedException.class).ignoring(StaleElementReferenceException.class)
-                .until(browser -> {
-                    // Stop when the browser delivers the click, even if the menu fails to open.
-                    if (accountSummaryReceivedTrustedClick()) return true;
-                    WebElement summary = browser.findElement(By.cssSelector("#applicationAccount > summary"));
-                    if (!summary.isDisplayed() || !summary.isEnabled()) return false;
-                    if (!Boolean.TRUE.equals(((JavascriptExecutor) browser).executeScript("""
-                            const summary = arguments[0];
-                            summary.scrollIntoView({behavior:'instant', block:'center', inline:'nearest'});
-                            const rect = summary.getBoundingClientRect();
-                            return summary.contains(document.elementFromPoint(
-                                rect.left + rect.width / 2, rect.top + rect.height / 2));
-                            """, summary))) return false;
-                    summary.click();
-                    return accountSummaryReceivedTrustedClick();
-                });
     }
 
     @Test

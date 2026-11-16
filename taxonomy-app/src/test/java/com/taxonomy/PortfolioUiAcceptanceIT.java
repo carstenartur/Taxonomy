@@ -641,7 +641,12 @@ class PortfolioUiAcceptanceIT {
         assertThat(driver.findElements(By.cssSelector("#snapshotList [data-snapshot-id]")))
                 .isNotEmpty();
 
-        click(By.id("analyses-tab"));
+        // The list is rendered before the first snapshot finishes loading under the busy overlay.
+        wait.until(ExpectedConditions.presenceOfElementLocated(
+                By.cssSelector("#snapshotList [data-snapshot-id][aria-current='true']")));
+        wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("detailBusy")));
+        By analysesTab = By.id("analyses-tab");
+        click(analysesTab, ExpectedConditions.attributeToBe(analysesTab, "aria-selected", "true"));
         click(By.cssSelector("#snapshotList [data-snapshot-id]"));
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("snapshotDetail")));
         click(By.id("architecture-tab"));
@@ -870,6 +875,10 @@ class PortfolioUiAcceptanceIT {
      * condition instead of bypassing it with JavaScript.
      */
     private static void click(By locator) {
+        click(locator, null);
+    }
+
+    private static void click(By locator, ExpectedCondition<Boolean> activated) {
         wait.until(browser -> {
             var targets=browser.findElements(locator);
             if(!targets.isEmpty() && !targets.getFirst().findElements(By.xpath("ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' modal ')]")).isEmpty()) return true;
@@ -880,13 +889,14 @@ class PortfolioUiAcceptanceIT {
                 .ignoring(StaleElementReferenceException.class)
                 .withMessage("Native click on " + locator)
                 .until(browser -> {
+                    if (activated != null && Boolean.TRUE.equals(activated.apply(browser))) return true;
                     WebElement element = browser.findElement(locator);
                     if (!element.isDisplayed() || !element.isEnabled()) return false;
                     javascript().executeScript(
                             "arguments[0].scrollIntoView({behavior:'instant',block:'center',inline:'nearest'});",
                             element);
                     element.click();
-                    return true;
+                    return activated == null || Boolean.TRUE.equals(activated.apply(browser));
                 });
     }
 
