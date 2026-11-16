@@ -70,7 +70,8 @@ class ApiPermissionsSecurityTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/api/workspace/upstream/fetch", "/api/workspace/upstream/fetch-tag"})
+    @ValueSource(strings = {"/api/workspace/upstream/fetch", "/api/workspace/upstream/fetch-tag",
+            "/api/workspace/upstream/rebase"})
     void upstreamPublicationRequiresAnExecutionRoleAndSessionCsrf(String path) throws Exception {
         mvc.perform(post(path).with(csrf()).with(user("reader").roles("READER")))
                 .andExpect(status().isForbidden());
@@ -81,7 +82,8 @@ class ApiPermissionsSecurityTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/api/repositories/fork/upstream/fetch", "/api/repositories/fork/upstream/fetch-tag"})
+    @ValueSource(strings = {"/api/repositories/fork/upstream/fetch", "/api/repositories/fork/upstream/fetch-tag",
+            "/api/repositories/fork/upstream/rebase"})
     void centralForkPublicationRequiresArchitectureWriteAndSessionCsrf(String path) throws Exception {
         mvc.perform(post(path).with(csrf()).with(user("analyst").roles("USER"))).andExpect(status().isForbidden());
         mvc.perform(post(path).with(user("architect").roles("ARCHITECT"))).andExpect(status().isForbidden());
