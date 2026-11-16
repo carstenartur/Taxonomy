@@ -113,6 +113,38 @@ class WorkspaceUpstreamServiceTest {
         verify(rows, never()).save(any());
     }
 
+    @Test
+    void reviewedRebasePostPublishesOnlyTheConfirmedLinearHistoryAndRejectsAStaleRetry() throws Exception {
+        service.fetch(selected, new WorkspaceUpstreamService.Request(incoming, null));
+        target.createBranchAtCommit("feature", base);
+        String first = target.commitDsl("feature", "base", "alice", "local one");
+        String second = target.commitDsl("feature", "base", "alice", "local two");
+        var selectedFeature = RepositoryContext.workspace("source", "w1", "feature", "alice");
+        var plan = service.rebasePlan(selectedFeature);
+        assertThat(plan.status()).isEqualTo(UpstreamRebasePlan.State.REPLAY);
+        var request = new UpstreamRebasePlan.ApplyRequest(plan.refTag(), second, incoming,
+                plan.commits().stream().map(UpstreamRebasePlan.Commit::id).toList());
+
+        var resolver = mock(WorkspaceResolver.class);
+        when(resolver.resolveUnambiguousRepositoryForRead()).thenReturn(selectedFeature);
+        var api = MockMvcBuilders.standaloneSetup(new WorkspaceUpstreamController(service, resolver, recovery)).build();
+        String body = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(request);
+        api.perform(post("/api/workspace/upstream/rebase").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.originalHead").value(second))
+                .andExpect(jsonPath("$.rewritten[0].originalCommit").value(first))
+                .andExpect(jsonPath("$.rewritten[1].originalCommit").value(second))
+                .andExpect(jsonPath("$.conflictCommit").isEmpty());
+        String revised = target.getHeadCommit("feature");
+        assertThat(revised).isNotEqualTo(second);
+        assertThat(target.getDslAtCommit(revised)).isEqualTo("new upstream");
+        assertThat(source.getHeadCommit("main")).isEqualTo(incoming);
+
+        api.perform(post("/api/workspace/upstream/rebase").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isConflict());
+        assertThat(target.getHeadCommit("feature")).isEqualTo(revised);
+        assertThat(workspace.getCurrentCommit()).isEqualTo(local);
+    }
+
     private String rebasePlanTag() throws Exception {
         String path = "/api/workspace/upstream/rebase-plan";
         String tag = mvc.perform(get(path)).andExpect(status().isOk())
