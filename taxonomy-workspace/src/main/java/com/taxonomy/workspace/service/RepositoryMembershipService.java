@@ -113,6 +113,29 @@ public class RepositoryMembershipService {
         return saveRole(repositoryId, member, role, changedBy, existing);
     }
 
+    /** Transfer the personal catalogue and both direct memberships under its observed policy revision. */
+    @Transactional
+    public void transferPersonalOwnership(SystemRepository repository, long expectedVersion,
+                                          String previousOwner, String successor) {
+        String repositoryId = requireRepositoryId(repository);
+        var locked = lockMemberships(repositoryId, expectedVersion);
+        if (!isActive(repository) || !isUserCatalogOwner(repository, previousOwner)) {
+            throw new AccessDeniedException("The current personal catalogue owner is required");
+        }
+        if (previousOwner.equals(successor)) throw new IllegalArgumentException("A different owner is required");
+        saveRole(repositoryId, successor, RepositoryRole.OWNER, previousOwner, findMembership(locked, successor).orElse(null));
+        Instant now = Instant.now();
+        findMembership(locked, previousOwner).filter(RepositoryMembership::isActive)
+                .filter(member -> member.getRole() == RepositoryRole.OWNER).ifPresent(member -> {
+                    member.setRevokedAt(now);
+                    member.setUpdatedAt(now);
+                    membershipRepository.save(member);
+                });
+        repository.setOwnerType(RepositoryOwnerType.USER);
+        repository.setOwnerId(successor);
+        repository.setUpdatedAt(now);
+    }
+
     /** Remove a membership after enforcing repository-owner authority and owner retention. */
     @Transactional
     public void removeMembership(
