@@ -20,6 +20,16 @@
         return options?.expectedContextId ? '?expectedContextId=' + encodeURIComponent(options.expectedContextId) : '';
     }
 
+    function rebasePlanRequest(source, method, options, read) {
+        var workspace = source.workspaceId || '';
+        var path = workspace ? '/api/workspace/upstream/rebase-plan'
+            : '/api/repositories/' + encodeURIComponent(source.repositoryId) + '/upstream/rebase-plan';
+        var selection = new URLSearchParams({repositoryId:source.repositoryId, workspaceId:workspace,
+            workspaceScopeKey:workspace || '__shared__', branch:source.branch});
+        return read(path + '?' + selection, {method:method, cache:'no-store'},
+            Object.assign({}, options, {pinnedWorkspaceId:workspace, retries:0}));
+    }
+
     var switchGeneration = 0;
 
     function beginSwitch(id) {
@@ -81,13 +91,15 @@
         },
         syncState: function (options) { return get('/api/workspace/sync-state', options); },
         rebasePlan: function (source, options) {
-            var workspace = source.workspaceId || '';
-            var path = workspace ? '/api/workspace/upstream/rebase-plan'
-                : '/api/repositories/' + encodeURIComponent(source.repositoryId) + '/upstream/rebase-plan';
-            var selection = new URLSearchParams({repositoryId:source.repositoryId, workspaceId:workspace,
-                workspaceScopeKey:workspace || '__shared__', branch:source.branch});
-            return request(path + '?' + selection, {method:'GET', cache:'no-store'},
-                Object.assign({}, options, {pinnedWorkspaceId:workspace}));
+            if (!options?.includeETag) return rebasePlanRequest(source, 'GET', options, request);
+            return rebasePlanRequest(source, 'GET', options, window.TaxonomyApiClient.request)
+                .then(async function (response) {
+                    return {plan:await response.json(), etag:response.headers.get('ETag')};
+                });
+        },
+        rebasePlanRefTag: function (source, options) {
+            return rebasePlanRequest(source, 'HEAD', options, window.TaxonomyApiClient.request)
+                .then(function (response) { return response.headers.get('ETag'); });
         },
         localChanges: function (branch, options) { return get('/api/workspace/local-changes?branch=' + encodeURIComponent(branch), options); },
         syncFromShared: function (branch, options) {

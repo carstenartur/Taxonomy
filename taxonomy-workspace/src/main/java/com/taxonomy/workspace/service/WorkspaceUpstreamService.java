@@ -72,6 +72,12 @@ public class WorkspaceUpstreamService {
                 selected.workspaceId(), selected.branch());
     }
 
+    @Transactional(readOnly = true)
+    public String rebasePlanRefTag(RepositoryContext selected) throws IOException {
+        return UpstreamRebasePlan.readRefTag(open(selected, false).transfer(), selected.repositoryId(),
+                selected.workspaceId(), selected.branch());
+    }
+
     @Transactional(rollbackFor = IOException.class)
     Status fetch(RepositoryContext selected, Request request) throws IOException {
         return fetchRecorded(selected, null, null, request, false, () -> { });

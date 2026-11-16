@@ -212,12 +212,12 @@ async function fixture(messages = {}) {
         };
         window.clearInterval = id => window.statusTimers.delete(id);
         window.statusReads = [];
-        window.fetch = url => new Promise(resolve => {
-            window.statusReads.push({url: String(url), pending: true,
-                answer(value, status = 200) {
+        window.fetch = (url, init) => new Promise(resolve => {
+            window.statusReads.push({url: String(url), method: init?.method || 'GET', pending: true,
+                answer(value, status = 200, headers) {
                     this.pending = false;
-                    resolve(new Response(JSON.stringify(value), {status,
-                        headers: {'Content-Type': 'application/json'}}));
+                    resolve(new Response(this.method === 'HEAD' ? null : JSON.stringify(value), {status,
+                        headers: {'Content-Type': 'application/json', ...headers}}));
                 }});
         });
     }, messages);
@@ -229,12 +229,22 @@ async function fixture(messages = {}) {
     return page;
 }
 
-async function answer(page, endpoint, value, status = 200) {
-    await page.evaluate(({endpoint, value, status}) => {
-        const request = window.statusReads.find(read => read.pending && read.url.split('?')[0] === endpoint);
+async function answer(page, endpoint, value, status = 200, {method, headers} = {}) {
+    await page.evaluate(({endpoint, value, status, method, headers}) => {
+        const request = window.statusReads.find(read => read.pending && read.url.split('?')[0] === endpoint
+            && (!method || read.method === method));
         if (!request) throw new Error('Expected a pending production poll: ' + endpoint);
-        request.answer(value, status);
-    }, {endpoint, value, status});
+        request.answer(value, status, headers);
+    }, {endpoint, value, status, method, headers});
+}
+async function answerPlanHead(page, endpoint, tag) {
+    await page.waitForFunction(path => window.statusReads.some(read =>
+        read.pending && read.method === 'HEAD' && read.url.split('?')[0] === path), endpoint);
+    await answer(page, endpoint, null, 200, {method:'HEAD', headers:{ETag:tag}});
+}
+async function answerCurrentPlan(page, endpoint, plan, tag = 'W/"current-plan"') {
+    await answer(page, endpoint, plan, 200, {method:'GET', headers:{ETag:tag}});
+    await answerPlanHead(page, endpoint, tag);
 }
 async function syncResponse(page, value = initial) {
     await answer(page, '/api/workspace/sync-state', value);
@@ -580,7 +590,7 @@ test('Rebase plan shows exact fetched and live upstream commits and clears a sup
         assert.equal(url.searchParams.get('branch'), 'feature');
         assert.equal(url.searchParams.get('repositoryId'), 'origin');
         assert.equal(url.searchParams.get('workspaceId'), 'work');
-        await answer(page, endpoint, plan);
+        await answerCurrentPlan(page, endpoint, plan);
         await page.waitForFunction(() => document.querySelectorAll('#workspaceRebasePlan li').length === 2);
         const panel = page.locator('#workspaceRebasePlan');
         assert.match(await panel.innerText(), /444444444444/);
@@ -618,7 +628,7 @@ test('A central fork plan uses the explicit repository and branch without adopti
         assert.equal(url.searchParams.get('workspaceScopeKey'), '__shared__');
         assert.equal(url.searchParams.get('workspaceId'), '');
         assert.equal(url.searchParams.get('branch'), 'main');
-        await answer(page, endpoint, {status:'FAST_FORWARD',repositoryId:'central-fork',workspaceId:null,branch:'main',
+        await answerCurrentPlan(page, endpoint, {status:'FAST_FORWARD',repositoryId:'central-fork',workspaceId:null,branch:'main',
             localCommit:'1'.repeat(40),mergeBase:'1'.repeat(40),upstream:{sourceRepositoryId:'central',sourceBranch:'main',
                 sourceCommit:'2'.repeat(40),trackedCommit:'2'.repeat(40)},commits:[]});
         await page.waitForFunction(() => document.querySelector('#workspaceRebasePlan').textContent.includes('FAST_FORWARD'));
@@ -657,16 +667,55 @@ test('A delayed rebase plan is rejected after the same branch advances, and a fr
 
         await page.locator('#workspaceRebasePlanButton').click();
         await page.waitForFunction(path => window.statusReads.some(read => read.pending && read.url.startsWith(path)), endpoint);
-        await answer(page, endpoint, plan);
+        await answerCurrentPlan(page, endpoint, plan);
         await page.waitForFunction(() => document.querySelector('#workspaceRebasePlan')?.textContent.includes('FAST_FORWARD'));
         await page.evaluate(() => TaxonomyWorkspaceSync.refresh());
         await syncResponse(page, {...newer});
+        await answerPlanHead(page, endpoint, 'W/"current-plan"');
         assert.match(await panel.innerText(), /FAST_FORWARD/, 'An identical refresh retains the valid plan');
 
         // A new commit with the same branch and count also invalidates an already displayed plan.
         await page.evaluate(() => TaxonomyWorkspaceSync.refresh());
         await syncResponse(page, {...newer, lastSyncedCommitId:'4'.repeat(40)});
         assert.equal(await panel.innerText(), '');
+        assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+});
+
+test('Live ref changes invalidate a pending or visible plan with an unchanged sync row', async () => {
+    const page = await fixture();
+    try {
+        const template = await readFile(path.join(resources, 'templates/index.html'), 'utf8');
+        const markup = template.match(/<button id="workspaceRebasePlanButton"[^>]*>[\s\S]*?<\/button>\s*<div id="workspaceRebasePlan"[^>]*><\/div>/)[0];
+        await page.evaluate(html => document.body.insertAdjacentHTML('beforeend', html), markup);
+        const state = {syncStatus:'DIVERGED', repositoryId:'origin', workspaceId:'work', branch:'feature',
+            unpublishedCommitCount:1, lastSyncedCommitId:'1'.repeat(40)};
+        const endpoint = '/api/workspace/upstream/rebase-plan';
+        const plan = {status:'FAST_FORWARD', repositoryId:'origin', workspaceId:'work', branch:'feature',
+            localCommit:'2'.repeat(40), mergeBase:'2'.repeat(40),
+            upstream:{sourceRepositoryId:'origin', sourceBranch:'main', sourceCommit:'3'.repeat(40),
+                trackedCommit:'3'.repeat(40)}, commits:[]};
+        const button = page.locator('#workspaceRebasePlanButton'), panel = page.locator('#workspaceRebasePlan');
+        await syncResponse(page, state);
+
+        await button.click();
+        await answer(page, endpoint, plan, 200, {method:'GET', headers:{ETag:'W/"old-local"'}});
+        await answerPlanHead(page, endpoint, 'W/"new-local"');
+        await page.waitForFunction(() => document.querySelector('#workspaceRebasePlan').textContent === '');
+
+        await button.click();
+        await answerCurrentPlan(page, endpoint, {...plan, localCommit:'4'.repeat(40)}, 'W/"new-local"');
+        await page.waitForFunction(() => document.querySelector('#workspaceRebasePlan').textContent.includes('4'.repeat(40)));
+
+        await page.evaluate(() => TaxonomyWorkspaceSync.refresh());
+        await syncResponse(page, {...state});
+        await answerPlanHead(page, endpoint, 'W/"new-tracking"');
+        await page.waitForFunction(() => document.querySelector('#workspaceRebasePlan').textContent === '');
+
+        const planReads = await page.evaluate(path => statusReads.filter(read => read.url.startsWith(path))
+            .map(read => new URL(read.url, 'http://status.test').search), endpoint);
+        assert.equal(new Set(planReads).size, 1, 'GET and HEAD use the same exact pinned selection');
+        assert.deepEqual(await page.evaluate(() => TaxonomyWorkspaceSync.getSyncState()), state);
         assert.deepEqual(page.errors, []);
     } finally { await page.close(); }
 });
