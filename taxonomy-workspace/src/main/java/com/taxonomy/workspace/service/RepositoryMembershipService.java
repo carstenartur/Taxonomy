@@ -177,6 +177,12 @@ public class RepositoryMembershipService {
         membershipRepository.save(membership);
     }
 
+    /** Serialize consequential ref deletion with the existing owner-managed membership update and removal. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void lockForRefMutation(String repositoryId) {
+        membershipRepository.findByRepositoryIdForUpdate(repositoryId);
+    }
+
     public Optional<RepositoryRole> effectiveRole(
             SystemRepository repository, String username) {
         if (repository == null || username == null || username.isBlank()) {

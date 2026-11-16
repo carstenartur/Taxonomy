@@ -17,6 +17,19 @@ public class CanonicalArchitectureModel {
     public String getComparisonCatalogueRevision() { return comparisonCatalogueRevision; }
     public void setComparisonCatalogueRevision(String value) { comparisonCatalogueRevision = value; }
 
+    private final List<ArchitectureOrganization> organizations = new ArrayList<>();
+    public List<ArchitectureOrganization> getOrganizations() { return organizations; }
+
+    private final List<CatalogueResponsibility> catalogueResponsibilities = new ArrayList<>();
+    public List<CatalogueResponsibility> getCatalogueResponsibilities() { return catalogueResponsibilities; }
+
+    /** Older projects can record their first catalogue assignment before a project-wide pin exists. */
+    public String responsibilityCatalogueRevision() {
+        if (catalogueRevision != null && !catalogueRevision.isBlank()) return catalogueRevision;
+        return catalogueResponsibilities.stream().map(CatalogueResponsibility::catalogueRevision)
+                .filter(revision -> revision != null && !revision.isBlank()).findFirst().orElse(null);
+    }
+
     private final List<ArchitecturePackage> packages = new ArrayList<>();
     public List<ArchitecturePackage> getPackages() { return packages; }
 

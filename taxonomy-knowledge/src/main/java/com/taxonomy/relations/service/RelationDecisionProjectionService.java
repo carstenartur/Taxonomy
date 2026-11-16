@@ -10,6 +10,7 @@ import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.Comm
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.RelationCommand;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.RemoveRelation;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.UpsertRelation;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.AdoptRelation;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryScope;
 import com.taxonomy.workspace.service.WorkspaceDslReadPort;
@@ -135,6 +136,9 @@ public class RelationDecisionProjectionService {
             throw new ProjectionContextMismatchException(
                     "No-op command result must retain its exact previous head");
         }
+        if (command instanceof AdoptRelation && result.changeKind() != ChangeKind.ADDED) {
+            throw new ProjectionContextMismatchException("Adoption must insert an absent relation");
+        }
         if (command instanceof UpsertRelation
                 && result.changeKind() == ChangeKind.REMOVED) {
             throw new ProjectionContextMismatchException(
@@ -206,7 +210,7 @@ public class RelationDecisionProjectionService {
                             + display(identity));
         }
 
-        if (command instanceof UpsertRelation) {
+        if (command instanceof UpsertRelation || command instanceof AdoptRelation) {
             if (matches.isEmpty()) {
                 throw new ProjectionSourceException(
                         "Authoritative commit does not contain upserted relation "

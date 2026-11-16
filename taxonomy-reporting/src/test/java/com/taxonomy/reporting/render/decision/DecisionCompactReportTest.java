@@ -19,6 +19,32 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.*;
 
 class DecisionCompactReportTest {
+    @Test void decisionExportsKeepTheOrganizationReadableInWordTablesAndLandscapeFigures() throws Exception {
+        var owner = new com.taxonomy.dto.TaxonomyResponsibilityLookup.Assignment("unit-1", "Network & Ops", "CP");
+        for (var layout : List.of(DecisionReportOptions.TreeLayout.AUTO, DecisionReportOptions.TreeLayout.TABLE)) {
+            var base = report(layout, 4);
+            var previous = base.scope();
+            var tree = previous.decisionTree().withResponsibilities(Map.of("CP", owner, "CP-1", owner));
+            var options = new DecisionReportOptions(DecisionReportOptions.Profile.COMPACT, Set.of("CP"),
+                    null, layout, null, true);
+            var selection = new DecisionReportScope(previous.analysisScope(), previous.analysisCoverage(),
+                    previous.availableRoots(), previous.reportRoots(), previous.selectedNodeCodes(), tree, options, true, true);
+            var annotated = base.withScope(selection);
+            var diagrams = new DecisionChapterDiagramRenderer();
+            var html = new DecisionRationaleHtmlRenderer(diagrams).render(annotated);
+            assertThat(html).contains("Network &amp; Ops", owner.color());
+            byte[] bytes = new DecisionRationaleDocxRenderer(diagrams).render(annotated);
+            try (var document = new XWPFDocument(new ByteArrayInputStream(bytes))) {
+                if (layout == DecisionReportOptions.TreeLayout.TABLE) {
+                    assertThat(new XWPFWordExtractor(document).getText()).contains("Responsible unit: Network & Ops");
+                } else {
+                    assertThat(document.getAllPictures()).isNotEmpty();
+                    assertThat(document.getDocument().xmlText()).contains("Responsible unit: Network &amp; Ops");
+                }
+            }
+        }
+    }
+
     @Test void decisionContentsLinksInheritTheDarkCustomerPagesReadableForeground() {
         var theme = com.taxonomy.export.ExportTheme.fromStylesheet(":root{--taxonomy-surface-background:#102030}");
         String html = new DecisionRationaleHtmlRenderer(new DecisionChapterDiagramRenderer(), () -> theme)

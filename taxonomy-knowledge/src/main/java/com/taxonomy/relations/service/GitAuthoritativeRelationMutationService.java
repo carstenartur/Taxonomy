@@ -68,6 +68,11 @@ public class GitAuthoritativeRelationMutationService {
                 new UpsertRelation(definition, metadata));
     }
 
+    public MutationResult adopt(RepositoryContext context, String expectedHeadCommit,
+                                ArchitectureRelationGitCommandService.AdoptRelation command) throws IOException {
+        return execute(context, expectedHeadCommit, command);
+    }
+
     public MutationResult remove(
             RepositoryContext context,
             String expectedHeadCommit,
@@ -79,7 +84,13 @@ public class GitAuthoritativeRelationMutationService {
     /** Removes the selected Git relation only when its documented decision properties still match. */
     public MutationResult removeMatching(RepositoryContext context, String expectedHeadCommit, RelationIdentity identity,
                           CommandMetadata metadata, Map<String, String> requiredProperties) throws IOException {
-        return execute(context, expectedHeadCommit, new RemoveRelation(identity, metadata, requiredProperties));
+        return removeMatching(context, expectedHeadCommit, identity, metadata, requiredProperties, Map.of());
+    }
+
+    public MutationResult removeMatching(RepositoryContext context, String expectedHeadCommit, RelationIdentity identity,
+                                         CommandMetadata metadata, Map<String, String> requiredProperties,
+                                         Map<String, String> recordedOrigin) throws IOException {
+        return execute(context, expectedHeadCommit, new RemoveRelation(identity, metadata, requiredProperties, recordedOrigin));
     }
 
     private MutationResult execute(

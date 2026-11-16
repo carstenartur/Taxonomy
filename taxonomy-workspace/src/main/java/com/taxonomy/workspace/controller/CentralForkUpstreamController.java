@@ -7,6 +7,8 @@ import com.taxonomy.workspace.service.WorkspaceFetchRecovery;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import com.taxonomy.workspace.service.WorkspaceUpstreamService;
+import com.taxonomy.workspace.service.UpstreamRebasePlan;
+import org.springframework.http.CacheControl;
 import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
@@ -19,6 +21,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -43,6 +46,23 @@ public class CentralForkUpstreamController {
             description = "Returns the source branch tip and the destination tracking ref for a visible fork after checking contributor access on both repositories.")
     public WorkspaceUpstreamService.Status inspect(@PathVariable String repositoryId) throws IOException {
         return upstream.inspect(repositoryId, resolver.resolveCurrentUsername());
+    }
+
+    @GetMapping("/rebase-plan")
+    @Operation(summary = "Plan a local branch rebase onto its fetched upstream",
+            description = "Returns the captured tracking commit, common base and ordered local replay candidates. "
+                    + "This read does not fetch objects, check content conflicts or change a branch.")
+    public ResponseEntity<UpstreamRebasePlan> rebasePlan(@PathVariable String repositoryId, @RequestParam String branch) throws IOException {
+        var plan = upstream.rebasePlan(repositoryId, resolver.resolveCurrentUsername(), branch);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).eTag(plan.refTag()).body(plan);
+    }
+
+    @RequestMapping(path = "/rebase-plan", method = RequestMethod.HEAD)
+    @Operation(summary = "Read the current rebase plan ref validator",
+            description = "Checks the live local, upstream and tracking Git refs for the selected central fork and returns an ETag without fetching or changing any ref. Requires current source and destination access.")
+    public ResponseEntity<Void> rebasePlanRefTag(@PathVariable String repositoryId, @RequestParam String branch) throws IOException {
+        String tag = upstream.rebasePlanRefTag(repositoryId, resolver.resolveCurrentUsername(), branch);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).eTag(tag).build();
     }
 
     @PostMapping("/fetch")

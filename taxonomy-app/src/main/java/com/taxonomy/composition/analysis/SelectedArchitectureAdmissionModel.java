@@ -5,9 +5,12 @@ import com.taxonomy.catalog.definition.RetainedCatalogueDefinitions;
 import com.taxonomy.catalog.definition.RetainedCatalogueDefinitions.AppliedGeneration;
 import com.taxonomy.dsl.command.ArchitectureDslCommands;
 import com.taxonomy.dsl.model.CatalogueDefinition;
+import com.taxonomy.dsl.model.ArchitectureOrganization;
 import com.taxonomy.dsl.planning.ArchitectureBrief;
 import com.taxonomy.dto.AnalysisModelBinding;
 import com.taxonomy.dto.AnalysisScope;
+import com.taxonomy.dto.TaxonomyResponsibilityLookup;
+import com.taxonomy.editor.ArchitectureResponsibility;
 import com.taxonomy.editor.ArchitectureEditorService;
 import com.taxonomy.identity.StableIdentityHash;
 import com.taxonomy.model.WorkspaceOverlayScope;
@@ -20,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -28,7 +32,7 @@ import java.util.stream.Collectors;
 /** Bind the authenticated selection before enqueueing, while the request's routing and access decisions are available. */
 @Service
 @ConditionalOnFeature({"architecture", "analysis"})
-public class SelectedArchitectureAdmissionModel implements AnalysisAdmissionModelPort {
+public class SelectedArchitectureAdmissionModel implements AnalysisAdmissionModelPort, TaxonomyResponsibilityLookup {
     private final WorkspaceResolver workspaces;
     private final ArchitectureEditorService editor;
     private final RetainedCatalogueDefinitions definitions;
@@ -56,8 +60,7 @@ public class SelectedArchitectureAdmissionModel implements AnalysisAdmissionMode
         var selected = document.context();
         var model = new ArchitectureDslCommands().model(document.dsl());
         var brief = ArchitectureBrief.read(model);
-        String catalogueRevision = model.getCatalogueRevision();
-        if (catalogueRevision != null && catalogueRevision.isBlank()) catalogueRevision = null;
+        String catalogueRevision = model.responsibilityCatalogueRevision();
         var execution = retained(catalogueRevision);
         CatalogueDefinition definition = execution.map(AppliedGeneration::definition).orElse(null);
         AnalysisScope requested = AnalysisScope.orDefault(scope);
@@ -72,11 +75,103 @@ public class SelectedArchitectureAdmissionModel implements AnalysisAdmissionMode
         String profileProblem = brief.problem() != null ? brief.problem()
                 : brief.present() && profile != ProfilePreview.Decision.ASSIGNED ? "REFERENCE_PROFILE_" + profile.name() : null;
         boolean validRules = brief.problem() == null && profile != ProfilePreview.Decision.CONFLICTING_EDITIONS;
+        Map<String, Assignment> responsibilities = Map.of();
+        if (definition != null && !model.getCatalogueResponsibilities().isEmpty()) {
+            var nodes = definitions.analysisNodes(execution.orElseThrow().revision());
+            var assigned = ArchitectureResponsibility.forAnalysis(model,
+                    com.taxonomy.dsl.model.CatalogueDefinitionResolver.parentLinks(nodes));
+            responsibilities = nodes.stream().filter(node -> requested.selects(node.root()) && assigned.containsKey(node.code()))
+                    .collect(Collectors.toUnmodifiableMap(node -> node.code(), node -> assigned.get(node.code())));
+        }
         return new AnalysisModelBinding(state(version.published(), catalogueRevision, definition, brief, profileProblem), selected.repositoryId(), selected.workspaceScopeKey(),
                 selected.branch(), version.commit(), version.revision(), document.source(), StableIdentityHash.sha256(document.dsl()),
                 catalogueRevision, definition == null ? null : definition.version(), roots, requested,
                 brief.version(), brief.fields(), references,
-                validRules ? brief.excludedRelationTypes() : Set.of(), profileProblem, execution.map(AppliedGeneration::revision).orElse(null));
+                validRules ? brief.excludedRelationTypes() : Set.of(), profileProblem,
+                execution.map(AppliedGeneration::revision).orElse(null), responsibilities);
+    }
+
+    @Override
+    public Map<String, Assignment> resolve(AnalysisModelBinding binding) {
+        if (binding == null || binding.commit() == null && binding.semanticRevision() == null) return Map.of();
+        try {
+            return responsibilities(binding.repositoryId(), binding.workspaceScopeKey(), binding.branch(), binding.commit(),
+                    binding.semanticRevision(), binding.modelSha256(), binding.analysisCatalogueRevision(), false);
+        } catch (ResponseStatusException failure) {
+            // Reports remain readable when their source is no longer available to this caller.
+            if (failure.getStatusCode().equals(HttpStatus.NOT_FOUND) || failure.getStatusCode().equals(HttpStatus.CONFLICT))
+                return Map.of();
+            throw failure;
+        }
+    }
+
+    @Override
+    public Map<String, Assignment> current() {
+        var context = workspaces.resolveCurrentRepositoryContextForRead();
+        return assignments(select(context, null, null).document(), null, true);
+    }
+
+    Map<String, Assignment> responsibilities(String repository, String workspaceScope, String branch, String commit,
+            Long revision, String hash, String catalogueRevision, boolean live) {
+        var context = workspaces.resolveCurrentRepositoryContextForRead();
+        if (!context.repositoryId().equals(repository) || !context.branch().equals(branch)
+                || !WorkspaceOverlayScope.keyFor(context.workspaceId()).equals(workspaceScope)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Selected architecture context has changed");
+        }
+        if (live) {
+            if (commit != null || revision != null || hash != null || catalogueRevision != null)
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A live selection cannot include historical coordinates");
+            return assignments(select(context, null, null).document(), null, true);
+        }
+        if (hash == null || !hash.matches("[0-9a-f]{64}") || commit == null && revision == null
+                || commit != null && !commit.matches("[0-9a-f]{40}") || revision != null && revision < 0
+                || catalogueRevision != null && (catalogueRevision.isBlank() || catalogueRevision.length() > 128))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The recorded architecture version and content hash are required");
+        // The commit recorded on an unpublished workspace revision may be its Git parent. Its own
+        // retained journal bytes and content digest are the authority, even after another checkpoint.
+        ArchitectureEditorService.Document document = null;
+        if (revision != null) {
+            try {
+                document = read(context, null, revision);
+                requireSelectedContext(context, document);
+                if (!"WORKSPACE_REVISION".equals(document.source()) || revision.longValue() != document.context().revision())
+                    throw new ResponseStatusException(HttpStatus.NOT_FOUND, "The recorded workspace revision is unavailable");
+            } catch (ResponseStatusException missing) {
+                if (commit == null || !missing.getStatusCode().equals(HttpStatus.NOT_FOUND)) throw missing;
+            }
+        }
+        if (commit != null && (document == null || !hash.equals(StableIdentityHash.sha256(document.dsl()))))
+            document = select(context, commit, null).document();
+        if (document == null || !hash.equals(StableIdentityHash.sha256(document.dsl())))
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The retained architecture differs from the recorded model");
+        return assignments(document, catalogueRevision, false);
+    }
+
+    private Map<String, Assignment> assignments(ArchitectureEditorService.Document document, String executionCatalogue,
+                                               boolean live) {
+        var model = new ArchitectureDslCommands().model(document.dsl());
+        String revision = model.responsibilityCatalogueRevision();
+        if (revision != null && executionCatalogue != null && !revision.equals(executionCatalogue))
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The architecture and decision catalogue revisions differ");
+        if (revision == null) revision = executionCatalogue;
+        if (!hasResponsibilities(model)) return Map.of();
+        if (live && revision == null) revision = retained(null).map(AppliedGeneration::revision).orElse(null);
+        try {
+            var parents = model.getCatalogueResponsibilities().isEmpty() ? definitions.analysisParents(model, revision)
+                    : com.taxonomy.dsl.model.CatalogueDefinitionResolver.parentLinks(definitions.analysisNodes(revision));
+            return ArchitectureResponsibility.forAnalysis(model, parents);
+        } catch (java.util.NoSuchElementException unavailable) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "The recorded decision catalogue is unavailable", unavailable);
+        } catch (IllegalStateException unreadable) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Cannot read the recorded decision catalogue", unreadable);
+        }
+    }
+
+    private static boolean hasResponsibilities(com.taxonomy.dsl.model.CanonicalArchitectureModel model) {
+        return !model.getCatalogueResponsibilities().isEmpty() || model.getElements().stream().anyMatch(element ->
+                element.getExtensions().containsKey(ArchitectureOrganization.RESPONSIBLE_ID)
+                        || element.getExtensions().containsKey(ArchitectureOrganization.CAPTURED_UNIT)
+                        || element.getExtensions().containsKey("x-responsible-organization"));
     }
 
     private record Selection(ArchitectureEditorService.Document document, String commit, Long revision, boolean published) {}
@@ -103,11 +198,7 @@ public class SelectedArchitectureAdmissionModel implements AnalysisAdmissionMode
         }
         var document = read(context, expectedRevision == null ? expectedCommit : null, expectedRevision);
         var selected = document.context();
-        if (!context.username().equals(selected.actor()) || !context.repositoryId().equals(selected.repositoryId())
-                || !context.branch().equals(selected.branch())
-                || !WorkspaceOverlayScope.keyFor(context.workspaceId()).equals(selected.workspaceScopeKey())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Selected architecture context has changed");
-        }
+        requireSelectedContext(context, document);
         boolean semantic = "WORKSPACE_REVISION".equals(document.source());
         if ((!semantic && !"GIT_CHECKPOINT".equals(document.source()))
                 || !"READY".equals(document.projectionState()) && !"HISTORICAL".equals(document.projectionState())) {
@@ -128,6 +219,15 @@ public class SelectedArchitectureAdmissionModel implements AnalysisAdmissionMode
         }
 
         return new Selection(document, commit, revision, published);
+    }
+
+    private static void requireSelectedContext(RepositoryContext context, ArchitectureEditorService.Document document) {
+        var selected = document.context();
+        if (!context.username().equals(selected.actor()) || !context.repositoryId().equals(selected.repositoryId())
+                || !context.branch().equals(selected.branch())
+                || !WorkspaceOverlayScope.keyFor(context.workspaceId()).equals(selected.workspaceScopeKey())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Selected architecture context has changed");
+        }
     }
 
     private ArchitectureEditorService.Document read(RepositoryContext context, String commit, Long revision) {

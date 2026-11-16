@@ -18,6 +18,7 @@ window.TaxonomyViewContext = (function () {
      * @param {object} viewContext — ViewContext object from API response
      */
     function render(containerId, viewContext) {
+        pendingViews.delete(containerId);
         var container = document.getElementById(containerId);
         if (!container || !viewContext) return;
 
@@ -49,30 +50,18 @@ window.TaxonomyViewContext = (function () {
             );
         }
 
-        // Projection staleness
-        if (viewContext.projectionStale) {
-            parts.push(
-                '<span class="vc-stale"><span class="dot stale"></span> ' + escapeHtml(t('context.projection.stale')) + '</span>'
-            );
-        } else {
-            parts.push(
-                '<span class="vc-fresh"><span class="dot fresh"></span> ' + escapeHtml(t('context.projection.fresh')) + '</span>'
-            );
-        }
-
-        // Index staleness
-        if (viewContext.indexStale) {
-            parts.push(
-                '<span class="vc-stale"><span class="dot stale"></span> ' + escapeHtml(t('context.index.stale')) + '</span>'
-            );
-        } else {
-            parts.push(
-                '<span class="vc-fresh"><span class="dot fresh"></span> ' + escapeHtml(t('context.index.fresh')) + '</span>'
-            );
-        }
+        parts.push(readinessIndicator('projection', viewContext.projectionReadiness, viewContext.projectionStale));
+        parts.push(readinessIndicator('index', viewContext.indexReadiness, viewContext.indexStale));
 
         container.innerHTML = parts.join(' ');
         container.classList.remove('d-none');
+    }
+
+    function readinessIndicator(kind, evidence, stale) {
+        var status = evidence ? evidence.toLowerCase() : stale ? 'stale' : 'unverified';
+        var style = status === 'fresh' ? 'fresh' : 'stale';
+        return '<span class="vc-' + style + '"><span class="dot ' + style + '"></span> '
+            + escapeHtml(t('git.' + kind)) + ': ' + escapeHtml(t('git.' + status)) + '</span>';
     }
 
     /**
@@ -98,7 +87,10 @@ window.TaxonomyViewContext = (function () {
         branch = branch || 'draft';
         var token = {}; pendingViews.set(containerId, token);
         return window.TaxonomyVersioningApi.state(branch)
-            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
             .then(function (state) {
                 if (!state || pendingViews.get(containerId) !== token) return;
                 // Build a ViewContext-like object from RepositoryState
@@ -108,11 +100,14 @@ window.TaxonomyViewContext = (function () {
                     commitTimestamp: state.headTimestamp,
                     includesProvisionalRelations: false,
                     projectionStale: state.projectionStale,
-                    indexStale: state.indexStale
+                    indexStale: state.indexStale,
+                    projectionReadiness: state.projectionReadiness,
+                    indexReadiness: state.indexReadiness
                 });
             })
-            .catch(function () {
-                // silently ignore — the global git-status bar already shows errors
+            .catch(function (error) {
+                if (pendingViews.get(containerId) !== token || error.code === 'ABORTED' || error.name === 'AbortError') return;
+                render(containerId, {basedOnBranch: branch, projectionReadiness: 'FAILED', indexReadiness: 'FAILED'});
             });
     }
 
@@ -122,6 +117,7 @@ window.TaxonomyViewContext = (function () {
      * @param {string} containerId — DOM ID
      */
     function hide(containerId) {
+        pendingViews.delete(containerId);
         var container = document.getElementById(containerId);
         if (container) {
             container.classList.add('d-none');

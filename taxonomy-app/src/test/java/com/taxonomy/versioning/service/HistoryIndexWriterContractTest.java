@@ -63,7 +63,18 @@ public class HistoryIndexWriterContractTest {
                 var receipt = journal.admit(selected, selected.branch(), HistoryIndexJournal.Kind.PURGE, grant,
                         "purge-key", null, () -> new HistoryIndexJournal.Capture(null, "owner"));
                 String id = receipt.receipt().operationId();
+                var firstTarget = new HistoryIndexPurgeTarget.Key(id, first);
                 try {
+                    factory.inTransaction(session -> {
+                        var captured = session.find(HistoryIndexPurgeTarget.class, firstTarget);
+                        assertThat(captured).isNotNull();
+                        assertThat(captured.operationId).isEqualTo(id);
+                        assertThat(captured.projectionId).isEqualTo(first);
+                        assertThat(session.find(HistoryIndexPurgeTarget.class,
+                                new HistoryIndexPurgeTarget.Key(id, gone))).isNotNull();
+                        assertThat(session.find(HistoryIndexPurgeTarget.class,
+                                new HistoryIndexPurgeTarget.Key(id, central))).isNull();
+                    });
                     factory.inTransaction(session -> session.remove(session.find(ArchitectureCommitIndex.class, gone)));
                     var replacement = add(factory, repo, "__shared__", "b");
                     var writer = new CommitIndexService(mock(DslGitRepositoryFactory.class), mock(ArchitectureCommitIndexRepository.class));
@@ -82,6 +93,21 @@ public class HistoryIndexWriterContractTest {
                         assertThat(session.find(ArchitectureCommitIndex.class, gone)).isNull();
                         for (var untouched : new Long[]{replacement, central, neighbour})
                             assertThat(session.find(ArchitectureCommitIndex.class, untouched)).isNotNull();
+                    });
+                    var archived = journal.archive(selected, grant.principalId(), id, row -> {});
+                    factory.inTransaction(session -> {
+                        var operation = session.find(HistoryIndexOperationRow.class, id);
+                        assertThat(operation.repositoryId).isEqualTo(repo);
+                        assertThat(operation.workspaceId).isEqualTo(selected.workspaceId());
+                        assertThat(operation.phase).isEqualTo("COMPLETED");
+                        assertThat(operation.resultCount).isEqualTo(1);
+                        assertThat(operation.archivedAt).isNotNull().isEqualTo(archived.archivedAt());
+                        var decision = session.createSelectionQuery("""
+                                from HistoryIndexDecisionRow where operationId = :id and decisionCode = 'ARCHIVED'
+                                """, HistoryIndexDecisionRow.class).setParameter("id", id).getSingleResult();
+                        assertThat(decision.actorId).isEqualTo(grant.principalId());
+                        assertThat(decision.occurredAt).isEqualTo(operation.archivedAt);
+                        assertThat(session.find(HistoryIndexPurgeTarget.class, firstTarget)).isNull();
                     });
                 } finally {
                     jdbc.update("delete from history_index_purge_target where operation_id=?", id);

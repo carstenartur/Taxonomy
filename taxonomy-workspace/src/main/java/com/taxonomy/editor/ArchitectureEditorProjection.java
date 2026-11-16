@@ -14,6 +14,7 @@ import com.taxonomy.dsl.model.CanonicalArchitectureModel;
 import com.taxonomy.dsl.model.CatalogueDefinition;
 import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
 import com.taxonomy.dsl.validation.DslValidator;
+import com.taxonomy.dto.TaxonomyResponsibilityLookup.Assignment;
 import com.taxonomy.export.LayeredDiagramLayoutService;
 import org.springframework.stereotype.Component;
 
@@ -58,13 +59,13 @@ public class ArchitectureEditorProjection {
     public record SearchEntry(String id, String text) {}
     public record View(ArchitectureEditorService.Document document, CanonicalArchitectureModel model,
                        DiagramScene scene, Schema schema, boolean mayEdit, List<SearchEntry> searchIndex,
-                       WorkspaceCollaborationService.Status collaboration) {
+                       WorkspaceCollaborationService.Status collaboration, Map<String, ArchitectureResponsibility.Entry> hierarchy) {
         public View(ArchitectureEditorService.Document document, CanonicalArchitectureModel model,
                     DiagramScene scene, Schema schema, boolean mayEdit, List<SearchEntry> searchIndex) {
-            this(document, model, scene, schema, mayEdit, searchIndex, null);
+            this(document, model, scene, schema, mayEdit, searchIndex, null, Map.of());
         }
         public View withCollaboration(WorkspaceCollaborationService.Status status) {
-            return new View(document, model, scene, schema, mayEdit, searchIndex, status);
+            return new View(document, model, scene, schema, mayEdit, searchIndex, status, hierarchy);
         }
         public ArchitectureBrief.Snapshot getArchitectureBrief() { return ArchitectureBrief.read(model); }
         public Map<String, List<com.taxonomy.dsl.planning.PlanningInformation.View>> getPlanningInformation() {
@@ -99,7 +100,12 @@ public class ArchitectureEditorProjection {
         requireLayoutRevision(document, strategy, layoutRevision);
         CanonicalArchitectureModel model = new ArchitectureDslCommands().model(document.dsl());
         var catalogue = catalogues.forModel(model);
-        DiagramModel diagram = selectView(diagram(model, document.context().branch(), catalogue), model, selectedViewId);
+        var architectureParents = catalogues.parentsForModel(model);
+        var catalogueParents = model.getCatalogueResponsibilities().isEmpty() ? Map.<String, String>of()
+                : com.taxonomy.dsl.model.CatalogueDefinitionResolver.parentLinks(catalogues.catalogueNodes(model));
+        var hierarchy = ArchitectureResponsibility.forEditor(model, architectureParents, catalogueParents);
+        var assignments = ArchitectureResponsibility.namedAssignments(model, hierarchy);
+        DiagramModel diagram = selectView(diagram(model, document.context().branch(), catalogue, assignments), model, selectedViewId);
         var referenceModel = layoutReference == null ? null : new ArchitectureDslCommands().model(layoutReference.dsl());
         DiagramModel reference = referenceModel == null ? null : diagram(referenceModel, document.context().branch(), catalogues.forModel(referenceModel));
         DiagramScene scene = layout.layout(diagram, strategy, reference);
@@ -114,7 +120,8 @@ public class ArchitectureEditorProjection {
                 strategy.id(), layoutRevision);
         return new View(document, model, scene, schema, editable(document, mayEdit),
                 model.getElements().stream().map(element -> new SearchEntry(element.getId(),
-                        (element.getId() + " " + element.getTitle() + " " + element.getType()).toLowerCase(java.util.Locale.ROOT))).toList());
+                        (element.getId() + " " + element.getTitle() + " " + element.getType()).toLowerCase(java.util.Locale.ROOT))).toList(), null,
+                hierarchy);
     }
 
     public static boolean editable(ArchitectureEditorService.Document document, boolean mayEdit) {
@@ -143,6 +150,11 @@ public class ArchitectureEditorProjection {
     }
 
     static DiagramModel diagram(CanonicalArchitectureModel model, String branch, CatalogueDefinition catalogue) {
+        return diagram(model, branch, catalogue, Map.of());
+    }
+
+    private static DiagramModel diagram(CanonicalArchitectureModel model, String branch, CatalogueDefinition catalogue,
+                                        Map<String, Assignment> assignments) {
         Map<String, String> parents = new java.util.LinkedHashMap<>();
         model.getRelations().stream().filter(relation -> "CONTAINS".equals(relation.getRelationType()))
                 .forEach(relation -> parents.putIfAbsent(relation.getTargetId(), relation.getSourceId()));
@@ -152,7 +164,7 @@ public class ArchitectureEditorProjection {
         List<DiagramNode> nodes = model.getElements().stream().map(element -> new DiagramNode(
                 element.getId(), element.getTitle(), element.getType(), 0, false,
                 typeRanks.getOrDefault(element.getType(), 0), 0, false,
-                parents.get(element.getId()), false)).toList();
+                parents.get(element.getId()), false, assignments.get(element.getId()))).toList();
         List<DiagramEdge> edges = model.getRelations().stream().map(relation -> new DiagramEdge(
                 relation.getSourceId() + " " + relation.getRelationType() + " " + relation.getTargetId(),
                 relation.getSourceId(), relation.getTargetId(), relation.getRelationType(), 0)).toList();
@@ -163,10 +175,13 @@ public class ArchitectureEditorProjection {
 
     private static Map<String, PropertyRule> properties(CatalogueDefinition catalogue) {
         Map<String, PropertyRule> properties = new java.util.TreeMap<>();
-        Map<String, String> labels = Map.of("title", "name", "description", "description", "x-editor-status", "elementStatus",
-                "x-owner", "owner", "x-responsible-organization", "organization", "x-product-reference", "product", "x-system-reference", "system",
-                AdmbwFffmlvProfile.TYPE, "admbw.stereotype", AdmbwFffmlvProfile.CATALOGUE_GUID, "admbw.catalogueGuid",
-                AdmbwFffmlvProfile.CATALOGUE_REFERENCE, "admbw.catalogueReference");
+        Map<String, String> labels = Map.ofEntries(Map.entry("title", "name"), Map.entry("description", "description"),
+                Map.entry("x-editor-status", "elementStatus"), Map.entry("x-owner", "owner"),
+                Map.entry("x-responsible-organization", "organization"),
+                Map.entry(com.taxonomy.dsl.model.ArchitectureOrganization.RESPONSIBLE_ID, "organization"),
+                Map.entry("x-product-reference", "product"), Map.entry("x-system-reference", "system"),
+                Map.entry(AdmbwFffmlvProfile.TYPE, "admbw.stereotype"), Map.entry(AdmbwFffmlvProfile.CATALOGUE_GUID, "admbw.catalogueGuid"),
+                Map.entry(AdmbwFffmlvProfile.CATALOGUE_REFERENCE, "admbw.catalogueReference"));
         ArchitectureDslCommands.ELEMENT_PROPERTIES.forEach(key -> {
             List<String> values = switch (key) {
                 case "x-editor-status" -> List.of("draft", "active", "retired");

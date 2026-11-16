@@ -13,6 +13,7 @@ import io.github.carstenartur.jgit.storage.hibernate.HibernateRepositoryFactory;
 import io.github.carstenartur.jgit.storage.hibernate.RepositoryName;
 import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.diff.DiffFormatter;
+import org.eclipse.jgit.diff.RawText;
 import org.eclipse.jgit.dircache.DirCache;
 import org.eclipse.jgit.dircache.DirCacheBuildIterator;
 import org.eclipse.jgit.dircache.DirCacheEditor;
@@ -36,7 +37,9 @@ import org.eclipse.jgit.merge.ThreeWayMerger;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevTree;
 import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.treewalk.AbstractTreeIterator;
 import org.eclipse.jgit.treewalk.CanonicalTreeParser;
+import org.eclipse.jgit.treewalk.EmptyTreeIterator;
 import org.eclipse.jgit.treewalk.TreeWalk;
 import org.eclipse.jgit.treewalk.WorkingTreeIterator;
 import org.eclipse.jgit.util.io.DisabledOutputStream;
@@ -51,6 +54,8 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -598,51 +603,95 @@ public class DslGitRepository implements AutoCloseable {
 
     // ── Cherry-pick and merge operations ────────────────────────────
 
-    /** Cherry-pick a commit onto a target branch. */
+    public record CherryPickTree(ObjectId resultTree, String baseCommit, List<String> conflictingPaths,
+                                 boolean canResolveDsl) {}
+
+    /** Preview the selected parent-to-commit change against an immutable target. */
+    public CherryPickTree inspectCherryPick(String commitId, String targetCommit) throws IOException {
+        try (var walk = new RevWalk(gitRepo)) {
+            var picked = walk.parseCommit(ObjectId.fromString(commitId));
+            var target = walk.parseCommit(ObjectId.fromString(targetCommit));
+            return mergePickedChange(picked, target, null);
+        }
+    }
+
+    private CherryPickTree mergePickedChange(RevCommit picked, RevCommit target, String resolvedDsl) throws IOException {
+        if (picked.getParentCount() > 1) {
+            throw new IllegalArgumentException("Cherry-picking a merge commit requires selecting a mainline parent");
+        }
+        var merger = new ModelHistoryMerger(gitRepo);
+        String base = picked.getParentCount() == 0 ? null : picked.getParent(0).name();
+        merger.useEmptyBase = base == null;
+        if (base != null) merger.setBase(picked.getParent(0));
+        merger.resolvedDsl = resolvedDsl;
+        if (merger.merge(target, picked)) {
+            return new CherryPickTree(merger.getResultTreeId(), base, List.of(), false);
+        }
+        var paths = new TreeSet<>(merger.getUnmergedPaths());
+        if (merger.failed()) paths.addAll(merger.getFailingPaths().keySet());
+        boolean dslOnly = !merger.failed() && paths.equals(Set.of(DSL_FILENAME))
+                && editableDsl(target) && editableDsl(picked) && (base == null || editableDsl(picked.getParent(0)));
+        return new CherryPickTree(null, base, List.copyOf(paths), dslOnly);
+    }
+
+    private boolean editableDsl(RevCommit commit) throws IOException {
+        try (var walk = new RevWalk(gitRepo);
+             var file = TreeWalk.forPath(gitRepo, DSL_FILENAME, walk.parseCommit(commit).getTree())) {
+            if (file == null) return true;
+            if (!FileMode.REGULAR_FILE.equals(file.getFileMode(0))) return false;
+            try (var input = gitRepo.open(file.getObjectId(0), Constants.OBJ_BLOB).openStream()) {
+                return !RawText.isBinary(input);
+            }
+        }
+    }
+
+    /** Apply a selected change at the current target head. */
     public String cherryPick(String commitId, String targetBranch) throws IOException {
-        ObjectId pickObjectId = ObjectId.fromString(commitId);
-        try (RevWalk walk = new RevWalk(gitRepo)) {
-            RevCommit pickCommit = walk.parseCommit(pickObjectId);
-            String targetRefName = Constants.R_HEADS + targetBranch;
-            Ref targetRef = gitRepo.getRefDatabase().exactRef(targetRefName);
-            if (targetRef == null) {
-                log.warn("Target branch '{}' not found for cherry-pick", targetBranch);
-                return null;
+        return cherryPick(commitId, targetBranch, getHeadCommit(targetBranch));
+    }
+
+    /** Apply the change only at the reviewed branch head. */
+    public String cherryPick(String commitId, String targetBranch, String expectedTargetHead) throws IOException {
+        return commitPickedChange(commitId, targetBranch, expectedTargetHead, null, null);
+    }
+
+    /** Resolve only a text conflict in the DSL while preserving every cleanly merged path. */
+    public String resolveCherryPick(String commitId, String targetBranch, String expectedTargetHead,
+                                    String resolvedDsl, String author) throws IOException {
+        return commitPickedChange(commitId, targetBranch, Objects.requireNonNull(expectedTargetHead),
+                Objects.requireNonNull(resolvedDsl), author);
+    }
+
+    private String commitPickedChange(String commitId, String targetBranch, String expectedTargetHead,
+                                      String resolvedDsl, String author) throws IOException {
+        verifyExpectedHead(targetBranch, expectedTargetHead);
+        if (expectedTargetHead == null) return null;
+        try (var walk = new RevWalk(gitRepo)) {
+            var picked = walk.parseCommit(ObjectId.fromString(commitId));
+            var target = walk.parseCommit(ObjectId.fromString(expectedTargetHead));
+            verifyIncoming(commitId, expectedTargetHead);
+            var change = mergePickedChange(picked, target, null);
+            if (resolvedDsl != null) {
+                if (!change.canResolveDsl()) return null;
+                change = mergePickedChange(picked, target, resolvedDsl);
             }
+            if (change.resultTree() == null) return null;
 
-            RevCommit targetHead = walk.parseCommit(targetRef.getObjectId());
-            verifyIncoming(commitId, targetHead.name());
-            ThreeWayMerger merger = new ModelHistoryMerger(gitRepo);
-            if (!merger.merge(targetHead, pickCommit)) {
-                log.warn("Cherry-pick merge conflict for {} onto '{}'", commitId, targetBranch);
-                return null;
-            }
-
-            PersonIdent committer = systemIdent();
-            var provenance = CommitProvenance.capture("cherry-pick", this, storageName,
-                    "detached", commitId, null);
-            try (ObjectInserter inserter = gitRepo.newObjectInserter()) {
-                CommitBuilder newCommit = new CommitBuilder();
-                newCommit.setTreeId(insertProvenanceTree(inserter, merger.getResultTreeId(), provenance));
-                newCommit.setParentId(targetHead);
-                newCommit.setAuthor(pickCommit.getAuthorIdent());
-                newCommit.setCommitter(committer);
-                newCommit.setMessage("Cherry-pick: " + pickCommit.getShortMessage());
-
-                signCommit(newCommit, targetBranch);
-                ObjectId newCommitId = inserter.insert(newCommit);
+            String operation = resolvedDsl == null ? "cherry-pick" : "resolve-cherry-pick";
+            var provenance = CommitProvenance.capture(operation, this, storageName, "detached", commitId, change.baseCommit());
+            String message = (resolvedDsl == null ? "Cherry-pick: " : "Resolve cherry-pick: ") + picked.getShortMessage();
+            PersonIdent committer = author == null ? systemIdent() : personIdent(author);
+            try (var inserter = gitRepo.newObjectInserter()) {
+                var commit = new CommitBuilder();
+                commit.setTreeId(insertProvenanceTree(inserter, change.resultTree(), provenance));
+                commit.setParentId(target);
+                commit.setAuthor(picked.getAuthorIdent());
+                commit.setCommitter(committer);
+                commit.setMessage(message);
+                signCommit(commit, targetBranch);
+                ObjectId result = inserter.insert(commit);
                 inserter.flush();
-                updateRef(
-                        targetRefName,
-                        newCommitId,
-                        targetHead,
-                        false,
-                        committer,
-                        "cherry-pick: " + pickCommit.getShortMessage());
-
-                log.info("Cherry-picked {} onto '{}': {}",
-                        commitId, targetBranch, newCommitId.name());
-                return newCommitId.name();
+                return fastForwardIfHeadMatches(targetBranch, expectedTargetHead, result.name(), committer.getName(), message);
             }
         }
     }
@@ -757,6 +806,14 @@ public class DslGitRepository implements AutoCloseable {
 
     /** Model-content merges exclude the reserved, transfer-specific metadata path. */
     private static final class ModelHistoryMerger extends RecursiveMerger {
+        private boolean useEmptyBase;
+        private String resolvedDsl;
+
+        @Override
+        protected AbstractTreeIterator mergeBase() throws IOException {
+            return useEmptyBase ? new EmptyTreeIterator() : super.mergeBase();
+        }
+
         ModelHistoryMerger(Repository repository) {
             super(repository, true);
         }
@@ -769,6 +826,14 @@ public class DslGitRepository implements AutoCloseable {
             if (CommitProvenance.FILENAME.equals(tw.getPathString())) {
                 // Do not add the reserved transfer-specific path to the in-core
                 // index. All other paths keep JGit's recursive merge behavior.
+                enterSubtree = false;
+                return true;
+            }
+            if (resolvedDsl != null && DSL_FILENAME.equals(tw.getPathString())) {
+                byte[] content = resolvedDsl.getBytes(StandardCharsets.UTF_8);
+                ObjectId blob = getObjectInserter().insert(Constants.OBJ_BLOB, content);
+                workTreeUpdater.addExistingToIndex(blob, tw.getRawPath(), FileMode.REGULAR_FILE,
+                        DirCacheEntry.STAGE_0, null, content.length);
                 enterSubtree = false;
                 return true;
             }
@@ -1077,26 +1142,45 @@ public class DslGitRepository implements AutoCloseable {
         return databaseBacked;
     }
 
+    /** These workflow refs are managed by sync/publication and cannot be removed as user variants. */
+    public static boolean isProtectedVariant(String name) {
+        return "draft".equals(name) || "accepted".equals(name) || "main".equals(name) || "sync-base".equals(name);
+    }
+
     /** Delete a non-protected branch and record a queryable reflog entry. */
     public boolean deleteBranch(String branchName) throws IOException {
-        if ("draft".equals(branchName)
-                || "accepted".equals(branchName)
-                || "main".equals(branchName)) {
+        return deleteBranch(branchName, null, null);
+    }
+
+    /** Delete the reviewed ref only if the stored head still matches its exact object ID. */
+    public boolean deleteBranch(String branchName, String expectedHead, String actor) throws IOException {
+        if (isProtectedVariant(branchName)) {
             throw new IllegalArgumentException("Cannot delete protected branch: " + branchName);
         }
-
         String refName = Constants.R_HEADS + branchName;
-        Ref ref = gitRepo.getRefDatabase().exactRef(refName);
-        if (ref == null) {
-            return false;
-        }
+        if (branchName == null || !Repository.isValidRefName(refName)) throw new IllegalArgumentException("Invalid branch");
+        if (expectedHead != null && !ObjectId.isId(expectedHead)) throw new IllegalArgumentException("Invalid expected commit");
 
-        RefUpdate update = gitRepo.updateRef(refName);
-        update.setExpectedOldObjectId(ref.getObjectId());
+        Ref ref = gitRepo.getRefDatabase().exactRef(refName);
+        ObjectId actual = ref == null ? null : ref.getObjectId();
+        if (expectedHead != null && (actual == null || !ObjectId.fromString(expectedHead).equals(actual))) {
+            throw new BranchHeadConflictException(branchName, expectedHead, actual == null ? null : actual.name(),
+                    "The reviewed branch changed");
+        }
+        if (actual == null) return false;
+        if (ref.isSymbolic()) throw new IllegalArgumentException("Cannot delete a symbolic branch");
+
+        RefUpdate update = gitRepo.updateRef(refName, true);
+        update.setExpectedOldObjectId(actual);
         update.setForceUpdate(true);
-        update.setRefLogIdent(systemIdent());
+        update.setRefLogIdent(actor == null ? systemIdent() : personIdent(actor));
         update.setRefLogMessage("branch: deleted " + branchName, true);
         RefUpdate.Result result = update.delete();
+        if (expectedHead != null && (result == RefUpdate.Result.LOCK_FAILURE || result == RefUpdate.Result.REJECTED
+                || result == RefUpdate.Result.REJECTED_CURRENT_BRANCH || result == RefUpdate.Result.NEW)) {
+            throw new BranchHeadConflictException(branchName, expectedHead, getHeadCommit(branchName),
+                    "The reviewed branch could not be deleted at its expected head");
+        }
         if (result != RefUpdate.Result.FORCED
                 && result != RefUpdate.Result.FAST_FORWARD) {
             throw new IOException("Ref deletion failed for " + refName + ": " + result);

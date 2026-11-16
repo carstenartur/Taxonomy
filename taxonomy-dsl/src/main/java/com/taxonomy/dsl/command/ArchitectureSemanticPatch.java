@@ -167,7 +167,7 @@ public final class ArchitectureSemanticPatch {
                 + source.substring(range[1]);
     }
 
-    private static String raw(String source, BlockAst block) {
+    static String raw(String source, BlockAst block) {
         if (block == null) return null;
         int[] range = range(source, block);
         return source.substring(range[0], range[1]);

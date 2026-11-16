@@ -8,6 +8,7 @@ import com.taxonomy.dsl.model.CanonicalArchitectureModel;
 import com.taxonomy.workspace.storage.DslCommit;
 import com.taxonomy.workspace.signing.CommitSignature;
 import com.taxonomy.workspace.signing.SignatureStatus;
+import com.taxonomy.dto.RepositoryReadiness;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.versioning.controller.DslApiController;
 import com.taxonomy.versioning.controller.DslReadWorkspaceContextResolver;
@@ -78,6 +79,30 @@ class DslDocumentApiControllerContractTest {
                 .andExpect(jsonPath("$.viewContext.basedOnCommit").value("head"));
         verify(documents, never()).buildCanonicalModel();
     }
+    @Test
+    void currentPreservesReadinessAndOnlyStalesVerifiedEvidenceForAnotherRevision() throws Exception {
+        var selected = mock(com.taxonomy.editor.ArchitectureEditorService.Document.class);
+        when(projects.read(null, null, null, null)).thenReturn(selected);
+        when(selected.dsl()).thenReturn("element example type System {\n title: Example;\n}\n");
+        when(selected.context()).thenReturn(com.taxonomy.editor.ArchitectureCommandPort.Context.of(
+                RepositoryContext.workspace("repo-a", "workspace", "review", "alice"), "head"));
+        when(selected.versions()).thenReturn(List.of());
+        when(dslOps.getViewContext(eq("alice"), eq("review"), any())).thenReturn(
+                new ViewContext("head", "review", Instant.EPOCH, false, false, false,
+                        RepositoryReadiness.FRESH, RepositoryReadiness.MISSING));
+        mvc.perform(get("/api/dsl/current")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.viewContext.projectionReadiness").value("FRESH"))
+                .andExpect(jsonPath("$.viewContext.indexReadiness").value("MISSING"));
+
+        when(dslOps.getViewContext(eq("alice"), eq("review"), any())).thenReturn(
+                new ViewContext("other-commit", "review", Instant.EPOCH, false, false, false,
+                        RepositoryReadiness.FRESH, RepositoryReadiness.FAILED));
+        mvc.perform(get("/api/dsl/current")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.viewContext.projectionReadiness").value("STALE"))
+                .andExpect(jsonPath("$.viewContext.indexReadiness").value("FAILED"))
+                .andExpect(jsonPath("$.viewContext.indexStale").value(true));
+    }
+
     @Test
     void materializePreservesBodyParametersSelectedBranchAndInvalidEnvelope() throws Exception {
         when(documents.materialize("dsl",null,null,null)).thenReturn(result(true));

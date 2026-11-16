@@ -13,6 +13,7 @@ import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.versioning.service.ConflictDetectionService;
 import com.taxonomy.versioning.service.DslOperationsFacade;
+import com.taxonomy.workspace.service.BranchHeadConflictException;
 import com.taxonomy.workspace.service.RepositoryStateGuard;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
@@ -258,12 +259,13 @@ public class DslApiController {
 
     @PostMapping("/cherry-pick")
     @Operation(summary = "Cherry-pick a commit onto a target branch",
-            description = "Applies the changes from a specific commit to the HEAD of the target branch.")
+            description = "Applies the selected commit only to the exact target HEAD reviewed in the cherry-pick preview.")
     public ResponseEntity<Map<String, Object>> cherryPick(
             @RequestParam String commitId,
-            @RequestParam(defaultValue = "review") String targetBranch) {
+            @RequestParam(defaultValue = "review") String targetBranch,
+            @RequestParam String expectedTargetHead) {
         try {
-            String newCommitId = dslOps.cherryPick(commitId, targetBranch);
+            String newCommitId = dslOps.cherryPick(commitId, targetBranch, expectedTargetHead);
             if (newCommitId == null) {
                 Map<String, Object> error = new LinkedHashMap<>();
                 error.put("error", "Cherry-pick failed (conflict or invalid commit)");
@@ -274,6 +276,10 @@ public class DslApiController {
             result.put("targetBranch", targetBranch);
             result.put("cherryPickedFrom", commitId);
             return ResponseEntity.ok(result);
+        } catch (BranchHeadConflictException e) {
+            return cherryPickHeadConflict(e);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (org.eclipse.jgit.errors.MissingObjectException e) {
             Map<String, Object> error = new LinkedHashMap<>();
             error.put("error", "Cherry-pick failed: commit not found — " + e.getMessage());
@@ -479,12 +485,17 @@ public class DslApiController {
     public ResponseEntity<Map<String, Object>> cherryPickResolve(
             @RequestParam String commitId,
             @RequestParam String targetBranch,
+            @RequestParam String expectedTargetHead,
             @RequestBody String resolvedContent,
             Authentication authentication) {
         try {
             String username = authentication != null ? authentication.getName() : "system";
-            String newCommitId = dslOps.commitDsl(targetBranch, resolvedContent,
-                    username, "Resolve cherry-pick conflict: " + commitId.substring(0, Math.min(7, commitId.length())));
+            String newCommitId = dslOps.resolveCherryPick(commitId, targetBranch, expectedTargetHead,
+                    resolvedContent, username);
+            if (newCommitId == null) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error",
+                        "The selected commit has no conflict that can be resolved by editing the DSL alone."));
+            }
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("commitId", newCommitId);
@@ -492,7 +503,11 @@ public class DslApiController {
             result.put("cherryPickedFrom", commitId);
             result.put("resolution", "manual");
             return ResponseEntity.ok(result);
-        } catch (Exception e) {
+        } catch (BranchHeadConflictException e) {
+            return cherryPickHeadConflict(e);
+        } catch (IllegalArgumentException | org.eclipse.jgit.errors.MissingObjectException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (IOException e) {
             log.error("Cherry-pick resolution failed", e);
             Map<String, Object> error = new LinkedHashMap<>();
             error.put("error", "Cherry-pick resolution failed: " + e.getMessage());
@@ -500,35 +515,15 @@ public class DslApiController {
         }
     }
 
-    // ── Branch deletion ─────────────────────────────────────────────
-
-    @DeleteMapping("/branch")
-    @Operation(summary = "Delete a branch",
-            description = "Deletes a Git branch in the selected writable working copy. " +
-                    "HTTP central selections are read-only and cannot delete branches. Protected branches (draft, accepted, main) " +
-                    "cannot be deleted.")
-    public ResponseEntity<Map<String, Object>> deleteBranch(@RequestParam String name) {
-        try {
-            boolean deleted = dslOps.deleteBranch(name);
-            if (!deleted) {
-                Map<String, Object> error = new LinkedHashMap<>();
-                error.put("error", "Branch '" + name + "' not found");
-                return ResponseEntity.status(404).body(error);
-            }
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("deleted", name);
-            result.put("success", true);
-            return ResponseEntity.ok(result);
-        } catch (IllegalArgumentException e) {
-            Map<String, Object> error = new LinkedHashMap<>();
-            error.put("error", e.getMessage());
-            return ResponseEntity.badRequest().body(error);
-        } catch (IOException e) {
-            log.error("Branch deletion failed", e);
-            Map<String, Object> error = new LinkedHashMap<>();
-            error.put("error", "Branch deletion failed: " + e.getMessage());
-            return ResponseEntity.internalServerError().body(error);
-        }
+    private static ResponseEntity<Map<String, Object>> cherryPickHeadConflict(BranchHeadConflictException conflict) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("error", Objects.equals(conflict.getExpectedHeadCommit(), conflict.getActualHeadCommit())
+                ? "The editor has pending work or a different checkpoint. Review the editor state and reopen the cherry-pick preview."
+                : "The target branch changed. Reopen the cherry-pick preview before applying changes.");
+        details.put("targetBranch", conflict.getBranch());
+        details.put("expectedTargetHead", conflict.getExpectedHeadCommit());
+        details.put("actualTargetHead", conflict.getActualHeadCommit());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(details);
     }
 
     @GetMapping("/operation/check")

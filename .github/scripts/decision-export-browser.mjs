@@ -20,6 +20,7 @@ try {
         await page.addScriptTag({content:source});
         await page.evaluate(()=>{
             window.attempts=[];
+            window.TaxonomyResponsibilityDisplay = {enabled: () => true};
             document.getElementById('open').onclick=()=>window.TaxonomyDecisionExport.open({source:'Anforderung 42 · Snapshot saved-1',saved:true,
                 roots:[{code:'CP',title:'Fähigkeiten'},{code:'BP',title:'Geschäftsprozesse'},{code:'IP',title:'Produkte',inAnalysisScope:false}],
                 analysisScope:{taxonomyRoots:['CP','BP'],mode:'TAXONOMIES_ONLY'},selectedRoots:['CP'],
@@ -43,11 +44,15 @@ try {
         assert.equal(await page.locator('[name=contents]').isVisible(),false);
         await page.selectOption('[name=format]','docx');
         await page.click('summary');
+        assert.equal(await page.locator('[name=showResponsibilities]').isChecked(), true);
+        await page.uncheck('[name=showResponsibilities]');
         if(process.env.TAXONOMY_UI_OUTPUT) await page.screenshot({path:process.env.TAXONOMY_UI_OUTPUT+'/dialog-'+width+'.png'});
         await page.click('[type=submit]');await dialog.waitFor({state:'detached'});
         assert.equal(await page.locator('#open').evaluate(el=>el===document.activeElement),true);
         const attempts=await page.evaluate(()=>window.attempts);
         assert.deepEqual(attempts[1].options.taxonomyRoots,['BP']);
+        assert.equal(attempts[0].options.showResponsibilities, true);
+        assert.equal('showResponsibilities' in attempts[1].options, false);
         await page.click('#open');await page.keyboard.press('Escape');await page.locator('dialog').waitFor({state:'detached'});
         assert.equal(await page.locator('#open').evaluate(el=>el===document.activeElement),true);
         // Capability reload must remove unavailable renderers, accept a new SDK format,

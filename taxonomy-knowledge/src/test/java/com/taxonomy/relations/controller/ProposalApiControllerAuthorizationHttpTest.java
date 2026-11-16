@@ -168,7 +168,7 @@ class ProposalApiControllerAuthorizationHttpTest {
         when(proposals.findByIdInRepositoryWorkspaceForUpdate("selected-repo", 42L, null)).thenReturn(Optional.of(own));
         MutationResult effect = effect(action);
         when(mutations.upsert(eq(WRITE), eq(HEAD), any(), any())).thenReturn(effect);
-        when(mutations.removeMatching(eq(WRITE), eq(HEAD), any(), any(), eq(expectedReviewProperties()))).thenReturn(effect);
+        when(mutations.removeMatching(eq(WRITE), eq(HEAD), any(), any(), eq(expectedReviewProperties()), org.mockito.ArgumentMatchers.anyMap())).thenReturn(effect);
 
         mvc.perform(post(endpoint(action, 42L))
                         .header(HttpHeaders.IF_MATCH, '"' + HEAD + '"')
@@ -181,7 +181,7 @@ class ProposalApiControllerAuthorizationHttpTest {
         var order = inOrder(proposals, mutations);
         order.verify(proposals).findByIdInRepositoryWorkspace("selected-repo", 42L, null);
         if ("revert".equals(action)) {
-            order.verify(mutations).removeMatching(eq(WRITE), eq(HEAD), any(), any(), eq(expectedReviewProperties()));
+            order.verify(mutations).removeMatching(eq(WRITE), eq(HEAD), any(), any(), eq(expectedReviewProperties()), org.mockito.ArgumentMatchers.anyMap());
         } else {
             order.verify(mutations).upsert(eq(WRITE), eq(HEAD), any(), any());
         }
@@ -244,7 +244,7 @@ class ProposalApiControllerAuthorizationHttpTest {
         when(proposals.findByIdInRepositoryWorkspace("selected-repo", 42L, null)).thenReturn(Optional.of(own));
         var conflict = new BranchHeadConflictException("selected-branch", HEAD, NEXT, "Head changed");
         when(mutations.upsert(eq(WRITE), eq(HEAD), any(), any())).thenThrow(conflict);
-        when(mutations.removeMatching(eq(WRITE), eq(HEAD), any(), any(), eq(expectedReviewProperties()))).thenThrow(conflict);
+        when(mutations.removeMatching(eq(WRITE), eq(HEAD), any(), any(), eq(expectedReviewProperties()), org.mockito.ArgumentMatchers.anyMap())).thenThrow(conflict);
 
         mvc.perform(post(endpoint(action, 42L)).header(HttpHeaders.IF_MATCH, '"' + HEAD + '"'))
                 .andExpect(status().isPreconditionFailed())

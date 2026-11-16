@@ -130,7 +130,8 @@ public class GitAuthoritativeProposalReviewService {
             return mutationService.removeMatching(
                     context, expectedHeadCommit, identity, metadata,
                     Map.of("status", proposal.status().name().toLowerCase(java.util.Locale.ROOT),
-                            "provenance", PROPOSAL_PROVENANCE, "x-proposal-id", proposal.id().toString()));
+                            "provenance", PROPOSAL_PROVENANCE, "x-proposal-id", proposal.id().toString()),
+                    ProposalBranchAdoptionService.reviewOrigin(context));
         }
         return mutationService.upsert(
                 context,
@@ -140,9 +141,7 @@ public class GitAuthoritativeProposalReviewService {
                         action.dslStatus(),
                         proposal.confidence(),
                         PROPOSAL_PROVENANCE,
-                        Map.of(
-                                "x-proposal-id",
-                                proposal.id().toString())),
+                        ProposalBranchAdoptionService.reviewProperties(proposal.id(), context)),
                 metadata);
     }
 

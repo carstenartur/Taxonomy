@@ -90,6 +90,32 @@ against its manifest and summary before accepting it; no XML counter is repaired
 Root `verify` independently invokes `check-junit-outcomes` after Failsafe to recount
 every original reactor XML, so malformed evidence also fails locally.
 
+### Requirement reuse evaluation
+
+The [intake corpus](../../taxonomy-portfolio/src/test/resources/intake/reuse-corpus.json)
+contains 20 synthetic examples with independent expectations for duplicates,
+additions, contradictions and superficially similar unrelated requirements.
+Run the existing intake service and matcher with the fixed candidate pool:
+
+```bash
+./mvnw -B -pl taxonomy-portfolio -am test \
+  -Dtest=RequirementIntakeCorpusTest -Dsurefire.failIfNoSpecifiedTests=false
+```
+
+The baseline writes `taxonomy-portfolio/target/intake-evaluation/offline.csv`.
+It measures exact-text fallback with the provider disabled. Add
+`-Dtaxonomy.intake.evaluateLive=true` and set `LLM_PROVIDER` explicitly using the
+application's normal provider settings to write `live.csv`. That run sends one
+review per example to the selected provider and retains each completion status.
+
+The report records the rank in the list shown to the user, the classification,
+and whether the original and candidate quotes contain the independently
+specified passages. Top-three success requires both the correct candidate and
+the correct classification. An unassessed case stays distinct from an explicit
+`NONE` result. These measurements characterize this fixed pool and the intake
+review. Database retrieval coverage and open-ended provider accuracy require
+separate evaluation.
+
 ### Opt-in suppression of inherited tests
 
 App test classes may use `@IgnoreInheritedTests` when they reuse a concrete
