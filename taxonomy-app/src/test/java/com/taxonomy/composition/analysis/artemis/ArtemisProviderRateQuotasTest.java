@@ -723,8 +723,20 @@ class ArtemisProviderRateQuotasTest {
             duplicate.setStringProperty("policyFingerprint",policy.fingerprint());duplicate.setStringProperty("tokenAdapter","");
             producer.send(duplicate,DeliveryMode.PERSISTENT,jakarta.jms.Message.DEFAULT_PRIORITY,0);
         }
+        // Broker counters are eventually updated, even after a persistent JMS send has
+        // returned. Prove the fixture using two actual transacted deliveries instead.
+        // Roll back both deliveries so the quota admission still sees the duplicate.
+        try(var verifier=connect();var session=verifier.createSession(true);
+            var receiver=session.createConsumer(session.createQueue(QUEUE+"::"+QUEUE))){
+            var first=(TextMessage)receiver.receive(2000);
+            var second=(TextMessage)receiver.receive(2000);
+            assertThat(first).as("Original quota ledger must be delivered").isNotNull();
+            assertThat(second).as("Duplicate quota ledger must be delivered").isNotNull();
+            assertThat(second.getText()).isEqualTo(first.getText());
+            assertThat(receiver.receiveNoWait()).as("Exactly two ledger messages must exist").isNull();
+            session.rollback();
+        }
         var actual=broker.getActiveMQServer().locateQueue(SimpleString.of(QUEUE));
-        assertThat(actual.getMessageCount()).isEqualTo(2);assertThat(actual.getDeliveringCount()).isZero();
         var physical=new AtomicInteger();
         assertThatThrownBy(()->send(quotasWithCountObservation(connect(),policy,1),LlmProvider.OPENAI,physical))
                 .isInstanceOf(ProviderRateQuotas.UnavailableException.class);
