@@ -94,6 +94,76 @@ class UpstreamRebasePlanTest {
         }
     }
 
+    @Test
+    void aCleanLinearReplayPublishesOnceWithSignedPerCommitOrigins() throws Exception {
+        String base = store.commitDsl("seed", "first\nsecond\n", "owner", "base");
+        store.createBranchAtCommit("main", base);
+        String tracked = store.commitDsl("main", "first\nsecond\nupstream\n", "owner", "upstream");
+        store.createBranchAtCommit("draft", base);
+        String one = store.commitDsl("draft", "first\nsecond\n", "owner", "local one");
+        String two = store.commitDsl("draft", "first\nsecond\n", "owner", "local two");
+        tracking.advance(store, null, tracked, "owner");
+        var transfer = new GitUpstreamTransfer(tracking, store, store, base, "owner", () -> { });
+        var plan = UpstreamRebasePlan.read(transfer, "fork", null, "draft");
+        assertThat(plan.status()).isEqualTo(REPLAY);
+        assertThat(plan.commits().stream().map(UpstreamRebasePlan.Commit::id)).containsExactly(one, two);
+
+        var result = store.replayLinearHistory("draft", two, base, tracked,
+                plan.commits().stream().map(UpstreamRebasePlan.Commit::id).toList(), "owner", () -> { });
+        assertThat(result.completed()).isTrue();
+        assertThat(result.rewritten()).hasSize(2);
+        assertThat(result.rewritten().stream().map(DslGitRepository.RebasedCommit::originalCommit))
+                .containsExactly(one, two);
+        assertThat(store.getHeadCommit("draft")).isEqualTo(result.newHead());
+        assertThat(store.getDslAtCommit(result.newHead())).isEqualTo("first\nsecond\nupstream\n");
+        try (var walk = new org.eclipse.jgit.revwalk.RevWalk(store.getGitRepository())) {
+            var tip = walk.parseCommit(ObjectId.fromString(result.newHead()));
+            var previous = walk.parseCommit(tip.getParent(0));
+            assertThat(previous.name()).isEqualTo(result.rewritten().getFirst().replacementCommit());
+            assertThat(walk.parseCommit(previous.getParent(0)).name()).isEqualTo(tracked);
+            assertThat(tip.getFullMessage()).contains("Original-Commit: " + two);
+            assertThat(previous.getFullMessage()).contains("Original-Commit: " + one);
+        }
+        assertThat(store.verifyCommit(result.newHead())).isNotNull();
+    }
+
+    @Test
+    void aContentConflictReturnsTheOriginalHeadWithoutAnyBranchPublication() throws Exception {
+        String base = store.commitDsl("seed", "first\nsecond\n", "owner", "base");
+        store.createBranchAtCommit("main", base);
+        String tracked = store.commitDsl("main", "upstream\nsecond\n", "owner", "upstream");
+        store.createBranchAtCommit("draft", base);
+        String local = store.commitDsl("draft", "local\nsecond\n", "owner", "local");
+        var result = store.replayLinearHistory("draft", local, base, tracked, java.util.List.of(local),
+                "owner", () -> { });
+        assertThat(result.completed()).isFalse();
+        assertThat(result.conflictCommit()).isEqualTo(local);
+        assertThat(result.conflictingPaths()).contains(DslGitRepository.DSL_FILENAME);
+        assertThat(store.getHeadCommit("draft")).isEqualTo(local);
+    }
+
+    @Test
+    void deniedOrStaleFinalAuthorityNeverPublishesARebasedBranch() throws Exception {
+        String base = store.commitDsl("seed", "first\nsecond\n", "owner", "base");
+        store.createBranchAtCommit("main", base);
+        String tracked = store.commitDsl("main", "first\nsecond\nupstream\n", "owner", "upstream");
+        store.createBranchAtCommit("draft", base);
+        String local = store.commitDsl("draft", "first\nsecond\n", "owner", "local");
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        assertThatThrownBy(() -> store.replayLinearHistory("draft", local, base, tracked,
+                java.util.List.of(local), "owner", () -> {
+                    if (calls.incrementAndGet() == 2) throw new org.springframework.security.access.AccessDeniedException("revoked");
+                })).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThat(calls.get()).isEqualTo(2);
+        assertThat(store.getHeadCommit("draft")).isEqualTo(local);
+
+        String moved = store.commitDsl("draft", "new version\n", "owner", "concurrent");
+        assertThatThrownBy(() -> store.replayLinearHistory("draft", local, base, tracked,
+                java.util.List.of(local), "owner", () -> { }))
+                .isInstanceOf(BranchHeadConflictException.class);
+        assertThat(store.getHeadCommit("draft")).isEqualTo(moved);
+    }
+
     private GitUpstreamTransfer origin(String base, String upstream) throws IOException {
         store.createBranchAtCommit("main", upstream);
         tracking.advance(store, null, upstream, "owner");
