@@ -52,6 +52,28 @@ async function fixture({mode='requirement',locale='en',width=1200}={}){
     }
     return page;
 }
+// The native keyboard path remains a separate production-fragment contract when
+// the end-to-end Keycloak logout journey uses a real WebDriver pointer click.
+for (const locale of ['de', 'en']) for (const width of [390, 1440]) {
+    test(`${locale}: account menu Enter and Escape remain keyboard accessible at ${width}px`, async () => {
+        const page = await fixture({mode: 'index', locale, width});
+        try {
+            const summary = page.locator('#applicationAccount > summary');
+            const account = page.locator('#applicationAccount');
+            const logout = page.locator('#applicationLogoutForm button');
+            await summary.focus();
+            await page.keyboard.press('Enter');
+            assert.equal(await account.evaluate(node => node.open), true);
+            assert.equal(await logout.isVisible(), true);
+            await page.keyboard.press('Escape');
+            assert.equal(await account.evaluate(node => node.open), false);
+            assert.equal(await summary.evaluate(node => node === document.activeElement), true);
+            assert.deepEqual(page.errors, []);
+        } finally {
+            await page.close();
+        }
+    });
+}
 test('closing the welcome dialog preserves a subsequent account-menu interaction', async () => {
     const page = await fixture({mode: 'index'});
     try {
