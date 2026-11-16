@@ -19,6 +19,9 @@ class WorkspaceAccessServiceTest {
     @Mock
     private UserWorkspaceRepository workspaceRepository;
 
+    @Mock
+    private WorkspaceActorAccess actors;
+
     @InjectMocks
     private WorkspaceAccessService workspaceAccessService;
 
@@ -37,9 +40,9 @@ class WorkspaceAccessServiceTest {
 
     @Test
     void ownerAndSharedWorkspaceAreVisibleWithoutMaterializingRows() {
-        when(workspaceRepository.countVisibleWorkspaceMetadata("owned", "alice"))
+        when(workspaceRepository.countVisibleWorkspaceMetadata("owned", "alice", null))
                 .thenReturn(1L);
-        when(workspaceRepository.countVisibleWorkspaceMetadata("shared", "alice"))
+        when(workspaceRepository.countVisibleWorkspaceMetadata("shared", "alice", null))
                 .thenReturn(1L);
 
         assertThat(workspaceAccessService.canReadWorkspaceMetadata(
@@ -53,9 +56,9 @@ class WorkspaceAccessServiceTest {
 
     @Test
     void foreignPrivateAndMissingWorkspaceAreIndistinguishable() {
-        when(workspaceRepository.countVisibleWorkspaceMetadata("foreign", "alice"))
+        when(workspaceRepository.countVisibleWorkspaceMetadata("foreign", "alice", null))
                 .thenReturn(0L);
-        when(workspaceRepository.countVisibleWorkspaceMetadata("missing", "alice"))
+        when(workspaceRepository.countVisibleWorkspaceMetadata("missing", "alice", null))
                 .thenReturn(0L);
 
         assertThat(workspaceAccessService.canReadWorkspaceMetadata(

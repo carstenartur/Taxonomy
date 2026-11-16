@@ -277,7 +277,7 @@ public class WorkspaceContextResolver {
 
         if (workspace == null
                 || !hasText(workspace.getUsername())
-                || (!workspace.getUsername().strip().equals(username.strip())
+                || (!actorAccess.owns(username, workspace)
                     && !(requestedWorkspaceId != null && workspace.isCollaborative()
                         && repositoryMembershipService != null
                         && hasText(workspace.getSourceRepositoryId())

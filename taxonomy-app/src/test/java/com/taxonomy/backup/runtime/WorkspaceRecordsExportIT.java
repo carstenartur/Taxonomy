@@ -122,6 +122,24 @@ class WorkspaceRecordsExportIT {
         }
     }
 
+    @Test void workspaceOwnerExportRequiresItsOriginalPrincipalAndScope() throws Exception {
+        try (var fixture = new Fixture()) {
+            graph(fixture, "repo-a", "private-a", "ALICE");
+            var original = UUID.randomUUID().toString();
+            fixture.jdbc.execute("create table app_principal(principal_id varchar(36) primary key,scope_key varchar(255))");
+            fixture.jdbc.update("insert into app_principal values(?, 'ALICE')", original);
+            fixture.jdbc.update("update user_workspace set owner_principal_id=? where workspace_id='private-a'", original);
+            var contributor = new WorkspaceBackupContributor(fixture.database, dsl -> dsl);
+            var selection = snapshot(BackupProfile.REPOSITORY_HISTORY,new BackupScope.Workspace("repo-a","private-a"));
+            var exported = new Contents();
+            contributor.write(selection, exported);
+            assertThat(records(exported, "workspaces").getFirst().path("ownerPrincipalId").asText()).isEqualTo(original);
+            fixture.jdbc.update("update app_principal set scope_key='retired' where principal_id=?", original);
+            fixture.jdbc.update("insert into app_principal values(?, 'ALICE')", UUID.randomUUID().toString());
+            assertThatThrownBy(() -> contributor.write(selection, new Contents())).isInstanceOf(java.io.IOException.class);
+        }
+    }
+
     @Test void scopedProfilesPreserveOwnershipAndCurrentWorkWhileSeparatingJournalHistory() throws Exception {
         try (var fixture = new Fixture()) {
             graph(fixture, "repo-a", "private-a", "ALICE");

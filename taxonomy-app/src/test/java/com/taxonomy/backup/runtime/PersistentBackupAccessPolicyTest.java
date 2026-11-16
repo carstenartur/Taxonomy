@@ -58,6 +58,14 @@ class PersistentBackupAccessPolicyTest {
         assertThat(policy.canRead(external.id(), selected)).isFalse();
     }
 
+    @Test void originalBackupPrincipalCannotInheritAnotherActorsPersonalWorkspace() {
+        var workspace = workspaces.findByWorkspaceId(selected.workspaceId()).orElseThrow();
+        assertThat(policy.canRead(alice, selected)).isTrue();
+        workspace.assignOwnerPrincipal(java.util.UUID.randomUUID());
+        assertThat(policy.canRead(alice, selected)).isFalse();
+        assertThat(policy.canReadVersion(alice, selected, "a".repeat(40))).isFalse();
+    }
+
     @Test void currentExportAndDownloadAreIndependentOfHistoryAndAdministration() {
         var request = request(BackupProfile.CURRENT_STATE);
         var created = authorization.authorize(alice, request);

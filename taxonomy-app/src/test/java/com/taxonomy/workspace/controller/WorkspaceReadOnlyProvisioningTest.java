@@ -1,5 +1,6 @@
 package com.taxonomy.workspace.controller;
 
+import com.taxonomy.testsupport.LocalTestLogin;
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
@@ -10,10 +11,13 @@ import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import com.taxonomy.workspace.service.WorkspaceManager;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.security.core.authority.AuthorityUtils;
@@ -28,6 +32,7 @@ import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -37,8 +42,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestPropertySource(properties = "taxonomy.git.bootstrap=false")
 class WorkspaceReadOnlyProvisioningTest {
+    @Autowired private ApplicationContext applicationContext;
     @Autowired private MockMvc mvc;
     @Autowired private UserWorkspaceRepository rows;
     @Autowired private WorkspaceManager manager;
@@ -47,6 +54,13 @@ class WorkspaceReadOnlyProvisioningTest {
     @Autowired private WorkspaceProjectionRepository projections;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private DslGitRepositoryFactory git;
+
+    @BeforeAll
+    void registerWorkspaceActorsBeforeTestTransactions() {
+        LocalTestLogin.authentication(applicationContext, "analyst-permitted-copy", "USER");
+        LocalTestLogin.authentication(applicationContext, "analyst-wrong-target", "USER");
+        LocalTestLogin.authentication(applicationContext, "system-explicit-copy", "USER");
+    }
 
     @AfterEach
     void evictNavigation() {
@@ -178,23 +192,31 @@ class WorkspaceReadOnlyProvisioningTest {
     }
 
     @Test
-    @WithMockUser(username = "analyst-permitted-copy", roles = "USER")
     void analystRetainsDefaultMetadataCreationCapability() {
+        LocalTestLogin.login(applicationContext, "analyst-permitted-copy", "USER");
         assertThat(manager.getWorkspaceInfo("analyst-permitted-copy")).isNotNull();
-        assertThat(rows.findByUsernameAndSharedFalse("analyst-permitted-copy")).isPresent();
+        assertThat(rows.findByUsernameAndSharedFalse("analyst-permitted-copy").orElseThrow().getOwnerPrincipalId())
+                .isNotNull();
     }
 
     @Test
-    @WithMockUser(username = "analyst-wrong-target", roles = "USER")
     void currentActorsCreationCapabilityCannotBeBorrowedForAnotherUser() {
-        assertThat(manager.getWorkspaceInfo("other-provision-target")).isNull();
+        LocalTestLogin.login(applicationContext, "analyst-wrong-target", "USER");
+        assertThatThrownBy(() -> manager.getWorkspaceInfo("other-provision-target"))
+                .isInstanceOf(AccessDeniedException.class);
         assertThat(rows.findByUsernameAndSharedFalse("other-provision-target")).isEmpty();
     }
 
     @Test
-    void explicitSystemMetadataCreationStillWorksWithoutAuthentication() {
-        var created = manager.createWorkspace("system-explicit-copy", "System working copy", "Explicit internal operation");
-        assertThat(rows.findByWorkspaceId(created.getWorkspaceId())).isPresent();
+    void explicitMetadataCreationRequiresStableAuthentication() {
+        assertThatThrownBy(() -> manager.createWorkspace("system-explicit-copy", "Working copy", "Explicit creation"))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThat(rows.findByUsername("system-explicit-copy")).isEmpty();
+
+        LocalTestLogin.login(applicationContext, "system-explicit-copy", "USER");
+        var created = manager.createWorkspace("system-explicit-copy", "Working copy", "Explicit creation");
+        assertThat(rows.findByWorkspaceId(created.getWorkspaceId()).orElseThrow().getOwnerPrincipalId())
+                .isNotNull();
     }
 
     private void assertCentralWithoutMetadata(String username) {

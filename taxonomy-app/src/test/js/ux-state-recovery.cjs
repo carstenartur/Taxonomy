@@ -10,6 +10,25 @@ const source = name => readFileSync(path.join(resources, 'static/js', name), 'ut
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function deferred() { let resolve, reject; const promise = new Promise((yes, no) => {resolve = yes; reject = no;}); return {promise, resolve, reject}; }
 
+test('a verified central checkpoint link keeps its source when viewed from a draft under a context path', () => {
+    const window = {
+        location: new URL('https://taxonomy.example/taxonomy/?repositoryId=repo&workspaceId=private&branch=draft'),
+        TaxonomyI18n: {resolveUrl: path => '/taxonomy' + path, getBasePath: () => '/taxonomy', getLocale: () => 'de'}
+    };
+    vm.runInNewContext(source('shared/architecture-workflow.js'), {window, document: dom().document, URL, URLSearchParams});
+    const workflow = window.TaxonomyArchitectureWorkflow;
+    const commit = 'a'.repeat(40);
+    const url = workflow.checkpointUrl({repositoryId: 'repo', workspaceScopeKey: '__shared__', branch: 'main', commit}, 'CP-1023');
+    assert.equal(workflow.scopeUrl(url),
+        '/taxonomy/architecture/editor?repositoryId=repo&workspaceId=&workspaceScopeKey=__shared__&branch=main&commit='
+        + commit + '&element=CP-1023&lang=de');
+    assert.equal(workflow.checkpointUrl({repositoryId: 'repo', workspaceScopeKey: '__shared__', branch: 'main', commit: 'HEAD'}), null);
+    const revision = workflow.modelRevisionUrl({repositoryId: 'repo', workspaceScopeKey: 'private',
+        branch: 'draft', commit, semanticRevision: 7});
+    assert.equal(new URL(revision, window.location).searchParams.get('revision'), '7');
+    assert.equal(new URL(revision, window.location).searchParams.has('commit'), false);
+});
+
 function dom() {
     const all = [], downloads = [], revoked = [], events = [];
     function element(tag = 'div', id) {
@@ -83,6 +102,32 @@ test('empty search cancels pending work, clears results and cannot revive old re
     assert.equal(area.innerHTML, '');
     assert.equal(f.highlights[0].classList.removed, 'search-highlight');
     f.pending.resolve({ok: true, json: async () => []}); await tick();
+    assert.equal(area.innerHTML, '');
+});
+
+test('initial source hydration preserves in-flight reference catalogue searches', async () => {
+    for (const mode of ['fulltext', 'semantic', 'hybrid', 'similar']) {
+        const f = searchFixture();
+        const area = f.document.getElementById('searchResultsArea');
+        if (mode === 'similar') f.window.TaxonomySearch.findSimilar('CP');
+        else f.window.TaxonomySearch.performSearch('capability', mode, 10);
+        f.window.__TaxonomyAnalysisSessionContext = {runtime: {workspaceId: 'initial-workspace'}};
+        f.window.TaxonomyContextBar = {getCurrentContext: () => ({branch: 'draft', commitId: 'initial'})};
+        f.document.fire('taxonomy:repository-context-changed', {detail: {selectionChanged: false}});
+        f.pending.resolve({ok: true, json: async () => [{code: 'CP', nameEn: 'Capability'}]});
+        await tick();
+        assert.equal(area.dataset.totalResults, '1', mode);
+    }
+});
+
+test('a repository selection change still discards a pending catalogue search', async () => {
+    const f = searchFixture();
+    const area = f.document.getElementById('searchResultsArea');
+    f.window.TaxonomySearch.performSearch('capability', 'semantic', 10);
+    f.document.fire('taxonomy:repository-context-changed', {detail: {selectionChanged: true}});
+    f.pending.resolve({ok: true, json: async () => [{code: 'CP'}]});
+    await tick();
+    assert.equal(area.style.display, 'none');
     assert.equal(area.innerHTML, '');
 });
 

@@ -846,7 +846,8 @@
         generation = C.runtime.analysisGeneration || 0;
         S.recoveryContext = { id: crypto.randomUUID(), workspaceId: ready.workspaceId, noFollowups: Boolean(manual),
             request: { businessText: input(), analysisLanguage: window.TaxonomyContentLanguage?.analysis(), includeArchitectureView: scope?.mode !== 'TAXONOMIES_ONLY', analysisScope: scope,
-                provider: document.getElementById('providerSelect')?.value || null }, followups: {} };
+                provider: document.getElementById('providerSelect')?.value || null,
+                ...window.TaxonomyArchitectureLifecycle?.selectedAnalysisModel?.() }, followups: {} };
         S.currentRelationSearchReport = null;
         S.analysisRecovery = { id: current().id, version: 0, state: 'NEW', completedCalls: 0, openQuestions: [] };
         // This newly allocated identity owns no previous scores or derived evidence.

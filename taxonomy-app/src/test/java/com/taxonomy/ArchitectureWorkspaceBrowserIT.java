@@ -181,6 +181,8 @@ class ArchitectureWorkspaceBrowserIT {
                 null, null, null, null, null, false)));
         page.route("GET", "/taxonomy/api/analysis-drafts/analysis-A", request -> json(200,
                 Map.of("workspaceId", "analysis-A", "version", version.get(), "payload", payload.get())));
+        page.route("GET", "/taxonomy/api/analysis-drafts/analysis-A/status", request -> json(200,
+                Map.of("workspaceId", "analysis-A", "version", version.get())));
         page.route("PUT", "/taxonomy/api/analysis-drafts/analysis-A", request -> {
             var body = read(request.body());
             if (((Number) body.get("expectedVersion")).intValue() != version.get()) return json(409, Map.of("code", "VERSION_CONFLICT"));

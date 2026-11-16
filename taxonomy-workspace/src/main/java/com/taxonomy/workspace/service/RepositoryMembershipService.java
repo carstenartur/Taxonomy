@@ -21,6 +21,13 @@ import java.util.Optional;
 @Service
 public class RepositoryMembershipService {
 
+    private WorkspaceActorAccess actors = WorkspaceActorAccess.unavailable();
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void configureWorkspaceActors(WorkspaceActorAccess actors) {
+        this.actors = java.util.Objects.requireNonNull(actors);
+    }
+
     private final RepositoryMembershipRepository membershipRepository;
     private final Optional<RepositoryRoleGrantProvider> grantProvider;
 
@@ -186,6 +193,12 @@ public class RepositoryMembershipService {
         membershipRepository.save(membership);
     }
 
+    /** Serialize consequential ref deletion with the existing owner-managed membership update and removal. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void lockForRefMutation(String repositoryId) {
+        membershipRepository.findByRepositoryIdForUpdate(repositoryId);
+    }
+
     public Optional<RepositoryRole> effectiveRole(
             SystemRepository repository, String username) {
         if (repository == null || username == null || username.isBlank()) {
@@ -271,14 +284,21 @@ public class RepositoryMembershipService {
 
     /** Does not provision, select or disclose a foreign private working copy. */
     public boolean canUseWorkspace(SystemRepository repository, com.taxonomy.workspace.model.UserWorkspace workspace, String username) {
+        return canUseWorkspace(repository, workspace, username, null);
+    }
+
+    /** Recovery has already verified the saved grant; compare its actor without consulting a worker session. */
+    public boolean canUseWorkspace(SystemRepository repository, com.taxonomy.workspace.model.UserWorkspace workspace,
+            String username, String verifiedOriginalActor) {
         // A retained workspace record never grants authority after the source has been
         // archived or the actor's current repository membership was revoked.
         return isActive(repository) && username != null && !username.isBlank()
                 && canRead(repository, username)
                 && workspace != null && !workspace.isShared() && !workspace.isArchived()
                 && java.util.Objects.equals(workspace.getSourceRepositoryId(), repository.getRepositoryId())
-                && (java.util.Objects.equals(workspace.getUsername(), username)
-                || (workspace.isCollaborative() && canCollaborate(repository, username)));
+                && ((verifiedOriginalActor == null ? actors.owns(username, workspace)
+                        : workspace.matchesOwner(username, verifiedOriginalActor))
+                    || (workspace.isCollaborative() && canCollaborate(repository, username)));
     }
 
     public boolean isOwner(SystemRepository repository, String username) {

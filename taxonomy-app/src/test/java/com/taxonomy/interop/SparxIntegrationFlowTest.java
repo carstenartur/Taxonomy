@@ -1,5 +1,6 @@
 package com.taxonomy.interop;
 
+import com.taxonomy.testsupport.LocalTestLogin;
 import org.junit.jupiter.api.Tag;
 
 import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
@@ -26,6 +27,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @SpringBootTest
 @Tag("ci-app-shard-domain-integration")
 class SparxIntegrationFlowTest {
+    @Autowired org.springframework.context.ApplicationContext application;
     @Autowired IntegrationService integrations;
     @Autowired ArchitectureRepositoryProvisioningService repositories;
     @Autowired RepositoryWorkspaceService workspaces;
@@ -133,6 +135,7 @@ class SparxIntegrationFlowTest {
 
     @BeforeEach void workspace() {
         String actor = "sparx-" + UUID.randomUUID().toString().substring(0, 8);
+        LocalTestLogin.login(application, actor, "ARCHITECT");
         var repo = repositories.createRepository("Sparx test", actor, "", RepositoryVisibility.PRIVATE, actor, "draft");
         var workspace = workspaces.createWorkingCopy(actor, repo.getRepositoryId(), "draft", "Sparx exchange", "");
         context = RepositoryContext.workspace(repo.getRepositoryId(), workspace.getWorkspaceId(), workspace.getCurrentBranch(), actor);

@@ -84,6 +84,8 @@ final class SchemaContractMigrator {
                     ensureColumn(connection, membership, "holder_principal_id", "VARCHAR(36)");
                     ensureColumn(connection, membership, "grantor_principal_id", "VARCHAR(36)");
                 }
+                TableRef userWorkspace = findTable(connection, "user_workspace");
+                if (userWorkspace != null) ensureColumn(connection, userWorkspace, "owner_principal_id", "VARCHAR(36)");
                 ensurePasswordChangeColumn(connection);
                 connection.commit();
                 log.info("Verified repository, workspace, hypothesis and account schema contracts");

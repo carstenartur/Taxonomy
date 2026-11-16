@@ -11,6 +11,7 @@ import com.taxonomy.dsl.diff.ModelDiff;
 import com.taxonomy.dsl.diff.SemanticDiffDescriber;
 import com.taxonomy.dsl.export.DslMaterializeService;
 import com.taxonomy.workspace.storage.DslCommit;
+import com.taxonomy.dto.RepositoryReadiness;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.architecture.model.ArchitectureDslDocument;
 import com.taxonomy.composition.dsl.service.DslDocumentOperationsFacade;
@@ -95,6 +96,7 @@ public class DslDocumentApiController {
         result.put("views", model.getViews());
         result.put("evidence", model.getEvidence());
         result.put("packages", model.getPackages());
+        result.put("organizations", model.getOrganizations());
         result.put("sources", model.getSources());
         result.put("sourceVersions", model.getSourceVersions());
         result.put("sourceFragments", model.getSourceFragments());
@@ -110,8 +112,14 @@ public class DslDocumentApiController {
         boolean provisional = model.getRelations().stream().anyMatch(r ->
                 "provisional".equals(r.getStatus()) || "proposed".equals(r.getStatus()));
         result.put("viewContext", new ViewContext(source.commit(), source.branch(), timestamp, provisional,
-                differentRevision || indexed.projectionStale(), differentRevision || indexed.indexStale()));
+                differentRevision || indexed.projectionStale(), differentRevision || indexed.indexStale(),
+                readinessForRevision(indexed.projectionReadiness(), differentRevision),
+                readinessForRevision(indexed.indexReadiness(), differentRevision)));
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(result);
+    }
+
+    private static RepositoryReadiness readinessForRevision(RepositoryReadiness readiness, boolean differentRevision) {
+        return differentRevision && readiness == RepositoryReadiness.FRESH ? RepositoryReadiness.STALE : readiness;
     }
 
     // ── Materialization ──────────────────────────────────────────────

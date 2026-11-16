@@ -6,7 +6,9 @@ import com.taxonomy.security.persistence.PrincipalSchemaMigration;
 import com.taxonomy.workspace.model.*;
 import com.taxonomy.workspace.repository.RepositoryMembershipRepository;
 import com.taxonomy.workspace.repository.SystemRepositoryRepository;
+import com.taxonomy.workspace.service.RepositoryMembershipIdentity.RecordedActor;
 import com.taxonomy.workspace.service.RepositoryMembershipService;
+import com.taxonomy.workspace.service.WorkspaceFetchAuthority.Grant;
 import org.hibernate.SessionFactory;
 import org.hibernate.cfg.Configuration;
 import org.junit.jupiter.api.*;
@@ -199,9 +201,14 @@ class RepositoryOwnershipTransferTest {
         security.setAuthentication(null);
         var repository = repositories.findByRepositoryId("project").orElseThrow();
         assertThat(memberships.isOwner(repository, "alice")).isFalse();
-        var original = new com.taxonomy.workspace.service.WorkspaceFetchAuthority.Grant(aliceId, "LOCAL", "checked-original");
-        assertThat(com.taxonomy.workspace.service.RepositoryMembershipIdentity.RecordedActor.during("alice", original,
-                () -> memberships.isOwner(repository, "alice"))).isTrue();
+        var local = new Grant(aliceId, "LOCAL", "checked-local-binding");
+        var oidc = new Grant(aliceId, "OIDC", "a".repeat(64));
+        var legacy = new Grant("b".repeat(64), "LEGACY_OIDC", "b".repeat(64));
+        var foreignScope = new Grant(bobId, "LOCAL", "checked-other-binding");
+        assertThat(RecordedActor.during("alice", local, () -> memberships.isOwner(repository, "alice"))).isTrue();
+        assertThat(RecordedActor.during("alice", oidc, () -> memberships.isOwner(repository, "alice"))).isTrue();
+        assertThat(RecordedActor.during("alice", legacy, () -> memberships.isOwner(repository, "alice"))).isFalse();
+        assertThat(RecordedActor.during("bob", foreignScope, () -> memberships.isOwner(repository, "alice"))).isFalse();
         assertThat(memberships.isOwner(repository, "alice")).isFalse();
         security.setAuthentication(alice);
         var revised = transaction.execute(s -> memberships.assignRole(repositories.findByRepositoryId("project").orElseThrow(),

@@ -1,5 +1,6 @@
 package com.taxonomy.interop.publication;
 
+import com.taxonomy.testsupport.LocalTestLogin;
 import com.taxonomy.TaxonomyApplication;
 import com.taxonomy.dsl.command.ArchitectureCommand.*;
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
@@ -42,7 +43,8 @@ public final class PublicationBoundaryDriver {
                 "--gemini.api.key=", "--openai.api.key=", "--deepseek.api.key=", "--qwen.api.key=", "--llama.api.key=", "--mistral.api.key=")) {
             fixture = new PublicationIntegrationFixture() {};
             fixture.directory = directory;
-            for (var field : PublicationIntegrationFixture.class.getDeclaredFields()) if (field.isAnnotationPresent(Autowired.class)) {
+            fixture.application = app;
+            for (var field : PublicationIntegrationFixture.class.getDeclaredFields()) if (field.isAnnotationPresent(Autowired.class) && !field.getName().equals("application")) {
                 field.setAccessible(true); field.set(fixture, app.getBean(field.getType()));
             }
             factory = app.getBean(EntityManagerFactory.class);
@@ -64,6 +66,7 @@ public final class PublicationBoundaryDriver {
             PublicationReview review;
             if (!Files.exists(stateFile)) {
                 String actor = "boundary-" + UUID.randomUUID();
+                LocalTestLogin.login(app, actor, "ARCHITECT");
                 var repo = fixture.repositories.createRepository("Boundary contract", actor, "", RepositoryVisibility.PRIVATE, actor, "draft");
                 var workspace = fixture.workspaces.createWorkingCopy(actor, repo.getRepositoryId(), "draft", "Boundary", "");
                 fixture.context = RepositoryContext.workspace(repo.getRepositoryId(), workspace.getWorkspaceId(), workspace.getCurrentBranch(), actor);
@@ -80,6 +83,7 @@ public final class PublicationBoundaryDriver {
                 try (var output = Files.newOutputStream(stateFile)) { state.store(output, "Test-only durable context"); }
             } else {
                 try (var input = Files.newInputStream(stateFile)) { state.load(input); }
+                LocalTestLogin.login(app, state.getProperty("actor"), "ARCHITECT");
                 fixture.context = RepositoryContext.workspace(state.getProperty("repository"), state.getProperty("workspace"), state.getProperty("branch"), state.getProperty("actor"));
                 fixture.connection = UUID.fromString(state.getProperty("connection")); review = fixture.json.read(state.getProperty("review"), PublicationReview.class);
             }

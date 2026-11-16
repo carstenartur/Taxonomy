@@ -1,5 +1,7 @@
 package com.taxonomy.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 public class RequirementElementView {
 
     private String nodeCode;
@@ -38,6 +40,13 @@ public class RequirementElementView {
 
     public AnalysisScoreDetail getScoreDetail() { return scoreDetail; }
     public void setScoreDetail(AnalysisScoreDetail scoreDetail) { this.scoreDetail = scoreDetail; }
+
+    /** Effective assignment captured from the analysis model, when available. */
+    private TaxonomyResponsibilityLookup.Assignment responsibility;
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public TaxonomyResponsibilityLookup.Assignment getResponsibility() { return responsibility; }
+    public void setResponsibility(TaxonomyResponsibilityLookup.Assignment responsibility) { this.responsibility = responsibility; }
 
     /** Whether this node was selected for the final impact presentation. */
     private boolean selectedForImpact;

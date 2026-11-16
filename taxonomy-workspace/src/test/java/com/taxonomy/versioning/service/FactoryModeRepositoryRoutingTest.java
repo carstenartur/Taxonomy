@@ -92,8 +92,15 @@ class FactoryModeRepositoryRoutingTest {
         // Commit to workspace repo and record projection
         String first = workspaceRepo.commitDsl("main", SAMPLE_DSL, "alice", "first");
 
-        RepositoryStateService wsStateService = createStateService(workspaceRepo);
-        wsStateService.recordProjection("alice", first, "main");
+        // The selected repository has its own scoped projection checkpoint. The
+        // actor-only recordProjection API writes the legacy personal checkpoint,
+        // which must not be read as progress for this explicitly selected copy.
+        WorkspaceManager selectedManager = mock(WorkspaceManager.class);
+        var selectedProgress = new com.taxonomy.workspace.service.UserWorkspaceState("alice", 50);
+        selectedProgress.recordProjection(first, "main");
+        when(selectedManager.getScopedWorkspaceState(wsCtx)).thenReturn(selectedProgress);
+        RepositoryStateService wsStateService = new RepositoryStateService(
+                factory, selectedManager, mock(SystemRepositoryService.class));
 
         assertFalse(wsStateService.isProjectionStale("alice", "main", wsCtx),
                 "Projection at HEAD should not be stale");
@@ -103,6 +110,8 @@ class FactoryModeRepositoryRoutingTest {
 
         assertTrue(wsStateService.isProjectionStale("alice", "main", wsCtx),
                 "Projection should be stale after new workspace commit");
+        org.mockito.Mockito.verify(selectedManager, org.mockito.Mockito.never())
+                .getOrCreateWorkspace("alice");
     }
 
     // ── ContextNavigationService ────────────────────────────────────
@@ -228,6 +237,7 @@ class FactoryModeRepositoryRoutingTest {
         UserWorkspaceRepository wsRepo = mock(UserWorkspaceRepository.class);
         WorkspaceManager wm = new WorkspaceManager(wsRepo, 50,
                 mock(SystemRepositoryService.class), repo);
+        com.taxonomy.workspace.service.WorkspaceProvisioningTestClaims.withOwners(wm);
         return new RepositoryStateService(factory, wm,
                 mock(SystemRepositoryService.class));
     }
@@ -236,6 +246,7 @@ class FactoryModeRepositoryRoutingTest {
         UserWorkspaceRepository wsRepo = mock(UserWorkspaceRepository.class);
         WorkspaceManager wm = new WorkspaceManager(wsRepo, 50,
                 mock(SystemRepositoryService.class), repo);
+        com.taxonomy.workspace.service.WorkspaceProvisioningTestClaims.withOwners(wm);
         RepositoryStateService stateService = new RepositoryStateService(factory, wm,
                 mock(SystemRepositoryService.class));
         return new ContextNavigationService(factory, stateService, wm, 50);

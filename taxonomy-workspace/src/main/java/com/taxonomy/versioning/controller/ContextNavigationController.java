@@ -95,17 +95,17 @@ public class ContextNavigationController {
     @PostMapping("/return-to-origin")
     @Operation(summary = "Return to the origin context",
             description = "Navigates back to the context from which the current context was opened.")
-    public ResponseEntity<ContextRef> returnToOrigin() {
+    public ResponseEntity<ContextRef> returnToOrigin(@RequestParam(required = false) String expectedContextId) {
         WorkspaceContext scope = workspaceResolver.resolveCurrentContext();
-        return ResponseEntity.ok(navigationService.returnToOrigin(scope.username(), scope));
+        return ResponseEntity.ok(navigationService.returnToOrigin(scope.username(), scope, expectedContextId));
     }
 
     @PostMapping("/back")
     @Operation(summary = "Go one step back in navigation history",
             description = "Like the browser back button — returns to the previous context.")
-    public ResponseEntity<ContextRef> back() {
+    public ResponseEntity<ContextRef> back(@RequestParam(required = false) String expectedContextId) {
         WorkspaceContext scope = workspaceResolver.resolveCurrentContext();
-        return ResponseEntity.ok(navigationService.back(scope.username(), scope));
+        return ResponseEntity.ok(navigationService.back(scope.username(), scope, expectedContextId));
     }
 
     @GetMapping("/history")

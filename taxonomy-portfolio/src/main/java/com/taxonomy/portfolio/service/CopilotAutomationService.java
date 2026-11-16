@@ -10,6 +10,7 @@ import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
 import com.taxonomy.portfolio.dto.SnapshotSelection;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceActorAccess.AnalysisOwner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -168,7 +169,7 @@ public class CopilotAutomationService {
         }
         OperationDefinition definition = definition(jobs);
         if (!operationTerminal(jobs, definition.totalPasses())) {
-            schedule(definition, username, context, null);
+            schedule(definition, username, context, null, analysisService.admitOwner(username, context));
         }
         return finalizedView(definition, jobsForOperation(
                 projectId, operationId, username, context), username, context);
@@ -295,8 +296,9 @@ public class CopilotAutomationService {
                 settings.proposeSolutions(),
                 settings.proposeProducts(), language);
 
-        AnalysisJobView firstPass = enqueuePass(definition, 1, username, context);
-        schedule(definition, username, context, firstPass);
+        AnalysisOwner owner = analysisService.admitOwner(username, context);
+        AnalysisJobView firstPass = enqueuePass(definition, 1, username, context, owner);
+        schedule(definition, username, context, firstPass, owner);
         return finalizedView(definition, jobsForOperation(
                 projectId, operationId, username, context), username, context);
     }
@@ -305,7 +307,7 @@ public class CopilotAutomationService {
             OperationDefinition definition,
             String username,
             WorkspaceContext context,
-            AnalysisJobView dispatchedFirstPass) {
+            AnalysisJobView dispatchedFirstPass, AnalysisOwner owner) {
         String executionKey = executionKey(definition, username, context);
         while (true) {
             CompletableFuture<Void> future = new CompletableFuture<>();
@@ -317,7 +319,7 @@ public class CopilotAutomationService {
                     try {
                         coordinator.execute(() -> {
                             try {
-                                execute(definition, username, context, dispatchedFirstPass);
+                                execute(definition, username, context, dispatchedFirstPass, owner);
                                 future.complete(null);
                             } catch (Throwable failure) {
                                 LOGGER.error(
@@ -356,7 +358,7 @@ public class CopilotAutomationService {
             OperationDefinition definition,
             String username,
             WorkspaceContext context,
-            AnalysisJobView dispatchedFirstPass) {
+            AnalysisJobView dispatchedFirstPass, AnalysisOwner owner) {
         for (int pass = 1; pass <= definition.totalPasses(); pass++) {
             if (cancellationRecorded(definition, username, context)) return;
 
@@ -364,7 +366,7 @@ public class CopilotAutomationService {
             // still dispatch a persisted PENDING job whose original worker was lost.
             AnalysisJobView job = pass == 1 && dispatchedFirstPass != null
                     ? dispatchedFirstPass
-                    : enqueuePass(definition, pass, username, context);
+                    : enqueuePass(definition, pass, username, context, owner);
             if (cancellationRecorded(definition, username, context)) {
                 if (!isTerminal(job.status())) {
                     jobControlService.cancel(
@@ -381,6 +383,7 @@ public class CopilotAutomationService {
         }
         List<JobWithKey> jobs = jobsForOperation(
                 definition.projectId(), definition.operationId(), username, context);
+        analysisService.checkCopilotOwner(owner, username, context);
         finalizeOperation(definition, jobs, username, context);
     }
 
@@ -399,12 +402,21 @@ public class CopilotAutomationService {
             int pass,
             String username,
             WorkspaceContext context) {
+        return enqueuePass(definition, pass, username, context, analysisService.admitOwner(username, context));
+    }
+
+    private AnalysisJobView enqueuePass(OperationDefinition definition, int pass, String username,
+                                        WorkspaceContext context, AnalysisOwner owner) {
         CopilotOperationKey key = definition.key(pass);
-        if (pass > 1) {
-            return analysisService.enqueueVerificationPass(
-                    definition.projectId(), definition.requirementId(), key, username, context);
-        }
         try (var language = com.taxonomy.analysis.service.AnalysisLanguageContext.open(definition.analysisLanguage())) {
+            if (owner != null) {
+                return analysisService.enqueueAdmittedPass(definition.projectId(), definition.requirementId(), key,
+                        definition.provider(), definition.maxArchitectureNodes(), username, context, owner);
+            }
+            if (pass > 1) {
+                return analysisService.enqueueVerificationPass(
+                        definition.projectId(), definition.requirementId(), key, username, context);
+            }
             return analysisService.enqueueRequirement(
                     definition.projectId(), definition.requirementId(), definition.provider(),
                     definition.maxArchitectureNodes(), key.value(), username, context);

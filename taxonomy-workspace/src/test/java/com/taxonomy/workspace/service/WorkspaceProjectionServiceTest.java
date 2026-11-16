@@ -3,6 +3,7 @@ package com.taxonomy.workspace.service;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.model.WorkspaceProjection;
+import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.repository.WorkspaceProjectionRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,6 +28,9 @@ class WorkspaceProjectionServiceTest {
     private WorkspaceManager workspaceManager;
     private WorkspaceProjectionRepository projectionRepo;
     private WorkspaceProjectionService projectionService;
+    private UserWorkspaceRepository workspaces;
+    private UserWorkspace owned;
+    private java.util.UUID currentPrincipal;
 
     private static final String SAMPLE_DSL = """
             meta {
@@ -44,12 +48,22 @@ class WorkspaceProjectionServiceTest {
     void setUp() {
         var factory = new DslGitRepositoryFactory(null);
         gitRepo = factory.getSystemRepository();
-        UserWorkspaceRepository wsRepo = mock(UserWorkspaceRepository.class);
-        when(wsRepo.findByUsernameAndSharedFalse(anyString())).thenReturn(Optional.empty());
-        workspaceManager = new WorkspaceManager(wsRepo, 50,
+        workspaces = mock(UserWorkspaceRepository.class);
+        owned = new UserWorkspace();
+        owned.setWorkspaceId("ws-123");
+        owned.setUsername("alice");
+        currentPrincipal = java.util.UUID.randomUUID();
+        var actors = mock(WorkspaceActorAccess.class, CALLS_REAL_METHODS);
+        doAnswer(call -> Optional.of(currentPrincipal)).when(actors).currentOwnerPrincipal("alice");
+        doAnswer(call -> Optional.of(currentPrincipal)).when(actors).currentNavigationPrincipal("alice");
+        when(workspaces.findByWorkspaceId("ws-123")).thenReturn(Optional.of(owned));
+        when(workspaces.findByUsernameAndSharedFalse("alice")).thenReturn(Optional.of(owned));
+        when(workspaces.existsByUsername("alice")).thenReturn(true);
+        workspaceManager = new WorkspaceManager(workspaces, 50,
                 mock(SystemRepositoryService.class), gitRepo);
+        workspaceManager.configureActorAccess(actors);
         projectionRepo = mock(WorkspaceProjectionRepository.class);
-        projectionService = new WorkspaceProjectionService(projectionRepo, workspaceManager, factory, wsRepo);
+        projectionService = new WorkspaceProjectionService(projectionRepo, workspaceManager, factory, workspaces, actors);
     }
 
     // ── Projection creation ─────────────────────────────────────────
@@ -90,6 +104,7 @@ class WorkspaceProjectionServiceTest {
     void recordProjection_updatesCommitAndTimestamp() {
         WorkspaceProjection existing = new WorkspaceProjection();
         existing.setUsername("alice");
+        existing.setWorkspaceId("ws-123");
         when(projectionRepo.findByUsername("alice")).thenReturn(Optional.of(existing));
         when(projectionRepo.save(any(WorkspaceProjection.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
@@ -112,6 +127,7 @@ class WorkspaceProjectionServiceTest {
     void recordIndexBuild_updatesIndexCommit() {
         WorkspaceProjection existing = new WorkspaceProjection();
         existing.setUsername("alice");
+        existing.setWorkspaceId("ws-123");
         when(projectionRepo.findByUsername("alice")).thenReturn(Optional.of(existing));
         when(projectionRepo.save(any(WorkspaceProjection.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
@@ -136,6 +152,7 @@ class WorkspaceProjectionServiceTest {
         // Record projection at the current HEAD
         WorkspaceProjection existing = new WorkspaceProjection();
         existing.setUsername("alice");
+        existing.setWorkspaceId("ws-123");
         existing.setProjectionCommitId(commitId);
         when(projectionRepo.findByUsername("alice")).thenReturn(Optional.of(existing));
 
@@ -149,6 +166,7 @@ class WorkspaceProjectionServiceTest {
         // Record projection at the first commit
         WorkspaceProjection existing = new WorkspaceProjection();
         existing.setUsername("alice");
+        existing.setWorkspaceId("ws-123");
         existing.setProjectionCommitId(first);
         when(projectionRepo.findByUsername("alice")).thenReturn(Optional.of(existing));
         when(projectionRepo.save(any(WorkspaceProjection.class)))
@@ -169,6 +187,7 @@ class WorkspaceProjectionServiceTest {
     void getProjectionInfo_returnsExpectedFields() {
         WorkspaceProjection existing = new WorkspaceProjection();
         existing.setUsername("alice");
+        existing.setWorkspaceId("ws-123");
         existing.setProjectionCommitId("abc1234");
         existing.setProjectionBranch("draft");
         existing.setStale(false);
@@ -183,5 +202,75 @@ class WorkspaceProjectionServiceTest {
         // In-memory fields should be present (null by default)
         assertTrue(info.containsKey("lastProjectionCommit"));
         assertTrue(info.containsKey("lastIndexCommit"));
+    }
+
+    @Test
+    void recycledScopeCannotReadOrRewriteAPreviousOwnersProjection() {
+        var originalOwner = currentPrincipal;
+        owned.assignOwnerPrincipal(originalOwner);
+        var existing = new WorkspaceProjection();
+        existing.setUsername("alice");
+        existing.setWorkspaceId(owned.getWorkspaceId());
+        existing.setProjectionCommitId("original-commit");
+        existing.setIndexCommitId("original-index");
+        when(projectionRepo.findByUsername("alice")).thenReturn(Optional.of(existing));
+        assertEquals("original-commit", projectionService.getProjectionInfo("alice").get("persistedProjectionCommit"));
+
+        currentPrincipal = java.util.UUID.randomUUID();
+        var replacement = new UserWorkspace();
+        replacement.setWorkspaceId("ws-new");
+        replacement.setUsername("alice");
+        replacement.assignOwnerPrincipal(currentPrincipal);
+        when(workspaces.findByWorkspaceId("ws-new")).thenReturn(Optional.of(replacement));
+        when(workspaces.findByUsernameAndSharedFalse("alice")).thenReturn(Optional.of(replacement));
+        workspaceManager.getOrCreateWorkspace("alice", "ws-new");
+
+        Map<String, Object> info = projectionService.getProjectionInfo("alice");
+        assertNull(info.get("persistedProjectionCommit"));
+        assertNull(info.get("persistedIndexCommit"));
+        assertNotSame(existing, projectionService.getOrCreateProjection("alice"));
+        projectionService.recordProjection("alice", "new-commit", "draft");
+        projectionService.recordIndexBuild("alice", "new-index");
+        assertFalse(projectionService.isProjectionStale("alice", "draft"));
+        assertEquals("original-commit", existing.getProjectionCommitId());
+        assertEquals("original-index", existing.getIndexCommitId());
+        assertEquals("new-commit", projectionService.getProjectionInfo("alice").get("lastProjectionCommit"));
+        verify(projectionRepo, never()).save(any());
+    }
+
+    @Test
+    void perUserProjectionRemainsAccessibleAfterSwitchingBetweenOwnedWorkspaces() {
+        owned.assignOwnerPrincipal(currentPrincipal);
+        var another = new UserWorkspace();
+        another.setWorkspaceId("ws-draft");
+        another.setUsername("alice");
+        another.assignOwnerPrincipal(currentPrincipal);
+        when(workspaces.findByWorkspaceId("ws-draft")).thenReturn(Optional.of(another));
+        var existing = new WorkspaceProjection();
+        existing.setWorkspaceId(owned.getWorkspaceId());
+        existing.setUsername("alice");
+        existing.setProjectionBranch("previous-draft");
+        when(projectionRepo.findByUsername("alice")).thenReturn(Optional.of(existing));
+
+        workspaceManager.getOrCreateWorkspace("alice", "ws-draft");
+        assertEquals("previous-draft", projectionService.getProjectionInfo("alice").get("persistedProjectionBranch"));
+        projectionService.recordIndexBuild("alice", "next-index");
+        verify(projectionRepo).save(existing);
+        assertEquals(owned.getWorkspaceId(), existing.getWorkspaceId());
+    }
+
+    @Test
+    void anOrphanedHistoricalProjectionIsNeverAdopted() {
+        var orphan = new WorkspaceProjection();
+        orphan.setUsername("alice");
+        orphan.setWorkspaceId("no-longer-present");
+        orphan.setProjectionCommitId("historical");
+        when(projectionRepo.findByUsername("alice")).thenReturn(Optional.of(orphan));
+
+        assertNull(projectionService.getProjectionInfo("alice").get("persistedProjectionCommit"));
+        projectionService.recordProjection("alice", "replacement", "draft");
+        assertEquals("historical", orphan.getProjectionCommitId());
+        assertEquals("no-longer-present", orphan.getWorkspaceId());
+        verify(projectionRepo, never()).save(any());
     }
 }

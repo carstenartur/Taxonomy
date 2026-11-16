@@ -1,6 +1,7 @@
 package com.taxonomy.portfolio.reformulation;
 
 import com.taxonomy.portfolio.RetainedPortfolioCatalogue;
+import com.taxonomy.testsupport.LocalTestLogin;
 
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.TaxonomyNodeDto;
@@ -14,8 +15,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.ApplicationContext;
 import org.springframework.http.MediaType;
-import org.springframework.security.test.context.support.WithMockUser;
+import com.taxonomy.security.repository.UserRepository;
+import com.taxonomy.security.service.UserManagementService;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.JsonNode;
@@ -30,6 +33,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /** Real HTTP/database contract: proposals cannot rewrite original or active architecture. */
 abstract class ReformulationWorkflowFixture extends RetainedPortfolioCatalogue {
+    static final String ARCHITECT_PASSWORD = "Reformulation-Architect-Test-2026!";
+    @Autowired ApplicationContext app;
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
     @Autowired ProjectPortfolioService projects;
@@ -50,7 +55,17 @@ abstract class ReformulationWorkflowFixture extends RetainedPortfolioCatalogue {
     boolean withBoundary;
     static final String ORIGINAL = "Arbeitszeiterfassung\n  <img src=x onerror=alert(1)>";
 
+    static void loginArchitect(ApplicationContext app) {
+        if (app.getBean(UserRepository.class).findByUsername("architect").isEmpty()) {
+            app.getBean(UserManagementService.class).createUser(
+                    Map.of("username", "architect", "roles", List.of("ARCHITECT")),
+                    ARCHITECT_PASSWORD, "fixture");
+        }
+        LocalTestLogin.loginExisting(app, "architect", ARCHITECT_PASSWORD);
+    }
+
     @BeforeEach void fixture() {
+        loginArchitect(app);
         // The application bootstrap runs once per JVM, not once per test context.
         // Own a unique, readable source checkpoint instead of depending on draft
         // left behind by another context or sharing its JGit pack-cache identity.

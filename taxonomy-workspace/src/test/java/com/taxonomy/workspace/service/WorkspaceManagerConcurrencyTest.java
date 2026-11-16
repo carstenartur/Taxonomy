@@ -51,6 +51,7 @@ class WorkspaceManagerConcurrencyTest {
 
         WorkspaceManager manager = new WorkspaceManager(
                 workspaceRepository, 50, systemRepositoryService, gitRepository);
+        manager.configureActorAccess(WorkspaceProvisioningTestClaims.fixtureOwners());
         int callers = 12;
         CountDownLatch ready = new CountDownLatch(callers);
         CountDownLatch start = new CountDownLatch(1);

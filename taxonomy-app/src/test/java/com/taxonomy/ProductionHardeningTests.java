@@ -1,5 +1,6 @@
 package com.taxonomy;
 
+import com.taxonomy.testsupport.WithLocalTestUser;
 import com.taxonomy.support.AnalysisCatalogueSourceFixture;
 import com.taxonomy.preferences.PreferencesService;
 import com.taxonomy.shared.config.RateLimitFilter;
@@ -9,7 +10,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.security.test.context.support.WithUserDetails;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -42,7 +42,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     "mistral.api.key=",
     "taxonomy.rate-limit.per-minute=3"
 })
-@WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
+@WithLocalTestUser(roles = {"USER", "ARCHITECT", "ADMIN"})
 class ProductionHardeningTests implements AnalysisCatalogueSourceFixture {
 
     @Autowired

@@ -152,10 +152,18 @@ public final class WorkspaceRestoreImporter {
         }
         for(var row:workspaces) {
             checkpoint.check();if(workspaceById.putIfAbsent(row.workspaceId(),row)!=null)throw invalid();required(row.ownerScope(),255);branch(row.currentBranch());branch(row.baseBranch());branch(row.sourceBranch());branch(row.syncTargetBranch());instant(row.createdAt());
-            String scope=scope(identities,row.ownerScope());if(!activeRepositories.contains(row.repositoryId())||privateScopes.contains(scope)){model.classify("workspaces",row.workspaceId(),"PRIVATE_QUARANTINE");continue;}
+            String scope=scope(identities,row.ownerScope());
+            String ownerPrincipal = null;
+            if (row.ownerPrincipalId() != null) {
+                canonicalUuid(row.ownerPrincipalId());
+                var owner = principals.get(new PrincipalId(UUID.fromString(row.ownerPrincipalId())));
+                if (owner == null || !owner.targetScope().equals(scope)) throw invalid();
+                ownerPrincipal = owner.targetPrincipal().value().toString();
+            }
+            if(!activeRepositories.contains(row.repositoryId())||privateScopes.contains(scope)){model.classify("workspaces",row.workspaceId(),"PRIVATE_QUARANTINE");continue;}
             var target=generation.allocations().get(new BackupRepositoryKey(row.repositoryId(),row.workspaceId()));if(target==null)throw invalid();activeWorkspaces.add(row.workspaceId());
             var id=new SourceRecordId("workspace.workspace",row.workspaceId());model.target("workspaces",row.workspaceId(),"user_workspace","workspace_id",target.targetKey().workspaceId(),columns(
-                    "id",model.numeric(id),"workspace_id",target.targetKey().workspaceId(),"username",scope,"display_name",row.displayName(),"current_branch",row.currentBranch(),"base_branch",row.baseBranch(),"shared",false,"collaborative",row.collaborative(),
+                    "id",model.numeric(id),"workspace_id",target.targetKey().workspaceId(),"username",scope,"owner_principal_id",ownerPrincipal,"display_name",row.displayName(),"current_branch",row.currentBranch(),"base_branch",row.baseBranch(),"shared",false,"collaborative",row.collaborative(),
                     "created_at",timestamp(row.createdAt()),"last_accessed_at",timestamp(row.lastAccessedAt()),"provisioning_status","READY","topology_mode","INTERNAL_SHARED","source_repository_id",target.targetKey().repositoryId(),
                     "source_branch",row.sourceBranch(),"relationship_type",row.relationshipType()==null?null:row.relationshipType().name(),"base_commit",commit(commits,id,Field.WORKSPACE_BASE,row.baseCommit()),"current_commit",commit(commits,id,Field.WORKSPACE_CURRENT,row.currentCommit()),
                     "last_fetched_commit",commit(commits,id,Field.WORKSPACE_LAST_FETCHED,row.lastFetchedCommit()),"last_integrated_commit",commit(commits,id,Field.WORKSPACE_LAST_INTEGRATED,row.lastIntegratedCommit()),"sync_target_branch",row.syncTargetBranch(),

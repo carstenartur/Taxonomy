@@ -18,6 +18,14 @@ import java.util.Objects;
 
 @Service
 public class AnalysisContinuationService {
+    private com.taxonomy.workspace.service.WorkspaceActorAccess workspaceActors =
+            com.taxonomy.workspace.service.WorkspaceActorAccess.unavailable();
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void configureWorkspaceActors(com.taxonomy.workspace.service.WorkspaceActorAccess actors) {
+        this.workspaceActors = java.util.Objects.requireNonNull(actors);
+    }
+
     private final AnalysisContinuationStore store;
     private final TaxonomyService catalogue;
     private final LlmService llm;
@@ -196,7 +204,12 @@ public class AnalysisContinuationService {
     /** A claimed portfolio item uses the model stored with its authorized job, including on a background thread. */
     public Execution beginPortfolio(AnalysisRequest request, String username, WorkspaceContext scope, int maxNodes,
             AnalysisModelBinding model) {
-        authorize(username, scope);
+        return beginPortfolio(request, username, scope, maxNodes, model, workspaceActors::owns);
+    }
+
+    public Execution beginPortfolio(AnalysisRequest request, String username, WorkspaceContext scope, int maxNodes,
+            AnalysisModelBinding model, WorkspaceActorAccess.AnalysisOwner owner) {
+        authorize(username, scope, owner);
         if (model != null) {
             AdmittedCatalogue.requireWorkspace(model, scope);
             if (!Objects.equals(model.scope(), request.getAnalysisScope())) throw changedAuthority();
@@ -290,7 +303,12 @@ public class AnalysisContinuationService {
         authorize(username, scope); return store.read(id, scope);
     }
     public boolean hasBlockingBudgetQuestions(String id, String username, WorkspaceContext scope) {
-        authorize(username, scope); return store.hasBlockingBudgetQuestions(id, scope);
+        return hasBlockingBudgetQuestions(id, username, scope, workspaceActors::owns);
+    }
+    public boolean hasBlockingBudgetQuestions(String id, String username, WorkspaceContext scope,
+            WorkspaceActorAccess.AnalysisOwner owner) {
+        authorize(username, scope, owner);
+        return store.hasBlockingBudgetQuestions(id, scope);
     }
     public AnalysisContinuationStore.Snapshot cancel(String id, String username, WorkspaceContext scope) {
         authorize(username, scope);
@@ -341,11 +359,14 @@ public class AnalysisContinuationService {
         }
     }
     private void authorize(String username, WorkspaceContext scope) {
+        authorize(username, scope, workspaceActors::owns);
+    }
+    private void authorize(String username, WorkspaceContext scope, WorkspaceActorAccess.AnalysisOwner owner) {
         if (scope == null || !Objects.equals(username, scope.username()) || scope.workspaceId() == null)
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "An owned workspace is required");
         var workspace = workspaces.getWorkspaceById(scope.workspaceId());
         if (workspace == null || workspace.isArchived() || workspace.isShared()
-                || !Objects.equals(username, workspace.getUsername()))
+                || !owner.owns(username, workspace))
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Analysis workspace not found");
     }
     public final class Execution implements AutoCloseable {

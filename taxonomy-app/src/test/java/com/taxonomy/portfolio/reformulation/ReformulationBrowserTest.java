@@ -5,7 +5,6 @@ import org.junit.jupiter.api.Tag;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.openqa.selenium.*;
 import org.openqa.selenium.support.ui.*;
 import org.openqa.selenium.remote.RemoteWebDriver;
@@ -18,7 +17,7 @@ import static org.assertj.core.api.Assertions.*;
 @Tag("browser")
 @Tag("ci-app-shard-browser")
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT,properties={"taxonomy.admin-password=Reformulation-Browser-2026!","taxonomy.security.require-password-change=false"})
-@AutoConfigureMockMvc @WithMockUser(username="architect",roles="ARCHITECT")
+@AutoConfigureMockMvc
 class ReformulationBrowserTest extends ReformulationWorkflowFixture {
     @LocalServerPort int port;
     @org.springframework.beans.factory.annotation.Autowired SaveGate saveGate;
@@ -114,7 +113,7 @@ class ReformulationBrowserTest extends ReformulationWorkflowFixture {
         var driver=session.driver();String origin=session.origin();
         try {
             var wait=new WebDriverWait(driver,Duration.ofSeconds(20));driver.manage().window().setSize(new Dimension(1440,1000));driver.get(origin+"/login");
-            driver.findElement(By.name("username")).sendKeys("admin");driver.findElement(By.name("password")).sendKeys("Reformulation-Browser-2026!");driver.findElement(By.cssSelector("form")).submit();wait.until(d->!d.getCurrentUrl().contains("/login"));
+            driver.findElement(By.name("username")).sendKeys("architect");driver.findElement(By.name("password")).sendKeys(ARCHITECT_PASSWORD);driver.findElement(By.cssSelector("form")).submit();wait.until(d->!d.getCurrentUrl().contains("/login"));
             driver.get(origin+"/projects/"+project.id()+"/requirements/"+requirement.id()+"?lang=en&proposal="+proposalId);wait.until(d->!d.findElements(By.cssSelector("[data-reformulation-editor]")).isEmpty());
             action.run(driver,wait);Files.write(output.resolve("passed.png"),driver.getScreenshotAs(OutputType.BYTES));
         } catch(Throwable failure) {
@@ -172,7 +171,7 @@ class ReformulationBrowserTest extends ReformulationWorkflowFixture {
         try {
             var wait=new WebDriverWait(driver,Duration.ofSeconds(20));
             driver.manage().window().setSize(new Dimension(1440,1000));driver.get(origin+"/login");
-            driver.findElement(By.name("username")).sendKeys("admin");driver.findElement(By.name("password")).sendKeys("Reformulation-Browser-2026!");driver.findElement(By.cssSelector("form")).submit();
+            driver.findElement(By.name("username")).sendKeys("architect");driver.findElement(By.name("password")).sendKeys(ARCHITECT_PASSWORD);driver.findElement(By.cssSelector("form")).submit();
             wait.until(d->!d.getCurrentUrl().contains("/login"));driver.get(origin+"/projects/"+project.id()+"/requirements/"+requirement.id()+"?lang=de&proposal="+proposal.id());
             wait.until(d->d.findElements(By.cssSelector("[data-reformulation-editor]")).size()>0);
             var editor=driver.findElement(By.cssSelector("[data-reformulation-editor]"));editor.clear();editor.sendKeys("Menschlicher Absatz\n  Einrückung <script>data</script>");

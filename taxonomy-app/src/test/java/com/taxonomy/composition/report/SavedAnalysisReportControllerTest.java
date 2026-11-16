@@ -11,6 +11,7 @@ import com.taxonomy.export.MermaidExportService;
 import com.taxonomy.relations.service.RelationProposalService;
 import com.taxonomy.reporting.render.document.ReportRendererRegistry;
 import com.taxonomy.versioning.service.RepositoryStateService;
+import com.taxonomy.workspace.service.WorkspaceActorAccess;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.Test;
@@ -188,9 +189,12 @@ class SavedAnalysisReportControllerTest {
         context.registerBean(RepositoryStateService.class, () -> mock(RepositoryStateService.class));
         context.registerBean(WorkspaceResolver.class, () -> workspaces);
         context.registerBean(ClusterAnalysisObservation.class, () -> cluster);
+        context.registerBean(WorkspaceActorAccess.class, WorkspaceActorAccess::unavailable);
         context.registerBean(AnalysisContinuationService.class, () -> continuations);
         context.registerBean(ReportApiController.class);
         context.refresh();
+        // Spring configures the mock during refresh. Verify interactions from the request.
+        clearInvocations(continuations);
         return context;
     }
 

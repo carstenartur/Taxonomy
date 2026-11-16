@@ -8,6 +8,7 @@ import com.taxonomy.composition.reformulation.ReformulationExecutionService;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.portfolio.PortfolioAnalysisWorkspace;
+import com.taxonomy.testsupport.LocalTestLogin;
 import com.taxonomy.portfolio.dto.PortfolioDtos.*;
 import com.taxonomy.portfolio.model.PortfolioTypes.*;
 import com.taxonomy.portfolio.service.*;
@@ -81,6 +82,7 @@ public final class ReformulationDispatchClaimDriver {
                 "--llm.provider=CUSTOM_OPENAI", "--custom.llm.model=claim-test", "--custom.llm.api.key=",
                 "--custom.llm.url=http://127.0.0.1:" + remote.getAddress().getPort() + "/v1/chat/completions",
                 "--gemini.api.key=", "--openai.api.key=", "--deepseek.api.key=", "--qwen.api.key=", "--llama.api.key=", "--mistral.api.key=")) {
+            LocalTestLogin.login(app, "architect", "ARCHITECT");
             var projects = app.getBean(ProjectPortfolioService.class);
             var proposals = app.getBean(ReformulationService.class);
             var workspaces = app.getBean(WorkspaceManager.class);

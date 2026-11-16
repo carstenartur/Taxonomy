@@ -130,6 +130,25 @@
         return positive(project) && snapshotId(snapshot)
             ? scopeUrl(pathUrl('/architecture/workbench', {projectId: project, snapshotId: snapshot})) : '#';
     }
+    function editorStandUrl(source, version, selectedElement) {
+        if (!source?.repositoryId || !source.workspaceScopeKey || !source.branch) return null;
+        return pathUrl('/architecture/editor', {
+            repositoryId: source.repositoryId,
+            workspaceId: source.workspaceScopeKey === '__shared__' ? '' : source.workspaceScopeKey,
+            workspaceScopeKey: source.workspaceScopeKey,
+            branch: source.branch,
+            ...version,
+            element: selectedElement
+        });
+    }
+    function checkpointUrl(source, selectedElement) {
+        return typeof source?.commit === 'string' && /^[0-9a-f]{40}$/.test(source.commit)
+            ? editorStandUrl(source, {commit: source.commit}, selectedElement) : null;
+    }
+    function modelRevisionUrl(source) {
+        return Number.isSafeInteger(source?.semanticRevision) && source.semanticRevision >= 0
+            ? editorStandUrl(source, {revision: source.semanticRevision}) : null;
+    }
     function snapshotLinks(data, selected) {
         if (!data || !positive(data.projectId) || !positive(data.requirementId) || !snapshotId(data.snapshotId)) {
             return {requirement: null, clarify: null, portfolio: null, snapshot: null, editor: null, adopt: null};
@@ -267,6 +286,6 @@
     window.TaxonomyArchitectureWorkflow = {
         getScope: getScope, setScope: setScope, replaceScope:replaceScope, adoptionSource: adoptionSource, scopeUrl: scopeUrl, snapshotLinks: snapshotLinks, editorSourceLinks: editorSourceLinks,
         showSnapshot: showSnapshot, showEditor: showEditor, preferredProject: preferredProject,
-        portfolioUrl: portfolioUrl, workbenchUrl: workbenchUrl
+        portfolioUrl: portfolioUrl, workbenchUrl: workbenchUrl, checkpointUrl: checkpointUrl, modelRevisionUrl: modelRevisionUrl
     };
 }());

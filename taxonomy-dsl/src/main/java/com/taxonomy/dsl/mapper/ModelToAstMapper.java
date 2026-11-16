@@ -19,6 +19,19 @@ public class ModelToAstMapper {
                 model.getComparisonCatalogueRevision(), null);
         List<BlockAst> blocks = new ArrayList<>();
 
+        for (ArchitectureOrganization organization : model.getOrganizations()) {
+            List<PropertyAst> props = new ArrayList<>();
+            addProperty(props, "title", organization.title());
+            addProperty(props, "parentId", organization.parentId());
+            blocks.add(new BlockAst("organization", List.of(organization.id()), props, List.of(), Map.of(), null));
+        }
+        for (CatalogueResponsibility assignment : model.getCatalogueResponsibilities()) {
+            List<PropertyAst> props = new ArrayList<>();
+            addProperty(props, CatalogueResponsibility.ORGANIZATION, assignment.organizationId());
+            addProperty(props, CatalogueResponsibility.REVISION, assignment.catalogueRevision());
+            blocks.add(new BlockAst(CatalogueResponsibility.KIND, List.of(assignment.code()), props,
+                    List.of(), Map.of(), null));
+        }
         for (ArchitecturePackage pkg : model.getPackages()) {
             List<PropertyAst> props = new ArrayList<>();
             addProperty(props, "title", pkg.title());

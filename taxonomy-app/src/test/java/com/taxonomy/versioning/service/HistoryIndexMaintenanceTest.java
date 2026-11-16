@@ -159,7 +159,7 @@ class HistoryIndexMaintenanceTest {
             when(f.entities.createQuery(startsWith("select w from UserWorkspace"), eq(com.taxonomy.workspace.model.UserWorkspace.class))).thenReturn(lookup);
             when(lookup.setParameter("id", "pinned")).thenReturn(lookup);
             when(lookup.getSingleResult()).thenReturn(workspace);
-            when(f.members.canUseWorkspace(f.catalogueRow, workspace, "owner")).thenReturn(true);
+            when(f.members.canUseWorkspace(eq(f.catalogueRow), eq(workspace), eq("owner"), anyString())).thenReturn(true);
             f.git.commitDsl("draft", "model", "owner", "one");
             when(f.indexRows.save(any())).thenThrow(new org.springframework.dao.TransientDataAccessResourceException("temporary"));
             var pending = f.service.submit(REBUILD, "draft", "temporary", null);

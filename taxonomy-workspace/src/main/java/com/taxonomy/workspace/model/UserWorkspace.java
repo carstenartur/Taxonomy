@@ -14,6 +14,7 @@ import jakarta.persistence.UniqueConstraint;
 import org.hibernate.annotations.ColumnDefault;
 
 import java.time.Instant;
+import java.util.UUID;
 
 /**
  * Persistent workspace metadata for a user.
@@ -42,6 +43,9 @@ public class UserWorkspace {
 
     @Column(nullable = false)
     private String username;
+
+    @Column(name = "owner_principal_id", length = 36, updatable = false)
+    private String ownerPrincipalId;
 
     @Column(name = "display_name")
     private String displayName;
@@ -175,6 +179,25 @@ public class UserWorkspace {
 
     public void setUsername(String username) {
         this.username = username;
+    }
+
+    @JsonIgnore
+    public String getOwnerPrincipalId() {
+        return ownerPrincipalId;
+    }
+
+    /** Match an explicitly verified actor, retaining routing-scope compatibility on historical rows. */
+    public boolean matchesOwner(String scope, String verifiedPrincipalId) {
+        return scope != null && scope.equals(username)
+                && (ownerPrincipalId == null || ownerPrincipalId.equals(verifiedPrincipalId));
+    }
+
+    public void assignOwnerPrincipal(UUID principalId) {
+        String value = principalId.toString();
+        if (ownerPrincipalId != null && !ownerPrincipalId.equals(value)) {
+            throw new IllegalStateException("Workspace principal owner is immutable");
+        }
+        ownerPrincipalId = value;
     }
 
     public String getDisplayName() {

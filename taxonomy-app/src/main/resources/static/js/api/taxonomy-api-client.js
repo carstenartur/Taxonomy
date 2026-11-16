@@ -20,6 +20,9 @@ window.TaxonomyApiClient = (function () {
     var responseContexts = new WeakMap();
     var DEFAULT_TIMEOUT_MILLIS = 30000;
     var REQUEST_ID_HEADER = 'X-Request-ID';
+    var navigationCursor = null;
+    var initializedNavigation = new Set();
+    var previousNavigation = window.history?.state?.taxonomyNavigation;
 
     function csrfMetadata() {
         var token = document.querySelector('meta[name="_csrf"]');
@@ -57,6 +60,47 @@ window.TaxonomyApiClient = (function () {
             return new URL(inputUrl(input), window.location.href).pathname;
         } catch (ignored) {
             return '';
+        }
+    }
+
+    function navigationPath(input) {
+        return window.history?.replaceState && typeof crypto !== 'undefined'
+            && typeof crypto.getRandomValues === 'function' && isSameOrigin(input)
+            && /\/api\/(?:context\/(?:current|history|open|back|return-to-origin|variant|copy-back\/apply)|dsl\/operation\/check)$/.test(requestPath(input));
+    }
+
+    function navigationHeaders(input, headers, workspace) {
+        if (!workspace || !navigationPath(input)) return;
+        if (!navigationCursor) {
+            var random = crypto.getRandomValues(new Uint8Array(16));
+            random[6] = (random[6] & 15) | 64;
+            random[8] = (random[8] & 63) | 128;
+            var hex = Array.from(random, function (byte) { return byte.toString(16).padStart(2, '0'); }).join('');
+            navigationCursor = [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join('-');
+        }
+        headers.set('X-Taxonomy-Navigation-Cursor', navigationCursor);
+        if (requestPath(input).endsWith('/api/context/current')) {
+            var previous = workspace === previousNavigation?.workspace ? previousNavigation.cursor
+                : initializedNavigation.has(workspace) ? navigationCursor : null;
+            if (previous) headers.set('X-Taxonomy-Navigation-Previous', previous);
+        }
+    }
+
+    function rememberNavigation(response, input, headers) {
+        if (!response.ok || !requestPath(input).endsWith('/api/context/current')
+                || headers.get('X-Taxonomy-Navigation-Cursor') !== navigationCursor) return;
+        var workspace = headers.get('X-Taxonomy-Workspace-Id');
+        if (workspace && navigationCursor) {
+            var state = {cursor: navigationCursor, workspace: workspace};
+            initializedNavigation.add(workspace);
+            if (response.headers.get('X-Taxonomy-Navigation-Reset') === 'true') {
+                var i18n = window.TaxonomyI18n;
+                window.TaxonomyOperationResult?.showWarning(i18n?.t('context.navigation.reset.title'),
+                    i18n?.t('context.navigation.reset.message'));
+            }
+            if (workspace === previousNavigation?.workspace) previousNavigation = null;
+            try { window.history.replaceState(Object.assign({}, window.history.state, {taxonomyNavigation: state}), ''); }
+            catch (ignored) { /* This document still owns its cursor. */ }
         }
     }
 
@@ -474,6 +518,7 @@ window.TaxonomyApiClient = (function () {
         if (pin !== undefined && !headers.has('X-Taxonomy-Workspace-Id')) {
             headers.set('X-Taxonomy-Workspace-Id', pin);
         }
+        navigationHeaders(input, headers, pin);
         if (metadata && sameOrigin && method !== 'GET' && method !== 'HEAD'
                 && !headers.has(metadata.name)) {
             headers.set(metadata.name, metadata.value);
@@ -581,6 +626,7 @@ window.TaxonomyApiClient = (function () {
                 .then(function (response) { return checkStatus(response, context); })
                 .then(function (response) {
                     assertCurrent(context);
+                    rememberNavigation(response, url, prepared.headers);
                     if (consumeResponse) return consumeResponse(response);
                     rawDelivered = true;
                     if (response.body === null) scope.cleanup(); else scope.idle();
@@ -610,6 +656,14 @@ window.TaxonomyApiClient = (function () {
                     }
                     throw error;
                 });
+        }
+        var workspace = workspacePin(url, init, requestOptions);
+        if (workspace && !initializedNavigation.has(workspace) && navigationPath(url)
+                && !requestPath(url).endsWith('/api/context/current')) {
+            var currentUrl = requestPath(url).replace(/\/api\/.*$/, '/api/context/current');
+            return executeRequest(currentUrl, {}, {pinnedWorkspaceId: workspace,
+                signal: requestOptions.signal, timeoutMillis: validated.timeoutMillis}, parseJson)
+                .then(function () { assertCurrent(context); return attempt(0); });
         }
         return attempt(0);
     }

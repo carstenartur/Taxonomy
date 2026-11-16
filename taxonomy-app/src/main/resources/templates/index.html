@@ -15,6 +15,7 @@
     <link rel="stylesheet" th:href="@{/css/taxonomy-database-setup.css}"/>
     <link rel="stylesheet" th:href="@{/css/git-status.css}"/>
     <link rel="stylesheet" th:href="@{/css/architecture-editor.css}" href="/css/architecture-editor.css"/>
+    <link rel="stylesheet" th:href="@{/css/architecture-responsibility-tree.css}" href="/css/architecture-responsibility-tree.css"/>
     <link rel="stylesheet" th:href="@{/css/architecture-workbench.css}" href="/css/architecture-workbench.css"/>
     <link rel="stylesheet" th:href="@{/css/architecture-workflow.css}" href="/css/architecture-workflow.css"/>
     <link rel="stylesheet" th:href="@{/css/architecture-workspace.css}" href="/css/architecture-workspace.css"/>
@@ -141,7 +142,34 @@
                     </div>
                 </details>
 
+                <details id="catalogueResponsibilityEditor" class="px-3 py-2 border-top">
+                    <summary class="fw-semibold" th:text="#{responsibility.catalogue}">Catalogue responsibilities</summary>
+                    <p id="catalogueResponsibilityStatus" class="small mt-2" role="status"></p>
+                    <section th:replace="~{fragments/architecture-organization-directory :: directory('catalogueDirectory', 'catalogueOrganizationDirectory')}"></section>
+                    <div class="mt-3">
+                        <label class="form-label" for="catalogueResponsibilitySearch" th:text="#{responsibility.catalogue.search}">Find a catalogue element</label>
+                        <input type="search" class="form-control form-control-sm" id="catalogueResponsibilitySearch" autocomplete="off"/>
+                        <div id="catalogueResponsibilityTree" class="my-2" th:aria-label="#{responsibility.catalogue}"></div>
+                    </div>
+                    <form id="catalogueResponsibilityForm" hidden>
+                        <p id="catalogueResponsibilitySelected" class="fw-semibold mb-2"></p>
+                        <label class="form-label" for="catalogueResponsibilityUnit" th:text="#{responsibility.unit}">Responsible unit</label>
+                        <select id="catalogueResponsibilityUnit" class="form-select form-select-sm mb-2"></select>
+                        <label class="form-label" for="catalogueResponsibilityRationale" th:text="#{editor.rationale}">Reason for the command</label>
+                        <input id="catalogueResponsibilityRationale" class="form-control form-control-sm mb-2" required maxlength="1000"/>
+                        <button class="btn btn-outline-primary btn-sm" type="submit" th:text="#{editor.preview}">Preview change</button>
+                    </form>
+                    <section id="catalogueResponsibilityPreview" class="mt-2" hidden>
+                        <p id="catalogueResponsibilityChanges" class="mb-2"></p>
+                        <button id="catalogueResponsibilityAccept" type="button" class="btn btn-primary btn-sm"
+                                th:text="#{responsibility.catalogue.apply}">Apply assignment</button>
+                        <button id="catalogueResponsibilityCancel" type="button" class="btn btn-outline-secondary btn-sm"
+                                th:text="#{responsibility.catalogue.cancel}">Cancel</button>
+                    </section>
+                </details>
                 <div class="card-body overflow-auto" style="max-height:82vh;">
+                    <div id="taxonomyResponsibilityControl" class="mb-2" hidden></div>
+                    <div id="taxonomyResponsibilitySummary" class="mb-2" hidden></div>
                     <div id="taxonomyTree" th:attr="aria-label=#{ui.aria.taxonomy_tree}" aria-label="Taxonomy Tree" aria-busy="true">
                         <div class="text-center text-muted py-5">
                             <div class="spinner-border spinner-border-sm" role="status"></div>
@@ -582,21 +610,27 @@
                 <div id="tab-relations">
 
                 <!-- Relation Proposals Panel -->
-                <div id="proposalsPanel" class="mb-3">
-                    <div class="card shadow-sm">
-                        <div class="card-header d-flex justify-content-between align-items-center">
-                            <span class="fw-semibold" th:text="#{browse.proposals.panel.title}">&#128269; Relation Proposals</span>
-                            <span id="proposalPendingBadge" class="badge bg-warning text-dark proposal-pending-badge" th:text="#{browse.proposals.pending(0)}">0 pending</span>
-                        </div>
-                        <div class="card-body p-2">
-                            <div class="btn-group btn-group-sm mb-2 proposal-filter-group" role="group" th:attr="aria-label=#{ui.aria.proposal_status_filter}" aria-label="Proposal status filter">
-                                <button id="filterPending"  class="btn btn-warning"          data-filter="PENDING"  aria-pressed="true" th:text="#{quality.pending}">Pending</button>
-                                <button id="filterAll"      class="btn btn-outline-secondary" data-filter="ALL"      aria-pressed="false" th:text="#{compare.filter.all}">All</button>
-                                <button id="filterAccepted" class="btn btn-outline-success"  data-filter="ACCEPTED" aria-pressed="false" th:text="#{quality.accepted}">Accepted</button>
-                                <button id="filterRejected" class="btn btn-outline-danger"   data-filter="REJECTED" aria-pressed="false" th:text="#{quality.rejected}">Rejected</button>
+                <div id="analysisProposalInbox">
+                    <div id="proposalsPanel" class="mb-3">
+                        <div class="card shadow-sm">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <span class="fw-semibold" th:text="#{browse.proposals.panel.title}">&#128269; Relation Proposals</span>
+                                <span id="proposalPendingBadge" class="badge bg-warning text-dark proposal-pending-badge" th:text="#{browse.proposals.pending(0)}">0 pending</span>
                             </div>
-                            <div id="proposalsTableContainer" class="table-responsive" tabindex="0" role="region" th:attr="aria-label=#{ui.aria.scrollable_data_table}" aria-label="Scrollable data table">
-                                <div class="text-muted small p-2" th:text="#{proposals.loading.text}">Loading proposals&hellip;</div>
+                            <div class="card-body p-2">
+                                <div class="btn-group btn-group-sm mb-2 proposal-filter-group" role="group" th:attr="aria-label=#{ui.aria.proposal_status_filter}" aria-label="Proposal status filter">
+                                    <button id="filterPending"  class="btn btn-warning"          data-filter="PENDING"  aria-pressed="true" th:text="#{quality.pending}">Pending</button>
+                                    <button id="filterAll"      class="btn btn-outline-secondary" data-filter="ALL"      aria-pressed="false" th:text="#{compare.filter.all}">All</button>
+                                    <button id="filterAccepted" class="btn btn-outline-success"  data-filter="ACCEPTED" aria-pressed="false" th:text="#{browse.proposals.adoption.filter}">Accepted / check adoption</button>
+                                    <button id="filterRejected" class="btn btn-outline-danger"   data-filter="REJECTED" aria-pressed="false" th:text="#{quality.rejected}">Rejected</button>
+                                </div>
+                                <section id="proposalAdoptionSection" class="border-bottom mb-2 pb-2" aria-labelledby="proposalAdoptionHeading" hidden>
+                                    <h3 id="proposalAdoptionHeading" class="h6" th:text="#{browse.proposals.adoption.section}">Accepted proposals from the shared repository</h3>
+                                    <div id="proposalAdoptionTable" class="table-responsive" tabindex="0" role="region" aria-labelledby="proposalAdoptionHeading"></div>
+                                </section>
+                                <div id="proposalsTableContainer" class="table-responsive" tabindex="0" role="region" th:attr="aria-label=#{ui.aria.scrollable_data_table}" aria-label="Scrollable data table">
+                                    <div class="text-muted small p-2" th:text="#{proposals.loading.text}">Loading proposals&hellip;</div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -766,6 +800,7 @@
                     </section>
                     <section id="architectureWorkingSource" class="architecture-editor-surface" hidden>
                         <div class="architecture-source-actions"><a th:href="@{/integrations(lang=${#locale.language})}" href="/integrations" th:text="#{integration.title}">Tool integrations</a></div>
+                        <div id="workingProposalInbox"></div>
                         <section th:replace="~{architecture-editor :: surface}"></section>
                     </section>
                     <section th:replace="~{fragments/architecture-source-lens :: panel('architectureSourceLens')}"></section>
@@ -976,6 +1011,9 @@
                             <div id="syncStatePanel" class="mb-3">
                                 <div class="text-muted small" th:text="#{workspace.sync.tab.loading}">Loading sync state…</div>
                             </div>
+                            <button id="workspaceRebasePlanButton" type="button" class="btn btn-sm btn-outline-secondary mb-2" hidden
+                                    aria-controls="workspaceRebasePlan" th:text="#{workspace.rebase.plan}">Show rebase plan</button>
+                            <div id="workspaceRebasePlan" aria-live="polite"></div>
                             <fieldset id="workspaceSyncActions" class="d-flex gap-2" disabled>
                                 <button class="btn btn-sm btn-outline-primary" onclick="TaxonomyWorkspaceSync.syncFromShared()" th:title="#{workspace.sync.from.shared.title}" title="Pull changes from team repository into your workspace">
                                     &#128229; <span th:text="#{workspace.sync.from.shared}">Sync from Team</span>
@@ -1633,6 +1671,7 @@
 <script th:src="@{/js/api/relations-api.js}"></script>
 <script th:src="@{/js/api/workspace-api.js}" src="/js/api/workspace-api.js"></script>
 <script th:src="@{/js/core/taxonomy-state.js}"></script>
+<script th:src="@{/js/shared/responsibility-display.js}" src="/js/shared/responsibility-display.js"></script>
 <script th:src="@{/js/core/taxonomy-views.js}"></script>
 <script th:src="@{/js/workspace/taxonomy-git-status.js}"></script>
 <script th:src="@{/js/workspace/taxonomy-workspace-sync.js}"></script>
@@ -1937,7 +1976,7 @@
 
         // Update URL hash without adding to browser history
         if (history.replaceState) {
-            history.replaceState(null, '', '#' + pageName);
+            history.replaceState(history.state, '', '#' + pageName);
         }
 
         // Fetch and render ViewContext for views that display architecture data
@@ -2032,6 +2071,9 @@
 <script th:src="@{/js/architecture-brief.js}" src="/js/architecture-brief.js"></script>
 <script th:src="@{/js/architecture-planning.js}" src="/js/architecture-planning.js"></script>
 <script th:src="@{/js/analysis-snapshot-adoption.js}" src="/js/analysis-snapshot-adoption.js"></script>
+<script th:src="@{/js/architecture-responsibility-tree.js}" src="/js/architecture-responsibility-tree.js"></script>
+<script th:src="@{/js/architecture-organization-directory.js}" src="/js/architecture-organization-directory.js"></script>
+<script th:src="@{/js/catalogue-responsibility-editor.js}" src="/js/catalogue-responsibility-editor.js"></script>
 <script th:src="@{/js/architecture-editor.js}" src="/js/architecture-editor.js"></script>
 <script th:src="@{/js/architecture-workbench.js}" src="/js/architecture-workbench.js"></script>
 <script th:src="@{/js/architecture-workbench-print.js}" src="/js/architecture-workbench-print.js"></script>
@@ -2325,6 +2367,10 @@
                         <pre id="conflictTheirsContent" class="border rounded p-2 bg-light" style="max-height:300px; overflow:auto; font-size:0.75rem;"></pre>
                     </div>
                 </div>
+                <details id="conflictBasePanel" class="mt-2" hidden>
+                    <summary th:text="#{conflict.base.label}">Common base</summary>
+                    <pre id="conflictBaseContent" class="border rounded p-2 bg-light overflow-auto small"></pre>
+                </details>
                 <div class="mt-3">
                     <h6 th:text="#{conflict.resolved.label}">Resolved Content</h6>
                     <textarea id="conflictResolvedContent" class="form-control font-monospace" rows="10"

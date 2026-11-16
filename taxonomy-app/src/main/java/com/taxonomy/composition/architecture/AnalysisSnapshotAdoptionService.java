@@ -3,7 +3,9 @@ package com.taxonomy.composition.architecture;
 import com.taxonomy.dsl.command.ArchitectureCommand.*;
 import com.taxonomy.dsl.command.ArchitectureDslCommands;
 import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
-import com.taxonomy.dsl.model.TaxonomyRootTypes;
+import com.taxonomy.dsl.model.ArchitectureOrganization;
+import com.taxonomy.dsl.model.CatalogueDefinition;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
 import com.taxonomy.editor.ArchitectureCommandPort.*;
 import com.taxonomy.editor.ArchitectureEditorService;
 import com.taxonomy.identity.StableIdentityHash;
@@ -32,9 +34,15 @@ public class AnalysisSnapshotAdoptionService {
     private final SystemRepositoryService repositories;
     private final RepositoryMembershipService membership;
     private WorkspaceActorAccess actorAccess = WorkspaceActorAccess.unavailable();
+    private CatalogueDefinitionResolver catalogues = CatalogueDefinitionResolver.standard();
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setActorAccess(WorkspaceActorAccess actorAccess) { this.actorAccess = Objects.requireNonNull(actorAccess); }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setCatalogueDefinitionResolver(CatalogueDefinitionResolver catalogues) {
+        this.catalogues = Objects.requireNonNull(catalogues);
+    }
 
     public AnalysisSnapshotAdoptionService(ArchitectureEditorService editor, PortfolioAnalysisPersistenceService snapshots,
             ProjectPortfolioService projects, UserWorkspaceRepository workspaces, SystemRepositoryService repositories,
@@ -128,15 +136,35 @@ public class AnalysisSnapshotAdoptionService {
             throw problem("INVALID_SNAPSHOT", "Snapshot contains no retained full architecture graph");
         if (graph.getIncludedElements().isEmpty() || graph.getIncludedElements().size() > 2000 || graph.getIncludedRelationships().size() > 10000)
             throw problem("ITEM_LIMIT", "Snapshot graph exceeds adoption limits");
+        var binding = snapshot.analysis().getModelBinding();
+        String catalogueRevision = binding == null ? null : binding.analysisCatalogueRevision();
+        CatalogueDefinition definition = CatalogueDefinition.standard();
+        Map<String, String> recordedRoots = new HashMap<>();
+        if (catalogueRevision != null) {
+            try {
+                definition = catalogues.forRevision(catalogueRevision);
+                catalogues.analysisNodes(catalogueRevision).forEach(node -> recordedRoots.put(node.code(), node.root()));
+            } catch (IllegalStateException | NoSuchElementException unavailable) {
+                throw problem("CATALOGUE_UNAVAILABLE", "The catalogue recorded for the retained analysis is unavailable");
+            }
+        }
+        CatalogueDefinition recordedDefinition = definition;
         List<SnapshotElement> elements = graph.getIncludedElements().stream().map(element -> {
-            if (element == null || !TaxonomyRootTypes.ROOT_TO_TYPE.containsKey(element.getTaxonomySheet()))
+            String sheet = element == null ? null : element.getTaxonomySheet();
+            String type = sheet == null ? null : recordedDefinition.typeFor(sheet);
+            if (type == null)
                 throw problem("UNKNOWN_TYPE", "Snapshot has unsupported or missing recorded taxonomy type");
             // Recorded root plus recorded code establish identity; do not synthesize nodes from renderer containers.
-            String root = TaxonomyRootTypes.rootFromId(element.getNodeCode());
-            if (!Objects.equals(root,element.getTaxonomySheet()) && !Objects.equals(element.getNodeCode(),element.getTaxonomySheet()))
+            String root = recordedRoots.getOrDefault(element.getNodeCode(), recordedDefinition.rootFromId(element.getNodeCode()));
+            if (!Objects.equals(root, sheet))
                 throw problem("AMBIGUOUS_SNAPSHOT_IDENTITY", "Recorded element identity and taxonomy type disagree");
-            return new SnapshotElement(element.getNodeCode(),TaxonomyRootTypes.typeFor(element.getTaxonomySheet()),
-                    element.getTitle(),Objects.toString(element.getPresenceReason(), Objects.toString(element.getIncludedBecause(),"")));
+            var assigned = element.getResponsibility();
+            var responsibility = assigned == null ? null
+                    : new com.taxonomy.dsl.command.ArchitectureCommand.SnapshotResponsibility(
+                            assigned.unitId(), assigned.name(), assigned.sourceId());
+            return new SnapshotElement(element.getNodeCode(), type,
+                    element.getTitle(),Objects.toString(element.getPresenceReason(), Objects.toString(element.getIncludedBecause(),"")),
+                    responsibility);
         }).sorted(Comparator.comparing(SnapshotElement::id,Comparator.nullsFirst(String::compareTo))).toList();
         List<RelationKey> relations = graph.getIncludedRelationships().stream().map(relation -> {
             if (relation == null || relation.getSourceCode() == null || relation.getTargetCode() == null || relation.getRelationType() == null)
@@ -144,7 +172,11 @@ public class AnalysisSnapshotAdoptionService {
             return new RelationKey(relation.getSourceCode(),relation.getRelationType(),relation.getTargetCode());
         }).sorted(Comparator.comparing(RelationKey::id)).toList();
         List<String> graphParts = new ArrayList<>();
-        elements.forEach(e -> graphParts.addAll(Arrays.asList("element",e.id(),e.type(),e.title(),e.description())));
+        elements.forEach(e -> {
+            graphParts.addAll(Arrays.asList("element",e.id(),e.type(),e.title(),e.description()));
+            if (e.responsibility() != null) graphParts.addAll(List.of("responsibility", e.responsibility().unitId(),
+                    e.responsibility().name(), e.responsibility().sourceId()));
+        });
         relations.forEach(r -> graphParts.addAll(List.of("relation",r.sourceId(),r.relationType(),r.targetId())));
         String graphFingerprint = hash(graphParts);
         String viewId = "analysis-" + hash(Arrays.asList(source.repositoryId(),source.workspaceScopeKey(),source.branch(),
@@ -161,6 +193,8 @@ public class AnalysisSnapshotAdoptionService {
         var adoption = new AdoptAnalysisSnapshot(viewId,title,version.text(),graphFingerprint,elements,relations,provenance);
         var document = editor.read(target,null);
         var model = new ArchitectureDslCommands().model(document.dsl());
+        Map<String, String> organizationNames = new HashMap<>();
+        model.getOrganizations().forEach(unit -> organizationNames.put(unit.id(), unit.title()));
         List<String> addedElements = new ArrayList<>(), reusedElements = new ArrayList<>(), addedRelations = new ArrayList<>(), reusedRelations = new ArrayList<>();
         List<Difference> differences = new ArrayList<>();
         elements.forEach(e -> {
@@ -170,6 +204,11 @@ public class AnalysisSnapshotAdoptionService {
                 reusedElements.add(e.id());
                 if (!Objects.equals(existing.get().getTitle(),e.title())) differences.add(new Difference(e.id(),"title",existing.get().getTitle(),e.title()));
                 if (!Objects.equals(existing.get().getDescription(),e.description())) differences.add(new Difference(e.id(),"description",existing.get().getDescription(),e.description()));
+                var currentResponsibility = responsibility(e.id(), existing.get().getExtensions(), organizationNames);
+                if (currentResponsibility != null && !currentResponsibility.equals(e.responsibility())) {
+                    differences.add(new Difference(e.id(), "responsibility", responsibilityLabel(currentResponsibility),
+                            responsibilityLabel(e.responsibility())));
+                }
             }
         });
         relations.forEach(r -> {
@@ -183,10 +222,26 @@ public class AnalysisSnapshotAdoptionService {
         return new Prepared(adoption,new Summary(List.copyOf(addedElements),List.copyOf(reusedElements),List.copyOf(addedRelations),
                 List.copyOf(reusedRelations),List.copyOf(differences),List.of()),existing,hash(previewParts));
     }
+
+    private static SnapshotResponsibility responsibility(String code, Map<String, String> fields, Map<String, String> names) {
+        String id = fields.get(ArchitectureOrganization.RESPONSIBLE_ID);
+        String name = id == null ? null : names.get(id);
+        if (name != null) return new SnapshotResponsibility(id, name, code);
+        String legacy = fields.get("x-responsible-organization");
+        if (legacy != null && !legacy.isBlank()) return new SnapshotResponsibility("legacy:" + legacy, legacy, code);
+        String captured = fields.get(ArchitectureOrganization.CAPTURED_NAME);
+        String unit = fields.get(ArchitectureOrganization.CAPTURED_UNIT);
+        String source = fields.get(ArchitectureOrganization.CAPTURED_SOURCE);
+        return captured == null || unit == null || source == null ? null : new SnapshotResponsibility(unit, captured, source);
+    }
+
+    private static String responsibilityLabel(SnapshotResponsibility responsibility) {
+        return responsibility == null ? null : responsibility.name() + " (" + responsibility.unitId() + ") · " + responsibility.sourceId();
+    }
     private UserWorkspace owned(String workspaceId,String username,String repositoryId) {
         var workspace = workspaces.findByWorkspaceId(workspaceId).orElseThrow(() -> problem("NOT_FOUND","Workspace is not accessible"));
         if (workspace.isShared() || workspace.isArchived() || !repositoryId.equals(workspace.getSourceRepositoryId())
-                || (!username.equals(workspace.getUsername()) && !(workspace.isCollaborative()
+                || (!actorAccess.owns(username, workspace) && !(workspace.isCollaborative()
                 && membership.canCollaborate(repositories.getRepository(repositoryId), username))))
             throw problem("NOT_FOUND","Workspace is not accessible");
         if (workspace.isCollaborative()) actorAccess.requireActive(username);

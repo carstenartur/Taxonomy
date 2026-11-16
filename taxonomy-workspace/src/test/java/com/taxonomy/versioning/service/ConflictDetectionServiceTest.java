@@ -1,5 +1,6 @@
 package com.taxonomy.versioning.service;
 
+import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import org.junit.jupiter.api.BeforeEach;
@@ -8,7 +9,7 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.mock;
+
 
 /**
  * Unit tests for {@link ConflictDetectionService}.
@@ -17,6 +18,7 @@ import static org.mockito.Mockito.mock;
  */
 class ConflictDetectionServiceTest {
 
+    private DslGitRepositoryFactory factory;
     private DslGitRepository gitRepo;
     private ConflictDetectionService conflictService;
 
@@ -55,7 +57,7 @@ class ConflictDetectionServiceTest {
 
     @BeforeEach
     void setUp() {
-        var factory = new DslGitRepositoryFactory(null);
+        factory = new DslGitRepositoryFactory(null);
         gitRepo = factory.getSystemRepository();
         conflictService = new ConflictDetectionService(factory);
     }
@@ -138,6 +140,63 @@ class ConflictDetectionServiceTest {
     }
 
     @Test
+    void cherryPickingSecondCommitLeavesTheUnselectedEditOut() throws IOException {
+        String base = "original title\nseparator\noriginal owner\n";
+        gitRepo.commitDsl("draft", base, "tester", "base");
+        gitRepo.createBranch("review", "draft");
+        String first = base.replace("original title", "unselected title");
+        gitRepo.commitDsl("draft", first, "tester", "unselected edit");
+        String picked = gitRepo.commitDsl("draft", first.replace("original owner", "picked owner"), "tester", "owner");
+
+        assertTrue(conflictService.previewCherryPick(picked, "review").canCherryPick());
+        String result = gitRepo.cherryPick(picked, "review");
+        assertNotNull(result);
+        assertEquals("original title\nseparator\npicked owner\n", gitRepo.getDslAtCommit(result));
+    }
+
+    @Test
+    void previewAndPickIgnoreAnEarlierConflictOnAnUnchangedLine() throws IOException {
+        String base = "original title\nseparator\noriginal owner\n";
+        gitRepo.commitDsl("draft", base, "tester", "base");
+        gitRepo.createBranch("review", "draft");
+        String first = base.replace("original title", "unselected title");
+        gitRepo.commitDsl("draft", first, "tester", "unselected edit");
+        String picked = gitRepo.commitDsl("draft", first.replace("original owner", "picked owner"), "tester", "owner");
+        gitRepo.commitDsl("review", base.replace("original title", "our title"), "tester", "our edit");
+
+        assertTrue(conflictService.previewCherryPick(picked, "review").canCherryPick());
+        assertNotNull(gitRepo.cherryPick(picked, "review"));
+        assertEquals("our title\nseparator\npicked owner\n", gitRepo.getDslAtHead("review"));
+    }
+
+    @Test
+    void pickingAnAncestorRootUsesTheEmptyTreeAsItsBase() throws IOException {
+        String root = gitRepo.commitDsl("draft", "root text", "tester", "initial architecture");
+        String target = gitRepo.commitDsl("draft", "changed text", "tester", "local edit");
+
+        assertFalse(conflictService.previewCherryPick(root, "draft").canCherryPick());
+        assertNull(gitRepo.cherryPick(root, "draft"));
+        assertEquals(target, gitRepo.getHeadCommit("draft"));
+    }
+
+    @Test
+    void mergeCommitNeedsAnExplicitMainlineBeforeItCanBePicked() throws IOException {
+        String base = gitRepo.commitDsl("draft", "base", "tester", "initial");
+        gitRepo.createBranch("review", "draft");
+        String side = gitRepo.commitDsl("review", "side", "tester", "review");
+        String ours = gitRepo.commitDsl("draft", "ours", "tester", "our edit");
+        String merge = gitRepo.commitMergeDslIfHeadMatches("draft", ours, side, "merged", "tester", "merge", null);
+        gitRepo.createBranchAtCommit("target", base);
+
+        assertFalse(conflictService.previewCherryPick(merge, "target").canCherryPick());
+        assertTrue(conflictService.previewCherryPick(merge, "target").warnings().stream()
+                .anyMatch(warning -> warning.contains("mainline")));
+        assertNull(conflictService.getCherryPickConflictDetails(merge, "target"));
+        assertThrows(IllegalArgumentException.class, () -> gitRepo.cherryPick(merge, "target"));
+        assertEquals(base, gitRepo.getHeadCommit("target"));
+    }
+
+    @Test
     void previewCherryPickInvalidCommit() {
         var result = conflictService.previewCherryPick("0000000000000000000000000000000000000000", "draft");
         assertFalse(result.canCherryPick());
@@ -205,6 +264,28 @@ class ConflictDetectionServiceTest {
     }
 
     @Test
+    void cherryPickDetailsReadTheCommitReviewedEvenIfTheBranchMoves() throws IOException {
+        gitRepo.commitDsl("draft", SAMPLE_DSL, "tester", "base");
+        gitRepo.createBranch("review", "draft");
+        String picked = gitRepo.commitDsl("draft", CONFLICT_LEFT, "tester", "source edit");
+        String reviewed = gitRepo.commitDsl("review", CONFLICT_RIGHT, "tester", "reviewed target");
+        var service = new ConflictDetectionService(factory) {
+            @Override
+            public CherryPickPreview previewCherryPick(String commitId, String branch, WorkspaceContext context) {
+                var preview = super.previewCherryPick(commitId, branch, context);
+                assertDoesNotThrow(() -> gitRepo.commitDsl(branch, "newer edit", "other", "concurrent edit"));
+                return preview;
+            }
+        };
+
+        var details = service.getCherryPickConflictDetails(picked, "review");
+        assertNotNull(details);
+        assertEquals(reviewed, details.targetCommit());
+        assertEquals(CONFLICT_RIGHT, details.oursContent());
+        assertEquals("newer edit", gitRepo.getDslAtHead("review"));
+    }
+
+    @Test
     void cherryPickConflictPreviewAndDetailsExposeTargetAndPickedCommit() throws IOException {
         gitRepo.commitDsl("draft", SAMPLE_DSL, "tester", "base");
         gitRepo.createBranch("review", "draft");
@@ -219,6 +300,8 @@ class ConflictDetectionServiceTest {
         assertTrue(preview.warnings().contains("Cherry-pick would result in conflicts"));
         assertNotNull(details);
         assertEquals("cherry-pick", details.conflictType());
+        assertEquals(preview.targetCommit(), details.targetCommit());
+        assertEquals(SAMPLE_DSL, details.baseContent());
         assertEquals(CONFLICT_RIGHT, details.oursContent());
         assertEquals(CONFLICT_LEFT, details.theirsContent());
     }

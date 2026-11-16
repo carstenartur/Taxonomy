@@ -12,6 +12,8 @@ import com.taxonomy.workspace.service.*;
 import com.taxonomy.workspace.service.WorkspaceArchitectureIntegrationPort.*;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.concurrent.DelegatingSecurityContextCallable;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -527,13 +529,17 @@ public class IntegrationPublicationService {
         if (remaining <= 0) {
             throw IntegrationProblem.conflict("PUBLICATION_DEADLINE");
         }
+        // Workspace and journal operations still verify the caller's current principal in the worker.
+        var workerContext = SecurityContextHolder.createEmptyContext();
+        workerContext.setAuthentication(SecurityContextHolder.getContext().getAuthentication());
+        var securedEffect = new DelegatingSecurityContextCallable<>(effect::get, workerContext);
         var future = new CompletableFuture<T>();
         Thread.ofVirtual().start(() -> {
             try {
                 if (budget.expired()) {
                     throw IntegrationProblem.conflict("PUBLICATION_DEADLINE");
                 }
-                future.complete(effect.get());
+                future.complete(securedEffect.call());
             } catch (Throwable failure) {
                 future.completeExceptionally(failure);
             }

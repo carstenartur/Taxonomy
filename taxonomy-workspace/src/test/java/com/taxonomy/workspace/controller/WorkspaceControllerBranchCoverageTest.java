@@ -87,6 +87,11 @@ class WorkspaceControllerBranchCoverageTest {
         assertThat(controller.createWorkspace(Map.of("displayName", " ")).getStatusCode())
                 .isEqualTo(HttpStatus.BAD_REQUEST);
 
+        when(workspaceManager.createWorkspace("alice", "Denied", null))
+                .thenThrow(new org.springframework.security.access.AccessDeniedException("Verified owner required"));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> controller.createWorkspace(Map.of("displayName", "Denied")))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+
         when(workspaceManager.createWorkspace("alice", "Broken", null))
                 .thenThrow(new IllegalStateException("database down"));
         ResponseEntity<Map<String, Object>> failure = controller.createWorkspace(Map.of("displayName", "Broken"));

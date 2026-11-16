@@ -69,16 +69,22 @@ public class HistoryIndexMaintenanceController {
     }
 
     @GetMapping("/operations/{id}")
+    @Operation(summary = "Read a history index maintenance operation",
+            description = "Returns the original rebuild or purge receipt and its recovery phase for the selected repository or working copy.")
     public ResponseEntity<Map<String, Object>> status(@PathVariable String id) {
         return ResponseEntity.ok(body(maintenance.get(id)));
     }
 
     @PostMapping("/operations/{id}/retry")
+    @Operation(summary = "Retry a history index maintenance operation",
+            description = "Retries the recorded operation with current authorization. A rebuild uses the original Git commit and a purge uses the originally captured rows.")
     public ResponseEntity<Map<String, Object>> retry(@PathVariable String id) {
         return response(maintenance.retry(id));
     }
 
     @DeleteMapping("/operations/{id}")
+    @Operation(summary = "Archive a settled history index maintenance operation",
+            description = "Archives the recorded operation, removes its retained purge targets and preserves the receipt and archive decision.")
     public ResponseEntity<Map<String, Object>> archive(@PathVariable String id) {
         return ResponseEntity.ok(body(maintenance.archive(id)));
     }

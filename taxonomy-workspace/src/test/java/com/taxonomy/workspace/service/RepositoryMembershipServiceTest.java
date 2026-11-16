@@ -80,6 +80,10 @@ class RepositoryMembershipServiceTest {
         when(membershipRepository.findByRepositoryIdAndUsername("repo-a", "member"))
                 .thenReturn(Optional.of(membership("repo-a", "member", RepositoryRole.READER)));
         assertTrue(service.canUseWorkspace(repository, workspace, "member"));
+        var persistedActor = java.util.UUID.randomUUID();
+        workspace.assignOwnerPrincipal(persistedActor);
+        assertTrue(service.canUseWorkspace(repository, workspace, "member", persistedActor.toString()));
+        assertFalse(service.canUseWorkspace(repository, workspace, "member", java.util.UUID.randomUUID().toString()));
         repository.setLifecycleState(RepositoryLifecycleState.ARCHIVED);
         assertFalse(service.canUseWorkspace(repository, workspace, "member"));
         repository.setLifecycleState(RepositoryLifecycleState.ACTIVE);

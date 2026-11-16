@@ -15,6 +15,13 @@ import java.util.Objects;
 @Service
 public class WorkspaceSourceDiscoveryService {
     private static final int MAXIMUM_SOURCES = 16;
+    private WorkspaceActorAccess actors = WorkspaceActorAccess.unavailable();
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void configureWorkspaceActors(WorkspaceActorAccess actors) {
+        this.actors = java.util.Objects.requireNonNull(actors);
+    }
+
     private final SystemRepositoryRepository repositories;
     private final RepositoryMembershipService membership;
     private final UserWorkspaceRepository workspaces;
@@ -54,7 +61,7 @@ public class WorkspaceSourceDiscoveryService {
                 || !canReadRepository(context.repositoryId(), username)) return false;
         if (context.workspaceId() == null || context.workspaceId().isBlank()) return true;
         return workspaces.findByWorkspaceId(context.workspaceId()).filter(workspace ->
-                Objects.equals(workspace.getUsername(), username) && !workspace.isArchived() && !workspace.isShared()
+                actors.owns(username, workspace) && !workspace.isArchived() && !workspace.isShared()
                         && Objects.equals(workspace.getSourceRepositoryId(), context.repositoryId())
                         && Objects.equals(workspace.getCurrentBranch(), context.currentBranch())
                         && workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.READY).isPresent();

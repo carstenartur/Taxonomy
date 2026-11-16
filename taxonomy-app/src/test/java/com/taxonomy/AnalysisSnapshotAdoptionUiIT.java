@@ -10,6 +10,7 @@ import com.taxonomy.portfolio.dto.PortfolioDtos.*;
 import com.taxonomy.portfolio.model.PortfolioTypes.*;
 import com.taxonomy.portfolio.service.*;
 import com.taxonomy.testsupport.BrowserSession;
+import com.taxonomy.testsupport.LocalTestLogin;
 import com.taxonomy.workspace.service.*;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -167,7 +168,8 @@ class AnalysisSnapshotAdoptionUiIT {
             }
         } finally { app.close(); }
         // Reopen the real application and its file database; adoption replay has no in-memory cache dependency.
-        try (var restarted = start(url)) {
+        try (var restarted = start(url);
+             var ignored = LocalTestLogin.openExisting(restarted, target.username(), PASSWORD)) {
             assertThat(restarted.getBean(AnalysisSnapshotAdoptionService.class).adopt(target,originalRequest).accepted().replayed()).isTrue();
             var document = restarted.getBean(ArchitectureEditorService.class).read(target,null);
             assertThat(document.context().revision()).isEqualTo(3);
