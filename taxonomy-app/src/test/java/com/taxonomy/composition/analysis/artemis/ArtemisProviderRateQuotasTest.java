@@ -723,11 +723,19 @@ class ArtemisProviderRateQuotasTest {
             duplicate.setStringProperty("policyFingerprint",policy.fingerprint());duplicate.setStringProperty("tokenAdapter","");
             producer.send(duplicate,DeliveryMode.PERSISTENT,jakarta.jms.Message.DEFAULT_PRIORITY,0);
         }
+        // Queue statistics may lag the committed send. Prove two real deliveries, then retain both states.
+        try(var verifier=connect();var session=verifier.createSession(true);
+            var consumer=session.createConsumer(session.createQueue(QUEUE+"::"+QUEUE))){
+            assertThat(consumer.receive(1000)).as("Original committed ledger state").isInstanceOf(TextMessage.class);
+            assertThat(consumer.receive(1000)).as("Duplicate committed ledger state").isInstanceOf(TextMessage.class);
+            assertThat(consumer.receiveNoWait()).as("No third ledger state").isNull();
+            session.rollback();
+        }
         var actual=broker.getActiveMQServer().locateQueue(SimpleString.of(QUEUE));
-        assertThat(actual.getMessageCount()).isEqualTo(2);assertThat(actual.getDeliveringCount()).isZero();
         var physical=new AtomicInteger();
         assertThatThrownBy(()->send(quotasWithCountObservation(connect(),policy,1),LlmProvider.OPENAI,physical))
-                .isInstanceOf(ProviderRateQuotas.UnavailableException.class);
+                .isInstanceOf(ProviderRateQuotas.UnavailableException.class)
+                .hasMessageContaining("duplicate committed state");
         assertThat(physical.get()).isZero();assertThat(actual.getMessagesAcknowledged()).isZero();
     }
     @ParameterizedTest @ValueSource(booleans={false,true})
