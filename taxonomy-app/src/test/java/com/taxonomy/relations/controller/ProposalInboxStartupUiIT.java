@@ -148,7 +148,6 @@ class ProposalInboxStartupUiIT {
             assertThat(startup.getText()).contains("Auf main angenommen", draft,
                     sourceCommit.substring(0, 8), baseline.substring(0, 8));
             assertAdoptionEvidence(startup, repositoryId, sourceCommit, draft, baseline);
-            openSourceCheckpoint(driver, wait, startup, repositoryId, sourceCommit);
 
             wait.until(ExpectedConditions.elementToBeClickable(By.id("filterAll"))).click();
             awaitPreview(wait, driver, "#proposalsTableContainer ", detail, "AVAILABLE");
@@ -197,6 +196,9 @@ class ProposalInboxStartupUiIT {
             var conflict = awaitPreview(wait, driver, "#proposalAdoptionSection ", detail, "CONFLICT");
             assertAdoptionEvidence(conflict, repositoryId, sourceCommit, draft, conflictHead);
             assertThat(conflict.findElements(By.cssSelector(".proposal-adoption-apply"))).isEmpty();
+            String draftUrl = driver.getCurrentUrl();
+            openSourceCheckpoint(driver, wait, conflict, repositoryId, sourceCommit);
+            assertThat(driver.getCurrentUrl()).isEqualTo(draftUrl);
             assertThat(draftGit.getHeadCommit(draft)).isEqualTo(conflictHead);
             assertThat(git.getHeadCommit("main")).isEqualTo(sourceCommit);
         }
