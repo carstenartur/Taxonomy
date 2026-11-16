@@ -50,6 +50,9 @@ public class RepositoryMembership {
     @Column(name = "updated_at")
     private Instant updatedAt;
 
+    @Column(name = "revoked_at")
+    private Instant revokedAt;
+
     @Version
     @Column(name = "version", nullable = false)
     private long version;
@@ -104,6 +107,14 @@ public class RepositoryMembership {
 
     public void setUpdatedAt(Instant updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public boolean isActive() {
+        return revokedAt == null;
+    }
+
+    public void setRevokedAt(Instant revokedAt) {
+        this.revokedAt = revokedAt;
     }
 
     public long getVersion() {

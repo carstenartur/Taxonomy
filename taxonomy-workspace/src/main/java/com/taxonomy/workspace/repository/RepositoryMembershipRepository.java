@@ -5,6 +5,7 @@ import com.taxonomy.workspace.model.RepositoryRole;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -18,7 +19,21 @@ public interface RepositoryMembershipRepository
     Optional<RepositoryMembership> findByRepositoryIdAndUsername(
             String repositoryId, String username);
 
-    List<RepositoryMembership> findByRepositoryIdOrderByUsernameAsc(String repositoryId);
+    @Query("""
+            select m from RepositoryMembership m
+            where m.repositoryId = :repositoryId and m.revokedAt is null
+            order by m.username
+            """)
+    List<RepositoryMembership> findByRepositoryIdOrderByUsernameAsc(@Param("repositoryId") String repositoryId);
+
+    /** Serialize membership changes with catalogue updates, including the first grant in an empty repository. */
+    @Modifying
+    @Query("""
+            update SystemRepository r set r.version = r.version
+            where r.repositoryId = :repositoryId and r.version = :expectedVersion
+            """)
+    int lockCatalogueRevision(@Param("repositoryId") String repositoryId,
+                              @Param("expectedVersion") long expectedVersion);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
@@ -30,5 +45,9 @@ public interface RepositoryMembershipRepository
     List<RepositoryMembership> findByRepositoryIdForUpdate(
             @Param("repositoryId") String repositoryId);
 
-    long countByRepositoryIdAndRole(String repositoryId, RepositoryRole role);
+    @Query("""
+            select count(m) from RepositoryMembership m
+            where m.repositoryId = :repositoryId and m.role = :role and m.revokedAt is null
+            """)
+    long countByRepositoryIdAndRole(@Param("repositoryId") String repositoryId, @Param("role") RepositoryRole role);
 }

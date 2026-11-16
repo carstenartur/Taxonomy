@@ -40,6 +40,7 @@ class RepositoryMembershipServiceTest {
     @BeforeEach
     void setUp() {
         membershipRepository = mock(RepositoryMembershipRepository.class);
+        when(membershipRepository.lockCatalogueRevision("repo-a", 0L)).thenReturn(1);
         when(membershipRepository.save(any(RepositoryMembership.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         service = new RepositoryMembershipService(membershipRepository);
@@ -282,6 +283,7 @@ class RepositoryMembershipServiceTest {
 
         assertEquals(RepositoryRole.MAINTAINER, result.getRole());
         InOrder order = inOrder(membershipRepository);
+        order.verify(membershipRepository).lockCatalogueRevision("repo-a", 0L);
         order.verify(membershipRepository).findByRepositoryIdForUpdate("repo-a");
         order.verify(membershipRepository).save(bob);
         verify(membershipRepository, never()).countByRepositoryIdAndRole(any(), any());
@@ -309,7 +311,8 @@ class RepositoryMembershipServiceTest {
 
         service.removeMembership(repository, "reader", "owner");
 
-        verify(membershipRepository).delete(reader);
+        assertFalse(reader.isActive());
+        verify(membershipRepository).save(reader);
     }
 
 
@@ -367,7 +370,8 @@ class RepositoryMembershipServiceTest {
                 service.removeMembership(repository, "reader", "owner", 3L));
         verify(membershipRepository, never()).delete(any());
         service.removeMembership(repository, "reader", "owner", 4L);
-        verify(membershipRepository).delete(current);
+        assertFalse(current.isActive());
+        verify(membershipRepository).save(current);
     }
 
     @Test

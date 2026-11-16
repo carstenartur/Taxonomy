@@ -94,10 +94,9 @@ class WorkspaceProvisioningBoundaryIT {
             // The collaboration journey disables the test transaction so each HTTP
             // request commits independently; @BeforeTransaction does not run there.
             createOwnedSourceCheckpoint();
-        } else {
-            // Tests that archive the source still mutate a managed catalogue entity.
-            source = repositories.getRepository(source.getRepositoryId());
         }
+        // Use the committed READY revision, also when setup ran outside a test transaction.
+        source = repositories.getRepository(source.getRepositoryId());
     }
 
     @AfterEach
@@ -128,6 +127,62 @@ class WorkspaceProvisioningBoundaryIT {
         jdbc.update("delete from repository_membership where repository_id=?", source.getRepositoryId());
         jdbc.update("delete from system_repository where repository_id=?", source.getRepositoryId());
         source = null;
+    }
+
+    @Test
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
+    void catalogueChangeInvalidatesAPreviouslyAuthorizedMembershipCommand() {
+        String member = "retained-" + UUID.randomUUID();
+        long version = memberships.assignRole(source, member, RepositoryRole.READER, USER, -1L).getVersion();
+        assertThat(jdbc.update("update system_repository set lifecycle_state='ARCHIVED',version=version+1 "
+                + "where repository_id=?", source.getRepositoryId())).isEqualTo(1);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                memberships.assignRole(source, member, RepositoryRole.CONTRIBUTOR, USER, version))
+                .isInstanceOf(org.springframework.dao.OptimisticLockingFailureException.class);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                memberships.removeMembership(source, member, USER, version))
+                .isInstanceOf(org.springframework.dao.OptimisticLockingFailureException.class);
+        assertThat(jdbc.queryForObject("select repository_role from repository_membership "
+                + "where repository_id=? and username=? and revoked_at is null",
+                String.class, source.getRepositoryId(), member)).isEqualTo("READER");
+    }
+
+    @Test
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
+    void removedMembershipVersionCannotChangeOrDeleteItsReplacement() {
+        String member = "revision-" + UUID.randomUUID();
+        var original = memberships.assignRole(source, member, RepositoryRole.READER, USER, -1L);
+        long firstVersion = original.getVersion();
+        memberships.removeMembership(source, member, USER, firstVersion);
+        assertThat(memberships.effectiveRole(source, member)).isEmpty();
+        assertThat(memberships.listMemberships(source, USER))
+                .noneMatch(membership -> member.equals(membership.getUsername()));
+
+        var revoked = memberships.membershipRevision(source, member, USER);
+        assertThat(revoked.active()).isFalse();
+        assertThat(revoked.version()).isGreaterThan(firstVersion);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                memberships.assignRole(source, member, RepositoryRole.OWNER, USER, -1L))
+                .isInstanceOf(org.springframework.dao.OptimisticLockingFailureException.class);
+        var replacement = memberships.assignRole(source, member, RepositoryRole.CONTRIBUTOR, USER, revoked.version());
+        assertThat(replacement.getVersion()).isGreaterThan(firstVersion);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                memberships.assignRole(source, member, RepositoryRole.OWNER, USER, firstVersion))
+                .isInstanceOf(org.springframework.dao.OptimisticLockingFailureException.class);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                memberships.removeMembership(source, member, USER, firstVersion))
+                .isInstanceOf(org.springframework.dao.OptimisticLockingFailureException.class);
+        assertThat(memberships.effectiveRole(source, member)).contains(RepositoryRole.CONTRIBUTOR);
+        memberships.removeMembership(source, member, USER, replacement.getVersion());
+        assertThat(memberships.effectiveRole(source, member)).isEmpty();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                memberships.assignRole(source, member, RepositoryRole.READER, USER, revoked.version()))
+                .isInstanceOf(org.springframework.dao.OptimisticLockingFailureException.class);
+        var latest = memberships.membershipRevision(source, member, USER);
+        assertThat(latest.version()).isGreaterThan(replacement.getVersion());
+        memberships.assignRole(source, member, RepositoryRole.READER, USER, latest.version());
+        assertThat(memberships.effectiveRole(source, member)).contains(RepositoryRole.READER);
     }
 
     @ParameterizedTest

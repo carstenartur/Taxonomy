@@ -1,0 +1,1 @@
+ALTER TABLE repository_membership ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMP(6);
