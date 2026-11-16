@@ -3,17 +3,22 @@ package com.taxonomy.security.access;
 import com.taxonomy.workspace.model.RepositoryRole;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.oauth2.core.oidc.OidcIdToken;
+import org.springframework.security.oauth2.core.oidc.OidcUserInfo;
 import org.springframework.security.oauth2.core.oidc.user.DefaultOidcUser;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 
@@ -57,6 +62,19 @@ class RepositoryClaimGrantProviderTest {
 
         assertEquals(RepositoryRole.MAINTAINER, provider.findRole("repo-a", "alice").orElse(null));
         assertTrue(provider.findRole("repo-a", "bob").isEmpty());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"-1, true", "0, false", "1, false"})
+    void oidcSessionCanUseRepositoryRolesFromUserInfoOnlyBeforeIdTokenExpiration(long offsetNanos, boolean allowed) {
+        var expiredAt = Instant.parse("2026-01-01T00:00:00Z");
+        var grants = new RepositoryClaimGrantProvider(Clock.fixed(expiredAt.plusNanos(offsetNanos), ZoneOffset.UTC));
+        var token = new OidcIdToken("id-token", expiredAt.minusSeconds(60), expiredAt, Map.of("sub", "alice"));
+        var userInfo = new OidcUserInfo(Map.of("sub", "alice", "taxonomy_repository_roles", Map.of("repo-a", "MAINTAINER")));
+        var user = new DefaultOidcUser(AuthorityUtils.createAuthorityList("ROLE_READER"), token, userInfo);
+        authenticate(new OAuth2AuthenticationToken(user, user.getAuthorities(), "keycloak"));
+
+        assertEquals(allowed ? RepositoryRole.MAINTAINER : null, grants.findRole("repo-a", "alice").orElse(null));
     }
 
     @Test

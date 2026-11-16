@@ -9,13 +9,24 @@ import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Component;
 
+import java.time.Clock;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 /** Reads repository grants from authenticated identity-provider claims. */
 @Component
 public class RepositoryClaimGrantProvider implements RepositoryRoleGrantProvider {
     private static final String CLAIM = "taxonomy_repository_roles";
+    private final Clock clock;
+
+    public RepositoryClaimGrantProvider() {
+        this(Clock.systemUTC());
+    }
+
+    public RepositoryClaimGrantProvider(Clock clock) {
+        this.clock = Objects.requireNonNull(clock);
+    }
 
     @Override
     public Optional<RepositoryRole> findRole(String repositoryId, String actor) {
@@ -33,6 +44,11 @@ public class RepositoryClaimGrantProvider implements RepositoryRoleGrantProvider
             claim = jwt.getToken().getClaims().get(CLAIM);
         } else if (authentication instanceof OAuth2AuthenticationToken oauth2
                 && oauth2.getPrincipal() instanceof OidcUser oidc) {
+            // A retained browser session can outlive the assertion and its associated UserInfo.
+            var expiresAt = oidc.getIdToken().getExpiresAt();
+            if (expiresAt == null || !expiresAt.isAfter(clock.instant())) {
+                return Optional.empty();
+            }
             claim = oidc.getClaims().get(CLAIM);
         } else {
             return Optional.empty();
