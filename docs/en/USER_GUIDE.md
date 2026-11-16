@@ -897,7 +897,7 @@ The Proposal Review Queue shows all proposals with filtering by status. Use the 
 
 ![Proposal Review Queue — all proposals](../images/28-proposal-review-queue.png)
 
-Open the working architecture for the target branch. Under **Pending**, accepted proposals from the shared repository appear in a separate section above the editor. **All** shows those proposals alongside the other decisions. When viewing the current analysis, you can find the same list under **Architecture → Relations**. For each visible proposal, the preview shows the evidence on the default branch and the selected target revision. If the proposal was accepted on `main` and its relation is missing on `draft`, you can adopt that relation on `draft`. The preview also shows when the target already contains the decision or has a conflicting relation. The shared inbox counts the original acceptance once.
+Open the working architecture for the target branch. Under **Pending**, accepted proposals from the shared repository appear in a separate section above the editor. **All** shows those proposals alongside the other decisions. When viewing the current analysis, you can find the same list under **Architecture → Relations**. For each visible proposal, the preview shows the affected relation and the selected target revision. The acceptance link opens the verified source checkpoint in a new tab, focused on the source element. If the proposal was accepted on `main` and its relation is missing on `draft`, you can adopt that relation on `draft`. The preview also shows when the target already contains the decision or has a conflicting relation. The shared inbox counts the original acceptance once.
 
 ### Accepting or Rejecting a Proposal
 
@@ -1233,6 +1233,12 @@ The **🎯 Req. Impact** button in the Graph Explorer panel runs a transitive im
 1. First, run an analysis (see [Section 4](#4-analyzing-a-business-requirement)).
 2. Click **🎯 Req. Impact** in the Graph Explorer.
 3. The results show impacted elements and the relationships traversed.
+
+To revisit the evidence from a saved requirement analysis, open the requirement's
+**Analyses** tab and select the saved result. **Impact analysis evidence** opens
+the requirement version used for that result. Its architecture link opens the
+recorded Git checkpoint or the exact retained model revision when the analysis
+used a working revision with no verified checkpoint.
 
 ---
 

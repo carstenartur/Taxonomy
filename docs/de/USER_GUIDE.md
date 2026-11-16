@@ -921,7 +921,7 @@ Die Vorschlags-Überprüfungswarteschlange zeigt alle Vorschläge mit Filterung 
 
 ![Vorschlags-Überprüfungswarteschlange — alle Vorschläge](../images/28-proposal-review-queue.png)
 
-Öffnen Sie die Arbeitsarchitektur des Zielbranches. Unter **Ausstehend** stehen angenommene Vorschläge aus dem gemeinsamen Repository in einem eigenen Abschnitt oberhalb des Editors. Unter **Alle** erscheinen diese Vorschläge zusammen mit den übrigen Entscheidungen. In der aktuellen Analyse finden Sie dieselbe Liste unter **Architektur → Beziehungen**. Für die sichtbaren Vorschläge zeigt die Ansicht den belegten Stand des Standardbranches und den geprüften Zielstand. Wurde der Vorschlag auf `main` angenommen und fehlt die Relation auf `entwurf`, übernimmt **Auf entwurf übernehmen** diese einzelne Relation. Die Vorschau zeigt auch, ob das Ziel die Entscheidung schon enthält oder eine abweichende Relation vorliegt. Die gemeinsame Inbox zählt die ursprüngliche Annahme einmal.
+Öffnen Sie die Arbeitsarchitektur des Zielbranches. Unter **Ausstehend** stehen angenommene Vorschläge aus dem gemeinsamen Repository in einem eigenen Abschnitt oberhalb des Editors. Unter **Alle** erscheinen diese Vorschläge zusammen mit den übrigen Entscheidungen. In der aktuellen Analyse finden Sie dieselbe Liste unter **Architektur → Beziehungen**. Die Vorschau zeigt die betroffene Beziehung und den geprüften Zielstand. Der Link zur Annahme öffnet den belegten Git-Stand des Standardbranches in einem neuen Tab und wählt das Quellelement aus. Wurde der Vorschlag auf `main` angenommen und fehlt die Relation auf `entwurf`, übernimmt **Auf entwurf übernehmen** diese einzelne Relation. Die Vorschau zeigt auch, ob das Ziel die Entscheidung schon enthält oder eine abweichende Relation vorliegt. Die gemeinsame Inbox zählt die ursprüngliche Annahme einmal.
 
 ### Annehmen oder Ablehnen eines Vorschlags
 
@@ -1261,6 +1261,13 @@ Die Schaltfläche **🎯 Req. Impact** im Graph-Explorer-Panel führt eine trans
 1. Führen Sie zunächst eine Analyse durch (siehe [Abschnitt 4](#4-analyzing-a-business-requirement)).
 2. Klicken Sie auf **🎯 Req. Impact** im Graph-Explorer.
 3. Die Ergebnisse zeigen betroffene Elemente und die durchlaufenen Beziehungen.
+
+Öffnen Sie für die Belege einer gespeicherten Anforderungsanalyse das Register
+**Analysen** in der Anforderung und wählen Sie das gespeicherte Ergebnis.
+**Belege zur Auswirkungsanalyse** führt zur damals analysierten
+Anforderungsversion. Der Architekturlink öffnet den aufgezeichneten Git-Stand
+oder bei einer Arbeitsrevision ohne belegten Git-Stand die genaue gespeicherte
+Modellrevision.
 
 ---
 

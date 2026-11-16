@@ -384,6 +384,8 @@
     document.addEventListener('click',function (event) {
         if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
         var link = event.target.closest?.('a[href]'); if (!link) return;
+        var browsingContext = link.getAttribute('target');
+        if (browsingContext && browsingContext.toLowerCase() !== '_self') return;
         var target = new URL(link.href,location.href);
         if (target.origin !== location.origin) return;
         var source = parseSource(target), legacy = /\/architecture\/(editor|workbench)$/.test(target.pathname);

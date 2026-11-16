@@ -2372,7 +2372,11 @@
                 : p.status === 'ACCEPTED' && Number.isSafeInteger(p.id) && p.id > 0
                     ? '<span class="badge bg-success proposal-accepted-status">' + t('quality.accepted') + '</span> ' +
                         '<button type="button" class="btn btn-sm btn-outline-primary proposal-adoption-preview" data-id="' +
-                        p.id + '"' + (p.central ? ' data-central="true"' : '') + ' aria-controls="proposal-adoption-' + p.id + '">' +
+                        p.id + '"' + (p.central ? ' data-central="true"' : '') +
+                        ' data-source-element="' + escapeHtml(p.sourceCode || '') + '"' +
+                        ' data-target-element="' + escapeHtml(p.targetCode || '') + '"' +
+                        ' data-relation-type="' + escapeHtml(p.relationType || '') + '"' +
+                        ' aria-controls="proposal-adoption-' + p.id + '">' +
                         t('browse.proposals.adoption.inspect') + '</button><div class="text-wrap small" role="status" id="proposal-adoption-' +
                         p.id + '"></div>'
                     : '<span class="badge bg-secondary">' + escapeHtml(p.status) + '</span>';
@@ -2490,10 +2494,24 @@
                 return;
             }
             const source = document.createElement('div');
-            source.textContent = t(preview.reviewedOnSourceBranch === true
+            const sourceText = t(preview.reviewedOnSourceBranch === true
                 ? 'browse.proposals.adoption.reviewed' : 'browse.proposals.adoption.recorded',
                 preview.sourceBranch, preview.sourceCommit.slice(0, 8));
             source.title = preview.sourceCommit;
+            const {sourceElement, targetElement, relationType} = button.dataset;
+            const sourceUrl = window.TaxonomyArchitectureWorkflow?.checkpointUrl?.({
+                repositoryId: preview.targetRepositoryId, workspaceScopeKey: '__shared__',
+                branch: preview.sourceBranch, commit: preview.sourceCommit
+            }, sourceElement);
+            if (sourceUrl) {
+                const link = document.createElement('a');
+                link.className = 'proposal-adoption-source-link';
+                link.href = sourceUrl;
+                link.target = '_blank';
+                link.rel = 'noopener';
+                link.textContent = sourceText;
+                source.appendChild(link);
+            } else source.textContent = sourceText;
             const target = document.createElement('div');
             if (missingTarget) {
                 target.textContent = t('browse.proposals.adoption.missingHead', preview.targetBranch);
@@ -2501,8 +2519,11 @@
                 target.textContent = t('browse.proposals.adoption.target', preview.targetBranch, preview.targetCommit.slice(0, 8));
                 target.title = preview.targetCommit;
             }
+            const relation = document.createElement('div');
+            relation.className = 'proposal-adoption-relation';
+            relation.textContent = t('browse.proposals.adoption.relation', sourceElement, relationType, targetElement);
             details.textContent = '';
-            details.append(source, target);
+            details.append(source, target, relation);
             if (missingTarget) return;
             const canApply = state === 'AVAILABLE' && preview.writable === true && !readOnly();
             if (!canApply) {
