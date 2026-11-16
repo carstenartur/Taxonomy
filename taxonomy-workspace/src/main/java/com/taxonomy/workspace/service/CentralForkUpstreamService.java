@@ -1,5 +1,6 @@
 package com.taxonomy.workspace.service;
 
+import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.storage.GitUpstreamRef;
 import org.eclipse.jgit.lib.ObjectId;
@@ -32,6 +33,12 @@ public class CentralForkUpstreamService {
 
     public String rebasePlanRefTag(String forkId, String actor, String branch) throws IOException {
         return UpstreamRebasePlan.readRefTag(open(forkId, actor), forkId, null, branch);
+    }
+
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = IOException.class)
+    public DslGitRepository.RebaseReplay rebase(String forkId, String actor, String branch,
+                                                UpstreamRebasePlan.ApplyRequest request) throws IOException {
+        return UpstreamRebasePlan.apply(open(forkId, actor), forkId, null, branch, request);
     }
 
     public WorkspaceUpstreamService.Status fetch(String forkId, String actor, WorkspaceUpstreamService.Request request)
