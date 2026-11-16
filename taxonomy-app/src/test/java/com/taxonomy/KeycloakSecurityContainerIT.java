@@ -10,8 +10,10 @@ import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.openqa.selenium.By;
+import org.openqa.selenium.ElementClickInterceptedException;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.Keys;
+import org.openqa.selenium.StaleElementReferenceException;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.ui.ExpectedConditions;
@@ -301,8 +303,13 @@ class KeycloakSecurityContainerIT {
         // original wait/assertion. The trace contains no identities, credentials or tokens.
         ((JavascriptExecutor) driver).executeScript("""
                 window.taxonomyAccountEventTrace = [];
+                window.taxonomyAccountSummaryClicked = false;
                 const account = document.getElementById('applicationAccount');
+                const summary = account?.querySelector(':scope > summary');
                 const record = (name, event) => {
+                    if (name === 'click' && event.isTrusted && summary?.contains(event.target)) {
+                        window.taxonomyAccountSummaryClicked = true;
+                    }
                     const focus = document.activeElement;
                     const trace = window.taxonomyAccountEventTrace;
                     if (trace.length >= 64) return;
@@ -313,8 +320,6 @@ class KeycloakSecurityContainerIT {
                         focused: focus?.id || focus?.tagName || '',
                         related: event?.relatedTarget?.id || event?.relatedTarget?.tagName || '',
                         trusted: event?.isTrusted === true,
-                        summaryEnter: name === 'keydown' && event.isTrusted && event.key === 'Enter'
-                            && event.target === account?.querySelector(':scope > summary'),
                         compact: window.matchMedia('(max-width: 1023.98px)').matches,
                         navigationOpen: document.getElementById('applicationNavigationMenu')?.open === true
                     });
@@ -324,7 +329,7 @@ class KeycloakSecurityContainerIT {
                         'focusout', 'mouseup', 'click', 'keydown', 'keyup', 'toggle']) {
                     document.addEventListener(type, event => {
                         if (type === 'toggle' ? event.target !== account
-                                : type !== 'focusin' && !account?.contains(event.target)) return;
+                                : type !== 'focusin' && type !== 'pointerdown' && !account?.contains(event.target)) return;
                         record(type, event);
                     }, true);
                 }
@@ -332,13 +337,9 @@ class KeycloakSecurityContainerIT {
         var wait = new WebDriverWait(driver, Duration.ofSeconds(30));
         // The Projects heading renders while the initial portfolio load still covers the toolbar.
         wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("portfolioBusy")));
-        var accountSummary = wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("#applicationAccount > summary")));
-        // A native WebDriver pointer click exercises the complete OIDC-backed page;
-        // keyboard activation is independently asserted on the production fragment in
-        // application-chrome.browser.test.mjs (without a JavaScript-synthesized click).
-        accountSummary.click();
         WebElement signOut;
         try {
+            clickAccountSummary(wait);
             signOut = wait.until(ExpectedConditions.elementToBeClickable(
                     By.cssSelector("#applicationLogoutForm button")));
         } catch (org.openqa.selenium.TimeoutException exception) {
@@ -385,9 +386,26 @@ class KeycloakSecurityContainerIT {
 
     private boolean accountSummaryReceivedTrustedClick() {
         return Boolean.TRUE.equals(((JavascriptExecutor) driver).executeScript(
-                "return window.taxonomyAccountEventTrace?.some(event => "
-                        + "event.name === 'click' && event.trusted === true "
-                        + "&& event.target === 'SUMMARY') === true;"));
+                "return window.taxonomyAccountSummaryClicked === true;"));
+    }
+
+    private void clickAccountSummary(WebDriverWait wait) {
+        wait.ignoring(ElementClickInterceptedException.class).ignoring(StaleElementReferenceException.class)
+                .until(browser -> {
+                    // Stop when the browser delivers the click, even if the menu fails to open.
+                    if (accountSummaryReceivedTrustedClick()) return true;
+                    WebElement summary = browser.findElement(By.cssSelector("#applicationAccount > summary"));
+                    if (!summary.isDisplayed() || !summary.isEnabled()) return false;
+                    if (!Boolean.TRUE.equals(((JavascriptExecutor) browser).executeScript("""
+                            const summary = arguments[0];
+                            summary.scrollIntoView({behavior:'instant', block:'center', inline:'nearest'});
+                            const rect = summary.getBoundingClientRect();
+                            return summary.contains(document.elementFromPoint(
+                                rect.left + rect.width / 2, rect.top + rect.height / 2));
+                            """, summary))) return false;
+                    summary.click();
+                    return accountSummaryReceivedTrustedClick();
+                });
     }
 
     @Test
