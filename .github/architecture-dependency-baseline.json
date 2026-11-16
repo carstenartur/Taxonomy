@@ -265,7 +265,7 @@
       "fromPackage": "com.taxonomy.backup.restore",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.backup",
-      "classDependencyCount": 67
+      "classDependencyCount": 70
     },
     {
       "fromContext": "app-composition",
@@ -1070,7 +1070,7 @@
       "fromPackage": "com.taxonomy.security.access",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 10
+      "classDependencyCount": 11
     },
     {
       "fromContext": "app-composition",
@@ -1511,7 +1511,7 @@
       "fromPackage": "com.taxonomy.relations.controller",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.versioning.service",
-      "classDependencyCount": 1
+      "classDependencyCount": 4
     },
     {
       "fromContext": "knowledge",
@@ -1525,7 +1525,7 @@
       "fromPackage": "com.taxonomy.relations.controller",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 61
+      "classDependencyCount": 63
     },
     {
       "fromContext": "knowledge",
@@ -1539,7 +1539,7 @@
       "fromPackage": "com.taxonomy.relations.service",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 73
+      "classDependencyCount": 85
     },
     {
       "fromContext": "knowledge",

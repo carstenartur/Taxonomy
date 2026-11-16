@@ -84,5 +84,30 @@ class BranchGraphVectorBuildTest {
         assertThat(submitted).anyMatch(text -> text.contains("Outgoing: communicates with Frozen IP"));
         assertThat(submitted).anyMatch(text -> text.contains("Incoming: communicates with Frozen CP"));
         verify(authority).verifyPublication(context,source);
+        when(store.beginCaptured(context,source,modelIdentity,"generation","old")).thenReturn("generation");
+        assertThat(vectors.rebuild(context,commit,source.key(),"old","generation",() -> {}))
+                .isEqualTo(new BranchGraphVectors.Status("READY","generation",commit,model.indexKey(),roots.size(),1));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> vectors.rebuild(context,commit,"changed-source","old","generation",() -> {}))
+                .isInstanceOf(BranchGraphVectorStore.GenerationChanged.class);
+        var ready = new BranchGraphVectorStore.Status(BranchGraphVectorStore.State.READY,
+                "generation",commit,model.indexKey(),roots.size(),1);
+        var building = new BranchGraphVectorStore.Status(BranchGraphVectorStore.State.BUILDING,
+                "generation",commit,model.indexKey(),0,0);
+        when(store.status(context,source)).thenReturn(building, ready, ready);
+        var checked = new java.util.concurrent.atomic.AtomicBoolean();
+        assertThat(vectors.rebuild(context,commit,source.key(),"old","generation",() -> checked.set(true)).generation())
+                .isEqualTo("generation");
+        assertThat(checked.get()).isTrue();
+        var changedGeneration = new BranchGraphVectorStore.Status(BranchGraphVectorStore.State.READY,
+                "other",commit,model.indexKey(),roots.size(),1);
+        when(store.status(context,source)).thenReturn(ready, changedGeneration, changedGeneration);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> vectors.rebuild(context,commit,source.key(),"old","generation",() -> {}))
+                .isInstanceOf(BranchGraphVectorStore.GenerationChanged.class);
+        when(store.status(context,source)).thenReturn(ready);
+
+        var changed = new RelationProjectionOperationsService.RebuildHeadConflictException(commit, "c".repeat(40));
+        org.mockito.Mockito.doThrow(changed).when(authority).verifyPublication(context, source);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> vectors.rebuild(context, commit)).isSameAs(changed);
+        verify(store).fail(context, "generation");
     }
 }

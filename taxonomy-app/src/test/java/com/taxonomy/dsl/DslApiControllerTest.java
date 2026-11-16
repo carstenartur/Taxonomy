@@ -826,6 +826,7 @@ class DslApiControllerTest implements AnalysisCatalogueSourceFixture {
     // --- History index + search endpoints ---
 
     @Test
+    @org.springframework.security.test.context.support.WithUserDetails("admin")
     void indexAndSearchHistory() throws Exception {
         String dsl = """
                 element CP-9401 type Capability {

@@ -1,5 +1,8 @@
 package com.taxonomy.relations.controller;
 
+import com.taxonomy.versioning.service.HistoryIndexJournal;
+import com.taxonomy.versioning.service.HistoryIndexMaintenance;
+import com.taxonomy.workspace.service.DerivedProjection;
 import com.taxonomy.relations.controller.RelationProjectionOperationsApiController.ProjectionOperationResponse;
 import com.taxonomy.relations.controller.RelationProjectionOperationsApiController.RecoveryResponse;
 import com.taxonomy.relations.model.RelationProjectionRecovery.RecoveryStatus;
@@ -10,10 +13,8 @@ import com.taxonomy.relations.service.RelationBranchProjectionRebuildService.Reb
 import com.taxonomy.relations.service.RelationProjectionOperationsService;
 import com.taxonomy.relations.service.RelationProjectionOperationsService.ProjectionStatus;
 import com.taxonomy.relations.service.RelationProjectionOperationsService.RebuildHeadConflictException;
-import com.taxonomy.relations.service.RelationProjectionOperationsService.RebuildOperation;
 import com.taxonomy.relations.service.RelationProjectionOperationsService.RebuildVerificationException;
 import com.taxonomy.relations.service.RelationProjectionOperationsService.RecoveryReconciliationPendingException;
-import com.taxonomy.relations.service.RelationProjectionRecoveryService.ReconciliationResult;
 import com.taxonomy.relations.service.RelationProjectionRecoveryService.RecoveryRecord;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
@@ -21,7 +22,6 @@ import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import com.taxonomy.workspace.service.WorkspaceManager;
-import com.taxonomy.workspace.service.BranchHeadConflictException;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryMembershipService;
 import com.taxonomy.workspace.service.RepositoryScope;
@@ -74,6 +74,7 @@ class RelationProjectionOperationsApiControllerBehaviorTest {
             "repo-selected", "workspace-selected", "review/exact", "alice");
 
     @Mock private RelationProjectionOperationsService operationsService;
+    @Mock private HistoryIndexMaintenance maintenance;
     @Mock private WorkspaceResolver workspaceResolver;
     @Mock private SystemRepositoryService repositoryService;
     @Mock private RepositoryMembershipService membershipService;
@@ -86,7 +87,7 @@ class RelationProjectionOperationsApiControllerBehaviorTest {
         SecurityContextHolder.clearContext();
         controller = new RelationProjectionOperationsApiController(
                 operationsService, workspaceResolver, repositoryService,
-                membershipService, vectors);
+                membershipService, vectors, maintenance);
     }
 
     @Test
@@ -94,7 +95,11 @@ class RelationProjectionOperationsApiControllerBehaviorTest {
         when(workspaceResolver.resolveUnambiguousRepositoryForRead()).thenReturn(WORKSPACE);
         var ready = new com.taxonomy.relations.service.BranchGraphVectors.Status("READY", "generation", HEAD, "model", 2, 1);
         when(vectors.inspect(WORKSPACE)).thenReturn(ready);
-        when(vectors.rebuild(WORKSPACE, HEAD)).thenReturn(ready);
+        var result = new DerivedProjection.Result("generation", "model", 2, 1, null, null, null);
+        when(maintenance.submitProjection(WORKSPACE, DerivedProjection.Kind.VECTOR_BUILD, HEAD, null, null))
+                .thenReturn(completed(WORKSPACE, result));
+        when(maintenance.submitProjection(WORKSPACE, DerivedProjection.Kind.VECTOR_PURGE, HEAD, null, null))
+                .thenReturn(completed(WORKSPACE, new DerivedProjection.Result(null, null, 0, 0, null, null, null)));
         var inspected = controller.vectorStatus();
         assertThat(inspected.getBody()).isEqualTo(ready);
         assertThat(inspected.getHeaders().getFirst("X-Taxonomy-Repository")).isEqualTo(WORKSPACE.repositoryId());
@@ -103,7 +108,7 @@ class RelationProjectionOperationsApiControllerBehaviorTest {
         assertThat(controller.rebuildVectors(null).getStatusCode()).isEqualTo(HttpStatus.PRECONDITION_REQUIRED);
         assertThat(controller.rebuildVectors(ETAG).getHeaders().getETag()).isEqualTo(ETAG);
         assertThat(controller.purgeVectors(ETAG).getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
-        verify(vectors).purge(WORKSPACE, HEAD);
+        verify(maintenance).submitProjection(WORKSPACE, DerivedProjection.Kind.VECTOR_PURGE, HEAD, null, null);
         verify(workspaceResolver, never()).resolveCurrentRepositoryContext();
     }
 
@@ -116,7 +121,7 @@ class RelationProjectionOperationsApiControllerBehaviorTest {
         assertThatThrownBy(() -> controller.rebuild(ETAG, null)).isSameAs(changed);
         assertThatThrownBy(() -> controller.rebuildVectors(ETAG)).isSameAs(changed);
         assertThatThrownBy(() -> controller.purgeVectors(ETAG)).isSameAs(changed);
-        verifyNoInteractions(operationsService, vectors, repositoryService, membershipService);
+        verifyNoInteractions(maintenance, operationsService, vectors, repositoryService, membershipService);
     }
 
     @Test
@@ -130,7 +135,7 @@ class RelationProjectionOperationsApiControllerBehaviorTest {
         var resolver = new WorkspaceResolver(new WorkspaceContextResolver(
                 manager, repositoryService, mock(UserWorkspaceRepository.class), membershipService));
         var endpoint = new RelationProjectionOperationsApiController(
-                operationsService, resolver, repositoryService, membershipService, vectors);
+                operationsService, resolver, repositoryService, membershipService, vectors, maintenance);
         authenticate("ROLE_ADMIN");
         when(repositoryService.getPrimaryRepository()).thenReturn(primary);
         when(repositoryService.listActiveRepositories()).thenReturn(List.of(primary, second));
@@ -157,7 +162,7 @@ class RelationProjectionOperationsApiControllerBehaviorTest {
             RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(moved));
             assertThatThrownBy(() -> endpoint.rebuild(ETAG, null)).isInstanceOfSatisfying(ResponseStatusException.class,
                     failure -> assertThat(failure.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
-            verifyNoInteractions(operationsService, vectors);
+            verifyNoInteractions(maintenance, operationsService, vectors);
         } finally {
             RequestContextHolder.resetRequestAttributes();
         }
@@ -195,7 +200,7 @@ class RelationProjectionOperationsApiControllerBehaviorTest {
                         first, last)),
                 null, null, 1, null, null));
         verify(operationsService).inspect(same(WORKSPACE));
-        verifyNoMoreInteractions(operationsService);
+        verifyNoMoreInteractions(operationsService, maintenance);
         verifyNoInteractions(repositoryService, membershipService);
     }
 
@@ -216,7 +221,7 @@ class RelationProjectionOperationsApiControllerBehaviorTest {
                 "fork-selected", null, "review/fork", "INSPECTED", "BRANCH_MISSING",
                 null, null, 0, List.of(), null, null, 0, null, null));
         verify(operationsService).inspect(same(fork));
-        verifyNoMoreInteractions(operationsService);
+        verifyNoMoreInteractions(operationsService, maintenance);
         verifyNoInteractions(repositoryService, membershipService);
     }
 
@@ -257,7 +262,8 @@ class RelationProjectionOperationsApiControllerBehaviorTest {
         authenticate("ROLE_USER", "ROLE_ADMIN");
         when(repositoryService.getRepository("central-selected"))
                 .thenReturn(mock(SystemRepository.class));
-        when(operationsService.rebuild(writable, HEAD)).thenReturn(rebuilt(writable));
+        when(maintenance.submitProjection(writable, DerivedProjection.Kind.RELATION, HEAD, null, null))
+                .thenReturn(completed(writable, new DerivedProjection.Result(null, null, 0, 0, 2, 1, 0)));
 
         var response = controller.rebuild("  " + ETAG.toUpperCase() + "  ", null);
 
@@ -267,7 +273,7 @@ class RelationProjectionOperationsApiControllerBehaviorTest {
                 "central-selected", null, "review/central", "REBUILT", "READY",
                 HEAD, HEAD, 0, List.of(), 2, 1, 0, null, null));
         verify(repositoryService).getRepository("central-selected");
-        verify(operationsService).rebuild(writable, HEAD);
+        verify(maintenance).submitProjection(writable, DerivedProjection.Kind.RELATION, HEAD, null, null);
         verifyNoMoreInteractions(operationsService, repositoryService);
         verifyNoInteractions(membershipService);
     }
@@ -296,7 +302,7 @@ class RelationProjectionOperationsApiControllerBehaviorTest {
     @Test
     void workspaceRebuildReturnsReconciliationCountsWithoutChangingItsContext() throws Exception {
         select(WORKSPACE);
-        when(operationsService.rebuild(WORKSPACE, HEAD)).thenReturn(rebuilt(WORKSPACE));
+        when(maintenance.submitProjection(WORKSPACE, DerivedProjection.Kind.RELATION, HEAD, null, null)).thenReturn(completed(WORKSPACE, new DerivedProjection.Result(null, null, 0, 0, 2, 1, 0)));
 
         var response = controller.rebuild(ETAG, null);
 
@@ -305,8 +311,8 @@ class RelationProjectionOperationsApiControllerBehaviorTest {
         assertThat(response.getBody()).isEqualTo(new ProjectionOperationResponse(
                 "repo-selected", "workspace-selected", "review/exact", "REBUILT", "READY",
                 HEAD, HEAD, 0, List.of(), 2, 1, 0, null, null));
-        verify(operationsService).rebuild(same(WORKSPACE), eq(HEAD));
-        verifyNoMoreInteractions(operationsService);
+        verify(maintenance).submitProjection(WORKSPACE, DerivedProjection.Kind.RELATION, HEAD, null, null);
+        verifyNoMoreInteractions(operationsService, maintenance);
         verifyNoInteractions(repositoryService, membershipService);
     }
 
@@ -316,7 +322,7 @@ class RelationProjectionOperationsApiControllerBehaviorTest {
 
         assertEmpty(controller.rebuild(null, null), HttpStatus.PRECONDITION_REQUIRED);
 
-        verifyNoInteractions(operationsService, repositoryService, membershipService);
+        verifyNoInteractions(maintenance, operationsService, repositoryService, membershipService);
     }
 
     @Test
@@ -324,8 +330,9 @@ class RelationProjectionOperationsApiControllerBehaviorTest {
         select(WORKSPACE);
 
         assertEmpty(controller.rebuild(ETAG, "*"), HttpStatus.BAD_REQUEST);
+        assertEmpty(controller.rebuild(null, "*"), HttpStatus.BAD_REQUEST);
 
-        verifyNoInteractions(operationsService, repositoryService, membershipService);
+        verifyNoInteractions(maintenance, operationsService, repositoryService, membershipService);
     }
 
     @ParameterizedTest
@@ -333,7 +340,7 @@ class RelationProjectionOperationsApiControllerBehaviorTest {
     void staleRebuildReturnsBothHeadsAndOnlyAnExistingCurrentHeadEtag(
             Exception failure, String actual) throws Exception {
         select(WORKSPACE);
-        when(operationsService.rebuild(WORKSPACE, HEAD)).thenThrow(failure);
+        when(maintenance.submitProjection(WORKSPACE, DerivedProjection.Kind.RELATION, HEAD, null, null)).thenThrow(failure);
 
         var response = controller.rebuild(ETAG, null);
 
@@ -343,8 +350,8 @@ class RelationProjectionOperationsApiControllerBehaviorTest {
         assertThat(response.getBody()).isEqualTo(new ProjectionOperationResponse(
                 null, null, null, "PRECONDITION_FAILED", null, actual, null,
                 0, List.of(), null, null, null, HEAD, actual));
-        verify(operationsService).rebuild(WORKSPACE, HEAD);
-        verifyNoMoreInteractions(operationsService);
+        verify(maintenance).submitProjection(WORKSPACE, DerivedProjection.Kind.RELATION, HEAD, null, null);
+        verifyNoMoreInteractions(operationsService, maintenance);
     }
 
     @ParameterizedTest
@@ -354,7 +361,7 @@ class RelationProjectionOperationsApiControllerBehaviorTest {
         select(WORKSPACE);
         RebuildResult rebuild = new RebuildResult(
                 "repo-selected", "workspace-selected", "review/exact", HEAD, 2);
-        when(operationsService.rebuild(WORKSPACE, HEAD))
+        when(maintenance.submitProjection(WORKSPACE, DerivedProjection.Kind.RELATION, HEAD, null, null))
                 .thenThrow(new RebuildVerificationException(rebuild, readiness));
 
         var response = controller.rebuild(ETAG, null);
@@ -366,8 +373,8 @@ class RelationProjectionOperationsApiControllerBehaviorTest {
                 "repo-selected", "workspace-selected", "review/exact", "VERIFICATION_FAILED",
                 readiness.state().name(), readiness.currentHeadCommit(), readiness.projectedCommit(),
                 2, List.of(), null, null, null, null, null));
-        verify(operationsService).rebuild(WORKSPACE, HEAD);
-        verifyNoMoreInteractions(operationsService);
+        verify(maintenance).submitProjection(WORKSPACE, DerivedProjection.Kind.RELATION, HEAD, null, null);
+        verifyNoMoreInteractions(operationsService, maintenance);
     }
 
     @Test
@@ -375,7 +382,7 @@ class RelationProjectionOperationsApiControllerBehaviorTest {
         select(WORKSPACE);
         RebuildResult rebuild = new RebuildResult(
                 "repo-selected", "workspace-selected", "review/exact", HEAD, 2);
-        when(operationsService.rebuild(WORKSPACE, HEAD)).thenThrow(
+        when(maintenance.submitProjection(WORKSPACE, DerivedProjection.Kind.RELATION, HEAD, null, null)).thenThrow(
                 new RecoveryReconciliationPendingException(
                         rebuild, new IllegalStateException("Recovery store unavailable")));
 
@@ -387,8 +394,8 @@ class RelationProjectionOperationsApiControllerBehaviorTest {
                 "repo-selected", "workspace-selected", "review/exact",
                 "RECOVERY_RECONCILIATION_PENDING", null, HEAD, HEAD, 2,
                 List.of(), null, null, null, null, null));
-        verify(operationsService).rebuild(WORKSPACE, HEAD);
-        verifyNoMoreInteractions(operationsService);
+        verify(maintenance).submitProjection(WORKSPACE, DerivedProjection.Kind.RELATION, HEAD, null, null);
+        verifyNoMoreInteractions(operationsService, maintenance);
     }
 
     @ParameterizedTest
@@ -396,19 +403,18 @@ class RelationProjectionOperationsApiControllerBehaviorTest {
     void rebuildFailuresHaveStableStatusCodesAndDoNotRetry(
             Exception failure, HttpStatus status) throws Exception {
         select(WORKSPACE);
-        when(operationsService.rebuild(WORKSPACE, HEAD)).thenThrow(failure);
+        when(maintenance.submitProjection(WORKSPACE, DerivedProjection.Kind.RELATION, HEAD, null, null)).thenThrow(failure);
 
         assertEmpty(controller.rebuild(ETAG, null), status);
 
-        verify(operationsService).rebuild(WORKSPACE, HEAD);
-        verifyNoMoreInteractions(operationsService);
+        verify(maintenance).submitProjection(WORKSPACE, DerivedProjection.Kind.RELATION, HEAD, null, null);
+        verifyNoMoreInteractions(operationsService, maintenance);
         verifyNoInteractions(repositoryService, membershipService);
     }
 
     private static Stream<Arguments> headConflicts() {
         return Stream.of(
-                Arguments.of(new BranchHeadConflictException(
-                        "review/exact", HEAD, PREVIOUS, "Branch advanced"), PREVIOUS),
+                Arguments.of(new RebuildHeadConflictException(HEAD, PREVIOUS), PREVIOUS),
                 Arguments.of(new RebuildHeadConflictException(HEAD, null), null));
     }
 
@@ -423,18 +429,41 @@ class RelationProjectionOperationsApiControllerBehaviorTest {
                 Arguments.of(new BranchProjectionSourceException("Missing Git source"), HttpStatus.CONFLICT),
                 Arguments.of(new IllegalArgumentException("Invalid branch context"), HttpStatus.BAD_REQUEST),
                 Arguments.of(new IllegalStateException("Projection storage conflict"), HttpStatus.CONFLICT),
-                Arguments.of(new IOException("Git storage unavailable"), HttpStatus.SERVICE_UNAVAILABLE));
+                Arguments.of(new DerivedProjection.SourceUnavailable(new IOException("Git storage unavailable")), HttpStatus.SERVICE_UNAVAILABLE));
     }
 
     private static Readiness ready() {
         return new Readiness(ReadinessState.READY, HEAD, HEAD, List.of());
     }
 
-    private static RebuildOperation rebuilt(RepositoryContext context) {
-        return new RebuildOperation(
-                new RebuildResult(context.repositoryId(), context.workspaceId(),
-                        context.branch(), HEAD, 0),
-                new ReconciliationResult(HEAD, 2, 1, 0), ready());
+    @Test void scopedOperationStatusRetryAndArchivePreserveTheReceiptAndTerminalDecision() {
+        select(WORKSPACE);
+        var receipt = completed(WORKSPACE, new DerivedProjection.Result(null, null, 0, 1, null, null, null)).receipt();
+        when(maintenance.projectionStatus(WORKSPACE, "id")).thenReturn(receipt);
+        when(maintenance.retryProjection(WORKSPACE, "id")).thenReturn(receipt);
+        when(maintenance.archiveProjection(WORKSPACE, "id")).thenReturn(receipt);
+        assertThat(controller.operation("id").getBody()).isEqualTo(receipt);
+        assertThat(controller.retry("id").getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(controller.archive("id").getBody()).isEqualTo(receipt);
+        for (var state : List.of("DENIED","AWAITING_AUTHORIZATION","MANUAL_REVIEW","SUPERSEDED","RETRYABLE")) {
+            var pending = new HistoryIndexJournal.Receipt("id","cause",HistoryIndexJournal.Kind.RELATION,
+                    WORKSPACE.repositoryId(),WORKSPACE.workspaceId(),WORKSPACE.branch(),HEAD,"owner",state,1,null,"executor","reason",1L,2L,null,null);
+            when(maintenance.retryProjection(WORKSPACE,"id")).thenReturn(pending);
+            var response = controller.retry("id");
+            assertThat(response.getBody()).isEqualTo(pending);
+            assertThat(response.getStatusCode()).isEqualTo(switch (state) {
+                case "DENIED", "AWAITING_AUTHORIZATION" -> HttpStatus.FORBIDDEN;
+                case "MANUAL_REVIEW", "SUPERSEDED" -> HttpStatus.CONFLICT;
+                default -> HttpStatus.ACCEPTED;
+            });
+        }
+    }
+
+    private static HistoryIndexMaintenance.ProjectionOutcome completed(RepositoryContext context, DerivedProjection.Result result) {
+        var receipt = new HistoryIndexJournal.Receipt("retained-operation", "cause", HistoryIndexJournal.Kind.RELATION,
+                context.repositoryId(), context.workspaceId(), context.branch(), HEAD, "verified", "COMPLETED",
+                1, result.relations(), "verified", "APPLIED", 1L, 2L, 3L, null);
+        return new HistoryIndexMaintenance.ProjectionOutcome(receipt, result);
     }
 
     private void select(RepositoryContext context) {

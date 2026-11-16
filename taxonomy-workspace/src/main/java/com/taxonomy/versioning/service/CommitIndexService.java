@@ -81,6 +81,11 @@ public class CommitIndexService {
         try {
             DslGitRepository repository = repositoryFactory.resolveRepository(context);
             List<DslCommit> commits = repository.getDslHistory(normalizedBranch);
+            if (commits.isEmpty()) {
+                throw new IllegalStateException("Cannot rebuild commit index for missing branch " + normalizedBranch);
+            }
+            String capturedHead = commits.getFirst().commitId();
+            repository.verifyExpectedHead(normalizedBranch, capturedHead);
             List<ArchitectureCommitIndex> existing = indexRepository
                     .findByRepositoryIdAndWorkspaceScopeKeyAndBranchOrderByCommitTimestampDesc(
                             scope.repositoryId(),
@@ -90,10 +95,46 @@ public class CommitIndexService {
                 indexRepository.deleteAll(existing);
                 entityManager.flush();
             }
-            return indexCommits(repository, commits, normalizedBranch, scope);
+            int indexed = indexCommits(repository, commits, normalizedBranch, scope);
+            repository.verifyExpectedHead(normalizedBranch, capturedHead);
+            return indexed;
         } catch (IOException exception) {
             throw indexingFailure(scope, normalizedBranch, exception);
         }
+    }
+
+    /** Rebuild only the admitted Git authority, validating it on both sides of the projection write. */
+    @Transactional
+    public int applyCapturedBranch(String branch, RepositoryContext context, String expected, boolean rebuild) {
+        TenantScope scope = TenantScope.from(context);
+        DslGitRepository repository = repositoryFactory.resolveRepository(context);
+        try {
+            repository.verifyExpectedHead(branch, expected);
+            int count = rebuild ? rebuildBranch(branch, context) : indexBranch(branch, context);
+            repository.verifyExpectedHead(branch, expected);
+            return count;
+        } catch (IOException exception) {
+            throw indexingFailure(scope, branch, exception);
+        }
+    }
+
+    /** A retry can remove only rows that already existed in this scope when the user requested the purge. */
+    @Transactional
+    public int purgeCaptured(RepositoryContext context, String operationId) {
+        TenantScope scope = TenantScope.from(context);
+        List<ArchitectureCommitIndex> rows = entityManager.createQuery("""
+                select projection from ArchitectureCommitIndex projection
+                where projection.repositoryId=:repository and projection.workspaceScopeKey=:workspace
+                and exists (select target.projectionId from HistoryIndexPurgeTarget target
+                            where target.operationId=:operation and target.projectionId=projection.id)
+                """, ArchitectureCommitIndex.class)
+                .setParameter("operation", operationId)
+                .setParameter("repository", scope.repositoryId())
+                .setParameter("workspace", scope.workspaceScopeKey())
+                .getResultList();
+        rows.forEach(entityManager::remove);
+        entityManager.flush();
+        return rows.size();
     }
 
     /** Delete only the selected central/workspace history projection. */

@@ -15,6 +15,8 @@ import java.io.IOException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.spy;
 
 @ExtendWith(MockitoExtension.class)
 class CommitIndexServiceFailureTest {
@@ -52,6 +54,35 @@ class CommitIndexServiceFailureTest {
                 .hasMessageContaining("branch=draft")
                 .hasCauseInstanceOf(IOException.class);
         verifyNoInteractions(indexRepository);
+    }
+
+    @Test
+    void missingBranchCannotEraseTheLastKnownProjection() throws Exception {
+        when(repository.getDslHistory("draft")).thenReturn(java.util.List.of());
+
+        assertThatThrownBy(() -> service.rebuildBranch("draft", CONTEXT))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("draft");
+        verifyNoInteractions(indexRepository);
+    }
+
+    @Test
+    void movedBranchCannotReplaceTheExistingProjectionWithEarlierHistory() throws Exception {
+        try (DslGitRepository git = spy(new DslGitRepository())) {
+            when(repositoryFactory.resolveRepository(CONTEXT)).thenReturn(git);
+            String first = git.commitDsl("draft", "initial", "architect", "first");
+            doAnswer(invocation -> {
+                var captured = invocation.callRealMethod();
+                git.commitDsl("draft", "later", "architect", "branch advanced");
+                return captured;
+            }).when(git).getDslHistory("draft");
+
+            assertThatThrownBy(() -> service.rebuildBranch("draft", CONTEXT))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasRootCauseInstanceOf(com.taxonomy.workspace.service.BranchHeadConflictException.class);
+            org.assertj.core.api.Assertions.assertThat(git.getHeadCommit("draft")).isNotEqualTo(first);
+            verifyNoInteractions(indexRepository);
+        }
     }
 
     @Test

@@ -239,7 +239,8 @@ class CurrentStateExportIT {
             try (var inventory = CurrentStateExportIT.class.getResourceAsStream("/backup/coverage-inventory.tsv")) {
                 for (String line : new String(Objects.requireNonNull(inventory).readAllBytes(), StandardCharsets.UTF_8).split("\n")) {
                     String category = line.split("\t")[0];
-                    if (category.startsWith("com.taxonomy.portfolio.") || category.startsWith("com.taxonomy.workspace.")) {
+                    if (category.startsWith("com.taxonomy.portfolio.") || category.startsWith("com.taxonomy.workspace.")
+                            || category.startsWith("com.taxonomy.versioning.service.HistoryIndex")) {
                         configuration.addAnnotatedClass(Class.forName(category));
                     }
                 }

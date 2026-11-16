@@ -92,12 +92,12 @@ class BranchGraphVectorAuthorityTest {
     @Test void rejectsChangedLockedEditionOrBranchHeadBeforePublishing() {
         var source = authority.capture(context).source();
         when(catalogue.lockForCapture()).thenReturn(null, catalogueEdition("22"), edition);
-        assertThatThrownBy(() -> authority.verifyPublication(context, source)).isInstanceOf(SearchUnavailableException.class);
-        assertThatThrownBy(() -> authority.verifyPublication(context, source)).isInstanceOf(SearchUnavailableException.class);
+        assertThatThrownBy(() -> authority.verifyPublication(context, source)).isInstanceOf(BranchGraphVectorStore.GenerationChanged.class);
+        assertThatThrownBy(() -> authority.verifyPublication(context, source)).isInstanceOf(BranchGraphVectorStore.GenerationChanged.class);
         when(readiness.readCurrentHead(context)).thenReturn(OTHER);
         assertThatThrownBy(() -> authority.requireHead(context, HEAD))
                 .isInstanceOf(RelationProjectionOperationsService.RebuildHeadConflictException.class);
-        assertThatThrownBy(() -> authority.verifyPublication(context, source)).isInstanceOf(SearchUnavailableException.class);
+        assertThatThrownBy(() -> authority.verifyPublication(context, source)).isInstanceOf(RelationProjectionOperationsService.RebuildHeadConflictException.class);
     }
 
     @Test void differentModelOnTheSameBranchPreventsPublication() throws Exception {
@@ -105,7 +105,15 @@ class BranchGraphVectorAuthorityTest {
         var replacement = new EmbeddingModelIdentity(model.modelSha256(), "c".repeat(64),
                 Map.of(), "query: ", EmbeddingModelIdentity.INFERENCE_VERSION);
         when(models.embeddingIdentity()).thenReturn(replacement);
-        assertThatThrownBy(() -> authority.verifyPublication(context, original)).isInstanceOf(SearchUnavailableException.class);
+        assertThatThrownBy(() -> authority.verifyPublication(context, original)).isInstanceOf(BranchGraphVectorStore.GenerationChanged.class);
+    }
+
+    @Test void GitMovingBetweenLockedHeadAndSourceCaptureRetainsItsTypedPrecondition() {
+        var accepted = authority.capture(context).source();
+        when(readiness.readCurrentHead(context)).thenReturn(HEAD, OTHER, OTHER);
+        assertThatThrownBy(() -> authority.verifyPublication(context, accepted))
+                .isInstanceOfSatisfying(RelationProjectionOperationsService.RebuildHeadConflictException.class,
+                        moved -> assertThat(moved.getActualHeadCommit()).isEqualTo(OTHER));
     }
 
     private static CatalogueSourceJournal.Snapshot catalogueEdition(String suffix) {

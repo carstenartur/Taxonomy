@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.*;
 
 class WorkspaceRecordsExportIT {
     private static final List<String> WORKSPACE_DATASETS = List.of("repositories","workspaces","memberships","synchronization",
-            "branch-synchronization","fetch-journal","central-fetch-journal","publication-journal","publication-decisions",
+            "branch-synchronization","fetch-journal","central-fetch-journal","publication-journal","publication-decisions","index-recovery","index-decisions",
             "working-states","operations","checkpoints","commit-index","context-history").stream()
             .map(name -> "data/workspace/" + name + ".ndjson").toList();
 
@@ -186,7 +186,7 @@ class WorkspaceRecordsExportIT {
             }
             assertThat(contributor.componentId()).isEqualTo(new BackupComponentId("workspace"));
             assertThat(contributor.schemaVersion()).isEqualTo(1);
-            assertThat(contributor.categories()).hasSize(14).contains(UserWorkspace.class.getName(), ContextHistoryRecord.class.getName(),
+            assertThat(contributor.categories()).hasSize(16).contains(UserWorkspace.class.getName(), ContextHistoryRecord.class.getName(),
                     com.taxonomy.workspace.model.WorkspaceBranchSyncState.class.getName(),
                     com.taxonomy.workspace.service.WorkspaceFetchOperation.class.getName(),
                     com.taxonomy.workspace.service.CentralFetchOperation.class.getName(),
@@ -194,6 +194,55 @@ class WorkspaceRecordsExportIT {
                     com.taxonomy.workspace.service.WorkspacePublicationDecision.class.getName());
             assertThat(contributor.omissions(BackupProfile.SELECTED_VERSION)).anyMatch(value -> value.contains("selected Git state is authoritative"));
             assertThat(contributor.omissions(BackupProfile.INSTALLATION_FULL)).noneMatch(value -> value.contains("context navigation"));
+        }
+    }
+
+    @Test void indexReceiptsRetainOnlyTheSelectedSourceEvidenceAndNeverExportPurgeCapabilities() throws Exception {
+        try (var fixture = new Fixture()) {
+            graph(fixture, "repo-a", "private-a", "alice");
+            graph(fixture, "repo-b", "private-b", "bob");
+            String selected = "a".repeat(64), neighbour = "ba".repeat(32);
+            String selectedActor = java.util.UUID.randomUUID().toString();
+            for (String id : List.of(selected, neighbour)) {
+                boolean own = id.equals(selected);
+                fixture.jdbc.update("""
+                        insert into history_index_operation
+                        (operation_id,command_kind,cause_id,actor_id,actor_scope,login_kind,binding_key,repository_id,
+                         workspace_id,workspace_owner,repository_scope,collaborative,branch_name,captured_commit,
+                         phase,attempts,executor_id,lease_id,created_at,attempted_at)
+                        values (?,?,?,?,?,?,?,?,?,?,?,false,'draft',?,'RUNNING',1,'system:history-index',?,100,200)
+                        """, id, "REBUILD", id, own ? selectedActor : java.util.UUID.randomUUID().toString(), own ? "alice" : "bob",
+                        "LOCAL", "local-binding-redacted", own ? "repo-a" : "repo-b", own ? "private-a" : "private-b",
+                        own ? "alice" : "bob", "WORKSPACE", "c".repeat(40), "sensitive-execution-token");
+                fixture.jdbc.update("insert into history_index_decision(decision_id,operation_id,actor_id,decision_code,occurred_at) values (?,?,?,?,?)",
+                        java.util.UUID.randomUUID().toString(), id, "system:history-index", "CLAIMED", 200L);
+                fixture.jdbc.update("insert into history_index_purge_target(operation_id,projection_id) values (?,?)", id, 123456789L);
+            }
+            fixture.jdbc.update("update history_index_operation set projection_result=? where operation_id=?",
+                    "{\"nodes\":2,\"relations\":1,\"recovered\":3,\"currentCommit\":\"" + "c".repeat(40) + "\"}", selected);
+            var contributor = new WorkspaceBackupContributor(fixture.database, dsl -> dsl);
+            var history = new Contents();
+            contributor.write(snapshot(BackupProfile.REPOSITORY_HISTORY, new BackupScope.Workspace("repo-a","private-a")), history);
+            var receipts = records(history,"index-recovery");
+            assertThat(receipts).singleElement().satisfies(row -> {
+                assertThat(row.path("sourceId").path("value").asText()).isEqualTo(selected);
+                assertThat(row.path("actor").asText()).isEqualTo(selectedActor);
+                assertThat(row.path("executor").asText()).isEqualTo("system:history-index");
+                assertThat(row.path("phase").asText()).isEqualTo("RUNNING");
+                assertThat(row.path("loginKind").asText()).isEqualTo("LOCAL");
+                assertThat(row.path("collaborative").asBoolean()).isFalse();
+                assertThat(row.path("result").path("recovered").asInt()).isEqualTo(3);
+            });
+            assertThat(records(history,"index-decisions")).singleElement().satisfies(row ->
+                    assertThat(row.path("operationId").asText()).isEqualTo(selected));
+            assertThat(history.text()).doesNotContain("local-binding-redacted","sensitive-execution-token","123456789",neighbour);
+            var current = new Contents();
+            contributor.write(snapshot(BackupProfile.CURRENT_STATE, new BackupScope.Workspace("repo-a","private-a")), current);
+            assertThat(records(current,"index-recovery")).isEmpty();
+            assertThat(records(current,"index-decisions")).isEmpty();
+            fixture.jdbc.update("delete from history_index_operation where operation_id=?", neighbour);
+            assertThatThrownBy(() -> contributor.write(snapshot(BackupProfile.INSTALLATION_FULL, new BackupScope.Installation()), new Contents()))
+                    .isInstanceOf(java.io.IOException.class);
         }
     }
 

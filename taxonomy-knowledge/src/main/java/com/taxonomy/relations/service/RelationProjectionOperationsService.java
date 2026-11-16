@@ -130,15 +130,14 @@ public class RelationProjectionOperationsService {
     }
 
     public static final class RebuildHeadConflictException
-            extends IllegalStateException {
+            extends com.taxonomy.workspace.service.DerivedProjection.HeadChanged {
         private final String expectedHeadCommit;
         private final String actualHeadCommit;
 
         public RebuildHeadConflictException(
                 String expectedHeadCommit,
                 String actualHeadCommit) {
-            super("Relation projection rebuild expected "
-                    + expectedHeadCommit + " but observed " + actualHeadCommit);
+            super(expectedHeadCommit, actualHeadCommit);
             this.expectedHeadCommit = expectedHeadCommit;
             this.actualHeadCommit = actualHeadCommit;
         }
