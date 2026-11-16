@@ -34,7 +34,10 @@
     var responsibilityDisplay = window.TaxonomyResponsibilityDisplay;
     var displayedAssignments;
     document.addEventListener('taxonomy:responsibility-display-changed', function () {
-        if (active && view) renderTree();
+        if (active && view) {
+            renderTree();
+            renderer.render(view.scene, selected, view.schema.typeRoots);
+        }
     });
     var directoryRoot = window.TaxonomyOrganizationDirectory && el('editorOrganizationDirectory');
     var directory = directoryRoot && window.TaxonomyOrganizationDirectory?.create({root: directoryRoot, t: t, stage: stage});
@@ -196,7 +199,7 @@
         url.searchParams.set('layout', layout);
         if (layoutRevision !== null && layoutRevision !== undefined) url.searchParams.set('layoutRevision', layoutRevision);
         else url.searchParams.delete('layoutRevision');
-        if (replace) history.replaceState(null, '', url); else history.pushState(null, '', url);
+        if (replace) history.replaceState(history.state, '', url); else history.pushState(history.state, '', url);
     }
     function permissions() {
         var writable = active && view && view.mayEdit && !busy && !loading;
@@ -375,10 +378,10 @@
         var effective = item && Object.hasOwn(view.hierarchy || {}, item.id) ? view.hierarchy[item.id] : null;
         var origin = effective && view.model.elements.find(function (e) { return e.id === effective.sourceElementId; });
         var organization = effective && choices.find(function (row) { return row.id === effective.organizationId; });
-        var label = organization?.label || effective?.legacyOrganization;
-        el('editorResponsibilitySource').textContent = label && origin
-            ? (origin.id === item.id ? t('editor.organizationDirect', label)
-                : t('editor.organizationInherited', label, origin.title || origin.id, origin.id))
+        var label = effective?.capturedName || organization?.label || effective?.legacyOrganization;
+        el('editorResponsibilitySource').textContent = label && effective?.sourceElementId
+            ? (origin?.id === item.id && (assigned || legacy) ? t('editor.organizationDirect', label)
+                : label + ' · ' + t('responsibility.source', effective.sourceElementId))
             : t('editor.organizationUnassigned');
     }
     function renderForm() {

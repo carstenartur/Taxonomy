@@ -32,4 +32,18 @@ class CatalogueParentIndexTest {
         model.getElements().getFirst().setTaxonomy("custom");
         assertThat(index.parentsFor(model)).doesNotContainKey("BR-1081");
     }
+
+    @Test void catalogueBrowserReadsRootAndUnmodeledDescendantsFromTheSameHierarchy() {
+        var overlays = new CatalogueOverlayService(new ObjectMapper(), new DefaultResourceLoader(), true, "unused");
+        var index = new CatalogueParentIndex(null, overlays);
+        var catalogue = index.catalogueNodes(null);
+        var root = catalogue.stream().filter(node -> "BR".equals(node.code())).findFirst().orElseThrow();
+        var branch = catalogue.stream().filter(node -> "BR-1002".equals(node.code())).findFirst().orElseThrow();
+        var leaf = catalogue.stream().filter(node -> "BR-1081".equals(node.code())).findFirst().orElseThrow();
+        assertThat(leaf.parentCode()).isEqualTo(branch.code());
+        assertThat(catalogue.indexOf(root)).isLessThan(catalogue.indexOf(branch));
+        assertThat(catalogue.indexOf(branch)).isLessThan(catalogue.indexOf(leaf));
+        assertThat(index.contains(null, "BR-1081")).isTrue();
+        assertThat(index.contains(null, "BR-unknown")).isFalse();
+    }
 }

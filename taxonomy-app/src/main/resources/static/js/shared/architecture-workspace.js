@@ -190,7 +190,7 @@
         window.TaxonomyAppChrome?.activateContext?.('analysis');
         if (page) {
             var target = new URL(urlFor(new URL(location.href),sourceForUrl(Object.assign({kind:'analysis'},analysisScope)),window.TaxonomyI18n.resolveUrl('/')));
-            target.hash=page;history.replaceState(null,'',target);
+            target.hash=page;history.replaceState(history.state,'',target);
         }
     }
     function dimensions() {
@@ -240,7 +240,7 @@
     }
     function writeUrl(source, settings) {
         var target = urlFor(new URL(location.href), sourceForUrl(source), window.TaxonomyI18n.resolveUrl('/'));
-        history[settings?.replace ? 'replaceState' : 'pushState'](null, '', target);
+        history[settings?.replace ? 'replaceState' : 'pushState'](history.state, '', target);
         window.TaxonomyAppChrome?.refreshNavigation();
     }
     function publish(source, settings) {
@@ -328,7 +328,7 @@
         window.TaxonomyArchitectureWorkflow?.replaceScope(source);
         window.TaxonomyAppChrome?.activateContext?.('working');
         var target = new URL(urlFor(new URL(location.href), source, window.TaxonomyI18n.resolveUrl('/')));
-        target.hash = page; history.replaceState(null, '', target);
+        target.hash = page; history.replaceState(history.state, '', target);
         window.TaxonomyAppChrome?.refreshNavigation();
     }
     workspace.useSelectedModel = async function () {

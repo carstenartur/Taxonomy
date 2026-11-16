@@ -31,7 +31,7 @@ public class TaxDslSerializer {
      * Unknown block types sort after all known types.
      */
     private static final List<String> BLOCK_KIND_ORDER = List.of(
-            "organization", "element", "relation", "requirement", "mapping", "view", "evidence",
+            "organization", "catalogueResponsibility", "element", "relation", "requirement", "mapping", "view", "evidence",
             "source", "sourceVersion", "sourceFragment", "requirementSourceLink", "candidate");
 
     /**

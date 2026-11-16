@@ -14,6 +14,9 @@ public final class DecisionReportLabels {
 
     public boolean german() { return german; }
     public String responsibility() { return german ? "Zuständig" : "Responsible unit"; }
+    public String organizationalResponsibilities() { return german ? "Organisatorische Zuständigkeiten" : "Organizational responsibilities"; }
+    public String responsibilitySource() { return german ? "Quelle der Zuweisung" : "Assignment source"; }
+    public String responsibilityUnitId() { return german ? "Kennung der Einheit" : "Unit ID"; }
     public String noResponsibilities() { return german ? "Für diese Auswahl liegen keine Zuständigkeitsangaben vor."
             : "No responsibility information is available for this selection."; }
 

@@ -6,13 +6,16 @@ import com.taxonomy.catalog.service.CatalogueOverlayService;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dsl.model.CanonicalArchitectureModel;
 import com.taxonomy.dsl.model.CatalogueDefinition;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver.Node;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /** Restores omitted catalogue ancestry without importing any reference node into the architecture. */
@@ -20,9 +23,9 @@ import java.util.Map;
 public class CatalogueParentIndex {
     private final CatalogueSourceJournal sources;
     private final CatalogueOverlayService overlays;
-    private record Parent(String root, String code) {}
+    private record IndexedNode(Node node, int level) {}
     private String cachedRevision;
-    private Map<String, Parent> cached;
+    private Map<String, IndexedNode> cached;
 
     public CatalogueParentIndex(CatalogueSourceJournal sources, CatalogueOverlayService overlays) {
         this.sources = sources;
@@ -42,16 +45,15 @@ public class CatalogueParentIndex {
     /** Read an exact catalogue even if only one assigned ancestor exists in the architecture. */
     public synchronized Map<String, String> parentsFor(CanonicalArchitectureModel model, String revision,
                                                        CatalogueDefinition definition) {
-        if (cached == null || !java.util.Objects.equals(revision, cachedRevision)) {
-            var loaded = read(revision);
-            cached = loaded;
-            cachedRevision = revision;
-        }
+        var nodes = index(revision);
         Map<String, String> parents = new HashMap<>();
-        cached.forEach((id, parent) -> parents.put(id, parent.code()));
+        nodes.forEach((id, entry) -> {
+            if (entry.node().parentCode() != null) parents.put(id, entry.node().parentCode());
+        });
         for (var element : model.getElements()) {
-            var candidate = cached.get(element.getId());
-            if (candidate == null) continue;
+            var entry = nodes.get(element.getId());
+            if (entry == null) continue;
+            var candidate = entry.node();
             // Analysis adoption carries the catalogue ID and DSL type but may omit the taxonomy field.
             boolean sameRoot = candidate.root().equals(element.getTaxonomy())
                     || element.getTaxonomy() == null && definition != null
@@ -61,7 +63,24 @@ public class CatalogueParentIndex {
         return parents;
     }
 
-    private Map<String, Parent> read(String revision) {
+    public synchronized List<Node> catalogueNodes(String revision) {
+        return index(revision).values().stream().sorted(Comparator.comparingInt(IndexedNode::level)
+                .thenComparing(entry -> entry.node().code())).map(IndexedNode::node).toList();
+    }
+
+    public synchronized boolean contains(String revision, String code) {
+        return index(revision).containsKey(code);
+    }
+
+    private Map<String, IndexedNode> index(String revision) {
+        if (cached == null || !java.util.Objects.equals(revision, cachedRevision)) {
+            cached = read(revision);
+            cachedRevision = revision;
+        }
+        return cached;
+    }
+
+    private Map<String, IndexedNode> read(String revision) {
         try {
             if (revision == null) {
                 // Pre-pin C3 exports contain codes and roots but no parent links.
@@ -85,14 +104,14 @@ public class CatalogueParentIndex {
         }
     }
 
-    private Map<String, Parent> read(InputStream input, CatalogueSourceBytes overlay) throws IOException {
+    private Map<String, IndexedNode> read(InputStream input, CatalogueSourceBytes overlay) throws IOException {
         try (var workbook = new XSSFWorkbook(input)) {
             var hierarchy = TaxonomyService.readWorkbookNodes(workbook);
             overlays.applyRetainedHierarchy(hierarchy.nodes(), hierarchy.uuidToCode(), overlay);
-            Map<String, Parent> result = new HashMap<>();
-            hierarchy.nodes().forEach((id, node) -> {
-                if (node.getParentCode() != null) result.put(id, new Parent(node.getTaxonomyRoot(), node.getParentCode()));
-            });
+            Map<String, IndexedNode> result = new HashMap<>();
+            hierarchy.nodes().forEach((id, node) -> result.put(id, new IndexedNode(
+                    new Node(id, node.getTaxonomyRoot(), node.getParentCode(), node.getNameEn(), node.getNameDe(),
+                            node.getSortOrder()), node.getLevel())));
             return Map.copyOf(result);
         }
     }

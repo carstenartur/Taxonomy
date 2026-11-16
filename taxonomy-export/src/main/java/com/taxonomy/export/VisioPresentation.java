@@ -110,7 +110,9 @@ final class VisioPresentation {
                 String label = source.getProperties().get("taxonomy.label").value();
                 String text = source.getProperties().get("taxonomy.displayKey").value() + " | "
                         + display(source.getProperties().get("taxonomy.id").value(), 26, 1) + "\n" + display(label, 32, 3)
-                        + "\nDepth " + source.getProperties().get("taxonomy.depth").value();
+                        + "\n" + nodeFooter(source.getProperties().get("taxonomy.depth").value(),
+                                Optional.ofNullable(source.getProperties().get("taxonomy.responsibilityName"))
+                                        .map(VisioProperty::value).orElse(null), 32);
                 var shape = new VisioShape(source.getId(), text, x, y, 3.2, 1.4, source.getType(), source.isAnchor());
                 shape.getProperties().putAll(source.getProperties()); page.getShapes().add(shape); row++;
             }
@@ -173,6 +175,10 @@ final class VisioPresentation {
             text.appendCodePoint(cp); used += weight; offset += Character.charCount(cp);
         }
         return text.toString();
+    }
+
+    static String nodeFooter(String depth, String unitName, int columns) {
+        return unitName == null ? "Depth " + depth : display("Unit: " + unitName, columns, 1);
     }
 
     private static int glyphUnits(int codePoint) {

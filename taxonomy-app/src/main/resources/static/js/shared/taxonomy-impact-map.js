@@ -127,9 +127,11 @@
                 context: !anchor && hop > 0,
                 hotspot: hotspots.has(id),
                 hotspotReason: String(reasons[id] || ''),
-                includedBecause: String(node.includedBecause || node.presenceReason || '')
+                includedBecause: String(node.includedBecause || node.presenceReason || ''),
+                responsibleUnit: node.responsibility && window.TaxonomyResponsibilityDisplay?.unit(node.responsibility)
             };
             normalized.searchText = [normalized.id, normalized.title, normalized.sheetLabel].join(' ');
+            if (normalized.responsibleUnit) normalized.searchText += ' ' + normalized.responsibleUnit.name;
             byId.set(id, normalized);
         });
         return Array.from(byId.values());
@@ -247,16 +249,17 @@
             nodes: model.nodes.map(function (node) {
                 var position = layout.positions.get(node.id);
                 var color = palette.layer(node.sheet), textColor = diagramApi.readableTextColor(color);
+                var responsibility = node.responsibleUnit ? ' · ' + t('views.diagram.responsibleUnit', node.responsibleUnit.name) : '';
                 return Object.assign({}, node, {
                     x: position.x, y: position.y, width: CARD_WIDTH, height: CARD_HEIGHT, prefix: 'impact-map',
                     className: 'impact-map-node' + (node.anchor ? ' is-anchor' : '') + (node.hotspot ? ' is-hotspot' : ''),
                     color: color, textColor: textColor, scoreWidth: 56, metaY: 77,
-                    ariaLabel: t('impactmap.aria.node', node.id, node.title, Math.round(node.relevance * 100), node.anchor ? t('impactmap.direct') : t('impactmap.hop', node.hop)),
+                    ariaLabel: t('impactmap.aria.node', node.id, node.title, Math.round(node.relevance * 100), node.anchor ? t('impactmap.direct') : t('impactmap.hop', node.hop)) + responsibility,
                     score: (node.anchor ? '★ ' : '') + Math.round(node.relevance * 100) + '%',
                     scoreFill: diagramApi.rgba(textColor, textColor === '#ffffff' ? 0.18 : 0.12),
-                    titleLines: diagramApi.wrapLabel(node.title, 32, 2),
+                    titleLines: diagramApi.wrapLabel(node.title, 32, node.responsibleUnit ? 1 : 2),
                     meta: (node.anchor ? t('impactmap.direct') : t('impactmap.hop', node.hop)) + ' · ' + node.sheetLabel,
-                    tooltip: node.id + ' — ' + node.title + '\n' + node.sheetLabel + '\n' + Math.round(node.relevance * 100) + '%\n'
+                    tooltip: node.id + ' — ' + node.title + responsibility + '\n' + node.sheetLabel + '\n' + Math.round(node.relevance * 100) + '%\n'
                         + (node.includedBecause || '') + (node.hotspotReason ? '\n' + t('impactmap.hotspot') + ': ' + node.hotspotReason : '')
                 });
             }),
@@ -495,6 +498,10 @@
             appendDetailPair(list, t('impactmap.layer'), node.sheetLabel);
             appendDetailPair(list, t('impactmap.relevance'), Math.round(node.relevance * 100) + '%');
             appendDetailPair(list, t('impactmap.distance'), node.anchor ? t('impactmap.direct') : t('impactmap.hop', node.hop));
+            if (node.responsibleUnit) {
+                appendDetailPair(list, t('responsibility.unit'), node.responsibleUnit.name);
+                appendDetailPair(list, t('responsibility.assignmentSource'), node.responsibleUnit.sourceId);
+            }
             appendDetailPair(list, t('impactmap.reason'), node.includedBecause || node.hotspotReason || '—');
             primary.appendChild(list);
 

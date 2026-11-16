@@ -16,7 +16,9 @@ public record AnalysisModelBinding(
         String briefVersion, Map<String, String> briefFields, List<Reference> references,
         Set<String> excludedRelationTypes, String profileProblem,
         @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
-        String executionCatalogueRevision) {
+        String executionCatalogueRevision,
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY)
+        Map<String, TaxonomyResponsibilityLookup.Assignment> responsibilities) {
 
     public enum State {
         RESOLVED, MODEL_UNCOMMITTED, CATALOGUE_UNRESOLVED, BRIEF_UNASSIGNED, PROFILE_UNRESOLVED
@@ -39,7 +41,17 @@ public record AnalysisModelBinding(
             String profileProblem) {
         this(state, repositoryId, workspaceScopeKey, branch, commit, semanticRevision, modelSource, modelSha256,
                 catalogueRevision, catalogueDefinitionVersion, rootCodes, scope, briefVersion, briefFields,
-                references, excludedRelationTypes, profileProblem, null);
+                references, excludedRelationTypes, profileProblem, null, Map.of());
+    }
+
+    public AnalysisModelBinding(State state, String repositoryId, String workspaceScopeKey, String branch, String commit,
+            Long semanticRevision, String modelSource, String modelSha256, String catalogueRevision,
+            String catalogueDefinitionVersion, Set<String> rootCodes, AnalysisScope scope, String briefVersion,
+            Map<String,String> briefFields, List<Reference> references, Set<String> excludedRelationTypes,
+            String profileProblem, String executionCatalogueRevision) {
+        this(state, repositoryId, workspaceScopeKey, branch, commit, semanticRevision, modelSource, modelSha256,
+                catalogueRevision, catalogueDefinitionVersion, rootCodes, scope, briefVersion, briefFields,
+                references, excludedRelationTypes, profileProblem, executionCatalogueRevision, Map.of());
     }
 
     public String analysisCatalogueRevision() {
@@ -67,6 +79,7 @@ public record AnalysisModelBinding(
         briefFields = orderedMap(briefFields);
         references = List.copyOf(references);
         excludedRelationTypes = orderedSet(excludedRelationTypes);
+        responsibilities = responsibilities == null ? Map.of() : Collections.unmodifiableMap(new TreeMap<>(Map.copyOf(responsibilities)));
         if (state == State.RESOLVED && (commit == null || catalogueRevision == null || catalogueDefinitionVersion == null
                 || rootCodes.isEmpty() || briefVersion == null || profileProblem != null))
             throw new IllegalArgumentException("A resolved binding requires its exact model, catalogue, scope and brief");

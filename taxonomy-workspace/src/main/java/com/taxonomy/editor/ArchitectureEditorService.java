@@ -22,6 +22,7 @@ import com.taxonomy.editor.persistence.EditorJournal.*;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryScope;
 import com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspacePortfolioGitPort;
 import org.eclipse.jgit.lib.Constants;
@@ -74,7 +75,12 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
 
     private ArchitectureDslCommands transformer(String source) {
         var model = new ArchitectureDslCommands().model(source);
-        return new ArchitectureDslCommands(catalogues.forModel(model));
+        return new ArchitectureDslCommands(catalogues.forModel(model), code -> catalogues.assignmentTarget(model, code));
+    }
+
+    List<com.taxonomy.dsl.model.CatalogueDefinitionResolver.Node> catalogueNodes(
+            com.taxonomy.dsl.model.CanonicalArchitectureModel model) {
+        return catalogues.catalogueNodes(model);
     }
     // A normal block identity always contains ':', including unknown extension block kinds.
     private static final String DOCUMENT_SOURCE_CONFLICT = "$document";
@@ -402,6 +408,50 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
                 });
             } catch (java.io.UncheckedIOException failure) { throw failure.getCause(); }
         }
+    }
+
+    @Override
+    public String versionAtHead(RepositoryContext context, String expectedHead, String rationale,
+                                GitAction<String> action) throws IOException {
+        if (context.scope() == RepositoryScope.CENTRAL_READ) {
+            throw new AccessDeniedException("A central read selection cannot create architecture versions; use a working copy");
+        }
+        if (ACTIVE_VERSION.isBound()) {
+            throw new IllegalStateException("A reviewed version requires its own editor boundary");
+        }
+        String expected = WorkspaceDslReadPort.normalizeCommitId(expectedHead);
+        try (var write = writeBarrier.enter(backupScope(context))) {
+            var repository = repositories.resolveRepository(context);
+            if (context.scope() != RepositoryScope.WORKSPACE) {
+                return runAtHead(repository, context, expected, action);
+            }
+            var initial = snapshot(context).state();
+            try {
+                return journal.controlLocked(context, initial, session -> {
+                    var state = session.state();
+                    try {
+                        if (state.pendingCheckpoint() != null || state.checkpointRevision() != state.revision()
+                                || !expected.equals(state.checkpointCommit())) {
+                            throw new BranchHeadConflictException(context.branch(), expected, head(repository, context.branch()),
+                                    "The editor has pending changes or its checkpoint differs from the reviewed commit");
+                        }
+                        String result = ScopedValue.where(ACTIVE_VERSION, context)
+                                .call(() -> runAtHead(repository, context, expected, action));
+                        if (result != null) importVersionAt(context, session, rationale, repository, result);
+                        return result;
+                    } catch (IOException failure) { throw new java.io.UncheckedIOException(failure); }
+                });
+            } catch (java.io.UncheckedIOException failure) { throw failure.getCause(); }
+        }
+    }
+
+    private static String runAtHead(DslGitRepository repository, RepositoryContext context,
+                                    String expected, GitAction<String> action) throws IOException {
+        repository.verifyExpectedHead(context.branch(), expected);
+        String result = action.run();
+        String committed = result == null ? null : WorkspaceDslReadPort.normalizeCommitId(result);
+        repository.verifyExpectedHead(context.branch(), committed == null ? expected : committed);
+        return committed;
     }
 
     @Override
@@ -912,6 +962,10 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
                 case DeleteArchitecturePackage p -> parts.add(p.id());
                 case UpsertOrganization organization -> { parts.add(organization.id()); properties(parts, organization.properties()); }
                 case DeleteOrganization organization -> parts.add(organization.id());
+                case SetCatalogueResponsibility assignment -> {
+                    parts.add(assignment.code());
+                    parts.add(Objects.toString(assignment.organizationId(), ""));
+                }
                 case SetArchitecturePackagePlacements p -> {
                     p.placements().forEach(v -> { parts.add(v.kind().name()); parts.add(v.memberId()); parts.add(v.parentPackageId()); parts.add(Integer.toString(v.position())); });
                     parts.addAll(p.completeParentScopes().stream().sorted().toList());

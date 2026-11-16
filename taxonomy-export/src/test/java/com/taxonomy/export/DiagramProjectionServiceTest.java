@@ -1,9 +1,11 @@
 package com.taxonomy.export;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.taxonomy.diagram.*;
 import com.taxonomy.dto.RequirementArchitectureView;
 import com.taxonomy.dto.RequirementElementView;
 import com.taxonomy.dto.RequirementRelationshipView;
+import com.taxonomy.dto.TaxonomyResponsibilityLookup.Assignment;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -47,6 +49,41 @@ class DiagramProjectionServiceTest {
         assertEquals(1, result.nodes().size());
         assertEquals("CP-1023", result.nodes().get(0).id());
         assertEquals("Capability A", result.nodes().get(0).label());
+    }
+
+    @Test
+    void retainedAssignmentSurvivesProjectionAndSceneWithoutChangingIdentity() throws Exception {
+        var assignment = new Assignment("unit-42", "Operations", "CP-1000");
+        var element = createElement("CP-1023", "Capability A", "Capabilities", 0.8, false);
+        element.setResponsibility(assignment);
+        var view = new RequirementArchitectureView();
+        view.setIncludedElements(List.of(element));
+
+        var mapper = new ObjectMapper();
+        var retained = mapper.readValue(mapper.writeValueAsBytes(view), RequirementArchitectureView.class);
+        var graph = PersistedDiagramProjection.project(service, retained, "Retained view");
+        var node = graph.nodes().getFirst();
+        var placed = new LayeredDiagramLayoutService().layout(graph).nodes().getFirst();
+
+        assertAll(
+                () -> assertEquals("CP-1023", node.id()),
+                () -> assertEquals("Capability A", node.label()),
+                () -> assertEquals(assignment, node.responsibility()),
+                () -> assertEquals(assignment, placed.responsibility()),
+                () -> assertEquals(node, mapper.readValue(mapper.writeValueAsBytes(node), DiagramNode.class)),
+                () -> assertEquals(placed, mapper.readValue(mapper.writeValueAsBytes(placed), DiagramSceneNode.class)));
+    }
+
+    @Test
+    void unassignedElementsKeepTheirPriorJsonShape() {
+        var mapper = new ObjectMapper();
+        var node = new DiagramNode("CP-1023", "Capability A", "Capabilities", 0.8, false, 1);
+        var graph = new DiagramModel("Earlier view", List.of(node), List.of(), new DiagramLayout("LR", true));
+        var placed = new LayeredDiagramLayoutService().layout(graph).nodes().getFirst();
+
+        assertFalse(mapper.valueToTree(new RequirementElementView()).has("responsibility"));
+        assertFalse(mapper.valueToTree(node).has("responsibility"));
+        assertFalse(mapper.valueToTree(placed).has("responsibility"));
     }
 
     @Test

@@ -667,10 +667,19 @@ class DslApiControllerTest implements AnalysisCatalogueSourceFixture {
                 .readTree(commitResult.getResponse().getContentAsString())
                 .get("commitId").asText();
 
-        // Cherry-pick the second commit onto cherry-target
-        mockMvc.perform(post("/api/dsl/cherry-pick")
+        var preview = mockMvc.perform(get("/api/dsl/cherry-pick/preview")
                         .param("commitId", commitId)
                         .param("targetBranch", "cherry-target"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.canCherryPick").value(true))
+                .andReturn();
+        String reviewedHead = tools.jackson.databind.json.JsonMapper.builder().build()
+                .readTree(preview.getResponse().getContentAsString()).get("targetCommit").asText();
+
+        mockMvc.perform(post("/api/dsl/cherry-pick")
+                        .param("commitId", commitId)
+                        .param("targetBranch", "cherry-target")
+                        .param("expectedTargetHead", reviewedHead))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.commitId").isNotEmpty())
                 .andExpect(jsonPath("$.targetBranch").value("cherry-target"))
@@ -685,15 +694,19 @@ class DslApiControllerTest implements AnalysisCatalogueSourceFixture {
                   title: "Target for bad cherry-pick";
                 }
                 """;
-        mockMvc.perform(post("/api/dsl/commit")
+        var target = mockMvc.perform(post("/api/dsl/commit")
                         .contentType(MediaType.TEXT_PLAIN)
                         .content(dsl)
                         .param("branch", "cherry-bad-target"))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andReturn();
+        String targetHead = tools.jackson.databind.json.JsonMapper.builder().build()
+                .readTree(target.getResponse().getContentAsString()).get("commitId").asText();
 
         mockMvc.perform(post("/api/dsl/cherry-pick")
                         .param("commitId", "0000000000000000000000000000000000000000")
-                        .param("targetBranch", "cherry-bad-target"))
+                        .param("targetBranch", "cherry-bad-target")
+                        .param("expectedTargetHead", targetHead))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").isNotEmpty());
     }
