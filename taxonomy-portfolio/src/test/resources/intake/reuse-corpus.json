@@ -1,0 +1,34 @@
+{
+  "requirements": [
+    {"key":"ACCESS","text":"Only payroll administrators may export employee salary records."},
+    {"key":"ALARM","text":"The monitoring service shall page the on-call operator within 60 seconds of a freezer alarm."},
+    {"key":"AUDIT","text":"The service shall retain successful sign-in audit records for at least 365 days."},
+    {"key":"DELETION","text":"The service shall erase expired customer export files within 48 hours."},
+    {"key":"EXPORT","text":"The portal shall offer a CSV export of the current invoice list."},
+    {"key":"PAYMENT","text":"The checkout shall authorize card payments before confirming the order."},
+    {"key":"PUBLICATION","text":"Only the duty editor may publish flood warnings to the public portal."},
+    {"key":"RECOVERY","text":"After a backup restore, the warehouse service shall rebuild its search index within four hours."}
+  ],
+  "cases": [
+    {"id":"duplicate-exact-alarm","key":"ALARM","expected":"DUPLICATE","input":"The monitoring service shall page the on-call operator within 60 seconds of a freezer alarm.","inputEvidence":"within 60 seconds of a freezer alarm","sourceEvidence":"within 60 seconds of a freezer alarm"},
+    {"id":"duplicate-exact-export","key":"EXPORT","expected":"DUPLICATE","input":"The portal shall offer a CSV export of the current invoice list.","inputEvidence":"CSV export of the current invoice list","sourceEvidence":"CSV export of the current invoice list"},
+    {"id":"duplicate-access","key":"ACCESS","expected":"DUPLICATE","input":"Exporting employee salary records shall be restricted to payroll administrators.","inputEvidence":"restricted to payroll administrators","sourceEvidence":"Only payroll administrators"},
+    {"id":"duplicate-audit","key":"AUDIT","expected":"DUPLICATE","input":"Keep audit records of successful sign-ins for a minimum of 365 days.","inputEvidence":"minimum of 365 days","sourceEvidence":"at least 365 days"},
+    {"id":"duplicate-recovery","key":"RECOVERY","expected":"DUPLICATE","input":"The warehouse search index must be rebuilt no more than four hours after restoring a backup.","inputEvidence":"no more than four hours after restoring a backup","sourceEvidence":"rebuild its search index within four hours"},
+    {"id":"addition-alarm","key":"ALARM","expected":"ADDITION","input":"For each freezer alarm that pages the on-call operator, the monitoring service shall also add an entry to the shift log.","inputEvidence":"also add an entry to the shift log","sourceEvidence":"page the on-call operator"},
+    {"id":"addition-deletion","key":"DELETION","expected":"ADDITION","input":"When it erases an expired customer export file, the service shall record the time of erasure in the audit log.","inputEvidence":"record the time of erasure in the audit log","sourceEvidence":"erase expired customer export files"},
+    {"id":"addition-export","key":"EXPORT","expected":"ADDITION","input":"In addition to the CSV export of the current invoice list, the portal shall show the number of exported invoices.","inputEvidence":"show the number of exported invoices","sourceEvidence":"CSV export of the current invoice list"},
+    {"id":"addition-payment","key":"PAYMENT","expected":"ADDITION","input":"After the checkout authorizes a card payment, it shall display the authorization reference on the receipt.","inputEvidence":"display the authorization reference on the receipt","sourceEvidence":"authorize card payments"},
+    {"id":"addition-publication","key":"PUBLICATION","expected":"ADDITION","input":"After the duty editor publishes a flood warning to the public portal, the system shall also send a copy to subscribed residents.","inputEvidence":"also send a copy to subscribed residents","sourceEvidence":"publish flood warnings to the public portal"},
+    {"id":"conflict-access","key":"ACCESS","expected":"CONFLICT","input":"Any authenticated employee shall be permitted to export employee salary records, including employees who are not payroll administrators.","inputEvidence":"including employees who are not payroll administrators","sourceEvidence":"Only payroll administrators"},
+    {"id":"conflict-audit","key":"AUDIT","expected":"CONFLICT","input":"Successful sign-in audit records shall be deleted after no more than 30 days.","inputEvidence":"no more than 30 days","sourceEvidence":"at least 365 days"},
+    {"id":"conflict-deletion","key":"DELETION","expected":"CONFLICT","input":"The service shall keep every expired customer export file for at least seven days after expiration.","inputEvidence":"at least seven days","sourceEvidence":"within 48 hours"},
+    {"id":"conflict-payment","key":"PAYMENT","expected":"CONFLICT","input":"The checkout must confirm every order paid by card before attempting to authorize the card payment.","inputEvidence":"before attempting to authorize","sourceEvidence":"authorize card payments before confirming"},
+    {"id":"conflict-publication","key":"PUBLICATION","expected":"CONFLICT","input":"Residents without the duty editor role must be allowed to publish flood warnings directly to the public portal.","inputEvidence":"without the duty editor role","sourceEvidence":"Only the duty editor"},
+    {"id":"negative-access","key":"ACCESS","expected":"NONE","input":"Payroll administrators may export the office cafeteria menu as a CSV file."},
+    {"id":"negative-alarm","key":"ALARM","expected":"NONE","input":"The monitoring service shall page the on-call operator within 60 seconds of a failed nightly data import."},
+    {"id":"negative-audit","key":"AUDIT","expected":"NONE","input":"The service shall retain air quality sensor readings for at least 365 days."},
+    {"id":"negative-export","key":"EXPORT","expected":"NONE","input":"The portal shall offer a CSV export of the current list of public meeting dates."},
+    {"id":"negative-recovery","key":"RECOVERY","expected":"NONE","input":"The warehouse service shall print a shipment manifest within four hours of receiving an order."}
+  ]
+}

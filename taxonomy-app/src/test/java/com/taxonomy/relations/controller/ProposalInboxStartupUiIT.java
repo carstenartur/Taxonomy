@@ -147,6 +147,8 @@ class ProposalInboxStartupUiIT {
             var startup = awaitPreview(wait, driver, "#proposalAdoptionSection ", detail, "AVAILABLE");
             assertThat(startup.getText()).contains("Auf main angenommen", draft,
                     sourceCommit.substring(0, 8), baseline.substring(0, 8));
+            assertAdoptionEvidence(startup, repositoryId, sourceCommit, draft, baseline);
+            openSourceCheckpoint(driver, wait, startup, repositoryId, sourceCommit);
 
             wait.until(ExpectedConditions.elementToBeClickable(By.id("filterAll"))).click();
             awaitPreview(wait, driver, "#proposalsTableContainer ", detail, "AVAILABLE");
@@ -182,9 +184,56 @@ class ProposalInboxStartupUiIT {
             ordinaryWorkingInbox(wait);
             var present = awaitPreview(wait, driver, "#proposalAdoptionSection ", detail, "ALREADY_PRESENT");
             assertThat(present.findElements(By.cssSelector(".proposal-adoption-apply"))).isEmpty();
+            assertAdoptionEvidence(present, repositoryId, sourceCommit, draft, adopted);
             wait.until(ExpectedConditions.elementToBeClickable(By.id("filterAccepted"))).click();
             awaitPreview(wait, driver, "#proposalsTableContainer ", detail, "ALREADY_PRESENT");
             assertThat(draftGit.getHeadCommit(draft)).isEqualTo(adopted);
+
+            String changed = draftGit.getDslAtCommit(adopted).replace("proposal-adoption", "manual");
+            assertThat(changed).isNotEqualTo(draftGit.getDslAtCommit(adopted));
+            String conflictHead = draftGit.commitDsl(draft, changed, "admin", "Different local relation decision");
+            driver.navigate().refresh();
+            ordinaryWorkingInbox(wait);
+            var conflict = awaitPreview(wait, driver, "#proposalAdoptionSection ", detail, "CONFLICT");
+            assertAdoptionEvidence(conflict, repositoryId, sourceCommit, draft, conflictHead);
+            assertThat(conflict.findElements(By.cssSelector(".proposal-adoption-apply"))).isEmpty();
+            assertThat(draftGit.getHeadCommit(draft)).isEqualTo(conflictHead);
+            assertThat(git.getHeadCommit("main")).isEqualTo(sourceCommit);
+        }
+    }
+
+    private static void assertAdoptionEvidence(WebElement preview, String repositoryId, String sourceCommit,
+                                               String targetBranch, String targetCommit) {
+        assertThat(preview.findElement(By.cssSelector(".proposal-adoption-relation")).getText())
+                .contains("CP-1023", "REALIZES", "CR-1047");
+        String href = preview.findElement(By.cssSelector(".proposal-adoption-source-link")).getDomAttribute("href");
+        var source = UriComponentsBuilder.fromUriString(href).build();
+        assertThat(source.getPath()).endsWith("/architecture/editor");
+        assertThat(source.getQueryParams().toSingleValueMap())
+                .containsEntry("repositoryId", repositoryId).containsEntry("workspaceId", "")
+                .containsEntry("branch", "main").containsEntry("commit", sourceCommit)
+                .containsEntry("element", "CP-1023");
+        assertThat(preview.getText()).contains(targetBranch, targetCommit.substring(0, 8));
+    }
+
+    private static void openSourceCheckpoint(WebDriver driver, WebDriverWait wait, WebElement preview,
+                                             String repositoryId, String sourceCommit) {
+        String originalTab = driver.getWindowHandle();
+        var link = preview.findElement(By.cssSelector(".proposal-adoption-source-link"));
+        new Actions(driver).scrollToElement(link).perform();
+        link.click();
+        wait.until(ExpectedConditions.numberOfWindowsToBe(2));
+        driver.switchTo().window(driver.getWindowHandles().stream().filter(tab -> !tab.equals(originalTab)).findFirst().orElseThrow());
+        try {
+            wait.until(browser -> Boolean.TRUE.equals(((JavascriptExecutor) browser).executeScript("""
+                    const value = window.TaxonomyArchitectureLifecycle?.state();
+                    return value?.projectionState === 'HISTORICAL' && value.mayEdit === false
+                        && value.context.repositoryId === arguments[0] && value.context.branch === 'main'
+                        && value.context.commit === arguments[1];
+                    """, repositoryId, sourceCommit)));
+        } finally {
+            driver.close();
+            driver.switchTo().window(originalTab);
         }
     }
 
