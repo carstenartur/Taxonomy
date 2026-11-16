@@ -94,10 +94,21 @@ public final class IdentityBackupContributor implements BackupDataContributor {
             return new VersionGrant(principal(r, "principal_id"), new BackupRepositoryKey(text(r, "repository_id"),
                     workspace.equals("C:") ? null : workspace.substring(2)), commit);
         });
-        write(sink, "access-audit", profile, profile == BackupProfile.INSTALLATION_FULL ? List.of(new Query(
-                "select audit_id,actor_principal,target_principal,decision_kind,detail,occurred_at from principal_access_audit order by occurred_at,audit_id", List.of())) : List.of(),
-                r -> new AccessAudit(reference(r, "application.identity-audit", "audit_id"), principal(r, "actor_principal"), principal(r, "target_principal"),
-                        text(r, "decision_kind"), text(r, "detail"), Instant.ofEpochMilli(r.getLong("occurred_at")).toString()));
+        var auditQueries = profile == BackupProfile.INSTALLATION_FULL ? List.of(
+                new Query("select audit_id,actor_principal,target_principal,decision_kind,detail,occurred_at,'PRINCIPAL' as audit_source from principal_access_audit order by occurred_at,audit_id", List.of()),
+                new Query("select audit_id,actor_binding,detail,occurred_at,'LEGACY_OIDC' as audit_source from legacy_repository_role_audit order by occurred_at,audit_id", List.of())) : List.<Query>of();
+        write(sink, "access-audit", profile, auditQueries, r -> {
+            var sourceId = reference(r, "application.identity-audit", "audit_id");
+            String occurredAt = Instant.ofEpochMilli(r.getLong("occurred_at")).toString();
+            String detail = text(r, "detail");
+            if ("LEGACY_OIDC".equals(r.getString("audit_source"))) {
+                String binding = text(r, "actor_binding");
+                if (binding == null || !binding.matches("[0-9a-f]{64}")) throw new IOException("Invalid legacy OIDC audit actor");
+                return new AccessAudit(sourceId, null, null, "LEGACY_REPOSITORY_MEMBERSHIP", detail, occurredAt, binding);
+            }
+            return new AccessAudit(sourceId, principal(r, "actor_principal"), principal(r, "target_principal"),
+                    text(r, "decision_kind"), detail, occurredAt, null);
+        });
         PortableRows.document(sink, "identities/installation.json", installation.getFirst());
         if (request.secrets() == SecretsSelection.INCLUDE_ENCRYPTED) {
             // BackupRequest/AuthorizedBackupRequest require FULL + INCLUDE_SECRETS; the capture coordinator
@@ -184,7 +195,8 @@ public final class IdentityBackupContributor implements BackupDataContributor {
     public record UserRoleRecord(SourceRecordId account, SourceRecordId role) { }
     public record CapabilityGrant(PrincipalId principal, BackupCapability capability) { }
     public record VersionGrant(PrincipalId principal, BackupRepositoryKey repository, String commit) { }
-    public record AccessAudit(SourceRecordId sourceId, PrincipalId actor, PrincipalId target, String decision, String detail, String occurredAt) { }
+    public record AccessAudit(SourceRecordId sourceId, PrincipalId actor, PrincipalId target, String decision, String detail,
+                              String occurredAt, @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) String legacyActorBinding) { }
     public record InstallationRecord(String installationId) { }
     public record PasswordHash(SourceRecordId account, PrincipalId principal, String passwordHash) { }
 }

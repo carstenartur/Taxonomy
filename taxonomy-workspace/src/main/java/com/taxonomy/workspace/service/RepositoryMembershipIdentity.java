@@ -1,5 +1,8 @@
 package com.taxonomy.workspace.service;
 
+import com.taxonomy.workspace.model.RepositoryMembership;
+import com.taxonomy.workspace.model.RepositoryRole;
+
 import java.util.Optional;
 import java.util.UUID;
 
@@ -21,6 +24,18 @@ public interface RepositoryMembershipIdentity {
                     ? Optional.of(actor.grant.principalId()) : Optional.empty();
         }
     }
+
+    record State(boolean active, RepositoryRole role, long version) {
+        static State of(RepositoryMembership membership) {
+            return membership == null ? new State(false, null, -1)
+                    : new State(membership.isActive(), membership.getRole(), membership.getVersion());
+        }
+    }
+
+    record RoleDecision(String repositoryId, long membershipId, String holderPrincipalId, State before,
+                        State after, String rationale, String outcome, String subject) { }
+
+    void recordRoleDecision(String actor, RoleDecision decision);
 
     Optional<UUID> currentActor(String scope);
     Optional<UUID> activeHolder(String scope);

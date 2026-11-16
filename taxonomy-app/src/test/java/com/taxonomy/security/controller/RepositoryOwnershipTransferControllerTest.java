@@ -11,6 +11,7 @@ import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import tools.jackson.databind.json.JsonMapper;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import java.util.UUID;
@@ -21,6 +22,32 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 class RepositoryOwnershipTransferControllerTest {
+    @Test void membershipRoutesForwardTheOptionalRationaleWithTheExactObservedRevision() throws Exception {
+        var repository = new SystemRepository();
+        repository.setRepositoryId("project");
+        var catalogue = mock(SystemRepositoryService.class);
+        var resolver = mock(WorkspaceResolver.class);
+        var memberships = mock(RepositoryMembershipService.class);
+        when(resolver.resolveCurrentUsername()).thenReturn("owner");
+        when(catalogue.getRepository("project")).thenReturn(repository);
+        when(memberships.canRead(repository, "owner")).thenReturn(true);
+        when(memberships.isOwner(repository, "owner")).thenReturn(true);
+        var granted = new com.taxonomy.workspace.model.RepositoryMembership();
+        granted.setRepositoryId("project");
+        granted.setUsername("reader");
+        granted.setRole(com.taxonomy.workspace.model.RepositoryRole.READER);
+        when(memberships.assignRole(repository, "reader", granted.getRole(), "owner", -1L, "Read the approved model")).thenReturn(granted);
+        var mvc = MockMvcBuilders.standaloneSetup(new ArchitectureRepositoryController(catalogue, null, null, memberships, resolver)).build();
+        String url = "/api/repositories/project/members/reader";
+        mvc.perform(put(url).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\":\"READER\",\"expectedVersion\":-1,\"rationale\":\"Read the approved model\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.role").value("READER"));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete(url)
+                        .param("expectedVersion", "0").header("X-Audit-Rationale", "Task completed"))
+                .andExpect(status().isNoContent());
+        org.mockito.Mockito.verify(memberships).removeMembership(repository, "reader", "owner", 0L, "Task completed");
+    }
+
     @Test void transferUsesTheVersionFromTheVisibleRepositoryHttpRepresentation() throws Exception {
         var login = new TestingAuthenticationToken("owner", "unused");
         var resolver = mock(WorkspaceResolver.class);

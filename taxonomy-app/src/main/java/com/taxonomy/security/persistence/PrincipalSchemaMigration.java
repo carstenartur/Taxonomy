@@ -20,7 +20,15 @@ public final class PrincipalSchemaMigration {
                 .locations("classpath:db/identity-java-migrations")
                 .baselineOnMigrate(true).baselineVersion("0")
                 .javaMigrations(new V1__StablePrincipals(), new V2__ExplicitBackupGrants(),
-                        new V3__ReserveHistoricalScopes(), new V4__WebDavCredentialOwner()).load().migrate();
+                        new V3__ReserveHistoricalScopes(), new V4__WebDavCredentialOwner(),
+                        new V5__LegacyRepositoryRoleAudit()).load().migrate();
+    }
+
+    /** LEGACY OIDC has a verified issuer/subject binding and no registry principal to reference. */
+    public static final class V5__LegacyRepositoryRoleAudit extends BaseJavaMigration {
+        @Override public void migrate(Context context) throws SQLException {
+            execute(context.getConnection(), "create table legacy_repository_role_audit (audit_id varchar(36) primary key, actor_binding varchar(64) not null, detail varchar(2048) not null, occurred_at numeric(19,0) not null)");
+        }
     }
 
     /** A pre-upgrade app password has no evidence of its original login binding. Leave it unbound. */

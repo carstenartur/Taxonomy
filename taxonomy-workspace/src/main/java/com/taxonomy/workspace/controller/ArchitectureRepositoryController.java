@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -219,7 +220,7 @@ public class ArchitectureRepositoryController {
     @PutMapping("/{repositoryId}/members/{username}")
     @Operation(summary = "Assign or change a repository membership",
             description = "Requires repository OWNER and an exact expectedVersion. Read the individual member revision "
-                    + "before regranting a revoked role. Use -1 only for the first grant. A stale version returns 409.")
+                    + "before regranting a revoked role. Use -1 only for the first grant. A stale version returns 409. The optional rationale is retained in the policy audit.")
     public ResponseEntity<?> updateMembership(
             @PathVariable String repositoryId,
             @PathVariable String username,
@@ -237,8 +238,9 @@ public class ArchitectureRepositoryController {
                     .body(Map.of("error", "expectedVersion is required"));
         }
         try {
-            RepositoryMembership membership = membershipService.assignRole(
-                    repository, username, request.role(), user, request.expectedVersion());
+            RepositoryMembership membership = request.rationale() == null
+                    ? membershipService.assignRole(repository, username, request.role(), user, request.expectedVersion())
+                    : membershipService.assignRole(repository, username, request.role(), user, request.expectedVersion(), request.rationale());
             return ResponseEntity.ok(toMembershipMap(membership));
         } catch (OptimisticLockingFailureException exception) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
@@ -250,13 +252,18 @@ public class ArchitectureRepositoryController {
         }
     }
 
+    public ResponseEntity<?> removeMembership(String repositoryId, String username, Long expectedVersion) {
+        return removeMembership(repositoryId, username, expectedVersion, null);
+    }
+
     @DeleteMapping("/{repositoryId}/members/{username}")
     @Operation(summary = "Remove a repository membership",
-            description = "Requires OWNER and an expectedVersion query parameter matching the member's current version. Returns 409 for a stale editor and 204 only after successful deletion.")
+            description = "Requires OWNER and an expectedVersion query parameter matching the member's current version. Supply an optional X-Audit-Rationale header. Returns 409 for a stale editor and 204 after the grant and audit commit.")
     public ResponseEntity<?> removeMembership(
             @PathVariable String repositoryId,
             @PathVariable String username,
-            @RequestParam(name = "expectedVersion", required = false) Long expectedVersion) {
+            @RequestParam(name = "expectedVersion", required = false) Long expectedVersion,
+            @RequestHeader(name = "X-Audit-Rationale", required = false) String rationale) {
         String user = workspaceResolver.resolveCurrentUsername();
         SystemRepository repository = visibleRepository(repositoryId, user);
         if (repository == null) {
@@ -270,7 +277,8 @@ public class ArchitectureRepositoryController {
                     .body(Map.of("error", "expectedVersion is required"));
         }
         try {
-            membershipService.removeMembership(repository, username, user, expectedVersion);
+            if (rationale == null) membershipService.removeMembership(repository, username, user, expectedVersion);
+            else membershipService.removeMembership(repository, username, user, expectedVersion, rationale);
             return ResponseEntity.noContent().build();
         } catch (OptimisticLockingFailureException exception) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
@@ -359,6 +367,9 @@ public class ArchitectureRepositoryController {
             String sourceBranch) {
     }
 
-    public record UpdateMembershipRequest(RepositoryRole role, Long expectedVersion) {
+    public record UpdateMembershipRequest(RepositoryRole role, Long expectedVersion, String rationale) {
+        public UpdateMembershipRequest(RepositoryRole role, Long expectedVersion) {
+            this(role, expectedVersion, null);
+        }
     }
 }
