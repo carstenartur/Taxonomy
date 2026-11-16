@@ -7,7 +7,11 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 import com.taxonomy.dsl.command.ArchitectureCommand.*;
+import com.taxonomy.dsl.command.ArchitectureDslCommands;
 import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
+import com.taxonomy.dsl.model.ArchitectureOrganization;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
+import com.taxonomy.dsl.model.CatalogueResponsibility;
 import com.taxonomy.editor.persistence.EditorJournal.RevisionConflict;
 import com.taxonomy.editor.ArchitectureCommandPort.*;
 import com.taxonomy.workspace.service.RepositoryContext;
@@ -124,6 +128,38 @@ public class ArchitectureEditorController {
         return read(repositoryId, workspaceScopeKey, branch, commit, revision, null, null);
     }
 
+    public record CatalogueDirectory(Context context, boolean editable, List<ArchitectureOrganization> organizations,
+                                     List<CatalogueResponsibility> assignments, List<CatalogueDefinitionResolver.Node> catalogue) {
+        public CatalogueDirectory {
+            organizations = List.copyOf(organizations);
+            assignments = List.copyOf(assignments);
+            catalogue = List.copyOf(catalogue);
+        }
+    }
+
+    @GetMapping("/api/architecture/editor/catalogue-responsibilities")
+    @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = "Read organizational assignments on catalogue elements",
+            description = "Returns catalogue elements, organizations and their assignments for the authorized workspace state, retained semantic revision or Git checkpoint.")
+    public ResponseEntity<CatalogueDirectory> catalogueDirectory(
+            @Parameter(description = "Optional repository pin that must match the authenticated context.")
+            @RequestParam(required = false) String repositoryId,
+            @Parameter(description = "Optional workspace scope pin that must match the authenticated context.")
+            @RequestParam(required = false) String workspaceScopeKey,
+            @Parameter(description = "Optional branch pin that must match the authenticated context.")
+            @RequestParam(required = false) String branch,
+            @Parameter(description = "Exact retained Git checkpoint SHA. Omit to read semantic workspace state.")
+            @RequestParam(required = false) String commit,
+            @Parameter(description = "Retained semantic workspace revision number.")
+            @RequestParam(required = false) Long revision) throws IOException {
+        var context = readContext(repositoryId, workspaceScopeKey, branch);
+        var document = service.read(context, commit, revision);
+        var model = new ArchitectureDslCommands().model(document.dsl());
+        return documentResponse(document).body(new CatalogueDirectory(document.context(),
+                commit == null && revision == null && ArchitectureEditorProjection.editable(document, mayEdit()), model.getOrganizations(),
+                model.getCatalogueResponsibilities(), service.catalogueNodes(model)));
+    }
+
     @PostMapping("/api/architecture/editor/preview")
     @ResponseBody
     @io.swagger.v3.oas.annotations.Operation(summary = "Preview a semantic editor command",
@@ -237,6 +273,10 @@ public class ArchitectureEditorController {
             case "DELETE_PLANNING" -> new SemanticCommand(new DeleteRequirementPlanning(body.id(), planning(body).entryId()));
             case "CREATE_PACKAGE" -> new SemanticCommand(new CreateArchitecturePackage("pkg-" + body.metadata().commandId(), body.properties()));
             case "UPDATE_PACKAGE" -> new SemanticCommand(new UpdateArchitecturePackage(body.id(), body.properties()));
+            case "UPSERT_ORGANIZATION" -> new SemanticCommand(new UpsertOrganization(body.id(), body.properties()));
+            case "DELETE_ORGANIZATION" -> new SemanticCommand(new DeleteOrganization(body.id()));
+            case "SET_CATALOGUE_RESPONSIBILITY" -> new SemanticCommand(
+                    new SetCatalogueResponsibility(body.id(), body.properties().get(CatalogueResponsibility.ORGANIZATION)));
             case "DELETE_PACKAGE" -> new SemanticCommand(new DeleteArchitecturePackage(body.id()));
             case "SET_PACKAGE_PLACEMENTS" -> new SemanticCommand(new SetArchitecturePackagePlacements(body.placements(), body.completeParentScopes()));
             case "UPSERT_REQUIREMENT_MAPPING" -> new SemanticCommand(new UpsertRequirementMapping(body.sourceId(), body.targetId(), body.metadata().rationale(), body.properties()));

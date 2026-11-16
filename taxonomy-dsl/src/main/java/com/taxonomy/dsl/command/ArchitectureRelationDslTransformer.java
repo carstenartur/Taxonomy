@@ -74,6 +74,44 @@ public final class ArchitectureRelationDslTransformer {
         return changed(document, changedBlocks, ChangeKind.UPDATED);
     }
 
+    /** Returns a unique, structurally complete relation from this immutable source document. */
+    public java.util.Optional<BlockAst> findProposalRelation(String source, RelationIdentity identity, String proposalId) {
+        List<BlockAst> blocks = parser.parse(source, "architecture.taxdsl").getBlocks();
+        for (BlockAst block : blocks) {
+            if (RELATION_KIND.equals(block.getKind()) && !headerStartsWith(block, identity)
+                    && block.propertyValues("x-proposal-id").contains(proposalId)) {
+                throw new AmbiguousRelationException("The proposal identifies a different relation in this revision");
+            }
+        }
+        List<Integer> matches = matchingIndexes(blocks, identity);
+        rejectAmbiguity(identity, matches.size());
+        if (matches.isEmpty()) return java.util.Optional.empty();
+        BlockAst block = blocks.get(matches.getFirst());
+        requireCanonicalHeader(block, identity);
+        if (!block.getChildren().isEmpty()) {
+            throw new InvalidRelationBlockException("Nested relations cannot be adopted");
+        }
+        ArchitectureSemanticPatch.raw(source, block); // Reject nested or unterminated blocks tolerated by the parser.
+        return java.util.Optional.of(block);
+    }
+
+    /** Append only the selected relation and preserve unrelated target text, comments and formatting. */
+    public ChangeResult insertAbsent(String target, RelationIdentity identity, BlockAst source) {
+        if (!source.getChildren().isEmpty() || !RELATION_KIND.equals(source.getKind()) || !headerStartsWith(source, identity)) {
+            throw new InvalidRelationBlockException("Source does not contain the selected relation");
+        }
+        requireCanonicalHeader(source, identity);
+        String proposalId = Objects.requireNonNull(source.property("x-proposal-id"), "proposalId");
+        if (findProposalRelation(target, identity, proposalId).isPresent()) {
+            throw new AmbiguousRelationException("Target already contains the selected relation");
+        }
+        String next = ArchitectureSemanticPatch.replace(target, null, source);
+        if (findProposalRelation(next, identity, proposalId).isEmpty()) {
+            throw new InvalidRelationBlockException("Target has no safe boundary for this relation");
+        }
+        return new ChangeResult(next, ChangeKind.ADDED);
+    }
+
     /** Removes exactly one matching relation and leaves all other blocks intact. */
     public ChangeResult remove(String sourceDsl, RelationIdentity identity) {
         Objects.requireNonNull(identity, "identity");
@@ -98,14 +136,23 @@ public final class ArchitectureRelationDslTransformer {
      */
     public ChangeResult removeMatching(String sourceDsl, RelationIdentity identity,
                                        Map<String, String> requiredProperties) {
-        if (requiredProperties.isEmpty()) return remove(sourceDsl, identity);
+        return removeMatching(sourceDsl, identity, requiredProperties, Map.of());
+    }
+
+    /** Historical decisions may lack origin fields; if any exist, every field must match. */
+    public ChangeResult removeMatching(String sourceDsl, RelationIdentity identity, Map<String, String> requiredProperties,
+                                       Map<String, String> recordedOrigin) {
+        if (requiredProperties.isEmpty() && recordedOrigin.isEmpty()) return remove(sourceDsl, identity);
         String original = sourceDsl == null ? "" : sourceDsl;
         var blocks = parser.parse(original, "architecture.taxdsl").getBlocks();
         var matches = matchingIndexes(blocks, identity);
         if (matches.size() != 1) throw new IllegalStateException("The selected revision has no unique review decision");
         BlockAst block = blocks.get(matches.getFirst());
         requireCanonicalHeader(block, identity);
-        for (var expected : requiredProperties.entrySet()) {
+        boolean hasOrigin = recordedOrigin.keySet().stream().anyMatch(key -> !block.propertyValues(key).isEmpty());
+        Map<String, String> expectedProperties = new LinkedHashMap<>(requiredProperties);
+        if (hasOrigin) expectedProperties.putAll(recordedOrigin);
+        for (var expected : expectedProperties.entrySet()) {
             if (!block.propertyValues(expected.getKey()).equals(List.of(expected.getValue()))) {
                 throw new IllegalStateException("The selected relation no longer carries this review decision");
             }

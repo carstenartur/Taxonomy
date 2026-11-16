@@ -7,6 +7,7 @@ import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.GitHistoryTransfer;
 import com.taxonomy.workspace.storage.GitUpstreamRef;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,6 +22,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
 
@@ -76,6 +78,7 @@ class WorkspaceUpstreamServiceTest {
         service = new WorkspaceUpstreamService(rows, catalogue, memberships, repositories);
         var resolver = mock(WorkspaceResolver.class);
         when(resolver.resolveCurrentRepositoryContextForRead()).thenReturn(selected);
+        when(resolver.resolveUnambiguousRepositoryForRead()).thenReturn(selected);
         database = new WorkspaceFetchJournalTest.Database();
         actors = mock(WorkspaceFetchAuthority.class);
         when(actors.authorize("alice", RepositoryScope.WORKSPACE)).thenReturn(WorkspaceFetchJournalTest.GRANT);
@@ -85,6 +88,78 @@ class WorkspaceUpstreamServiceTest {
     }
 
     @AfterEach void close() { if (database != null) database.close(); repositories.close(); }
+
+    @Test
+    void planValidatorTracksIndependentLocalSourceAndTrackingRefMoves() throws Exception {
+        service.fetch(selected, new WorkspaceUpstreamService.Request(incoming, null));
+        clearInvocations(rows);
+        String initial = rebasePlanTag();
+
+        target.commitDsl("draft", "independent local edit", "alice", "Move the local branch");
+        String movedLocal = rebasePlanTag();
+        assertThat(movedLocal).isNotEqualTo(initial);
+
+        String later = source.commitDsl("main", "independent upstream edit", "owner", "Move the source branch");
+        String movedSource = rebasePlanTag();
+        assertThat(movedSource).isNotEqualTo(movedLocal);
+
+        GitHistoryTransfer.copyCommitClosure(source, target, later, List.of(incoming));
+        tracked.advance(target, incoming, later, "owner");
+        String movedTracking = rebasePlanTag();
+        assertThat(movedTracking).isNotEqualTo(movedSource);
+        assertThat(rebasePlanTag()).isEqualTo(movedTracking);
+        assertThat(workspace.getCurrentCommit()).isEqualTo(local);
+        assertThat(workspace.getLastFetchedCommit()).isEqualTo(incoming);
+        verify(rows, never()).save(any());
+    }
+
+    private String rebasePlanTag() throws Exception {
+        String path = "/api/workspace/upstream/rebase-plan";
+        String tag = mvc.perform(get(path)).andExpect(status().isOk())
+                .andExpect(header().exists("ETag")).andReturn().getResponse().getHeader("ETag");
+        mvc.perform(head(path)).andExpect(status().isOk()).andExpect(content().string(""))
+                .andExpect(header().string("Cache-Control", "no-store")).andExpect(header().string("ETag", tag));
+        return tag;
+    }
+
+    @Test
+    void planUsesOnlyTheCapturedTrackingCommitAndListsLocalCommitsOldestFirst() throws Exception {
+        service.fetch(selected, new WorkspaceUpstreamService.Request(incoming, null));
+        target.createBranchAtCommit("feature", base);
+        String first = target.commitDsl("feature", "local one", "alice", "one");
+        String second = target.commitDsl("feature", "local two", "alice", "two");
+        String later = source.commitDsl("main", "later", "owner", "Later upstream");
+        var feature = RepositoryContext.workspace("source", "w1", "feature", "alice");
+        var resolver = mock(WorkspaceResolver.class);
+        when(resolver.resolveUnambiguousRepositoryForRead()).thenReturn(feature);
+        var api = MockMvcBuilders.standaloneSetup(new WorkspaceUpstreamController(service, resolver, recovery)).build();
+        api.perform(get("/api/workspace/upstream/rebase-plan")).andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.status").value("REPLAY"))
+                .andExpect(jsonPath("$.repositoryId").value("source")).andExpect(jsonPath("$.workspaceId").value("w1"))
+                .andExpect(jsonPath("$.branch").value("feature")).andExpect(jsonPath("$.localCommit").value(second))
+                .andExpect(jsonPath("$.upstream.sourceCommit").value(later))
+                .andExpect(jsonPath("$.upstream.trackedCommit").value(incoming))
+                .andExpect(jsonPath("$.mergeBase").value(base))
+                .andExpect(jsonPath("$.commits[0].id").value(first)).andExpect(jsonPath("$.commits[1].id").value(second));
+        assertThat(target.getHeadCommit("feature")).isEqualTo(second);
+        assertThat(tracked.head(target)).isEqualTo(incoming);
+        assertThat(source.getHeadCommit("main")).isEqualTo(later);
+    }
+
+    @Test
+    void planDoesNotFetchACommitOrBorrowAnotherBranchsHistory() throws Exception {
+        mvc.perform(get("/api/workspace/upstream/rebase-plan")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("NO_TRACKING")).andExpect(jsonPath("$.commits").isEmpty());
+        assertThat(tracked.head(target)).isNull();
+        assertThat(target.getGitRepository().getObjectDatabase().has(ObjectId.fromString(incoming))).isFalse();
+        service.fetch(selected, new WorkspaceUpstreamService.Request(incoming, null));
+        mvc.perform(get("/api/workspace/upstream/rebase-plan")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("UNRELATED")).andExpect(jsonPath("$.commits").isEmpty());
+        when(memberships.canContribute(metadata, "alice")).thenReturn(false);
+        assertThatThrownBy(() -> mvc.perform(get("/api/workspace/upstream/rebase-plan")))
+                .hasRootCauseInstanceOf(AccessDeniedException.class);
+    }
 
     @Test
     void duplicateFetchPostReturnsTheOriginalReceiptDuringBackoffAndExplicitRetryCanResumeIt() throws Exception {

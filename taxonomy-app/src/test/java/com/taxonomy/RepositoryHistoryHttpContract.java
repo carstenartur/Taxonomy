@@ -144,13 +144,33 @@ final class RepositoryHistoryHttpContract implements AutoCloseable {
         assertHistoryContains(sourceRows, source, advanced);
         assertHistoryContains(witnessRows, witness, original);
         assertHistoryContains(forkRows, fork, original);
+
+        Copy forkWriter = copy(fork.repository, "projection failure writer", original);
+        // This source can be published, but its confidence is outside the projection's range.
+        String unprojectable = publishModel(forkWriter, model.replace("status: accepted;",
+                "status: accepted;\n  confidence: 2.0;"));
+        String rebuild = "/api/architecture/relations/projection/rebuild";
+        var failed = send("POST", rebuild, fork, null, null, unprojectable);
+        assertThat(failed.statusCode()).as("rebuild for the fork: %s", failed.body()).isEqualTo(202);
+        String operationId = failed.headers().firstValue("X-Taxonomy-Operation-Id").orElseThrow();
+        JsonNode receipt = get("/api/architecture/relations/projection/operations/" + operationId, fork);
+        assertThat(receipt.required("repositoryId").textValue()).isEqualTo(fork.repository);
+        assertThat(receipt.required("sourceCommit").textValue()).isEqualTo(unprojectable);
+        assertThat(receipt.required("phase").textValue()).isEqualTo("RETRYABLE");
+        assertThat(receipt.required("reason").textValue()).isEqualTo("PROJECTION_INTERRUPTED");
+        assertStale(readiness(fork), unprojectable, original);
+        assertReady(readiness(source), advanced, 2);
+        assertReady(readiness(witness), original, 1);
+        rebuildRelations(source, advanced, 2);
+        assertStale(readiness(fork), unprojectable, original);
+
         assertThat(request("DELETE", index, fork, null, null, 200).required("purged").asInt()).isPositive();
         assertThat(get(element, fork).size()).isZero();
         assertThat(get(element, source)).isEqualTo(sourceRows);
         assertThat(get(element, witness)).isEqualTo(witnessRows);
         assertReady(readiness(source), advanced, 2);
         assertReady(readiness(witness), original, 1);
-        assertReady(readiness(fork), original, 1);
+        assertStale(readiness(fork), unprojectable, original);
     }
 
     private String publishModel(Copy copy, String model) throws Exception {
@@ -181,6 +201,13 @@ final class RepositoryHistoryHttpContract implements AutoCloseable {
         assertThat(state.required("currentHeadCommit").textValue()).isEqualTo(commit);
         assertThat(state.required("projectedCommit").textValue()).isEqualTo(commit);
         assertThat(state.required("relationCount").asInt()).isEqualTo(count);
+    }
+
+    private static void assertStale(JsonNode state, String head, String projected) {
+        assertThat(state.required("readinessState").textValue()).isEqualTo("STALE");
+        assertThat(state.required("currentHeadCommit").textValue()).isEqualTo(head);
+        assertThat(state.required("projectedCommit").textValue()).isEqualTo(projected);
+        assertThat(state.required("relationCount").asInt()).isZero();
     }
 
     private static void assertHistoryContains(JsonNode rows, Copy copy, String commit) {
@@ -274,6 +301,13 @@ final class RepositoryHistoryHttpContract implements AutoCloseable {
 
     private JsonNode request(String method, String path, Copy copy, String body, String contentType,
                              int expected, String revision) throws Exception {
+        var response = send(method, path, copy, body, contentType, revision);
+        assertThat(response.statusCode()).as("%s %s in %s: %s", method, path, copy, response.body()).isEqualTo(expected);
+        return expected == 200 ? JSON.readTree(response.body()) : null;
+    }
+
+    private HttpResponse<String> send(String method, String path, Copy copy, String body, String contentType,
+                                      String revision) throws Exception {
         var request = HttpRequest.newBuilder().timeout(Duration.ofSeconds(90))
                 .header("Authorization", authorization).header("Accept", "application/json");
         if (revision != null) request.header("If-Match", "\"" + revision + "\"");
@@ -284,10 +318,8 @@ final class RepositoryHistoryHttpContract implements AutoCloseable {
         }
         if (contentType != null) request.header("Content-Type", contentType);
         var payload = body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(body);
-        var response = client.send(request.uri(application.resolve(path)).method(method, payload).build(),
+        return client.send(request.uri(application.resolve(path)).method(method, payload).build(),
                 HttpResponse.BodyHandlers.ofString());
-        assertThat(response.statusCode()).as("%s %s: %s", method, path, response.body()).isEqualTo(expected);
-        return expected == 200 ? JSON.readTree(response.body()) : null;
     }
 
     @Override public void close() {

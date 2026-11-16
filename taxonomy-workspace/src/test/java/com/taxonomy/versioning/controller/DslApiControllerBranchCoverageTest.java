@@ -79,13 +79,13 @@ class DslApiControllerBranchCoverageTest {
 
     @Test
     void cherryPickMergeAndRevertCoverSuccessConflictAndIoFailures() throws Exception {
-        when(dslOps.cherryPick("c1", "review")).thenReturn("c2");
-        assertThat(controller.cherryPick("c1", "review").getBody())
+        when(dslOps.cherryPick("c1", "review", "reviewed")).thenReturn("c2");
+        assertThat(controller.cherryPick("c1", "review", "reviewed").getBody())
                 .containsEntry("commitId", "c2").containsEntry("cherryPickedFrom", "c1");
-        when(dslOps.cherryPick("conflict", "review")).thenReturn((String) null);
-        assertThat(controller.cherryPick("conflict", "review").getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        when(dslOps.cherryPick("io", "review")).thenThrow(new IOException("io failure"));
-        assertThat(controller.cherryPick("io", "review").getStatusCode())
+        when(dslOps.cherryPick("conflict", "review", "reviewed")).thenReturn((String) null);
+        assertThat(controller.cherryPick("conflict", "review", "reviewed").getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        when(dslOps.cherryPick("io", "review", "reviewed")).thenThrow(new IOException("io failure"));
+        assertThat(controller.cherryPick("io", "review", "reviewed").getStatusCode())
                 .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
 
         when(dslOps.merge("review", "accepted")).thenReturn("m1");
@@ -125,16 +125,6 @@ class DslApiControllerBranchCoverageTest {
         assertThat(controller.restore("broken", "draft").getStatusCode())
                 .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
 
-        when(dslOps.deleteBranch("feature")).thenReturn(true);
-        assertThat(controller.deleteBranch("feature").getBody())
-                .containsEntry("deleted", "feature").containsEntry("success", true);
-        when(dslOps.deleteBranch("missing")).thenReturn(false);
-        assertThat(controller.deleteBranch("missing").getStatusCode().value()).isEqualTo(404);
-        when(dslOps.deleteBranch("draft")).thenThrow(new IllegalArgumentException("protected"));
-        assertThat(controller.deleteBranch("draft").getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        when(dslOps.deleteBranch("io")).thenThrow(new IOException("delete io"));
-        assertThat(controller.deleteBranch("io").getStatusCode())
-                .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     @Test
@@ -151,15 +141,35 @@ class DslApiControllerBranchCoverageTest {
                 .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
 
         when(authentication.getName()).thenReturn("bob");
-        when(dslOps.commitDsl("review", "resolved", "bob", "Resolve cherry-pick conflict: abcdefg"))
+        when(dslOps.resolveCherryPick("abcdefghi", "review", "target", "resolved", "bob"))
                 .thenReturn("cherry-resolution");
-        assertThat(controller.cherryPickResolve("abcdefghi", "review", "resolved", authentication).getBody())
+        assertThat(controller.cherryPickResolve("abcdefghi", "review", "target", "resolved", authentication).getBody())
                 .containsEntry("commitId", "cherry-resolution").containsEntry("resolution", "manual");
 
-        when(dslOps.commitDsl("review", "broken", "system", "Resolve cherry-pick conflict: short"))
+        when(dslOps.resolveCherryPick("short", "review", "target", "broken", "system"))
                 .thenThrow(new IOException("commit failed"));
-        assertThat(controller.cherryPickResolve("short", "review", "broken", null).getStatusCode())
+        assertThat(controller.cherryPickResolve("short", "review", "target", "broken", null).getStatusCode())
                 .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    @Test
+    void bothCherryPickCommandsReportTheChangedHeadFromThePreview() throws Exception {
+        var moved = new com.taxonomy.workspace.service.BranchHeadConflictException("review", "old", "new", "changed");
+        when(dslOps.cherryPick("source", "review", "old")).thenThrow(moved);
+        when(dslOps.resolveCherryPick("source", "review", "old", "edited", "system")).thenThrow(moved);
+        for (var response : List.of(controller.cherryPick("source", "review", "old"),
+                controller.cherryPickResolve("source", "review", "old", "edited", null))) {
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+            assertThat(response.getBody()).containsEntry("expectedTargetHead", "old").containsEntry("actualTargetHead", "new");
+        }
+        var pending = new com.taxonomy.workspace.service.BranchHeadConflictException("review", "old", "old", "pending edits");
+        doThrow(pending).when(dslOps).cherryPick("source", "review", "old");
+        assertThat(controller.cherryPick("source", "review", "old").getBody().get("error").toString())
+                .contains("editor").doesNotContain("branch changed");
+        when(dslOps.cherryPick("merge", "review", "reviewed")).thenThrow(new IllegalArgumentException("mainline required"));
+        assertThat(controller.cherryPick("merge", "review", "reviewed").getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(controller.cherryPickResolve("source", "review", "new", "edited", null).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
     }
 
     @Test

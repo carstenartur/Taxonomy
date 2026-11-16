@@ -126,7 +126,7 @@
         url.searchParams.delete('commit'); url.searchParams.delete('revision');
         if (selected.commit) url.searchParams.set('commit', selected.commit);
         if (selected.revision !== null) url.searchParams.set('revision', selected.revision);
-        window.history.pushState(null, '', url); refresh(undefined, selected);
+        window.history.pushState(window.history.state, '', url); refresh(undefined, selected);
     }
     function captureStand() {
         return {generation:state.generation, context:clone(state.overview?.context), source:state.overview?.source, selection:JSON.stringify(state.selection), subject:subjectKey};
@@ -199,7 +199,7 @@
         if (!context || historicalSelection() || scopeKey(context) !== scopeKey(state.context)
                 || scopeKey(scope()) !== scopeKey(state.context)) return;
         var url = new URL(location.href); url.searchParams.delete('commit'); url.searchParams.delete('revision');
-        window.history.replaceState(null,'',url);
+        window.history.replaceState(window.history.state,'',url);
         window.TaxonomyAppChrome?.refreshNavigation();
         var promise = refresh(context,null);
         publishedStand = {context:clone(context),promise:promise};
@@ -700,11 +700,17 @@
         ready:ready,
         selectedContext:function () { return state.suspended ? null : clone(state.overview?.context || null); },
         selectedAnalysisModel:function () {
-            var selected = state.suspended ? null : state.overview;
+            if (state.suspended) return null;
+            if (state.selection.commit) return {expectedCommit:state.selection.commit};
+            if (state.selection.revision !== null) {
+                var revision = Number(state.selection.revision);
+                return {expectedSemanticRevision:/^\d+$/.test(state.selection.revision) && Number.isSafeInteger(revision) ? revision : -1};
+            }
+            var selected = state.overview;
             if (selected?.source === 'GIT_CHECKPOINT' && selected.context?.commit)
                 return {expectedCommit:selected.context.commit};
-            if (selected?.source === 'WORKSPACE_REVISION' && Number.isSafeInteger(selected.context?.revision))
-                return {expectedSemanticRevision:selected.context.revision};
+            if (selected?.source === 'WORKSPACE_REVISION' && Number.isSafeInteger(state.context?.revision))
+                return {expectedSemanticRevision:state.context.revision};
             return null;
         },
         suspend:function(){state.suspended=true;state.sequence++;clearHistory();invalidateStand();if(root)root.hidden=true;},

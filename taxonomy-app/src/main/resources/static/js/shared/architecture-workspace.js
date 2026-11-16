@@ -190,7 +190,7 @@
         window.TaxonomyAppChrome?.activateContext?.('analysis');
         if (page) {
             var target = new URL(urlFor(new URL(location.href),sourceForUrl(Object.assign({kind:'analysis'},analysisScope)),window.TaxonomyI18n.resolveUrl('/')));
-            target.hash=page;history.replaceState(null,'',target);
+            target.hash=page;history.replaceState(history.state,'',target);
         }
     }
     function dimensions() {
@@ -240,7 +240,7 @@
     }
     function writeUrl(source, settings) {
         var target = urlFor(new URL(location.href), sourceForUrl(source), window.TaxonomyI18n.resolveUrl('/'));
-        history[settings?.replace ? 'replaceState' : 'pushState'](null, '', target);
+        history[settings?.replace ? 'replaceState' : 'pushState'](history.state, '', target);
         window.TaxonomyAppChrome?.refreshNavigation();
     }
     function publish(source, settings) {
@@ -250,6 +250,12 @@
         el('architectureSourceDescription').textContent = t('architecture.workspace.' + source.kind + '.help');
         dimensions();
         document.dispatchEvent(new CustomEvent('taxonomy:architecture-source-changed', {detail:{source:source,data:workspace.getData(),diagram:workspace.getDiagram(),active:true}}));
+        const panel = el('proposalsPanel');
+        const home = el(source.kind === 'working' ? 'workingProposalInbox' : 'analysisProposalInbox');
+        if (panel?.parentNode && home) {
+            if (panel.parentNode !== home) home.appendChild(panel);
+            panel.hidden = source.kind === 'snapshot';
+        }
     }
     workspace = create({initial:initial, initialize:initializeSource, defaults:{analysis:Object.assign({kind:'analysis'},analysisScope),working:workingScope,snapshot:snapshotScope},
         adapters:{
@@ -284,6 +290,9 @@
                 analysisUrlSource = explicitAnalysisUrlSource(settings.source || settings);
             }
             lens?.suspend();
+            // Keep the old branch's proposals hidden until the selected source has been published.
+            const panel = el('proposalsPanel');
+            if (panel) panel.hidden = true;
             el('architectureWorkspaceError').hidden=true;
             if(source.kind!=='working')window.TaxonomyArchitectureLifecycle?.suspend?.();
             kinds.forEach(function (kind) { el('architecture' + kind[0].toUpperCase() + kind.slice(1) + 'Source').hidden = kind !== source.kind; });
@@ -319,7 +328,7 @@
         window.TaxonomyArchitectureWorkflow?.replaceScope(source);
         window.TaxonomyAppChrome?.activateContext?.('working');
         var target = new URL(urlFor(new URL(location.href), source, window.TaxonomyI18n.resolveUrl('/')));
-        target.hash = page; history.replaceState(null, '', target);
+        target.hash = page; history.replaceState(history.state, '', target);
         window.TaxonomyAppChrome?.refreshNavigation();
     }
     workspace.useSelectedModel = async function () {
@@ -375,6 +384,8 @@
     document.addEventListener('click',function (event) {
         if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
         var link = event.target.closest?.('a[href]'); if (!link) return;
+        var browsingContext = link.getAttribute('target');
+        if (browsingContext && browsingContext.toLowerCase() !== '_self') return;
         var target = new URL(link.href,location.href);
         if (target.origin !== location.origin) return;
         var source = parseSource(target), legacy = /\/architecture\/(editor|workbench)$/.test(target.pathname);

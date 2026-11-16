@@ -36,6 +36,7 @@ import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 
 /** The native driver's exact authored tuples must pass the productive metamodel and HTTP review path. */
@@ -142,7 +143,7 @@ class PrimaryProposalFixtureTest {
         }
 
         private MockHttpServletResponse call(String method, String path, Object body, Map<String, String> headers) throws Exception {
-            var input = request(HttpMethod.valueOf(method), path + scope).with(authentication(login));
+            var input = request(HttpMethod.valueOf(method), path + scope).with(authentication(login)).with(csrf());
             headers.forEach(input::header);
             if (body != null) input.contentType("application/json").content(JSON.writeValueAsString(body));
             var response = mvc.perform(input).andReturn().getResponse();

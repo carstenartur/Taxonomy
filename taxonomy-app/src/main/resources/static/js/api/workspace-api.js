@@ -16,6 +16,19 @@
             body: JSON.stringify(body) }, options);
     }
     function branchQuery(branch) { return '?userBranch=' + encodeURIComponent(branch); }
+    function expectedContextQuery(options) {
+        return options?.expectedContextId ? '?expectedContextId=' + encodeURIComponent(options.expectedContextId) : '';
+    }
+
+    function rebasePlanRequest(source, method, options, read) {
+        var workspace = source.workspaceId || '';
+        var path = workspace ? '/api/workspace/upstream/rebase-plan'
+            : '/api/repositories/' + encodeURIComponent(source.repositoryId) + '/upstream/rebase-plan';
+        var selection = new URLSearchParams({repositoryId:source.repositoryId, workspaceId:workspace,
+            workspaceScopeKey:workspace || '__shared__', branch:source.branch});
+        return read(path + '?' + selection, {method:method, cache:'no-store'},
+            Object.assign({}, options, {pinnedWorkspaceId:workspace, retries:0}));
+    }
 
     var switchGeneration = 0;
 
@@ -77,6 +90,17 @@
             return post('/api/workspace/' + encodeURIComponent(id) + '/switch', options).then(acknowledge);
         },
         syncState: function (options) { return get('/api/workspace/sync-state', options); },
+        rebasePlan: function (source, options) {
+            if (!options?.includeETag) return rebasePlanRequest(source, 'GET', options, request);
+            return rebasePlanRequest(source, 'GET', options, window.TaxonomyApiClient.request)
+                .then(async function (response) {
+                    return {plan:await response.json(), etag:response.headers.get('ETag')};
+                });
+        },
+        rebasePlanRefTag: function (source, options) {
+            return rebasePlanRequest(source, 'HEAD', options, window.TaxonomyApiClient.request)
+                .then(function (response) { return response.headers.get('ETag'); });
+        },
         localChanges: function (branch, options) { return get('/api/workspace/local-changes?branch=' + encodeURIComponent(branch), options); },
         syncFromShared: function (branch, options) {
             var headers = options && options.idempotencyKey ? {'Idempotency-Key': options.idempotencyKey} : {};
@@ -95,8 +119,8 @@
             if (commitId != null) query.set('commitId', commitId);
             return post('/api/context/open?' + query, options);
         },
-        back: function (options) { return post('/api/context/back', options); },
-        returnToOrigin: function (options) { return post('/api/context/return-to-origin', options); },
+        back: function (options) { return post('/api/context/back' + expectedContextQuery(options), options); },
+        returnToOrigin: function (options) { return post('/api/context/return-to-origin' + expectedContextQuery(options), options); },
         createVariant: function (name, options) { return post('/api/context/variant?name=' + encodeURIComponent(name), options); },
         listBranches: function (options) { return get('/api/git/branches', options); },
         compare: function (selection, options) {
@@ -138,11 +162,20 @@
         commit: function (branch, author, message, text) { return versionPost('/api/dsl/commit', {branch:branch,author:author,message:message}, text, 'text/plain'); },
         compare: function (left, right) { return versionRequest('/api/context/compare' + query({leftBranch:left,rightBranch:right})); },
         merge: function (from, into) { return versionPost('/api/dsl/merge', {fromBranch:from,intoBranch:into}); },
-        deleteBranch: function (name) { return versionRequest('/api/dsl/branch' + query({name:name}), {method:'DELETE'}); },
+        reviewBranchDeletion: function (name) {
+            return versionRequest('/api/dsl/branch/deletion-preview' + query({name:name}), {cache:'no-store'}, {selectedRepository:true});
+        },
+        deleteBranch: function (name, etag) {
+            return versionRequest('/api/dsl/branch' + query({name:name}), {method:'DELETE', headers:{'If-Match':etag}},
+                {selectedRepository:true, acceptedStatuses:[400, 404, 409, 412, 428]});
+        },
         mergeConflicts: function (from, into) { return versionRequest('/api/dsl/merge/conflicts' + query({from:from,into:into})); },
         cherryPickConflicts: function (id, target) { return versionRequest('/api/dsl/cherry-pick/conflicts' + query({commitId:id,targetBranch:target})); },
         resolveMerge: function (from, into, text) { return versionPost('/api/dsl/merge/resolve', {fromBranch:from,intoBranch:into}, text, 'text/plain'); },
-        resolveCherryPick: function (id, target, text) { return versionPost('/api/dsl/cherry-pick/resolve', {commitId:id,targetBranch:target}, text, 'text/plain'); },
+        resolveCherryPick: function (id, target, targetHead, text) {
+            return versionPost('/api/dsl/cherry-pick/resolve',
+                {commitId:id, targetBranch:target, expectedTargetHead:targetHead}, text, 'text/plain');
+        },
         resolveDiverged: function (strategy, branch) { return versionPost('/api/workspace/resolve-diverged', {strategy:strategy,userBranch:branch}); },
         copyBackPreview: function (selection) { return versionPost('/api/context/copy-back/preview', {}, JSON.stringify(selection), 'application/json'); },
         copyBackApply: function (selection, contextId) { return versionPost('/api/context/copy-back/apply', contextId ? {expectedContextId:contextId} : {}, JSON.stringify(selection), 'application/json'); }

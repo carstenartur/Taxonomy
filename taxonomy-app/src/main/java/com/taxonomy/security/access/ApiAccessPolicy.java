@@ -111,11 +111,13 @@ public final class ApiAccessPolicy {
             rules.add(rule("POST", path, Access.PERMISSION, ANALYSIS_RUN, CONTRIBUTOR));
         }
         rules.add(rule("DELETE", "/api/workspace/upstream/operations/*", Access.PERMISSION, ANALYSIS_RUN, CONTRIBUTOR));
-        for (String path : List.of("/api/workspace/upstream", "/api/workspace/upstream/tag", "/api/workspace/upstream/operations/*")) {
+        for (String path : List.of("/api/workspace/upstream", "/api/workspace/upstream/tag",
+                "/api/workspace/upstream/rebase-plan", "/api/workspace/upstream/operations/*")) {
             rules.add(rule("GET", path, Access.PERMISSION, ARCHITECTURE_READ, CONTRIBUTOR));
         }
         rules.add(rule("DELETE", "/api/repositories/*/upstream/operations/*", Access.PERMISSION, ARCHITECTURE_WRITE, CONTRIBUTOR));
-        for (String path : List.of("/api/repositories/*/upstream", "/api/repositories/*/upstream/tag", "/api/repositories/*/upstream/operations/*")) {
+        for (String path : List.of("/api/repositories/*/upstream", "/api/repositories/*/upstream/tag",
+                "/api/repositories/*/upstream/rebase-plan", "/api/repositories/*/upstream/operations/*")) {
             rules.add(rule("GET", path, Access.PERMISSION, ARCHITECTURE_READ, CONTRIBUTOR));
         }
         for (String path : List.of("/api/repositories/*/upstream/fetch", "/api/repositories/*/upstream/fetch-tag", "/api/repositories/*/upstream/operations/*/retry")) {

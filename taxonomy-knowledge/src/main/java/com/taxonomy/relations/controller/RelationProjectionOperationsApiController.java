@@ -130,17 +130,23 @@ public class RelationProjectionOperationsApiController {
     }
 
     @GetMapping("/operations/{id}")
+    @Operation(summary = "Read a projection maintenance operation",
+            description = "Returns the recorded operation and its recovery phase for the selected repository, workspace and branch after checking current access.")
     public ResponseEntity<HistoryIndexJournal.Receipt> operation(@org.springframework.web.bind.annotation.PathVariable String id) {
         return ResponseEntity.ok(maintenance.projectionStatus(operationScope(), id));
     }
 
     @PostMapping("/operations/{id}/retry")
+    @Operation(summary = "Retry a projection maintenance operation",
+            description = "Retries the recorded relation or vector projection operation against its original Git commit after checking current authorization.")
     public ResponseEntity<HistoryIndexJournal.Receipt> retry(@org.springframework.web.bind.annotation.PathVariable String id) {
         var receipt = maintenance.retryProjection(operationScope(), id);
         return "COMPLETED".equals(receipt.phase()) ? ResponseEntity.ok(receipt) : decision(receipt).body(receipt);
     }
 
     @org.springframework.web.bind.annotation.DeleteMapping("/operations/{id}")
+    @Operation(summary = "Archive a settled projection maintenance operation",
+            description = "Archives the operation in the selected scope and retains its receipt and archive decision.")
     public ResponseEntity<HistoryIndexJournal.Receipt> archive(@org.springframework.web.bind.annotation.PathVariable String id) {
         return ResponseEntity.ok(maintenance.archiveProjection(operationScope(), id));
     }

@@ -23,6 +23,7 @@
         account: null,
         busy: 0,
         readGeneration: 0,
+        snapshotGeneration: 0,
         readError: null,
         versionFormDirty: false
     };
@@ -57,6 +58,9 @@
             snapshot: 'Snapshot', productCandidates: 'Product candidates', coverage: 'Coverage',
             decisionReport: 'Decision rationale report', reportDocx: 'Word (.docx)',
             reportHtml: 'HTML', reportJson: 'JSON',
+            impactEvidence: 'Impact analysis evidence', impactVersion: 'Analysed requirement',
+            impactCommit: 'Analysed Git checkpoint', impactRevision: 'Analysed model revision',
+            impactSourceUnavailable: 'The original model reference was not recorded.',
             selected: 'Selected', retry: 'Retry failed analysis', comparePrevious: 'Compare with previous version',
             added: 'Added', removed: 'Removed', unchanged: 'Unchanged', permission: 'Your role cannot change this requirement.',
             failed: 'The operation failed.', resultOverview: 'Copilot result overview',
@@ -121,6 +125,9 @@
             snapshot: 'Snapshot', productCandidates: 'Produktkandidaten', coverage: 'Abdeckung',
             decisionReport: 'Hierarchischer Entscheidungsbericht', reportDocx: 'Word (.docx)',
             reportHtml: 'HTML', reportJson: 'JSON',
+            impactEvidence: 'Belege zur Auswirkungsanalyse', impactVersion: 'Analysierte Anforderung',
+            impactCommit: 'Analysierter Git-Stand', impactRevision: 'Analysierte Modellrevision',
+            impactSourceUnavailable: 'Der ursprüngliche Modellstand wurde nicht aufgezeichnet.',
             selected: 'Ausgewählt', retry: 'Fehlgeschlagene Analyse wiederholen', comparePrevious: 'Mit vorheriger Version vergleichen',
             added: 'Hinzugefügt', removed: 'Entfernt', unchanged: 'Unverändert', permission: 'Ihre Rolle darf diese Anforderung nicht ändern.',
             failed: 'Die Operation ist fehlgeschlagen.', resultOverview: 'Copilot-Ergebnisübersicht',
@@ -268,6 +275,12 @@
         document.getElementById('snapshotDetail').addEventListener('click', event => {
             const button = event.target.closest('[data-decision-report-format]');
             if (button) downloadDecisionReport(button.dataset.decisionReportFormat);
+            const version = event.target.closest('[data-snapshot-version]');
+            if (version) {
+                selectVersion(Number(version.dataset.snapshotVersion));
+                activateDetailTab('versions-tab');
+                document.getElementById('versions-tab').focus();
+            }
         });
     }
 
@@ -494,22 +507,30 @@
     }
 
     async function selectSnapshot(id) {
+        const generation = ++state.snapshotGeneration;
         setBusy(true);
         try {
-            state.selectedSnapshot = state.snapshots.find(snapshot => String(snapshot.id) === String(id)) || null;
-            state.snapshotDetail = await api().getSnapshot(projectId, id);
+            const detail = await api().getSnapshot(projectId, id);
+            if (!pageActive || generation !== state.snapshotGeneration) return;
+            if (String(detail.summary.id) !== String(id) || Number(detail.summary.requirementId) !== requirementId) {
+                throw new Error(t('failed'));
+            }
+            state.selectedSnapshot = detail.summary;
+            state.snapshotDetail = detail;
             const url = new URL(window.location.href);
             url.searchParams.set('snapshot', id);
             url.searchParams.set('lang', locale);
-            history.replaceState(null, '', url);
+            history.replaceState(null, '', window.TaxonomyArchitectureWorkflow?.scopeUrl?.(url.href) || url);
             renderSnapshots();
             renderSnapshotDetail();
             renderArchitecture();
             renderDecisions();
             renderTasks();
         } catch (error) {
-            state.readError = error;
-            if (error.code !== 'ABORTED') showError(error);
+            if (generation === state.snapshotGeneration && pageActive) {
+                state.readError = error;
+                if (error.code !== 'ABORTED') showError(error);
+            }
         } finally {
             setBusy(false);
         }
@@ -559,6 +580,30 @@
         if (!snapshot || !snapshot.id || !format) return;
         window.TaxonomyDecisionExport.openSaved({projectId, snapshotId: snapshot.id, language: locale,
             format, api: api()});
+    }
+
+    function renderImpactEvidence(detail) {
+        const summary = detail.summary;
+        const version = state.versions.find(item => item.id === summary.requirementVersionId);
+        const binding = detail.analysis?.modelBinding;
+        const workflow = window.TaxonomyArchitectureWorkflow;
+        const semantic = binding?.modelSource === 'WORKSPACE_REVISION';
+        // A working revision may have a Git parent that does not contain its bytes.
+        const published = binding?.modelSource === 'GIT_CHECKPOINT' || (semantic
+            && ['RESOLVED', 'BRIEF_UNASSIGNED', 'PROFILE_UNRESOLVED'].includes(binding.state));
+        const checkpoint = published ? workflow?.checkpointUrl?.(binding) : null;
+        const modelLink = checkpoint || (semantic ? workflow?.modelRevisionUrl?.(binding) : null);
+        const modelLabel = checkpoint ? t('impactCommit') + ' ' + binding.commit.slice(0, 12)
+            : t('impactRevision') + ' ' + binding?.semanticRevision;
+        return '<section id="snapshotImpactEvidence" class="mt-3" aria-labelledby="snapshotImpactEvidenceHeading">'
+            + '<h4 id="snapshotImpactEvidenceHeading" class="h6">' + escapeHtml(t('impactEvidence')) + '</h4>'
+            + '<div class="d-flex flex-wrap gap-2 align-items-center">'
+            + (version ? '<button type="button" class="btn btn-sm btn-outline-secondary" data-snapshot-version="'
+                + escapeHtml(version.id) + '">' + escapeHtml(t('impactVersion') + ' v' + version.versionNumber) + '</button>' : '')
+            + (modelLink ? '<a class="btn btn-sm btn-outline-secondary snapshot-impact-model" target="_blank" rel="noopener" href="'
+                + escapeHtml(modelLink) + '">' + escapeHtml(modelLabel) + '</a>'
+                : '<span class="small text-body-secondary">' + escapeHtml(t('impactSourceUnavailable')) + '</span>')
+            + '</div></section>';
     }
 
     function renderModelEvidence(analysis) {
@@ -621,7 +666,7 @@
                 skipped || relevance === null ? t('notEvaluated') : suggested.length + ' ' + t('suggestedRelations'), 'secondary')
             + resultMetric(t('assessmentMatches'), skipped ? '—' : matches.length,
                 skipped ? t('notEvaluated') : accepted.length + ' ' + t('canonicalMembers'), 'secondary')
-            + `</div></section>`;
+            + `</div>` + renderImpactEvidence(detail) + `</section>`;
 
         const warningHtml = warnings.length
             ? `<div class="alert alert-warning mt-3"><ul class="mb-0">${warnings.map(warning => `<li>${escapeHtml(warning)}</li>`).join('')}</ul></div>`

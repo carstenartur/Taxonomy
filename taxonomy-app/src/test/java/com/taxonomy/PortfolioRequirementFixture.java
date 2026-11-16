@@ -121,9 +121,14 @@ final class PortfolioRequirementFixture {
     }
 
     void open(String locale) {
+        open(locale, "");
+    }
+
+    void open(String locale, String query) {
         page.open("requirement-detail", "", "/projects/1/requirements/2", locale,
                 "localStorage.clear();sessionStorage.clear();history.replaceState(null,'',location.pathname"
-                        + "+'?lang=" + locale + "&repositoryId=control-architecture&workspaceId=qa-copy&branch=draft');");
+                        + "+'?lang=" + locale + "&repositoryId=control-architecture&workspaceId=qa-copy&branch=draft"
+                        + query + "');");
         wait.until(ExpectedConditions.textToBe(By.id("requirementHeading"), "Pump control"));
         idle();
         wait.until(driver -> !driver.findElements(By.id("reformulationSnapshot")).isEmpty());

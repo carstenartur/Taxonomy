@@ -4,6 +4,7 @@ import com.taxonomy.workspace.storage.DslCommit;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.dto.ProjectionState;
+import com.taxonomy.dto.RepositoryReadiness;
 import com.taxonomy.dto.RepositoryState;
 import com.taxonomy.dto.ViewContext;
 import org.slf4j.Logger;
@@ -97,19 +98,23 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
      * @return the full repository state
      */
     public RepositoryState getState(String username, String branch, WorkspaceContext ctx) {
-        return readState(username, branch, ctx, resolveState(username));
+        UserWorkspaceState selected = selectedProgress(ctx);
+        return readState(username, branch, ctx,
+                usesLegacyUserProgress(ctx) ? resolveState(username) : selected, selected);
     }
 
     /** Read the selected Git branch and its existing workspace progress without provisioning. */
     public RepositoryState readSelectedState(WorkspaceContext context) {
-        return readState(context.username(), context.currentBranch(), context, selectedProgress(context));
+        UserWorkspaceState progress = selectedProgress(context);
+        return readState(context.username(), context.currentBranch(), context, progress, progress);
     }
 
     private UserWorkspaceState selectedProgress(WorkspaceContext context) {
         return context.workspaceId() == null ? null : workspaceManager.getScopedWorkspaceState(context);
     }
 
-    private RepositoryState readState(String username, String branch, WorkspaceContext ctx, UserWorkspaceState ws) {
+    private RepositoryState readState(String username, String branch, WorkspaceContext ctx, UserWorkspaceState ws,
+                                      UserWorkspaceState progress) {
         DslGitRepository repo = resolveRepository(ctx);
         try {
             DslCommit headInfo = repo.getHeadCommitInfo(branch);
@@ -136,14 +141,18 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
                     ws == null ? null : ws.getLastIndexCommit(),
                     idxStale,
                     commitCount,
-                    repo.isDatabaseBacked()
+                    repo.isDatabaseBacked(),
+                    projectionReadiness(progress, branch, headCommit),
+                    indexReadiness(progress, headCommit)
             );
         } catch (IOException e) {
             log.error("Failed to build repository state for user '{}', branch '{}'", username, branch, e);
             return new RepositoryState(
                     branch, null, null, null, null, List.of(),
                     false, null, null, null, null, false, null, false, 0,
-                    repo.isDatabaseBacked()
+                    repo.isDatabaseBacked(),
+                    RepositoryReadiness.FAILED,
+                    RepositoryReadiness.FAILED
             );
         }
     }
@@ -171,7 +180,8 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
      * @return the view context metadata
      */
     public ViewContext getViewContext(String username, String branch, WorkspaceContext ctx) {
-        UserWorkspaceState ws = ctx == null || ctx.workspaceId() == null ? resolveState(username) : selectedProgress(ctx);
+        UserWorkspaceState selected = selectedProgress(ctx);
+        UserWorkspaceState ws = usesLegacyUserProgress(ctx) ? resolveState(username) : selected;
         DslGitRepository repo = resolveRepository(ctx);
         try {
             DslCommit headInfo = repo.getHeadCommitInfo(branch);
@@ -183,11 +193,14 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
                     headInfo != null ? headInfo.timestamp() : null,
                     true,
                     isProjectionStaleForCommit(ws, headCommit),
-                    isIndexStale(ws, headCommit)
+                    isIndexStale(ws, headCommit),
+                    projectionReadiness(selected, branch, headCommit),
+                    indexReadiness(selected, headCommit)
             );
         } catch (IOException e) {
             log.error("Failed to build view context for user '{}', branch '{}'", username, branch, e);
-            return new ViewContext(null, branch, null, true, false, false);
+            return new ViewContext(null, branch, null, true, false, false,
+                    RepositoryReadiness.FAILED, RepositoryReadiness.FAILED);
         }
     }
 
@@ -199,7 +212,9 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
         }
         UserWorkspaceState state = selectedProgress(context);
         return Optional.of(new ViewContext(head.commitId(), context.currentBranch(), head.timestamp(), true,
-                isProjectionStaleForCommit(state, head.commitId()), isIndexStale(state, head.commitId())));
+                isProjectionStaleForCommit(state, head.commitId()), isIndexStale(state, head.commitId()),
+                projectionReadiness(state, context.currentBranch(), head.commitId()),
+                indexReadiness(state, head.commitId())));
     }
 
     /**
@@ -254,7 +269,7 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
      * @return true if projection is stale
      */
     public boolean isProjectionStale(String username, String branch, WorkspaceContext ctx) {
-        UserWorkspaceState ws = resolveState(username);
+        UserWorkspaceState ws = stateForRead(username, ctx);
         try {
             String headCommit = resolveRepository(ctx).getHeadCommit(branch);
             return isProjectionStaleForCommit(ws, headCommit);
@@ -288,7 +303,7 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
      * @return the projection state
      */
     public ProjectionState getProjectionState(String username, String branch, WorkspaceContext ctx) {
-        UserWorkspaceState ws = resolveState(username);
+        UserWorkspaceState ws = stateForRead(username, ctx);
         try {
             String headCommit = resolveRepository(ctx).getHeadCommit(branch);
             return new ProjectionState(
@@ -357,6 +372,24 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
         return workspaceManager.getOrCreateWorkspace(username);
     }
 
+    /**
+     * The legacy, actor-only APIs construct a central compatibility context with the
+     * calling user's name and requested branch. Comparing the entire context to
+     * WorkspaceContext.SHARED (whose actor is "system") would incorrectly discard
+     * the user's operation and freshness state.
+     *
+     * An explicitly selected repository, including one without a workspace ID,
+     * must never inherit those legacy per-user checkpoints or operation locks.
+     */
+    private static boolean usesLegacyUserProgress(WorkspaceContext context) {
+        return context.workspaceId() == null
+                && WorkspaceContext.LEGACY_REPOSITORY_ID.equals(context.repositoryId());
+    }
+
+    private UserWorkspaceState stateForRead(String username, WorkspaceContext context) {
+        return usesLegacyUserProgress(context) ? resolveState(username) : selectedProgress(context);
+    }
+
     private UserWorkspaceState requireState(String username) {
         UserWorkspaceState state = resolveState(username);
         if (state == null) {
@@ -380,6 +413,21 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
      */
     public void ensureWorkspaceState(String username) {
         resolveState(username);
+    }
+
+    private RepositoryReadiness projectionReadiness(UserWorkspaceState progress, String branch, String headCommit) {
+        String checkpoint = progress == null ? null : progress.getLastProjectionCommit();
+        if (headCommit == null || checkpoint == null || !branch.equals(progress.getLastProjectionBranch())) {
+            return RepositoryReadiness.MISSING;
+        }
+        // The legacy checkpoint does not attest that the projection was built from this exact source.
+        return headCommit.equals(checkpoint) ? RepositoryReadiness.UNVERIFIED : RepositoryReadiness.STALE;
+    }
+
+    private RepositoryReadiness indexReadiness(UserWorkspaceState progress, String headCommit) {
+        // The legacy index checkpoint has no associated branch.
+        return headCommit == null || progress == null || progress.getLastIndexCommit() == null
+                ? RepositoryReadiness.MISSING : RepositoryReadiness.UNVERIFIED;
     }
 
     private boolean isProjectionStaleForCommit(UserWorkspaceState ws, String headCommit) {

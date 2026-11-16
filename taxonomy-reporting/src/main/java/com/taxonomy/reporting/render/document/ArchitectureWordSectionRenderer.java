@@ -1,5 +1,7 @@
 package com.taxonomy.reporting.render.document;
 
+import com.taxonomy.diagram.DiagramModel;
+import com.taxonomy.diagram.DiagramNode;
 import com.taxonomy.reporting.api.document.ArchitectureReportDocument;
 
 import com.taxonomy.reporting.render.decision.DecisionReportLabels;
@@ -104,6 +106,7 @@ public final class ArchitectureWordSectionRenderer {
                                                 percentage(e.relevance()),
                                                 value(e.parentId(), labels)))
                         .toList());
+        writeResponsibilities(writer, labels, report.diagram());
         if (!report.nodeReasons().isEmpty()) {
             writer.heading(labels.recordedNodeReasons(), 2, null);
             report.nodeReasons().entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
@@ -168,6 +171,27 @@ public final class ArchitectureWordSectionRenderer {
                         row(
                                 labels.recordedTaxonomyDigest(),
                                 value(e.taxonomyFingerprint(), labels))));
+    }
+
+    static void writeResponsibilities(WordDocumentWriter writer, DecisionReportLabels labels, DiagramModel diagram) {
+        var assigned = diagram.nodes().stream().filter(node -> node.responsibility() != null)
+                .sorted(Comparator.comparing(DiagramNode::id)).toList();
+        if (assigned.isEmpty()) return;
+        writer.heading(labels.organizationalResponsibilities(), 2, null);
+        var table = writer.table(List.of(labels.identifier(), labels.responsibility(),
+                        labels.responsibilityUnitId(), labels.responsibilitySource()),
+                assigned.stream().map(node -> {
+                    var assignment = node.responsibility();
+                    return List.of(node.id(), assignment.name(), assignment.unitId(), assignment.sourceId());
+                }).toList());
+        writer.columnWidths(table, 19, 37, 22, 22);
+        for (int index = 0; index < assigned.size(); index++) {
+            var paragraph = table.getRow(index + 1).getCell(1).getParagraphs().getFirst();
+            var mark = paragraph.insertNewRun(0);
+            mark.setFontSize(9);
+            mark.setColor(assigned.get(index).responsibility().color().substring(1));
+            mark.setText("● ");
+        }
     }
 
     private List<String> row(String name, Object value) {

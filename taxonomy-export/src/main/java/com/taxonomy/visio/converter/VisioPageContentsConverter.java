@@ -151,11 +151,13 @@ public class VisioPageContentsConverter implements Converter {
         boolean container = kind == VisioNativeShape.CONTAINER;
         boolean nativePresentation = container || VisioNativeShape.isPresentationOnly(shape);
         String fill = nativePresentation ? com.taxonomy.export.DiagramPresentation.fill(shape.getType()) : theme.nodeFill(shape.getType());
+        var assignmentColor = shape.getProperties().get("taxonomy.responsibilityColor");
         writeCell(writer, "FillForegnd", fill);
         writeCell(writer, "FillPattern", container ? "0" : "1");
-        writeCell(writer, "LineColor", nativePresentation ? LINE_COLOR : theme.nodeBorder(shape.getType(), shape.isAnchor(), LINE_COLOR, fill));
+        String border = nativePresentation ? LINE_COLOR : theme.nodeBorder(shape.getType(), shape.isAnchor(), LINE_COLOR, fill);
+        writeCell(writer, "LineColor", assignmentColor == null ? border : assignmentColor.value());
         writeCell(writer, "LinePattern", "1");
-        writeCell(writer, "LineWeight", shape.isAnchor() ? "0.02777777777777778" : "0.01388888888888889");
+        writeCell(writer, "LineWeight", shape.isAnchor() || assignmentColor != null ? "0.02777777777777778" : "0.01388888888888889");
         if (kind == VisioNativeShape.SERVICE) writeCell(writer, "Rounding", decimal(Math.min(shape.getWidth(), shape.getHeight()) * .15), "MIN(Width,Height)*0.15");
         if (kind == VisioNativeShape.APPLICATION) writeCell(writer, "RightMargin", decimal(shape.getWidth() * .2), "Width*0.2");
         writeCell(writer, "VerticalAlign", evidence || container ? "0" : "1");
