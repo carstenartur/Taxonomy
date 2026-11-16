@@ -1,5 +1,6 @@
 package com.taxonomy.workspace.controller;
 
+import com.taxonomy.security.model.PrincipalUserDetails;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.model.UserWorkspace;
@@ -20,6 +21,8 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.transaction.AfterTransaction;
@@ -32,6 +35,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -71,6 +75,7 @@ class WorkspaceProvisioningBoundaryIT {
     private SystemRepository source;
     private String sourceCommit;
     private final List<String> workspaceIds = new ArrayList<>();
+    private final List<PrincipalUserDetails> membershipActors = new ArrayList<>();
 
     @BeforeTransaction
     void createOwnedSourceCheckpoint() throws Exception {
@@ -126,13 +131,43 @@ class WorkspaceProvisioningBoundaryIT {
         // source fixture must be removed explicitly after that rollback completes.
         jdbc.update("delete from repository_membership where repository_id=?", source.getRepositoryId());
         jdbc.update("delete from system_repository where repository_id=?", source.getRepositoryId());
+        for (var actor : membershipActors) {
+            String principal = actor.principalId().value().toString();
+            jdbc.update("delete from principal_access_audit where actor_principal=?", principal);
+            users.findByUsername(actor.getUsername()).ifPresent(users::delete);
+            jdbc.update("delete from principal_binding where principal_id=?", principal);
+            jdbc.update("delete from app_principal where principal_id=?", principal);
+        }
         source = null;
+    }
+
+    private PrincipalUserDetails authenticateOwnerAndCreateMember(String memberName) {
+        var owner = activeActor(USER, "ARCHITECT");
+        membershipActors.add(owner);
+        var member = activeActor(memberName, "USER");
+        membershipActors.add(member);
+        SecurityContextHolder.getContext().setAuthentication(
+                UsernamePasswordAuthenticationToken.authenticated(owner, null, owner.getAuthorities()));
+        return member;
+    }
+
+    private Optional<RepositoryRole> roleAsMember(PrincipalUserDetails member) {
+        var context = SecurityContextHolder.getContext();
+        var owner = context.getAuthentication();
+        context.setAuthentication(
+                UsernamePasswordAuthenticationToken.authenticated(member, null, member.getAuthorities()));
+        try {
+            return memberships.effectiveRole(source, member.getUsername());
+        } finally {
+            context.setAuthentication(owner);
+        }
     }
 
     @Test
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     void catalogueChangeInvalidatesAPreviouslyAuthorizedMembershipCommand() {
         String member = "retained-" + UUID.randomUUID();
+        authenticateOwnerAndCreateMember(member);
         long version = memberships.assignRole(source, member, RepositoryRole.READER, USER, -1L).getVersion();
         assertThat(jdbc.update("update system_repository set lifecycle_state='ARCHIVED',version=version+1 "
                 + "where repository_id=?", source.getRepositoryId())).isEqualTo(1);
@@ -152,10 +187,11 @@ class WorkspaceProvisioningBoundaryIT {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     void removedMembershipVersionCannotChangeOrDeleteItsReplacement() {
         String member = "revision-" + UUID.randomUUID();
+        var holder = authenticateOwnerAndCreateMember(member);
         var original = memberships.assignRole(source, member, RepositoryRole.READER, USER, -1L);
         long firstVersion = original.getVersion();
         memberships.removeMembership(source, member, USER, firstVersion);
-        assertThat(memberships.effectiveRole(source, member)).isEmpty();
+        assertThat(roleAsMember(holder)).isEmpty();
         assertThat(memberships.listMemberships(source, USER))
                 .noneMatch(membership -> member.equals(membership.getUsername()));
 
@@ -173,16 +209,16 @@ class WorkspaceProvisioningBoundaryIT {
         org.assertj.core.api.Assertions.assertThatThrownBy(() ->
                 memberships.removeMembership(source, member, USER, firstVersion))
                 .isInstanceOf(org.springframework.dao.OptimisticLockingFailureException.class);
-        assertThat(memberships.effectiveRole(source, member)).contains(RepositoryRole.CONTRIBUTOR);
+        assertThat(roleAsMember(holder)).contains(RepositoryRole.CONTRIBUTOR);
         memberships.removeMembership(source, member, USER, replacement.getVersion());
-        assertThat(memberships.effectiveRole(source, member)).isEmpty();
+        assertThat(roleAsMember(holder)).isEmpty();
         org.assertj.core.api.Assertions.assertThatThrownBy(() ->
                 memberships.assignRole(source, member, RepositoryRole.READER, USER, revoked.version()))
                 .isInstanceOf(org.springframework.dao.OptimisticLockingFailureException.class);
         var latest = memberships.membershipRevision(source, member, USER);
         assertThat(latest.version()).isGreaterThan(replacement.getVersion());
         memberships.assignRole(source, member, RepositoryRole.READER, USER, latest.version());
-        assertThat(memberships.effectiveRole(source, member)).contains(RepositoryRole.READER);
+        assertThat(roleAsMember(holder)).contains(RepositoryRole.READER);
     }
 
     @ParameterizedTest
