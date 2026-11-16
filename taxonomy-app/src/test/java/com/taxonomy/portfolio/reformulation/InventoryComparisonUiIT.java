@@ -11,8 +11,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 import org.openqa.selenium.*;
 import org.openqa.selenium.support.ui.*;
 import java.time.*;
@@ -29,8 +27,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 class InventoryComparisonUiIT extends ReformulationWorkflowFixture {
     private static final String BASE="/taxonomy";
-    private static final String PASSWORD="Inventory-"+UUID.randomUUID();
-    @DynamicPropertySource static void credentials(DynamicPropertyRegistry registry) {registry.add("taxonomy.admin-password",()->PASSWORD);}
     @LocalServerPort int port;
     @Autowired ProductCatalogService products;
     @Autowired SolutionPortfolioService solutionService;
@@ -50,7 +46,7 @@ class InventoryComparisonUiIT extends ReformulationWorkflowFixture {
         Path evidence=Path.of("target/inventory-browser");Files.createDirectories(evidence);
         try(var session=BrowserSession.openWithNetworkLogging(port,evidence)) {
             var driver=session.driver();var wait=new WebDriverWait(driver,Duration.ofSeconds(30));driver.manage().window().setSize(new Dimension(1440,1000));
-            driver.get(session.origin()+BASE+"/login");driver.findElement(By.name("username")).sendKeys("admin");driver.findElement(By.name("password")).sendKeys(PASSWORD);driver.findElement(By.cssSelector("form")).submit();wait.until(d->!d.getCurrentUrl().contains("/login"));
+            driver.get(session.origin()+BASE+"/login");driver.findElement(By.name("username")).sendKeys("architect");driver.findElement(By.name("password")).sendKeys(ARCHITECT_PASSWORD);driver.findElement(By.cssSelector("form")).submit();wait.until(d->!d.getCurrentUrl().contains("/login"));
             driver.get(session.origin()+BASE+"/projects/"+project.id()+"/requirements/"+requirement.id()+"?snapshot="+snapshot+"&lang=en");
             wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("#inventoryComparison [data-inventory-comparison]")));
             var panel=driver.findElement(By.id("inventoryComparison"));
@@ -150,7 +146,7 @@ class InventoryComparisonUiIT extends ReformulationWorkflowFixture {
         Path artifacts=Path.of("target/inventory-browser");Files.createDirectories(artifacts);
         try(var session=BrowserSession.openWithNetworkLogging(port,artifacts)) {
             var driver=session.driver();var wait=new WebDriverWait(driver,Duration.ofSeconds(30));driver.manage().window().setSize(new Dimension(1440,1000));
-            driver.get(session.origin()+BASE+"/login");driver.findElement(By.name("username")).sendKeys("admin");driver.findElement(By.name("password")).sendKeys(PASSWORD);driver.findElement(By.cssSelector("form")).submit();wait.until(d->!d.getCurrentUrl().contains("/login"));
+            driver.get(session.origin()+BASE+"/login");driver.findElement(By.name("username")).sendKeys("architect");driver.findElement(By.name("password")).sendKeys(ARCHITECT_PASSWORD);driver.findElement(By.cssSelector("form")).submit();wait.until(d->!d.getCurrentUrl().contains("/login"));
             driver.get(session.origin()+BASE+"/projects/"+project.id()+"/requirements/"+requirement.id()+"?snapshot="+snapshot+"&lang=en");
             // Snapshot controls are mounted before the analyses tab finishes becoming visible.
             wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("[data-inventory-organization]")));

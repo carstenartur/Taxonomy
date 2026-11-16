@@ -1,5 +1,6 @@
 package com.taxonomy;
 
+import com.taxonomy.testsupport.WithLocalTestUser;
 import com.taxonomy.analysis.relations.RequirementRelationSearchService;
 import com.taxonomy.analysis.service.AnalysisMemoryGuard;
 import com.taxonomy.analysis.service.LlmService;
@@ -8,7 +9,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.JsonNode;
@@ -35,7 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /** Default-path HTTP composition, not a real-provider quality benchmark. */
 @SpringBootTest(properties = "llm.mock=true")
 @AutoConfigureMockMvc
-@WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
+@WithLocalTestUser(roles = {"USER", "ARCHITECT", "ADMIN"})
 class DefaultArchitectureAnalysisTest {
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final String ORIGINAL = "Provide secure voice communications";

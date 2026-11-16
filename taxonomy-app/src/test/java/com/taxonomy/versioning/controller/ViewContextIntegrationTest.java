@@ -1,11 +1,11 @@
 package com.taxonomy.versioning.controller;
 
+import com.taxonomy.testsupport.WithLocalTestUser;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -19,7 +19,7 @@ import com.taxonomy.dto.ViewContext;
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
+@WithLocalTestUser(roles = {"USER", "ARCHITECT", "ADMIN"})
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_CLASS)
 class ViewContextIntegrationTest {
 

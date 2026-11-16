@@ -2,16 +2,19 @@ package com.taxonomy.catalog.service.importer;
 
 import com.taxonomy.dto.FrameworkImportResult;
 import com.taxonomy.dto.ProfileInfo;
+import com.taxonomy.testsupport.LocalTestLogin;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.ApplicationContext;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import com.taxonomy.catalog.controller.ImportApiController;
@@ -108,13 +111,15 @@ class ImportApiControllerTest {
     }
 
     @Test
-    void importWithCsvReturnsResult() throws Exception {
+    void importWithCsvReturnsResult(@Autowired ApplicationContext applicationContext) throws Exception {
+        var actor = LocalTestLogin.authentication(applicationContext, "csv-import-architect", "USER", "ARCHITECT", "ADMIN");
         String csv = "PCF ID,Name,Level,Description\n1.0,Strategy,1,Test\n";
         MockMultipartFile file = new MockMultipartFile("file", "apqc.csv",
                 "text/csv", csv.getBytes());
 
         mockMvc.perform(multipart("/api/import/apqc").file(file)
-                        .param("branch", "test-branch"))
+                        .param("branch", "test-branch")
+                        .with(authentication(actor)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.profileId").value("apqc"))
                 .andExpect(jsonPath("$.viewContext").exists());

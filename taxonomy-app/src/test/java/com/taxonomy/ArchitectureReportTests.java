@@ -1,5 +1,6 @@
 package com.taxonomy;
 
+import com.taxonomy.testsupport.WithLocalTestUser;
 import com.taxonomy.reporting.render.document.ArchitectureReportTextRenderer;
 
 import com.taxonomy.reporting.render.document.ReportRendererRegistry;
@@ -20,7 +21,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletRequest;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
@@ -35,7 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@WithMockUser(username = "report-admin", roles = {"USER", "ARCHITECT", "ADMIN"})
+@WithLocalTestUser(username = "report-admin", roles = {"USER", "ARCHITECT", "ADMIN"})
 class ArchitectureReportTests {
 
     @Autowired

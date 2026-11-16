@@ -1,12 +1,12 @@
 package com.taxonomy.shared.config;
 
+import com.taxonomy.testsupport.WithLocalTestUser;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import jakarta.servlet.http.Cookie;
@@ -26,7 +26,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@WithMockUser
+@WithLocalTestUser(username = "webmvc-user")
 class WebMvcConfigTest {
 
     @Autowired
@@ -64,7 +64,7 @@ class WebMvcConfigTest {
         mockMvc.perform(get("/api/projects").accept("application/json"))
                 .andExpect(status().isOk());
 
-        assertThat(workspaceRepository.findByUsernameAndSharedFalse("user"))
+        assertThat(workspaceRepository.findByUsernameAndSharedFalse("webmvc-user"))
                 .isPresent();
     }
 

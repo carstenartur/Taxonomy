@@ -3,13 +3,13 @@ package com.taxonomy.workspace.controller;
 import com.taxonomy.portfolio.RetainedPortfolioCatalogue;
 import com.taxonomy.security.service.DatabaseUserDetailsService;
 import com.taxonomy.security.service.UserManagementService;
+import com.taxonomy.testsupport.WithLocalTestUser;
 import org.junit.jupiter.api.Tag;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -36,7 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@WithMockUser(username = "testuser", roles = {"USER", "ARCHITECT", "ADMIN"})
+@WithLocalTestUser(username = "testuser", roles = {"USER", "ARCHITECT", "ADMIN"})
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_CLASS)
 @Tag("ci-app-shard-domain-integration")
 class WorkspaceControllerTest extends RetainedPortfolioCatalogue {
@@ -174,14 +174,15 @@ class WorkspaceControllerTest extends RetainedPortfolioCatalogue {
                         .param("strategy", "MERGE")
                         .param("userBranch", "draft"))
                 .andReturn();
-        // Should not be 400 (strategy is valid)
+        // The authorized request reaches the valid strategy even when the merge fails.
         assertNotEquals(400, result.getResponse().getStatus());
+        assertNotEquals(403, result.getResponse().getStatus());
     }
 
     // ── Create workspace ────────────────────────────────────────────
 
     @Test
-    @WithMockUser(username = "workspace-creator", roles = {"USER", "ARCHITECT", "ADMIN"})
+    @WithLocalTestUser(username = "workspace-creator", roles = {"USER", "ARCHITECT", "ADMIN"})
     void createWorkspace_returnsOk() throws Exception {
         mockMvc.perform(post("/api/workspace/create")
                         .contentType(MediaType.APPLICATION_JSON)

@@ -1,5 +1,6 @@
 package com.taxonomy;
 
+import com.taxonomy.testsupport.WithLocalTestUser;
 import com.taxonomy.analysis.service.AnalysisMemoryGuard;
 import com.taxonomy.dto.RequirementAnchor;
 import com.taxonomy.dto.RequirementArchitectureView;
@@ -32,14 +33,13 @@ import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mockStatic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-import org.springframework.security.test.context.support.WithMockUser;
 
 // These existing cases specify the legacy score/propagation contract. Keep
 // their assertions unchanged; DefaultArchitectureAnalysisTest covers the default.
 @SpringBootTest(properties = {
         "llm.mock=true", "taxonomy.analysis.relations.hierarchical.enabled=false"})
 @AutoConfigureMockMvc
-@WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
+@WithLocalTestUser(roles = {"USER", "ARCHITECT", "ADMIN"})
 class ArchitectureViewTests {
 
     @Autowired
