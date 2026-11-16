@@ -89,8 +89,14 @@ public class WorkspaceUpstreamService {
     @Transactional(rollbackFor = IOException.class)
     public DslGitRepository.RebaseReplay rebase(RepositoryContext selected, UpstreamRebasePlan.ApplyRequest request)
             throws IOException {
-        return UpstreamRebasePlan.apply(open(selected, true).transfer(), selected.repositoryId(),
+        var copy = open(selected, true);
+        var result = UpstreamRebasePlan.apply(copy.transfer(), selected.repositoryId(),
                 selected.workspaceId(), selected.branch(), request);
+        if (result.completed() && selected.branch().equals(copy.workspace().getCurrentBranch())) {
+            copy.workspace().setCurrentCommit(result.newHead());
+            rows.save(copy.workspace());
+        }
+        return result;
     }
 
     @Transactional(rollbackFor = IOException.class)
