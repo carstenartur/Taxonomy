@@ -22,7 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@WithLocalTestUser(roles = {"USER", "ARCHITECT", "ADMIN"})
+@WithLocalTestUser(username = "context-navigation-actor", roles = {"USER", "ARCHITECT", "ADMIN"})
 class ContextNavigationControllerTest {
 
     @Autowired

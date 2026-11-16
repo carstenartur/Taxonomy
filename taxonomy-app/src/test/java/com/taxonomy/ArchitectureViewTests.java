@@ -39,7 +39,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = {
         "llm.mock=true", "taxonomy.analysis.relations.hierarchical.enabled=false"})
 @AutoConfigureMockMvc
-@WithLocalTestUser(roles = {"USER", "ARCHITECT", "ADMIN"})
+@WithLocalTestUser(username = "architecture-view-actor", roles = {"USER", "ARCHITECT", "ADMIN"})
 class ArchitectureViewTests {
 
     @Autowired

@@ -19,7 +19,7 @@ import com.taxonomy.dto.ViewContext;
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@WithLocalTestUser(roles = {"USER", "ARCHITECT", "ADMIN"})
+@WithLocalTestUser(username = "view-context-actor", roles = {"USER", "ARCHITECT", "ADMIN"})
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_CLASS)
 class ViewContextIntegrationTest {
 

@@ -35,7 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /** Default-path HTTP composition, not a real-provider quality benchmark. */
 @SpringBootTest(properties = "llm.mock=true")
 @AutoConfigureMockMvc
-@WithLocalTestUser(roles = {"USER", "ARCHITECT", "ADMIN"})
+@WithLocalTestUser(username = "architecture-analysis-actor", roles = {"USER", "ARCHITECT", "ADMIN"})
 class DefaultArchitectureAnalysisTest {
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final String ORIGINAL = "Provide secure voice communications";
