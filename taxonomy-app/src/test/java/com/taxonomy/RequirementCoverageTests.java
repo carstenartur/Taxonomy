@@ -1,6 +1,7 @@
 package com.taxonomy;
 
 import com.taxonomy.dto.CoverageStatistics;
+import com.taxonomy.testsupport.LocalTestLogin;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceManager;
 import com.taxonomy.relations.repository.RequirementCoverageRepository;
@@ -8,6 +9,7 @@ import com.taxonomy.relations.service.RequirementCoverageService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
@@ -18,7 +20,6 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-import org.springframework.security.test.context.support.WithMockUser;
 
 
 /**
@@ -27,8 +28,8 @@ import org.springframework.security.test.context.support.WithMockUser;
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@WithMockUser(username = "coverage-contract-admin", roles = {"USER", "ARCHITECT", "ADMIN"})
 class RequirementCoverageTests {
+    @Autowired private ApplicationContext applicationContext;
 
     @Autowired private MockMvc mockMvc;
     @Autowired private RequirementCoverageService coverageService;
@@ -42,6 +43,7 @@ class RequirementCoverageTests {
     @BeforeEach
     void clean() throws Exception {
         String actor = "coverage-contract-admin";
+        LocalTestLogin.login(applicationContext, actor, "USER", "ARCHITECT", "ADMIN");
         var workspace = workspaces.findUserWorkspace(actor);
         if (workspace == null) workspace = workspaces.createWorkspace(actor, "Coverage", "Coverage recording tests");
         workspaces.switchWorkspace(actor, workspace.getWorkspaceId());

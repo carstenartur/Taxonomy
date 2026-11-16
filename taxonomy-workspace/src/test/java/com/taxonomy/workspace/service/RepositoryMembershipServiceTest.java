@@ -50,12 +50,14 @@ class RepositoryMembershipServiceTest {
     void productionContextRequiresTheAuditCollaboratorBeforeServingRoleChanges() {
         try (var context = new org.springframework.context.annotation.AnnotationConfigApplicationContext()) {
             context.getBeanFactory().registerSingleton("membershipRepository", membershipRepository);
+            context.getBeanFactory().registerSingleton("workspaceActors", WorkspaceActorAccess.unavailable());
             context.register(RepositoryMembershipService.class);
             var failure = assertThrows(org.springframework.beans.factory.UnsatisfiedDependencyException.class, context::refresh);
             assertTrue(failure.getMessage().contains(RepositoryMembershipIdentity.class.getName()));
         }
         try (var context = new org.springframework.context.annotation.AnnotationConfigApplicationContext()) {
             context.getBeanFactory().registerSingleton("membershipRepository", membershipRepository);
+            context.getBeanFactory().registerSingleton("workspaceActors", WorkspaceActorAccess.unavailable());
             context.getBeanFactory().registerSingleton("identity", mock(RepositoryMembershipIdentity.class));
             context.register(RepositoryMembershipService.class);
             context.refresh();
@@ -97,6 +99,10 @@ class RepositoryMembershipServiceTest {
         when(membershipRepository.findByRepositoryIdAndUsername("repo-a", "member"))
                 .thenReturn(Optional.of(membership("repo-a", "member", RepositoryRole.READER)));
         assertTrue(service.canUseWorkspace(repository, workspace, "member"));
+        var persistedActor = java.util.UUID.randomUUID();
+        workspace.assignOwnerPrincipal(persistedActor);
+        assertTrue(service.canUseWorkspace(repository, workspace, "member", persistedActor.toString()));
+        assertFalse(service.canUseWorkspace(repository, workspace, "member", java.util.UUID.randomUUID().toString()));
         repository.setLifecycleState(RepositoryLifecycleState.ARCHIVED);
         assertFalse(service.canUseWorkspace(repository, workspace, "member"));
         repository.setLifecycleState(RepositoryLifecycleState.ACTIVE);

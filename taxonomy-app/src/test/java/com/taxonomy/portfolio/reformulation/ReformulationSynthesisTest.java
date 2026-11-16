@@ -16,8 +16,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.ApplicationContext;
 import org.springframework.http.MediaType;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.JsonNode;
@@ -33,9 +33,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /** Real HTTP/database contract: proposals cannot rewrite original or active architecture. */
 @SpringBootTest(properties={"llm.mock=false","llm.provider=CUSTOM_OPENAI","custom.llm.url=http://localhost:9999/v1/chat/completions","custom.llm.model=reformulation-test","custom.llm.api.key="})
 @AutoConfigureMockMvc
-@WithMockUser(username="architect", roles="ARCHITECT")
 @Tag("ci-app-shard-domain-integration")
 class ReformulationSynthesisTest extends RetainedPortfolioCatalogue {
+    @Autowired ApplicationContext app;
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
     @Autowired ProjectPortfolioService projects;
@@ -52,6 +52,7 @@ class ReformulationSynthesisTest extends RetainedPortfolioCatalogue {
     static final String ORIGINAL = "Ausschließlich Terminal, keine Browseroberfläche. Frist: 2 Sekunden.";
 
     @BeforeEach void fixture() {
+        ReformulationWorkflowFixture.loginArchitect(app);
         var workspace = workspaces.createWorkspace("architect", "Reformulation " + UUID.randomUUID(), "Isolation fixture");
         workspace = workspaces.provisionWorkspaceRepository("architect", workspace.getWorkspaceId());
         context = new WorkspaceContext("architect", workspace.getWorkspaceId(), workspace.getCurrentBranch(), workspace.getSourceRepositoryId());

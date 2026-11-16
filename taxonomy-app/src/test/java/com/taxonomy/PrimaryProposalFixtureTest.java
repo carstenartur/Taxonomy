@@ -3,6 +3,7 @@ package com.taxonomy;
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.dsl.export.TaxDslExportService;
 import com.taxonomy.dsl.validation.RelationMetamodel;
+import com.taxonomy.testsupport.LocalTestLogin;
 import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.service.ArchitectureRepositoryProvisioningService;
 import com.taxonomy.workspace.service.RepositoryWorkspaceService;
@@ -14,8 +15,11 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.ApplicationContext;
 import org.springframework.http.HttpMethod;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -31,7 +35,8 @@ import java.util.UUID;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 
 /** The native driver's exact authored tuples must pass the productive metamodel and HTTP review path. */
@@ -46,6 +51,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 class PrimaryProposalFixtureTest {
     private static final ObjectMapper JSON = new ObjectMapper();
     @Autowired private MockMvc mvc;
+    @Autowired private ApplicationContext applicationContext;
     @Autowired private TaxonomyNodeRepository nodes;
     @Autowired private TaxDslExportService catalogue;
     @Autowired private ArchitectureRepositoryProvisioningService provisioning;
@@ -116,24 +122,28 @@ class PrimaryProposalFixtureTest {
 
     private final class Session {
         private final String role;
-        private final String username = "native-proposal-" + UUID.randomUUID();
+        private final Authentication login;
         private String scope;
 
         private Session(String role) throws Exception {
             this.role = role;
-            var source = provisioning.createRepository("Native proposal baseline", username,
-                    "Exact catalogue baseline for proposal review", RepositoryVisibility.PRIVATE, username, "main");
-            git.getCentralRepository(source.getRepositoryId()).commitDsl("main", catalogue.exportAll("default"),
-                    username, "Native proposal catalogue baseline");
-            var workspace = workspaces.createWorkingCopy(username, source.getRepositoryId(), "main",
-                    "Native proposal review " + role, "Review lifecycle fixture");
-            scope = "?repositoryId=" + source.getRepositoryId() + "&workspaceId=" + workspace.getWorkspaceId()
-                    + "&branch=" + workspace.getCurrentBranch();
+            String username = "native-proposal-" + UUID.randomUUID();
+            String[] roles = role.equals("ADMIN") ? new String[]{"USER", "ARCHITECT", "ADMIN"} : new String[]{"USER", "ARCHITECT"};
+            try (var local = LocalTestLogin.open(applicationContext, username, roles)) {
+                login = SecurityContextHolder.getContext().getAuthentication();
+                var source = provisioning.createRepository("Native proposal baseline", username,
+                        "Exact catalogue baseline for proposal review", RepositoryVisibility.PRIVATE, username, "main");
+                git.getCentralRepository(source.getRepositoryId()).commitDsl("main", catalogue.exportAll("default"),
+                        username, "Native proposal catalogue baseline");
+                var workspace = workspaces.createWorkingCopy(username, source.getRepositoryId(), "main",
+                        "Native proposal review " + role, "Review lifecycle fixture");
+                scope = "?repositoryId=" + source.getRepositoryId() + "&workspaceId=" + workspace.getWorkspaceId()
+                        + "&branch=" + workspace.getCurrentBranch();
+            }
         }
 
         private MockHttpServletResponse call(String method, String path, Object body, Map<String, String> headers) throws Exception {
-            String[] roles = role.equals("ADMIN") ? new String[]{"USER", "ARCHITECT", "ADMIN"} : new String[]{"USER", "ARCHITECT"};
-            var input = request(HttpMethod.valueOf(method), path + scope).with(user(username).roles(roles));
+            var input = request(HttpMethod.valueOf(method), path + scope).with(authentication(login)).with(csrf());
             headers.forEach(input::header);
             if (body != null) input.contentType("application/json").content(JSON.writeValueAsString(body));
             var response = mvc.perform(input).andReturn().getResponse();

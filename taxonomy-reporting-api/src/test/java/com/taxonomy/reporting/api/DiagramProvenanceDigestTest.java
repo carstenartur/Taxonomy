@@ -6,6 +6,27 @@ import org.junit.jupiter.api.Test;
 import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 class DiagramProvenanceDigestTest {
+    @Test void capturedResponsibilityParticipatesInTheFrozenGraphDigest() {
+        var original = new TaxonomyResponsibilityLookup.Assignment("unit-42", "Operations", "CP-1000");
+        var renamed = new TaxonomyResponsibilityLookup.Assignment("unit-42", "Internal operations", "CP-1000");
+        var reassigned = new TaxonomyResponsibilityLookup.Assignment("unit-99", "Operations", "CP-1000");
+        var differentSource = new TaxonomyResponsibilityLookup.Assignment("unit-42", "Operations", "CP-1023");
+        var oldGraph = graphWithResponsibility(null);
+        var retained = graphWithResponsibility(original);
+
+        assertNotEquals(ArchitectureReportDocument.graphSha256(oldGraph), ArchitectureReportDocument.graphSha256(retained));
+        for (var changed : List.of(renamed, reassigned, differentSource)) {
+            assertNotEquals(ArchitectureReportDocument.graphSha256(retained),
+                    ArchitectureReportDocument.graphSha256(graphWithResponsibility(changed)));
+        }
+        assertEquals(original.color(), renamed.color());
+    }
+
+    private static DiagramModel graphWithResponsibility(TaxonomyResponsibilityLookup.Assignment assignment) {
+        var node = new DiagramNode("CP-1023", "Capability A", "Capabilities", .8, true, 1, 2, true, null, false, assignment);
+        return new DiagramModel("T", List.of(node), List.of(), new DiagramLayout("LR", true));
+    }
+
     @Test void metadataOnlyChangesAreEvidenceChangesAndOrderingIsDeterministic() {
         var derived = metadata(RelationOrigin.IMPACT_DERIVED, "rationale");
         var proposed = metadata(RelationOrigin.LLM_SUPPORTED, "rationale");

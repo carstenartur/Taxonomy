@@ -41,12 +41,12 @@ class ContextNavigationControllerEdgeTest {
                 ContextMode.READ_ONLY, null, null, null, null, null, false);
         List<ContextHistoryEntry> entries = List.of(new ContextHistoryEntry("old", "context", null, null));
         when(navigation.getCurrentContextForScope(workspace)).thenReturn(expected);
-        when(navigation.returnToOrigin("alice", workspace)).thenReturn(expected);
-        when(navigation.back("alice", workspace)).thenReturn(expected);
+        when(navigation.returnToOrigin("alice", workspace, null)).thenReturn(expected);
+        when(navigation.back("alice", workspace, null)).thenReturn(expected);
         when(navigation.getHistoryForScope(workspace)).thenReturn(entries);
         assertSame(expected, controller.getCurrentContext().getBody());
-        assertSame(expected, controller.returnToOrigin().getBody());
-        assertSame(expected, controller.back().getBody());
+        assertSame(expected, controller.returnToOrigin(null).getBody());
+        assertSame(expected, controller.back(null).getBody());
         assertSame(entries, controller.getHistory().getBody());
     }
 

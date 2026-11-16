@@ -1,5 +1,6 @@
 package com.taxonomy.versioning.controller;
 
+import com.taxonomy.testsupport.WithLocalTestUser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.taxonomy.workspace.service.WorkspaceContextResolver;
@@ -9,7 +10,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -22,7 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
+@WithLocalTestUser(username = "context-navigation-actor", roles = {"USER", "ARCHITECT", "ADMIN"})
 class ContextNavigationControllerTest {
 
     @Autowired
@@ -132,7 +132,7 @@ class ContextNavigationControllerTest {
 
     @Test
     void contextEndpointsRequireAuthentication() throws Exception {
-        // This test verifies the security config works — @WithMockUser is used
+        // This test verifies the security config works — @WithLocalTestUser is used
         // at class level so all other tests are authenticated
         mockMvc.perform(get("/api/context/current"))
                 .andExpect(status().isOk());

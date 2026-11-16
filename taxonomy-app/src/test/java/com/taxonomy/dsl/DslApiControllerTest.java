@@ -1,5 +1,7 @@
 package com.taxonomy.dsl;
 
+import com.taxonomy.testsupport.WithLocalTestUser;
+import com.taxonomy.support.AnalysisCatalogueSourceFixture;
 import com.taxonomy.model.HypothesisStatus;
 import com.taxonomy.relations.model.RelationHypothesis;
 import com.taxonomy.model.RelationType;
@@ -17,17 +19,16 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-import org.springframework.security.test.context.support.WithMockUser;
 import com.taxonomy.architecture.model.ArchitectureDslDocument;
 import com.taxonomy.dto.ViewContext;
 
 /**
  * Integration tests for the DSL API endpoints.
  */
-@SpringBootTest
+@SpringBootTest(properties = "spring.datasource.url=jdbc:hsqldb:mem:dsl-api-controller")
 @AutoConfigureMockMvc
-@WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
-class DslApiControllerTest {
+@WithLocalTestUser(roles = {"USER", "ARCHITECT", "ADMIN"})
+class DslApiControllerTest implements AnalysisCatalogueSourceFixture {
 
     @Autowired
     private MockMvc mockMvc;
@@ -40,6 +41,20 @@ class DslApiControllerTest {
 
     @Autowired
     private WorkspaceResolver workspaceResolver;
+
+    @Autowired
+    private com.taxonomy.workspace.service.ArchitectureRepositoryProvisioningService repositoryProvisioning;
+
+    @Autowired
+    private com.taxonomy.workspace.service.RepositoryWorkspaceService workingCopies;
+
+    private String createOwnedDeletionFixture() {
+        String slug = "variant-" + java.util.UUID.randomUUID();
+        var repository = repositoryProvisioning.createRepository("Variant fixture", slug, "Deletion contract",
+                com.taxonomy.workspace.model.RepositoryVisibility.PRIVATE, "admin", "draft");
+        return workingCopies.createWorkingCopy("admin", repository.getRepositoryId(), "draft",
+                slug, null).getWorkspaceId();
+    }
 
     @Test
     void exportCurrentArchitectureReturnsText() throws Exception {
@@ -652,10 +667,19 @@ class DslApiControllerTest {
                 .readTree(commitResult.getResponse().getContentAsString())
                 .get("commitId").asText();
 
-        // Cherry-pick the second commit onto cherry-target
-        mockMvc.perform(post("/api/dsl/cherry-pick")
+        var preview = mockMvc.perform(get("/api/dsl/cherry-pick/preview")
                         .param("commitId", commitId)
                         .param("targetBranch", "cherry-target"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.canCherryPick").value(true))
+                .andReturn();
+        String reviewedHead = tools.jackson.databind.json.JsonMapper.builder().build()
+                .readTree(preview.getResponse().getContentAsString()).get("targetCommit").asText();
+
+        mockMvc.perform(post("/api/dsl/cherry-pick")
+                        .param("commitId", commitId)
+                        .param("targetBranch", "cherry-target")
+                        .param("expectedTargetHead", reviewedHead))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.commitId").isNotEmpty())
                 .andExpect(jsonPath("$.targetBranch").value("cherry-target"))
@@ -670,15 +694,19 @@ class DslApiControllerTest {
                   title: "Target for bad cherry-pick";
                 }
                 """;
-        mockMvc.perform(post("/api/dsl/commit")
+        var target = mockMvc.perform(post("/api/dsl/commit")
                         .contentType(MediaType.TEXT_PLAIN)
                         .content(dsl)
                         .param("branch", "cherry-bad-target"))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andReturn();
+        String targetHead = tools.jackson.databind.json.JsonMapper.builder().build()
+                .readTree(target.getResponse().getContentAsString()).get("commitId").asText();
 
         mockMvc.perform(post("/api/dsl/cherry-pick")
                         .param("commitId", "0000000000000000000000000000000000000000")
-                        .param("targetBranch", "cherry-bad-target"))
+                        .param("targetBranch", "cherry-bad-target")
+                        .param("expectedTargetHead", targetHead))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").isNotEmpty());
     }
@@ -836,7 +864,7 @@ class DslApiControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "hypothesis-apply-user", roles = {"USER", "ARCHITECT", "ADMIN"})
+    @WithLocalTestUser(username = "hypothesis-apply-user", roles = {"USER", "ARCHITECT", "ADMIN"})
     void applyHypothesisForSession() throws Exception {
         // Create a hypothesis
         RelationHypothesis h = new RelationHypothesis();
@@ -949,37 +977,32 @@ class DslApiControllerTest {
     // ── Branch deletion ─────────────────────────────────────────────
 
     @Test
-    void deleteBranch_success() throws Exception {
-        // First create a branch
-        String dsl = """
-                element CP-1023 type Capability {
-                  title: "Branch Delete Test";
-                }
-                """;
-        mockMvc.perform(post("/api/dsl/commit")
-                .contentType(MediaType.TEXT_PLAIN)
-                .content(dsl)
-                .param("branch", "deletable-branch"));
-
-        // Delete it
-        mockMvc.perform(delete("/api/dsl/branch").param("name", "deletable-branch"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.deleted").value("deletable-branch"))
-                .andExpect(jsonPath("$.success").value(true));
+    @org.springframework.security.test.context.support.WithUserDetails("admin")
+    void deleteBranchRequiresTheReviewedCommit() throws Exception {
+        String copy = createOwnedDeletionFixture();
+        String branch = "deletable-branch";
+        var write = post("/api/dsl/commit").param("workspaceId", copy).param("branch", branch)
+                .contentType(MediaType.TEXT_PLAIN).content("element CP-1023 type Capability { title: \"Review\"; }");
+        mockMvc.perform(write).andExpect(status().isOk());
+        var remove = delete("/api/dsl/branch").param("workspaceId", copy).param("name", branch);
+        mockMvc.perform(remove).andExpect(status().isPreconditionRequired());
+        var preview = get("/api/dsl/branch/deletion-preview").param("workspaceId", copy).param("name", branch);
+        String first = mockMvc.perform(preview).andExpect(status().isOk()).andReturn().getResponse().getHeader("ETag");
+        mockMvc.perform(write.content("element CP-1023 type Capability { title: \"Revised\"; }")).andExpect(status().isOk());
+        mockMvc.perform(remove.header("If-Match", first)).andExpect(status().isPreconditionFailed());
+        String current = mockMvc.perform(preview).andExpect(status().isOk()).andReturn().getResponse().getHeader("ETag");
+        mockMvc.perform(delete("/api/dsl/branch").param("workspaceId", copy).param("name", branch).header("If-Match", current))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.deleted").value(branch)).andExpect(jsonPath("$.success").value(true));
+        mockMvc.perform(preview).andExpect(status().isNotFound());
     }
 
     @Test
+    @org.springframework.security.test.context.support.WithUserDetails("admin")
     void deleteBranch_protectedBranch() throws Exception {
-        mockMvc.perform(delete("/api/dsl/branch").param("name", "draft"))
+        String copy = createOwnedDeletionFixture();
+        mockMvc.perform(delete("/api/dsl/branch").param("workspaceId", copy).param("name", "draft"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("Cannot delete protected branch: draft"));
-    }
-
-    @Test
-    void deleteBranch_nonexistent() throws Exception {
-        mockMvc.perform(delete("/api/dsl/branch").param("name", "nonexistent-xyz"))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error").value("Branch 'nonexistent-xyz' not found"));
     }
 
     // ── Merge conflict details ──────────────────────────────────────

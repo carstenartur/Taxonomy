@@ -4,6 +4,7 @@ import com.taxonomy.TaxonomyApplication;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.portfolio.PortfolioAnalysisWorkspace;
+import com.taxonomy.testsupport.LocalTestLogin;
 import com.taxonomy.portfolio.dto.PortfolioDtos.*;
 import com.taxonomy.portfolio.model.PortfolioTypes.*;
 import com.taxonomy.portfolio.service.*;
@@ -51,6 +52,7 @@ public final class ReformulationAdoptionChecks {
                 "--spring.jpa.hibernate.ddl-auto=update", "--spring.jpa.properties.hibernate.search.backend.directory.type=local-heap",
                 "--embedding.enabled=false", "--taxonomy.init.async=false", "--llm.mock=true",
                 "--taxonomy.admin-password="+PASSWORD,"--taxonomy.security.require-password-change=false")) {
+            LocalTestLogin.loginExisting(app, "admin", PASSWORD);
             ReformulationAdoptionSchemaContract.verify(app.getBean(javax.sql.DataSource.class));
             var checks=new ReformulationAdoptionChecks(app);
             if(args.length>1 && args[1].equals("read")) checks.restart(dir);

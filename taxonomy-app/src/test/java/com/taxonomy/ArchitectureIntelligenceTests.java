@@ -11,12 +11,14 @@ import com.taxonomy.architecture.service.ArchitectureRecommendationService;
 import com.taxonomy.catalog.service.ArchiMateXmlImporter;
 import com.taxonomy.architecture.service.EnrichedImpactService;
 import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
+import com.taxonomy.testsupport.LocalTestLogin;
 import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.service.ArchitectureRepositoryProvisioningService;
 import com.taxonomy.workspace.service.RepositoryWorkspaceService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
@@ -43,6 +45,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 @AutoConfigureMockMvc
 @WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
 class ArchitectureIntelligenceTests extends GraphSnapshotFixtureSupport {
+    @Autowired private ApplicationContext applicationContext;
 
     @Autowired private MockMvc mockMvc;
     @Autowired private ArchitectureGapService gapService;
@@ -258,8 +261,8 @@ class ArchitectureIntelligenceTests extends GraphSnapshotFixtureSupport {
     }
 
     @Test
-    @WithMockUser(username = "architecture-intelligence-import", roles = {"USER", "ARCHITECT", "ADMIN"})
     void archiMateImportEndpointReturnsOkInWorkingCopy() throws Exception {
+        LocalTestLogin.login(applicationContext, "architecture-intelligence-import", "USER", "ARCHITECT", "ADMIN");
         var repository = repositoryProvisioning.createRepository(
                 "ArchiMate endpoint", "archimate-endpoint-" + java.util.UUID.randomUUID(),
                 "Independent import fixture", RepositoryVisibility.PRIVATE, "architecture-intelligence-import", "main");

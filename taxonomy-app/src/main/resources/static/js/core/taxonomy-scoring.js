@@ -1125,6 +1125,9 @@
                 warnings: data.warnings || [], status: S.lastAnalysisStatus });
             S.storedBusinessText = text;
             S.lastAnalyzedText = text;
+            S.currentModelBinding = data.modelBinding || null;
+            S.lastAnalysisScope = data.analysisScope || null;
+            if (S.currentModelBinding) window.TaxonomyResponsibilityDisplay?.bindAnalysis(true);
             const matchedCount = Object.values(data.totalScores).filter(v => v > 0).length;
             const partial = data.status === 'PARTIAL' || data.status === 'CANCELLED';
             let statusMsg = partial
@@ -1182,6 +1185,9 @@
                         warnings: data.warnings || [], status: S.lastAnalysisStatus });
                     S.currentDiscrepancies = data.discrepancies || [];
                     S.currentProductCoverageGaps = data.productCoverageGaps || [];
+                    S.currentModelBinding = data.modelBinding || null;
+                    S.lastAnalysisScope = data.analysisScope || null;
+                    if (S.currentModelBinding) window.TaxonomyResponsibilityDisplay?.bindAnalysis(true);
                     B().showStatus('warning', '⚠️ ' + data.errorMessage);
                 } catch (parseErr) {
                     console.error('Failed to parse SSE error event:', parseErr);
@@ -1538,7 +1544,7 @@
             tbl += '<tr class="' + rowClass + '"' +
                 (e.presenceReason ? ' title="' + escapeHtml(e.presenceReason) + '"' : '') + '>' +
                 '<td>' + escapeHtml(e.nodeCode) + '</td>' +
-                '<td>' + escapeHtml(e.title || '') + '</td>' +
+                '<td>' + escapeHtml(e.title || '') + responsibilityLabel(e) + '</td>' +
                 '<td class="text-muted small">' + escapeHtml(pathLabel) + '</td>' +
                 '<td>' + escapeHtml(sheetLabel) + '</td>' +
                 '<td>' + relevanceLabel + '</td>' +
@@ -1551,6 +1557,15 @@
         });
         tbl += '</tbody></table></div>';
         return tbl;
+    }
+
+    function responsibilityLabel(element) {
+        const assignment = element.responsibility;
+        if (!assignment?.name) return '';
+        const unit = window.TaxonomyResponsibilityDisplay?.unit(assignment);
+        return '<span class="taxonomy-responsibility-label ms-1" style="--responsible-unit-color:' + (unit?.color || 'currentColor')
+            + '" title="' + escapeHtml(t('responsibility.source', assignment.sourceId)) + '">'
+            + escapeHtml(t('views.diagram.responsibleUnit', assignment.name)) + '</span>';
     }
 
     /**
@@ -1583,7 +1598,7 @@
             h += ' <span class="impact-badge impact-badge-hotspot">⚠️ ' +
                 escapeHtml((hotspotReasons[el.nodeCode] || 'hotspot').substring(0, 40)) + '</span>';
         }
-        h += '</span>';
+        h += responsibilityLabel(el) + '</span>';
         return h;
     }
 
@@ -1908,7 +1923,7 @@
                     if (parentChildren[el.nodeCode] && parentChildren[el.nodeCode].length >= 2) {
                         html += '<div class="impact-container">';
                         html += '<div class="impact-container-label">' + escapeHtml(el.title || el.nodeCode) +
-                            ' <span class="impact-node-code">' + escapeHtml(el.nodeCode) + '</span></div>';
+                            ' <span class="impact-node-code">' + escapeHtml(el.nodeCode) + '</span>' + responsibilityLabel(el) + '</div>';
                         html += '<div class="impact-container-children">';
                         parentChildren[el.nodeCode].forEach(function (child) {
                             html += renderSwimNode(child, hotspotCodes, hotspotReasons);
@@ -2051,7 +2066,8 @@
                     hopDistance: el.hopDistance,
                     relevance: el.relevance,
                     anchor: el.anchor,
-                    includedBecause: el.includedBecause
+                    includedBecause: el.includedBecause,
+                    responsibility: el.responsibility
                 };
             });
 

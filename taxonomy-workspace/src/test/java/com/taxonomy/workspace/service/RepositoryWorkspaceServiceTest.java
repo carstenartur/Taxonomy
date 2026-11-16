@@ -76,6 +76,7 @@ class RepositoryWorkspaceServiceTest {
         WorkspaceProvisioningTestClaims.enable(workspaceRepository);
         service = new RepositoryWorkspaceService(
                 workspaceRepository, systemRepositoryService, repositoryFactory, memberships);
+        service.configureActorAccess(WorkspaceProvisioningTestClaims.fixtureOwners());
         source = new SystemRepository();
         source.setRepositoryId("source-repository");
         source.setSlug("reference");
@@ -88,9 +89,14 @@ class RepositoryWorkspaceServiceTest {
     @Test
     void workingCopyPublishesTheCapturedCommitAndCreatesTrackingBase() throws Exception {
         when(systemRepositoryService.getRepository("source-repository")).thenReturn(source);
+        var identity = org.mockito.Mockito.mock(WorkspaceActorAccess.class);
+        var principalId = java.util.UUID.randomUUID();
+        when(identity.currentOwnerPrincipal("alice")).thenReturn(java.util.Optional.of(principalId));
+        service.configureActorAccess(identity);
         List<WorkspaceProvisioningStatus> persistedStates = new ArrayList<>();
         when(workspaceRepository.save(any(UserWorkspace.class))).thenAnswer(invocation -> {
             UserWorkspace workspace = invocation.getArgument(0);
+            assertEquals(principalId.toString(), workspace.getOwnerPrincipalId());
             persistedStates.add(workspace.getProvisioningStatus());
             return workspace;
         });

@@ -1,5 +1,6 @@
 package com.taxonomy.interop;
 
+import com.taxonomy.testsupport.LocalTestLogin;
 import org.junit.jupiter.api.Tag;
 
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
@@ -27,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @SpringBootTest(properties = "OSLC_REFERENCE_TOKEN=reference-fixture-token")
 @Tag("ci-app-shard-domain-integration")
 class IntegrationFlowTest {
+    @Autowired org.springframework.context.ApplicationContext application;
     @Autowired IntegrationService integrations;
     @Autowired ProjectPortfolioService projects;
     @Autowired ArchitectureRepositoryProvisioningService repositories;
@@ -42,6 +44,7 @@ class IntegrationFlowTest {
     private UUID connection;
     @BeforeEach void workspace() {
         String actor = "interop-" + UUID.randomUUID().toString().substring(0, 8);
+        LocalTestLogin.login(application, actor, "ARCHITECT");
         var repository = repositories.createRepository("Interoperability test", actor, "", RepositoryVisibility.PRIVATE, actor, "draft");
         var workspace = workspaces.createWorkingCopy(actor, repository.getRepositoryId(), "draft", "Exchange", "");
         context = RepositoryContext.workspace(repository.getRepositoryId(), workspace.getWorkspaceId(), workspace.getCurrentBranch(), actor);
@@ -151,6 +154,7 @@ class IntegrationFlowTest {
         String uri = links.uri("/projects/" + project + "/requirements/" + published.id());
         var version = new java.util.concurrent.atomic.AtomicReference<>("\"v1\"");
         var requests = new java.util.concurrent.atomic.AtomicInteger();
+        var providerLogin = org.springframework.security.test.context.TestSecurityContextHolder.getContext().getAuthentication();
         server.createContext("/rm/", exchange -> {
             requests.incrementAndGet();
             if (!"Bearer reference-fixture-token".equals(exchange.getRequestHeaders().getFirst("Authorization"))) {
@@ -158,8 +162,16 @@ class IntegrationFlowTest {
             }
             String expected = exchange.getRequestHeaders().getFirst("If-Match");
             if (expected != null && !expected.equals(version.get())) { exchange.sendResponseHeaders(412, -1); exchange.close(); return; }
-            byte[] body = exchange.getRequestURI().getPath().endsWith("catalog") ? provider.catalog(context, links).xml()
-                    : provider.requirement(context, project, published.id(), null, links).xml();
+            byte[] body;
+            var security = org.springframework.security.core.context.SecurityContextHolder.createEmptyContext();
+            security.setAuthentication(providerLogin);
+            org.springframework.security.core.context.SecurityContextHolder.setContext(security);
+            try {
+                body = exchange.getRequestURI().getPath().endsWith("catalog") ? provider.catalog(context, links).xml()
+                        : provider.requirement(context, project, published.id(), null, links).xml();
+            } finally {
+                org.springframework.security.core.context.SecurityContextHolder.clearContext();
+            }
             exchange.getResponseHeaders().set("Content-Type", "application/rdf+xml"); exchange.getResponseHeaders().set("ETag", version.get());
             exchange.sendResponseHeaders(200, body.length); exchange.getResponseBody().write(body); exchange.close();
         });

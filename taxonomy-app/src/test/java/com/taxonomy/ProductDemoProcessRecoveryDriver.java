@@ -1,6 +1,7 @@
 package com.taxonomy;
 
 import com.sun.net.httpserver.HttpServer;
+import com.taxonomy.testsupport.LocalTestLogin;
 import com.taxonomy.composition.demo.ProductDemoService;
 import com.taxonomy.dsl.export.TaxDslExportService;
 import com.taxonomy.dto.AnalysisResult;
@@ -29,9 +30,6 @@ import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.web.server.servlet.context.ServletWebServerApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.util.UriComponentsBuilder;
 import tools.jackson.databind.ObjectMapper;
 
@@ -96,10 +94,8 @@ public final class ProductDemoProcessRecoveryDriver {
                 "--taxonomy.portfolio.analysis-claim-timeout-seconds=" + CLAIM_SECONDS,
                 "--llm.mock=false", "--llm.provider=CUSTOM_OPENAI", "--custom.llm.model=controlled-recovery",
                 "--custom.llm.api.key=disposable-fixture", "--custom.llm.url=http://127.0.0.1:"
-                        + provider.getAddress().getPort() + "/v1/chat/completions")) {
-            SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(ACTOR, null,
-                    List.of(new SimpleGrantedAuthority("ROLE_ADMIN"), new SimpleGrantedAuthority("ROLE_ARCHITECT"),
-                            new SimpleGrantedAuthority("ROLE_USER"))));
+                        + provider.getAddress().getPort() + "/v1/chat/completions");
+                var login = LocalTestLogin.openExisting(app, ACTOR, PASSWORD)) {
             var driver = new ProductDemoProcessRecoveryDriver(app);
             Path checkpoint = directory.resolve("claims.json");
             switch (args[0]) {

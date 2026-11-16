@@ -3,6 +3,7 @@ package com.taxonomy.dsl;
 import com.taxonomy.architecture.repository.ArchitectureDslDocumentRepository;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dsl.export.TaxDslExportService;
+import com.taxonomy.testsupport.LocalTestLogin;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
@@ -13,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.ApplicationContext;
 import org.springframework.http.MediaType;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
@@ -25,8 +27,8 @@ import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -54,6 +56,7 @@ class DslMaterializeWorkspaceCommitReproductionTest {
     private static final String PATH = "qa-preferences-hypotheses.tax";
 
     @Autowired private MockMvc mvc;
+    @Autowired private ApplicationContext applicationContext;
     @Autowired private TaxonomyService taxonomy;
     @Autowired private TaxDslExportService exports;
     @Autowired private SystemRepositoryService repositories;
@@ -74,9 +77,10 @@ class DslMaterializeWorkspaceCommitReproductionTest {
         source.commitDsl(primary.getDefaultBranch(), exports.exportAll("backend-reproduction"),
                 OWNER, "Catalogue source for isolated backend reproduction");
 
+        var owner = LocalTestLogin.authentication(applicationContext, OWNER, "USER", "ARCHITECT", "ADMIN");
         log.info("Backend materialization reproduction: creating workspace");
         var created = mvc.perform(post("/api/workspace/create")
-                        .with(user(OWNER).roles("USER", "ARCHITECT", "ADMIN")).with(csrf())
+                        .with(authentication(owner)).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"displayName":"QA Preferences hypothesis restore",
@@ -91,15 +95,15 @@ class DslMaterializeWorkspaceCommitReproductionTest {
 
         log.info("Backend materialization reproduction: provisioning selected workspace");
         mvc.perform(post("/api/workspace/provision").header(HEADER, workspaceId)
-                        .with(user(OWNER).roles("USER", "ARCHITECT", "ADMIN")).with(csrf()))
+                        .with(authentication(owner)).with(csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("READY"));
         mvc.perform(post("/api/workspace/{id}/switch", workspaceId).header(HEADER, workspaceId)
-                        .with(user(OWNER).roles("USER", "ARCHITECT", "ADMIN")).with(csrf()))
+                        .with(authentication(owner)).with(csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.workspaceId").value(workspaceId));
         mvc.perform(get("/api/workspace/current").header(HEADER, workspaceId)
-                        .with(user(OWNER).roles("USER", "ARCHITECT", "ADMIN")))
+                        .with(authentication(owner)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.workspaceId").value(workspaceId))
                 .andExpect(jsonPath("$.currentBranch").value("main"))
@@ -109,7 +113,7 @@ class DslMaterializeWorkspaceCommitReproductionTest {
 
         log.info("Backend materialization reproduction: fetching real catalogue endpoints");
         var catalogue = mvc.perform(get("/api/taxonomy").header(HEADER, workspaceId)
-                        .with(user(OWNER).roles("USER", "ARCHITECT", "ADMIN")))
+                        .with(authentication(owner)))
                 .andExpect(status().isOk()).andReturn();
         List<CatalogueElement> all = new ArrayList<>();
         collectCatalogue(JSON.readTree(catalogue.getResponse().getContentAsString()), all);
@@ -125,7 +129,7 @@ class DslMaterializeWorkspaceCommitReproductionTest {
         String dsl = browserFixture(fixture, processes, capability);
 
         var before = mvc.perform(get("/api/dsl/hypotheses").header(HEADER, workspaceId)
-                        .with(user(OWNER).roles("USER", "ARCHITECT", "ADMIN")))
+                        .with(authentication(owner)))
                 .andExpect(status().isOk()).andReturn();
         JsonNode initialHypotheses = JSON.readTree(before.getResponse().getContentAsString());
         assertThat(initialHypotheses.isArray()).isTrue();
@@ -134,7 +138,7 @@ class DslMaterializeWorkspaceCommitReproductionTest {
         log.info("Backend materialization reproduction: POST materialize (3 elements, 2 provisional hypotheses)");
         var materialized = mvc.perform(post("/api/dsl/materialize")
                         .param("path", PATH).header(HEADER, workspaceId)
-                        .with(user(OWNER).roles("USER", "ARCHITECT", "ADMIN")).with(csrf())
+                        .with(authentication(owner)).with(csrf())
                         .contentType(MediaType.TEXT_PLAIN).content(dsl))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.valid").value(true))
@@ -155,7 +159,8 @@ class DslMaterializeWorkspaceCommitReproductionTest {
         // branch consistently in the response and all committed projections.
         assertThat(body.path("viewContext")).isEqualTo(JSON.readTree("""
                 {"basedOnCommit":"%s","basedOnBranch":"main","commitTimestamp":"%s",
-                 "includesProvisionalRelations":true,"projectionStale":false,"indexStale":false}
+                 "includesProvisionalRelations":true,"projectionStale":false,"indexStale":false,
+                 "projectionReadiness":"MISSING","indexReadiness":"MISSING"}
                 """.formatted(selectedHead.commitId(), selectedHead.timestamp())));
         long documentId = body.path("documentId").asLong();
         assertThat(documents.findById(documentId)).hasValueSatisfying(document -> {
@@ -169,12 +174,12 @@ class DslMaterializeWorkspaceCommitReproductionTest {
         // observe merely uncommitted entities from the preceding write request.
         log.info("Backend materialization reproduction: reading committed hypotheses in a fresh request");
         mvc.perform(get("/api/dsl/hypotheses").header(HEADER, workspaceId)
-                        .with(user(OWNER).roles("USER", "ARCHITECT", "ADMIN")))
+                        .with(authentication(owner)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
                         .string("X-Taxonomy-Commit", selectedHead.commitId()));
         var after = mvc.perform(get("/api/dsl/hypotheses").param("view", "working").header(HEADER, workspaceId)
-                        .with(user(OWNER).roles("USER", "ARCHITECT", "ADMIN")))
+                        .with(authentication(owner)))
                 .andExpect(status().isOk()).andReturn();
         JsonNode rows = JSON.readTree(after.getResponse().getContentAsString());
         assertThat(rows.isArray()).isTrue();

@@ -1,0 +1,83 @@
+/* Keep the existing editor's focus, surface and contrast styling on native buttons. */
+.responsibility-branches, .responsibility-branches ul {
+    list-style: none;
+    margin: 0;
+    padding-inline-start: 0;
+}
+.responsibility-branches li > ul {
+    border-inline-start: 1px solid var(--taxonomy-panel-border, #8795a8);
+    margin-inline-start: 1.25rem;
+    padding-inline-start: .65rem;
+}
+.responsibility-branches .responsibility-row {
+    display: grid;
+    grid-template-columns: 2.75rem minmax(0, 1fr);
+    align-items: center;
+    gap: .35rem;
+}
+.responsibility-branches .responsibility-toggle {
+    grid-column: 1;
+    width: 2.75rem;
+    min-height: 2.75rem;
+    text-align: center;
+    padding: .25rem;
+}
+.responsibility-branches .responsibility-select,
+.responsibility-branches .responsibility-row > span {
+    grid-column: 2;
+    overflow-wrap: anywhere;
+}
+.responsibility-branches .responsibility-select {
+    text-align: start;
+}
+.responsibility-branches .responsibility-select small {
+    display: block;
+    font-size: .8em;
+}
+.responsibility-branches .responsibility-select[aria-current="true"] {
+    font-weight: 650;
+}
+
+.responsibility-branches button.responsibility-assigned, .taxonomy-responsibility-label {
+    border-inline-start: .4rem solid var(--responsible-unit-color);
+}
+#catalogueResponsibilityTree {
+    max-height: 22rem;
+    overflow: auto;
+    scrollbar-gutter: stable;
+}
+#catalogueResponsibilityTree button {
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius-sm);
+    min-height: 2.75rem;
+    margin-block: .15rem;
+    padding-inline: .5rem;
+}
+#catalogueResponsibilityTree .responsibility-assigned {
+    border-inline-start: .4rem solid var(--responsible-unit-color);
+}
+#catalogueResponsibilityTree [aria-current="true"] { border-color: var(--bs-primary); }
+#catalogueOrganizationDirectory :is(form, fieldset) > :is(input, select),
+#catalogueOrganizationDirectory > select { display: block; width: 100%; max-width: 36rem; margin-bottom: .4rem; }
+#catalogueOrganizationDirectory fieldset > label { display: block; }
+#catalogueOrganizationDirectory select[hidden] { display: none; }
+.taxonomy-responsibility-label {
+    align-self: center;
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    border-radius: var(--bs-border-radius-sm);
+    padding: .1rem .35rem;
+    overflow-wrap: anywhere;
+    font-size: .8rem;
+}
+label.responsibility-display-control {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .4rem;
+    font-weight: normal;
+}
+label.responsibility-display-control input[type="checkbox"] { width: auto; margin: 0; }
+.responsibility-display-control small:empty { display: none; }

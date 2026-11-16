@@ -1,6 +1,7 @@
 package com.taxonomy.composition.demo;
 
 import com.sun.net.httpserver.HttpServer;
+import com.taxonomy.testsupport.LocalTestLogin;
 import com.taxonomy.analysis.demo.DemoScenario;
 import com.taxonomy.analysis.demo.DemoScenarioCatalog;
 import com.taxonomy.analysis.demo.evaluation.DemoReferenceEvaluator;
@@ -31,11 +32,11 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.client.ExpectedCount;
@@ -72,8 +73,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = {"llm.mock=false", "llm.provider=CUSTOM_OPENAI", "custom.llm.model=demo-isolation",
         "custom.llm.api.key=demo-test-credential"})
 @AutoConfigureMockMvc
-@WithMockUser(username = "architect", roles = "ARCHITECT")
 class ProductDemoEndToEndTest {
+    @Autowired private ApplicationContext applicationContext;
     private static final String USER = "architect";
 
     @Autowired ProductDemoService demos;
@@ -138,6 +139,7 @@ class ProductDemoEndToEndTest {
     }
     @org.junit.jupiter.api.BeforeEach
     void scenario() {
+        LocalTestLogin.login(applicationContext, USER, "ARCHITECT");
         scenario = catalog.defaultScenario();
     }
 
@@ -334,6 +336,7 @@ class ProductDemoEndToEndTest {
 
         // Closing the demo stops further replay admission.
         demos.close(run.id(), USER, context);
+        LocalTestLogin.login(applicationContext, USER, "ARCHITECT");
         assertThatThrownBy(() -> analysis.analyzeRequirement(run.projectId(), run.requirementId(), null, 25,
                 UUID.randomUUID().toString(), USER, context)).isInstanceOf(PortfolioException.class)
                 .extracting(e -> ((PortfolioException) e).getCode()).isEqualTo(ProductDemoProblems.RUN_CLOSED);

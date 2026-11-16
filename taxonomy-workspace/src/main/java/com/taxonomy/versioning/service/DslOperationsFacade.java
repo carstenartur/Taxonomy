@@ -8,15 +8,14 @@ import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.workspace.service.RepositoryContext;
-import com.taxonomy.workspace.service.RepositoryScope;
 import com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort;
 import com.taxonomy.workspace.service.RepositoryStateGuard;
 import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.security.access.AccessDeniedException;
 
 import java.io.IOException;
 import java.util.List;
@@ -109,10 +108,7 @@ public class DslOperationsFacade {
     }
 
     protected <T> T version(String branch, String rationale, WorkspaceArchitectureVersionPort.GitAction<T> action) throws IOException {
-        RepositoryContext context = resolveRepositoryContext();
-        RepositoryContext selected = new RepositoryContext(context.repositoryId(), context.workspaceId(),
-                branch, context.username(), context.scope());
-        return editorVersions.version(selected, versionRationale(rationale), action);
+        return editorVersions.version(versionTarget(branch), versionRationale(rationale), action);
     }
 
     /** The bounded journal rationale is a summary; the Git action retains its complete original message. */
@@ -158,7 +154,30 @@ public class DslOperationsFacade {
     }
 
     public String cherryPick(String commitId, String targetBranch) throws IOException {
-        return version(targetBranch, "Cherry-pick architecture version", () -> resolveRepository().cherryPick(commitId, targetBranch));
+        return version(targetBranch, "Cherry-pick architecture version",
+                () -> resolveRepository().cherryPick(commitId, targetBranch));
+    }
+
+    public String cherryPick(String commitId, String targetBranch, String expectedTargetHead) throws IOException {
+        String reviewedHead = WorkspaceDslReadPort.normalizeCommitId(expectedTargetHead);
+        var target = versionTarget(targetBranch);
+        var repository = repositoryFactory.resolveRepository(target);
+        return editorVersions.versionAtHead(target, reviewedHead, "Cherry-pick architecture version",
+                () -> repository.cherryPick(commitId, targetBranch, reviewedHead));
+    }
+
+    public String resolveCherryPick(String commitId, String targetBranch, String expectedTargetHead,
+                                   String resolvedDsl, String author) throws IOException {
+        String reviewedHead = WorkspaceDslReadPort.normalizeCommitId(expectedTargetHead);
+        var target = versionTarget(targetBranch);
+        var repository = repositoryFactory.resolveRepository(target);
+        return editorVersions.versionAtHead(target, reviewedHead, "Resolve cherry-pick conflict",
+                () -> repository.resolveCherryPick(commitId, targetBranch, reviewedHead, resolvedDsl, author));
+    }
+
+    private RepositoryContext versionTarget(String branch) {
+        RepositoryContext context = resolveRepositoryContext();
+        return new RepositoryContext(context.repositoryId(), context.workspaceId(), branch, context.username(), context.scope());
     }
 
     public String merge(String fromBranch, String intoBranch) throws IOException {
@@ -186,14 +205,6 @@ public class DslOperationsFacade {
             catch (IOException | RuntimeException failure) { throw failure; }
             catch (Exception failure) { throw new IOException("Architecture restore failed", failure); }
         });
-    }
-
-    public boolean deleteBranch(String name) throws IOException {
-        RepositoryContext context = resolveRepositoryContext();
-        if (context.scope() == RepositoryScope.CENTRAL_READ) {
-            throw new AccessDeniedException("A central read selection cannot delete architecture branches; use a working copy");
-        }
-        return repositoryFactory.resolveRepository(context).deleteBranch(name);
     }
 
     public String getDslAtHead(String branch) throws IOException {

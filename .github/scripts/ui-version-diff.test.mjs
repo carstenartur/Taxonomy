@@ -229,23 +229,39 @@ test('QA cleanup errors preserve the original assertion failure', async () => {
     });
 });
 
+function reviewedVariant(remove) {
+  const head = 'a'.repeat(40);
+  return {
+    reviewBranchDeletion: async branch => {
+      const etag = '"reviewed-' + branch + '-' + head + '"';
+      return Response.json({branch, head, etag}, {headers:{ETag:etag}});
+    },
+    deleteBranch: async (branch, etag) => {
+      assert.equal(etag, '"reviewed-' + branch + '-' + head + '"');
+      await remove(branch);
+      return new Response(null, {status:200});
+    }
+  };
+}
+
 for (const failAt of ['before opening Versions', 'during branch selection', 'after branch selection']) {
   test('comparison restores only its own branch selection after failure ' + failAt, async () => {
     const {runVersionComparisonWorkflow, removeComparisonBranch} = await import('./ui-primary-version-workflow.mjs');
     const original = new Error(failAt), selected = [], refs = new Set(['release/prior']), removed = [];
     let allocated, visible = false, listed = false, active = '';
-    const api = {getJson:async () => ({branches:[...refs]}), request:async (path, init) => {
-      const ref = new URL(path, 'https://fixture.test').searchParams.get('name');
-      assert.equal(init.method, 'DELETE'); assert.ok(refs.delete(ref)); removed.push(ref);
-    }};
+    const api = {getJson:async () => ({branches:[...refs]})};
+    const variants = reviewedVariant(ref => { assert.ok(refs.delete(ref)); removed.push(ref); });
     let sourceReady = false;
     const page = {
-      async waitForFunction(predicate) {
-        const state = {window: {TaxonomyRoleSurface: {getContext: () => ({role: 'ADMIN'})},
-          TaxonomyAnalysisSession: {state: () => ({ready: sourceReady})}}};
-        const check = () => vm.runInNewContext('(' + predicate.toString() + ')()', state);
+      async waitForFunction(predicate, expectedWorkspace) {
+        let workspaceId = 'previous-workspace';
+        const state = {expectedWorkspace,window: {TaxonomyRoleSurface: {getContext: () => ({role: 'ADMIN'})},
+          TaxonomyAnalysisSession: {state: () => ({ready: sourceReady, workspaceId})}}};
+        const check = () => vm.runInNewContext('(' + predicate.toString() + ')(expectedWorkspace)', state);
         assert.equal(check(), false, 'the role is available before the model and repository context settle');
         sourceReady = true;
+        assert.equal(check(), false, 'the previous workspace may already be ready');
+        workspaceId = expectedWorkspace;
         assert.equal(check(), true);
       },
       async evaluate(fn, arg) {
@@ -255,7 +271,7 @@ for (const failAt of ['before opening Versions', 'during branch selection', 'aft
           if (failAt === 'before opening Versions') throw original;
           return {branch:allocated, left:'a'.repeat(40), right:'b'.repeat(40)};
         }
-        if (fn === removeComparisonBranch) return fn(arg, api);
+        if (fn === removeComparisonBranch) return fn(arg, api, variants);
         return vm.runInNewContext('('+fn.toString()+')()', {window:{TaxonomyVersions:{loadTimeline() {}}}});
       },
       locator(selector) {
@@ -281,7 +297,7 @@ for (const failAt of ['before opening Versions', 'during branch selection', 'aft
         };
       }
     };
-    await assert.rejects(runVersionComparisonWorkflow({page,role:'ADMIN',evidence:{}}), error => error === original);
+    await assert.rejects(runVersionComparisonWorkflow({page,role:'ADMIN',evidence:{},sourceBranch:'release/prior',workspaceId:'owned-copy'}), error => error === original);
     assert.match(allocated, /^qa-compare-[0-9a-f-]{36}$/);
     assert.deepEqual(removed, [allocated]);
     assert.deepEqual([...refs], ['release/prior']);
@@ -309,7 +325,7 @@ test('comparison evidence and a surviving QA ref retain distinct safe reasons in
   const {usingComparisonBranch, removeComparisonBranch} = await import('./ui-primary-version-workflow.mjs');
   const original = new Error('Real version comparison omitted <html>private relation</html>?token=secret');
   await assert.rejects(usingComparisonBranch(() => { throw original; }, branch =>
-    removeComparisonBranch(branch, {getJson: async () => ({branches:[branch]}), request: async () => {}})), error => {
+    removeComparisonBranch(branch, {getJson: async () => ({branches:[branch]})}, reviewedVariant(() => {}))), error => {
     assert.equal(error.errors[0], original);
     assert.equal(error.errors[1].message, 'QA branch cleanup was not confirmed');
     assert.equal(error.stack.split('\n')[0], 'AggregateError: comparison: incomplete comparison evidence; branch cleanup: ref still present');
@@ -343,14 +359,29 @@ for (const present of [false, true]) test('comparison cleanup confirms branch ab
   const { removeComparisonBranch } = await import('./ui-primary-version-workflow.mjs');
   assert.equal(typeof removeComparisonBranch, 'function');
   let exists = present, deletes = 0, reads = 0;
-  const api = { getJson: async () => { reads++; return { branches: exists ? ['draft', 'qa-compare-test'] : ['draft'] }; },
-    request: async (url, options) => { assert.equal(options.method, 'DELETE'); deletes++; exists = false; } };
-  await removeComparisonBranch('qa-compare-test', api);
+  const api = { getJson: async () => { reads++; return { branches: exists ? ['draft', 'qa-compare-test'] : ['draft'] }; } };
+  await removeComparisonBranch('qa-compare-test', api, reviewedVariant(branch => {
+    assert.equal(branch, 'qa-compare-test'); deletes++; exists = false;
+  }));
   assert.equal(deletes, present ? 1 : 0); assert.equal(reads, 2);
 });
 test('comparison cleanup does not conceal a failed delete or invalid branch inventory', async () => {
   const { removeComparisonBranch } = await import('./ui-primary-version-workflow.mjs');
   assert.equal(typeof removeComparisonBranch, 'function');
-  await assert.rejects(() => removeComparisonBranch('qa-compare-test', { getJson: async () => ({ branches: ['qa-compare-test'] }), request: async () => { throw new Error('HTTP 500'); } }), /HTTP 500/);
-  await assert.rejects(() => removeComparisonBranch('qa-compare-test', { getJson: async () => ({ error: 'unavailable' }) }));
+  await assert.rejects(() => removeComparisonBranch('qa-compare-test', { getJson: async () => ({ branches: ['qa-compare-test'] }) }, reviewedVariant(() => { throw new Error('HTTP 500'); })), /HTTP 500/);
+  await assert.rejects(() => removeComparisonBranch('qa-compare-test', { getJson: async () => ({ error: 'unavailable' }) }, reviewedVariant(() => {})));
+});
+
+
+test('comparison cleanup stops at a changed head or inconsistent review', async () => {
+  const {removeComparisonBranch} = await import('./ui-primary-version-workflow.mjs');
+  const name = 'qa-compare-test', api = {getJson:async () => ({branches:[name]})};
+  let deletions = 0;
+  const variants = reviewedVariant(() => {});
+  variants.deleteBranch = async () => { deletions++; return new Response(null, {status:412}); };
+  await assert.rejects(removeComparisonBranch(name, api, variants), /HTTP 412/);
+  variants.reviewBranchDeletion = async () => Response.json({branch:name, head:'a'.repeat(40), etag:'different'},
+    {headers:{ETag:'actual'}});
+  await assert.rejects(removeComparisonBranch(name, api, variants), /Invalid comparison branch deletion preview/);
+  assert.equal(deletions, 1);
 });

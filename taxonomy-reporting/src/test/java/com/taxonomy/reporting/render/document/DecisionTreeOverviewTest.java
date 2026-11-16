@@ -45,6 +45,37 @@ class DecisionTreeOverviewTest {
     }
 
     @Test
+    void responsibilityAppearsInGraphicsAndAltTextWithoutChangingScores() {
+        var tree = DecisionTreeOverview.from(List.of(chapter(1, "A", 0, child("B", 80d))));
+        var owner = new com.taxonomy.dto.TaxonomyResponsibilityLookup.Assignment("unit-1", "Network & Ops", "A");
+        var annotated = tree.withResponsibilities(Map.of("A", owner, "B", owner));
+        var renderer = new DecisionTreeFigureRenderer();
+        var layout = com.taxonomy.reporting.api.decision.DecisionReportOptions.TreeLayout.AUTO;
+        var figure = renderer.render(annotated, "en", layout).getFirst();
+        assertThat(figure.svg()).contains(owner.color(), "Network &amp; Ops", "relevance-bar");
+        assertThat(figure.description()).contains("Network & Ops");
+        assertThat(renderer.render(tree, "en", layout).getFirst().svg()).doesNotContain("responsibility-marker");
+    }
+
+    @Test
+    void responsibilityIsReadableOnEachLandscapeContinuationAndInTheWordTable() throws Exception {
+        var rows = new ArrayList<DecisionTreeOverview.DecisionTreeRow>();
+        var owner = new com.taxonomy.dto.TaxonomyResponsibilityLookup.Assignment("unit-1", "Betrieb", "CP");
+        for (int i = 0; i < 80; i++) rows.add(new DecisionTreeOverview.DecisionTreeRow(
+                i == 0 ? 0 : 1, i == 0 ? "CP" : "CP-" + i, "Knoten", 80d, Disposition.CONTINUED, null, null, owner));
+        var tree = new DecisionTreeOverview(rows, List.of());
+        var panels = new DecisionTreeFigureRenderer().render(tree, "de",
+                com.taxonomy.reporting.api.decision.DecisionReportOptions.TreeLayout.AUTO);
+        assertThat(panels).hasSizeGreaterThan(1);
+        assertThat(panels).allSatisfy(p -> assertThat(p.svg().substring(p.svg().indexOf("</title>"))).containsOnlyOnce("Zuständig: Betrieb"));
+        try (var document = new org.apache.poi.xwpf.usermodel.XWPFDocument()) {
+            new DecisionTreeWordSectionRenderer().write(document, tree, "de");
+            var xml = document.getDocument().xmlText();
+            assertThat(xml).contains("Zuständig: Betrieb", owner.color().substring(1), "80.0%");
+        }
+    }
+
+    @Test
     void retainsAlternativesMissingAndZeroWithOneLinkPerChapter() {
         var tree =
                 DecisionTreeOverview.from(

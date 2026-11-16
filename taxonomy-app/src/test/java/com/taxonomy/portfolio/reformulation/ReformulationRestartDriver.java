@@ -3,6 +3,7 @@ package com.taxonomy.portfolio.reformulation;
 import com.taxonomy.TaxonomyApplication;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.portfolio.PortfolioAnalysisWorkspace;
+import com.taxonomy.testsupport.LocalTestLogin;
 import com.taxonomy.portfolio.dto.PortfolioDtos.*;
 import com.taxonomy.portfolio.model.PortfolioTypes.*;
 import com.taxonomy.portfolio.service.*;
@@ -18,6 +19,7 @@ public final class ReformulationRestartDriver {
                 "--spring.datasource.username=SA","--spring.datasource.password=","--spring.datasource.driver-class-name=org.hsqldb.jdbc.JDBCDriver",
                 "--spring.jpa.hibernate.ddl-auto=update","--spring.jpa.properties.hibernate.search.backend.directory.type=local-heap",
                 "--embedding.enabled=false","--taxonomy.init.async=false","--gemini.api.key=","--openai.api.key=","--deepseek.api.key=","--qwen.api.key=","--llama.api.key=","--mistral.api.key=")) {
+            LocalTestLogin.login(app, "architect", "ARCHITECT");
             var service=app.getBean(ReformulationService.class);var projects=app.getBean(ProjectPortfolioService.class);
             var workspaces=app.getBean(WorkspaceManager.class);
             Path identity=Path.of(args[2]);

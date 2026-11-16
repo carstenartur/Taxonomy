@@ -33,6 +33,16 @@ public class ProposalReviewStateStore {
             RepositoryContext context) {
         RepositoryContext tenant = requireWritableContext(context);
         RelationProposal proposal = find(proposalId, tenant, false);
+        return snapshot(proposal);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.Optional<ProposalSnapshot> centralProposal(Long proposalId, String repositoryId) {
+        return proposalRepository.findByIdInRepositoryWorkspace(repositoryId, proposalId, null)
+                .map(ProposalReviewStateStore::snapshot);
+    }
+
+    private static ProposalSnapshot snapshot(RelationProposal proposal) {
         return new ProposalSnapshot(
                 proposal.getId(),
                 proposal.getSourceNode().getCode(),

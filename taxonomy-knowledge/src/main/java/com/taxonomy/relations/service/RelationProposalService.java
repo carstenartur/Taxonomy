@@ -368,6 +368,7 @@ public class RelationProposalService {
         dto.setTargetName(proposal.getTargetNode().getNameEn());
         dto.setRelationType(proposal.getRelationType().name());
         dto.setStatus(proposal.getStatus().name());
+        dto.setCentral(proposal.getWorkspaceId() == null);
         dto.setConfidence(proposal.getConfidence());
         dto.setRationale(proposal.getRationale());
         dto.setProvenance(proposal.getProvenance());

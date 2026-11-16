@@ -19,6 +19,7 @@ import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AnalysisScoreDetail;
 import com.taxonomy.dto.AnalysisScope;
 import com.taxonomy.dto.AnalysisModelBinding;
+import com.taxonomy.dto.TaxonomyResponsibilityLookup;
 import com.taxonomy.dto.AnalysisCoverage;
 import com.taxonomy.reporting.api.document.DecisionTreeOverview;
 import com.taxonomy.dto.ProductCoverageGap;
@@ -71,6 +72,13 @@ public class DecisionRationaleReportService {
     private final TaxonomyCatalogueMetadataService catalogueMetadataService;
     private final DecisionReportBuildMetadataService buildMetadataService;
     private final String reportTimeZone;
+    private TaxonomyResponsibilityLookup responsibilityLookup;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setResponsibilityLookup(TaxonomyResponsibilityLookup lookup) {
+        this.responsibilityLookup = lookup;
+    }
+
 
     public DecisionRationaleReportService(
             TaxonomyService taxonomyService,
@@ -260,6 +268,13 @@ public class DecisionRationaleReportService {
     @Transactional(readOnly = true)
     public DecisionRationaleReport generate(DecisionAnalysisInput input, WorkspaceContext workspaceContext,
             ViewContext viewContext, Locale locale, DecisionReportOptions requestedOptions) {
+        return generate(input, workspaceContext, viewContext, locale, requestedOptions, null, false);
+    }
+
+    @Transactional(readOnly = true)
+    public DecisionRationaleReport generate(DecisionAnalysisInput input, WorkspaceContext workspaceContext,
+            ViewContext viewContext, Locale locale, DecisionReportOptions requestedOptions,
+            AnalysisModelBinding displayedModel, boolean explicitlyLive) {
         Objects.requireNonNull(input, "input must not be null");
         Objects.requireNonNull(workspaceContext, "workspaceContext must not be null");
 
@@ -414,12 +429,19 @@ public class DecisionRationaleReportService {
                 conciseConclusion(leadingLeaf, leadingPath, german),
                 methodologyNote(german));
 
+        var reportRootCodes = reportRoots.stream().map(TaxonomyNode::getCode).collect(Collectors.toCollection(LinkedHashSet::new));
+        var decisionTree = DecisionTreeEvidenceBuilder.fromEvidence(fingerprintTree, scores, chapters, reportRootCodes, german);
+        if (options.showResponsibilities() && responsibilityLookup != null) {
+            var source = input.snapshotProvenance();
+            var binding = source == null ? displayedModel : source.modelBinding();
+            if (binding != null) decisionTree = decisionTree.withResponsibilities(responsibilityLookup.resolve(binding));
+            else if (source == null && input.taxonomyTree().isEmpty() && explicitlyLive)
+                decisionTree = decisionTree.withResponsibilities(responsibilityLookup.current());
+        }
         var scope = new DecisionReportScope(input.analysisScope(), input.analysisCoverage(),
                 roots.stream().map(root -> new DecisionReportScope.Root(root.getCode(), displayName(root, german),
                         analysisRootCodes.contains(root.getCode()))).toList(),
-                reportRoots.stream().map(TaxonomyNode::getCode).collect(Collectors.toCollection(LinkedHashSet::new)),
-                selectedCodes, DecisionTreeEvidenceBuilder.fromEvidence(fingerprintTree, scores, chapters,
-                        reportRoots.stream().map(TaxonomyNode::getCode).collect(Collectors.toSet()), german),
+                reportRootCodes, selectedCodes, decisionTree,
                 options, completeness.complete() && (input.analysisCoverage() == null || !input.analysisCoverage().hasOpenEvaluations()),
                 selectedCompleteness.complete()).withRecordedReasons(recordedReasons.entrySet().stream()
                         .filter(entry -> selectedCodes.contains(entry.getKey()))

@@ -9,7 +9,6 @@ import com.taxonomy.portfolio.service.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -21,7 +20,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 /** Real service writers must not commit between frozen variant validation and its application. */
-@SpringBootTest @AutoConfigureMockMvc @WithMockUser(username="architect",roles="ARCHITECT")
+@SpringBootTest @AutoConfigureMockMvc
 @Tag("ci-app-shard-domain-integration")
 class InventoryVariantConcurrencyTest extends ReformulationWorkflowFixture {
     @Autowired InventoryComparisonService comparisons;

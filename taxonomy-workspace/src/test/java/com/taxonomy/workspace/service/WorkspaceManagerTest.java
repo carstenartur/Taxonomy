@@ -26,6 +26,7 @@ class WorkspaceManagerTest {
         SystemRepositoryService sysRepoService = mock(SystemRepositoryService.class);
         DslGitRepository gitRepo = mock(DslGitRepository.class);
         manager = new WorkspaceManager(wsRepo, 50, sysRepoService, gitRepo);
+        manager.configureActorAccess(WorkspaceProvisioningTestClaims.fixtureOwners());
     }
 
     @Test
