@@ -317,6 +317,7 @@ window.TaxonomyWorkspaceSync = (function () {
             planTag = etag;
             if (!source.workspaceId && selectedContext()?.mode === 'EDITABLE'
                     && !['main', 'accepted', 'sync-base'].includes(source.branch)
+                    && plan.upstream.sourceCommit === plan.upstream.trackedCommit
                     && plan.status === 'REPLAY' && plan.commits.length) {
                 var apply = document.createElement('button');
                 apply.id = 'workspaceApplyRebase';

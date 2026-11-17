@@ -637,6 +637,36 @@ test('A central fork plan uses the explicit repository and branch without adopti
 });
 
 
+test('A central rebase cannot replay an older fetch after the default branch advances', async () => {
+    const page = await fixture();
+    try {
+        await page.evaluate(() => {
+            document.body.insertAdjacentHTML('beforeend',
+                '<button id="workspaceRebasePlanButton">Plan</button><div id="workspaceRebasePlan"></div>');
+            window.TaxonomyContextBar = {getCurrentContext: () => ({mode:'EDITABLE', branch:'draft/scope'})};
+        });
+        await answer(page, '/api/workspace/sync-state', initial);
+        await page.evaluate(() => TaxonomyWorkspaceSync.refresh());
+        await syncResponse(page, {syncStatus:'DIVERGED', repositoryId:'central-fork',
+            workspaceId:null, branch:'draft/scope'});
+        await page.locator('#workspaceRebasePlanButton').click();
+        const endpoint = '/api/repositories/central-fork/upstream';
+        await answerCurrentPlan(page, endpoint + '/rebase-plan', {
+            status:'REPLAY', repositoryId:'central-fork', workspaceId:null, branch:'draft/scope',
+            localCommit:'3'.repeat(40), mergeBase:'1'.repeat(40),
+            upstream:{sourceRepositoryId:'central',sourceBranch:'main',
+                sourceCommit:'5'.repeat(40),trackedCommit:'4'.repeat(40)},
+            commits:[{id:'3'.repeat(40),subject:'Local edit'}]
+        });
+        await page.waitForFunction(() =>
+            document.querySelector('#workspaceRebasePlan')?.textContent.includes('workspace.rebase.upstream.changed'));
+        assert.equal(await page.locator('#workspaceApplyRebase').count(), 0);
+        assert.equal(await page.evaluate(path => statusReads.filter(read =>
+            read.method === 'POST' && read.url.startsWith(path)).length, endpoint + '/rebase'), 0);
+        assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+});
+
 for (const outcome of ['applied', 'conflict']) test(`Reviewed central rebase shows its ${outcome} receipt`, async () => {
     const page = await fixture();
     try {

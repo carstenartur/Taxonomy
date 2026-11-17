@@ -90,6 +90,12 @@ public record UpstreamRebasePlan(String repositoryId, String workspaceId, String
         if (reviewed.status() != State.REPLAY) {
             throw new IllegalArgumentException("Only a divergent, linear and reviewed replay may be applied");
         }
+        // A reviewed replay must be based on the current default-branch tip. Do not silently
+        // rewrite onto an older fetch when the source has advanced since that fetch.
+        if (!Objects.equals(reviewed.upstream().sourceCommit(), reviewed.upstream().trackedCommit())) {
+            throw new BranchHeadConflictException(branch, reviewed.upstream().trackedCommit(),
+                    reviewed.upstream().sourceCommit(), "Fetch the current upstream before replaying the branch");
+        }
         return transfer.target().replayLinearHistory(branch, reviewed.localCommit(), reviewed.mergeBase(),
                 reviewed.upstream().trackedCommit(), request.orderedCommits(), transfer.actor(), () -> {
                     var current = readRefTag(transfer, repositoryId, workspaceId, branch);
