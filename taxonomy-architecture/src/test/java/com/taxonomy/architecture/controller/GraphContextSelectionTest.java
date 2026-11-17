@@ -10,6 +10,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 
 class GraphContextSelectionTest {
@@ -35,7 +36,12 @@ class GraphContextSelectionTest {
         when(graph.findDownstream(context,"a".repeat(40),"A",2)).thenReturn(new GraphNeighborhoodView());
         mvc.perform(get("/api/graph/node/A/downstream").param("workspaceId", "")
                 .param("repositoryId", "repo").param("branch", "main").param("commitId", "a".repeat(40)))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(header().string("X-Taxonomy-Repository", "repo"))
+                .andExpect(header().string("X-Taxonomy-Workspace-Id", ""))
+                .andExpect(header().string("X-Taxonomy-Branch", "main"))
+                .andExpect(header().string("X-Taxonomy-Commit", "a".repeat(40)));
         verify(graph).findDownstream(context,"a".repeat(40),"A",2);
         mvc.perform(get("/api/graph/node/A/downstream").header("X-Taxonomy-Workspace-Id", "")
                 .param("repositoryId", "repo").param("branch", "main").param("commitId", "A".repeat(40)))
