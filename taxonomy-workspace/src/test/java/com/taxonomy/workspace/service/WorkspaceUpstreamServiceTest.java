@@ -303,6 +303,33 @@ class WorkspaceUpstreamServiceTest {
         assertThat(target.getHeadCommit("draft")).isEqualTo(local);
     }
 
+    @Test
+    void acknowledgedSqlReplayWithResetGitRefKeepsRecoveryReceipt() throws Exception {
+        preparePersonalReplay("base");
+        mvc.perform(personalPost(REBASE_PATH, requestBody)).andExpect(status().isOk());
+        String replayed = target.getHeadCommit(BRANCH);
+        assertThat(workspace.getCurrentCommit()).isEqualTo(replayed);
+        assertThat(workspace.getLastIntegratedCommit()).isEqualTo(incoming);
+        assertThat(com.taxonomy.workspace.storage.PersonalRebaseReceipt.read(target, feature.repositoryWorkspaceScopeKey()))
+                .isNotNull();
+
+        // Simulate a competing reset after SQL adopted the replay. SQL pointers stay unchanged.
+        var reset = target.getGitRepository().updateRef(Constants.R_HEADS + BRANCH);
+        reset.setExpectedOldObjectId(ObjectId.fromString(replayed));
+        reset.setNewObjectId(ObjectId.fromString(reviewedHead));
+        reset.setForceUpdate(true);
+        assertThat(reset.update()).isEqualTo(org.eclipse.jgit.lib.RefUpdate.Result.FORCED);
+        assertThat(target.getHeadCommit(BRANCH)).isEqualTo(reviewedHead);
+
+        mvc.perform(personalPost(REBASE_PATH + "/resume", recovery(replayed, reviewedHead)))
+                .andExpect(status().isConflict());
+        assertThat(target.getHeadCommit(BRANCH)).isEqualTo(reviewedHead);
+        assertThat(workspace.getCurrentCommit()).isEqualTo(replayed);
+        assertThat(workspace.getLastIntegratedCommit()).isEqualTo(incoming);
+        assertThat(com.taxonomy.workspace.storage.PersonalRebaseReceipt.read(target, feature.repositoryWorkspaceScopeKey()))
+                .isNotNull();
+    }
+
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
     void anUnsettledReplayAtADifferentHeadRequiresExplicitAdoptionOfThatExactHead(boolean includesReplay) throws Exception {

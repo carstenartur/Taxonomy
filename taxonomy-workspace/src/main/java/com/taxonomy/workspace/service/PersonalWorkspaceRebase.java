@@ -86,6 +86,10 @@ public class PersonalWorkspaceRebase {
         if (expectedHead == null || !org.eclipse.jgit.lib.ObjectId.isId(expectedHead)) throw changed(context);
         local.verifyExpectedHead(context.branch(), expectedHead);
         if (receipt.acknowledgedBy(local, row.getCurrentCommit(), row.getLastIntegratedCommit())) {
+            // SQL acknowledgement alone cannot justify dropping the last recovery receipt.
+            // A later Git ref reset can leave both SQL pointers unchanged but lose the replay.
+            if (!candidate.equals(expectedHead) && !local.isAncestor(candidate, expectedHead))
+                throw changed(context);
             releaseAfterCommit(local, context.repositoryWorkspaceScopeKey(), receipt);
             return outcome(receipt, expectedHead);
         }
