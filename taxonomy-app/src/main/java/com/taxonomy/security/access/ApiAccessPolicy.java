@@ -121,7 +121,8 @@ public final class ApiAccessPolicy {
                 "/api/repositories/*/upstream/rebase-plan", "/api/repositories/*/upstream/operations/*")) {
             rules.add(rule("GET", path, Access.PERMISSION, ARCHITECTURE_READ, CONTRIBUTOR));
         }
-        for (String path : List.of("/api/repositories/*/upstream/fetch", "/api/repositories/*/upstream/fetch-tag", "/api/repositories/*/upstream/operations/*/retry")) {
+        for (String path : List.of("/api/repositories/*/upstream/fetch", "/api/repositories/*/upstream/fetch-tag",
+                "/api/repositories/*/upstream/rebase", "/api/repositories/*/upstream/operations/*/retry")) {
             rules.add(rule("POST", path, Access.PERMISSION, ARCHITECTURE_WRITE, CONTRIBUTOR));
         }
         add(rules, "POST", ARCHITECTURE_WRITE, "/api/repositories/*/forks");

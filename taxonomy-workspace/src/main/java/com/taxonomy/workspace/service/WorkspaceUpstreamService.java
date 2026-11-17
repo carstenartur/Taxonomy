@@ -3,7 +3,6 @@ package com.taxonomy.workspace.service;
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
-import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.storage.GitUpstreamRef;
 import org.eclipse.jgit.lib.ObjectId;
@@ -84,19 +83,6 @@ public class WorkspaceUpstreamService {
     public String rebasePlanRefTag(RepositoryContext selected) throws IOException {
         return UpstreamRebasePlan.readRefTag(open(selected, false).transfer(), selected.repositoryId(),
                 selected.workspaceId(), selected.branch());
-    }
-
-    @Transactional(rollbackFor = IOException.class)
-    public DslGitRepository.RebaseReplay rebase(RepositoryContext selected, UpstreamRebasePlan.ApplyRequest request)
-            throws IOException {
-        var copy = open(selected, true);
-        var result = UpstreamRebasePlan.apply(copy.transfer(), selected.repositoryId(),
-                selected.workspaceId(), selected.branch(), request);
-        if (result.completed() && selected.branch().equals(copy.workspace().getCurrentBranch())) {
-            copy.workspace().setCurrentCommit(result.newHead());
-            rows.save(copy.workspace());
-        }
-        return result;
     }
 
     @Transactional(rollbackFor = IOException.class)

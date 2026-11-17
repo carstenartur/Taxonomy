@@ -762,11 +762,14 @@ public class DslGitRepository implements AutoCloseable {
                     }
                 }
 
+                verifyIncoming(trackedCommit, expectedHead);
                 var replacements = new ArrayList<RebasedCommit>();
                 var tip = fetched;
                 for (var picked : originals) {
                     var change = mergePickedChange(picked, tip, null);
                     if (change.resultTree() == null) {
+                        reauthorizeAndCheckUpstream.revalidate();
+                        verifyExpectedHead(branch, expectedHead);
                         return new RebaseReplay(expectedHead, expectedHead, picked.name(),
                                 change.conflictingPaths(), List.copyOf(replacements));
                     }
@@ -794,7 +797,7 @@ public class DslGitRepository implements AutoCloseable {
                 // again before the single forced (non-fast-forward) compare-and-set publication.
                 reauthorizeAndCheckUpstream.revalidate();
                 verifyExpectedHead(branch, expectedHead);
-                updateRef(Constants.R_HEADS + branch, tip, original, true,
+                ExpectedHeadDslCommitter.replaceBranchHead(gitRepo, branch, original, tip,
                         personIdent(actor), "rebase: " + original.name() + " onto " + fetched.name());
                 return new RebaseReplay(expectedHead, tip.name(), null, List.of(), List.copyOf(replacements));
             }

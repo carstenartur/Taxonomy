@@ -1,18 +1,27 @@
 package com.taxonomy.workspace.service;
 
+import com.taxonomy.workspace.signing.GitCommitSignatureService;
+import com.taxonomy.workspace.signing.SigningTestKeys;
 import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.GitHistoryTransfer;
 import com.taxonomy.workspace.storage.GitUpstreamRef;
 import org.eclipse.jgit.lib.CommitBuilder;
+import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.lib.Ref;
+import org.eclipse.jgit.lib.RefUpdate;
 import org.eclipse.jgit.lib.TreeFormatter;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.taxonomy.workspace.service.UpstreamRebasePlan.State.*;
 import static org.assertj.core.api.Assertions.*;
@@ -196,6 +205,50 @@ class UpstreamRebasePlanTest {
     }
 
     @Test
+    void lateRevocationDoesNotReleaseAContentConflict() throws Exception {
+        String base = store.commitDsl("seed", "first\nsecond\n", "owner", "base");
+        store.createBranchAtCommit("main", base);
+        String tracked = store.commitDsl("main", "upstream\nsecond\n", "owner", "upstream");
+        store.createBranchAtCommit("draft", base);
+        String local = store.commitDsl("draft", "local\nsecond\n", "owner", "local");
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+
+        assertThatThrownBy(() -> store.replayLinearHistory("draft", local, base, tracked,
+                java.util.List.of(local), "owner", () -> {
+                    if (calls.incrementAndGet() == 2) throw new org.springframework.security.access.AccessDeniedException("revoked");
+                })).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThat(store.getHeadCommit("draft")).isEqualTo(local);
+    }
+
+    @Test
+    void replayRejectsPreviouslyFetchedUnsignedAncestryUnderCurrentTrust(@TempDir Path keys) throws Exception {
+        var policy = SigningTestKeys.signingProperties(keys);
+        var optionalSignatures = new GitCommitSignatureService(policy);
+        var baseDsl = "first\nsecond\nthird\nfourth\nfifth\n";
+        var upstreamDsl = baseDsl.replace("first\n", "upstream\n");
+        store.withSignatureService(optionalSignatures, "fork");
+        try (var source = new DslGitRepository().withSignatureService(optionalSignatures, "origin")) {
+            String base = source.commitDsl("main", baseDsl, "owner", "base");
+            source.withSignatureService(GitCommitSignatureService.disabled(), "origin");
+            source.commitDsl("main", upstreamDsl, "owner", "unsigned upstream change");
+            source.withSignatureService(optionalSignatures, "origin");
+            String tracked = source.commitDsl("main", upstreamDsl, "owner", "signed upstream tip");
+            GitHistoryTransfer.copyCommitClosure(source, store, tracked, List.of());
+            tracking.advance(store, null, tracked, "owner");
+            store.createBranchAtCommit("draft", base);
+            String local = store.commitDsl("draft", baseDsl.replace("fifth\n", "local\n"), "owner", "local");
+
+            policy.setRequireSignatures(true);
+            store.withSignatureService(new GitCommitSignatureService(policy), "fork");
+
+            assertThatThrownBy(() -> store.replayLinearHistory("draft", local, base, tracked,
+                    List.of(local), "owner", () -> { })).isInstanceOf(IOException.class).hasMessageContaining("UNSIGNED");
+            assertThat(store.getHeadCommit("draft")).isEqualTo(local);
+            assertThat(tracking.head(store)).isEqualTo(tracked);
+        }
+    }
+
+    @Test
     void deniedOrStaleFinalAuthorityNeverPublishesARebasedBranch() throws Exception {
         String base = store.commitDsl("seed", "first\nsecond\n", "owner", "base");
         store.createBranchAtCommit("main", base);
@@ -215,6 +268,41 @@ class UpstreamRebasePlanTest {
                 java.util.List.of(local), "owner", () -> { }))
                 .isInstanceOf(BranchHeadConflictException.class);
         assertThat(store.getHeadCommit("draft")).isEqualTo(moved);
+    }
+
+    @Test
+    void losingThePublicationCompareAndSetReportsTheCompetingBranchHead() throws Exception {
+        var guardChecks = new AtomicInteger();
+        try (var repository = new DslGitRepository() {
+            @Override
+            public String verifyExpectedHead(String branch, String expectedHead) throws IOException {
+                String verified = super.verifyExpectedHead(branch, expectedHead);
+                if (guardChecks.get() == 2) {
+                    var competingUpdate = getGitRepository().updateRef(Constants.R_HEADS + branch);
+                    competingUpdate.setExpectedOldObjectId(ObjectId.fromString(expectedHead));
+                    competingUpdate.setNewObjectId(ObjectId.fromString(getHeadCommit("competing")));
+                    assertThat(competingUpdate.update()).isEqualTo(RefUpdate.Result.FAST_FORWARD);
+                }
+                return verified;
+            }
+        }) {
+            String base = repository.commitDsl("seed", "base\n", "owner", "base");
+            repository.createBranchAtCommit("main", base);
+            String tracked = repository.commitDsl("main", "base\nupstream\n", "owner", "upstream");
+            repository.createBranchAtCommit("draft", base);
+            String local = repository.commitDsl("draft", "base\n", "owner", "local");
+            repository.createBranchAtCommit("competing", local);
+            String moved = repository.commitDsl("competing", "competing\n", "other", "competing write");
+
+            assertThatThrownBy(() -> repository.replayLinearHistory("draft", local, base, tracked,
+                    List.of(local), "owner", guardChecks::incrementAndGet))
+                    .isInstanceOfSatisfying(BranchHeadConflictException.class, conflict -> {
+                        assertThat(conflict.getBranch()).isEqualTo("draft");
+                        assertThat(conflict.getExpectedHeadCommit()).isEqualTo(local);
+                        assertThat(conflict.getActualHeadCommit()).isEqualTo(moved);
+                    });
+            assertThat(repository.getHeadCommit("draft")).isEqualTo(moved);
+        }
     }
 
     private GitUpstreamTransfer origin(String base, String upstream) throws IOException {

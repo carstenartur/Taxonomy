@@ -47,7 +47,8 @@ public final class ExpectedHeadDslCommitter {
             ObjectId tree = dslRepository.insertDslTree(inserter, request.dslText(), request.provenance());
             ObjectId candidate = insertCommit(dslRepository, inserter, request, tree);
             inserter.flush();
-            return updateBranch(repository, request.branch(), expectedHead, candidate, personIdent(request.author()), request.message(),false);
+            return updateBranch(repository, request.branch(), expectedHead, candidate,
+                    personIdent(request.author()), request.message(), false, false);
         }
     }
 
@@ -65,17 +66,22 @@ public final class ExpectedHeadDslCommitter {
         return inserter.insert(commit);
     }
 
+    static void replaceBranchHead(Repository repository, String branch, ObjectId expected, ObjectId candidate,
+                                  PersonIdent actor, String message) throws IOException {
+        updateBranch(repository, branch, expected, candidate, actor, message, true, true);
+    }
+
     private static CommitResult updateBranch(Repository repository, String branch, ObjectId expected, ObjectId candidate,
-                                             PersonIdent actor, String message, boolean publication) throws IOException {
+                                             PersonIdent actor, String message, boolean publication, boolean force) throws IOException {
         String refName = Constants.R_HEADS + branch;
-        RefUpdate update = repository.updateRef(refName);
+        RefUpdate update = repository.updateRef(refName, force);
         update.setNewObjectId(candidate);
         update.setExpectedOldObjectId(expected);
-        update.setForceUpdate(false);
+        update.setForceUpdate(force);
         update.setRefLogIdent(actor);
         if (publication) {
             update.setForceRefLog(true);
-            update.setRefLogMessage(message,false);
+            update.setRefLogMessage(message, force);
         } else {
             update.setRefLogMessage("commit: " + message,true);
         }
@@ -163,7 +169,8 @@ public final class ExpectedHeadDslCommitter {
         }
         try {
             var publishedBy=new PersonIdent(pin.commit().getCommitterIdent(),java.time.Instant.now());
-            return updateBranch(repo,branch,expected,candidate,publishedBy,publicationReflog(operationId),true).commitId();
+            return updateBranch(repo, branch, expected, candidate, publishedBy,
+                    publicationReflog(operationId), true, false).commitId();
         } catch (BranchHeadConflictException concurrent) {
             if (!candidate.name().equals(concurrent.getActualHeadCommit())) throw concurrent;
             return verifyExpectedHead(storage, branch, candidate.name());

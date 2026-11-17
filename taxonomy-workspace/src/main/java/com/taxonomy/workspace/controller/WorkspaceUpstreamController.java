@@ -6,7 +6,6 @@ import com.taxonomy.workspace.service.WorkspaceFetchJournal;
 import com.taxonomy.workspace.service.WorkspaceFetchRecovery;
 import com.taxonomy.workspace.service.WorkspaceUpstreamService;
 import com.taxonomy.workspace.service.UpstreamRebasePlan;
-import com.taxonomy.workspace.storage.DslGitRepository;
 import org.springframework.http.CacheControl;
 import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.http.HttpStatus;
@@ -63,16 +62,6 @@ public class WorkspaceUpstreamController {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).eTag(tag).build();
     }
 
-    @PostMapping("/rebase")
-    @Operation(summary = "Apply one explicitly reviewed linear upstream rebase",
-            description = "Replays the exact ordered local commits onto the captured fetched upstream, "
-                    + "checks current permissions and ref identities, and updates the original branch once. "
-                    + "On a content conflict returns the conflicting commit and paths without a branch update. "
-                    + "Does not enable automatic upstream adoption or resolve conflicts.")
-    public DslGitRepository.RebaseReplay rebase(@RequestBody UpstreamRebasePlan.ApplyRequest request) throws IOException {
-        return upstream.rebase(resolver.resolveUnambiguousRepositoryForRead(), request);
-    }
-
     @PostMapping("/fetch")
     @Operation(summary = "Fetch an exact upstream commit",
             description = "Copies verified objects from the selected source and advances its tracking ref with an expected commit. The local working branch retains its current head until reviewed integration.")
@@ -122,11 +111,6 @@ public class WorkspaceUpstreamController {
             @RequestHeader(name = "X-Causation-Id", required = false) String cause) throws IOException {
         var receipt = recovery.fetchTag(resolver.resolveCurrentRepositoryContextForRead(), request, key, cause);
         return response(receipt.operationId(), receipt.tag());
-    }
-
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Void> handleInvalidRebase() {
-        return ResponseEntity.badRequest().build();
     }
 
     @ExceptionHandler(BranchHeadConflictException.class)
