@@ -36,6 +36,11 @@ class VisioDrawingFirstTest {
             var drawingNames = withArchitecture ? List.of("Architecture", "Entscheidungsbaum – BP", "Entscheidungsbaum – BR")
                     : List.of("Entscheidungsbaum – BP", "Entscheidungsbaum – BR");
             check(names.subList(0, drawingNames.size()).equals(drawingNames), "Drawings must precede source text");
+            check(doc.getPages().subList(0, drawingNames.size()).stream().flatMap(page -> page.getShapes().stream())
+                            .noneMatch(shape -> shape.getProperties().containsKey("taxonomy.contextBlock")),
+                    "Decision report drawings reserve their canvas for the architecture and hierarchy");
+            check(appendixText(doc).values().stream().flatMap(List::stream).anyMatch(text -> text.contains("Saved input")),
+                    "The source text remains available in the appendix");
             int decisionIndex = withArchitecture ? 1 : 0;
             var decision = doc.getPages().get(decisionIndex);
             check(decision.getShapes().stream().map(VisioShape::getText).toList().equals(List.of(
@@ -43,6 +48,9 @@ class VisioDrawingFirstTest {
                     "Editable nodes distinguish zero from unknown and retain exact percentages");
             check(decision.getShapes().getFirst().getProperties().get("taxonomy.presenceReason").value().equals("Original reason"),
                     "Recorded explanation remains accessible in shape data");
+            check(decision.getConnects().stream().allMatch(connect -> connect.getRelationType().isEmpty()
+                            && connect.getProperties().get("taxonomy.type").value().equals("DECISION_HIERARCHY")),
+                    "Hierarchy connectors retain their type without overlapping visible captions");
             try (var reader = new XmlVisioDocument(new ByteArrayInputStream(contents))) {
                 var pages = new ArrayList<>(reader.getPages());
                 check(pages.get(decisionIndex).getContent().getConnections().size() == 4,

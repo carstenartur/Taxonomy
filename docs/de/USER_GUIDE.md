@@ -1096,7 +1096,7 @@ Jeder Bericht enthält:
 
 Öffnen Sie **Entscheidungsbericht …** im Exportbereich unter **Decision Evidence**, auf der Detailseite einer gespeicherten Anforderung oder in deren Architekturansicht. Alle drei Einstiege verwenden denselben Dialog. Aus einer einzelnen Baumansicht wird die aktuelle Teil-Taxonomie vorausgewählt. Bei einem gespeicherten Ergebnis beziehen sich Auswahl und Bericht auf den ausgewählten Analysesnapshot.
 
-Wählen Sie **Visio (.vsdx)** für eine bearbeitbare Baumzeichnung je ausgewählter Teiltaxonomie. Die Knoten zeigen die Bewertungen und sind über Eltern-Kind-Verbindungen verknüpft. Gespeicherte Begründungen stehen in den Shape-Daten. Liegt zum Snapshot eine Architektur vor, öffnet sich die Datei auf deren Diagramm. Die Entscheidungsbäume folgen auf eigenen Seiten.
+Wählen Sie **Visio (.vsdx)** für eine bearbeitbare Baumzeichnung je ausgewählter Teiltaxonomie. Die Knoten zeigen die Bewertungen und sind über Eltern-Kind-Verbindungen verknüpft. Gespeicherte Begründungen stehen in den Shape-Daten. Liegt zum Snapshot eine Architektur vor, öffnet sich die Datei auf deren Diagramm. Die Entscheidungsbäume folgen auf eigenen Seiten. Der vollständige Anforderungstext steht im Anhang.
 
 #### Einen Word-Bericht mit Übersicht und Begründungen erstellen
 

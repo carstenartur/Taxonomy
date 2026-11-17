@@ -27,7 +27,7 @@ final class VisioContextPages {
     private VisioContextPages() { }
 
     /** Called before optional relationship pages so complete source text reserves its capacity first. */
-    static void append(VisioDocument document) {
+    static void append(VisioDocument document, boolean contextOnDrawings) {
         if (!hasContext(document)) return;
         // Reject oversized source and unsafe metadata before measured text wrapping.
         VisioPackageValidator.validateProperties(document.getProperties());
@@ -61,20 +61,21 @@ final class VisioContextPages {
                 document.getPages().add(page);
             }
             document.getProperties().put("taxonomy.requirementContextPages", VisioProperty.number(count));
-            document.getLosses().add(new VisioLoss("document", "", "visibleRequirement", "MAPPED",
-                    "The diagram context contains an explicitly bounded excerpt; complete original requirement text "
-                            + "is retained on Requirement pages and in taxonomy.requirementText."));
+            String location = "Complete original requirement text is retained on Requirement pages and in taxonomy.requirementText.";
+            if (contextOnDrawings) location = "The diagram context contains an explicitly bounded excerpt; "
+                    + "complete original requirement text is retained on Requirement pages and in taxonomy.requirementText.";
+            document.getLosses().add(new VisioLoss("document", "", "visibleRequirement", "MAPPED", location));
         } else {
             document.getProperties().put("taxonomy.requirementContextPages", VisioProperty.number(0));
         }
-        decorateDiagrams(document);
+        if (contextOnDrawings) decorateDiagrams(document);
     }
 
     /** Also called after optional details, which must receive the same creation/source context. */
     static void decorateDiagrams(VisioDocument document) {
         if (!hasContext(document)) return;
         for (var page : document.getPages()) {
-            if (page.isEvidencePage() || page.isDecisionTree() || page.getShapes().stream()
+            if (page.isEvidencePage() || page.getShapes().stream()
                     .anyMatch(shape -> shape.getProperties().containsKey("taxonomy.contextBlock"))) continue;
             var fields = contextLines(document);
             String source = value(document, "requirementText");

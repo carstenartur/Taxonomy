@@ -1070,7 +1070,7 @@ Each report includes:
 
 Open **Decision report …** under **Decision Evidence** in the Export tab, on a saved requirement's detail page or in its architecture view. These entry points share the same dialog. Opening it from a single-tree view preselects that taxonomy. For a saved result, both the choices and the report belong to the selected analysis snapshot.
 
-Choose **Visio (.vsdx)** for an editable tree drawing per selected subtaxonomy. Nodes show their scores and are linked by parent–child connectors. Recorded reasons are available in the shape data. When the snapshot includes an architecture, the file opens on its drawing. Decision trees follow on their own pages.
+Choose **Visio (.vsdx)** for an editable tree drawing per selected subtaxonomy. Nodes show their scores and are linked by parent–child connectors. Recorded reasons are available in the shape data. When the snapshot includes an architecture, the file opens on its drawing. Decision trees follow on their own pages. The appendix contains the complete requirement text.
 
 #### Create a Word report with an overview and reasons
 

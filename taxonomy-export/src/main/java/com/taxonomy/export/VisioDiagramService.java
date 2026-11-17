@@ -41,7 +41,7 @@ public class VisioDiagramService {
     }
 
     public VisioDocument convert(DiagramModel model, VisioExportMetadata metadata) {
-        return convert(model, metadata, new VisioDecisionTree(List.of(), false));
+        return convert(model, metadata, null);
     }
 
     public VisioDocument convert(DiagramModel model, VisioExportMetadata metadata, VisioDecisionTree decisionTree) {
@@ -51,9 +51,9 @@ public class VisioDiagramService {
         doc.getProperties().put("taxonomy.exportProfile", VisioProperty.text(VisioHandoffProfile.ID));
         doc.getProperties().put("taxonomy.scoreSemantics", VisioProperty.text("relevance is a normalized selection score in [0,1], not a probability"));
         doc.getLosses().addAll(metadata.losses());
-        if (model.nodes().isEmpty() && !decisionTree.nodes().isEmpty()) {
+        if (model.nodes().isEmpty() && decisionTree != null && !decisionTree.nodes().isEmpty()) {
             decisionTree.appendTo(doc);
-            VisioContextPages.append(doc);
+            VisioContextPages.append(doc, false);
             return doc;
         }
         doc.getLosses().add(new VisioLoss("document", "", "layout", "MAPPED",

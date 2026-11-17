@@ -36,7 +36,6 @@ public record VisioDecisionTree(List<Node> nodes, boolean german) {
     private VisioPage layout(List<Node> section, int pageId) {
         String code = section.getFirst().code();
         var page = new VisioPage(Integer.toString(pageId), (german ? "Entscheidungsbaum – " : "Decision tree – ") + code);
-        page.setDecisionTree(true);
         var parents = new int[section.size()];
         var firstChild = new int[section.size()];
         var lastChild = new int[section.size()];
@@ -66,7 +65,8 @@ public record VisioDecisionTree(List<Node> nodes, boolean german) {
             page.getShapes().add(shape);
             int parent = parents[index];
             if (parent >= 0) {
-                var link = new VisioConnect(Integer.toString(parent + 1), shapeId, "Decision hierarchy");
+                var link = new VisioConnect(Integer.toString(parent + 1), shapeId, "");
+                link.getProperties().put("taxonomy.type", VisioProperty.text("DECISION_HIERARCHY"));
                 link.getProperties().put("taxonomy.sourceId", VisioProperty.text(section.get(parent).code()));
                 link.getProperties().put("taxonomy.targetId", VisioProperty.text(node.code()));
                 page.getConnects().add(link);
