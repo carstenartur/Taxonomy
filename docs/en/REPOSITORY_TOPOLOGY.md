@@ -183,6 +183,8 @@ In **Versions → Sync with Team Repository**, select **Show rebase plan** to se
 
 Applying a reviewed rebase to a **central fork branch** also requires the fetched upstream commit to equal the source branch's current tip. When the upstream has advanced beyond the last fetch, the Apply action is unavailable and a direct `POST /api/repositories/{forkId}/upstream/rebase` returns HTTP 409 without moving the working branch. Fetch again and review a fresh plan first. Personal working copies currently offer read-only rebase plans.
 
+If replay stops at an architecture-model conflict, the panel shows the original parent, the upstream model including earlier replayed changes, and the local commit. Edit the proposed model and choose **Apply this resolution and continue**. The branch moves only after all commits can be applied. **Cancel rebase** discards the pending choices. **Review current branches again** reloads the comparison if either branch has moved. Manual editing is available for conflicts confined to a regular UTF-8 model file with all three versions available (up to 1 MiB each).
+
 A central fork uses the same request and response fields under `/api/repositories/{forkId}/upstream` when the multi-repository API is enabled. Use `GET` on the base route or `/tag`, and `POST` on `/fetch` or `/fetch-tag`. The fork catalogue fixes the upstream repository and branch. Reading requires current contributor access to both repositories. Publication additionally requires architecture write permission. A fork of a restricted source must still be private at publication. Fetch advances the fork's upstream tracking ref. Its default branch, independently created branches and original fork point retain their values.
 
 ### Transfer personal repository ownership

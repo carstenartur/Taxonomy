@@ -78,6 +78,30 @@ class CentralForkUpstreamPolicyTest {
         mvc = MockMvcBuilders.standaloneSetup(new CentralForkUpstreamController(service, resolver, recovery)).build();
     }
 
+    @Test
+    void conflictVersionsAndTheExplicitResolutionRoundTripThroughTheRebaseEndpoint() throws Exception {
+        service.fetch("fork", ACTOR, new WorkspaceUpstreamService.Request(incoming, base));
+        target.createBranchAtCommit("review", base);
+        String head = target.commitDsl("review", "different model", ACTOR, "local edit");
+        var plan = service.rebasePlan("fork", ACTOR, "review");
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var request = mapper.valueToTree(new UpstreamRebasePlan.ApplyRequest(plan.refTag(), head, incoming, List.of(head)));
+        var conflict = mvc.perform(post(API + "/rebase").param("branch", "review")
+                        .contentType(MediaType.APPLICATION_JSON).content(request.toString()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.conflictCommit").value(head))
+                .andExpect(jsonPath("$.dslConflict.source.text").value("different model"))
+                .andReturn().getResponse();
+        var targetVersion = mapper.readTree(conflict.getContentAsByteArray()).at("/dslConflict/target/blobId").asText();
+        var choices = ((com.fasterxml.jackson.databind.node.ObjectNode) request).putObject("resolutions");
+        choices.putObject(head).put("targetBlobId", targetVersion).put("text", "combined model");
+        mvc.perform(post(API + "/rebase").param("branch", "review")
+                        .contentType(MediaType.APPLICATION_JSON).content(request.toString()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.conflictCommit").isEmpty())
+                .andExpect(jsonPath("$.rewritten[0].originalCommit").value(head));
+        assertThat(target.getDslAtCommit(target.getHeadCommit("review"))).isEqualTo("combined model");
+        assertThat(source.getHeadCommit("main")).isEqualTo(incoming);
+    }
+
     @AfterEach void close() { if (database != null) database.close(); git.close(); }
 
     enum Change { SOURCE_ROLE, TARGET_ROLE, SOURCE_VISIBILITY, FORK_AUTHORITY }

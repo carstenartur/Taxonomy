@@ -667,7 +667,7 @@ test('A central rebase cannot replay an older fetch after the default branch adv
     } finally { await page.close(); }
 });
 
-for (const outcome of ['applied', 'conflict']) test(`Reviewed central rebase shows its ${outcome} receipt`, async () => {
+for (const outcome of ['applied', 'conflict', 'resolved', 'cancelled']) test(`Reviewed central rebase shows its ${outcome} receipt`, async () => {
     const page = await fixture();
     try {
         await page.evaluate(() => {
@@ -697,13 +697,34 @@ for (const outcome of ['applied', 'conflict']) test(`Reviewed central rebase sho
             body:{expectedRefTag:tag, expectedLocalCommit:localCommit, expectedTrackedCommit:trackedCommit,
                 orderedCommits:[firstCommit, localCommit]}}]);
         const newHead = '6'.repeat(40);
-        await answer(page, endpoint + '/rebase', outcome === 'conflict' ? {originalHead:localCommit,
-            newHead:localCommit, conflictCommit:firstCommit, conflictingPaths:['model/<branch>.taxdsl'], rewritten:[]}
+        const preview = outcome === 'resolved' || outcome === 'cancelled' ? {
+            base:{blobId:'a'.repeat(40), text:'base'}, target:{blobId:'b'.repeat(40), text:'upstream'},
+            source:{blobId:'c'.repeat(40), text:'<local>'}
+        } : null;
+        await answer(page, endpoint + '/rebase', outcome !== 'applied' ? {originalHead:localCommit,
+            newHead:localCommit, conflictCommit:firstCommit, conflictingPaths:['model/<branch>.taxdsl'], rewritten:[], dslConflict:preview}
             : {originalHead:localCommit, newHead, conflictCommit:null, conflictingPaths:[],
                 rewritten:[{originalCommit:localCommit, replacementCommit:newHead}]}, 200, {method:'POST'});
         const panel = page.locator('#workspaceRebasePlan');
         await apply.waitFor({state:'detached'});
-        assert.ok((await panel.locator('p').innerText()).startsWith('workspace.rebase.' + outcome));
+        if (preview) {
+            assert.deepEqual(await panel.locator('details pre').allTextContents(), ['base', 'upstream', '<local>']);
+            if (outcome === 'cancelled') {
+                await panel.getByRole('button', {name:'workspace.rebase.abort'}).click();
+                assert.equal(await panel.innerText(), '');
+                assert.equal((await writes()).length, 1);
+                return;
+            }
+            await panel.locator('textarea').fill('reviewed result');
+            await panel.getByRole('button', {name:'workspace.rebase.resolve'}).click();
+            const submissions = await writes();
+            assert.equal(submissions.length, 2);
+            assert.deepEqual(submissions[1].body.resolutions, {[firstCommit]:{targetBlobId:'b'.repeat(40), text:'reviewed result'}});
+            await answer(page, endpoint + '/rebase', {originalHead:localCommit, newHead, conflictCommit:null,
+                conflictingPaths:[], rewritten:[{originalCommit:localCommit,replacementCommit:newHead}]}, 200, {method:'POST'});
+            await panel.locator('ol').waitFor();
+        }
+        assert.ok((await panel.locator('p').innerText()).startsWith('workspace.rebase.' + (preview ? 'applied' : outcome)));
         assert.equal(await panel.locator('li').innerText(), outcome === 'conflict'
             ? 'model/<branch>.taxdsl' : localCommit + ' → ' + newHead);
         assert.deepEqual(page.errors, []);

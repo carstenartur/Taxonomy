@@ -2,6 +2,7 @@ package com.taxonomy.workspace.service;
 
 import com.taxonomy.identity.StableIdentityHash;
 import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.RebaseDslConflict;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
@@ -12,6 +13,7 @@ import org.eclipse.jgit.revwalk.filter.RevFilter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /** A read-only ancestry plan against the last fetched upstream commit. Content conflicts are not evaluated. */
@@ -57,11 +59,22 @@ public record UpstreamRebasePlan(String repositoryId, String workspaceId, String
 
     /** Exact ref, commit and ordered replay identities supplied by an explicit user action. */
     public record ApplyRequest(String expectedRefTag, String expectedLocalCommit,
-                               String expectedTrackedCommit, List<String> orderedCommits) {
+                               String expectedTrackedCommit, List<String> orderedCommits,
+                               Map<String, RebaseDslConflict.Resolution> resolutions) {
+        public ApplyRequest(String expectedRefTag, String expectedLocalCommit, String expectedTrackedCommit,
+                            List<String> orderedCommits) {
+            this(expectedRefTag, expectedLocalCommit, expectedTrackedCommit, orderedCommits, Map.of());
+        }
+
         public ApplyRequest {
             Objects.requireNonNull(expectedRefTag, "expectedRefTag");
             Objects.requireNonNull(expectedLocalCommit, "expectedLocalCommit");
             Objects.requireNonNull(expectedTrackedCommit, "expectedTrackedCommit");
+            resolutions = resolutions == null ? Map.of() : Map.copyOf(resolutions);
+            if (resolutions.size() > MAX_REPLAY_COMMITS || resolutions.values().stream()
+                    .mapToLong(value -> value.text().length()).sum() > 4L * 1024 * 1024) {
+                throw new IllegalArgumentException("The conflict resolutions exceed the replay limit");
+            }
             orderedCommits = List.copyOf(Objects.requireNonNull(orderedCommits, "orderedCommits"));
         }
     }
@@ -97,7 +110,7 @@ public record UpstreamRebasePlan(String repositoryId, String workspaceId, String
                     reviewed.upstream().sourceCommit(), "Fetch the current upstream before replaying the branch");
         }
         return transfer.target().replayLinearHistory(branch, reviewed.localCommit(), reviewed.mergeBase(),
-                reviewed.upstream().trackedCommit(), request.orderedCommits(), transfer.actor(), () -> {
+                reviewed.upstream().trackedCommit(), request.orderedCommits(), request.resolutions(), transfer.actor(), () -> {
                     var current = readRefTag(transfer, repositoryId, workspaceId, branch);
                     if (!reviewed.refTag().equals(current)) {
                         throw new BranchHeadConflictException(branch, reviewed.localCommit(), null,

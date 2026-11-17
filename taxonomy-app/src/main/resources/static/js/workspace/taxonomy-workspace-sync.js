@@ -256,6 +256,44 @@ window.TaxonomyWorkspaceSync = (function () {
         }
     }
 
+    function rebaseButton(key, action) {
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn btn-sm btn-outline-secondary me-2';
+        button.textContent = t('workspace.rebase.' + key);
+        button.addEventListener('click', action);
+        return button;
+    }
+
+    function showRebaseConflict(panel, result, resume) {
+        var summary = document.createElement('p'), files = document.createElement('ul');
+        summary.textContent = t('workspace.rebase.conflict', result.conflictCommit, result.originalHead);
+        result.conflictingPaths.forEach(function (path) {
+            var item = document.createElement('li'); item.textContent = path; files.append(item);
+        });
+        panel.replaceChildren(summary, files);
+        var conflict = result.dslConflict;
+        if (conflict) {
+            for (var side of ['base', 'target', 'source']) {
+                var detail = document.createElement('details'), heading = document.createElement('summary');
+                var code = document.createElement('pre');
+                heading.textContent = t('workspace.rebase.version.' + side);
+                code.textContent = conflict[side].text;
+                detail.append(heading, code);
+                panel.append(detail);
+            }
+            var label = document.createElement('label'), editor = document.createElement('textarea');
+            label.htmlFor = editor.id = 'workspaceRebaseResolution';
+            label.textContent = t('workspace.rebase.resolution');
+            editor.className = 'form-control mb-2';
+            editor.rows = 8;
+            editor.value = conflict.target.text;
+            var retry = rebaseButton('resolve', () => resume(result.conflictCommit, conflict.target.blobId, editor.value));
+            panel.append(label, editor, retry);
+        }
+        panel.append(rebaseButton('refresh', showRebasePlan), rebaseButton('abort', clearRebasePlan));
+    }
+
     async function showRebasePlan() {
         clearRebasePlan();
         var panel = document.getElementById('workspaceRebasePlan'), source = syncState;
@@ -324,25 +362,24 @@ window.TaxonomyWorkspaceSync = (function () {
                 apply.type = 'button';
                 apply.className = 'btn btn-sm btn-primary';
                 apply.textContent = t('workspace.rebase.apply');
-                apply.addEventListener('click', async function () {
-                    if (apply.disabled || !current() || selectedContext()?.mode !== 'EDITABLE' || planTag !== etag) return;
+                var resolutions = Object.create(null);
+                async function submit(commit, targetBlobId, text) {
+                    if (!current() || selectedContext()?.mode !== 'EDITABLE' || planTag !== etag) return;
+                    if (commit) resolutions[commit] = {targetBlobId:targetBlobId, text:text};
                     apply.disabled = true;
                     planTag = null;
                     if (planCheck) planCheck.abort();
                     planCheck = null;
                     status.textContent = t('workspace.rebase.applying');
+                    if (commit) panel.replaceChildren(status);
                     try {
-                        var result = await window.TaxonomyWorkspaceApi.applyCentralRebase(source, plan, etag, {signal:controller.signal});
+                        var result = await window.TaxonomyWorkspaceApi.applyCentralRebase(source, plan, etag, {signal:controller.signal}, resolutions);
                         if (!current()) return;
                         if (result.originalHead !== plan.localCommit) throw new Error('Unexpected rebase receipt');
                         var outcome = document.createElement('p');
                         if (result.conflictCommit) {
-                            outcome.textContent = t('workspace.rebase.conflict', result.conflictCommit, result.originalHead);
-                            var files = document.createElement('ul');
-                            result.conflictingPaths.forEach(function (path) {
-                                var item = document.createElement('li'); item.textContent = path; files.append(item);
-                            });
-                            panel.replaceChildren(outcome, files);
+                            planTag = etag;
+                            showRebaseConflict(panel, result, submit);
                             return;
                         }
                         outcome.textContent = t('workspace.rebase.applied', result.newHead);
@@ -357,9 +394,13 @@ window.TaxonomyWorkspaceSync = (function () {
                         window.TaxonomyGitStatus?.refresh?.();
                         window.TaxonomyContextBar?.fetchAndRender?.();
                     } catch (error) {
-                        if (current()) panel.textContent = t(error.status === 409 ? 'workspace.rebase.expired' : 'workspace.rebase.failed');
+                        if (current()) {
+                            panel.textContent = t(error.status === 409 ? 'workspace.rebase.expired' : 'workspace.rebase.failed');
+                            panel.append(rebaseButton('refresh', showRebasePlan));
+                        }
                     }
-                });
+                }
+                apply.addEventListener('click', () => submit());
                 panel.append(apply);
             }
         } catch (error) {
