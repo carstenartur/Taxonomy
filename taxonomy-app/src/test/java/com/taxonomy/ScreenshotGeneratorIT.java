@@ -2109,12 +2109,12 @@ class ScreenshotGeneratorIT {
                 waitForTransitionsComplete();
                 By controls = By.cssSelector("#taxonomyTree .tax-diagram-controls");
                 wait(10).until(ExpectedConditions.visibilityOfElementLocated(controls));
-                new org.openqa.selenium.support.ui.Select(driver.findElement(By.cssSelector(
-                        "#taxonomyTree .tax-diagram-print-mode"))).selectByValue("taxonomy");
+                var layout = new org.openqa.selenium.support.ui.Select(driver.findElement(By.cssSelector(
+                        "#taxonomyTree .tax-diagram-print-mode")));
+                Assertions.assertEquals("taxonomy", layout.getFirstSelectedOption().getAttribute("value"));
                 new org.openqa.selenium.support.ui.Select(driver.findElement(By.cssSelector(
                         "#taxonomyTree .tax-diagram-print-paper"))).selectByValue("A0");
-                Assertions.assertTrue(driver.findElement(By.cssSelector(
-                        "#taxonomyTree .tax-diagram-relevance input")).isSelected());
+                Assertions.assertEquals("positive", driver.findElement(By.id("diagramRelevanceFilter")).getAttribute("value"));
                 saveElementScreenshot(driver.findElement(controls),
                         "diagram-print-controls-" + language + ".png");
             }

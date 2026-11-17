@@ -603,7 +603,7 @@ After running an analysis, the sunburst chart displays heat-mapped colour gradie
 
 ![Scored sunburst view](../images/39-scored-sunburst.png)
 
-List, Tabs, Sunburst, Tree, Decision and Summary share the same relevance selector. **All nodes** shows the available view; **Hide zero relevance** removes measured zeroes while retaining unknown or pending evaluations; **Only > 0** retains positive results and their ancestor paths. The selection also applies to diagram printing. An ancestor retained for orientation is not an additional positive result. Stored scores and the complete catalogue remain intact. Explicitly selecting a hidden search result switches to **All nodes** so that the selected entry is reachable. A new manual assessment also begins with all nodes.
+List, Tabs, Sunburst, Tree, Decision and Summary share the same relevance selector. **All nodes** shows the available view; **Hide zero relevance** removes measured zeroes while retaining unknown or pending evaluations; **Score > 0** retains positive results and their ancestor paths. The selection also applies to diagram printing. An ancestor retained for orientation is not an additional positive result. Stored scores and the complete catalogue remain intact. Explicitly selecting a hidden search result switches to **All nodes** so that the selected entry is reachable. A new manual assessment also begins with all nodes.
 
 During an analysis, Sunburst, Tree and Decision retain their reading position when new results arrive: zoom, pan, scroll position and manually opened or closed branches are restored. Sunburst remembers its focused subtree. Each view and selected tree taxonomy has its own state, including when the tree switches between SVG and Canvas rendering. If filtering removes the selected node, a surviving ancestor becomes the selection. **Fit diagram** and **Reset zoom** explicitly change the viewport. A new analysis or a newly loaded requirement draft begins with a fresh view state.
 
@@ -633,9 +633,9 @@ Use **Print diagram** in the diagram toolbar to open a separate print view. It c
 - **One large sheet** places all selected taxonomies on one sheet with continuous parent-child connections.
 - **One sheet per subtaxonomy** gives each selected area its own sheet. Filtered-out areas do not receive an empty page.
 
-For the two full-sheet layouts, **Paper size** offers A4, A3, A2, **A1** and **A0**. The first switch from A4 sections to a full sheet defaults to A1. Orientation and scale follow the complete content; result updates retain the settings. Large sheets contain connected trees rather than assembled A4 fragments. All layouts include percentages and the complete recorded reasons for selected nodes. An extensive tree is scaled to the chosen sheet; for larger text, choose larger paper, one sheet per subtaxonomy or readable A4 sections.
+Decision starts with **One sheet per subtaxonomy** and **A1** paper. For the two full-sheet layouts, **Paper size** offers A4, A3, A2, A1 and A0. Orientation and scale follow the complete content. Result updates retain the settings. All layouts include percentages and the complete recorded reasons for selected nodes. For extensive trees, larger paper or A4 sections give the text more room.
 
-![Diagram options with the positive relevance filter, one sheet per subtaxonomy and A0 paper](../images/diagram-print-controls-en.png)
+![Decision map print options for one A0 sheet per subtaxonomy](../images/diagram-print-controls-en.png)
 
 *Application capture after a deterministic mock analysis in Decision view. [Capture source](../images/documentation-screenshots.json); [verification scope](../testing/stable-diagrams-and-print.md).*
 

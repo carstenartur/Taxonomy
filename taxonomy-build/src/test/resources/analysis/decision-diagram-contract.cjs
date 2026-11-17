@@ -93,12 +93,13 @@ assert.equal(mixed.panels.length,2);assert.equal(mixed.nodes.length,1);assert.eq
 const mixedDoc=makeDocument();api.pages(mixed,mixedDoc);
 assert.ok(text(mixedDoc.body).includes('BR – Roles · browse.container.relevance: 85'));
 assert.equal(all(mixedDoc.body,e=>e.getAttribute?.('data-print-node')).length,1);
-for(const mode of ['pages','single'])for(const areaOnly of [false,true]){
+for(const mode of ['pages','single','taxonomy'])for(const areaOnly of [false,true]){
     const selected=areaOnly?api.layout(hierarchy({code:'__root__',children:[]}),{BR:85,CR:99},{},measure,[mixedAreas[1]]):mixed;
     const printedDoc=makeDocument();let printCalls=0;
     window.open=()=>({document:printedDoc,addEventListener(){},focus(){},requestAnimationFrame(callback){callback();},print(){printCalls++;},close(){}});
     api.print(selected,{querySelector(){return null;}},mode);
     assert.equal(printCalls,1);
+    if(mode==='taxonomy') assert.equal(printedDoc.body.children.length,areaOnly?1:2,'One physical sheet per selected area');
     assert.ok(text(printedDoc.body).includes('BR-AREA-ONLY-REASON-END'),'Caption-only area explanations survive Decision print in '+mode+' mode');
     assert.ok(!text(printedDoc.body).includes('EXCLUDED-AREA-REASON-MUST-NOT-LEAK'),'Unselected area explanations stay excluded');
     assert.equal(all(printedDoc.body,e=>e.getAttribute?.('data-print-node')).length,areaOnly?0:1,'Areas remain captions, not fabricated screen/print nodes');
