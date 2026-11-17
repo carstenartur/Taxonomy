@@ -15,7 +15,9 @@ class Element {
 }
 function harness(review, lifecycle) {
   let scope={repositoryId:'repo',workspaceId:'work',branch:'draft'};
-  const window={setTimeout:()=>1,clearTimeout(){},TaxonomyArchitectureWorkflow:{getScope:()=>scope},
+  const timers=new Map(); let nextTimer=0;
+  const window={setTimeout:fn=>{timers.set(++nextTimer,fn);return nextTimer;},clearTimeout:id=>timers.delete(id),
+    TaxonomyArchitectureWorkflow:{getScope:()=>scope},
     TaxonomyArchitectureLifecycleApi:{reviewRequirementIntake:review},TaxonomyArchitectureLifecycle:lifecycle,
     location:{href:'https://example.test/'}};
   const document=Object.assign(new Element('document'),{documentElement:{lang:'en'},createElement:tag=>new Element(tag)});
@@ -23,7 +25,9 @@ function harness(review, lifecycle) {
   const form=new Element('form'),dialog=new Element('div');form.closest=()=>dialog;
   document.forms=[form];
   return {api:window.TaxonomyRequirementIntake,scope(value){scope=value;},
-    notifyScope(){document.dispatch('taxonomy:entity-context-changed');},form,dialog,input:new Element('textarea')};
+    notifyScope(){document.dispatch('taxonomy:entity-context-changed');},
+    flushTimers(){const jobs=[...timers.values()];timers.clear();jobs.forEach(fn=>fn());},
+    form,dialog,input:new Element('textarea')};
 }
 test('portable digest preserves raw whitespace and Unicode when WebCrypto is absent',async()=>{
   const h=harness(()=>{throw new Error('No transport expected');});
@@ -211,4 +215,22 @@ test('leaving a reviewed workspace clears the displayed choices and cancels a wa
   assert.equal(section.children.some(element=>element.dataset.intakeChoice),false);
   h.scope(sharedNamedCopy);h.notifyScope();
   assert.equal(await pending,null);
+});
+
+for (const publishEvent of [true,false]) test('queued intake text stays in its original repository, context event '+publishEvent,async()=>{
+  const other={...central,repositoryId:'other-repository'}, calls=[];
+  let selected=central;
+  const h=harness(async request=>{
+    calls.push([selected.repositoryId, request.text]);
+    return {...completedReview(selected),inputHash:createHash('sha256').update(request.text).digest('hex')};
+  });
+  h.scope(selected);h.api.attach(h.form,{textElement:h.input,projectId:7});
+  h.input.value='Original draft';h.input.dispatch('input');
+  selected=other;h.scope(selected);
+  if(publishEvent) h.notifyScope();
+  h.flushTimers();await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(calls,[],'An old edit must never trigger a review against the newly selected repository');
+  h.input.value='New edit';h.input.dispatch('input');h.flushTimers();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(calls,[['other-repository','New edit']]);
 });

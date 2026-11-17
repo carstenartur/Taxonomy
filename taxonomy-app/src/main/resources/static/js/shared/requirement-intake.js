@@ -54,7 +54,14 @@
         state.generation++; state.response = null; state.pending = null; state.commandCapture = null; cancel(state);
         state.section.replaceChildren(node('p', label('Review updates when the text is ready.', 'Die Prüfung wird nach der Texteingabe aktualisiert.')));
         window.clearTimeout(state.timer);
-        state.timer = window.setTimeout(function () { review(state); }, 650);
+    }
+    function edited(state) {
+        invalidate(state);
+        var capture = fingerprint(state,state.options.textElement.value,project(state));
+        var cancellation = state.cancellation;
+        state.timer = window.setTimeout(function () {
+            if (state.cancellation === cancellation && matching(state,capture)) review(state);
+        }, 650);
     }
     function attach(form, options) {
         if (forms.has(form)) {
@@ -69,9 +76,9 @@
         section.setAttribute('aria-label', label('Requirement review', 'Anforderungsprüfung')); section.setAttribute('aria-live', 'polite');
         var state = {form:form,options:options,section:section,generation:0,cancellation:0,response:null,pending:null,selected:null,choose:null,scope:scope()};
         forms.set(form,state); form.append(section);
-        options.textElement.addEventListener('input',function () { invalidate(state); });
-        form.addEventListener('input',function (event) { if(event.target!==options.textElement) invalidate(state); });
-        form.addEventListener('change',function () { invalidate(state); });
+        options.textElement.addEventListener('input',function () { edited(state); });
+        form.addEventListener('input',function (event) { if(event.target!==options.textElement) edited(state); });
+        form.addEventListener('change',function () { edited(state); });
         var dialog = form.closest?.('dialog, .modal');
         if (dialog) { ['close','cancel','hidden.bs.modal'].forEach(function(event){dialog.addEventListener(event,function(){cancel(state);});}); }
         review(state); return state;
