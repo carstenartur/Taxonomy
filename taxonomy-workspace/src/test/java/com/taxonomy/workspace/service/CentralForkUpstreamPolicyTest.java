@@ -190,6 +190,49 @@ class CentralForkUpstreamPolicyTest {
     }
 
     @Test
+    void cannotRewriteTheConfiguredForkDefaultBranchEvenIfItIsNotNamedMain() throws Exception {
+        service.fetch("fork", ACTOR, new WorkspaceUpstreamService.Request(incoming, base));
+        target.createBranchAtCommit("review", base);
+        String head = target.commitDsl("review", "local revision", ACTOR, "Local review");
+        var plan = service.rebasePlan("fork", ACTOR, "review");
+        assertThat(plan.status()).isEqualTo(UpstreamRebasePlan.State.REPLAY);
+
+        // This repository uses a configurable default rather than a hard-coded "main".
+        fork.setDefaultBranch("review");
+        var request = new UpstreamRebasePlan.ApplyRequest(plan.refTag(), head, incoming, List.of(head));
+        assertThatThrownBy(() -> service.rebase("fork", ACTOR, "review", request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("default branch");
+
+        assertThat(target.getHeadCommit("review")).isEqualTo(head);
+        assertThat(target.getHeadCommit("main")).isEqualTo(local);
+        assertThat(tracking.head(target)).isEqualTo(incoming);
+        assertThat(source.getHeadCommit("main")).isEqualTo(incoming);
+    }
+
+    @Test
+    void changeOfForkDefaultDuringReviewedRebaseInvalidatesTheAuthorityFence() throws Exception {
+        service.fetch("fork", ACTOR, new WorkspaceUpstreamService.Request(incoming, base));
+        target.createBranchAtCommit("review", base);
+        String head = target.commitDsl("review", "local revision", ACTOR, "Local review");
+        var plan = service.rebasePlan("fork", ACTOR, "review");
+        assertThat(plan.status()).isEqualTo(UpstreamRebasePlan.State.REPLAY);
+        var request = new UpstreamRebasePlan.ApplyRequest(plan.refTag(), head, incoming, List.of(head));
+
+        // The second authorization read occurs after the service captured the old
+        // binding but before any prepared commit or branch publication.
+        forkReads = 0;
+        duringTransfer = () -> fork.setDefaultBranch("review");
+        assertThatThrownBy(() -> service.rebase("fork", ACTOR, "review", request))
+                .isInstanceOf(AccessDeniedException.class);
+
+        assertThat(fork.getDefaultBranch()).isEqualTo("review");
+        assertThat(target.getHeadCommit("review")).isEqualTo(head);
+        assertThat(target.getHeadCommit("main")).isEqualTo(local);
+        assertThat(tracking.head(target)).isEqualTo(incoming);
+    }
+
+    @Test
     void rebaseRejectsAnOlderFetchedTipWhenTheSourceDefaultBranchHasMoved() throws Exception {
         service.fetch("fork", ACTOR, new WorkspaceUpstreamService.Request(incoming, base));
         target.createBranchAtCommit("review", base);
