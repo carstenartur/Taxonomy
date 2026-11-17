@@ -70,16 +70,25 @@ public record UpstreamRebasePlan(String repositoryId, String workspaceId, String
                                                String workspaceId, String branch, ApplyRequest request)
             throws IOException {
         Objects.requireNonNull(request, "request");
-        var reviewed = read(transfer, repositoryId, workspaceId, branch);
-        if (reviewed.status() != State.REPLAY) {
-            throw new IllegalArgumentException("Only a divergent, linear and reviewed replay may be applied");
+        // Invalid request syntax is a 400, but an otherwise valid plan whose refs moved is a 409,
+        // even when that movement changed the current plan state from REPLAY to UP_TO_DATE.
+        if (!request.expectedRefTag().matches("W/\\\"[0-9a-f]{64}\\\"")
+                || !ObjectId.isId(request.expectedLocalCommit())
+                || !ObjectId.isId(request.expectedTrackedCommit())
+                || request.orderedCommits().isEmpty() || request.orderedCommits().size() > MAX_REPLAY_COMMITS
+                || request.orderedCommits().stream().anyMatch(id -> !ObjectId.isId(id))) {
+            throw new IllegalArgumentException("A complete, bounded and reviewed replay is required");
         }
+        var reviewed = read(transfer, repositoryId, workspaceId, branch);
         if (!reviewed.refTag().equals(request.expectedRefTag())
                 || !Objects.equals(reviewed.localCommit(), request.expectedLocalCommit())
                 || !Objects.equals(reviewed.upstream().trackedCommit(), request.expectedTrackedCommit())
                 || !reviewed.commits().stream().map(Commit::id).toList().equals(request.orderedCommits())) {
             throw new BranchHeadConflictException(branch, request.expectedLocalCommit(), reviewed.localCommit(),
                     "The reviewed rebase plan changed");
+        }
+        if (reviewed.status() != State.REPLAY) {
+            throw new IllegalArgumentException("Only a divergent, linear and reviewed replay may be applied");
         }
         return transfer.target().replayLinearHistory(branch, reviewed.localCommit(), reviewed.mergeBase(),
                 reviewed.upstream().trackedCommit(), request.orderedCommits(), transfer.actor(), () -> {
