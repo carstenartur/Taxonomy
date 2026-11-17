@@ -22,7 +22,8 @@ public interface WorkspaceArchitectureVersionPort {
         return applyPreparedVersion(context, expectedHead, candidate, rationale, action);
     }
 
-    /** Apply an already prepared version under the editor journal lock, preserving edits accepted after preparation. */
+    /** Apply an already prepared version under the editor journal lock, preserving edits accepted after preparation.
+     * Join an existing durable phase so its metadata locks and editor adoption share one transaction. */
     default <T> T applyPreparedVersion(RepositoryContext context, String expectedHead, String candidate, String rationale,
                                        GitAction<T> action) throws IOException {
         return action.run();
