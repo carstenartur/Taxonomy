@@ -38,7 +38,7 @@ public class CentralForkUpstreamService {
     @org.springframework.transaction.annotation.Transactional(rollbackFor = IOException.class)
     public DslGitRepository.RebaseReplay rebase(String forkId, String actor, String branch,
                                                 UpstreamRebasePlan.ApplyRequest request) throws IOException {
-        return UpstreamRebasePlan.apply(open(forkId, actor), forkId, null, branch, request);
+        return UpstreamRebasePlan.apply(open(forkId, actor, branch), forkId, null, branch, request);
     }
 
     public WorkspaceUpstreamService.Status fetch(String forkId, String actor, WorkspaceUpstreamService.Request request)
@@ -72,10 +72,21 @@ public class CentralForkUpstreamService {
         return transfer;
     }
 
-    private record Binding(GitUpstreamRef upstream, String forkPoint) {}
+    private record Binding(GitUpstreamRef upstream, String forkPoint, String defaultBranch) {}
 
     private GitUpstreamTransfer open(String forkId, String actor) {
+        return open(forkId, actor, null);
+    }
+
+    private GitUpstreamTransfer open(String forkId, String actor, String branchToRewrite) {
         Binding binding = authorizedBinding(forkId, actor);
+        // A reviewed replay is for a working branch, never the fork's configured default.
+        // Include the default in the binding so a concurrent policy change invalidates
+        // the authorization callback before the final Git compare-and-set.
+        if (branchToRewrite != null && (binding.defaultBranch() == null
+                || branchToRewrite.equals(binding.defaultBranch()))) {
+            throw new IllegalArgumentException("The configured fork default branch cannot be rebased");
+        }
         return new GitUpstreamTransfer(binding.upstream(),
                 repositories.getCentralRepository(binding.upstream().repositoryId()), repositories.getCentralRepository(forkId),
                 binding.forkPoint(), actor, () -> {
@@ -90,7 +101,8 @@ public class CentralForkUpstreamService {
                 if (!memberships.canContribute(fork, actor) || !memberships.canContribute(source, actor)
                         || fork.getVisibility() == null || forkPoint == null || !ObjectId.isId(forkPoint)) throw unavailable();
                 SystemRepositoryService.requirePermittedForkVisibility(source, fork.getVisibility());
-                return new Binding(new GitUpstreamRef(fork.getUpstreamRepositoryId(), fork.getUpstreamBranch()), forkPoint);
+                return new Binding(new GitUpstreamRef(fork.getUpstreamRepositoryId(), fork.getUpstreamBranch()),
+                        forkPoint, fork.getDefaultBranch());
             });
         } catch (IllegalArgumentException unavailableOrRestricted) {
             throw unavailable();
