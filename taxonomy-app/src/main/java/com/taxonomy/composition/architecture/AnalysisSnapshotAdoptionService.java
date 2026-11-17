@@ -62,7 +62,7 @@ public class AnalysisSnapshotAdoptionService {
             for (String value : Arrays.asList(repositoryId,workspaceScopeKey,branch,snapshotId))
                 if (value == null || value.isBlank() || value.length() > 255 || value.chars().anyMatch(Character::isISOControl))
                     throw new IllegalArgumentException("An explicit bounded source repository, workspace scope, branch and snapshot are required");
-            AnalysisSourceWorkspace.resolve(workspaceScopeKey, workspaceId);
+            WorkspaceOverlayScope.resolveWorkspaceId(workspaceScopeKey, workspaceId);
             for (Long id : Arrays.asList(projectId,requirementId,requirementVersionId))
                 if (id == null || id < 1) throw new IllegalArgumentException("Exact source project, requirement and version are required");
         }
@@ -120,7 +120,7 @@ public class AnalysisSnapshotAdoptionService {
             throw problem("NOT_FOUND", "The exact source and target repository are not accessible");
         if (!Context.of(target,request.context().commit(),request.context().revision()).equals(request.context()))
             throw problem("CONTEXT_CHANGED", "The target context changed");
-        String sourceWorkspace = AnalysisSourceWorkspace.resolve(source.workspaceScopeKey(), source.workspaceId());
+        String sourceWorkspace = WorkspaceOverlayScope.resolveWorkspaceId(source.workspaceScopeKey(), source.workspaceId());
         if (sourceWorkspace == null) {
             if (!membership.canRead(repositories.getRepository(source.repositoryId()),target.username()))
                 throw problem("NOT_FOUND", "Source repository is not readable");

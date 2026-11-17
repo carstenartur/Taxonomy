@@ -1,5 +1,6 @@
 package com.taxonomy.composition.architecture;
 
+import com.taxonomy.model.WorkspaceOverlayScope;
 import java.util.*;
 
 /** Exact retained-source pins; a source is never an editable semantic revision. */
@@ -18,7 +19,7 @@ public final class ArchitectureSourceFocusDtos {
                 throw new IllegalArgumentException("Source kind must be ANALYSIS_DRAFT or ANALYSIS_SNAPSHOT");
             for (String pin : Arrays.asList(repositoryId,workspaceScopeKey,branch))
                 if (!bounded(pin,255)) throw new IllegalArgumentException("Exact bounded source repository, workspace and branch are required");
-            AnalysisSourceWorkspace.resolve(workspaceScopeKey, workspaceId);
+            WorkspaceOverlayScope.resolveWorkspaceId(workspaceScopeKey, workspaceId);
             if ("ANALYSIS_DRAFT".equals(kind)) {
                 if (version == null || version < 0 || projectId != null || requirementId != null || requirementVersionId != null || snapshotId != null)
                     throw new IllegalArgumentException("A draft requires its exact version and no snapshot pins");

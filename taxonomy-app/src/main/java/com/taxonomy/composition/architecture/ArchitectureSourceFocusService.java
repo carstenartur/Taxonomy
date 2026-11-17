@@ -87,7 +87,7 @@ public class ArchitectureSourceFocusService {
     private Evidence evidence(RepositoryContext selected, ArchitectureSourceFocusDtos.Source source) {
         if (selected == null || selected.username() == null || !source.repositoryId().equals(selected.repositoryId()))
             throw problem("NOT_FOUND","Source repository is not accessible in the selected context");
-        String workspace = AnalysisSourceWorkspace.resolve(source.workspaceScopeKey(), source.workspaceId());
+        String workspace = WorkspaceOverlayScope.resolveWorkspaceId(source.workspaceScopeKey(), source.workspaceId());
         if ((source.workspaceId() != null || WorkspaceOverlayScope.CENTRAL_SCOPE_KEY.equals(selected.workspaceId()))
                 && !Objects.equals(selected.workspaceId(), workspace))
             throw problem("SOURCE_IDENTITY_MISMATCH","The selected workspace and retained source disagree");

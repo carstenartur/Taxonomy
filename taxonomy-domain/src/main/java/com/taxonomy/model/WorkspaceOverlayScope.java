@@ -25,6 +25,19 @@ public final class WorkspaceOverlayScope {
     private WorkspaceOverlayScope() {
     }
 
+    /**
+     * Resolve a public display key and an optional transport ID. Older sources only
+     * recorded the display key. An explicit empty ID selects central, and the literal
+     * workspace ID {@code __shared__} identifies a working copy with that name.
+     */
+    public static String resolveWorkspaceId(String scopeKey, String workspaceId) {
+        if (workspaceId == null)
+            return CENTRAL_SCOPE_KEY.equals(scopeKey) ? null : scopeKey;
+        if (!workspaceId.equals(workspaceId.strip()) || !keyFor(workspaceId).equals(scopeKey))
+            throw new IllegalArgumentException("Workspace ID and scope key disagree");
+        return workspaceId.isEmpty() ? null : workspaceId;
+    }
+
     public static String keyFor(String workspaceId) {
         if (workspaceId == null || workspaceId.isBlank()) {
             return CENTRAL_SCOPE_KEY;
