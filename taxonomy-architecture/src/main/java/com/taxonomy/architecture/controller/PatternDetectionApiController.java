@@ -55,8 +55,9 @@ public class PatternDetectionApiController {
             @Parameter(description = "Taxonomy node code") @RequestParam String nodeCode,
             @RequestParam String repositoryId, @RequestParam String branch, @RequestParam String commitId,
             jakarta.servlet.http.HttpServletRequest http) {
-        PatternDetectionView view = patternService.detectForNode(contexts.resolve(repositoryId, branch, commitId, http), commitId, nodeCode);
-        return ResponseEntity.ok(view);
+        var source = ArchitectureQuerySource.resolve(contexts, repositoryId, branch, commitId, http);
+        PatternDetectionView view = patternService.detectForNode(source.context(), source.commit(), nodeCode);
+        return source.response(view);
     }
 
     /**
@@ -68,9 +69,10 @@ public class PatternDetectionApiController {
     public ResponseEntity<PatternDetectionView> detectForScores(@RequestBody PatternDetectionRequest request,
             @RequestParam String repositoryId, @RequestParam String branch, @RequestParam String commitId,
             jakarta.servlet.http.HttpServletRequest http) {
-        PatternDetectionView view = patternService.detectForScores(contexts.resolve(repositoryId, branch, commitId, http), commitId,
+        var source = ArchitectureQuerySource.resolve(contexts, repositoryId, branch, commitId, http);
+        PatternDetectionView view = patternService.detectForScores(source.context(), source.commit(),
                 request.scores() != null ? request.scores() : Map.of(),
                 request.minScore());
-        return ResponseEntity.ok(view);
+        return source.response(view);
     }
 }

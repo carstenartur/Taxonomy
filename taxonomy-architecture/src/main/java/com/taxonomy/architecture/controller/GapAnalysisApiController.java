@@ -49,11 +49,11 @@ public class GapAnalysisApiController {
     public ResponseEntity<GapAnalysisView> analyze(@RequestBody GapAnalysisRequest request,
             @RequestParam String repositoryId, @RequestParam String branch, @RequestParam String commitId,
             jakarta.servlet.http.HttpServletRequest httpRequest) throws java.io.IOException {
-        var context = contexts.resolve(repositoryId, branch, commitId, httpRequest);
+        var source = ArchitectureQuerySource.resolve(contexts, repositoryId, branch, commitId, httpRequest);
         if (request.evidenceCompleteness() == null) throw new org.springframework.web.server.ResponseStatusException(
                 org.springframework.http.HttpStatus.BAD_REQUEST, "evidenceCompleteness must be explicit");
         try {
-            return ResponseEntity.ok(gapService.analyze(context, commitId, request.profileId(), request.profileVersion(),
+            return source.response(gapService.analyze(source.context(), source.commit(), request.profileId(), request.profileVersion(),
                     request.evidenceCompleteness(), request.businessText()));
         } catch (IllegalArgumentException error) {
             throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, error.getMessage());
@@ -69,7 +69,7 @@ public class GapAnalysisApiController {
     @GetMapping("/apqc-coverage")
     public ResponseEntity<ApqcCoverageResult> apqcCoverage(@RequestParam String repositoryId, @RequestParam String branch,
             @RequestParam String commitId, jakarta.servlet.http.HttpServletRequest http) throws java.io.IOException {
-        var context = contexts.resolve(repositoryId, branch, commitId, http);
-        return ResponseEntity.ok(gapService.analyzeApqcCoverage(context, commitId));
+        var source = ArchitectureQuerySource.resolve(contexts, repositoryId, branch, commitId, http);
+        return source.response(gapService.analyzeApqcCoverage(source.context(), source.commit()));
     }
 }

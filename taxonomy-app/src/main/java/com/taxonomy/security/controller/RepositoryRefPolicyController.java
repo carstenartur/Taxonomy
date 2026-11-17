@@ -23,7 +23,8 @@ public class RepositoryRefPolicyController {
                           Boolean preventDelete, Boolean adminOverride, String rationale) { }
 
     @GetMapping
-    @Operation(summary = "Read the selected branch protection policy")
+    @Operation(summary = "Read the selected branch protection policy",
+            description = "Returns the revision and update, force-update and deletion protections for the exact branch in an accessible active repository. Supply workspaceId to inspect an accessible working copy; otherwise the central repository is selected. Unconfigured branches return revision zero with all protection flags disabled.")
     public ResponseEntity<RepositoryRefRule.View> read(@PathVariable String repositoryId,
             @RequestParam(required = false) String workspaceId, @RequestParam String branch, Authentication authentication) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())

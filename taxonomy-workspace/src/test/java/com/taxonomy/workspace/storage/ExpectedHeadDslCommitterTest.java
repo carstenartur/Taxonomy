@@ -150,6 +150,29 @@ class ExpectedHeadDslCommitterTest {
         }
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void cachedBranchInventoryObservesDeletionThroughIndependentSecuredHandle(boolean includeHeads, @TempDir Path temp) throws Exception {
+        String url = "jdbc:hsqldb:file:" + temp.resolve("inventory") + ";shutdown=true";
+        try (var db = new EditorPersistenceFixture(url);
+             var secured = new DslGitRepositoryFactory(new DefaultHibernateRepositoryFactory(db.factory), null,
+                     com.taxonomy.workspace.signing.GitCommitSignatureService.disabled(), db.factory)) {
+            var workspace = db.repositories.openWorkspaceRepository("owned");
+            String reviewed = workspace.commitDslIfHeadMatches("proposal", null, "# proposal", "actor", "candidate");
+            String retained = workspace.commitDslIfHeadMatches("draft", null, "# draft", "actor", "base");
+            if (includeHeads) assertThat(workspace.listBranches()).extracting(DslBranch::name)
+                    .containsExactlyInAnyOrder("draft", "proposal");
+            else assertThat(workspace.getBranchNames()).containsExactlyInAnyOrder("draft", "proposal");
+
+            secured.deleteWorkspaceVariant("owned", "proposal", reviewed, "actor", () -> {});
+
+            if (includeHeads) assertThat(workspace.listBranches())
+                    .extracting(DslBranch::name, DslBranch::headCommitId)
+                    .containsExactly(org.assertj.core.api.Assertions.tuple("draft", retained));
+            else assertThat(workspace.getBranchNames()).containsExactly("draft");
+        }
+    }
+
     @Test
     void secureVariantDeletionRechecksAuthorityAtTheRefAndPreservesOtherRefs(@TempDir Path temp) throws Exception {
         String url = "jdbc:hsqldb:file:" + temp.resolve("variants") + ";shutdown=true";

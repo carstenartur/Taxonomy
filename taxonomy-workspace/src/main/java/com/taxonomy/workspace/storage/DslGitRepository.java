@@ -514,7 +514,7 @@ public class DslGitRepository implements AutoCloseable {
     /** List all local branches. */
     public List<DslBranch> listBranches() throws IOException {
         List<DslBranch> branches = new ArrayList<>();
-        for (Ref ref : gitRepo.getRefDatabase().getRefsByPrefix(Constants.R_HEADS)) {
+        for (Ref ref : readFreshBranchRefs()) {
             String name = ref.getName().substring(Constants.R_HEADS.length());
             String headCommitId = ref.getObjectId() != null ? ref.getObjectId().name() : null;
             Instant created = oldestCommitTime(ref);
@@ -1182,10 +1182,18 @@ public class DslGitRepository implements AutoCloseable {
     /** Return all branch names without the {@code refs/heads/} prefix. */
     public List<String> getBranchNames() throws IOException {
         List<String> names = new ArrayList<>();
-        for (Ref ref : gitRepo.getRefDatabase().getRefsByPrefix(Constants.R_HEADS)) {
+        for (Ref ref : readFreshBranchRefs()) {
             names.add(ref.getName().substring(Constants.R_HEADS.length()));
         }
         return names;
+    }
+
+    /** Include ref changes made through independent handles, such as reviewed variant deletion. */
+    private List<Ref> readFreshBranchRefs() throws IOException {
+        synchronized (gitRepo) {
+            gitRepo.scanForRepoChanges();
+            return gitRepo.getRefDatabase().getRefsByPrefix(Constants.R_HEADS);
+        }
     }
 
     /** Count commits reachable from a branch. */

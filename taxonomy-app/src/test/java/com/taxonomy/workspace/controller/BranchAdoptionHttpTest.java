@@ -6,6 +6,12 @@ import com.taxonomy.workspace.service.RepositoryScope;
 import com.taxonomy.security.service.UserManagementService;
 import com.taxonomy.testsupport.LocalTestLogin;
 import com.taxonomy.workspace.model.RepositoryVisibility;
+import com.taxonomy.workspace.model.RepositoryRole;
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.service.RepositoryMembershipService;
+import com.taxonomy.workspace.service.RepositoryWorkspaceService;
+import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.security.service.VersionedRepositoryRefPolicy;
 import com.taxonomy.workspace.service.ArchitectureRepositoryProvisioningService;
 import com.taxonomy.workspace.service.BranchAdoptionWorker;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
@@ -52,6 +58,90 @@ class BranchAdoptionHttpTest {
     @Autowired BranchAdoptionWorker worker;
     @Autowired ObjectMapper json;
     @MockitoSpyBean WorkspaceFetchAuthorityAdapter actors;
+    @MockitoSpyBean VersionedRepositoryRefPolicy refPolicies;
+
+    @Test
+    void aNormalCollaborativeCommitRechecksMembershipAfterWaitingForNativePublication() throws Exception {
+        String owner = "commit-fence-owner";
+        String contributor = "commit-fence-contributor";
+        for (String user : List.of(owner, contributor)) {
+            accounts.createUser(Map.of("username", user, "roles", List.of("USER", "ARCHITECT")), PASSWORD, "fixture");
+        }
+        try (var login = LocalTestLogin.openExisting(application, contributor, PASSWORD)) {
+            assertThat(SecurityContextHolder.getContext().getAuthentication().isAuthenticated()).isTrue();
+        }
+        var memberships = application.getBean(RepositoryMembershipService.class);
+        var catalogue = application.getBean(SystemRepositoryService.class);
+        var copies = application.getBean(RepositoryWorkspaceService.class);
+        var workspaces = application.getBean(UserWorkspaceRepository.class);
+        String repository;
+        String workspace;
+        long membershipVersion;
+        try (var login = LocalTestLogin.openExisting(application, owner, PASSWORD)) {
+            var created = provisioning.createRepository("Commit authority fence", "commit-authority-fence", "",
+                    RepositoryVisibility.PRIVATE, owner, "main");
+            repository = created.getRepositoryId();
+            repositories.getCentralRepository(repository).commitDsl("main", model("base", "base"), owner, "Base");
+            membershipVersion = memberships.assignRole(catalogue.getRepository(repository), contributor,
+                    RepositoryRole.CONTRIBUTOR, owner, -1L, "Allow shared editing").getVersion();
+            var copy = copies.createWorkingCopy(owner, repository, "main", "Shared commit fixture", "");
+            workspace = copy.getWorkspaceId();
+            var selected = com.taxonomy.workspace.service.RepositoryContext.workspace(
+                    repository, workspace, copy.getCurrentBranch(), owner);
+            var current = application.getBean(com.taxonomy.editor.ArchitectureEditorService.class).read(selected, null);
+            application.getBean(com.taxonomy.editor.WorkspaceCollaborationService.class)
+                    .setEnabled(selected, current.context(), true);
+            assertThat(workspaces.findByWorkspaceId(workspace).orElseThrow().isCollaborative()).isTrue();
+        }
+        var git = repositories.openWorkspaceRepository(workspace);
+        String physical = DslGitRepositoryFactory.workspaceRepositoryName(workspace);
+        var reachedNativePolicy = new java.util.concurrent.CountDownLatch(1);
+        var database = application.getBean(jakarta.persistence.EntityManagerFactory.class)
+                .unwrap(org.hibernate.SessionFactory.class);
+        try (var client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+             var threads = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
+             var blocker = database.openSession()) {
+            var allowed = commit(client, repository, workspace, contributor, "before wait");
+            assertThat(allowed.statusCode()).as("Authorized collaborative commit: %s", allowed.body()).isEqualTo(200);
+            String before = git.getHeadCommit("draft");
+            doAnswer(call -> {
+                reachedNativePolicy.countDown();
+                return call.callRealMethod();
+            }).when(refPolicies).require(any(org.hibernate.Session.class), eq(physical), eq("draft"), any());
+            var held = blocker.beginTransaction();
+            try {
+                assertThat(blocker.createMutationQuery("update GitRepositoryLockEntity l set l.createdAt=l.createdAt "
+                                + "where l.repositoryName=:storage")
+                        .setParameter("storage", physical).executeUpdate()).isOne();
+                var pending = threads.submit(() -> commit(client, repository, workspace, contributor, "after revocation"));
+                assertThat(reachedNativePolicy.await(15, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                assertThatThrownBy(() -> pending.get(200, java.util.concurrent.TimeUnit.MILLISECONDS))
+                        .isInstanceOf(java.util.concurrent.TimeoutException.class);
+                try (var login = LocalTestLogin.openExisting(application, owner, PASSWORD)) {
+                    memberships.removeMembership(catalogue.getRepository(repository), contributor, owner,
+                            membershipVersion, "Revoke before the blocked commit publishes");
+                }
+                held.commit();
+                var response = pending.get(15, java.util.concurrent.TimeUnit.SECONDS);
+                assertThat(response.statusCode()).as("Retained normal HTTP commit after membership revocation: %s", response.body())
+                        .isEqualTo(403);
+                assertThat(git.getHeadCommit("draft")).isEqualTo(before);
+            } finally {
+                if (held.isActive()) held.rollback();
+            }
+        }
+    }
+
+    private HttpResponse<String> commit(HttpClient client, String repository, String workspace, String user,
+                                        String title) throws Exception {
+        String login = Base64.getEncoder().encodeToString((user + ":" + PASSWORD).getBytes(StandardCharsets.UTF_8));
+        var request = HttpRequest.newBuilder(URI.create("http://localhost:" + port
+                        + "/api/dsl/commit?repositoryId=" + repository + "&branch=draft"))
+                .timeout(Duration.ofSeconds(25)).header("Authorization", "Basic " + login)
+                .header("X-Taxonomy-Workspace-Id", workspace).header("Content-Type", "text/plain")
+                .POST(HttpRequest.BodyPublishers.ofString(model(title, "base"))).build();
+        return client.send(request, HttpResponse.BodyHandlers.ofString());
+    }
 
     @Test
     void authenticatedRuleAppliesOrderedChangesAndExposesAnExactReviewableConflict() throws Exception {

@@ -10,6 +10,9 @@ import com.taxonomy.workspace.repository.SystemRepositoryRepository;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.service.RepositoryMembershipService;
 import com.taxonomy.workspace.service.RepositoryRefPolicy;
+import com.taxonomy.workspace.service.RepositoryScope;
+import com.taxonomy.workspace.service.WorkspaceFetchAuthority;
+import com.taxonomy.workspace.service.WorkspaceResolver;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import jakarta.persistence.EntityManager;
 import org.eclipse.jgit.lib.Constants;
@@ -37,6 +40,17 @@ public class VersionedRepositoryRefPolicy implements RepositoryRefPolicy {
     private final RepositoryMembershipService memberships;
     private final PrincipalIdentityService identities;
     private final JdbcTemplate jdbc;
+    private org.springframework.transaction.support.TransactionTemplate currentAuthority;
+    private WorkspaceFetchAuthority requestActors;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void configureRequestAuthority(org.springframework.transaction.PlatformTransactionManager transactions,
+            WorkspaceFetchAuthority requestActors) {
+        currentAuthority = new org.springframework.transaction.support.TransactionTemplate(transactions);
+        currentAuthority.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRED);
+        currentAuthority.setIsolationLevel(org.springframework.transaction.TransactionDefinition.ISOLATION_READ_COMMITTED);
+        this.requestActors = requestActors;
+    }
 
     public VersionedRepositoryRefPolicy(EntityManager db, SystemRepositoryRepository repositories,
             UserWorkspaceRepository workspaces, RepositoryMembershipService memberships,
@@ -52,6 +66,7 @@ public class VersionedRepositoryRefPolicy implements RepositoryRefPolicy {
     @Override
     public void require(Session storageTransaction, String storageName, String branch, Operation operation) {
         lockStorage(storageTransaction, storageName);
+        requireCurrentSelectedWorkspace(storageName);
         // A scalar query refreshes the decision even if this session performed an earlier advisory check.
         var rows = storageTransaction.createQuery("""
                 select r.preventUpdates, r.preventForce, r.preventDelete
@@ -65,6 +80,53 @@ public class VersionedRepositoryRefPolicy implements RepositoryRefPolicy {
             case DELETE -> (Boolean) policy[2];
         };
         if (denied) throw new AccessDeniedException("The selected branch policy prevents this ref operation");
+    }
+
+    private void requireCurrentSelectedWorkspace(String storageName) {
+        var selected = WorkspaceResolver.resolvedRequestSelection().orElse(null);
+        if (selected == null || selected.scope() != RepositoryScope.WORKSPACE
+                || !(org.springframework.web.context.request.RequestContextHolder.getRequestAttributes()
+                instanceof org.springframework.web.context.request.ServletRequestAttributes request)) return;
+        // Provisioning and cross-repository publication retain their own explicit domain grants.
+        // This selection identifies the ordinary editing target; it is never an authorization cache.
+        if (!DslGitRepositoryFactory.workspaceRepositoryName(selected.workspaceId()).equals(storageName)) return;
+        var login = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (login == null || !selected.username().equals(login.getName()) || currentAuthority == null) throw requestDenied();
+        String actor = requestActors.currentActor(selected.username());
+        requireCurrentAssertion(login);
+        String path = request.getRequest().getRequestURI().substring(request.getRequest().getContextPath().length());
+        if (!ApiAccessPolicy.authorize(login, ApiAccessPolicy.resolve(request.getRequest().getMethod(), path))) throw requestDenied();
+        // Reuse a caller's locking connection: a second connection cannot read its own catalogue
+        // X-lock on SQL Server. NOWAIT prevents waiting for a competing catalogue/metadata writer
+        // after the native storage fence. Refresh explicitly instead of trusting request entities.
+        Boolean allowed = currentAuthority.execute(status -> {
+            var source = currentMetadata(SystemRepository.class,
+                    "select r from SystemRepository r where r.repositoryId=:id", selected.repositoryId());
+            if (source == null) return false;
+            var workspace = currentMetadata(com.taxonomy.workspace.model.UserWorkspace.class,
+                    "select w from UserWorkspace w where w.workspaceId=:id", selected.workspaceId());
+            return workspace != null
+                    && workspace.getProvisioningStatus() == com.taxonomy.workspace.model.WorkspaceProvisioningStatus.READY
+                    && selected.branch().equals(workspace.getCurrentBranch())
+                    && memberships.canUseCurrentWorkspace(source, workspace, selected.username(), actor);
+        });
+        if (!Boolean.TRUE.equals(allowed) || !actor.equals(requestActors.currentActor(selected.username()))) throw requestDenied();
+        requireCurrentAssertion(login);
+    }
+
+    private <T> T currentMetadata(Class<T> type, String query, String id) {
+        var rows = db.createQuery(query, type).setParameter("id", id)
+                .setLockMode(jakarta.persistence.LockModeType.PESSIMISTIC_READ)
+                .setHint("jakarta.persistence.lock.timeout", 0).getResultList();
+        if (rows.isEmpty()) return null;
+        T row = rows.getFirst();
+        db.refresh(row, jakarta.persistence.LockModeType.PESSIMISTIC_READ,
+                java.util.Map.of("jakarta.persistence.lock.timeout", 0));
+        return row;
+    }
+
+    private static AccessDeniedException requestDenied() {
+        return new AccessDeniedException("Current selected repository authority is required");
     }
 
     @Transactional(readOnly = true)
@@ -132,6 +194,11 @@ public class VersionedRepositoryRefPolicy implements RepositoryRefPolicy {
     private com.taxonomy.backup.PrincipalId currentActor(Authentication login) {
         var actor = identities.requireCurrent(login);
         if (!ApiAccessPolicy.hasPermission(login, ApiPermission.REPOSITORY_MANAGE)) throw denied();
+        requireCurrentAssertion(login);
+        return actor;
+    }
+
+    private static void requireCurrentAssertion(Authentication login) {
         Instant expiry = null;
         if (login instanceof org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken jwt) {
             expiry = jwt.getToken().getExpiresAt();
@@ -141,7 +208,6 @@ public class VersionedRepositoryRefPolicy implements RepositoryRefPolicy {
             if (expiry == null) throw denied();
         }
         if (expiry != null && !expiry.isAfter(Instant.now())) throw denied();
-        return actor;
     }
 
     private static void lockStorage(Session transaction, String storageName) {

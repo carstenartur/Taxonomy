@@ -3,12 +3,7 @@ package com.taxonomy.architecture.controller;
 import com.taxonomy.workspace.controller.ExplicitRepositoryReadSelection;
 
 import com.taxonomy.dto.ApqcHierarchyView;
-import com.taxonomy.workspace.service.RepositoryContext;
-import com.taxonomy.workspace.service.WorkspaceDslReadPort;
 import jakarta.servlet.http.HttpServletRequest;
-import org.springframework.web.server.ResponseStatusException;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.CacheControl;
 import com.taxonomy.dto.ChangeImpactView;
 import com.taxonomy.dto.EnrichedChangeImpactView;
 import com.taxonomy.dto.GraphNeighborhoodView;
@@ -88,11 +83,10 @@ public class GraphQueryApiController {
             }
         }
 
-        RepositoryContext context = selected(request);
-        String sourceCommit = commit(request);
+        var source = selected(request);
         RequirementImpactView view = graphQueryService.findImpactForRequirement(
-                context, sourceCommit, scores, businessText, maxHops);
-        return sourceResponse(context, sourceCommit, view);
+                source.context(), source.commit(), scores, businessText, maxHops);
+        return source.response(view);
     }
 
     /**
@@ -103,10 +97,9 @@ public class GraphQueryApiController {
     public ResponseEntity<GraphNeighborhoodView> findUpstream(
             @Parameter(description = "Taxonomy node code") @PathVariable String code,
             @Parameter(description = "Maximum traversal hops") @RequestParam(defaultValue = "2") int maxHops, HttpServletRequest request) {
-        RepositoryContext context = selected(request);
-        String sourceCommit = commit(request);
-        GraphNeighborhoodView view = graphQueryService.findUpstream(context, sourceCommit, code, maxHops);
-        return sourceResponse(context, sourceCommit, view);
+        var source = selected(request);
+        GraphNeighborhoodView view = graphQueryService.findUpstream(source.context(), source.commit(), code, maxHops);
+        return source.response(view);
     }
 
     /**
@@ -117,10 +110,9 @@ public class GraphQueryApiController {
     public ResponseEntity<GraphNeighborhoodView> findDownstream(
             @Parameter(description = "Taxonomy node code") @PathVariable String code,
             @Parameter(description = "Maximum traversal hops") @RequestParam(defaultValue = "2") int maxHops, HttpServletRequest request) {
-        RepositoryContext context = selected(request);
-        String sourceCommit = commit(request);
-        GraphNeighborhoodView view = graphQueryService.findDownstream(context, sourceCommit, code, maxHops);
-        return sourceResponse(context, sourceCommit, view);
+        var source = selected(request);
+        GraphNeighborhoodView view = graphQueryService.findDownstream(source.context(), source.commit(), code, maxHops);
+        return source.response(view);
     }
 
     /**
@@ -131,10 +123,9 @@ public class GraphQueryApiController {
     public ResponseEntity<ChangeImpactView> findFailureImpact(
             @Parameter(description = "Taxonomy node code") @PathVariable String code,
             @Parameter(description = "Maximum traversal hops") @RequestParam(defaultValue = "3") int maxHops, HttpServletRequest request) {
-        RepositoryContext context = selected(request);
-        String sourceCommit = commit(request);
-        ChangeImpactView view = graphQueryService.findFailureImpact(context, sourceCommit, code, maxHops);
-        return sourceResponse(context, sourceCommit, view);
+        var source = selected(request);
+        ChangeImpactView view = graphQueryService.findFailureImpact(source.context(), source.commit(), code, maxHops);
+        return source.response(view);
     }
 
     /**
@@ -146,10 +137,9 @@ public class GraphQueryApiController {
     public ResponseEntity<EnrichedChangeImpactView> findEnrichedFailureImpact(
             @Parameter(description = "Taxonomy node code") @PathVariable String code,
             @Parameter(description = "Maximum traversal hops") @RequestParam(defaultValue = "3") int maxHops, HttpServletRequest request) {
-        RepositoryContext context = selected(request);
-        String sourceCommit = commit(request);
-        EnrichedChangeImpactView view = enrichedImpactService.findEnrichedFailureImpact(context, sourceCommit, code, maxHops);
-        return sourceResponse(context, sourceCommit, view);
+        var source = selected(request);
+        EnrichedChangeImpactView view = enrichedImpactService.findEnrichedFailureImpact(source.context(), source.commit(), code, maxHops);
+        return source.response(view);
     }
 
     /**
@@ -163,34 +153,12 @@ public class GraphQueryApiController {
                description = "Returns APQC process elements from imported DSL documents as a hierarchy tree")
     @GetMapping("/apqc-hierarchy")
     public ResponseEntity<ApqcHierarchyView> apqcHierarchy(HttpServletRequest request) {
-        RepositoryContext context = selected(request);
-        String sourceCommit = commit(request);
-        return sourceResponse(context, sourceCommit, apqcHierarchyService.buildHierarchy(context, sourceCommit));
+        var source = selected(request);
+        return source.response(apqcHierarchyService.buildHierarchy(source.context(), source.commit()));
     }
-    private RepositoryContext selected(HttpServletRequest request) {
-        return contexts.resolve(request.getParameter("repositoryId"), request.getParameter("branch"),
+
+    private ArchitectureQuerySource selected(HttpServletRequest request) {
+        return ArchitectureQuerySource.resolve(contexts, request.getParameter("repositoryId"), request.getParameter("branch"),
                 request.getParameter("commitId"), request);
-    }
-
-    private String commit(HttpServletRequest request) {
-        try { return WorkspaceDslReadPort.normalizeCommitId(request.getParameter("commitId")); }
-        catch (IllegalArgumentException error) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Explicit full commitId is required", error);
-        }
-    }
-
-    /** Return the authorized immutable source coordinates with every successful graph response. */
-    private static <T> ResponseEntity<T> sourceResponse(RepositoryContext context, String sourceCommit, T body) {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
-                .header("X-Taxonomy-Repository", context.repositoryId())
-                .header("X-Taxonomy-Workspace-Id", Objects.toString(context.workspaceId(), ""))
-                .header("X-Taxonomy-Branch", context.branch())
-                .header("X-Taxonomy-Commit", sourceCommit)
-                .body(body);
-    }
-
-    @ExceptionHandler(IllegalStateException.class)
-    public ResponseEntity<Map<String, String>> unavailable(IllegalStateException error) {
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("status", "UNAVAILABLE", "message", error.getMessage()));
     }
 }

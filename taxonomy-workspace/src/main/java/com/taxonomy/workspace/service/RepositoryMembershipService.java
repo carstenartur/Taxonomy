@@ -324,6 +324,13 @@ public class RepositoryMembershipService {
         return canUseWorkspace(repository, workspace, username, null);
     }
 
+    /** Read memberships afresh while the caller retains its current source/workspace metadata fence. */
+    @Transactional(readOnly = true, propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public boolean canUseCurrentWorkspace(SystemRepository repository, com.taxonomy.workspace.model.UserWorkspace workspace,
+            String username, String verifiedOriginalActor) {
+        return canUseWorkspace(repository, workspace, username, verifiedOriginalActor);
+    }
+
     /** Recovery has already verified the saved grant; compare its actor without consulting a worker session. */
     public boolean canUseWorkspace(SystemRepository repository, com.taxonomy.workspace.model.UserWorkspace workspace,
             String username, String verifiedOriginalActor) {

@@ -130,14 +130,12 @@ class DslApiControllerBranchCoverageTest {
     @Test
     void manualConflictResolutionCoversSuccessAndFailure() throws Exception {
         when(dslOps.resolveCurrentUsername()).thenReturn("alice");
-        when(dslOps.commitDsl("accepted", "resolved", "alice",
-                "Resolve merge conflict: review → accepted")).thenReturn("merge-resolution");
-        assertThat(controller.mergeResolve("review", "accepted", "resolved").getBody())
+        when(dslOps.resolveMerge("review", "accepted", "target", "resolved", "alice")).thenReturn("merge-resolution");
+        assertThat(controller.mergeResolve("review", "accepted", "target", "resolved").getBody())
                 .containsEntry("commitId", "merge-resolution").containsEntry("resolution", "manual");
 
-        when(dslOps.commitDsl("accepted", "broken", "alice",
-                "Resolve merge conflict: review → accepted")).thenThrow(new IOException("commit failed"));
-        assertThat(controller.mergeResolve("review", "accepted", "broken").getStatusCode())
+        when(dslOps.resolveMerge("review", "accepted", "target", "broken", "alice")).thenThrow(new IOException("commit failed"));
+        assertThat(controller.mergeResolve("review", "accepted", "target", "broken").getStatusCode())
                 .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
 
         when(authentication.getName()).thenReturn("bob");

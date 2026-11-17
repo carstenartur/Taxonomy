@@ -235,6 +235,20 @@ public final class RepositoryHistoryHttpContract implements AutoCloseable {
         var published = request("POST", "/api/dsl/commit", selected, model, "text/plain;charset=UTF-8", 200);
         assertThat(published.required("databaseBacked").booleanValue()).isTrue();
         assertThat(branchHead(working, selected.branch)).isEqualTo(published.required("commitId").textValue()).isNotEqualTo(original);
+        // Deletion already holds the catalogue fence. The native policy check must reuse that
+        // connection for metadata, including on SQL Server where a second reader self-blocks.
+        String etag = get("/api/dsl/branch/deletion-preview?name=" + selected.branch, working)
+                .required("etag").textValue();
+        assertThat(etag).startsWith("\"").endsWith("\"");
+        String confirmation = etag.substring(1, etag.length() - 1);
+        request("DELETE", "/api/dsl/branch?name=" + selected.branch, working, null, null, 403, confirmation);
+        assertThat(branchHead(working, selected.branch)).isEqualTo(published.required("commitId").textValue());
+        requested.put("expectedRevision", 2);
+        requested.put("preventDelete", false);
+        assertThat(json("PUT", policyPath, selected, requested).path("policy").path("revision").asLong()).isEqualTo(3);
+        request("DELETE", "/api/dsl/branch?name=" + selected.branch, working, null, null, 200, confirmation);
+        assertThat(get("/api/dsl/branches", working).values()).extracting(row -> row.required("name").textValue())
+                .doesNotContain(selected.branch).contains(working.branch, differentCase.branch);
     }
 
     private String branchHead(Copy copy, String branch) throws Exception {

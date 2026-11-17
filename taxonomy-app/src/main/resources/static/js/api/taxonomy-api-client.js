@@ -550,7 +550,8 @@ window.TaxonomyApiClient = (function () {
                     cause: error
                 });
         }
-        if (scope.callerAborted()) {
+        // Browsers can abort a departing response before pagehide or our signal fires.
+        if (scope.callerAborted() || error?.name === 'AbortError') {
             return new ApiError('Request was cancelled', 0, context.url, null, {
                 requestId: context.requestId,
                 code: 'ABORTED',
