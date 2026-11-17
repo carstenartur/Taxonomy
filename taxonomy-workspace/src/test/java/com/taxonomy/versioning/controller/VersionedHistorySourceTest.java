@@ -1,7 +1,9 @@
 package com.taxonomy.versioning.controller;
 
+import com.taxonomy.dto.RepositoryReadiness;
 import com.taxonomy.versioning.model.ArchitectureCommitIndex;
 import com.taxonomy.versioning.service.CommitIndexService;
+import com.taxonomy.versioning.service.CommitIndexService.VersionedMatches;
 import com.taxonomy.versioning.service.ConflictDetectionService;
 import com.taxonomy.versioning.service.DslOperationsFacade;
 import com.taxonomy.versioning.service.RepositoryStateService;
@@ -41,8 +43,8 @@ class VersionedHistorySourceTest {
             git.createBranch("review", "source");
             String head = git.commitDsl("review", "# head", "alice", "head");
             String unrelated = git.commitDsl("independent", "# other", "alice", "independent");
-            when(index.search("term", 50, selected)).thenReturn(List.of(hit("source", base, 1),
-                    hit("review", unrelated, 3), hit("review", head, 2)));
+            when(index.searchVersioned("term", 50, selected, head)).thenReturn(new VersionedMatches(
+                    RepositoryReadiness.FRESH, List.of(hit("source", base, 1), hit("review", unrelated, 3), hit("review", head, 2))));
             when(resolver.resolveUnambiguousRepositoryForRead()).thenReturn(selected);
             var mvc = MockMvcBuilders.standaloneSetup(new CommitHistoryQueryController(index, resolver,
                     new DslWorkspaceReadAdapter(factory), JsonMapper.builder().build())).build();
@@ -54,7 +56,8 @@ class VersionedHistorySourceTest {
                     .andExpect(jsonPath("$[2].latestOnCurrentBranch").value(true))
                     .andExpect(header().string("X-Taxonomy-Commit", head))
                     .andExpect(header().exists("ETag")).andReturn().getResponse().getHeader("ETag");
-            when(index.search("term", 50, selected)).thenReturn(List.of(hit("review", head, 2)));
+            when(index.searchVersioned("term", 50, selected, head)).thenReturn(new VersionedMatches(
+                    RepositoryReadiness.FRESH, List.of(hit("review", head, 2))));
             mvc.perform(get("/api/dsl/history/search-versioned").param("query", "term").param("currentBranch", "review"))
                     .andExpect(status().isOk()).andExpect(header().string("ETag", org.hamcrest.Matchers.not(tag)));
             verify(resolver, times(2)).resolveUnambiguousRepositoryForRead();
@@ -98,6 +101,8 @@ class VersionedHistorySourceTest {
         when(store.openRead(any())).thenReturn(read);
         String head = "a".repeat(40);
         when(read.currentHead()).thenReturn(head);
+        when(index.searchVersioned(anyString(), eq(50), any(RepositoryContext.class), eq(head)))
+                .thenReturn(new VersionedMatches(RepositoryReadiness.FRESH, List.of()));
         var mvc = MockMvcBuilders.standaloneSetup(new CommitHistoryQueryController(index, resolver, store,
                 JsonMapper.builder().build())).build();
         var request = get("/api/dsl/history/search-versioned").param("query", "term");
@@ -111,6 +116,28 @@ class VersionedHistorySourceTest {
         verify(read, times(4)).verifyExpectedHead(head);
         verify(resolver, times(4)).resolveUnambiguousRepositoryForRead();
         verifyNoMoreInteractions(resolver);
+    }
+
+    @Test
+    void selectedGitHeadWithoutAHistoryIndexIsUnavailable() throws Exception {
+        var store = mock(WorkspaceDslReadPort.class);
+        var read = mock(WorkspaceDslReadPort.RepositoryRead.class);
+        String head = "a".repeat(40);
+        when(resolver.resolveUnambiguousRepositoryForRead()).thenReturn(selected);
+        when(store.openRead(selected)).thenReturn(read);
+        when(read.currentHead()).thenReturn(head);
+        when(index.searchVersioned("term", 50, selected, head))
+                .thenReturn(new VersionedMatches(RepositoryReadiness.MISSING, List.of()));
+        var mvc = MockMvcBuilders.standaloneSetup(new CommitHistoryQueryController(index, resolver, store,
+                JsonMapper.builder().build())).build();
+
+        mvc.perform(get("/api/dsl/history/search-versioned").param("query", "term"))
+                .andExpect(status().isNotFound())
+                .andExpect(header().string("X-Taxonomy-Source-State", "MISSING"))
+                .andExpect(header().string("X-Taxonomy-Commit", head))
+                .andExpect(header().doesNotExist("ETag"))
+                .andExpect(content().string(""));
+        verify(read).verifyExpectedHead(head);
     }
 
     @Test
@@ -135,7 +162,8 @@ class VersionedHistorySourceTest {
         mvc.perform(get(path).param("query", "term").param("commitId", next))
                 .andExpect(status().isConflict()).andExpect(header().string("X-Taxonomy-Commit", head));
         verifyNoInteractions(index);
-        when(index.search("term", 50, selected)).thenReturn(List.of(hit("review", next, 1)));
+        when(index.searchVersioned("term", 50, selected, head)).thenReturn(new VersionedMatches(
+                RepositoryReadiness.FRESH, List.of(hit("review", next, 1))));
         when(read.relationshipsTo(head, List.of(next))).thenReturn(List.of(WorkspaceDslReadPort.CommitRelationship.UNAVAILABLE),
                 List.of(WorkspaceDslReadPort.CommitRelationship.ANCESTOR));
         mvc.perform(get(path).param("query", "term")).andExpect(status().isConflict())

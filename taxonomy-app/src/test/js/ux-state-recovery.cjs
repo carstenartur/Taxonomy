@@ -60,10 +60,10 @@ function dom() {
     const document = {documentElement: {lang: 'de'}, title: '', activeElement: null,
         createElement: element, createTextNode: text => element('text'),
         getElementById: id => all.find(n => n.id === id && !n.removed) || null,
-        addEventListener(name, fn) {listeners.set(name, fn);},
+        addEventListener(name, fn) {if (!listeners.has(name)) listeners.set(name, []); listeners.get(name).push(fn);},
         querySelectorAll: () => [], querySelector: () => null,
         dispatchEvent(event) {events.push(event);},
-        fire(name, event) {return listeners.get(name)?.(event);}};
+        fire(name, event) {return Promise.all((listeners.get(name) || []).map(fn => fn(event)));}};
     document.body = element('body'); document.head = element('head');
     let sequence = 0;
     const urls = {createObjectURL: () => 'blob:preview-' + (++sequence), revokeObjectURL: url => revoked.push(url)};
@@ -196,8 +196,8 @@ test('Find Similar exposes the same local clear control while pending', () => {
     assert.equal(clear.hidden, true); assert.equal(f.signal().aborted, true);
 });
 
-async function reportsFixture() {
-    const d = dom(), requests = [], prints = [], contexts = [];
+async function reportsFixture(basePath = '') {
+    const d = dom(), requests = [], sourceReads = [], prints = [], contexts = [], blobs = [];
     for (const id of ['reportsHeading', 'versioningLink',
         'reportOptionsHeading', 'reportScope', 'reportRequirement', 'matrixType', 'previewReport',
         'printReport', 'reportPreviewFrame', 'emptyPreview', 'reportsBusy', 'reportsProject',
@@ -213,22 +213,62 @@ async function reportsFixture() {
     for (const selector of ['.skip-link', 'label[for="reportScope"]', 'label[for="reportRequirement"]', 'label[for="matrixType"]', '#reportsBusy span']) selectors.set(selector, d.element());
     selectors.set('#reportPreviewFrame', frame);
     d.document.querySelector = selector => selectors.get(selector) || null;
+    const buttons = Object.fromEntries(['html', 'docx', 'markdown', 'json', 'csv'].map(format => {
+        const button = d.element('button');
+        button.dataset.format = format;
+        return [format, button];
+    }));
+    d.document.querySelectorAll = selector => selector === '.report-download' ? Object.values(buttons) : [];
+    const recordEvent = d.document.dispatchEvent;
+    d.document.dispatchEvent = event => {
+        recordEvent(event);
+        d.document.fire(event.type, event);
+        return true;
+    };
     let sourceGeneration = 0;
-    const window = {addEventListener() {}, TaxonomyApiClient: {captureContext() {
-        const generation = sourceGeneration;
-        return () => generation === sourceGeneration;
-    }}, TaxonomyAppChrome: {updateContext: context => contexts.push(context)}, TaxonomyPortfolioApi: {
-        getProject: async () => ({projectKey: sourceGeneration ? 'P2' : 'P', title: 'Project'}),
-        listRequirements: async () => [{id: 1, requirementKey: 'A', title: 'Alpha'}, {id: 2, requirementKey: 'B', title: 'Beta'}],
-        fetchReport(...args) {const gate = deferred(); requests.push({args, ...gate}); return gate.promise;},
-        reportUrl: () => '/api/report'
-    }};
-    vm.runInNewContext(source('portfolio/portfolio-reports.js'), {window, document: d.document,
-        location: {pathname: '/projects/1/reports', search: '?lang=de'}, URLSearchParams, URL: d.urls, AbortController});
+    const lifecycle = new EventTarget();
+    const location = new URL('https://taxonomy.example' + basePath + '/projects/1/reports?lang=de');
+    const window = {
+        location,
+        addEventListener: lifecycle.addEventListener.bind(lifecycle),
+        setTimeout: callback => callback(),
+        TaxonomyI18n: {getBasePath: () => basePath,
+            resolveUrl: path => path.startsWith(basePath + '/') ? path : basePath + path},
+        TaxonomyContextBar: {getSelectionGeneration: () => sourceGeneration},
+        TaxonomyAppChrome: {updateContext: context => contexts.push(context)},
+        TaxonomyArchitectureWorkflow: {getScope: () => sourceGeneration % 2
+            ? {repositoryId: 'repo-b', workspaceId: '', workspaceScopeKey: '__shared__', branch: 'main'}
+            : {repositoryId: 'repo-a', workspaceId: '__shared__', workspaceScopeKey: '__shared__', branch: 'draft'}}
+    };
+    const context = canonicalFixture.install({window, document: d.document, location,
+        URL: {...d.urls, createObjectURL(blob) {blobs.push(blob); return d.urls.createObjectURL(blob);}},
+        fetch(input, options) {
+            const url = new URL(input, location);
+            const projectPath = basePath + '/api/projects/1';
+            if (url.pathname === projectPath) {
+                sourceReads.push(url);
+                return Response.json({projectKey: sourceGeneration % 2 ? 'P2' : 'P', title: 'Project'});
+            }
+            if (url.pathname === projectPath + '/requirements') {
+                sourceReads.push(url);
+                return Response.json([{id: 1, requirementKey: 'A', title: 'Alpha'}, {id: 2, requirementKey: 'B', title: 'Beta'}]);
+            }
+            assert.ok(url.pathname.startsWith(projectPath + '/reports/'), url.pathname);
+            const gate = deferred();
+            requests.push({url, options, ...gate});
+            return gate.promise;
+        }
+    }, ['api/portfolio-api.js']);
+    vm.runInContext(source('portfolio/portfolio-reports.js'), context);
     await d.document.fire('DOMContentLoaded');
-    return {...d, requests, prints, frame, contexts, switchSource() { sourceGeneration++; }};
+    return {...d, requests, sourceReads, prints, frame, contexts, buttons, blobs,
+        switchSource() { sourceGeneration++; },
+        pageEvent(type, persisted) {
+            lifecycle.dispatchEvent(Object.assign(new Event(type), {persisted}));
+            return tick();
+        }};
 }
-const reportResponse = () => ({blob: async () => ({size: 10})});
+const reportResponse = () => new Response('HTML report');
 
 test('a product gap review stays with the source where its evidence was displayed', async () => {
     const f = dom(), loads = [], submissions = [], reviews = [];
@@ -324,6 +364,146 @@ test('a source switch during response.body cannot install an obsolete report', a
     assert.equal(f.frame.src, 'about:blank');
     assert.equal(f.document.getElementById('printReport').disabled, true);
     assert.equal(f.document.getElementById('reportsError').textContent, '');
+});
+
+test('portfolio attachments abort during the body read when the selected source changes', async () => {
+    const f = await reportsFixture();
+    const pending = Object.values(f.buttons).map(button => button.click());
+    assert.equal(f.downloads.length, 0, 'no native download can start before the attachment is guarded');
+    assert.equal(f.requests.length, 5);
+    const transfers = f.requests.map(request => {
+        const reading = deferred(), body = deferred();
+        const response = new Response('pending attachment', {headers: {'Content-Disposition': 'attachment; filename="old-report"'}});
+        response.blob = () => {reading.resolve(); return body.promise;};
+        request.resolve(response);
+        return {reading, body, signal: request.options.signal};
+    });
+    await Promise.all(transfers.map(transfer => transfer.reading.promise));
+    await f.document.fire('taxonomy:repository-context-changed', {detail: {selectionChanged: false}});
+    assert.ok(transfers.every(transfer => !transfer.signal.aborted));
+
+    f.switchSource();
+    await f.document.fire('taxonomy:repository-context-changed', {detail: {selectionChanged: true}});
+    assert.ok(transfers.every(transfer => transfer.signal.aborted));
+    await Promise.all(pending);
+    for (const transfer of transfers) transfer.body.resolve(new Blob(['old bytes']));
+    await tick();
+    assert.deepEqual(f.blobs, []);
+    assert.deepEqual(f.downloads, []);
+    assert.equal(f.document.getElementById('reportsError').textContent, '');
+    assert.match(f.document.getElementById('reportsProject').textContent, /P2/);
+
+    const retry = f.buttons.csv.click();
+    const current = f.requests.at(-1);
+    assert.equal(current.url.searchParams.get('repositoryId'), 'repo-b');
+    assert.equal(current.options.headers.get('X-Taxonomy-Workspace-Id'), '');
+    current.resolve(new Response('current report', {headers: {'Content-Disposition': 'attachment; filename=P2-portfolio.csv'}}));
+    await retry;
+    assert.deepEqual(f.downloads.map(link => link.download), ['P2-portfolio.csv']);
+});
+
+test('a portfolio attachment keeps its requested source, requirement, matrix and server filename', async () => {
+    const f = await reportsFixture('/teams/blue/taxonomy');
+    f.document.getElementById('reportScope').value = 'requirement';
+    f.document.getElementById('reportRequirement').value = '2';
+    f.document.getElementById('matrixType').value = 'solutions';
+    const pending = f.buttons.csv.click();
+    assert.equal(f.requests.length, 1);
+    const {url, options, resolve} = f.requests[0];
+    assert.equal(url.pathname, '/teams/blue/taxonomy/api/projects/1/reports/csv');
+    assert.deepEqual(Object.fromEntries(url.searchParams), {requirementId: '2', matrix: 'solutions',
+        repositoryId: 'repo-a', workspaceScopeKey: '__shared__', workspaceId: '__shared__', branch: 'draft'});
+    assert.equal(options.headers.get('X-Taxonomy-Workspace-Id'), '__shared__');
+    resolve(new Response('requirement,coverage\nB,80', {headers: {'Content-Type': 'text/csv',
+        'Content-Disposition': 'attachment; filename="P-B-solutions.csv"'}}));
+    await pending;
+    assert.deepEqual(f.downloads.map(link => link.download), ['P-B-solutions.csv']);
+    assert.equal(await f.blobs[0].text(), 'requirement,coverage\nB,80');
+    assert.deepEqual(f.revoked, [f.downloads[0].href]);
+});
+
+test('a current portfolio download denial immediately clears reports and can recover on a source switch', async () => {
+    const f = await reportsFixture();
+    const preview = f.document.getElementById('previewReport');
+    const previewing = preview.click();
+    f.requests[0].resolve(reportResponse());
+    await previewing;
+    await f.frame.fire('load');
+    const print = f.document.getElementById('printReport');
+    assert.equal(print.disabled, false);
+
+    const denied = f.buttons.csv.click();
+    const reading = deferred(), problem = deferred();
+    const response = Response.json({detail: 'The server denied access.'}, {status: 403});
+    response.clone = () => ({text() {reading.resolve(); return problem.promise;}});
+    f.requests[1].resolve(response);
+    await reading.promise;
+    try {
+        assert.ok(Object.values(f.buttons).every(button => button.disabled));
+        assert.equal(preview.disabled, true);
+        assert.equal(print.disabled, true);
+        assert.equal(f.frame.src, 'about:blank');
+        assert.deepEqual(f.revoked, ['blob:preview-1']);
+        assert.equal(f.document.getElementById('reportsProject').textContent, '');
+        assert.match(f.document.getElementById('reportsLive').textContent, /Zugriff.*Berichte/);
+        assert.equal(f.document.activeElement, f.document.getElementById('reportsError'));
+    } finally {
+        problem.resolve('{"detail":"The server denied access."}');
+        await denied;
+    }
+    f.switchSource();
+    await f.document.fire('taxonomy:repository-context-changed', {detail: {selectionChanged: true}});
+    assert.equal(f.buttons.csv.disabled, false);
+    assert.match(f.document.getElementById('reportsProject').textContent, /P2/);
+    assert.equal(f.document.getElementById('reportsError').textContent, '');
+    const recovered = f.buttons.csv.click();
+    f.requests[2].resolve(new Response('authorized project report', {headers: {'Content-Disposition': 'attachment; filename=current.csv'}}));
+    await recovered;
+    assert.deepEqual(f.downloads.map(link => link.download), ['current.csv']);
+});
+
+test('a delayed portfolio denial from a departed source leaves the current download available', async () => {
+    const f = await reportsFixture();
+    const old = f.buttons.csv.click();
+    f.switchSource();
+    await f.document.fire('taxonomy:repository-context-changed', {detail: {selectionChanged: true}});
+    await old;
+    const current = f.buttons.csv.click();
+    const pending = f.requests[1];
+    f.requests[0].resolve(Response.json({detail: 'Obsolete denial'}, {status: 403}));
+    await tick();
+    const currentAborted = pending.options.signal.aborted;
+    pending.resolve(new Response('authorized project report', {headers: {'Content-Disposition': 'attachment; filename=current.csv'}}));
+    await current;
+    assert.equal(currentAborted, false);
+    assert.equal(f.document.getElementById('reportsError').textContent, '');
+    assert.equal(f.buttons.csv.disabled, false);
+    assert.deepEqual(f.downloads.map(link => link.download), ['current.csv']);
+});
+
+test('a persisted portfolio reports page validates its source again and can download after restoration', async () => {
+    const f = await reportsFixture();
+    const previewing = f.document.getElementById('previewReport').click();
+    f.requests[0].resolve(reportResponse());
+    await previewing;
+    await f.frame.fire('load');
+    const old = f.buttons.csv.click();
+    await f.pageEvent('pagehide', true);
+    await old;
+    const printDisabled = f.document.getElementById('printReport').disabled;
+    const hiddenFrame = f.frame.src;
+    assert.equal(f.requests[1].options.signal.aborted, true);
+
+    await f.pageEvent('pageshow', true);
+    assert.equal(f.sourceReads.length, 4, 'restoration must revalidate the project and requirements');
+    assert.ok(f.sourceReads.every(url => url.searchParams.get('workspaceId') === '__shared__'));
+    assert.equal(printDisabled, true);
+    assert.equal(hiddenFrame, 'about:blank');
+    f.requests[1].resolve(new Response('old report', {headers: {'Content-Disposition': 'attachment; filename=old.csv'}}));
+    const restored = f.buttons.csv.click();
+    f.requests[2].resolve(new Response('restored source report', {headers: {'Content-Disposition': 'attachment; filename=restored.csv'}}));
+    await restored;
+    assert.deepEqual(f.downloads.map(link => link.download), ['restored.csv']);
 });
 
 test('scope changes invalidate the report preview and discard stale success and failure', async () => {

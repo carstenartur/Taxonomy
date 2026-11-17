@@ -1,5 +1,6 @@
 package com.taxonomy.dsl;
 
+import com.taxonomy.versioning.controller.CommitHistoryQueryController;
 import com.taxonomy.versioning.model.ArchitectureCommitIndex;
 import com.taxonomy.versioning.repository.ArchitectureCommitIndexRepository;
 import com.taxonomy.versioning.service.CommitIndexService;
@@ -10,6 +11,9 @@ import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.repository.SystemRepositoryRepository;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.DslWorkspaceReadAdapter;
 import jakarta.persistence.EntityManagerFactory;
 import org.hibernate.search.mapper.orm.Search;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,12 +23,18 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.test.context.support.WithMockUser;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup;
 
 /** Integration evidence for repository-scoped Hibernate Search commit history. */
 @SpringBootTest
@@ -162,6 +172,63 @@ class CommitIndexHibernateSearchTest {
         assertThat(commitIndexService.search("CP-9000", workspaceA1)).isEmpty();
         assertThat(commitIndexService.search("CP-9000", centralA)).hasSize(1);
         assertThat(commitIndexService.search("CP-9000", workspaceA2)).hasSize(1);
+    }
+
+    @Test
+    void versionedSearchRequiresAnIndexedHeadOfTheExactWorkspaceAndBranch() throws Exception {
+        try (var factory = new DslGitRepositoryFactory(null)) {
+            var git = factory.resolveRepository(workspaceA1);
+            String branch = workspaceA1.branch();
+            String head = git.commitDsl(branch, "# First", "admin", "First");
+            var resolver = mock(WorkspaceResolver.class);
+            when(resolver.resolveUnambiguousRepositoryForRead()).thenReturn(workspaceA1);
+            var mvc = standaloneSetup(new CommitHistoryQueryController(commitIndexService, resolver,
+                    new DslWorkspaceReadAdapter(factory), JsonMapper.builder().build())).build();
+            String path = "/api/dsl/history/search-versioned";
+            for (var other : List.of(centralA, centralB, workspaceA2)) {
+                indexRepository.save(createEntry(other, head, branch, "First", "first", "", ""));
+            }
+            indexRepository.save(createEntry(workspaceA1, head, "other", "First", "first", "", ""));
+
+            mvc.perform(get(path).param("query", "first"))
+                    .andExpect(status().isNotFound())
+                    .andExpect(header().string("X-Taxonomy-Source-State", "MISSING"))
+                    .andExpect(header().string("X-Taxonomy-Commit", head))
+                    .andExpect(header().doesNotExist("ETag"));
+
+            var projectedHead = indexRepository.save(createEntry(workspaceA1, head, branch, "First", "first", "", ""));
+            mvc.perform(get(path).param("query", "unmatched"))
+                    .andExpect(status().isOk()).andExpect(content().json("[]"))
+                    .andExpect(header().string("X-Taxonomy-Source-State", "READY"))
+                    .andExpect(header().exists("ETag"));
+
+            try (var manager = entityManagerFactory.createEntityManager()) {
+                var transaction = manager.getTransaction();
+                transaction.begin();
+                Search.session(manager).indexingPlan().purge(ArchitectureCommitIndex.class, projectedHead.getId(), null);
+                transaction.commit();
+            }
+            assertThat(indexRepository.existsById(projectedHead.getId())).isTrue();
+            mvc.perform(get(path).param("query", "first"))
+                    .andExpect(status().isConflict())
+                    .andExpect(header().string("X-Taxonomy-Source-State", "STALE"))
+                    .andExpect(header().string("X-Taxonomy-Commit", head))
+                    .andExpect(header().doesNotExist("ETag"));
+
+            String next = git.commitDsl(branch, "# Second", "admin", "Second");
+            mvc.perform(get(path).param("query", "first"))
+                    .andExpect(status().isConflict())
+                    .andExpect(header().string("X-Taxonomy-Source-State", "STALE"))
+                    .andExpect(header().string("X-Taxonomy-Commit", next))
+                    .andExpect(header().doesNotExist("ETag"))
+                    .andExpect(content().string(""));
+
+            assertThat(commitIndexService.purge(workspaceA1)).isEqualTo(2);
+            mvc.perform(get(path).param("query", "first"))
+                    .andExpect(status().isNotFound())
+                    .andExpect(header().string("X-Taxonomy-Source-State", "MISSING"));
+            assertThat(commitIndexService.search("first", workspaceA2)).hasSize(1);
+        }
     }
 
     @Test

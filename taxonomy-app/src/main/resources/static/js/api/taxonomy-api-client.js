@@ -628,7 +628,11 @@ window.TaxonomyApiClient = (function () {
                 pending = transportFetch(url, prepared);
             } catch (error) { pending = Promise.reject(error); }
             return abortable(Promise.resolve(pending)
-                .then(function (response) { return checkStatus(response, context); })
+                .then(function (response) {
+                    // A transport can resolve after cancellation. Its headers cannot change authentication.
+                    if (scope.signal.aborted) throw cancelled(context);
+                    return checkStatus(response, context);
+                })
                 .then(function (response) {
                     assertCurrent(context);
                     rememberNavigation(response, url, prepared.headers);
