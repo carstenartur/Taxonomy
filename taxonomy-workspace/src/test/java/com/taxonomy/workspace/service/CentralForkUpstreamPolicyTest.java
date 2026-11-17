@@ -138,6 +138,34 @@ class CentralForkUpstreamPolicyTest {
     }
 
     @Test
+    void reviewedRebasePublishesOnlyTheNamedForkBranchAndRejectsAStaleRetry() throws Exception {
+        service.fetch("fork", ACTOR, new WorkspaceUpstreamService.Request(incoming, base));
+        target.createBranchAtCommit("review", base);
+        String first = target.commitDsl("review", "base", ACTOR, "local one");
+        String second = target.commitDsl("review", "base", ACTOR, "local two");
+        var plan = service.rebasePlan("fork", ACTOR, "review");
+        assertThat(plan.status()).isEqualTo(UpstreamRebasePlan.State.REPLAY);
+        var request = new UpstreamRebasePlan.ApplyRequest(plan.refTag(), second, incoming, List.of(first, second));
+        String body = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(request);
+
+        mvc.perform(post(API + "/rebase").param("branch", "review").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.originalHead").value(second))
+                .andExpect(jsonPath("$.rewritten[0].originalCommit").value(first))
+                .andExpect(jsonPath("$.rewritten[1].originalCommit").value(second))
+                .andExpect(jsonPath("$.conflictCommit").isEmpty());
+        String revised = target.getHeadCommit("review");
+        assertThat(revised).isNotEqualTo(second);
+        assertThat(target.getDslAtCommit(revised)).isEqualTo("next");
+
+        mvc.perform(post(API + "/rebase").param("branch", "review").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isConflict());
+        assertThat(target.getHeadCommit("review")).isEqualTo(revised);
+        assertThat(target.getHeadCommit("main")).isEqualTo(local);
+        assertThat(source.getHeadCommit("main")).isEqualTo(incoming);
+        assertThat(tracking.head(target)).isEqualTo(incoming);
+    }
+
+    @Test
     void forkFetchAndSelectedTagHaveScopedDurableReceipts() throws Exception {
         String fetchBody = "{\"sourceCommit\":\"" + incoming + "\",\"expectedTrackedCommit\":\"" + base + "\"}";
         var commit = mvc.perform(post(API + "/fetch").contentType(MediaType.APPLICATION_JSON)

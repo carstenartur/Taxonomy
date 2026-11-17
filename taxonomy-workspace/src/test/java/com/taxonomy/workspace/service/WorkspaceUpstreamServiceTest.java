@@ -113,6 +113,28 @@ class WorkspaceUpstreamServiceTest {
         verify(rows, never()).save(any());
     }
 
+    @Test
+    void personalWorkspacePlanDoesNotExposeARebasePost() throws Exception {
+        service.fetch(selected, new WorkspaceUpstreamService.Request(incoming, null));
+        target.createBranchAtCommit("feature", base);
+        String reviewedHead = target.commitDsl("feature", "base", "alice", "local change");
+        var selectedFeature = RepositoryContext.workspace("source", "w1", "feature", "alice");
+        var plan = service.rebasePlan(selectedFeature);
+        assertThat(plan.status()).isEqualTo(UpstreamRebasePlan.State.REPLAY);
+        var request = new UpstreamRebasePlan.ApplyRequest(plan.refTag(), reviewedHead, incoming, List.of(reviewedHead));
+
+        var resolver = mock(WorkspaceResolver.class);
+        when(resolver.resolveUnambiguousRepositoryForRead()).thenReturn(selectedFeature);
+        var api = MockMvcBuilders.standaloneSetup(new WorkspaceUpstreamController(service, resolver, recovery)).build();
+        String body = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(request);
+        api.perform(post("/api/workspace/upstream/rebase").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isNotFound());
+        assertThat(target.getHeadCommit("feature")).isEqualTo(reviewedHead);
+        assertThat(source.getHeadCommit("main")).isEqualTo(incoming);
+        assertThat(tracked.head(target)).isEqualTo(incoming);
+        assertThat(workspace.getCurrentCommit()).isEqualTo(local);
+    }
+
     private String rebasePlanTag() throws Exception {
         String path = "/api/workspace/upstream/rebase-plan";
         String tag = mvc.perform(get(path)).andExpect(status().isOk())

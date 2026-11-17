@@ -696,6 +696,114 @@ public class DslGitRepository implements AutoCloseable {
         }
     }
 
+    /**
+     * Rewrite a reviewed, linear local history onto an already fetched upstream commit.
+     *
+     * <p>All merges and signed replacement commits are prepared as unreachable Git objects.
+     * The selected branch is changed exactly once, with an expected-old-object CAS, only
+     * after every commit has merged and the caller has revalidated current authority and
+     * upstream refs. A conflict never partially rewrites the branch.</p>
+     */
+    @FunctionalInterface
+    public interface RebaseGuard { void revalidate() throws IOException; }
+
+    public record RebasedCommit(String originalCommit, String replacementCommit) { }
+
+    public record RebaseReplay(String originalHead, String newHead, String conflictCommit,
+                               List<String> conflictingPaths, List<RebasedCommit> rewritten) {
+        public boolean completed() { return conflictCommit == null; }
+    }
+
+    public RebaseReplay replayLinearHistory(String branch, String expectedHead, String mergeBase,
+                                           String trackedCommit, List<String> orderedCommits,
+                                           String actor, RebaseGuard reauthorizeAndCheckUpstream) throws IOException {
+        Objects.requireNonNull(orderedCommits, "orderedCommits");
+        Objects.requireNonNull(reauthorizeAndCheckUpstream, "reauthorizeAndCheckUpstream");
+        if (branch == null || !Repository.isValidRefName(Constants.R_HEADS + branch)
+                || branch.startsWith(EXTERNAL_SYNC_BRANCH_PREFIX)
+                || "main".equals(branch) || "accepted".equals(branch) || "sync-base".equals(branch)) {
+            throw new IllegalArgumentException("An editable, exact local branch is required");
+        }
+        if (expectedHead == null || !ObjectId.isId(expectedHead)
+                || mergeBase == null || !ObjectId.isId(mergeBase)
+                || trackedCommit == null || !ObjectId.isId(trackedCommit)
+                || orderedCommits.isEmpty() || orderedCommits.size() > 200
+                || orderedCommits.stream().anyMatch(id -> id == null || !ObjectId.isId(id))) {
+            throw new IllegalArgumentException("A complete, bounded and reviewed replay is required");
+        }
+
+        synchronized (gitRepo) {
+            reauthorizeAndCheckUpstream.revalidate();
+            verifyExpectedHead(branch, expectedHead);
+            try (var walk = new RevWalk(gitRepo)) {
+                var original = walk.parseCommit(ObjectId.fromString(expectedHead));
+                var base = walk.parseCommit(ObjectId.fromString(mergeBase));
+                var fetched = walk.parseCommit(ObjectId.fromString(trackedCommit));
+                if (!walk.isMergedInto(base, original) || !walk.isMergedInto(base, fetched)
+                        || walk.isMergedInto(original, fetched) || walk.isMergedInto(fetched, original)) {
+                    throw new IllegalArgumentException("The reviewed branches no longer have a divergent linear history");
+                }
+
+                var originals = new ArrayList<RevCommit>();
+                for (var cursor = original; !cursor.equals(base); ) {
+                    if (cursor.getParentCount() != 1 || originals.size() >= 200) {
+                        throw new IllegalArgumentException("Only bounded, linear local commits may be replayed");
+                    }
+                    originals.add(cursor);
+                    cursor = walk.parseCommit(cursor.getParent(0));
+                }
+                java.util.Collections.reverse(originals);
+                if (originals.size() != orderedCommits.size()) {
+                    throw new IllegalArgumentException("The ordered replay no longer matches the reviewed plan");
+                }
+                for (int i = 0; i < originals.size(); i++) {
+                    if (!originals.get(i).name().equals(orderedCommits.get(i))) {
+                        throw new IllegalArgumentException("The ordered replay no longer matches the reviewed plan");
+                    }
+                }
+
+                verifyIncoming(trackedCommit, expectedHead);
+                var replacements = new ArrayList<RebasedCommit>();
+                var tip = fetched;
+                for (var picked : originals) {
+                    var change = mergePickedChange(picked, tip, null);
+                    if (change.resultTree() == null) {
+                        reauthorizeAndCheckUpstream.revalidate();
+                        verifyExpectedHead(branch, expectedHead);
+                        return new RebaseReplay(expectedHead, expectedHead, picked.name(),
+                                change.conflictingPaths(), List.copyOf(replacements));
+                    }
+                    var evidence = CommitProvenance.capture("rebase", this, storageName, branch,
+                            picked.name(), picked.getParent(0).name());
+                    String summary = picked.getShortMessage();
+                    if (summary.length() > 160) summary = summary.substring(0, 160);
+                    String message = "Rebase: " + summary + "\n\nOriginal-Commit: " + picked.name();
+                    try (var inserter = gitRepo.newObjectInserter()) {
+                        var commit = new CommitBuilder();
+                        commit.setTreeId(insertProvenanceTree(inserter, change.resultTree(), evidence));
+                        commit.setParentId(tip);
+                        commit.setAuthor(picked.getAuthorIdent());
+                        commit.setCommitter(personIdent(actor));
+                        commit.setMessage(message);
+                        signCommit(commit, branch);
+                        var id = inserter.insert(commit);
+                        inserter.flush();
+                        tip = walk.parseCommit(id);
+                        replacements.add(new RebasedCommit(picked.name(), id.name()));
+                    }
+                }
+
+                // No user branch has moved so far. Check both authority and all upstream refs
+                // again before the single forced (non-fast-forward) compare-and-set publication.
+                reauthorizeAndCheckUpstream.revalidate();
+                verifyExpectedHead(branch, expectedHead);
+                ExpectedHeadDslCommitter.replaceBranchHead(gitRepo, branch, original, tip,
+                        personIdent(actor), "rebase: " + original.name() + " onto " + fetched.name());
+                return new RebaseReplay(expectedHead, tip.name(), null, List.of(), List.copyOf(replacements));
+            }
+        }
+    }
+
     /** Merge one branch into another. */
     public String merge(String fromBranch, String intoBranch) throws IOException {
         return merge(fromBranch, intoBranch, null, null);

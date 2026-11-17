@@ -12,6 +12,7 @@ import org.eclipse.jgit.revwalk.filter.RevFilter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /** A read-only ancestry plan against the last fetched upstream commit. Content conflicts are not evaluated. */
 public record UpstreamRebasePlan(String repositoryId, String workspaceId, String branch, String localCommit,
@@ -52,6 +53,51 @@ public record UpstreamRebasePlan(String repositoryId, String workspaceId, String
         } finally {
             reauthorize.run();
         }
+    }
+
+    /** Exact ref, commit and ordered replay identities supplied by an explicit user action. */
+    public record ApplyRequest(String expectedRefTag, String expectedLocalCommit,
+                               String expectedTrackedCommit, List<String> orderedCommits) {
+        public ApplyRequest {
+            Objects.requireNonNull(expectedRefTag, "expectedRefTag");
+            Objects.requireNonNull(expectedLocalCommit, "expectedLocalCommit");
+            Objects.requireNonNull(expectedTrackedCommit, "expectedTrackedCommit");
+            orderedCommits = List.copyOf(Objects.requireNonNull(orderedCommits, "orderedCommits"));
+        }
+    }
+
+    static DslGitRepository.RebaseReplay apply(GitUpstreamTransfer transfer, String repositoryId,
+                                               String workspaceId, String branch, ApplyRequest request)
+            throws IOException {
+        Objects.requireNonNull(request, "request");
+        // Invalid request syntax is a 400, but an otherwise valid plan whose refs moved is a 409,
+        // even when that movement changed the current plan state from REPLAY to UP_TO_DATE.
+        if (!request.expectedRefTag().matches("W/\\\"[0-9a-f]{64}\\\"")
+                || !ObjectId.isId(request.expectedLocalCommit())
+                || !ObjectId.isId(request.expectedTrackedCommit())
+                || request.orderedCommits().isEmpty() || request.orderedCommits().size() > MAX_REPLAY_COMMITS
+                || request.orderedCommits().stream().anyMatch(id -> !ObjectId.isId(id))) {
+            throw new IllegalArgumentException("A complete, bounded and reviewed replay is required");
+        }
+        var reviewed = read(transfer, repositoryId, workspaceId, branch);
+        if (!reviewed.refTag().equals(request.expectedRefTag())
+                || !Objects.equals(reviewed.localCommit(), request.expectedLocalCommit())
+                || !Objects.equals(reviewed.upstream().trackedCommit(), request.expectedTrackedCommit())
+                || !reviewed.commits().stream().map(Commit::id).toList().equals(request.orderedCommits())) {
+            throw new BranchHeadConflictException(branch, request.expectedLocalCommit(), reviewed.localCommit(),
+                    "The reviewed rebase plan changed");
+        }
+        if (reviewed.status() != State.REPLAY) {
+            throw new IllegalArgumentException("Only a divergent, linear and reviewed replay may be applied");
+        }
+        return transfer.target().replayLinearHistory(branch, reviewed.localCommit(), reviewed.mergeBase(),
+                reviewed.upstream().trackedCommit(), request.orderedCommits(), transfer.actor(), () -> {
+                    var current = readRefTag(transfer, repositoryId, workspaceId, branch);
+                    if (!reviewed.refTag().equals(current)) {
+                        throw new BranchHeadConflictException(branch, reviewed.localCommit(), null,
+                                "A source, target or tracking Git ref changed during the reviewed rebase");
+                    }
+                });
     }
 
     private static Refs readRefs(GitUpstreamTransfer transfer, String branch) throws IOException {
