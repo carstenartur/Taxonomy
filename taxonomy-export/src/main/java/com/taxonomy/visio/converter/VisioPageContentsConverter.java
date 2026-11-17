@@ -1,5 +1,7 @@
 package com.taxonomy.visio.converter;
 
+import com.taxonomy.diagram.VisioDrawingOptions;
+import com.taxonomy.visio.VisioPageLayout;
 import com.taxonomy.visio.VisioConnect;
 import com.taxonomy.visio.VisioTextBox;
 import com.taxonomy.visio.VisioPage;
@@ -33,6 +35,8 @@ public class VisioPageContentsConverter implements Converter {
     private static final String LINE_COLOR = "#44546A";
     private final VisioNativeShape masterDefinition;
     private final ExportTheme theme;
+    private final VisioPageLayout layout;
+    private final VisioDrawingOptions options;
 
     public VisioPageContentsConverter() { this(null, ExportTheme.defaults()); }
 
@@ -42,6 +46,17 @@ public class VisioPageContentsConverter implements Converter {
     }
 
     public VisioPageContentsConverter(VisioNativeShape masterDefinition, ExportTheme theme) {
+        this(masterDefinition, theme, VisioPageLayout.NATURAL, null);
+    }
+
+    public VisioPageContentsConverter(ExportTheme theme, VisioPageLayout layout, VisioDrawingOptions options) {
+        this(null, theme, layout, options);
+    }
+
+    private VisioPageContentsConverter(VisioNativeShape masterDefinition, ExportTheme theme, VisioPageLayout layout,
+                                       VisioDrawingOptions options) {
+        this.layout = layout;
+        this.options = options;
         this.masterDefinition = masterDefinition;
         this.theme = java.util.Objects.requireNonNull(theme, "theme");
     }
@@ -138,18 +153,20 @@ public class VisioPageContentsConverter implements Converter {
         writer.addAttribute("ID", shape.getId());
         writer.addAttribute("NameU", "TaxonomyShape." + shape.getId());
         writer.addAttribute("IsCustomNameU", "1");
-        writer.addAttribute("Name", evidence ? "Full recorded evidence" : shape.getText());
+        writer.addAttribute("Name", evidence ? translated("Full recorded evidence", "Vollständige Nachweise") : shape.getText());
         writer.addAttribute("IsCustomName", "1");
         writer.addAttribute("Type", "Shape");
         if (kind != null && masterDefinition == null) writer.addAttribute("Master", Integer.toString(kind.id()));
         writeStyleReferences(writer);
 
-        writeCell(writer, "PinX", decimal(shape.getX()));
-        writeCell(writer, "PinY", decimal(shape.getY()));
-        writeCell(writer, "Width", decimal(shape.getWidth()));
-        writeCell(writer, "Height", decimal(shape.getHeight()));
-        writeCell(writer, "LocPinX", decimal(shape.getWidth() / 2.0), "Width*0.5");
-        writeCell(writer, "LocPinY", decimal(shape.getHeight() / 2.0), "Height*0.5");
+        double width = layout.length(shape.getWidth());
+        double height = layout.length(shape.getHeight());
+        writeCell(writer, "PinX", decimal(layout.x(shape.getX())));
+        writeCell(writer, "PinY", decimal(layout.y(shape.getY())));
+        writeCell(writer, "Width", decimal(width));
+        writeCell(writer, "Height", decimal(height));
+        writeCell(writer, "LocPinX", decimal(width / 2.0), "Width*0.5");
+        writeCell(writer, "LocPinY", decimal(height / 2.0), "Height*0.5");
         writeCell(writer, "Angle", "0");
         boolean container = kind == VisioNativeShape.CONTAINER;
         boolean nativePresentation = container || VisioNativeShape.isPresentationOnly(shape);
@@ -160,13 +177,13 @@ public class VisioPageContentsConverter implements Converter {
         String border = nativePresentation ? LINE_COLOR : theme.nodeBorder(shape.getType(), shape.isAnchor(), LINE_COLOR, fill);
         writeCell(writer, "LineColor", assignmentColor == null ? border : assignmentColor.value());
         writeCell(writer, "LinePattern", "1");
-        writeCell(writer, "LineWeight", shape.isAnchor() || assignmentColor != null ? "0.02777777777777778" : "0.01388888888888889");
-        if (kind == VisioNativeShape.SERVICE) writeCell(writer, "Rounding", decimal(Math.min(shape.getWidth(), shape.getHeight()) * .15), "MIN(Width,Height)*0.15");
-        if (kind == VisioNativeShape.APPLICATION) writeCell(writer, "RightMargin", decimal(shape.getWidth() * .2), "Width*0.2");
+        writeCell(writer, "LineWeight", decimal(layout.length(shape.isAnchor() || assignmentColor != null ? 0.02777777777777778 : 0.01388888888888889)));
+        if (kind == VisioNativeShape.SERVICE) writeCell(writer, "Rounding", decimal(Math.min(width, height) * .15), "MIN(Width,Height)*0.15");
+        if (kind == VisioNativeShape.APPLICATION) writeCell(writer, "RightMargin", decimal(width * .2), "Width*0.2");
         writeCell(writer, "VerticalAlign", evidence || container ? "0" : "1");
         if (kind != null) {
             writeCell(writer, "ObjType", container ? "4" : "1");
-            writeConnectionPoints(writer, shape.getWidth(), shape.getHeight());
+            writeConnectionPoints(writer, width, height);
         }
         if (relationships != null) writeCell(writer, "Relationships", "0", relationships);
         if (container) {
@@ -174,21 +191,24 @@ public class VisioPageContentsConverter implements Converter {
             writer.startNode("Row"); writer.addAttribute("N", "msvStructureType");
             writeStringCell(writer, "Value", "Container");
             writer.endNode(); writer.endNode();
-            double header = Math.min(shape.getHeight(), VisioContainers.HEADER_HEIGHT);
-            writeCell(writer, "TxtPinX", decimal(shape.getWidth() / 2), "Width*0.5");
-            writeCell(writer, "TxtPinY", decimal(shape.getHeight() - header / 2), "Height-TxtHeight*0.5");
-            writeCell(writer, "TxtWidth", decimal(shape.getWidth()), "Width");
-            writeCell(writer, "TxtHeight", decimal(header), "MIN(Height," + VisioContainers.HEADER_HEIGHT + ")");
-            writeCell(writer, "TxtLocPinX", decimal(shape.getWidth() / 2), "TxtWidth*0.5");
+            double header = Math.min(height, layout.length(VisioContainers.HEADER_HEIGHT));
+            writeCell(writer, "TxtPinX", decimal(width / 2), "Width*0.5");
+            writeCell(writer, "TxtPinY", decimal(height - header / 2), "Height-TxtHeight*0.5");
+            writeCell(writer, "TxtWidth", decimal(width), "Width");
+            writeCell(writer, "TxtHeight", decimal(header), "MIN(Height," + containerHeaderHeight() + ")");
+            writeCell(writer, "TxtLocPinX", decimal(width / 2), "TxtWidth*0.5");
             writeCell(writer, "TxtLocPinY", decimal(header / 2), "TxtHeight*0.5");
         }
-        if (evidence) {
-            writeCell(writer, "LeftMargin", "0.1");
-            writeCell(writer, "RightMargin", "0.1");
-            writeCell(writer, "TopMargin", "0.1");
-            writeCell(writer, "BottomMargin", "0.1");
+        if (evidence || poster()) {
+            String margin = decimal(layout.length(evidence ? .1 : 4d / 72));
+            writeCell(writer, "LeftMargin", margin);
+            if (kind != VisioNativeShape.APPLICATION) writeCell(writer, "RightMargin", margin);
+            writeCell(writer, "TopMargin", margin);
+            writeCell(writer, "BottomMargin", margin);
         }
-        writeCharacterStyle(writer, evidence || container ? 10 : shape.getHeight() >= 1 ? 12 : 10,
+        boolean decisionCard = poster() && shape.getProperties().containsKey("taxonomy.evaluationStatus");
+        int points = !evidence && !container && (shape.getHeight() >= 1 || decisionCard) ? 12 : 10;
+        writeCharacterStyle(writer, points,
                 nativePresentation ? "#172B4D" : theme.nodeText(shape.getType(), "#172B4D"));
         if (evidence) {
             writer.startNode("Section"); writer.addAttribute("N", "Paragraph");
@@ -197,7 +217,7 @@ public class VisioPageContentsConverter implements Converter {
             writeCell(writer, "SpLine", "-1.2");
             writer.endNode(); writer.endNode();
         }
-        writeNativeGeometry(writer, kind, shape.getWidth(), shape.getHeight(), kind != null && masterDefinition == null);
+        writeNativeGeometry(writer, kind, width, height, kind != null && masterDefinition == null);
         writeProperties(writer, shape.getProperties());
 
         writer.startNode("Text");
@@ -212,10 +232,10 @@ public class VisioPageContentsConverter implements Converter {
             VisioConnect connect,
             VisioConnectionPoints.Route route) {
         var endpoints = route.endpoints();
-        double beginX = endpoints.source().x();
-        double beginY = endpoints.source().y();
-        double endX = endpoints.target().x();
-        double endY = endpoints.target().y();
+        double beginX = layout.x(endpoints.source().x());
+        double beginY = layout.y(endpoints.source().y());
+        double endX = layout.x(endpoints.target().x());
+        double endY = layout.y(endpoints.target().y());
         double width = Math.hypot(endX - beginX, endY - beginY);
         double angle = Math.atan2(endY - beginY, endX - beginX);
 
@@ -261,28 +281,32 @@ public class VisioPageContentsConverter implements Converter {
                 && "true".equals(connect.getProperties().get("taxonomy.proposed").value());
         writeCell(writer, "LineColor", theme.relationshipStroke(connect.getRelationType(), proposed ? "#9333EA" : LINE_COLOR, "#FFFFFF"));
         writeCell(writer, "LinePattern", proposed ? "2" : "1");
-        writeCell(writer, "LineWeight", "0.01388888888888889");
+        writeCell(writer, "LineWeight", decimal(layout.length(0.01388888888888889)));
         writeCell(writer, "EndArrow", "13");
         writeCell(writer, "EndArrowSize", "2");
-        VisioTextBox box = connect.getTextBox() != null ? connect.getTextBox()
-                : new VisioTextBox(connect.getRelationType(), (beginX + endX) / 2,
-                        (beginY + endY) / 2, 2, 0.5);
+        VisioTextBox box = connect.textBoxOrDefault(endpoints);
         // Invert the rotating shape transform. Constant page-axis offsets from
         // the midpoint stay upright and attached when Visio recalculates glue.
-        double dx = box.x() - (beginX + endX) / 2;
-        double dy = box.y() - (beginY + endY) / 2;
+        double dx = layout.x(box.x()) - (beginX + endX) / 2;
+        double dy = layout.y(box.y()) - (beginY + endY) / 2;
         writeCell(writer, "TxtPinX", decimal(width / 2 + dx * Math.cos(angle) + dy * Math.sin(angle)),
                 "Width*0.5+(" + decimal(dx) + ")*COS(Angle)+(" + decimal(dy) + ")*SIN(Angle)");
         writeCell(writer, "TxtPinY", decimal(-dx * Math.sin(angle) + dy * Math.cos(angle)),
                 "-(" + decimal(dx) + ")*SIN(Angle)+(" + decimal(dy) + ")*COS(Angle)");
-        writeCell(writer, "TxtWidth", decimal(box.width()));
-        writeCell(writer, "TxtHeight", decimal(box.height()));
-        writeCell(writer, "TxtLocPinX", decimal(box.width() / 2), "TxtWidth*0.5");
-        writeCell(writer, "TxtLocPinY", decimal(box.height() / 2), "TxtHeight*0.5");
+        writeCell(writer, "TxtWidth", decimal(layout.length(box.width())));
+        writeCell(writer, "TxtHeight", decimal(layout.length(box.height())));
+        writeCell(writer, "TxtLocPinX", decimal(layout.length(box.width()) / 2), "TxtWidth*0.5");
+        writeCell(writer, "TxtLocPinY", decimal(layout.length(box.height()) / 2), "TxtHeight*0.5");
         writeCell(writer, "TxtAngle", decimal(-angle), "-Angle");
         writeCell(writer, "TextBkgnd", "#FFFFFF");
         writeCell(writer, "TextBkgndTrans", "0");
         writeCell(writer, "VerticalAlign", "1");
+        if (poster()) {
+            String margin = decimal(layout.length(4d / 72));
+            for (String side : java.util.List.of("LeftMargin", "RightMargin", "TopMargin", "BottomMargin")) {
+                writeCell(writer, side, margin);
+            }
+        }
         writeCharacterStyle(writer, box.height() >= 1 ? 12 : 10, "#172B4D");
         writeLineGeometry(writer, width, angle, route.gutterFraction());
         writeProperties(writer, connect.getProperties());
@@ -293,12 +317,25 @@ public class VisioPageContentsConverter implements Converter {
         writer.endNode();
     }
 
-    private static void writeCharacterStyle(HierarchicalStreamWriter writer, int points, String color) {
+    private String containerHeaderHeight() {
+        // Preserve the original master formula literal on standard exports.
+        return poster() ? decimal(layout.length(VisioContainers.HEADER_HEIGHT)) : Double.toString(VisioContainers.HEADER_HEIGHT);
+    }
+
+    private String translated(String english, String german) {
+        return options != null && options.german() ? german : english;
+    }
+
+    private boolean poster() {
+        return options != null && options.mode() == VisioDrawingOptions.Mode.WALL;
+    }
+
+    private void writeCharacterStyle(HierarchicalStreamWriter writer, int points, String color) {
         writer.startNode("Section");
         writer.addAttribute("N", "Character");
         writer.startNode("Row");
         writer.addAttribute("IX", "0");
-        writeCell(writer, "Size", decimal(points / 72.0)); // Fixed readable size; never shrink to fit.
+        writeCell(writer, "Size", decimal(layout.length(points / 72.0)));
         writeCell(writer, "Color", color);
         writer.endNode();
         writer.endNode();
@@ -325,7 +362,7 @@ public class VisioPageContentsConverter implements Converter {
         writer.addAttribute("TextStyle", "0");
     }
 
-    private static void writeProperties(HierarchicalStreamWriter writer, Map<String, VisioProperty> properties) {
+    private void writeProperties(HierarchicalStreamWriter writer, Map<String, VisioProperty> properties) {
         if (properties.isEmpty()) return;
         writer.startNode("Section");
         writer.addAttribute("N", "Property");
@@ -333,7 +370,7 @@ public class VisioPageContentsConverter implements Converter {
             writer.startNode("Row");
             // Hex encoding is injective and uses only portable ShapeSheet row-name characters.
             writer.addAttribute("N", "t" + java.util.HexFormat.of().formatHex(entry.getKey().getBytes(java.nio.charset.StandardCharsets.UTF_8)));
-            writeCell(writer, "Label", entry.getKey());
+            writeCell(writer, "Label", options == null ? entry.getKey() : VisioPropertyLabels.label(entry.getKey(), options.german()));
             writeCell(writer, "Type", entry.getValue().shapeType());
             writer.startNode("Cell");
             writer.addAttribute("N", "Value");
@@ -349,7 +386,7 @@ public class VisioPageContentsConverter implements Converter {
             writer.startNode("Section"); writer.addAttribute("N", "Hyperlink");
             if (evidencePage != null) {
                 writer.startNode("Row"); writer.addAttribute("N", "FullEvidence");
-                writeStringCell(writer, "Description", "Full recorded evidence");
+                writeStringCell(writer, "Description", translated("Full recorded evidence", "Vollständige Nachweise"));
                 writeStringCell(writer, "Address", "");
                 writeStringCell(writer, "SubAddress", evidencePage.value());
                 writeCell(writer, "Default", "1");
@@ -358,7 +395,7 @@ public class VisioPageContentsConverter implements Converter {
             if (requirementUrl != null) {
                 com.taxonomy.visio.VisioHyperlinks.validateRequirementUrl(requirementUrl);
                 writer.startNode("Row"); writer.addAttribute("N", "Requirement");
-                writeStringCell(writer, "Description", "Open requirement in Taxonomy");
+                writeStringCell(writer, "Description", translated("Open requirement in Taxonomy", "Anforderung in Taxonomy öffnen"));
                 writeStringCell(writer, "Address", requirementUrl.value());
                 writeCell(writer, "Default", evidencePage == null ? "1" : "0");
                 writer.endNode();
@@ -381,7 +418,7 @@ public class VisioPageContentsConverter implements Converter {
         writer.endNode();
     }
 
-    private static void writeNativeGeometry(HierarchicalStreamWriter writer, VisioNativeShape kind,
+    private void writeNativeGeometry(HierarchicalStreamWriter writer, VisioNativeShape kind,
             double width, double height, boolean inherited) {
         if (kind == null) {
             writeRectangleGeometry(writer, width, height);
@@ -403,8 +440,9 @@ public class VisioPageContentsConverter implements Converter {
         if (kind == VisioNativeShape.CONTAINER) {
             writer.startNode("Section"); writer.addAttribute("N", "Geometry"); writer.addAttribute("IX", "1");
             writeCell(writer, "NoFill", "1");
-            double bottom = height - Math.min(height, VisioContainers.HEADER_HEIGHT);
-            String y = inherited ? "Inh" : "Height-MIN(Height," + VisioContainers.HEADER_HEIGHT + ")";
+            double header = layout.length(VisioContainers.HEADER_HEIGHT);
+            double bottom = height - Math.min(height, header);
+            String y = inherited && !poster() ? "Inh" : "Height-MIN(Height," + containerHeaderHeight() + ")";
             writeGeometryRow(writer, "MoveTo", 1, 0, bottom, inherited ? "Inh" : null, y);
             writeGeometryRow(writer, "LineTo", 2, width, bottom, inherited ? "Inh" : "Width", y);
             writer.endNode();

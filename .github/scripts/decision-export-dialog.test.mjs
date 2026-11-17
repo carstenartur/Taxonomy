@@ -17,6 +17,14 @@ test('selection uses actual available roots and cannot include excluded analysis
     const query = api.query({profile:'COMPACT',taxonomyRoots:['CP','IP'],contents:'NONE',treeLayout:'AUTO'});
     assert.deepEqual(new URLSearchParams(query).getAll('taxonomyRoots'),['CP','IP']);
 });
+test('saved drawing requests use the same Visio options as live JSON requests', () => {
+    const {api} = boot();
+    const options = {visio:{mode:'WALL', paper:'A0', appendix:false, shortReasons:true}};
+    const query = new URLSearchParams(api.query(options));
+    assert.deepEqual(Object.fromEntries(query), {
+        'visio.mode':'WALL', 'visio.paper':'A0', 'visio.appendix':'false', 'visio.shortReasons':'true'
+    });
+});
 test('downloads require report content type and provenance; error pages never become reports',async()=>{
     const {api,downloads}=boot();
     const response=(type,ok=true,disposition=null)=>({ok,status:ok?200:422,redirected:false,

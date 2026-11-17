@@ -3,6 +3,7 @@ package com.taxonomy.export;
 import com.taxonomy.diagram.DiagramEdge;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.diagram.DiagramNode;
+import com.taxonomy.diagram.VisioDrawingOptions;
 import com.taxonomy.visio.VisioConnect;
 import com.taxonomy.visio.VisioExportMetadata;
 import com.taxonomy.visio.VisioProperty;
@@ -45,15 +46,22 @@ public class VisioDiagramService {
     }
 
     public VisioDocument convert(DiagramModel model, VisioExportMetadata metadata, VisioDecisionTree decisionTree) {
+        return convert(model, metadata, decisionTree, null);
+    }
+
+    public VisioDocument convert(DiagramModel model, VisioExportMetadata metadata, VisioDecisionTree decisionTree,
+                                 VisioDrawingOptions options) {
         validateGraph(model);
         VisioDocument doc = new VisioDocument();
+        doc.setDrawingOptions(options);
         doc.getProperties().putAll(metadata.document());
         doc.getProperties().put("taxonomy.exportProfile", VisioProperty.text(VisioHandoffProfile.ID));
         doc.getProperties().put("taxonomy.scoreSemantics", VisioProperty.text("relevance is a normalized selection score in [0,1], not a probability"));
         doc.getLosses().addAll(metadata.losses());
         if (model.nodes().isEmpty() && decisionTree != null && !decisionTree.nodes().isEmpty()) {
-            decisionTree.appendTo(doc);
-            VisioContextPages.append(doc, false);
+            decisionTree.appendTo(doc, options);
+            if (options == null || options.appendix()) VisioContextPages.append(doc, false);
+            if (options != null) VisioContextPages.addRequirementShape(doc, options.german());
             return doc;
         }
         doc.getLosses().add(new VisioLoss("document", "", "layout", "MAPPED",
@@ -74,6 +82,13 @@ public class VisioDiagramService {
         for (DiagramNode node : sortedNodes) {
             nodeIdToShapeId.put(node.id(), Integer.toString(++shapeIdx));
         }
+        var decisionsByCode = new java.util.HashMap<String, VisioDecisionTree.Node>();
+        if (options != null && decisionTree != null) {
+            decisionTree.nodes().forEach(node -> decisionsByCode.put(node.code(), node));
+        }
+        boolean wall = options != null && options.mode() == VisioDrawingOptions.Mode.WALL;
+        double width = options == null ? SHAPE_WIDTH : 3.3;
+        double height = options == null ? SHAPE_HEIGHT : wall ? (options.showsShortReasons() ? 1.7 : 1.32) : 1.05;
         int layerIdx = 0;
         for (var entry : layerGroups.entrySet().stream()
                 .sorted(Comparator.comparingInt(Map.Entry::getKey)).toList()) {
@@ -82,25 +97,29 @@ public class VisioDiagramService {
                 DiagramNode node = layerNodes.get(i);
                 String shapeId = nodeIdToShapeId.get(node.id());
 
-                double x = MARGIN_X + layerIdx * H_GAP;
-                double y = MARGIN_Y + i * V_GAP;
-
+                var decision = decisionsByCode.get(node.id());
                 var assignment = node.responsibility();
-                String owner = assignment == null ? null : assignment.name();
-                VisioShape shape = new VisioShape(
-                        shapeId,
-                        VisioPresentation.display("N" + shapeId + " | " + node.id(), 24, 1) + "\n"
-                                + VisioPresentation.display(node.label(), 24, 3) + "\n"
-                                + VisioPresentation.nodeFooter(Integer.toString(node.depth()), owner, 24),
-                        x, y,
-                        SHAPE_WIDTH, SHAPE_HEIGHT,
-                        node.type(),
-                        node.anchor());
-                shape.getProperties().putAll(metadata.elements().getOrDefault(node.id(), Map.of()));
+                var displayAssignment = assignment != null || decision == null ? assignment : decision.responsibility();
+                String owner = displayAssignment == null ? null : displayAssignment.name();
+                var elementProperties = metadata.elements().getOrDefault(node.id(), Map.of());
+                var presenceReason = elementProperties.get("taxonomy.presenceReason");
+                String reason = presenceReason == null ? null : presenceReason.value();
+                if ((reason == null || reason.isBlank()) && decision != null) reason = decision.reason();
+                String displayedLabel = VisioPresentation.display(node.label(), options == null ? 24 : 46, 3);
+                String caption = options == null
+                        ? VisioPresentation.display("N" + shapeId + " | " + node.id(), 24, 1) + "\n"
+                            + displayedLabel + "\n" + VisioPresentation.nodeFooter(Integer.toString(node.depth()), owner, 24)
+                        : VisioPresentation.drawingNodeCaption(node.id(),
+                            java.math.BigDecimal.valueOf(node.relevance()).movePointRight(2).stripTrailingZeros().toPlainString() + "%",
+                            displayedLabel, owner, reason, options);
+                double x = options == null ? MARGIN_X + layerIdx * H_GAP : 2.2 + layerIdx * 5.1;
+                double y = options == null ? MARGIN_Y + i * V_GAP : 1.25 + i * (height + .35);
+                var shape = new VisioShape(shapeId, caption, x, y, width, height, node.type(), node.anchor());
+                shape.getProperties().putAll(elementProperties);
                 var values = shape.getProperties();
                 values.put("taxonomy.label", VisioProperty.text(node.label()));
                 values.put("taxonomy.displayKey", VisioProperty.text("N" + shapeId));
-                VisioPresentation.labelLoss(doc, node.id(), node.label(), VisioPresentation.display(node.label(), 24, 3));
+                VisioPresentation.labelLoss(doc, node.id(), node.label(), displayedLabel);
                 values.put("taxonomy.id", VisioProperty.text(node.id()));
                 values.put("taxonomy.type", VisioProperty.text(node.type()));
                 values.put("taxonomy.relevance", VisioProperty.number(node.relevance()));
@@ -111,10 +130,7 @@ public class VisioDiagramService {
                 values.put("taxonomy.layer", VisioProperty.number(node.layer()));
                 if (node.parentId() != null) values.put("taxonomy.parentId", VisioProperty.text(node.parentId()));
                 if (assignment != null) {
-                    values.put("taxonomy.responsibilityUnitId", VisioProperty.text(assignment.unitId()));
-                    values.put("taxonomy.responsibilityName", VisioProperty.text(assignment.name()));
-                    values.put("taxonomy.responsibilitySourceId", VisioProperty.text(assignment.sourceId()));
-                    values.put("taxonomy.responsibilityColor", VisioProperty.text(assignment.color()));
+                    putResponsibility(values, assignment);
                 }
                 page.getShapes().add(shape);
                 if (node.container()) doc.getLosses().add(new VisioLoss("element", node.id(), "container", "MAPPED",
@@ -147,7 +163,7 @@ public class VisioDiagramService {
 
         java.util.Set<String> selected = model.nodes().stream().filter(n -> n.anchor() || n.selectedForImpact())
                 .map(n -> nodeIdToShapeId.get(n.id())).collect(java.util.stream.Collectors.toSet());
-        if (!selected.isEmpty() && selected.size() < page.getShapes().size()) {
+        if (options == null && !selected.isEmpty() && selected.size() < page.getShapes().size()) {
             VisioPage impact = new VisioPage("1", "Anchor and impact selection");
             page.getShapes().stream().filter(s -> selected.contains(s.getId())).map(VisioDiagramService::copyShape)
                     .forEach(impact.getShapes()::add);
@@ -162,11 +178,59 @@ public class VisioDiagramService {
             String legend = "Relationships: " + model.edges().size() + " | " + statusCounts.entrySet().stream()
                     .map(e -> e.getKey() + ": " + e.getValue()).collect(java.util.stream.Collectors.joining(" | "))
                     + "\nDashed = AI-proposed. Solid = other/unrecorded origin.\nAI support is not human approval; supplied review metadata remains authoritative.";
+            if (options != null) {
+                legend = options.german() ? "Gestrichelt: KI-Vorschlag · Durchgezogen: sonstige / nicht erfasste Herkunft"
+                        : "Dashed: AI-proposed · Solid: other or unrecorded origin";
+            }
             double top = page.getShapes().stream().mapToDouble(shape -> shape.getY() + shape.getHeight() / 2).max().orElse(0);
             page.setLegend(new com.taxonomy.visio.VisioTextBox(legend, 5.5, top + 1.3, 10, 1.5));
         }
-        VisioPresentation.apply(doc, decisionTree);
+        VisioPresentation.apply(doc, decisionTree, options);
+        if (options != null) {
+            attachDrawingData(doc, model, decisionsByCode);
+            VisioContextPages.addRequirementShape(doc, options.german());
+        }
         return doc;
+    }
+
+    /** Add redundant details after page links, IDs and recorded properties have taken their reserved slots. */
+    private static void attachDrawingData(VisioDocument document, DiagramModel model,
+                                          Map<String, VisioDecisionTree.Node> decisions) {
+        var nodes = new java.util.HashMap<String, DiagramNode>();
+        model.nodes().forEach(node -> nodes.put(node.id(), node));
+        for (var page : document.getPages()) {
+            if (page.isEvidencePage()) continue;
+            for (var shape : page.getShapes()) {
+                var values = shape.getProperties();
+                if (!values.containsKey("taxonomy.displayKey")) continue;
+                String id = values.get("taxonomy.id").value();
+                var decision = decisions.get(id);
+                if (decision == null) continue;
+                var reason = decision.reason();
+                if (reason != null && !reason.isBlank() && values.size() < VisioPackageValidator.MAX_PROPERTIES) {
+                    var existing = values.get("taxonomy.presenceReason");
+                    if (existing == null || existing.value().isBlank()) values.put("taxonomy.presenceReason", VisioProperty.text(reason));
+                    else if (!existing.value().equals(reason)) values.put("taxonomy.decisionReason", VisioProperty.text(reason));
+                }
+                if (nodes.get(id).responsibility() == null && decision.responsibility() != null
+                        && values.size() + 4 <= VisioPackageValidator.MAX_PROPERTIES) {
+                    putResponsibility(values, decision.responsibility());
+                }
+            }
+            for (var link : page.getConnects()) {
+                var values = link.getProperties();
+                if (!values.containsKey("taxonomy.id") || values.size() + 2 > VisioPackageValidator.MAX_PROPERTIES) continue;
+                values.put("taxonomy.sourceLabel", VisioProperty.text(nodes.get(values.get("taxonomy.sourceId").value()).label()));
+                values.put("taxonomy.targetLabel", VisioProperty.text(nodes.get(values.get("taxonomy.targetId").value()).label()));
+            }
+        }
+    }
+
+    private static void putResponsibility(Map<String, VisioProperty> values, com.taxonomy.dto.TaxonomyResponsibilityLookup.Assignment assignment) {
+        values.put("taxonomy.responsibilityUnitId", VisioProperty.text(assignment.unitId()));
+        values.put("taxonomy.responsibilityName", VisioProperty.text(assignment.name()));
+        values.put("taxonomy.responsibilitySourceId", VisioProperty.text(assignment.sourceId()));
+        values.put("taxonomy.responsibilityColor", VisioProperty.text(assignment.color()));
     }
 
     private static void addProvenance(Map<String, VisioProperty> values, com.taxonomy.diagram.DiagramRelationMetadata m) {

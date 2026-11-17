@@ -687,7 +687,7 @@
         if (!snapshotId) { await runDecisionReportExport(button, format); return; }
         window.TaxonomyDecisionExport.openSaved({projectId, snapshotId, language: locale, format,
             api: window.TaxonomyPortfolioApi,
-            submit: selection => runDecisionReportExport(button, selection.format, selection.options, selection.signal, selection.language)});
+            submit: selection => runDecisionReportExport(button, selection.format, selection, snapshotId)});
     }
 
     function markExportControls() {
@@ -697,8 +697,9 @@
         });
     }
 
-    async function runDecisionReportExport(button, format, options, signal, language) {
-        const snapshotId = new URLSearchParams(window.location.search).get('snapshot');
+    async function runDecisionReportExport(button, format, selection = {}, snapshotId) {
+        const {options, signal, language, descriptor, timeoutMillis, scope} = selection;
+        const extension = descriptor?.fileExtension || format;
         const surface = ensureExportSurface(button);
         const generation = ++decisionExportGeneration;
         const ownsExport = () => generation === decisionExportGeneration;
@@ -714,7 +715,7 @@
         try {
             throwIfExportCancelled(signal);
             const response = await window.TaxonomyPortfolioApi.downloadDecisionReport(
-                projectId, snapshotId, format, language || null, options, { signal });
+                projectId, snapshotId, format, language || null, options, {signal, timeoutMillis, scope});
             if (!ownsExport()) return;
             throwIfExportCancelled(signal);
             if (options && (response.redirected || response.headers.get('X-Taxonomy-Snapshot-Id') !== snapshotId
@@ -725,8 +726,8 @@
             const disposition = response.headers.get('Content-Disposition') || '';
             const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
             const filename = filenameMatch ? filenameMatch[1]
-                : `taxonomy-decision-rationale-report.${format}`;
-            validateExport(response, blob, format, filename);
+                : `taxonomy-decision-rationale-report.${extension}`;
+            validateExport(response, blob, format, filename, descriptor);
             downloadBlob(blob, filename, signal);
             renderExportState(surface, operationId, 'SUCCESS', t('exportSuccess'),
                 filename + ' · ' + blob.size + ' ' + t('bytes'));
@@ -785,7 +786,7 @@
         announce(surface.textContent);
     }
 
-    function validateExport(response, blob, format, filename) {
+    function validateExport(response, blob, format, filename, descriptor) {
         if (!response.ok) throw new Error('HTTP ' + response.status);
         if (!blob || blob.size < 1) throw new Error('The export response was empty');
         const type = String(response.headers.get('Content-Type') || blob.type || '').toLowerCase();
@@ -793,11 +794,11 @@
             docx: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/octet-stream'],
             html: ['text/html', 'application/xhtml+xml'],
             json: ['application/json', 'application/problem+json']
-        }[format] || [];
+        }[format] || (descriptor?.contentType ? [descriptor.contentType.split(';')[0].trim().toLowerCase()] : []);
         if (expected.length && !expected.some(candidate => type.includes(candidate))) {
             throw new Error('Unexpected content type for ' + format + ': ' + (type || 'missing'));
         }
-        if (!filename.toLowerCase().endsWith('.' + format)) {
+        if (!filename.toLowerCase().endsWith('.' + (descriptor?.fileExtension || format))) {
             throw new Error('Unexpected export filename: ' + filename);
         }
     }

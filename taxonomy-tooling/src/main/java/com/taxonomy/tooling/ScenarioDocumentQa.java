@@ -225,6 +225,10 @@ final class ScenarioDocumentQa {
         return report;
     }
 
+    // Encoded native row name: "t" + UTF-8 hex of "taxonomy." and a bounded property suffix.
+    private static final java.util.regex.Pattern TAXONOMY_PROPERTY_ROW =
+            java.util.regex.Pattern.compile("t7461786f6e6f6d792e(?:[0-9a-fA-F]{2}){1,64}");
+
     static Map<String, Object> checkVisioRelationships(Map<String, byte[]> parts,
             Map<String, Object> architecture, String rawText) throws IOException {
         Map<String, Map<?, ?>> expected = new LinkedHashMap<>();
@@ -251,6 +255,11 @@ final class ScenarioDocumentQa {
                         for (var cell : XmlSupport.descendants(row, "Cell")) {
                             if (cell.getAttribute("N").equals("Label")) label = cell.getAttribute("V");
                             if (cell.getAttribute("N").equals("Value")) value = cell.getAttribute("V");
+                        }
+                        String name = row.getAttribute("N");
+                        if (TAXONOMY_PROPERTY_ROW.matcher(name).matches()) {
+                            // Taxonomy's native row names encode stable keys independently of translated labels.
+                            label = new String(java.util.HexFormat.of().parseHex(name.substring(1)), StandardCharsets.UTF_8);
                         }
                         if (label != null) properties.put(label, value);
                     }
