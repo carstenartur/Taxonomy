@@ -277,7 +277,7 @@ public class DslApiController {
             result.put("cherryPickedFrom", commitId);
             return ResponseEntity.ok(result);
         } catch (BranchHeadConflictException e) {
-            return cherryPickHeadConflict(e);
+            return reviewedHeadConflict(e);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (org.eclipse.jgit.errors.MissingObjectException e) {
@@ -444,12 +444,14 @@ public class DslApiController {
     public ResponseEntity<Map<String, Object>> mergeResolve(
             @RequestParam String fromBranch,
             @RequestParam String intoBranch,
+            @RequestParam(required = false) String expectedTargetHead,
             @RequestBody String resolvedContent) {
+        if (expectedTargetHead == null || expectedTargetHead.isBlank()) {
+            return ResponseEntity.status(HttpStatus.PRECONDITION_REQUIRED).body(Map.of("error", "A reviewed target commit is required."));
+        }
         try {
-            // Commit the resolved content to the target branch
-            String username = dslOps.resolveCurrentUsername();
-            String commitId = dslOps.commitDsl(intoBranch, resolvedContent,
-                    username, "Resolve merge conflict: " + fromBranch + " → " + intoBranch);
+            String commitId = dslOps.resolveMerge(fromBranch, intoBranch, expectedTargetHead,
+                    resolvedContent, dslOps.resolveCurrentUsername());
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("commitId", commitId);
@@ -457,7 +459,11 @@ public class DslApiController {
             result.put("intoBranch", intoBranch);
             result.put("resolution", "manual");
             return ResponseEntity.ok(result);
-        } catch (Exception e) {
+        } catch (BranchHeadConflictException e) {
+            return reviewedHeadConflict(e);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (IOException e) {
             log.error("Merge resolution failed", e);
             Map<String, Object> error = new LinkedHashMap<>();
             error.put("error", "Merge resolution failed: " + e.getMessage());
@@ -504,7 +510,7 @@ public class DslApiController {
             result.put("resolution", "manual");
             return ResponseEntity.ok(result);
         } catch (BranchHeadConflictException e) {
-            return cherryPickHeadConflict(e);
+            return reviewedHeadConflict(e);
         } catch (IllegalArgumentException | org.eclipse.jgit.errors.MissingObjectException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (IOException e) {
@@ -515,11 +521,11 @@ public class DslApiController {
         }
     }
 
-    private static ResponseEntity<Map<String, Object>> cherryPickHeadConflict(BranchHeadConflictException conflict) {
+    private static ResponseEntity<Map<String, Object>> reviewedHeadConflict(BranchHeadConflictException conflict) {
         Map<String, Object> details = new LinkedHashMap<>();
         details.put("error", Objects.equals(conflict.getExpectedHeadCommit(), conflict.getActualHeadCommit())
-                ? "The editor has pending work or a different checkpoint. Review the editor state and reopen the cherry-pick preview."
-                : "The target branch changed. Reopen the cherry-pick preview before applying changes.");
+                ? "The editor has pending work or a different checkpoint. Review the editor state and reopen the preview."
+                : "The target branch changed. Reopen the preview before applying changes.");
         details.put("targetBranch", conflict.getBranch());
         details.put("expectedTargetHead", conflict.getExpectedHeadCommit());
         details.put("actualTargetHead", conflict.getActualHeadCommit());

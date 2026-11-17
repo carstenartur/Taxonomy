@@ -197,7 +197,10 @@
         },
         mergeConflicts: function (from, into) { return versionRequest('/api/dsl/merge/conflicts' + query({from:from,into:into})); },
         cherryPickConflicts: function (id, target) { return versionRequest('/api/dsl/cherry-pick/conflicts' + query({commitId:id,targetBranch:target})); },
-        resolveMerge: function (from, into, text) { return versionPost('/api/dsl/merge/resolve', {fromBranch:from,intoBranch:into}, text, 'text/plain'); },
+        resolveMerge: function (from, into, targetHead, text) {
+            return versionPost('/api/dsl/merge/resolve',
+                {fromBranch:from, intoBranch:into, expectedTargetHead:targetHead}, text, 'text/plain');
+        },
         resolveCherryPick: function (id, target, targetHead, text) {
             return versionPost('/api/dsl/cherry-pick/resolve',
                 {commitId:id, targetBranch:target, expectedTargetHead:targetHead}, text, 'text/plain');

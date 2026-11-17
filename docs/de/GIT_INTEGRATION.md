@@ -585,10 +585,12 @@ Die folgenden Endpunkte sind für die programmatische Integration und Automatisi
 | `GET` | `/api/dsl/cherry-pick/preview` | Cherry-Pick-Ergebnis in der Vorschau anzeigen |
 | `GET` | `/api/dsl/operation/check` | Sicherheitsprüfung für Schreiboperationen |
 | `GET` | `/api/dsl/merge/conflicts?from=X&into=Y` | Merge-Konfliktdetails (DSL-Inhalt beider Seiten) |
-| `POST` | `/api/dsl/merge/resolve?fromBranch=X&intoBranch=Y` | Manuell aufgelösten Merge-Inhalt committen |
+| `POST` | `/api/dsl/merge/resolve?fromBranch=X&intoBranch=Y&expectedTargetHead=SHA` | Manuell aufgelösten Merge-Inhalt committen |
 | `GET` | `/api/dsl/cherry-pick/conflicts?commitId=X&targetBranch=Y` | Cherry-Pick-Konfliktdetails |
 | `POST` | `/api/dsl/cherry-pick/resolve?commitId=X&targetBranch=Y` | Manuell aufgelösten Cherry-Pick-Inhalt committen |
 | `DELETE` | `/api/dsl/branch?name=X` | Einen Branch löschen (geschützte Branches: draft, accepted, main) |
+
+Übergeben Sie den vollständigen `targetCommit` aus den Konfliktdetails als `expectedTargetHead`. Die manuelle Merge-Auflösung liefert HTTP 428 bei fehlender Vorbedingung und HTTP 409, wenn ein anderer Commit den Zielbranch inzwischen geändert hat. Öffnen Sie vor einer neuen Auflösung die Konfliktdetails erneut.
 
 ### Arbeitsbereich-Synchronisation
 

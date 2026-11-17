@@ -583,10 +583,12 @@ The following endpoints are intended for programmatic integration and automation
 | `GET` | `/api/dsl/cherry-pick/preview` | Preview cherry-pick result |
 | `GET` | `/api/dsl/operation/check` | Safety check for write operations |
 | `GET` | `/api/dsl/merge/conflicts?from=X&into=Y` | Merge conflict details (DSL content from both sides) |
-| `POST` | `/api/dsl/merge/resolve?fromBranch=X&intoBranch=Y` | Commit manually resolved merge content |
+| `POST` | `/api/dsl/merge/resolve?fromBranch=X&intoBranch=Y&expectedTargetHead=SHA` | Commit manually resolved merge content |
 | `GET` | `/api/dsl/cherry-pick/conflicts?commitId=X&targetBranch=Y` | Cherry-pick conflict details |
 | `POST` | `/api/dsl/cherry-pick/resolve?commitId=X&targetBranch=Y` | Commit manually resolved cherry-pick content |
 | `DELETE` | `/api/dsl/branch?name=X` | Delete a branch (protected branches: draft, accepted, main) |
+
+Pass the full `targetCommit` from the conflict details as `expectedTargetHead`. Manual merge resolution returns HTTP 428 when the precondition is missing and HTTP 409 when another commit has advanced the target. Reopen the conflict details before submitting a new resolution.
 
 ### Workspace Sync
 

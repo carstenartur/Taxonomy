@@ -166,6 +166,16 @@ public class DslOperationsFacade {
                 () -> repository.cherryPick(commitId, targetBranch, reviewedHead));
     }
 
+    public String resolveMerge(String fromBranch, String intoBranch, String expectedTargetHead,
+                               String resolvedDsl, String author) throws IOException {
+        String reviewedHead = WorkspaceDslReadPort.normalizeCommitId(expectedTargetHead);
+        var target = versionTarget(intoBranch);
+        var repository = repositoryFactory.resolveRepository(target);
+        String message = "Resolve merge conflict: " + fromBranch + " → " + intoBranch;
+        return editorVersions.versionAtHead(target, reviewedHead, versionRationale(message),
+                () -> repository.commitDslIfHeadMatches(intoBranch, reviewedHead, resolvedDsl, author, message));
+    }
+
     public String resolveCherryPick(String commitId, String targetBranch, String expectedTargetHead,
                                    String resolvedDsl, String author) throws IOException {
         String reviewedHead = WorkspaceDslReadPort.normalizeCommitId(expectedTargetHead);

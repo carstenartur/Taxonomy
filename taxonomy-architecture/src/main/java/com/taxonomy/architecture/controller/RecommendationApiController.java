@@ -26,11 +26,11 @@ public class RecommendationApiController {
     @PostMapping
     public ResponseEntity<ArchitectureRecommendation> recommend(@RequestBody RecommendationRequest request,
             @RequestParam String repositoryId, @RequestParam String branch, @RequestParam String commitId, HttpServletRequest http) throws IOException {
-        var context = contexts.resolve(repositoryId, branch, commitId, http);
+        var source = ArchitectureQuerySource.resolve(contexts, repositoryId, branch, commitId, http);
         if (request.evidenceCompleteness() == null) throw new org.springframework.web.server.ResponseStatusException(
                 org.springframework.http.HttpStatus.BAD_REQUEST, "evidenceCompleteness must be explicit");
         try {
-            return ResponseEntity.ok(service.recommend(context, commitId, request.profileId(), request.profileVersion(),
+            return source.response(service.recommend(source.context(), source.commit(), request.profileId(), request.profileVersion(),
                     request.evidenceCompleteness(), request.scores(), request.businessText(), request.minScore()));
         } catch (IllegalArgumentException error) {
             throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, error.getMessage());

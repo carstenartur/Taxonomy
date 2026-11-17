@@ -14,17 +14,17 @@ window.TaxonomyMergeResolution = (function () {
 
     var currentConflict = null; // Stores current conflict context
 
-    function dismissCherryPick() {
-        if (currentConflict?.type !== 'cherry-pick') return;
+    function dismissConflict() {
+        if (!currentConflict) return;
         currentConflict = null;
         hideModal('mergeConflictModal');
         populateConflictModal({});
     }
 
     document.addEventListener('taxonomy:repository-context-changed', function (event) {
-        if (event.detail?.selectionChanged) dismissCherryPick();
+        if (event.detail?.selectionChanged) dismissConflict();
     });
-    window.addEventListener('pagehide', dismissCherryPick);
+    window.addEventListener('pagehide', dismissConflict);
 
     // ── Initialization ──────────────────────────────────────────────
 
@@ -77,13 +77,14 @@ window.TaxonomyMergeResolution = (function () {
      * @param {string} intoBranch — target branch
      */
     function showMergeConflict(fromBranch, intoBranch) {
-        currentConflict = { type: 'merge', fromBranch: fromBranch, intoBranch: intoBranch };
+        currentConflict = { type: 'merge', fromBranch: fromBranch, intoBranch: intoBranch,
+            current: window.TaxonomyApiClient.captureContext() };
         var conflict = currentConflict;
 
         window.TaxonomyVersioningApi.mergeConflicts(fromBranch, intoBranch)
             .then(function (r) { return r.json(); })
             .then(function (data) {
-                if (conflict !== currentConflict) return;
+                if (conflict !== currentConflict || !conflict.current()) return;
                 if (data.conflict === false) {
                     if (window.TaxonomyOperationResult) {
                         window.TaxonomyOperationResult.showWarning(t('merge.no.conflict.title'),
@@ -91,6 +92,8 @@ window.TaxonomyMergeResolution = (function () {
                     }
                     return;
                 }
+                if (!data.targetCommit) return;
+                conflict.targetCommit = data.targetCommit;
                 populateConflictModal(data);
                 // Ensure title is set for merge context
                 var titleEl = document.getElementById('mergeConflictModalLabel');
@@ -98,7 +101,7 @@ window.TaxonomyMergeResolution = (function () {
                 showModal('mergeConflictModal');
             })
             .catch(function (err) {
-                if (ignoredError(err) || conflict !== currentConflict) return;
+                if (ignoredError(err) || conflict !== currentConflict || !conflict.current()) return;
                 if (window.TaxonomyOperationResult) {
                     window.TaxonomyOperationResult.showError(t('merge.error.title'), t('merge.error.load', err.message));
                 }
@@ -119,7 +122,7 @@ window.TaxonomyMergeResolution = (function () {
         window.TaxonomyVersioningApi.cherryPickConflicts(commitId, targetBranch)
             .then(function (r) { return r.json(); })
             .then(function (data) {
-                if (conflict !== currentConflict) return;
+                if (conflict !== currentConflict || !conflict.current()) return;
                 if (data.conflict === false) {
                     if (window.TaxonomyOperationResult) {
                         window.TaxonomyOperationResult.showWarning(t('merge.no.conflict.title'),
@@ -136,7 +139,7 @@ window.TaxonomyMergeResolution = (function () {
                 showModal('mergeConflictModal');
             })
             .catch(function (err) {
-                if (ignoredError(err) || conflict !== currentConflict) return;
+                if (ignoredError(err) || conflict !== currentConflict || !conflict.current()) return;
                 if (window.TaxonomyOperationResult) {
                     window.TaxonomyOperationResult.showError(t('merge.error.title'), t('merge.error.load', err.message));
                 }
@@ -170,6 +173,10 @@ window.TaxonomyMergeResolution = (function () {
     function submitResolution() {
         if (!currentConflict) return;
 
+        if (!currentConflict.current()) {
+            dismissConflict();
+            return;
+        }
         var resolved = document.getElementById('conflictResolvedContent');
         if (!resolved || !resolved.value.trim()) {
             if (window.TaxonomyOperationResult) {
@@ -179,14 +186,14 @@ window.TaxonomyMergeResolution = (function () {
         }
 
         var conflict = currentConflict;
-        if (conflict.type === 'cherry-pick' && (!conflict.targetCommit || !conflict.current())) return;
+        if (!conflict.targetCommit) return;
         var operation = conflict.type === 'merge'
-            ? window.TaxonomyVersioningApi.resolveMerge(conflict.fromBranch, conflict.intoBranch, resolved.value)
+            ? window.TaxonomyVersioningApi.resolveMerge(conflict.fromBranch, conflict.intoBranch, conflict.targetCommit, resolved.value)
             : window.TaxonomyVersioningApi.resolveCherryPick(conflict.commitId, conflict.targetBranch, conflict.targetCommit, resolved.value);
         operation
         .then(function (r) { return r.json(); })
         .then(function (data) {
-            if (conflict !== currentConflict) return;
+            if (conflict !== currentConflict || !conflict.current()) return;
             if (data.error) {
                 if (window.TaxonomyOperationResult) {
                     window.TaxonomyOperationResult.showError(t('merge.resolution.failed'), data.error);
@@ -206,7 +213,7 @@ window.TaxonomyMergeResolution = (function () {
             }
         })
         .catch(function (err) {
-            if (ignoredError(err) || conflict !== currentConflict) return;
+            if (ignoredError(err) || conflict !== currentConflict || !conflict.current()) return;
             if (window.TaxonomyOperationResult) {
                 window.TaxonomyOperationResult.showError(t('merge.error.title'), t('merge.resolution.error', err.message));
             }
