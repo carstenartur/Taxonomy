@@ -236,10 +236,11 @@ class WorkspaceUpstreamServiceTest {
     }
 
     @Test
-    void uncheckpointedPortfolioRejectsTheReviewedPostBeforePublication() throws Exception {
+    void aPortfolioWithoutCheckpointSupportRejectsTheReviewedPostBeforePublication() throws Exception {
         preparePersonalReplay("base");
-        when(portfolio.matchesCheckpoint(anyString(), eq("alice"), eq(featureScope))).thenReturn(false);
+        doCallRealMethod().when(portfolio).matchesCheckpoint(anyString(), eq("alice"), eq(featureScope));
         mvc.perform(personalPost(REBASE_PATH, requestBody)).andExpect(status().isConflict());
+        verify(portfolio).matchesCheckpoint("base", "alice", featureScope);
         assertThat(target.getHeadCommit(BRANCH)).isEqualTo(reviewedHead);
         assertThat(workspace.getLastIntegratedCommit()).isEqualTo(base);
         verify(portfolio, never()).materializePortfolio(anyString(), anyString(), any());
