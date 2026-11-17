@@ -6,7 +6,7 @@
         STANDARD: ['SUMMARY', 'TREE', 'CHAPTERS', 'ARCHITECTURE'],
         FULL: ['TITLE_PAGE', 'SUMMARY', 'TREE', 'CHAPTERS', 'ARCHITECTURE', 'EVIDENCE']
     };
-    const types = {docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', html: 'text/html', json: 'application/json', visio: 'application/vnd.ms-visio.drawing'};
+    const types = {docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', html: 'text/html', json: 'application/json', visio: 'application/vnd.ms-visio.drawing', 'visio-pdf': 'application/pdf'};
     let active = null;
     function reportText(en, de) {return String(document.documentElement.lang).startsWith('de') ? de : en;}
     function selection(input) {
@@ -130,12 +130,16 @@
             // Content depth selects sections. The reader's layout and navigation
             // choices remain independent, including for a complete report.
         }
+        const pdfNote = el('p', t('PDF keeps the original page size of each selected drawing.', 'Das PDF behält die ursprüngliche Seitengröße jeder ausgewählten Zeichnung bei.'));
+        fieldset.append(pdfNote);
+        function drawingFormat() { return format.value === 'visio' || format.value === 'visio-pdf'; }
         function updateFormat() {
-            const layoutFree = ['json', 'visio'].includes(format.value);
+            const layoutFree = format.value === 'json' || drawingFormat();
             presentation.hidden = layoutFree;
             advanced.hidden = layoutFree;
             jsonNote.hidden = format.value !== 'json';
             visioNote.hidden = format.value !== 'visio';
+            pdfNote.hidden = format.value !== 'visio-pdf';
         }
         profile.addEventListener('change',preset);format.addEventListener('change',updateFormat);preset();updateFormat();
         const error = el('p','', {role:'alert'}); form.append(error);
@@ -202,18 +206,20 @@
             event.preventDefault();if(busy||!ready||!dialog.open||config.sourceSignal?.aborted)return;
             const selected = checks.filter(c=>c.checked&&!c.disabled).map(c=>c.value);
             if (!selected.length) {error.textContent=t('Select at least one taxonomy.','Wählen Sie mindestens eine Taxonomie.');return;}
-            const included = format.value === 'visio' ? ['TREE', 'ARCHITECTURE'] : sections.filter(c=>c.checked).map(c=>c.value);
+            const included = sections.filter(section => !section.disabled && (drawingFormat()
+                ? section.value === 'TREE' || section.value === 'ARCHITECTURE'
+                : section.checked)).map(section => section.value);
             if(format.value!=='json'&&!included.length){error.textContent=t('Select at least one section.','Wählen Sie mindestens einen Abschnitt.');return;}
             const options = selection({roots,selectedRoots:selected,profile:profile.value,contents:contents.value,treeLayout:layout.value,sections:included,showResponsibilities:responsibility.checked});
             if(format.value==='json') {options.profile='FULL';delete options.sections;delete options.contents;delete options.treeLayout;}
-            if(format.value==='visio') {delete options.contents;delete options.treeLayout;}
+            if(drawingFormat()) {delete options.contents;delete options.treeLayout;}
             const controller=new AbortController();
             exportController=controller;
             busy=true;fieldset.disabled=true;submit.disabled=true;error.textContent='';
             submit.textContent=t('Generating…','Wird erstellt …');dialog.setAttribute('aria-busy','true');
             try {
                 window.TaxonomyContentLanguage?.setPreference('document', language.value);
-                await config.submit({format:format.value,descriptor:availableFormats.find(item => item.id === format.value),options,language:selectedLanguage(),signal:controller.signal});
+                await config.submit({format:format.value,timeoutMillis:format.value === 'visio-pdf' ? 120000 : undefined,descriptor:availableFormats.find(item => item.id === format.value),options,language:selectedLanguage(),signal:controller.signal});
                 if(dialog.open&&!controller.signal.aborted)dialog.close();
             }
             catch(err){if(dialog.open&&!controller.signal.aborted){error.textContent=t('Export failed: ','Export fehlgeschlagen: ')+err.message;error.scrollIntoView({block:'nearest'});}}
@@ -232,7 +238,7 @@
         const scope = openingScope ? Object.freeze(Object.assign({}, openingScope)) : undefined;
         return open({...config,saved:true,source:config.source || ('Snapshot: '+snapshotId),
             load:()=>config.api.decisionReportOptions(projectId,snapshotId,window.TaxonomyContentLanguage?.documentLanguage(null) || null, {scope,signal:config.sourceSignal}),
-            submit:config.submit || (async ({format,descriptor,options,language,signal})=>download(await config.api.downloadDecisionReport(projectId,snapshotId,format,language,options,{signal,scope}),format,snapshotId,signal,undefined,descriptor))});
+            submit:config.submit || (async ({format,descriptor,options,language,signal,timeoutMillis})=>download(await config.api.downloadDecisionReport(projectId,snapshotId,format,language,options,{signal,scope,timeoutMillis}),format,snapshotId,signal,undefined,descriptor))});
     }
     window.TaxonomyDecisionExport={open,openSaved,selection,query,download};
 }());

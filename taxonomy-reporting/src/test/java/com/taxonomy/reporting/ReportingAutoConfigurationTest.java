@@ -1,6 +1,7 @@
 package com.taxonomy.reporting;
 
 import com.taxonomy.reporting.config.ReportingAutoConfiguration;
+import com.taxonomy.reporting.render.decision.DecisionDrawingPdfRenderer;
 import com.taxonomy.reporting.render.document.ReportRendererRegistry;
 import com.taxonomy.reporting.templates.DecisionRationaleTemplateHealthIndicator;
 import com.taxonomy.templates.api.DocumentTemplates;
@@ -29,7 +30,21 @@ class ReportingAutoConfigurationTest {
                 .withBean(ObjectMapper.class, ObjectMapper::new)
                 .withBean(com.taxonomy.extension.api.plugin.ExtensionCatalog.class, com.taxonomy.extension.runtime.PluginCatalog::new)
                 .run(application -> assertThat(application).hasNotFailed()
+                        .doesNotHaveBean(DecisionDrawingPdfRenderer.class)
                         .hasSingleBean(DecisionRationaleTemplateHealthIndicator.class)
                         .hasSingleBean(ReportRendererRegistry.class));
+    }
+    @Test
+    void drawingPdfIsAvailableWhenTheOperatorEnablesIt() {
+        context.withPropertyValues("taxonomy.reporting.visio-pdf.enabled=true")
+                .withBean(DocumentTemplates.class, () -> mock(DocumentTemplates.class))
+                .withBean(ObjectMapper.class, ObjectMapper::new)
+                .withBean(com.taxonomy.extension.api.plugin.ExtensionCatalog.class, com.taxonomy.extension.runtime.PluginCatalog::new)
+                .run(application -> {
+                    assertThat(application).hasNotFailed().hasSingleBean(DecisionDrawingPdfRenderer.class);
+                    var format = application.getBean(DecisionDrawingPdfRenderer.class).descriptor();
+                    assertThat(format.id()).isEqualTo("visio-pdf");
+                    assertThat(format.contentType()).isEqualTo("application/pdf");
+                });
     }
 }

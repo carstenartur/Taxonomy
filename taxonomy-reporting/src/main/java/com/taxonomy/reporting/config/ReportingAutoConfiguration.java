@@ -14,6 +14,7 @@ import com.taxonomy.templates.api.DocumentTemplates;
         com.taxonomy.reporting.render.decision.DecisionRationaleHtmlRenderer.class,
         com.taxonomy.reporting.render.decision.DecisionRationaleJsonRenderer.class,
         com.taxonomy.reporting.render.decision.DecisionRationaleVisioRenderer.class,
+        com.taxonomy.reporting.render.decision.DecisionDrawingPdfRenderer.class,
         com.taxonomy.reporting.render.decision.DecisionRationaleTemplatePreviewService.class,
         com.taxonomy.reporting.render.decision.DecisionRationaleTemplateRenderer.class,
         com.taxonomy.reporting.render.decision.DecisionRationaleTemplateRendererDecorator.class,

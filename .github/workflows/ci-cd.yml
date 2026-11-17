@@ -87,6 +87,13 @@ jobs:
             echo '::warning::Dependency prefetch incomplete; builds will resolve normally and no partial cache will be saved.'
             exit 1
           fi
+          # Surefire selects its provider when tests execute. go-offline cannot discover it.
+          # Resolve against each build's own plugin version before publishing this cache.
+          for pom in pom.xml .github/ui-verification-pom.xml plugins/*/pom.xml; do
+            timeout --foreground 2m ./mvnw -B -ntp -N -f "$pom" -Dmaven.build.cache.enabled=false \
+              org.apache.maven.plugins:maven-dependency-plugin:3.11.0:get \
+              '-Dartifact=org.apache.maven.surefire:surefire-junit-platform:${maven-surefire-plugin.version}'
+          done
           echo "repository=$HOME/.m2/repository" >> "$GITHUB_OUTPUT"
       - name: Save warmed Maven dependency cache
         if: steps.maven-seed.outcome == 'success' && steps.java-cache.outputs.cache-primary-key != ''

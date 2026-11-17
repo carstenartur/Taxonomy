@@ -471,6 +471,97 @@ class GitNativeSyncSourceAuthorityTest {
         }
     }
 
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void renewedLoginResumesWhenPreflightPausedEveryPreparationAttempt(boolean pull) throws Exception {
+        var selected = RepositoryContext.workspace("private-source", "old-copy", "main", "alice");
+        var grant = new WorkspaceFetchAuthority.Grant(java.util.UUID.randomUUID().toString(), "OIDC", "a".repeat(64));
+        var authority = mock(WorkspacePublicationAuthority.class);
+        when(authority.authorizePublication("alice")).thenReturn(grant);
+        when(authority.currentActor("alice")).thenReturn(grant.principalId());
+        doThrow(new WorkspaceFetchAuthority.FreshLoginRequired())
+                .doThrow(new WorkspaceFetchAuthority.FreshLoginRequired()).doNothing()
+                .when(authority).checkPublicationGrant(grant, "alice", false);
+        try (var fixture = new Fixture();
+             var factory = publicationDatabase("jdbc:hsqldb:mem:early-expiry-" + java.util.UUID.randomUUID(), "create")) {
+            if (pull) fixture.source.commitDsl("draft", dsl("Renewed edit"), "owner", "Source edit");
+            else fixture.local.commitDsl("main", dsl("Renewed edit"), "alice", "Workspace edit");
+            String sourceBefore = fixture.source.getHeadCommit("draft");
+            String workspaceBefore = fixture.local.getHeadCommit("main");
+            fixture.service.configurePublications(new WorkspacePublicationRecovery(publicationJournal(factory), authority));
+
+            var first = (pull ? fixture.service.pullWithReceipt("alice", "main", "fresh-login", null)
+                    : fixture.service.publishWithReceipt("alice", "main", "fresh-login", null)).operation();
+            assertEquals("AWAITING_AUTHORIZATION", first.status());
+            assertEquals("FRESH_LOGIN_REQUIRED", first.decisionCode());
+            assertEquals("PREPARE", first.nextPhase());
+            assertEquals(1, first.attempts());
+            assertNull(fixture.local.getHeadCommit("sync-base"));
+
+            fixture.service.configurePublications(new WorkspacePublicationRecovery(publicationJournal(factory), authority));
+            var second = fixture.service.retryPublication(selected, first.operationId());
+            assertEquals("AWAITING_AUTHORIZATION", second.status());
+            assertEquals(2, second.attempts());
+            assertEquals(sourceBefore, fixture.source.getHeadCommit("draft"));
+            assertEquals(workspaceBefore, fixture.local.getHeadCommit("main"));
+
+            var completed = fixture.service.retryPublication(selected, first.operationId());
+            assertEquals("COMPLETED", completed.status(), completed.decisionCode());
+            assertEquals(3, completed.attempts());
+            assertEquals(first.operationId(), completed.operationId());
+            assertEquals(grant.principalId(), completed.originalActor());
+            var destination = pull ? fixture.local : fixture.source;
+            assertTrue(destination.getDslAtHead(pull ? "main" : "draft").contains("Renewed edit"));
+        }
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void aLaterPreflightPauseCannotClearInterruptedPreparation(boolean pull) throws Exception {
+        var selected = RepositoryContext.workspace("private-source", "old-copy", "main", "alice");
+        var grant = new WorkspaceFetchAuthority.Grant(java.util.UUID.randomUUID().toString(), "OIDC", "a".repeat(64));
+        var authority = mock(WorkspacePublicationAuthority.class);
+        when(authority.authorizePublication("alice")).thenReturn(grant);
+        var loginCurrent = new java.util.concurrent.atomic.AtomicBoolean(true);
+        doAnswer(invocation -> {
+            if (!loginCurrent.get()) throw new WorkspaceFetchAuthority.FreshLoginRequired();
+            return null;
+        }).when(authority).checkPublicationGrant(grant, "alice", false);
+        try (var fixture = new Fixture();
+             var factory = publicationDatabase("jdbc:hsqldb:mem:late-expiry-" + java.util.UUID.randomUUID(), "create")) {
+            var recovery = new WorkspacePublicationRecovery(publicationJournal(factory), authority);
+            String sourceBefore = fixture.source.getHeadCommit("draft");
+            String workspaceBefore = fixture.local.getHeadCommit("main");
+            WorkspacePublicationJournal.Snapshot snapshot = () -> new WorkspacePublicationJournal.Source(
+                    "draft", sourceBefore, sourceBefore, workspaceBefore, null);
+            WorkspacePublicationRecovery.PhaseExecutor expireAfterEffect = (row, authorize) -> {
+                fixture.service.applyPublicationPhase(row, authorize);
+                // A durable Git effect outside the compared heads rules out a head-only retry exemption.
+                fixture.local.createBranch("preparation-evidence", "main");
+                loginCurrent.set(false);
+                authorize.run();
+            };
+            var first = pull ? recovery.submitPull(selected, true, "dirty-prepare", null, snapshot, expireAfterEffect)
+                    : recovery.submit(selected, true, "dirty-prepare", null, snapshot, expireAfterEffect);
+            assertEquals("AWAITING_AUTHORIZATION", first.status());
+            assertEquals("PREPARE", first.nextPhase());
+            assertEquals(workspaceBefore, fixture.local.getHeadCommit("preparation-evidence"));
+
+            var restarted = new WorkspacePublicationRecovery(publicationJournal(factory), authority);
+            var second = restarted.retry(selected, first.operationId(), (row, authorize) -> fail("Expired login entered PREPARE"));
+            assertEquals("AWAITING_AUTHORIZATION", second.status());
+            assertEquals(2, second.attempts());
+            loginCurrent.set(true);
+            var blocked = restarted.retry(selected, first.operationId(), fixture.service::applyPublicationPhase);
+            assertEquals("MANUAL_REVIEW", blocked.status());
+            assertEquals(pull ? "SEMANTIC_CONFLICT" : "AUTHORITY_CHANGED", blocked.decisionCode());
+            assertEquals(3, blocked.attempts());
+            assertEquals(sourceBefore, fixture.source.getHeadCommit("draft"));
+            assertEquals(workspaceBefore, fixture.local.getHeadCommit("main"));
+            assertEquals(workspaceBefore, fixture.local.getHeadCommit("preparation-evidence"));
+        }
+    }
+
     @org.junit.jupiter.api.Test
     void terminalCleanupAfterRestartReleasesOnlyItsOwnPinsAndPreservesAnotherOperationsPin() throws Exception {
         var context = RepositoryContext.workspace("private-source","old-copy","main","alice");

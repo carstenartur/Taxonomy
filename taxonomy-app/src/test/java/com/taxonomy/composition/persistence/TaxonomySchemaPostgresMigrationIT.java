@@ -5,6 +5,7 @@ import com.taxonomy.dto.AnalysisModelBinding;
 import com.taxonomy.dto.AnalysisScope;
 import com.taxonomy.portfolio.service.PortfolioJsonCodec;
 import com.taxonomy.security.service.LegacyOwnershipDatabaseContract;
+import com.taxonomy.workspace.service.WorkspaceFetchDatabaseContractTest;
 import com.taxonomy.workspace.storage.JgitStorageSchemaMigrationConfig;
 
 import io.github.carstenartur.jgit.storage.hibernate.schema.CoreSchemaMigrations;
@@ -54,8 +55,18 @@ class TaxonomySchemaPostgresMigrationIT {
                 """);
         new com.taxonomy.shared.config.SchemaContractMigration(source).migrate();
         TaxonomySchemaMigrationConfig.migrateApplicationSchema(Flyway.configure().dataSource(source).load().getConfiguration());
-        assertThat(successfulVersions(source)).endsWith("62.4", "62.5", "63");
+        assertThat(successfulVersions(source)).endsWith("62.4", "62.5", "63", "64");
         assertThat(singleLong(source, "select count(*) from user_workspace where username='same-name' and owner_principal_id is null")).isEqualTo(1);
+    }
+
+    @Test
+    void centralFetchGenerationKeepsLegacyReceiptAuthorityOnUpgrade() throws Exception {
+        var source = isolatedDataSource("central_fetch_generation");
+        migrateJgit(source);
+        installApplicationAtVersion(source, "63");
+        WorkspaceFetchDatabaseContractTest.verifyLegacyCentralReceiptUpgrade(source, () ->
+                TaxonomySchemaMigrationConfig.migrateApplicationSchema(Flyway.configure().dataSource(source).load().getConfiguration()));
+        assertThat(successfulVersions(source)).endsWith("63", "64");
     }
 
     @Test
@@ -223,7 +234,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "62", "62.1", "62.2", "62.3", "62.4", "62.5", "63");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "62", "62.1", "62.2", "62.3", "62.4", "62.5", "63", "64");
     }
 
     @Test
@@ -330,7 +341,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "62", "62.1", "62.2", "62.3", "62.4", "62.5", "63");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "62", "62.1", "62.2", "62.3", "62.4", "62.5", "63", "64");
         assertIntegrationSchema(dataSource);
         assertInventorySchema(dataSource);
         assertReformulationSchema(dataSource);
@@ -642,6 +653,7 @@ class TaxonomySchemaPostgresMigrationIT {
     }
 
     private static void assertSelectedFetchSchema(DataSource dataSource) throws SQLException {
+        assertThat(columnExists(dataSource, "central_fetch_operation", "publication_generation")).isTrue();
         for (String table : List.of("workspace_fetch_operation", "central_fetch_operation")) {
             for (String column : List.of("selected_tag", "requested_tag_object", "result_tag_object")) {
                 assertThat(columnExists(dataSource, table, column)).as("%s.%s", table, column).isTrue();

@@ -237,7 +237,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
             target.central().verifyExpectedHead(target.branch(),row.inputSource);
             target.local().verifyExpectedHead(row.localBranch,row.inputLocal);
             target.local().verifyExpectedHead(TRACKING_BRANCH,row.inputTracking);
-            if (row.attempts>1) {
+            if (!row.canBeginPreparation()) {
                 throw new BranchHeadConflictException(row.localBranch,row.inputLocal,row.inputLocal,
                         "Interrupted preparation requires review of the original editor and portfolio projections");
             }
@@ -324,7 +324,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         if (row.step==WorkspacePublicationOperation.Step.PREPARE) {
             local.verifyExpectedHead(row.localBranch,row.inputLocal);
             local.verifyExpectedHead(TRACKING_BRANCH,row.inputTracking);
-            if (row.attempts>1) throw new WorkspacePublicationRecovery.SemanticConflict("Review the interrupted editor preparation");
+            if (!row.canBeginPreparation()) throw new WorkspacePublicationRecovery.SemanticConflict("Review the interrupted editor preparation");
             source.verifySnapshot(row.inputSource);
             local.verifyUpstreamLineage(source,row.repository,row.sourceBranch,row.inputSource);
             var incoming=requiredSnapshot(new BranchSnapshot(row.inputSource,source.getDslAtCommit(row.inputSource)),"Empty pull source");
