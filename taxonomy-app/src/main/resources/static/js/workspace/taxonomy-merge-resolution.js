@@ -24,6 +24,7 @@ window.TaxonomyMergeResolution = (function () {
     document.addEventListener('taxonomy:repository-context-changed', function (event) {
         if (event.detail?.selectionChanged) dismissConflict();
     });
+    document.addEventListener('taxonomy-api-auth-failure', dismissConflict);
     window.addEventListener('pagehide', dismissConflict);
 
     // ── Initialization ──────────────────────────────────────────────

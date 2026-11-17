@@ -83,6 +83,22 @@ test('cherry-pick conflict choices stay bound to the displayed target commit', a
   assert.equal(h.node('conflictResolvedContent').value, '');
 });
 
+for (const kind of ['merge', 'cherry-pick']) test(`${kind} conflict content is retired at the shared authentication boundary`, async () => {
+ const h = harness(async () => Response.json({conflict:true, targetCommit:'a'.repeat(40),
+   theirsContent:'private source', oursContent:'private target', baseContent:'private base'}));
+ h.load('workspace/taxonomy-merge-resolution.js');
+ if (kind === 'merge') h.context.window.TaxonomyMergeResolution.showMergeConflict('main', 'draft');
+ else h.context.window.TaxonomyMergeResolution.showCherryPickConflict('b'.repeat(40), 'draft');
+ await settle(); await settle();
+ assert.equal(h.node('conflictOursContent').textContent, 'private target');
+ h.node('conflictResolvedContent').value = 'unsaved private resolution';
+ h.context.document.dispatchEvent(new Event('taxonomy-api-auth-failure'));
+ assert.equal(h.node('conflictOursContent').textContent, '');
+ assert.equal(h.node('conflictTheirsContent').textContent, '');
+ assert.equal(h.node('conflictBaseContent').textContent, '');
+ assert.equal(h.node('conflictResolvedContent').value, '');
+});
+
 test('variant integration binds both branch names accepted by the merge controller',async()=>{
  const calls=[];const h=harness(async(url,init)=>{
   const request=new URL(url,'https://example.test');calls.push({request,init});
