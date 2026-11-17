@@ -92,6 +92,34 @@ class DslOperationsFacadeCherryPickTest {
         }
     }
 
+    @Test
+    void concurrentManualMergeResolutionsCanOnlyCommitOneChoiceAtTheReviewedTarget() throws Exception {
+        try (var repository = new DslGitRepository(); var workers = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            String targetHead = repository.commitDsl("review", "reviewed text", "alice", "Reviewed");
+            repository.createBranch("source", "review");
+            var mvc = MockMvcBuilders.standaloneSetup(new DslApiController(facadeFor(repository), mock(WorkspaceResolver.class),
+                    mock(DslReadWorkspaceContextResolver.class))).build();
+            var start = new java.util.concurrent.CountDownLatch(1);
+            java.util.concurrent.Callable<Integer> submit = () -> {
+                start.await();
+                return mvc.perform(post("/api/dsl/merge/resolve").param("fromBranch", "source").param("intoBranch", "review")
+                                .param("expectedTargetHead", targetHead).contentType("text/plain").content(Thread.currentThread().getName()))
+                        .andReturn().getResponse().getStatus();
+            };
+            var first = workers.submit(submit);
+            var second = workers.submit(submit);
+            start.countDown();
+            assertThat(java.util.List.of(first.get(), second.get())).containsExactlyInAnyOrder(200, 409);
+            String winner = repository.getHeadCommit("review");
+            assertThat(winner).isNotEqualTo(targetHead);
+            mvc.perform(post("/api/dsl/merge/resolve").param("fromBranch", "source").param("intoBranch", "review")
+                            .contentType("text/plain").content("missing precondition"))
+                    .andExpect(status().is(428));
+            assertThat(repository.getHeadCommit("review")).isEqualTo(winner);
+            assertThat(repository.getHeadCommit("source")).isEqualTo(targetHead);
+        }
+    }
+
     private DslOperationsFacade facadeFor(DslGitRepository repository) {
         var resolver = mock(WorkspaceResolver.class);
         when(resolver.resolveCurrentUsername()).thenReturn("alice");

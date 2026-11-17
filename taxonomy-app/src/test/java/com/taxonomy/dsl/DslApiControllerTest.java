@@ -1040,10 +1040,12 @@ class DslApiControllerTest implements AnalysisCatalogueSourceFixture {
                 }
                 """;
         // Create both source and target branches for a realistic scenario
-        mockMvc.perform(post("/api/dsl/commit")
+        var target = mockMvc.perform(post("/api/dsl/commit")
                 .contentType(MediaType.TEXT_PLAIN)
                 .content(dsl)
-                .param("branch", "resolve-target"));
+                .param("branch", "resolve-target")).andExpect(status().isOk()).andReturn();
+        String reviewedHead = tools.jackson.databind.json.JsonMapper.builder().build()
+                .readTree(target.getResponse().getContentAsString()).get("commitId").asText();
 
         mockMvc.perform(post("/api/dsl/branches")
                 .param("name", "resolve-source")
@@ -1063,6 +1065,7 @@ class DslApiControllerTest implements AnalysisCatalogueSourceFixture {
         mockMvc.perform(post("/api/dsl/merge/resolve")
                         .param("fromBranch", "resolve-source")
                         .param("intoBranch", "resolve-target")
+                        .param("expectedTargetHead", reviewedHead)
                         .contentType(MediaType.TEXT_PLAIN)
                         .content(resolvedDsl))
                 .andExpect(status().isOk())

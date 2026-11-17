@@ -46,7 +46,8 @@ test('named versioning owns encoded routes and preserves domain conflict statuse
  const calls=[];const h=harness(async(url,init)=>{calls.push({url,init});return new Response('{}',{status:409});});
  const api=h.context.window.TaxonomyVersioningApi;
  await api.restore('commit/a','branch/b');await api.copyBackApply({selectedElementIds:['A']},'context/c');
- await api.resolveMerge('from/a','into/b','plain DSL');
+ await api.resolveMerge('from/a','into/b','b'.repeat(40),'plain DSL');
+ assert.equal(new URL(calls[2].url,'https://example.test').searchParams.get('expectedTargetHead'),'b'.repeat(40));
  assert.equal(new URL(calls[0].url,'https://example.test').searchParams.get('commitId'),'commit/a');
  assert.equal(new URL(calls[1].url,'https://example.test').searchParams.get('expectedContextId'),'context/c');
  assert.equal(calls[2].init.body,'plain DSL');assert.equal(calls[2].init.headers.get('Content-Type'),'text/plain');
@@ -80,6 +81,22 @@ test('cherry-pick conflict choices stay bound to the displayed target commit', a
   onResolve(); await settle();
   assert.equal(calls.length, 2, 'the old dialog cannot write into the new workspace');
   assert.equal(h.node('conflictResolvedContent').value, '');
+});
+
+for (const kind of ['merge', 'cherry-pick']) test(`${kind} conflict content is retired at the shared authentication boundary`, async () => {
+ const h = harness(async () => Response.json({conflict:true, targetCommit:'a'.repeat(40),
+   theirsContent:'private source', oursContent:'private target', baseContent:'private base'}));
+ h.load('workspace/taxonomy-merge-resolution.js');
+ if (kind === 'merge') h.context.window.TaxonomyMergeResolution.showMergeConflict('main', 'draft');
+ else h.context.window.TaxonomyMergeResolution.showCherryPickConflict('b'.repeat(40), 'draft');
+ await settle(); await settle();
+ assert.equal(h.node('conflictOursContent').textContent, 'private target');
+ h.node('conflictResolvedContent').value = 'unsaved private resolution';
+ h.context.document.dispatchEvent(new Event('taxonomy-api-auth-failure'));
+ assert.equal(h.node('conflictOursContent').textContent, '');
+ assert.equal(h.node('conflictTheirsContent').textContent, '');
+ assert.equal(h.node('conflictBaseContent').textContent, '');
+ assert.equal(h.node('conflictResolvedContent').value, '');
 });
 
 test('variant integration binds both branch names accepted by the merge controller',async()=>{
@@ -170,6 +187,40 @@ for(const status of [200,500,403]) test(`an obsolete merge-conflict read HTTP ${
  pending[0](new Response('{"conflict":false}',{status}));await settle();await settle();assert.deepEqual(messages,[]);
  pending[1](new Response('{"conflict":false}'));await settle();await settle();assert.equal(messages.length,status===403?0:1, 'Authorization invalidates other pending reads too');
 });
+
+for (const departure of ['selection', 'pagehide', 'runtime']) {
+  test(`a manual merge resolution remains bound to the displayed workspace after ${departure}`, async () => {
+    const calls = [];
+    const h = harness(async (url, init) => {
+      calls.push(init.method);
+      return Response.json({targetCommit:'b'.repeat(40), oursContent:'reviewed local text', theirsContent:'incoming text'});
+    });
+    let resolve;
+    h.node('conflictResolveBtn').addEventListener = (type, listener) => { if (type === 'click') resolve = listener; };
+    h.context.document.querySelectorAll = () => [];
+    h.load('workspace/taxonomy-merge-resolution.js');
+    h.context.document.dispatchEvent(new Event('DOMContentLoaded'));
+    h.context.window.TaxonomyMergeResolution.showMergeConflict('incoming', 'draft');
+    await settle();
+    await settle();
+    assert.equal(h.node('conflictOursContent').textContent, 'reviewed local text');
+    h.node('conflictResolvedContent').value = 'manual edits';
+    if (departure === 'selection') {
+      const event = new Event('taxonomy:repository-context-changed');
+      event.detail = {selectionChanged:true};
+      h.context.document.dispatchEvent(event);
+    } else if (departure === 'pagehide') {
+      h.hide();
+    } else {
+      h.change();
+    }
+    resolve();
+    await settle();
+    assert.deepEqual(calls, ['GET']);
+    assert.equal(h.node('conflictOursContent').textContent, '');
+    assert.equal(h.node('conflictResolvedContent').value, '');
+  });
+}
 
 test('a completed save never erases newer title and description edits',async()=>{
  const pending=[];const h=harness((url)=>new Promise(resolve=>pending.push({url,resolve})));

@@ -6,6 +6,7 @@ import com.taxonomy.architecture.service.*;
 import com.taxonomy.workspace.service.*;
 import com.taxonomy.dto.GraphNeighborhoodView;
 import org.junit.jupiter.api.Test;
+import java.io.IOException;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -20,7 +21,8 @@ class GraphContextSelectionTest {
         var context = RepositoryContext.centralRead("repo", "main", "alice");
         doReturn(context).when(resolver).resolveCurrentRepositoryContextForRead();
         var mvc = MockMvcBuilders.standaloneSetup(new GraphQueryApiController(graph,
-                mock(EnrichedImpactService.class), mock(ApqcHierarchyService.class), new ExplicitRepositoryReadSelection(resolver))).build();
+                mock(EnrichedImpactService.class), mock(ApqcHierarchyService.class), new ExplicitRepositoryReadSelection(resolver)))
+                .setControllerAdvice(new ObligationApiErrors()).build();
         mvc.perform(get("/api/graph/node/A/downstream")).andExpect(status().isBadRequest());
         mvc.perform(get("/api/graph/node/A/downstream").param("workspaceId", "")
                 .param("repositoryId", "other").param("branch", "main").param("commitId", "a".repeat(40)))
@@ -51,6 +53,32 @@ class GraphContextSelectionTest {
                 .thenThrow(new IllegalStateException("Selected graph head is no longer proven"));
         mvc.perform(get("/api/graph/node/A/downstream").param("workspaceId", "")
                 .param("repositoryId", "repo").param("branch", "main").param("commitId", "a".repeat(40)))
-                .andExpect(status().isConflict()).andExpect(jsonPath("$.status").value("UNAVAILABLE"));
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.status").value("UNAVAILABLE"))
+                .andExpect(header().string("X-Taxonomy-Source-State", "FAILED"));
+    }
+
+    @Test
+    void aMovedOrDeletedGraphHeadIsDistinguishedFromAnUnreadableStore() throws Exception {
+        String original = "a".repeat(40);
+        String advanced = "b".repeat(40);
+        var context = RepositoryContext.centralRead("repo", "draft", "alice");
+        var resolver = mock(WorkspaceResolver.class);
+        when(resolver.resolveCurrentRepositoryContextForRead()).thenReturn(context);
+        var graph = mock(ArchitectureGraphQueryService.class);
+        var mvc = MockMvcBuilders.standaloneSetup(new GraphQueryApiController(graph, mock(EnrichedImpactService.class),
+                mock(ApqcHierarchyService.class), new ExplicitRepositoryReadSelection(resolver)))
+                .setControllerAdvice(new ObligationApiErrors()).build();
+        when(graph.findDownstream(context, original, "A", 2)).thenThrow(
+                new IllegalStateException("verification", new BranchHeadConflictException("draft", original, advanced, "changed")),
+                new IllegalStateException("verification", new BranchHeadConflictException("draft", original, null, "deleted")),
+                new IllegalStateException("storage", new IOException("backend detail")));
+        var request = get("/api/graph/node/A/downstream").param("workspaceId", "").param("repositoryId", "repo")
+                .param("branch", "draft").param("commitId", original);
+        mvc.perform(request).andExpect(status().isConflict()).andExpect(header().string("X-Taxonomy-Source-State", "STALE"))
+                .andExpect(header().string("X-Taxonomy-Commit", advanced));
+        mvc.perform(request).andExpect(status().isConflict()).andExpect(header().string("X-Taxonomy-Source-State", "MISSING"))
+                .andExpect(header().doesNotExist("X-Taxonomy-Commit"));
+        mvc.perform(request).andExpect(status().isServiceUnavailable()).andExpect(header().string("X-Taxonomy-Source-State", "FAILED"))
+                .andExpect(header().doesNotExist("X-Taxonomy-Commit"));
     }
 }

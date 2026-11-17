@@ -126,8 +126,10 @@ try {
             const first = window.openDrawing('FULL');
             first.close();
             window.reopenedDrawing = window.openDrawing('FULL');
+            window.dialogCountAfterReopen = document.querySelectorAll('dialog').length;
         });
         assert.equal(await page.evaluate(()=>!!window.reopenedDrawing?.open),true);
+        assert.equal(await page.evaluate(()=>window.dialogCountAfterReopen),1);
         await page.keyboard.press('Escape');
         await page.locator('dialog').waitFor({state:'detached'});
         // Without the optional PDF renderer the paper summary remains available offline.
@@ -176,7 +178,7 @@ try {
         await mkdir(directory,{recursive:true});
         const captures=[];
         for (const language of ['de','en']) {
-            const page=await browser.newPage({viewport:{width:1280,height:1250}});
+            const page=await browser.newPage({viewport:{width:1280,height:1400}});
             // Render the production component with explicit sample input. This is not a full-app snapshot.
             await page.setContent(`<html lang="${language}"><head><meta charset="utf-8"><style>body{font-family:system-ui,sans-serif}</style></head><body></body></html>`);
             await page.addScriptTag({content:capabilitiesSource});
@@ -193,7 +195,8 @@ try {
             const dialog=page.locator('dialog');await dialog.waitFor();
             await page.locator('[type=submit]:enabled').waitFor();
             async function capture(kind) {
-                assert.equal(await dialog.evaluate(node=>node.scrollHeight<=node.clientHeight+1),true,'Documentation shows the complete dialog');
+                const dimensions = await dialog.evaluate(node => ({scroll:node.scrollHeight,client:node.clientHeight}));
+                assert.ok(dimensions.scroll <= dimensions.client + 1, 'Documentation shows the complete dialog ' + JSON.stringify(dimensions));
                 const name=`decision-export-${kind}-${language}.png`;
                 const bytes=await dialog.screenshot({path:join(directory,name)});
                 captures.push({file:name,language,viewport:page.viewportSize(),sha256:createHash('sha256').update(bytes).digest('hex')});

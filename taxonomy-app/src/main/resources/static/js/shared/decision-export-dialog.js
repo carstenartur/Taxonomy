@@ -64,12 +64,14 @@
     }
     function open(config) {
         if (config.sourceSignal?.aborted) return;
-        if (active?.open) { active.focus(); return; }
+        if (active?.dialog.open) { active.dialog.focus(); return; }
+        // Native close events are queued. Release a closed dialog before a new one opens.
+        active?.dispose();
         const opener = document.activeElement;
         const de = String(config.language || document.documentElement.lang).startsWith('de');
         const t = (en, german) => de ? german : en;
         const dialog = el('dialog', null, {'aria-labelledby':'decision-export-title', class:'decision-export-dialog'});
-        active = dialog;
+        active = {dialog, dispose};
         if (!document.getElementById('decision-export-style')) {
             const style = el('style', `
 .decision-export-dialog{box-sizing:border-box;width:min(640px,calc(100vw - 24px));max-height:calc(100dvh - 32px);overflow:auto;border:1px solid #bcc8d2;border-radius:12px;padding:24px;color:var(--bs-body-color,#20313f);background:var(--bs-body-bg,#fff);box-shadow:0 20px 70px #0004}
@@ -281,14 +283,16 @@
         }
         window.addEventListener?.('pagehide', () => {if (drawingFormat()) closeDialog();}, {signal:lifecycle.signal});
         previewLink.addEventListener('click', event => {if (!checkDrawingSource()) event.preventDefault();});
-        dialog.addEventListener('close',()=>{
+        function dispose() {
+            if (active?.dialog !== dialog) return;
+            active = null;
             lifecycle.abort();
             config.sourceSignal?.removeEventListener('abort', closeDialog);
             stopOperations();
-            if(active===dialog)active=null;
             dialog.remove();
-            if (!active && !config.sourceSignal?.aborted) opener?.focus();
-        });
+            if (!config.sourceSignal?.aborted) opener?.focus();
+        }
+        dialog.addEventListener('close', dispose, {once:true});
         function reportOptions() {
             const selected = checks.filter(c => c.checked && !c.disabled).map(c => c.value);
             if (!selected.length) throw new Error(t('Select at least one taxonomy.', 'Wählen Sie mindestens eine Taxonomie.'));
