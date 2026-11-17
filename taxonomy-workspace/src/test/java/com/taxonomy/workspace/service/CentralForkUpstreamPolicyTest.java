@@ -166,6 +166,30 @@ class CentralForkUpstreamPolicyTest {
     }
 
     @Test
+    void rebaseRejectsAnOlderFetchedTipWhenTheSourceDefaultBranchHasMoved() throws Exception {
+        service.fetch("fork", ACTOR, new WorkspaceUpstreamService.Request(incoming, base));
+        target.createBranchAtCommit("review", base);
+        String reviewedHead = target.commitDsl("review", "independent edit", ACTOR, "Local review");
+        String newest = source.commitDsl("main", "even newer upstream", ACTOR, "New default commit");
+        var plan = service.rebasePlan("fork", ACTOR, "review");
+        assertThat(plan.status()).isEqualTo(UpstreamRebasePlan.State.REPLAY);
+        assertThat(plan.upstream().sourceCommit()).isEqualTo(newest);
+        assertThat(plan.upstream().trackedCommit()).isEqualTo(incoming);
+
+        var request = new UpstreamRebasePlan.ApplyRequest(plan.refTag(), reviewedHead, incoming,
+                List.of(reviewedHead));
+        String body = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(request);
+        mvc.perform(post(API + "/rebase").param("branch", "review")
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isConflict());
+
+        assertThat(target.getHeadCommit("review")).isEqualTo(reviewedHead);
+        assertThat(target.getHeadCommit("main")).isEqualTo(local);
+        assertThat(source.getHeadCommit("main")).isEqualTo(newest);
+        assertThat(tracking.head(target)).isEqualTo(incoming);
+    }
+
+    @Test
     void forkFetchAndSelectedTagHaveScopedDurableReceipts() throws Exception {
         String fetchBody = "{\"sourceCommit\":\"" + incoming + "\",\"expectedTrackedCommit\":\"" + base + "\"}";
         var commit = mvc.perform(post(API + "/fetch").contentType(MediaType.APPLICATION_JSON)
