@@ -125,6 +125,23 @@ class RelationProjectionOperationsApiControllerBehaviorTest {
     }
 
     @Test
+    void aMissingSelectionFailsClosedBeforeAnyProjectionOrRecoveryAccess() {
+        // A resolver may have no selected repository; absence must not become a server error.
+        assertEmpty(controller.readiness(), HttpStatus.FORBIDDEN);
+        assertEmpty(controller.rebuild(ETAG, null), HttpStatus.FORBIDDEN);
+        assertEmpty(controller.vectorStatus(), HttpStatus.FORBIDDEN);
+        assertEmpty(controller.rebuildVectors(ETAG), HttpStatus.FORBIDDEN);
+        assertEmpty(controller.purgeVectors(ETAG), HttpStatus.FORBIDDEN);
+        assertThatThrownBy(() -> controller.operation("id"))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThatThrownBy(() -> controller.retry("id"))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThatThrownBy(() -> controller.archive("id"))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        verifyNoInteractions(maintenance, operationsService, vectors, repositoryService, membershipService);
+    }
+
+    @Test
     void ambiguousCentralInspectionAndMovedWorkspaceRebuildCannotReachEitherProjection() {
         var primary = new SystemRepository();
         primary.setRepositoryId("primary");
