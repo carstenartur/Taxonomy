@@ -1077,7 +1077,7 @@
       "fromPackage": "com.taxonomy.security.service",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.model",
-      "classDependencyCount": 3
+      "classDependencyCount": 1
     },
     {
       "fromContext": "app-composition",
