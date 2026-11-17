@@ -194,3 +194,15 @@ Use `language=de` for generated German labels. Saved evidence and administrator-
 The scenario acceptance pipeline checks source parity and semantic completeness, and renders both Word artifacts with LibreOffice/Poppler. This is not Microsoft Word product certification.
 
 The complete scenario fixture retains render QA ceilings of 74 decision pages and 12 standalone architecture pages. The checks also enforce semantic coverage, reading scale, empty-page and orphan-heading rules. Compact edge IDs may be omitted where they would cover nodes; native relation keys and inventories preserve every edge ID, source, target and type.
+
+## Visio drawings as a PDF
+
+Choose **Visio PDF (.pdf)** in the decision-report dialog to download the selected decision trees and, for a saved snapshot with an architecture, the architecture drawing. Each drawing keeps its Visio page size. **Visio (.vsdx)** provides the editable source. Both formats use the selected report language and captured data.
+
+To enable the PDF format, install LibreOffice Draw and the Poppler commands `pdfunite` and `pdfinfo` on the application host. Make `soffice`, `pdfunite` and `pdfinfo` available on the service account's PATH. Set `taxonomy.reporting.visio-pdf.enabled=true` and restart. The default is off. Each application instance renders one request at a time, in a private temporary profile. A busy converter returns HTTP 503 and the download can be retried. The render processes share a 90-second deadline. The converter supports the full native export of 32 diagram pages plus 128 evidence pages and up to 32 MiB of source XML. Conversion limits are 32 MiB for the input ZIP, 64 MiB after expansion and 512 MiB across the temporary single-page packages. The PDF output limit is 64 MiB.
+
+A local Taxonomy VSDX export can also be converted on a workstation with a Java 25 JDK, LibreOffice Draw and Poppler. From the repository root run the following command with a new output filename.
+
+```sh
+java taxonomy-reporting/src/main/java/com/taxonomy/reporting/render/decision/VisioDrawingPdf.java decision.vsdx decision.pdf
+```

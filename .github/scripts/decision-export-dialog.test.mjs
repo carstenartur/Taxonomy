@@ -29,5 +29,8 @@ test('downloads require report content type and provenance; error pages never be
     await api.download(response('application/json'),'json','saved-1');
     await api.download(response('application/json',true,'attachment; filename="DEMO-taxonomy-decision-rationale-report-v1.json"'),
         'json','saved-1');
-    assert.deepEqual(downloads,['taxonomy-decision-report-saved-1.json','DEMO-taxonomy-decision-report-saved-1.json']);
+    await api.download(response('application/pdf'),'visio-pdf','saved-1',undefined,undefined,
+        {contentType:'application/pdf',fileExtension:'pdf'});
+    assert.deepEqual(downloads,['taxonomy-decision-report-saved-1.json','DEMO-taxonomy-decision-report-saved-1.json',
+        'taxonomy-decision-report-saved-1.pdf']);
 });

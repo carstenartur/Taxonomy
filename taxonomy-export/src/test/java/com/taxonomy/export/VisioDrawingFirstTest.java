@@ -53,8 +53,16 @@ class VisioDrawingFirstTest {
                     "Hierarchy connectors retain their type without overlapping visible captions");
             try (var reader = new XmlVisioDocument(new ByteArrayInputStream(contents))) {
                 var pages = new ArrayList<>(reader.getPages());
-                check(pages.get(decisionIndex).getContent().getConnections().size() == 4,
-                        "Independent Visio reader must resolve both ends of each hierarchy connector");
+                var connections = pages.get(decisionIndex).getContent().getConnections();
+                check(connections.size() == 4, "Independent Visio reader must resolve both ends of each hierarchy connector");
+                for (var connection : connections) {
+                    String port = connection.getFromCellName().equals("BeginX") ? "Connections.X2" : "Connections.X1";
+                    check(port.equals(connection.getToCellName()), "Decision links must use the facing side ports");
+                    var path = connection.getFromShape().getPath().getPathIterator(null);
+                    int vertices = 0;
+                    while (!path.isDone()) { vertices++; path.next(); }
+                    check(vertices == 4, "Each branching hierarchy connector must retain its two native gutter bends");
+                }
             }
         }
     }

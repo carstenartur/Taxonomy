@@ -55,6 +55,38 @@ try {
         assert.equal('showResponsibilities' in attempts[1].options, false);
         await page.click('#open');await page.keyboard.press('Escape');await page.locator('dialog').waitFor({state:'detached'});
         assert.equal(await page.locator('#open').evaluate(el=>el===document.activeElement),true);
+        // Drawings export only the evidence available for the selected snapshot.
+        await page.evaluate(() => {
+            const format = {id:'visio-pdf', reportType:'decision-rationale', displayName:'Visio PDF',
+                fileExtension:'pdf', contentType:'application/pdf',
+                plugin:{id:'fixture.reporting', version:'1.0.0', artifactSha256:'a'.repeat(64)}};
+            window.TaxonomyCapabilitiesApi = {load:async()=>({features:['reporting'], exports:[], reports:[format]})};
+            window.openDrawing = mode => window.TaxonomyDecisionExport.openSaved({
+                projectId:41, snapshotId:'saved-1', api:{
+                    decisionReportOptions:async()=>({roots:[{code:'BP', title:'Geschäftsprozesse'}],
+                        analysisLanguage:'de', analysisScope:{mode, taxonomyRoots:['BP']}}),
+                    downloadDecisionReport:async(project, snapshot, format, language, options, request) => {
+                        window.drawingRequest = {project, snapshot, format, language, options, timeout:request.timeoutMillis};
+                        return new Response('%PDF-fixture', {headers:{'Content-Type':'application/pdf',
+                            'X-Taxonomy-Analysis-SHA256':'a'.repeat(64), 'X-Taxonomy-Snapshot-Id':snapshot}});
+                    }
+                }
+            });
+        });
+        for (const [mode, sections] of [['TAXONOMIES_ONLY',['TREE']], ['FULL',['TREE','ARCHITECTURE']]]) {
+            await page.evaluate(mode => { window.openDrawing(mode); }, mode);
+            await page.getByText('Das PDF behält die ursprüngliche Seitengröße', {exact:false}).waitFor();
+            const downloaded = page.waitForEvent('download');
+            await page.click('button[type=submit]');
+            assert.equal((await downloaded).suggestedFilename(), 'taxonomy-decision-report-saved-1.pdf');
+            await page.locator('dialog').waitFor({state:'detached'});
+            const request = await page.evaluate(() => window.drawingRequest);
+            assert.equal(request.format,'visio-pdf');
+            assert.equal(request.timeout,120000);
+            assert.equal(request.snapshot,'saved-1');
+            assert.deepEqual(request.options.taxonomyRoots,['BP']);
+            assert.deepEqual(request.options.sections,sections);
+        }
         // Capability reload must remove unavailable renderers, accept a new SDK format,
         // and keep the same host-owned keyboard/focus and error controls.
         await page.evaluate(() => {window.TaxonomyCapabilitiesApi={load:async()=>({features:[],exports:[],reports:[]})};});

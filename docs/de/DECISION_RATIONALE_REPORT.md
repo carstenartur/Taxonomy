@@ -195,3 +195,15 @@ Beide verwenden dieselbe gespeicherte Anforderungsversion, Entscheidungsevidenz 
 Die Akzeptanzprüfung prüft Quellenparität und semantische Vollständigkeit und rendert beide Word-Dateien mit LibreOffice/Poppler. Dies ist keine Produktzertifizierung für Microsoft Word.
 
 Für die vollständige Prüffallausgabe gelten weiterhin Render-QA-Grenzen von 74 Entscheidungsseiten und 12 eigenständigen Architekturseiten. Die Prüfung kontrolliert zusätzlich Evidenzabdeckung, Lesbarkeit, leere Seiten und verwaiste Überschriften. Kompakte Beziehungskennungen entfallen dort, wo sie Knoten verdecken würden; native Beziehungsschlüssel und Inventare erhalten jede Kennung, Quelle, jedes Ziel und jeden Typ.
+
+## Visio-Zeichnungen als PDF
+
+Wählen Sie im Dialog für den Entscheidungsbericht **Visio PDF (.pdf)**. Das PDF enthält die ausgewählten Entscheidungsbäume und bei einem gespeicherten Snapshot mit Architektur auch die Architekturzeichnung. Jede Zeichnung behält ihre Visio-Seitengröße. **Visio (.vsdx)** liefert die bearbeitbare Quelldatei. Beide Formate verwenden die gewählte Berichtssprache und die aufgezeichneten Daten.
+
+Für den PDF-Export benötigt der Anwendungsserver LibreOffice Draw und die Poppler-Werkzeuge `pdfunite` und `pdfinfo`. Die Programme `soffice`, `pdfunite` und `pdfinfo` müssen im PATH des Dienstkontos liegen. Aktivieren Sie `taxonomy.reporting.visio-pdf.enabled=true` und starten Sie die Anwendung neu. Die Option ist standardmäßig ausgeschaltet. Jede Instanz verarbeitet jeweils einen Auftrag mit einem eigenen temporären LibreOffice-Profil. Bei belegtem Konverter antwortet der Server mit HTTP 503. Der Download kann erneut gestartet werden. Die externen Prozesse teilen sich ein Zeitlimit von 90 Sekunden. Der Konverter unterstützt den vollständigen nativen Export mit 32 Diagrammseiten und 128 Belegseiten sowie bis zu 32 MiB Quell-XML. Bei der Konvertierung gelten 32 MiB für die ZIP-Datei, 64 MiB für ihren entpackten Inhalt und insgesamt 512 MiB für die temporären Einzelseitenpakete. Die PDF-Ausgabe ist auf 64 MiB begrenzt.
+
+Einen lokalen Taxonomy-VSDX-Export können Sie auf einem Arbeitsplatz mit Java-25-JDK, LibreOffice Draw und Poppler konvertieren. Rufen Sie im Hauptverzeichnis des Repositorys den folgenden Befehl mit einem neuen Zieldateinamen auf.
+
+```sh
+java taxonomy-reporting/src/main/java/com/taxonomy/reporting/render/decision/VisioDrawingPdf.java entscheidung.vsdx entscheidung.pdf
+```

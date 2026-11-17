@@ -15,6 +15,7 @@ import com.thoughtworks.xstream.io.HierarchicalStreamReader;
 import com.thoughtworks.xstream.io.HierarchicalStreamWriter;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import com.taxonomy.export.ExportTheme;
@@ -64,9 +65,10 @@ public class VisioPageContentsConverter implements Converter {
         if (masterDefinition != null) {
             writer.startNode("Shapes");
             if (masterDefinition == VisioNativeShape.CONNECTOR) {
-                writeConnectorShape(writer, 1, new VisioConnect("1", "2", ""),
-                        new VisioShape("1", "", 0, 0, 0, 0, "", false),
+                var endpoints = VisioConnectionPoints.between(new VisioShape("1", "", 0, 0, 0, 0, "", false),
                         new VisioShape("2", "", 2, 0, 0, 0, "", false));
+                writeConnectorShape(writer, 1, new VisioConnect("1", "2", ""),
+                        new VisioConnectionPoints.Route(endpoints, null));
             } else {
                 double width = masterDefinition == VisioNativeShape.CONTAINER ? 4 : 2;
                 double height = masterDefinition == VisioNativeShape.CONTAINER ? 3 : 1;
@@ -77,6 +79,8 @@ public class VisioPageContentsConverter implements Converter {
             return;
         }
 
+        var columns = new VisioConnectionPoints.Columns(page.getShapes());
+        var routes = new ArrayList<VisioConnectionPoints.Route>(page.getConnects().size());
         VisioContainers.Membership membership = VisioContainers.membership(page);
 
         if (!page.getShapes().isEmpty() || !page.getConnects().isEmpty() || page.getLegend() != null) {
@@ -87,12 +91,10 @@ public class VisioPageContentsConverter implements Converter {
             long connectorId = maximumShapeId(page);
             for (VisioConnect connect : page.getConnects()) {
                 connectorId++;
-                writeConnectorShape(
-                        writer,
-                        connectorId,
-                        connect,
-                        requireShape(shapesById, connect.getFromShape(), "source"),
+                var route = columns.route(connect, requireShape(shapesById, connect.getFromShape(), "source"),
                         requireShape(shapesById, connect.getToShape(), "target"));
+                routes.add(route);
+                writeConnectorShape(writer, connectorId, connect, route);
             }
             // Shape order is drawing order: opaque nodes cover crossing strokes.
             for (VisioShape shape : page.getShapes()) if (!VisioNativeShape.isContainer(shape))
@@ -109,9 +111,10 @@ public class VisioPageContentsConverter implements Converter {
         if (!page.getConnects().isEmpty()) {
             writer.startNode("Connects");
             long connectorId = maximumShapeId(page);
-            for (VisioConnect connect : page.getConnects()) {
+            for (int index = 0; index < routes.size(); index++) {
                 connectorId++;
-                var endpoints = VisioConnectionPoints.between(shapesById.get(connect.getFromShape()), shapesById.get(connect.getToShape()));
+                var connect = page.getConnects().get(index);
+                var endpoints = routes.get(index).endpoints();
                 writeGlue(writer, connectorId, "BeginX", connect.getFromShape(), endpoints.source().side());
                 writeGlue(writer, connectorId, "EndX", connect.getToShape(), endpoints.target().side());
             }
@@ -207,9 +210,8 @@ public class VisioPageContentsConverter implements Converter {
             HierarchicalStreamWriter writer,
             long connectorId,
             VisioConnect connect,
-            VisioShape source,
-            VisioShape target) {
-        var endpoints = VisioConnectionPoints.between(source, target);
+            VisioConnectionPoints.Route route) {
+        var endpoints = route.endpoints();
         double beginX = endpoints.source().x();
         double beginY = endpoints.source().y();
         double endX = endpoints.target().x();
@@ -234,8 +236,8 @@ public class VisioPageContentsConverter implements Converter {
         // Persist meaningful calculated values as well as formulas. Consumers
         // that do not immediately recalculate the ShapeSheet still render the
         // connector between the selected source and target positions.
-        String fromFormula = masterDefinition == null ? endpoints.source().formula(source.getId()) : null;
-        String toFormula = masterDefinition == null ? endpoints.target().formula(target.getId()) : null;
+        String fromFormula = masterDefinition == null ? endpoints.source().formula(connect.getFromShape()) : null;
+        String toFormula = masterDefinition == null ? endpoints.target().formula(connect.getToShape()) : null;
         writeCell(writer, "BeginX", decimal(beginX), fromFormula);
         writeCell(writer, "BeginY", decimal(beginY), fromFormula);
         writeCell(writer, "EndX", decimal(endX), toFormula);
@@ -282,7 +284,7 @@ public class VisioPageContentsConverter implements Converter {
         writeCell(writer, "TextBkgndTrans", "0");
         writeCell(writer, "VerticalAlign", "1");
         writeCharacterStyle(writer, box.height() >= 1 ? 12 : 10, "#172B4D");
-        writeLineGeometry(writer, width);
+        writeLineGeometry(writer, width, angle, route.gutterFraction());
         writeProperties(writer, connect.getProperties());
 
         writer.startNode("Text");
@@ -442,12 +444,28 @@ public class VisioPageContentsConverter implements Converter {
 
     private static void writeLineGeometry(
             HierarchicalStreamWriter writer,
-            double width) {
+            double width, double angle, Double gutter) {
         writer.startNode("Section");
         writer.addAttribute("N", "Geometry");
         writer.addAttribute("IX", "0");
+        if (gutter != null) writeCell(writer, "NoFill", "1");
         writeGeometryRow(writer, "MoveTo", 1, 0, 0, null, null);
-        writeGeometryRow(writer, "LineTo", 2, width, 0, "Width", null);
+        if (gutter == null) {
+            writeGeometryRow(writer, "LineTo", 2, width, 0, "Width", null);
+        } else {
+            // Convert the two horizontal page-axis legs to the rotating 1-D shape's coordinates.
+            // Formula dependencies keep the elbows attached when a reader moves either node.
+            double across = width * Math.cos(angle) * Math.cos(angle);
+            double normal = width * Math.cos(angle) * Math.sin(angle);
+            String x = "Width*COS(Angle)*COS(Angle)*";
+            String y = "Width*COS(Angle)*SIN(Angle)*";
+            writeGeometryRow(writer, "LineTo", 2, across * gutter, -normal * gutter,
+                    x + decimal(gutter), "-" + y + decimal(gutter));
+            double remaining = 1 - gutter;
+            writeGeometryRow(writer, "LineTo", 3, width - across * remaining, normal * remaining,
+                    "Width-" + x + decimal(remaining), y + decimal(remaining));
+            writeGeometryRow(writer, "LineTo", 4, width, 0, "Width", null);
+        }
         writer.endNode();
     }
 
