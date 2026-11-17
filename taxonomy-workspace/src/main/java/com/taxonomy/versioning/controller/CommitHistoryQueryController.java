@@ -1,5 +1,6 @@
 package com.taxonomy.versioning.controller;
 
+import com.taxonomy.dto.RepositoryReadiness;
 import com.taxonomy.dto.VersionedSearchResult;
 import com.taxonomy.identity.StableIdentityHash;
 import com.taxonomy.versioning.model.ArchitectureCommitIndex;
@@ -80,7 +81,7 @@ public class CommitHistoryQueryController {
     }
 
     @Operation(summary = "Search indexed history and prove lineage against the selected Git head",
-            description = "Matches span the selected repository/workspace. Optional currentBranch and commitId assert the current selection. The source commit and ETag identify the versioned observation.")
+            description = "Matches span the selected repository/workspace. Optional currentBranch and commitId assert the current selection. An absent branch index returns 404 MISSING. An index behind the Git head or awaiting search visibility returns 409 STALE. A ready observation carries its source commit and ETag.")
     @GetMapping("/search-versioned")
     public ResponseEntity<?> versioned(@RequestParam String query, @RequestParam(defaultValue = "50") int maxResults,
                                        @RequestParam(required = false) String currentBranch,
@@ -100,12 +101,17 @@ public class CommitHistoryQueryController {
             String head = read.currentHead();
             if (head == null) return unavailable(HttpStatus.NOT_FOUND, "MISSING", null);
             if (expected != null && !expected.equals(head)) return unavailable(HttpStatus.CONFLICT, "STALE", head);
-            var hits = index.search(query, maxResults, selected);
+            var indexed = index.searchVersioned(query, maxResults, selected, head);
+            if (indexed.readiness() != RepositoryReadiness.FRESH) {
+                read.verifyExpectedHead(head);
+                var status = indexed.readiness() == RepositoryReadiness.MISSING ? HttpStatus.NOT_FOUND : HttpStatus.CONFLICT;
+                return unavailable(status, indexed.readiness().name(), head);
+            }
+            var hits = indexed.hits();
             var relationships = read.relationshipsTo(head, hits.stream().map(ArchitectureCommitIndex::getCommitId).toList());
-            if (relationships.contains(UNAVAILABLE)) return unavailable(HttpStatus.CONFLICT, "STALE", head);
-            var rows = versionedRows(hits, relationships);
             read.verifyExpectedHead(head);
-            return observed(selected, "versioned", List.of(query, maxResults), head, rows);
+            if (relationships.contains(UNAVAILABLE)) return unavailable(HttpStatus.CONFLICT, "STALE", head);
+            return observed(selected, "versioned", List.of(query, maxResults), head, versionedRows(hits, relationships));
         } catch (BranchHeadConflictException moved) {
             return unavailable(HttpStatus.CONFLICT, "STALE", moved.getActualHeadCommit());
         } catch (IOException failure) {

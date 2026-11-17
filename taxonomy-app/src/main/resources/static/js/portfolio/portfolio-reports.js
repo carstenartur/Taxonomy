@@ -17,11 +17,13 @@
         empty: 'Generate a preview for the selected report scope.',
         baseline: 'Preview for the selected scope. Downloads generate a fresh report from the current project state.',
         exportStarted: 'export started', previewTitle: 'Portfolio report preview',
+        accessUnavailable: 'Access to these reports could not be verified. Reload the page to check again.',
         matrixTaxonomy: 'Requirements × taxonomy', matrixSolutions: 'Requirements × solutions', matrixProducts: 'Solutions × products'});
     Object.assign(labels.de, {print: 'Bericht drucken', stale: 'Die Berichtsauswahl wurde geändert. Erzeugen Sie vor dem Drucken eine neue Vorschau.',
         empty: 'Erzeugen Sie eine Vorschau für den gewählten Berichtsumfang.',
         baseline: 'Vorschau für den gewählten Umfang. Downloads erzeugen einen neuen Bericht aus dem aktuellen Projektstand.',
         exportStarted: 'Export gestartet', previewTitle: 'Vorschau des Portfolio-Berichts',
+        accessUnavailable: 'Der Zugriff auf diese Berichte konnte nicht bestätigt werden. Laden Sie die Seite neu, um den Zugriff erneut zu prüfen.',
         matrixTaxonomy: 'Anforderungen × Taxonomie', matrixSolutions: 'Anforderungen × Lösungen', matrixProducts: 'Lösungen × Produkte'});
     document.addEventListener('DOMContentLoaded',initialize);
     function l(k){return labels[locale][k]||labels.en[k]||k;}
@@ -36,12 +38,23 @@
                 'taxonomy:architecture-source-changed']) {
             document.addEventListener(event, reloadChangedSource);
         }
+        document.addEventListener('taxonomy-api-auth-failure', () => {
+            if (!state.currentSource || state.currentSource()) return;
+            state.currentSource = window.TaxonomyApiClient.captureContext();
+            clearSource();
+            showError(new Error(l('accessUnavailable')));
+        });
+        window.addEventListener('pagehide', () => {
+            state.currentSource = null;
+            clearSource();
+        });
+        window.addEventListener('pageshow', event => {
+            if (event.persisted && !state.currentSource) return loadSource();
+        });
         await loadSource();
     }
 
-    async function loadSource() {
-        const current = window.TaxonomyApiClient.captureContext();
-        state.currentSource = current;
+    function clearSource() {
         state.project = null;
         state.requirements = [];
         window.TaxonomyAppChrome?.updateContext({project: {id: projectId, key: null, title: null}});
@@ -49,6 +62,12 @@
         document.getElementById('reportRequirement').textContent = '';
         invalidatePreview(l('empty'));
         allowReportActions(false);
+    }
+
+    async function loadSource() {
+        const current = window.TaxonomyApiClient.captureContext();
+        state.currentSource = current;
+        clearSource();
         busy(true);
         try {
             const [project, requirements] = await Promise.all([api().getProject(projectId), api().listRequirements(projectId)]);
@@ -67,6 +86,10 @@
     }
 
     function allowReportActions(allowed) {
+        const scope = document.getElementById('reportScope');
+        scope.disabled = !allowed;
+        document.getElementById('reportRequirement').disabled = !allowed || scope.value !== 'requirement';
+        document.getElementById('matrixType').disabled = !allowed;
         document.getElementById('previewReport').disabled = !allowed;
         document.querySelectorAll('.report-download').forEach(button => { button.disabled = !allowed; });
     }
@@ -122,7 +145,6 @@
     }
     function render(){document.getElementById('reportsProject').textContent=`${state.project.projectKey} — ${state.project.title}`;const select=document.getElementById('reportRequirement');select.textContent='';state.requirements.forEach(requirement=>{const option=document.createElement('option');option.value=requirement.id;option.textContent=`${requirement.requirementKey} — ${requirement.title}`;select.appendChild(option);});}
     function reportParameters(format){const parameters={};if(document.getElementById('reportScope').value==='requirement')parameters.requirementId=document.getElementById('reportRequirement').value;if(format==='csv')parameters.matrix=document.getElementById('matrixType').value;return parameters;}
-    function endpoint(format){return api().reportUrl(projectId,format,reportParameters(format));}
     function selectionKey(){return JSON.stringify(reportParameters('html'));}
     function invalidatePreview(message){
         state.previewGeneration++;
@@ -172,18 +194,33 @@
             if(generation===state.previewGeneration){state.previewController=null;busy(false);}
         }
     }
-    function download(format) {
-        if (!state.project || !state.currentSource()) return;
-        const link = document.createElement('a');
-        link.href = endpoint(format);
-        link.hidden = true;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
+    async function download(format) {
+        const current = state.currentSource;
+        if (!state.project || !current()) return;
         document.getElementById('reportsLive').textContent = `${format.toUpperCase()} ${l('exportStarted')}`;
+        try {
+            const {response, blob} = await api().downloadReport(projectId, format, reportParameters(format));
+            if (state.currentSource !== current || !current()) return;
+            // The portfolio report endpoint returns a sanitized ASCII attachment name.
+            const disposition = response.headers.get('Content-Disposition') || '';
+            const filename = /^attachment;\s*filename=(?:"([\w.-]+)"|([\w.-]+))$/i.exec(disposition);
+            if (!filename) throw new Error(l('failed'));
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename[1] || filename[2];
+            link.hidden = true;
+            document.body.appendChild(link);
+            try { link.click(); }
+            finally {
+                link.remove();
+                window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+            }
+        } catch (error) {
+            if (state.currentSource === current && current() && error.code !== 'ABORTED') showError(error);
+        }
     }
     function api(){if(!window.TaxonomyPortfolioApi)throw new Error('Portfolio API boundary is not available');return window.TaxonomyPortfolioApi;}
     function busy(active){document.getElementById('reportsBusy').classList.toggle('d-none',!active);}
     function showError(e){const t=document.getElementById('reportsError');t.textContent=e?.message||l('failed');t.classList.remove('d-none');t.focus();document.getElementById('reportsLive').textContent=t.textContent;}
-    window.addEventListener('beforeunload',()=>{if(state.previewController)state.previewController.abort();if(state.previewUrl)URL.revokeObjectURL(state.previewUrl);});
 })();

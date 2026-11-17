@@ -7,10 +7,13 @@ import com.taxonomy.workspace.storage.DslCommit;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.dto.ElementHistoryAggregation;
+import com.taxonomy.dto.RepositoryReadiness;
 import com.taxonomy.error.SearchUnavailableException;
 import com.taxonomy.workspace.service.RepositoryContext;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import org.hibernate.search.engine.search.predicate.SearchPredicate;
+import org.hibernate.search.engine.search.predicate.dsl.SearchPredicateFactory;
 import org.hibernate.search.mapper.orm.Search;
 import org.hibernate.search.mapper.orm.session.SearchSession;
 import org.slf4j.Logger;
@@ -175,44 +178,85 @@ public class CommitIndexService {
         }
         TenantScope scope = TenantScope.from(context);
         try {
-            SearchSession session = Search.session(entityManager);
-            String lower = query.toLowerCase(Locale.ROOT);
-
-            return session.search(ArchitectureCommitIndex.class)
-                    .where(f -> f.bool()
-                            .must(f.match()
-                                    .field("repositoryId")
-                                    .matching(scope.repositoryId()))
-                            .must(scope.workspaceId() == null
-                                    ? f.not(f.exists().field("workspaceId"))
-                                    : f.match().field("workspaceId").matching(scope.workspaceId()))
-                            .must(f.bool()
-                                    .should(f.match()
-                                            .field("tokenizedChangeText")
-                                            .matching(lower)
-                                            .boost(1.0f))
-                                    .should(f.match()
-                                            .field("message")
-                                            .matching(query)
-                                            .boost(0.5f))
-                                    .should(f.match()
-                                            .field("affectedElementIds")
-                                            .matching(lower)
-                                            .boost(3.0f))
-                                    .should(f.match()
-                                            .field("affectedRelationIds")
-                                            .matching(lower)
-                                            .boost(2.0f))))
-                    .sort(f -> f.score())
-                    .fetchHits(maxResults);
+            return textMatches(Search.session(entityManager), scope, query, maxResults);
         } catch (RuntimeException exception) {
-            log.error(
-                    "Hibernate Search commit search failed for repository={} workspace={}: {}",
-                    scope.repositoryId(),
-                    scope.workspaceScopeKey(),
-                    exception.getClass().getSimpleName());
-            throw new SearchUnavailableException();
+            throw searchUnavailable(scope, exception);
         }
+    }
+
+    /** Search across indexed branches only after the selected branch head is searchable. */
+    @Transactional(readOnly = true)
+    public VersionedMatches searchVersioned(String query, int maxResults, RepositoryContext context, String head) {
+        TenantScope scope = TenantScope.from(context);
+        String branch = context.branch();
+        try {
+            SearchSession session = Search.session(entityManager);
+            Long projectionId = headProjectionId(scope, branch, head);
+            if (projectionId == null) {
+                boolean indexed = indexRepository.existsByRepositoryIdAndWorkspaceScopeKeyAndBranch(
+                        scope.repositoryId(), scope.workspaceScopeKey(), branch);
+                return new VersionedMatches(indexed ? RepositoryReadiness.STALE : RepositoryReadiness.MISSING, List.of());
+            }
+            if (!isHeadSearchable(session, scope, branch, head, projectionId)) {
+                return new VersionedMatches(RepositoryReadiness.STALE, List.of());
+            }
+            var hits = textMatches(session, scope, query, maxResults);
+            // Maintenance can replace the database row or invalidate the search index independently.
+            if (!projectionId.equals(headProjectionId(scope, branch, head))
+                    || !isHeadSearchable(session, scope, branch, head, projectionId)) {
+                return new VersionedMatches(RepositoryReadiness.STALE, List.of());
+            }
+            return new VersionedMatches(RepositoryReadiness.FRESH, hits);
+        } catch (RuntimeException exception) {
+            throw searchUnavailable(scope, exception);
+        }
+    }
+
+    public record VersionedMatches(RepositoryReadiness readiness, List<ArchitectureCommitIndex> hits) { }
+
+    private Long headProjectionId(TenantScope scope, String branch, String head) {
+        return indexRepository.findByRepositoryIdAndWorkspaceScopeKeyAndBranchAndCommitId(
+                scope.repositoryId(), scope.workspaceScopeKey(), branch, head)
+                .map(ArchitectureCommitIndex::getId).orElse(null);
+    }
+
+    private boolean isHeadSearchable(SearchSession session, TenantScope scope, String branch, String head, Long projectionId) {
+        return session.search(ArchitectureCommitIndex.class)
+                .where(f -> f.bool().filter(inScope(f, scope)).filter(f.id().matching(projectionId))
+                        .filter(f.match().field("branch").matching(branch))
+                        .filter(f.match().field("commitId").matching(head)))
+                .fetchTotalHitCount() == 1;
+    }
+
+    private List<ArchitectureCommitIndex> textMatches(SearchSession session, TenantScope scope, String query, int maxResults) {
+        if (query == null || query.isBlank() || maxResults <= 0) {
+            return Collections.emptyList();
+        }
+        String lower = query.toLowerCase(Locale.ROOT);
+        return session.search(ArchitectureCommitIndex.class)
+                .where(f -> f.bool().must(inScope(f, scope))
+                        .must(f.bool()
+                                .should(f.match().field("tokenizedChangeText").matching(lower).boost(1.0f))
+                                .should(f.match().field("message").matching(query).boost(0.5f))
+                                .should(f.match().field("affectedElementIds").matching(lower).boost(3.0f))
+                                .should(f.match().field("affectedRelationIds").matching(lower).boost(2.0f))))
+                .sort(f -> f.score())
+                .fetchHits(maxResults);
+    }
+
+    private static SearchPredicate inScope(SearchPredicateFactory factory, TenantScope scope) {
+        return factory.bool()
+                .must(factory.match().field("repositoryId").matching(scope.repositoryId()))
+                .must(scope.workspaceId() == null
+                        ? factory.not(factory.exists().field("workspaceId"))
+                        : factory.match().field("workspaceId").matching(scope.workspaceId()))
+                .toPredicate();
+    }
+
+    private SearchUnavailableException searchUnavailable(TenantScope scope, RuntimeException exception) {
+        log.error("Commit history search failed for repository={} workspace={}: {}",
+                scope.repositoryId(), scope.workspaceScopeKey(), exception.getClass().getSimpleName());
+        return new SearchUnavailableException();
     }
 
     @Transactional(readOnly = true)

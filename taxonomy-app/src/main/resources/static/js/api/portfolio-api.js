@@ -387,6 +387,11 @@ window.TaxonomyPortfolioApi = (function () {
         fetchReport: function (projectId, format, parameters, accept, requestOptions) {
             return getResponse(reportUrl(projectId, format, parameters), accept, requestOptions);
         },
+        downloadReport: function (projectId, format, parameters) {
+            // Keep the source fence until the whole attachment is available, including large reports.
+            return window.TaxonomyApiClient.requestBlob(reportUrl(projectId, format, parameters),
+                {cache: 'no-store'}, {timeoutMillis: 0});
+        },
 
         // ── Portfolio Git and repository state ────────────────────────────────
         getGitState: function () {

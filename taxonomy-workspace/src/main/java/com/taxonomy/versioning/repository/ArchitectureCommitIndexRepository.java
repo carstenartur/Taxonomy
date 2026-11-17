@@ -42,6 +42,9 @@ public interface ArchitectureCommitIndexRepository
             String branch,
             String commitId);
 
+    boolean existsByRepositoryIdAndWorkspaceScopeKeyAndBranch(
+            String repositoryId, String workspaceScopeKey, String branch);
+
     long countByRepositoryIdAndWorkspaceScopeKey(
             String repositoryId,
             String workspaceScopeKey);
