@@ -18,7 +18,6 @@ import org.springframework.beans.factory.ObjectProvider;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -44,14 +43,12 @@ public class DecisionRationaleVisioRenderer implements ReportRendererExtension {
     public ReportRenderResult render(ReportRenderContext context) {
         var report = context.payloadAs(DecisionRationaleReport.class);
         boolean german = report.languageTag().startsWith("de");
-        Map<String, String> reasons = new HashMap<>();
-        report.chapters().forEach(chapter -> chapter.children().forEach(child -> {
-            if (child.reason() != null) reasons.put(child.code(), child.reason());
-        }));
+        var reasons = report.scope().recordedReasons();
         var options = report.scope().options();
-        var nodes = options.includes(Section.TREE) ? report.scope().decisionTree().rows().stream()
+        // Visio always draws the recorded hierarchy for the selected taxonomies.
+        var nodes = report.scope().decisionTree().rows().stream()
                 .map(row -> new VisioDecisionTree.Node(row.depth(), row.code(), row.title(), row.score(),
-                        reasons.get(row.code()), row.responsibility())).toList() : List.<VisioDecisionTree.Node>of();
+                        reasons.get(row.code()), row.responsibility())).toList();
         DiagramModel architecture = options.includes(Section.ARCHITECTURE) && report.architecture() != null
                 ? report.architecture().diagram() : null;
         if (architecture == null) {

@@ -380,6 +380,12 @@ class ProductDemoEndToEndTest {
                     assertThat(document.getParagraphs().getFirst().getText()).startsWith("DEMO · ");
                     assertThat(text.getText()).contains(provider, snapshotId);
                 }
+            } else if (id.equals("visio")) {
+                try (var drawing = new org.apache.poi.xdgf.usermodel.XmlVisioDocument(new ByteArrayInputStream(payload))) {
+                    var page = drawing.getPages().iterator().next();
+                    assertThat(page.getName()).isEqualTo("Entscheidungsbaum – CP");
+                    assertThat(page.getContent().getTopLevelShapes()).anyMatch(shape -> shape.hasMaster());
+                }
             }
         }
     }
