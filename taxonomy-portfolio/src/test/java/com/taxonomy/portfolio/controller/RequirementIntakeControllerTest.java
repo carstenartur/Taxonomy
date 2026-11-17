@@ -52,6 +52,23 @@ class RequirementIntakeControllerTest {
         verify(intake).review(new Request(null,null,"Incoming",null),"alice",context);
     }
 
+    @ParameterizedTest @ValueSource(booleans={true,false})
+    void exactWorkspacePinDistinguishesCentralFromACopyWithTheSameDisplayKey(boolean inCopy) throws Exception {
+        String selected=inCopy ? "__shared__" : null;
+        var context=new WorkspaceContext("alice",selected,"draft","repo");
+        response(context,new Scope("repo",selected,"__shared__","draft"));
+        mvc.perform(post("/api/architecture/lifecycle/intake-review")
+                        .param("workspaceId",inCopy ? "" : "__shared__").param("workspaceScopeKey","__shared__")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"text\":\"Incoming\"}"))
+                .andExpect(status().isNotFound());
+        verifyNoInteractions(intake);
+        mvc.perform(post("/api/architecture/lifecycle/intake-review")
+                        .param("workspaceId",inCopy ? "__shared__" : "").param("workspaceScopeKey","__shared__")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"text\":\"Incoming\"}"))
+                .andExpect(status().isOk());
+        verify(intake).review(new Request(null,null,"Incoming",null),"alice",context);
+    }
+
     private void response(WorkspaceContext context,Scope scope) {
         when(resolver.resolveCurrentUsername()).thenReturn("alice");
         when(resolver.resolveCurrentContext()).thenReturn(context);

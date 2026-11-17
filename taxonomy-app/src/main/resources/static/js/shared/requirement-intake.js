@@ -6,7 +6,14 @@
     function label(en, german) { return de ? german : en; }
     function message(key, en, german) { return window.TaxonomyI18n?.t?.(key) || label(en,german); }
     function scope() { return window.TaxonomyArchitectureWorkflow?.getScope() || {}; }
-    function scopeKey(value) { return JSON.stringify([value.repositoryId || '', value.workspaceScopeKey ?? (value.workspaceId || '__shared__'), value.branch || '']); }
+    function workspaceId(value) {
+        if (value.workspaceId !== undefined) return value.workspaceId ?? '';
+        return value.workspaceScopeKey === '__shared__' ? '' : value.workspaceScopeKey;
+    }
+    function scopeKey(value) {
+        var workspace = workspaceId(value);
+        return JSON.stringify([value.repositoryId, workspace, value.workspaceScopeKey ?? (workspace || '__shared__'), value.branch]);
+    }
     function project(state) { var value = typeof state.options.projectId === 'function' ? state.options.projectId() : state.options.projectId; return value ? Number(value) : null; }
     function entryFingerprint(state, text, projectId) {
         var controls=Array.from(state.form.querySelectorAll?.('input,textarea,select')||[])
@@ -18,11 +25,7 @@
     }
     function resolvesScope(before, after) {
         if (['repositoryId','branch'].some(key=>before[key] != null && before[key] !== after[key])) return false;
-        if (before.workspaceScopeKey !== undefined || before.workspaceId !== undefined) {
-            return (before.workspaceScopeKey ?? (before.workspaceId || '__shared__'))
-                === (after.workspaceScopeKey ?? (after.workspaceId || '__shared__'));
-        }
-        return true;
+        return workspaceId(before) === undefined || workspaceId(before) === workspaceId(after);
     }
     async function awaitInitialContext(state) {
         var captured = entryFingerprint(state,state.options.textElement.value,project(state));
@@ -48,7 +51,7 @@
     function node(tag, text) { var value = document.createElement(tag); if (text !== undefined) value.textContent = text; return value; }
     function cancel(state) { state.cancellation++; state.selected=null; if (state.choose) { state.choose(null); state.choose = null; } }
     function invalidate(state) {
-        state.generation++; state.response = null; state.selected = null; state.pending = null; cancel(state);
+        state.generation++; state.response = null; state.pending = null; state.commandCapture = null; cancel(state);
         state.section.replaceChildren(node('p', label('Review updates when the text is ready.', 'Die Prüfung wird nach der Texteingabe aktualisiert.')));
         window.clearTimeout(state.timer);
         state.timer = window.setTimeout(function () { review(state); }, 650);
@@ -64,7 +67,7 @@
         if (!options?.textElement) throw new Error('Requirement intake needs a text field');
         var section = node('section'); section.className = 'requirement-intake-review border rounded p-3 my-3';
         section.setAttribute('aria-label', label('Requirement review', 'Anforderungsprüfung')); section.setAttribute('aria-live', 'polite');
-        var state = {form:form,options:options,section:section,generation:0,cancellation:0,response:null,pending:null,selected:null,choose:null};
+        var state = {form:form,options:options,section:section,generation:0,cancellation:0,response:null,pending:null,selected:null,choose:null,scope:scope()};
         forms.set(form,state); form.append(section);
         options.textElement.addEventListener('input',function () { invalidate(state); });
         form.addEventListener('input',function (event) { if(event.target!==options.textElement) invalidate(state); });
@@ -74,6 +77,20 @@
         review(state); return state;
     }
     function matching(state, capture) { return capture === fingerprint(state,state.options.textElement.value,project(state)); }
+    function scopeChanged() {
+        var selected = scope();
+        for (var form of document.forms) {
+            var state = forms.get(form);
+            if (!state) continue;
+            if (!resolvesScope(state.scope,selected)) {
+                state.contextReady = false;
+                invalidate(state);
+            }
+            state.scope = selected;
+        }
+    }
+    ['taxonomy:entity-context-changed','taxonomy:architecture-source-changed','taxonomy:repository-context-changed']
+        .forEach(function (event) { document.addEventListener(event,scopeChanged); });
     function review(state) {
         var text = state.options.textElement.value;
         if (!text || !text.trim()) return Promise.resolve(null);
@@ -83,6 +100,8 @@
         var projectId = project(state), capture = fingerprint(state,text,projectId);
         if (state.pending?.capture === capture) return state.pending.promise;
         if (state.response?.capture === capture) return Promise.resolve(state.response.value);
+        if (state.response || state.pending) cancel(state);
+        state.scope = scope();
         var generation = ++state.generation;
         state.section.replaceChildren(node('p',label('Reviewing possible duplicates, changes, additions and conflicts…','Mögliche Duplikate, Änderungen, Ergänzungen und Konflikte werden geprüft…')));
         var api = window.TaxonomyArchitectureLifecycleApi;
