@@ -21,6 +21,8 @@ import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
 
 import java.util.List;
 import java.util.Optional;
@@ -47,12 +49,14 @@ class WorkspaceUpstreamServiceTest {
     private WorkspaceFetchJournalTest.Database database;
     private WorkspaceFetchRecovery recovery;
     private WorkspaceFetchAuthority actors;
+    private RequestAttributes previousRequest;
     private String base;
     private String incoming;
     private String local;
 
     @BeforeEach
     void prepare() throws Exception {
+        previousRequest = RequestContextHolder.getRequestAttributes();
         workspace.setWorkspaceId("w1");
         workspace.setUsername("alice");
         workspace.setSourceBranch("main");
@@ -87,7 +91,12 @@ class WorkspaceUpstreamServiceTest {
         mvc = MockMvcBuilders.standaloneSetup(new WorkspaceUpstreamController(service, resolver, recovery)).build();
     }
 
-    @AfterEach void close() { if (database != null) database.close(); repositories.close(); }
+    @AfterEach void close() {
+        // Standalone MockMvc leaves the failed request bound when the dispatcher propagates an exception.
+        RequestContextHolder.setRequestAttributes(previousRequest);
+        if (database != null) database.close();
+        repositories.close();
+    }
 
     @Test
     void planValidatorTracksIndependentLocalSourceAndTrackingRefMoves() throws Exception {
