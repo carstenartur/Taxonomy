@@ -11,6 +11,8 @@ window.AnalysisApi = (function () {
         if (typeof scope.repositoryId !== 'string' || !scope.repositoryId.trim()
                 || typeof scope.branch !== 'string' || !scope.branch.trim()
                 || typeof workspace !== 'string' || !workspace
+                || scope.workspaceId !== undefined && (scope.workspaceId !== null && typeof scope.workspaceId !== 'string'
+                    || (scope.workspaceId || '__shared__') !== workspace)
                 || typeof commit !== 'string' || !/^[0-9a-f]{40}$/.test(commit)) {
             throw new Error(window.TaxonomyI18n?.t('analysis.evidence.selectVersion')
                 || 'Select a retained architecture version before evaluating its graph.');

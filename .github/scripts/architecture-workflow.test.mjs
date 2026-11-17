@@ -621,6 +621,21 @@ test('adoption handoff keeps independent exact source after changing target cont
     assert.equal(url(links.snapshot).searchParams.get('workspaceId'), 'private-source');
 });
 
+test('source workspace ID distinguishes a copy named __shared__ from an old central link during adoption', () => {
+    const {api, context} = boot('', '/taxonomy');
+    const handoff = url(api.snapshotLinks({...snapshot, workspaceId:'__shared__',
+        exportProvenance:{...snapshot.exportProvenance, requirementVersionId:77}}).adopt);
+    handoff.searchParams.set('workspaceId','independent-target');
+    context.location.search = handoff.search;
+    assert.equal(api.adoptionSource().workspaceId,'__shared__');
+    handoff.searchParams.delete('sourceWorkspaceId');
+    context.location.search = handoff.search;
+    assert.equal(api.adoptionSource().workspaceId,'');
+    handoff.searchParams.set('sourceWorkspaceId','different');
+    context.location.search = handoff.search;
+    assert.equal(api.adoptionSource(),null);
+});
+
 test('incomplete frozen identity disables adoption without disabling ordinary navigation', () => {
     const {api} = boot();
     assert.equal(api.snapshotLinks(snapshot).adopt, null);

@@ -50,6 +50,39 @@ class AnalysisSnapshotAdoptionServiceTest {
                 new RequirementVersionView(3L,1,"Old requirement text", "old-hash",null,"alice",Instant.now(),null)));
     }
     @AfterEach void close() { fixture.close(); }
+    @Test void centralAndAnOwnedCopyNamedSharedCanBothBePreviewedAdoptedAndReopened() throws Exception {
+        String id = "__shared__";
+        var copySource = new WorkspaceContext("alice", id, "draft", "repo-a");
+        when(workspaces.findByWorkspaceId(id)).thenReturn(Optional.of(workspace(id, "alice")));
+        var summary = new SnapshotSummary("snapshot-old",1L,2L,"REQ-2",3L,1,"job",AnalysisStatus.SUCCESS,
+                "mock","model","catalogue-hash","prompt-hash",id,"draft",null,Instant.parse("2026-10-28T12:00:00Z"),1,0,null);
+        when(snapshots.getSnapshot(1L, "snapshot-old", "alice", copySource))
+                .thenReturn(new SnapshotDetail(summary,snapshot.analysis(),null,null,null,List.of(),List.of()));
+        var versions = projects.listRequirementVersions(1L,2L,"alice",source);
+        when(projects.listRequirementVersions(1L,2L,"alice",copySource)).thenReturn(versions);
+        var central = new AnalysisSnapshotAdoptionService.SourceRef("repo-a",id,"draft",1L,2L,3L,"snapshot-old","");
+        var literal = new AnalysisSnapshotAdoptionService.SourceRef("repo-a",id,"draft",1L,2L,3L,"snapshot-old",id);
+        var legacy = request(ref,null);
+        var explicitCentral = new AnalysisSnapshotAdoptionService.Request(legacy.context(),legacy.metadata(),central,null);
+        var old = service.preview(target,legacy);
+        assertThat(old.viewId()).isEqualTo("analysis-a1f42f1117e9463c1eed3829ba8d7aba618f1173fd7c2a8c605dfb1fd65e9eaa");
+        assertThat(service.preview(target,explicitCentral).fingerprint()).isEqualTo(old.fingerprint());
+        service.adopt(target,new AnalysisSnapshotAdoptionService.Request(legacy.context(),legacy.metadata(),central,old.fingerprint()));
+        var next = request(literal,null);
+        var copy = service.preview(target,next);
+        assertThat(copy.viewId()).isNotEqualTo(old.viewId());
+        assertThat(copy.existing()).isFalse();
+        var accepted = service.adopt(target,new AnalysisSnapshotAdoptionService.Request(next.context(),next.metadata(),literal,copy.fingerprint()));
+        var views = new com.taxonomy.dsl.command.ArchitectureDslCommands().model(accepted.accepted().change().dsl()).getViews();
+        assertThat(views).filteredOn(view -> old.viewId().equals(view.getId())).singleElement()
+                .satisfies(view -> assertThat(view.getExtensions()).doesNotContainKey("x-analysis-workspace-id"));
+        assertThat(views).filteredOn(view -> copy.viewId().equals(view.getId())).singleElement()
+                .satisfies(view -> assertThat(view.getExtensions()).containsEntry("x-analysis-workspace-id",id));
+        assertThat(service.preview(target,request(literal,null)).existing()).isTrue();
+        assertThatThrownBy(() -> new AnalysisSnapshotAdoptionService.SourceRef("repo-a","different","draft",1L,2L,3L,"snapshot-old",id))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
     @Test void sharedContributorAdoptsIntoTheSameJournalAndRevocationClosesTheTarget() throws Exception {
         var copy=workspace("copy-a","alice"); copy.setCollaborative(true);
         when(workspaces.findByWorkspaceId("copy-a")).thenReturn(Optional.of(copy));

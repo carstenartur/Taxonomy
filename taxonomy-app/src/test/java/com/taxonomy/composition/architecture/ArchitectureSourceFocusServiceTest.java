@@ -89,6 +89,49 @@ class ArchitectureSourceFocusServiceTest {
         assertThat(json.writeValueAsString(snapshot)).isEqualTo(before);
         verifyNoInteractions(editor,llm,budget,drafts);
     }
+    @Test void explicitWorkspaceIdsPreserveExistingEvidenceHashesAndDistinguishTheOwnedSharedNamedCopy() {
+        String id = "__shared__";
+        var central = RepositoryContext.centralRead("repo","old","alice");
+        var centralSource = new ArchitectureSourceFocusDtos.Source("ANALYSIS_SNAPSHOT","repo",id,"old",null,1L,2L,3L,"saved","");
+        var explicitDraft = new ArchitectureSourceFocusDtos.Source("ANALYSIS_DRAFT","repo","copy","draft",4L,null,null,null,null,"copy");
+        var oldHash = service.investigate(central,request(snapshotSource,"CP-1000",false)).sourceHash();
+        assertThat(oldHash).isEqualTo("c6803d6d170507396c7c51863e1232f8e81adcd43ebeec315c7dba238f8f1b90");
+        assertThat(service.investigate(central,request(centralSource,"CP-1000",false)).sourceHash()).isEqualTo(oldHash);
+        var draftHash = service.investigate(selected,request(draftSource,"CP-1000",false)).sourceHash();
+        assertThat(draftHash).isEqualTo("a04f8bc7165468b7c71999ae2ff772a8d9e4e3a3cd2c333b44d91adcd8db10e9");
+        assertThat(service.investigate(selected,request(explicitDraft,"CP-1000",false)).sourceHash()).isEqualTo(draftHash);
+
+        var copy = new UserWorkspace(); copy.setWorkspaceId(id); copy.setUsername("alice");
+        copy.setSourceRepositoryId("repo"); copy.setCurrentBranch("old");
+        when(workspaces.findByWorkspaceId(id)).thenReturn(Optional.of(copy));
+        var literal = new ArchitectureSourceFocusDtos.Source("ANALYSIS_SNAPSHOT","repo",id,"old",null,1L,2L,3L,"saved",id);
+        var selectedCopy = RepositoryContext.workspace("repo",id,"old","alice");
+        var literalScope = new WorkspaceContext("alice",id,"old","repo");
+        var summary = new SnapshotSummary("saved",1L,2L,"REQ",3L,1,"job",AnalysisStatus.PARTIAL,"fixture","model","catalogue","prompt",id,"old","commit",Instant.EPOCH,1,0,null);
+        when(snapshots.getSnapshot(1L,"saved","alice",literalScope)).thenReturn(new SnapshotDetail(summary,retained,null,null,null,List.of(),List.of()));
+        var response = service.investigate(selectedCopy,request(literal,"CP-1000",false));
+        assertThat(response.sourceHash()).isNotEqualTo(oldHash);
+        assertThat(response.suggestions()).isNotEmpty().allSatisfy(suggestion ->
+                assertThat(suggestion.properties()).containsEntry("x-analysis-workspace-id",id));
+        assertThat(service.sourceCurrent(selectedCopy,literal,response.sourceHash())).isTrue();
+        assertThat(service.sourceCurrent(central,literal,response.sourceHash())).isFalse();
+        assertThat(service.sourceCurrent(selectedCopy,centralSource,oldHash)).isFalse();
+        assertThat(service.sourceCurrent(selectedCopy,snapshotSource,oldHash)).isFalse();
+        when(snapshots.getSnapshot(1L,"saved","alice",literalScope)).thenReturn(snapshot);
+        assertCode(() -> service.investigate(selectedCopy,request(literal,"CP-1000",false)),"SOURCE_IDENTITY_MISMATCH");
+
+        var literalDraft = new ArchitectureSourceFocusDtos.Source("ANALYSIS_DRAFT","repo",id,"old",4L,null,null,null,null,id);
+        var payload = draft.payload().deepCopy();
+        ((tools.jackson.databind.node.ObjectNode)payload.path("analysisReference")).put("workspaceId",id);
+        when(drafts.read("alice",id)).thenReturn(Optional.of(new AnalysisDraftDtos.AnalysisDraftView(id,"old",payload,4L,Instant.EPOCH)));
+        when(operations.request("operation","alice",literalScope)).thenReturn(new ClusterAnalysisObservation.RecoveryInput(
+                "operation","Retained requirement",null,null,new ClusterAnalysisView.ObservationScope(id,"repo","old",null)));
+        when(operations.result("operation","alice",literalScope)).thenReturn(retained);
+        assertThat(service.investigate(selectedCopy,request(literalDraft,"CP-1000",false)).suggestions()).isNotEmpty();
+        assertThatThrownBy(() -> new ArchitectureSourceFocusDtos.Source("ANALYSIS_DRAFT","repo","copy","draft",4L,null,null,null,null,id))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
     @Test void staleVersionAndWrongBranchRejectBeforeReadingOrInferringCanonicalGraph() {
         assertCode(() -> service.investigate(selected,request(new ArchitectureSourceFocusDtos.Source("ANALYSIS_DRAFT","repo","copy","draft",3L,null,null,null,null),"CP-1000",true)),"CONTEXT_CHANGED");
         assertCode(() -> service.investigate(selected,request(new ArchitectureSourceFocusDtos.Source("ANALYSIS_DRAFT","repo","copy","other",4L,null,null,null,null),"CP-1000",true)),"SOURCE_IDENTITY_MISMATCH");

@@ -10,7 +10,7 @@ const [focus, api, lens, guidance] = await Promise.all([
     read('static/js/shared/architecture-source-lens.js'), read('static/js/core/taxonomy-analysis-guidance.js')]);
 const plain = value => JSON.parse(JSON.stringify(value));
 const flush = async () => { for (let i=0;i<8;i++) await new Promise(resolve => setImmediate(resolve)); };
-const draft = {kind:'ANALYSIS_DRAFT',repositoryId:'repo',workspaceScopeKey:'alice',branch:'feature',version:7};
+const draft = {kind:'ANALYSIS_DRAFT',repositoryId:'repo',workspaceScopeKey:'alice',workspaceId:'alice',branch:'feature',version:7};
 const snapshot = {kind:'ANALYSIS_SNAPSHOT',repositoryId:'repo',workspaceScopeKey:'alice',branch:'feature',
     projectId:1,requirementId:2,requirementVersionId:3,snapshotId:'saved-A'};
 const proposal = {id:'hypothesis',sourceId:'arch-a',targetId:'arch-b',relationType:'SUPPORTS',
@@ -263,4 +263,25 @@ test('a departed deferred source ignores a later readiness event before starting
     controller.suspend();f.setSession({ready:true});
     f.context.document.dispatchEvent({type:'taxonomy:analysis-source-ready',detail:{workspaceId:'alice'}});await flush();
     assert.equal(f.saves(),0);assert.equal(f.node('sourceLensEnabled').disabled,true);assert.equal(f.node('lensRoot').hidden,true);
+});
+
+test('a copy named __shared__ keeps its draft, transport, review and adoption separate from central',async()=>{
+    const f=fixture(), controller=f.create();
+    const copy={...snapshot,workspaceScopeKey:'__shared__',workspaceId:'__shared__'};
+    const central={...copy,workspaceId:''};
+    f.setSource({...copy,kind:'snapshot'});await controller.activate(f.workspace.getSource());controller.select('arch-a');
+    f.node('sourceLensEnabled').checked=true;f.node('sourceLensEnabled').onchange();f.node('sourceLensInspect').onclick();await flush();
+    const call=f.calls[0];
+    assert.equal(new URL(call.url,'https://example.test').searchParams.get('workspaceId'),'__shared__');
+    assert.equal(call.options.headers['X-Taxonomy-Workspace-Id'],'__shared__');
+    assert.equal(call.policy.pinnedWorkspaceId,'__shared__');
+    assert.equal(JSON.parse(call.options.body).source.workspaceId,'__shared__');
+    call.resolve(response(central));await flush();
+    assert.equal(f.node('sourceLensSuggestions').textContent,'');
+    assert.match(f.node('sourceLensStates').textContent,/failed/);
+    f.setSession({workspaceId:'__shared__'});
+    f.setSource({kind:'analysis',repositoryId:'repo',workspaceScopeKey:'__shared__',workspaceId:'',branch:'feature'});
+    assert.equal(await controller.activate(f.workspace.getSource()),false);
+    f.setSource({...f.workspace.getSource(),workspaceId:'__shared__'});
+    assert.equal(await controller.activate(f.workspace.getSource()),true);
 });

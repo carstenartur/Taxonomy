@@ -7,12 +7,18 @@ public final class ArchitectureSourceFocusDtos {
     private ArchitectureSourceFocusDtos() { }
     @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
     public record Source(String kind, String repositoryId, String workspaceScopeKey, String branch,
-                         Long version, Long projectId, Long requirementId, Long requirementVersionId, String snapshotId) {
+                         Long version, Long projectId, Long requirementId, Long requirementVersionId, String snapshotId,
+                         String workspaceId) {
+        public Source(String kind, String repositoryId, String workspaceScopeKey, String branch,
+                      Long version, Long projectId, Long requirementId, Long requirementVersionId, String snapshotId) {
+            this(kind, repositoryId, workspaceScopeKey, branch, version, projectId, requirementId, requirementVersionId, snapshotId, null);
+        }
         public Source {
             if (!Set.of("ANALYSIS_DRAFT","ANALYSIS_SNAPSHOT").contains(Objects.toString(kind,"")))
                 throw new IllegalArgumentException("Source kind must be ANALYSIS_DRAFT or ANALYSIS_SNAPSHOT");
             for (String pin : Arrays.asList(repositoryId,workspaceScopeKey,branch))
                 if (!bounded(pin,255)) throw new IllegalArgumentException("Exact bounded source repository, workspace and branch are required");
+            AnalysisSourceWorkspace.resolve(workspaceScopeKey, workspaceId);
             if ("ANALYSIS_DRAFT".equals(kind)) {
                 if (version == null || version < 0 || projectId != null || requirementId != null || requirementVersionId != null || snapshotId != null)
                     throw new IllegalArgumentException("A draft requires its exact version and no snapshot pins");

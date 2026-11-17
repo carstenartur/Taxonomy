@@ -52,11 +52,17 @@ public class AnalysisSnapshotAdoptionService {
     }
 
     public record SourceRef(String repositoryId, String workspaceScopeKey, String branch, Long projectId,
-                            Long requirementId, Long requirementVersionId, String snapshotId) {
+                            Long requirementId, Long requirementVersionId, String snapshotId,
+                            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) String workspaceId) {
+        public SourceRef(String repositoryId, String workspaceScopeKey, String branch, Long projectId,
+                         Long requirementId, Long requirementVersionId, String snapshotId) {
+            this(repositoryId, workspaceScopeKey, branch, projectId, requirementId, requirementVersionId, snapshotId, null);
+        }
         public SourceRef {
             for (String value : Arrays.asList(repositoryId,workspaceScopeKey,branch,snapshotId))
                 if (value == null || value.isBlank() || value.length() > 255 || value.chars().anyMatch(Character::isISOControl))
                     throw new IllegalArgumentException("An explicit bounded source repository, workspace scope, branch and snapshot are required");
+            AnalysisSourceWorkspace.resolve(workspaceScopeKey, workspaceId);
             for (Long id : Arrays.asList(projectId,requirementId,requirementVersionId))
                 if (id == null || id < 1) throw new IllegalArgumentException("Exact source project, requirement and version are required");
         }
@@ -114,7 +120,7 @@ public class AnalysisSnapshotAdoptionService {
             throw problem("NOT_FOUND", "The exact source and target repository are not accessible");
         if (!Context.of(target,request.context().commit(),request.context().revision()).equals(request.context()))
             throw problem("CONTEXT_CHANGED", "The target context changed");
-        String sourceWorkspace = WorkspaceOverlayScope.CENTRAL_SCOPE_KEY.equals(source.workspaceScopeKey()) ? null : source.workspaceScopeKey();
+        String sourceWorkspace = AnalysisSourceWorkspace.resolve(source.workspaceScopeKey(), source.workspaceId());
         if (sourceWorkspace == null) {
             if (!membership.canRead(repositories.getRepository(source.repositoryId()),target.username()))
                 throw problem("NOT_FOUND", "Source repository is not readable");
@@ -179,9 +185,14 @@ public class AnalysisSnapshotAdoptionService {
         });
         relations.forEach(r -> graphParts.addAll(List.of("relation",r.sourceId(),r.relationType(),r.targetId())));
         String graphFingerprint = hash(graphParts);
-        String viewId = "analysis-" + hash(Arrays.asList(source.repositoryId(),source.workspaceScopeKey(),source.branch(),
+        var viewParts = new ArrayList<>(List.of(source.repositoryId(),source.workspaceScopeKey(),source.branch(),
                 source.projectId().toString(),source.requirementId().toString(),source.requirementVersionId().toString(),source.snapshotId()));
         Map<String,String> provenance = new TreeMap<>();
+        if (WorkspaceOverlayScope.CENTRAL_SCOPE_KEY.equals(sourceWorkspace)) {
+            viewParts.add(sourceWorkspace);
+            provenance.put("x-analysis-workspace-id", sourceWorkspace);
+        }
+        String viewId = "analysis-" + hash(viewParts);
         provenance.put("x-analysis-repository-id",source.repositoryId()); provenance.put("x-analysis-workspace-scope",source.workspaceScopeKey());
         provenance.put("x-analysis-branch",source.branch()); provenance.put("x-analysis-project-id",source.projectId().toString());
         provenance.put("x-analysis-requirement-id",source.requirementId().toString()); provenance.put("x-analysis-requirement-version-id",source.requirementVersionId().toString());

@@ -6,8 +6,16 @@ window.ArchitectureFocusSession = function (options) {
     var sourceMode = options.sourceMode === true;
     var budget = 16, used = 0, modelCalls = 0, useAi = !sourceMode, active = null;
     var states = Object.create(null), errors = Object.create(null), queue = [], dwell = new Map(), suggestions = [], reviewed = null;
-    function scopeIdentity(c) { return c ? [c.repositoryId, c.workspaceScopeKey, c.branch,
-        sourceMode ? c.kind : c.actor, sourceMode ? c.snapshotId : c.writeMode].join('\u001f') : ''; }
+    function scopeIdentity(c) {
+        if (!c) return '';
+        var pins = [c.repositoryId, c.workspaceScopeKey, c.branch];
+        if (sourceMode) {
+            var workspace = c.workspaceId !== undefined ? (c.workspaceId ?? '')
+                : c.workspaceScopeKey === '__shared__' ? '' : c.workspaceScopeKey;
+            return pins.concat(workspace, c.kind, c.snapshotId).join('\u001f');
+        }
+        return pins.concat(c.actor, c.writeMode).join('\u001f');
+    }
     function identity(c) { return c ? scopeIdentity(c) + '\u001f' + (sourceMode
         ? [c.version, c.projectId, c.requirementId, c.requirementVersionId].join('\u001f')
         : c.commit + '\u001f' + c.revision) : ''; }

@@ -178,7 +178,10 @@
         if (!repository || !branch || !scope || !positive(current.get('sourceProjectId'))
                 || !positive(current.get('sourceRequirementId')) || !positive(current.get('sourceRequirementVersionId'))
                 || !snapshotId(current.get('sourceSnapshotId'))) return null;
-        return {repositoryId: repository, workspaceScopeKey: scope, branch: branch,
+        var workspace = workspaceId({workspaceScopeKey:scope, workspaceId:current.get('sourceWorkspaceId') ?? undefined});
+        if (current.getAll('sourceWorkspaceId').length > 1 || current.getAll('sourceWorkspaceScopeKey').length > 1
+                || (workspace || '__shared__') !== scope) return null;
+        return {repositoryId: repository, workspaceScopeKey: scope, workspaceId:workspace, branch: branch,
             projectId: Number(current.get('sourceProjectId')), requirementId: Number(current.get('sourceRequirementId')),
             requirementVersionId: Number(current.get('sourceRequirementVersionId')), snapshotId: current.get('sourceSnapshotId')};
     }

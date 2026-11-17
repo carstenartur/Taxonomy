@@ -3,8 +3,12 @@ window.TaxonomyArchitectureSourceLens = (function () {
     'use strict';
     var scopeKeys = ['repositoryId', 'workspaceScopeKey', 'branch'];
     var snapshotKeys = ['projectId', 'requirementId', 'requirementVersionId', 'snapshotId'];
+    function workspaceId(source) {
+        return source.workspaceId !== undefined ? (source.workspaceId ?? '')
+            : source.workspaceScopeKey === '__shared__' ? '' : source.workspaceScopeKey;
+    }
     function sourceKey(value) {
-        return value ? JSON.stringify([value.kind].concat(scopeKeys.map(function (key) { return value[key]; }),
+        return value ? JSON.stringify([value.kind, workspaceId(value)].concat(scopeKeys.map(function (key) { return value[key]; }),
             snapshotKeys.map(function (key) { return value[key]; }))) : '';
     }
     function problem(code) { return Object.assign(new Error(code), { responseBody: { code: code } }); }
@@ -46,7 +50,7 @@ window.TaxonomyArchitectureSourceLens = (function () {
             if (pinned.kind !== 'ANALYSIS_DRAFT') return true;
             var saved = window.TaxonomyAnalysisSession?.state?.();
             return Boolean(saved?.ready && !saved.conflict && !saved.restoring
-                && saved.workspaceId === pinned.workspaceScopeKey && saved.version === pinned.version);
+                && saved.workspaceId === pinned.workspaceId && saved.version === pinned.version);
         }
         function invalidate() {
             generation++; pinned = null; evidence = null; pending = null; deferredActivation = null;
@@ -89,6 +93,9 @@ window.TaxonomyArchitectureSourceLens = (function () {
                 if (typeof source[key] !== 'string' || !source[key]) throw problem('SOURCE_UNAVAILABLE');
                 result[key] = source[key];
             });
+            result.workspaceId = workspaceId(source);
+            if ((result.workspaceId || '__shared__') !== result.workspaceScopeKey
+                    || (source.kind === 'analysis' && !result.workspaceId)) throw problem('SOURCE_UNAVAILABLE');
             if (source.kind === 'snapshot') {
                 snapshotKeys.forEach(function (key) {
                     var value = source[key];
@@ -104,11 +111,11 @@ window.TaxonomyArchitectureSourceLens = (function () {
             var session = window.TaxonomyAnalysisSession;
             if (!session || !session.state || !session.saveNow) throw problem('SOURCE_UNAVAILABLE');
             var before = session.state();
-            if (!before.ready || before.conflict || before.restoring || before.workspaceId !== captured.workspaceScopeKey) throw problem('SOURCE_UNAVAILABLE');
+            if (!before.ready || before.conflict || before.restoring || before.workspaceId !== captured.workspaceId) throw problem('SOURCE_UNAVAILABLE');
             if (await session.saveNow() !== true) throw problem('SOURCE_UNAVAILABLE');
             if (!active || ticket !== generation || sourceKey(workspace.getSource()) !== sourceKey(current)) throw problem('CONTEXT_CHANGED');
             var saved = session.state();
-            if (!saved.ready || saved.conflict || saved.restoring || saved.workspaceId !== captured.workspaceScopeKey
+            if (!saved.ready || saved.conflict || saved.restoring || saved.workspaceId !== captured.workspaceId
                     || !Number.isSafeInteger(saved.version) || saved.version < 0) throw problem('SOURCE_UNAVAILABLE');
             return saved.version;
         }
@@ -160,7 +167,7 @@ window.TaxonomyArchitectureSourceLens = (function () {
                 if (value.kind === 'ANALYSIS_DRAFT') {
                     var saved = window.TaxonomyAnalysisSession?.state?.();
                     if (saved?.ready === false && !saved.conflict && !saved.restoring
-                            && saved.workspaceId === value.workspaceScopeKey) {
+                            && saved.workspaceId === value.workspaceId) {
                         // Workspace publication must settle before the source gate can become ready.
                         // Retry on its later confirmation rather than awaiting that gate here.
                         deferredActivation = { ticket: ticket, source: sourceKey(current), workspaceId: saved.workspaceId };
