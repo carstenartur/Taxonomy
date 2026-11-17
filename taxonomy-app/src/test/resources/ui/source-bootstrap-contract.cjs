@@ -78,13 +78,14 @@ function fixture(page, fetcher, {lifecycle = false} = {}) {
     if (page === 'versioning') nodes.get('dslPreview').previousElementSibling = element('summary');
     // Chrome still publishes its real context; navigation presentation is not part of this contract.
     for (const id of ['applicationContext', 'applicationNavigation', 'applicationNavigationMenu']) nodes.delete(id);
-    const submitButtons = [...nodes.values()].filter(node => node.tagName === 'FORM').map(form => {
+    const forms = [...nodes.values()].filter(node => node.tagName === 'FORM');
+    const submitButtons = forms.map(form => {
         const button = element('button'); button.type = 'submit'; form.append(button); return button;
     });
     // The server-rendered busy indicator starts hidden; production owns every later transition.
     nodes.get('portfolioBusy')?.classList.add('d-none');
     const requirementsBody = element('tbody');
-    const document = events({documentElement: {lang: 'en'}, body: element('body'), cookie: '',
+    const document = events({forms, documentElement: {lang: 'en'}, body: element('body'), cookie: '',
         getElementById: id => nodes.get(id) || null,
         querySelector(selector) {
             if (selector === '.skip-link') return skipLink;

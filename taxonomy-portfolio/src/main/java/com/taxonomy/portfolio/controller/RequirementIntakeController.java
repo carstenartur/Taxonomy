@@ -7,6 +7,7 @@ import com.taxonomy.portfolio.service.RequirementIntakeService;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.web.bind.annotation.*;
+import java.util.Objects;
 
 /** Intake is a read-only review. Applying a choice is a separate architecture command. */
 @RestController
@@ -28,7 +29,7 @@ public class RequirementIntakeController {
         var context=resolver.resolveCurrentContext();
         // These pins assert the caller's displayed selection; they never grant access to another context.
         if ((repositoryId != null && !repositoryId.equals(context.repositoryId()))
-                || (workspaceId != null && !WorkspaceOverlayScope.keyFor(workspaceId).equals(WorkspaceOverlayScope.keyFor(context.workspaceId())))
+                || (workspaceId != null && !workspaceId.strip().equals(Objects.toString(context.workspaceId(), "")))
                 || (workspaceScopeKey != null && !workspaceScopeKey.equals(WorkspaceOverlayScope.keyFor(context.workspaceId())))
                 || (branch != null && !branch.equals(context.currentBranch())))
             throw PortfolioException.notFound("The exact selected review context is unavailable");
