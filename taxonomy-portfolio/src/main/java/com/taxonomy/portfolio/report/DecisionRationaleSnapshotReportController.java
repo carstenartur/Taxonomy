@@ -2,6 +2,7 @@ package com.taxonomy.portfolio.report;
 
 import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
 import com.taxonomy.reporting.api.decision.DecisionReportOptions;
+import com.taxonomy.diagram.VisioDrawingOptions;
 import com.taxonomy.reporting.api.decision.DecisionReportScope;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -99,13 +100,22 @@ public class DecisionRationaleSnapshotReportController {
 
     /** Existing Java callers and unconfigured links retain their established full-report behavior. */
     public ResponseEntity<byte[]> export(Long projectId, String snapshotId, String formatId, String language) {
-        return export(projectId, snapshotId, formatId, language, null, null, null, null, null, false);
+        return export(projectId, snapshotId, formatId, language, null, null, null, null, null, null, null, null, false, false);
     }
 
     public ResponseEntity<byte[]> export(Long projectId, String snapshotId, String formatId, String language,
             DecisionReportOptions.Profile profile, Set<String> taxonomyRoots, DecisionReportOptions.Contents contents,
             DecisionReportOptions.TreeLayout treeLayout, Set<DecisionReportOptions.Section> sections) {
-        return export(projectId, snapshotId, formatId, language, profile, taxonomyRoots, contents, treeLayout, sections, false);
+        return export(projectId, snapshotId, formatId, language, profile, taxonomyRoots, contents, treeLayout,
+                sections, null, null, null, false, false);
+    }
+
+    public ResponseEntity<byte[]> export(Long projectId, String snapshotId, String formatId, String language,
+            DecisionReportOptions.Profile profile, Set<String> taxonomyRoots, DecisionReportOptions.Contents contents,
+            DecisionReportOptions.TreeLayout treeLayout, Set<DecisionReportOptions.Section> sections,
+            boolean showResponsibilities) {
+        return export(projectId, snapshotId, formatId, language, profile, taxonomyRoots, contents, treeLayout,
+                sections, showResponsibilities, null, null, false, false);
     }
 
     @GetMapping("/{formatId}")
@@ -124,9 +134,11 @@ public class DecisionRationaleSnapshotReportController {
             @RequestParam(required = false) DecisionReportOptions.Contents contents,
             @RequestParam(required = false) DecisionReportOptions.TreeLayout treeLayout,
             @RequestParam(required = false) Set<DecisionReportOptions.Section> sections,
-            @RequestParam(defaultValue = "false") boolean showResponsibilities) {
-        DecisionReportOptions options = profile == null && taxonomyRoots == null && contents == null && treeLayout == null && sections == null && !showResponsibilities
-                ? null : new DecisionReportOptions(profile, taxonomyRoots, contents, treeLayout, sections, showResponsibilities);
+            @RequestParam(required = false) Boolean showResponsibilities,
+            @RequestParam(name = "visio.mode", required = false) VisioDrawingOptions.Mode drawingMode,
+            @RequestParam(name = "visio.paper", required = false) VisioDrawingOptions.Paper paper,
+            @RequestParam(name = "visio.appendix", defaultValue = "false") boolean appendix,
+            @RequestParam(name = "visio.shortReasons", defaultValue = "false") boolean shortReasons) {
         ReportRendererExtension renderer = reportRendererRegistry.findByFormatId(
                         DecisionRationaleReportPlugin.REPORT_TYPE_ID, formatId)
                 .orElseThrow(() -> PortfolioException.notFound(
@@ -134,9 +146,13 @@ public class DecisionRationaleSnapshotReportController {
         WorkspaceContext context = workspaceResolver.resolveCurrentContext();
         String username = workspaceResolver.resolveCurrentUsername();
         ReportFormatDescriptor format = renderer.descriptor();
-        if (options == null && ("visio".equals(format.id()) || "visio-pdf".equals(format.id()))) {
-            options = DecisionReportOptions.full();
-        }
+        boolean drawing = "visio".equals(format.id()) || "visio-pdf".equals(format.id());
+        DecisionReportOptions.Visio visio = drawing
+                ? new DecisionReportOptions.Visio(drawingMode, paper, appendix, shortReasons) : null;
+        boolean useDefault = profile == null && taxonomyRoots == null && contents == null && treeLayout == null
+                && sections == null && !Boolean.TRUE.equals(showResponsibilities) && !drawing;
+        DecisionReportOptions options = useDefault ? null
+                : new DecisionReportOptions(profile, taxonomyRoots, contents, treeLayout, sections, showResponsibilities, visio);
         DecisionRationaleReport report;
         if (options == null) {
             report = "docx".equals(format.id().trim().toLowerCase(Locale.ROOT))

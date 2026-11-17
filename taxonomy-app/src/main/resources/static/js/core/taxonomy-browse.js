@@ -1039,6 +1039,19 @@
             var frozenRequest = JSON.parse(JSON.stringify(request));
             var reportModel = S.currentModelBinding ? JSON.parse(JSON.stringify(S.currentModelBinding)) : null;
             var exportContext = window.TaxonomyApiClient.captureContext();
+            async function requestReport(selection) {
+                var scope = await window.TaxonomyArchitectureWorkspace.analysisScope();
+                if (!exportContext() || !scope?.repositoryId || !scope.branch || scope.workspaceId === undefined) {
+                    throw new Error(t('sourceLens.unavailable'));
+                }
+                var query = new URLSearchParams({repositoryId:scope.repositoryId, workspaceId:scope.workspaceId, branch:scope.branch});
+                return window.TaxonomyApiClient.requestBlob('/api/decision-report/' + selection.format + '?' + query, {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(Object.assign({}, frozenRequest, {exportOptions: selection.options, language: selection.language,
+                        modelBinding: selection.options.showResponsibilities && reportModel ? reportModel : undefined}))
+                }, { signal: selection.signal, pinnedWorkspaceId: scope.workspaceId,
+                    timeoutMillis: selection.timeoutMillis });
+            }
             window.TaxonomyDecisionExport.open({
                 source: decisionText,
                 language: request.language,
@@ -1046,18 +1059,9 @@
                 analysisScope: S.lastAnalysisScope,
                 analysisLanguage: S.lastAnalysisLanguage,
                 selectedRoots: S.currentView === 'tree' ? [S.currentTreeRoot] : [],
+                requestReport: requestReport,
                 submit: async function (selection) {
-                    var scope = await window.TaxonomyArchitectureWorkspace.analysisScope();
-                    if (!exportContext() || !scope?.repositoryId || !scope.branch || scope.workspaceId === undefined) {
-                        throw new Error(t('sourceLens.unavailable'));
-                    }
-                    var query = new URLSearchParams({repositoryId:scope.repositoryId, workspaceId:scope.workspaceId, branch:scope.branch});
-                    var report = await window.TaxonomyApiClient.requestBlob('/api/decision-report/' + selection.format + '?' + query, {
-                        method: 'POST', headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify(Object.assign({}, frozenRequest, {exportOptions: selection.options, language: selection.language,
-                            modelBinding: selection.options.showResponsibilities && reportModel ? reportModel : undefined}))
-                    }, { signal: selection.signal, pinnedWorkspaceId: scope.workspaceId,
-                        timeoutMillis: selection.timeoutMillis });
+                    var report = await requestReport(selection);
                     await window.TaxonomyDecisionExport.download(report.response, selection.format, null, selection.signal, report.blob, selection.descriptor);
                 }
             });

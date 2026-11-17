@@ -71,6 +71,30 @@ final class VisioContextPages {
         if (contextOnDrawings) decorateDiagrams(document);
     }
 
+    /** The selected native shape provides the full recorded source in the drawings-only profile. */
+    static void addRequirementShape(VisioDocument document, boolean german) {
+        String source = value(document, "requirementText");
+        if (source == null || source.isBlank()) return;
+        var page = document.getPages().getFirst();
+        double top = page.getShapes().stream().mapToDouble(s -> s.getY() + s.getHeight() / 2).max().orElse(0);
+        top = Math.max(top, page.getConnects().stream().map(c -> c.getTextBox())
+                .filter(java.util.Objects::nonNull).mapToDouble(box -> box.y() + box.height() / 2).max().orElse(0));
+        if (page.getLegend() != null) top = Math.max(top, page.getLegend().y() + page.getLegend().height() / 2);
+        long id = page.getShapes().stream().mapToLong(s -> Long.parseLong(s.getId())).max().orElse(0) + 1;
+        var shape = new VisioShape(Long.toString(id), german ? "Anforderung" : "Requirement",
+                1.5, top + .5, 2, .55, "Requirement", false);
+        shape.getProperties().put("taxonomy.presentationOnly", VisioProperty.bool(true));
+        shape.getProperties().put("taxonomy.requirementText", VisioProperty.text(source));
+        copyContext(document, shape);
+        for (String key : List.of("taxonomy.requirementTitle", "taxonomy.analysisSha256", "taxonomy.requirementVersion")) {
+            var property = document.getProperties().get(key);
+            if (property != null) shape.getProperties().put(key, property);
+        }
+        var sourcePage = document.getProperties().get("taxonomy.requirementStartPage");
+        if (sourcePage != null) shape.getProperties().put("taxonomy.evidencePage", sourcePage);
+        page.getShapes().add(shape);
+    }
+
     /** Also called after optional details, which must receive the same creation/source context. */
     static void decorateDiagrams(VisioDocument document) {
         if (!hasContext(document)) return;

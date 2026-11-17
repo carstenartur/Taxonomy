@@ -2,6 +2,8 @@ package com.taxonomy.reporting.render.decision;
 
 import com.taxonomy.diagram.DiagramLayout;
 import com.taxonomy.diagram.DiagramModel;
+import com.taxonomy.diagram.DiagramNode;
+import com.taxonomy.diagram.VisioDrawingOptions;
 import com.taxonomy.export.VisioDecisionTree;
 import com.taxonomy.export.VisioDiagramService;
 import com.taxonomy.export.VisioPackageBuilder;
@@ -18,6 +20,7 @@ import org.springframework.beans.factory.ObjectProvider;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -48,30 +51,58 @@ public class DecisionRationaleVisioRenderer implements ReportRendererExtension {
         // Visio always draws the recorded hierarchy for the selected taxonomies.
         var nodes = report.scope().decisionTree().rows().stream()
                 .map(row -> new VisioDecisionTree.Node(row.depth(), row.code(), row.title(), row.score(),
-                        reasons.get(row.code()), row.responsibility())).toList();
+                        reasons.get(row.code()), options.showResponsibilities() ? row.responsibility() : null)).toList();
         DiagramModel architecture = options.includes(Section.ARCHITECTURE) && report.architecture() != null
                 ? report.architecture().diagram() : null;
         if (architecture == null) {
             architecture = new DiagramModel(report.title(), List.of(), List.of(), new DiagramLayout("LR", false));
+        } else if (!options.showResponsibilities()) {
+            // A frozen architecture can already contain assignments independent of the decision tree.
+            var visibleNodes = architecture.nodes().stream().map(node -> new DiagramNode(node.id(), node.label(),
+                    node.type(), node.relevance(), node.anchor(), node.layer(), node.depth(), node.selectedForImpact(),
+                    node.parentId(), node.container())).toList();
+            architecture = new DiagramModel(architecture.title(), visibleNodes, architecture.edges(), architecture.layout());
         }
         if (nodes.isEmpty() && architecture.nodes().isEmpty()) {
             throw new IllegalArgumentException("The selection contains no Visio drawing.");
         }
-        var documentProperties = new java.util.LinkedHashMap<String, VisioProperty>();
+        var documentProperties = new LinkedHashMap<String, VisioProperty>();
         documentProperties.put("taxonomy.requirementText", VisioProperty.text(report.requirement()));
         var metadata = report.metadata();
         if (metadata != null) {
-            if (metadata.analysisSnapshotId() != null) documentProperties.put("taxonomy.snapshotId", VisioProperty.text(metadata.analysisSnapshotId()));
-            if (metadata.analysisSnapshotFingerprintSha256() != null) {
-                documentProperties.put("taxonomy.analysisSha256", VisioProperty.text(metadata.analysisSnapshotFingerprintSha256()));
-            }
+            put(documentProperties, "snapshotId", metadata.analysisSnapshotId());
+            put(documentProperties, "analysisSha256", metadata.analysisSnapshotFingerprintSha256());
+            put(documentProperties, "projectId", metadata.projectId());
+            put(documentProperties, "requirementId", metadata.requirementId());
+            put(documentProperties, "requirementVersionId", metadata.requirementVersionId());
+            put(documentProperties, "requirementVersion", metadata.requirementVersionNumber());
+            put(documentProperties, "snapshotCreatedAt", metadata.analysisCreatedAt());
+            put(documentProperties, "workspaceId", metadata.workspaceId());
+            put(documentProperties, "branch", metadata.branch());
         }
-        var drawing = diagrams.convert(architecture, new VisioExportMetadata(documentProperties, Map.of(), Map.of(), List.of()),
-                new VisioDecisionTree(nodes, german));
+        var elements = new LinkedHashMap<String, Map<String, VisioProperty>>();
+        var relations = new LinkedHashMap<String, Map<String, VisioProperty>>();
+        if (options.includes(Section.ARCHITECTURE) && report.architecture() != null) {
+            report.architecture().nodeReasons().forEach((id, reason) ->
+                    elements.put(id, Map.of("taxonomy.presenceReason", VisioProperty.text(reason))));
+            report.architecture().relationReasons().forEach((id, fields) -> {
+                var properties = new LinkedHashMap<String, VisioProperty>();
+                put(properties, "selectionReason", fields.get("presenceReason"));
+                put(properties, "decisionRationale", fields.get("decisionComment"));
+                relations.put(id, properties);
+            });
+        }
+        var drawing = diagrams.convert(architecture, new VisioExportMetadata(documentProperties, elements, relations, List.of()),
+                new VisioDecisionTree(nodes, german),
+                options.visio() == null ? VisioDrawingOptions.screen(german) : options.visio().drawingOptions(german));
         try {
             return new ReportRenderResult(packages.build(drawing));
         } catch (IOException failure) {
             throw new UncheckedIOException("Could not export the decision drawings as Visio", failure);
         }
+    }
+
+    private static void put(Map<String, VisioProperty> properties, String field, Object value) {
+        if (value != null) properties.put("taxonomy." + field, VisioProperty.text(value.toString()));
     }
 }

@@ -3,6 +3,8 @@ package com.taxonomy.export;
 import com.taxonomy.visio.VisioDocument;
 import com.taxonomy.visio.VisioNativeShape;
 import com.taxonomy.visio.VisioPage;
+import com.taxonomy.visio.VisioPageLayout;
+import com.taxonomy.diagram.VisioDrawingOptions;
 
 import java.math.BigDecimal;
 
@@ -16,7 +18,8 @@ final class VisioDrawingView {
         double left = Double.POSITIVE_INFINITY, bottom = Double.POSITIVE_INFINITY;
         double right = Double.NEGATIVE_INFINITY, top = Double.NEGATIVE_INFINITY;
         for (var shape : page.getShapes()) {
-            if (VisioNativeShape.isPresentationOnly(shape)) continue;
+            boolean requirement = document.getDrawingOptions() != null && shape.getProperties().containsKey("taxonomy.requirementText");
+            if (VisioNativeShape.isPresentationOnly(shape) && !requirement) continue;
             left = Math.min(left, shape.getX() - shape.getWidth() / 2);
             right = Math.max(right, shape.getX() + shape.getWidth() / 2);
             bottom = Math.min(bottom, shape.getY() - shape.getHeight() / 2);
@@ -32,6 +35,12 @@ final class VisioDrawingView {
         }
         if (!Double.isFinite(left)) {
             left = 0; bottom = 0; right = 11; top = 8.5;
+        }
+        if (document.getDrawingOptions() != null && document.getDrawingOptions().mode() == VisioDrawingOptions.Mode.WALL) {
+            var sheet = VisioPageLayout.of(page, document.getDrawingOptions());
+            left = bottom = 0;
+            right = sheet.width();
+            top = sheet.height();
         }
         // Target a 960x720 drawing area at 96 dpi, with half an inch of breathing
         // room on each side. Never magnify a small diagram into page-filling text.

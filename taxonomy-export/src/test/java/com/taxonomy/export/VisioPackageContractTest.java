@@ -1,6 +1,8 @@
 package com.taxonomy.export;
 
+import com.taxonomy.diagram.VisioDrawingOptions;
 import com.taxonomy.visio.VisioConnect;
+import com.taxonomy.visio.VisioProperty;
 import com.taxonomy.visio.VisioDocument;
 import com.taxonomy.visio.VisioPage;
 import com.taxonomy.visio.VisioShape;
@@ -23,6 +25,7 @@ import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -40,6 +43,92 @@ class VisioPackageContractTest {
             "http://purl.org/dc/elements/1.1/";
 
     private final VisioPackageBuilder builder = new VisioPackageBuilder();
+
+    @Test
+    void wallSheetFitsNodesAndGluedRelationshipsAtOnePhysicalScale() throws Exception {
+        var document = VisioPackageBuilderTest.representativeDocument();
+        var edge = document.getPages().getFirst().getConnects().getFirst();
+        edge.getProperties().put("taxonomy.reason", VisioProperty.text("Recorded basis"));
+        for (var paper : VisioDrawingOptions.Paper.values()) {
+            document.setDrawingOptions(new VisioDrawingOptions(VisioDrawingOptions.Mode.WALL, paper, false, false, true));
+            var parts = unzip(builder.build(document));
+            var page = parseXml(parts.get("visio/pages/pages.xml")).getDocumentElement();
+            double width = Double.parseDouble(cellValue(page, "PageWidth"));
+            double height = Double.parseDouble(cellValue(page, "PageHeight"));
+            int[] mm = switch (paper) {
+                case A4 -> new int[]{297, 210};
+                case A3 -> new int[]{420, 297};
+                case A2 -> new int[]{594, 420};
+                case A1 -> new int[]{841, 594};
+                case A0 -> new int[]{1189, 841};
+            };
+            assertEquals(mm[0], width * 25.4, 1.e-8);
+            assertEquals(mm[1], height * 25.4, 1.e-8);
+            var shapes = elements(parseXml(parts.get("visio/pages/page1.xml")).getElementsByTagNameNS(VISIO_NS, "Shape"));
+            var first = shapeById(shapes, "10");
+            var last = shapeById(shapes, "42");
+            var arrow = shapeById(shapes, "43");
+            double scale = Double.parseDouble(cellValue(first, "Height"));
+            assertThat(scale).isLessThanOrEqualTo(3);
+            assertThat(cellValue(page, "PrintPageOrientation")).isEqualTo("2");
+            for (String cell : List.of("OnPage", "PagesX", "PagesY")) {
+                assertThat(cellValue(page, cell)).isEqualTo("1");
+            }
+            var expectedKind = Map.of(VisioDrawingOptions.Paper.A4, "9", VisioDrawingOptions.Paper.A3, "8",
+                    VisioDrawingOptions.Paper.A2, "66");
+            if (expectedKind.containsKey(paper)) assertThat(cellValue(page, "PaperKind")).isEqualTo(expectedKind.get(paper));
+            else assertThat(elements(page.getElementsByTagNameNS(VISIO_NS, "Cell")))
+                    .noneMatch(cell -> cell.getAttribute("N").equals("PaperKind"));
+            double x = Double.parseDouble(cellValue(first, "PinX"));
+            double x2 = Double.parseDouble(cellValue(last, "PinX"));
+            assertEquals(2 * scale, Double.parseDouble(cellValue(first, "Width")), 1.e-8);
+            assertEquals(width / 2, (x + x2) / 2, 1.e-8);
+            assertEquals(height / 2, Double.parseDouble(cellValue(first, "PinY")), 1.e-8);
+            assertEquals(x + scale, Double.parseDouble(cellValue(arrow, "BeginX")), 1.e-8);
+            assertEquals(x2 - scale, Double.parseDouble(cellValue(arrow, "EndX")), 1.e-8);
+            assertEquals(12 * scale, Double.parseDouble(cellValue(first, "Size")) * 72, 1.e-8);
+            assertEquals(scale, Double.parseDouble(cellValue(arrow, "LineWeight")) * 72, 1.e-8);
+            assertThat(x - scale).isPositive();
+            assertThat(x2 + scale).isLessThan(width);
+            var property = elements(arrow.getElementsByTagNameNS(VISIO_NS, "Row")).stream()
+                    .filter(row -> row.getAttribute("N").equals("t7461786f6e6f6d792e726561736f6e"))
+                    .findFirst().orElseThrow();
+            assertThat(cellValue(property, "Label")).isEqualTo("Begründung");
+            assertThat(cellValue(property, "Value")).isEqualTo("Recorded basis");
+        }
+    }
+
+    @Test
+    void compactDecisionCardsKeepTwelvePointBaseTypeBeforeWallScaling() throws Exception {
+        var card = new VisioShape("1", "BP · 95%", 2, 2, 3, .6, "BP", false);
+        card.getProperties().put("taxonomy.evaluationStatus", VisioProperty.text("EVALUATED"));
+        var document = documentWithShapes(card);
+        document.setDrawingOptions(new VisioDrawingOptions(VisioDrawingOptions.Mode.WALL, VisioDrawingOptions.Paper.A1,
+                false, false, false));
+        var page = parseXml(entry(builder.build(document), "visio/pages/page1.xml")).getDocumentElement();
+        assertEquals(36, Double.parseDouble(cellValue(page, "Size")) * 72, 1.e-8);
+    }
+
+    @Test
+    void screenKeepsNaturalDrawingGeometryAndIncludesTheSelectableRequirementInItsOpeningView() throws Exception {
+        var document = VisioPackageBuilderTest.representativeDocument();
+        document.setDrawingOptions(VisioDrawingOptions.screen(false));
+        var source = new VisioShape("50", "Requirement", 2, 20, 2, .55, "Requirement", false);
+        source.getProperties().put("taxonomy.presentationOnly", VisioProperty.bool(true));
+        source.getProperties().put("taxonomy.requirementText", VisioProperty.text("Original text"));
+        document.getPages().getFirst().getShapes().add(source);
+        var parts = unzip(builder.build(document));
+        var shapes = elements(parseXml(parts.get("visio/pages/page1.xml")).getElementsByTagNameNS(VISIO_NS, "Shape"));
+        var node = shapeById(shapes, "10");
+        assertThat(cellValue(node, "PinX")).isEqualTo("1.5");
+        assertThat(cellValue(node, "Height")).isEqualTo("1");
+        assertEquals(12, Double.parseDouble(cellValue(node, "Size")) * 72, 1.e-8);
+        var window = (Element) parseXml(parts.get("visio/windows.xml")).getElementsByTagNameNS(VISIO_NS, "Window").item(0);
+        double center = Double.parseDouble(window.getAttribute("ViewCenterY"));
+        double halfHeight = 7.5 / (2 * Double.parseDouble(window.getAttribute("ViewScale")));
+        assertThat(center + halfHeight).isGreaterThanOrEqualTo(20.275);
+        assertThat(center - halfHeight).isLessThanOrEqualTo(1.5);
+    }
 
     @Test
     void pageContentsUsesSchemaCollectionsAndNativeMasterGeometry() throws Exception {

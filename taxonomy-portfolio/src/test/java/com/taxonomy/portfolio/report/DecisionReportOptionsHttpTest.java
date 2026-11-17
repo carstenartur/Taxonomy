@@ -8,7 +8,7 @@ import com.taxonomy.architecture.decision.*;
 import com.taxonomy.reporting.render.document.ReportRendererRegistry;
 import com.taxonomy.extension.api.report.*;
 import com.taxonomy.workspace.service.WorkspaceResolver;
-import org.junit.jupiter.api.Test;
+import com.taxonomy.diagram.VisioDrawingOptions;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -22,8 +22,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 class DecisionReportOptionsHttpTest {
     @ParameterizedTest
-    @CsvSource({"html,FULL", "json,FULL", "visio,", "visio-pdf,"})
-    void fullReportsAndDefaultDrawingExportsLoadSavedStructuralEvidence(String format, String profile) throws Exception {
+    @CsvSource({"html,FULL,false", "json,FULL,false", "visio,,false", "visio-pdf,,false",
+            "visio,,true", "visio-pdf,,true"})
+    void fullReportsAndDrawingExportsLoadSavedStructuralEvidence(String format, String profile, boolean wall) throws Exception {
         var service = mock(DecisionRationaleSnapshotReportService.class);
         var words = mock(SnapshotWordReportService.class);
         var workspace = mock(WorkspaceResolver.class);
@@ -40,8 +41,18 @@ class DecisionReportOptionsHttpTest {
                 new ReportRendererRegistry(List.of(renderer)), workspace, words)).build();
         var request = get("/api/projects/41/snapshots/snapshot-1/decision-report/" + format).param("language", "de");
         if (profile != null) request.param("profile", profile);
+        if (wall) request.param("visio.mode", "WALL").param("visio.paper", "A0")
+                .param("visio.appendix", "true").param("visio.shortReasons", "true");
         mvc.perform(request).andExpect(status().isOk());
-        verify(words).loadEvidence(eq(41L), eq("snapshot-1"), eq("auditor"), any(), eq(Locale.GERMAN), any());
+        var options = ArgumentCaptor.forClass(DecisionReportOptions.class);
+        verify(words).loadEvidence(eq(41L), eq("snapshot-1"), eq("auditor"), any(), eq(Locale.GERMAN), options.capture());
+        if (wall) {
+            assertThat(options.getValue().visio()).isEqualTo(new DecisionReportOptions.Visio(
+                    VisioDrawingOptions.Mode.WALL, VisioDrawingOptions.Paper.A0, true, true));
+        } else if (format.startsWith("visio")) {
+            assertThat(options.getValue().visio().mode()).isEqualTo(VisioDrawingOptions.Mode.SCREEN);
+            assertThat(options.getValue().showResponsibilities()).isTrue();
+        } else assertThat(options.getValue().visio()).isNull();
         verify(words, never()).load(any(), any(), any(), any(), any(), any());
         verifyNoInteractions(service);
     }

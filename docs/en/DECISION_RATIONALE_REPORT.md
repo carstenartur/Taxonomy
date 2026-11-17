@@ -197,7 +197,9 @@ The complete scenario fixture retains render QA ceilings of 74 decision pages an
 
 ## Visio drawings as a PDF
 
-Choose **Visio PDF (.pdf)** in the decision-report dialog to download the selected decision trees and, for a saved snapshot with an architecture, the architecture drawing. Each drawing keeps its Visio page size. **Visio (.vsdx)** provides the editable source. Both formats use the selected report language and captured data.
+Choose **Visio PDF (.pdf)** in the decision-report dialog to export the selected decision trees and any saved snapshot architecture as fixed drawing pages. **Visio (.vsdx)** provides the same drawings with editable shapes and connectors. Both formats use the selected report language and captured data.
+
+With **Explore on screen**, each page is sized for its drawing. **Print as a wall chart** uses one paper size for all pages, from A4 to A0 landscape (A1 by default). Both layouts start without a report appendix. Select **Include report appendix** to add supporting pages. For paper selection and print preview, see the [user guide](USER_GUIDE.md#configurable-decision-report).
 
 To enable the PDF format, install LibreOffice Draw and the Poppler commands `pdfunite` and `pdfinfo` on the application host. Make `soffice`, `pdfunite` and `pdfinfo` available on the service account's PATH. Set `taxonomy.reporting.visio-pdf.enabled=true` and restart. The default is off. Each application instance renders one request at a time, in a private temporary profile. A busy converter returns HTTP 503 and the download can be retried. The render processes share a 90-second deadline. The converter supports the full native export of 32 diagram pages plus 128 evidence pages and up to 32 MiB of source XML. Conversion limits are 32 MiB for the input ZIP, 64 MiB after expansion and 512 MiB across the temporary single-page packages. The PDF output limit is 64 MiB.
 

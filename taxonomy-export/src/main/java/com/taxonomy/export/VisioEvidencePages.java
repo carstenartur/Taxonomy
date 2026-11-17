@@ -55,34 +55,8 @@ final class VisioEvidencePages {
             entries.add(new Entry(key, fields, values));
         }
         if (entries.isEmpty()) return;
+        appendTextPages(document, entries, "Evidence ", "Full recorded evidence · ", " · N = node, R = relationship");
 
-        var pages = new ArrayList<List<String>>();
-        var current = new ArrayList<String>();
-        for (var entry : entries) {
-            var lines = new ArrayList<String>();
-            for (String field : entry.fields()) {
-                // A conservative allowance protects the readable 10pt size if Visio substitutes fonts.
-                lines.addAll(DiagramTextWrapper.wrapMeasured(field, FONT, (WIDTH * 72 - 20) / 1.15,
-                        Integer.MAX_VALUE, ""));
-            }
-            if (!current.isEmpty() && LINES_PER_PAGE - current.size() < Math.min(3, lines.size())) {
-                pages.add(List.copyOf(current)); current.clear();
-            }
-            entry.properties().put("taxonomy.evidencePage", VisioProperty.text("Evidence " + (pages.size() + 1)));
-            for (String line : lines) {
-                if (current.size() == LINES_PER_PAGE) { pages.add(List.copyOf(current)); current.clear(); }
-                current.add(line);
-            }
-            if (current.size() < LINES_PER_PAGE) current.add("");
-        }
-        if (!current.isEmpty()) pages.add(List.copyOf(current));
-        long existingEvidence = document.getPages().stream().filter(VisioPage::isEvidencePage).count();
-        if (existingEvidence + pages.size() > VisioPackageValidator.MAX_EVIDENCE_PAGES
-                || document.getPages().size() + pages.size() > VisioPackageValidator.MAX_PAGES) {
-            throw new IllegalArgumentException("Complete readable Visio evidence exceeds the "
-                    + VisioPackageValidator.MAX_EVIDENCE_PAGES
-                    + "-page evidence capacity; select fewer elements. No reasons were truncated.");
-        }
         var links = new HashMap<String, VisioProperty>();
         entries.forEach(entry -> links.put(entry.key(), entry.properties().get("taxonomy.evidencePage")));
         // Impact pages contain independent copies of native graph shapes; their evidence links agree.
@@ -90,21 +64,6 @@ final class VisioEvidencePages {
             page.getShapes().forEach(shape -> copyLink(shape.getProperties(), links));
             page.getConnects().forEach(relation -> copyLink(relation.getProperties(), links));
         }
-        int count = 0;
-        for (var lines : pages) {
-            String name = "Evidence " + (++count);
-            var page = new VisioPage(Integer.toString(document.getPages().size()), name);
-            page.setEvidencePage(true);
-            double height = .2 + lines.size() * LINE_HEIGHT;
-            var text = new VisioShape("1", String.join("\n", lines), 4.15, 10.65 - height / 2,
-                    WIDTH, height, "Evidence", false);
-            text.getProperties().put("taxonomy.presentationOnly", VisioProperty.bool(true));
-            page.getShapes().add(text);
-            page.setLegend(new VisioTextBox("Full recorded evidence · " + name + " / " + pages.size()
-                    + " · N = node, R = relationship", 4.15, 11.05, WIDTH, .4));
-            document.getPages().add(page);
-        }
-        document.getProperties().put("taxonomy.evidencePages", VisioProperty.number(pages.size()));
         String notice = "Full recorded reasons and labels: Evidence pages, matched by N/R keys.";
         var legend = overview.getLegend();
         double top = overview.getShapes().stream().mapToDouble(shape -> shape.getY() + shape.getHeight() / 2).max().orElse(0);
@@ -119,6 +78,71 @@ final class VisioEvidencePages {
         }
         document.getLosses().add(new VisioLoss("document", "", "visibleEvidence", "MAPPED",
                 "Full recorded reasons and long labels are readable on Evidence pages, identified by the overview N/R keys. Text continues onto following pages without shortening."));
+    }
+
+    static void appendTreeReasons(VisioDocument document, int firstDecisionPage, boolean german) {
+        var entries = new ArrayList<Entry>();
+        for (var page : document.getPages().subList(firstDecisionPage, document.getPages().size())) {
+            for (var shape : page.getShapes()) {
+                var values = shape.getProperties();
+                var reason = values.get("taxonomy.presenceReason");
+                if (reason == null || reason.value().isBlank()) continue;
+                String id = value(values, "taxonomy.id");
+                var fields = List.of(id + " · " + value(values, "taxonomy.label"), reason.value());
+                entries.add(new Entry(id, fields, values));
+            }
+        }
+        if (!entries.isEmpty()) {
+            appendTextPages(document, entries, german ? "Entscheidungsgründe " : "Decision reasons ", "", "");
+        }
+    }
+
+    private static void appendTextPages(VisioDocument document, List<Entry> entries, String prefix,
+                                        String titlePrefix, String titleSuffix) {
+
+        var pages = new ArrayList<List<String>>();
+        var current = new ArrayList<String>();
+        for (var entry : entries) {
+            var lines = new ArrayList<String>();
+            for (String field : entry.fields()) {
+                // A conservative allowance protects the readable 10pt size if Visio substitutes fonts.
+                lines.addAll(DiagramTextWrapper.wrapMeasured(field, FONT, (WIDTH * 72 - 20) / 1.15,
+                        Integer.MAX_VALUE, ""));
+            }
+            if (!current.isEmpty() && LINES_PER_PAGE - current.size() < Math.min(3, lines.size())) {
+                pages.add(List.copyOf(current)); current.clear();
+            }
+            entry.properties().put("taxonomy.evidencePage", VisioProperty.text(prefix + (pages.size() + 1)));
+            for (String line : lines) {
+                if (current.size() == LINES_PER_PAGE) { pages.add(List.copyOf(current)); current.clear(); }
+                current.add(line);
+            }
+            if (current.size() < LINES_PER_PAGE) current.add("");
+        }
+        if (!current.isEmpty()) pages.add(List.copyOf(current));
+        long existingEvidence = document.getPages().stream().filter(VisioPage::isEvidencePage).count();
+        if (existingEvidence + pages.size() > VisioPackageValidator.MAX_EVIDENCE_PAGES
+                || document.getPages().size() + pages.size() > VisioPackageValidator.MAX_PAGES) {
+            throw new IllegalArgumentException("Complete readable Visio evidence exceeds the "
+                    + VisioPackageValidator.MAX_EVIDENCE_PAGES
+                    + "-page evidence capacity; select fewer elements. No reasons were truncated.");
+        }
+        int count = 0;
+        for (var lines : pages) {
+            String name = prefix + (++count);
+            var page = new VisioPage(Integer.toString(document.getPages().size()), name);
+            page.setEvidencePage(true);
+            double height = .2 + lines.size() * LINE_HEIGHT;
+            var text = new VisioShape("1", String.join("\n", lines), 4.15, 10.65 - height / 2,
+                    WIDTH, height, "Evidence", false);
+            text.getProperties().put("taxonomy.presentationOnly", VisioProperty.bool(true));
+            page.getShapes().add(text);
+            page.setLegend(new VisioTextBox(titlePrefix + name + " / " + pages.size() + titleSuffix, 4.15, 11.05, WIDTH, .4));
+            document.getPages().add(page);
+        }
+        int existingEvidencePages = Integer.parseInt(document.getProperties()
+                .getOrDefault("taxonomy.evidencePages", VisioProperty.number(0)).value());
+        document.getProperties().put("taxonomy.evidencePages", VisioProperty.number(existingEvidencePages + pages.size()));
     }
 
     private static void copyLink(Map<String, VisioProperty> values, Map<String, VisioProperty> links) {
