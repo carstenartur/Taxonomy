@@ -142,7 +142,7 @@ public class RepositoryWorkspaceService {
                 });
             } else {
                 workspace.setProvisioningStatus(WorkspaceProvisioningStatus.FAILED);
-                workspace.setProvisioningError(WorkspaceProvisioningClaim.message(exception));
+                workspace.setProvisioningError(WorkspaceProvisioningStatus.FAILURE_MESSAGE);
                 workspaceRepository.save(workspace);
             }
             if (exception instanceof org.springframework.web.server.ResponseStatusException conflict) throw conflict;

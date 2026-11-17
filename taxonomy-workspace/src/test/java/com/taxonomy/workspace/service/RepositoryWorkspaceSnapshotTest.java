@@ -2,6 +2,8 @@ package com.taxonomy.workspace.service;
 
 import com.taxonomy.workspace.model.*;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.storage.CommitProvenance;
+import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -11,6 +13,74 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class RepositoryWorkspaceSnapshotTest {
+    @Test
+    void malformedSourceEvidenceIsNotCopiedIntoWorkingCopyFailureMetadata() throws Exception {
+        String privatePayload = "private-provisioning-document-742";
+        try (var factory = new DslGitRepositoryFactory(null)) {
+            var source = factory.getCentralRepository("source");
+            String captured = malformedProvenance(source, privatePayload);
+            var metadata = new SystemRepository(); metadata.setRepositoryId("source"); metadata.setDefaultBranch("approved");
+            var catalogue = mock(SystemRepositoryService.class);
+            when(catalogue.getRepository("source")).thenReturn(metadata);
+            var retained = new java.util.concurrent.atomic.AtomicReference<UserWorkspace>();
+            var rows = mock(UserWorkspaceRepository.class);
+            when(rows.save(any(UserWorkspace.class))).thenAnswer(call -> {
+                UserWorkspace row = call.getArgument(0);
+                retained.set(row);
+                return row;
+            });
+            var memberships = mock(RepositoryMembershipService.class);
+            when(memberships.canContribute(metadata, "owner")).thenReturn(true);
+            var service = new RepositoryWorkspaceService(rows, catalogue, factory, memberships);
+            service.configureActorAccess(WorkspaceProvisioningTestClaims.fixtureOwners());
+
+            var failure = assertThrows(IllegalStateException.class,
+                    () -> service.createWorkingCopy("owner", "source", "approved", "Working copy", null));
+
+            // The real parser reads a malformed native Git blob; no injected exception supplies the message.
+            assertInstanceOf(com.fasterxml.jackson.core.JsonProcessingException.class, failure.getCause());
+            assertTrue(failure.getCause().getMessage().contains(privatePayload));
+            UserWorkspace row = retained.get();
+            assertNotNull(row);
+            assertEquals(WorkspaceProvisioningStatus.FAILED, row.getProvisioningStatus());
+            assertEquals("source", row.getSourceRepositoryId());
+            assertEquals("approved", row.getSourceBranch());
+            assertFalse(row.getProvisioningError().contains(privatePayload));
+            assertFalse(row.getProvisioningError().contains("com.fasterxml.jackson"));
+            assertFalse(row.getProvisioningError().isBlank());
+            assertTrue(row.getProvisioningError().length() <= 255);
+            assertNull(row.getCurrentCommit());
+            assertEquals(captured, source.getHeadCommit("approved"));
+            assertNull(factory.openWorkspaceRepository(row.getWorkspaceId()).getHeadCommit("draft"));
+        }
+    }
+
+    private static String malformedProvenance(DslGitRepository source, String privatePayload) throws Exception {
+        var git = source.getGitRepository();
+        try (var writer = git.newObjectInserter()) {
+            var tree = new org.eclipse.jgit.lib.TreeFormatter();
+            tree.append(CommitProvenance.FILENAME, org.eclipse.jgit.lib.FileMode.REGULAR_FILE,
+                    writer.insert(org.eclipse.jgit.lib.Constants.OBJ_BLOB,
+                            ("{\"version\":\"" + privatePayload + "\",\"operation\":\"copy\",\"sources\":[]}")
+                                    .getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+            tree.append(DslGitRepository.DSL_FILENAME, org.eclipse.jgit.lib.FileMode.REGULAR_FILE,
+                    writer.insert(org.eclipse.jgit.lib.Constants.OBJ_BLOB,
+                            "meta { version: \"original\"; }".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+            var commit = new org.eclipse.jgit.lib.CommitBuilder();
+            commit.setTreeId(writer.insert(tree));
+            commit.setAuthor(new org.eclipse.jgit.lib.PersonIdent("source-owner", "source-owner@example.test"));
+            commit.setCommitter(commit.getAuthor());
+            commit.setMessage("Historical snapshot with malformed provenance");
+            var id = writer.insert(commit);
+            writer.flush();
+            var update = git.updateRef("refs/heads/approved");
+            update.setExpectedOldObjectId(org.eclipse.jgit.lib.ObjectId.zeroId());
+            update.setNewObjectId(id);
+            assertEquals(org.eclipse.jgit.lib.RefUpdate.Result.NEW, update.update());
+            return id.name();
+        }
+    }
+
     @Test
     void workingCopyPreservesTheOriginalCapturedCommitAndItsParents() throws Exception {
         try (var factory = spy(new DslGitRepositoryFactory(null))) {

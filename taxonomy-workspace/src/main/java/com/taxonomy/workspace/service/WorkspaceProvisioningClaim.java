@@ -47,7 +47,7 @@ record WorkspaceProvisioningClaim(UserWorkspace workspace, String worker, Instan
                     failure.addSuppressed(cleanupFailure);
                 }
                 current.setProvisioningStatus(WorkspaceProvisioningStatus.FAILED);
-                current.setProvisioningError(message(failure));
+                current.setProvisioningError(WorkspaceProvisioningStatus.FAILURE_MESSAGE);
             });
         } catch (IOException | RuntimeException lostClaimOrDatabaseFailure) {
             failure.addSuppressed(lostClaimOrDatabaseFailure);
@@ -71,9 +71,4 @@ record WorkspaceProvisioningClaim(UserWorkspace workspace, String worker, Instan
         }
     }
 
-    static String message(Throwable failure) {
-        String message = failure.getMessage();
-        if (message == null || message.isBlank()) return failure.getClass().getSimpleName();
-        return message.substring(0, Math.min(message.length(), 255));
-    }
 }
