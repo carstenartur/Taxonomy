@@ -1056,7 +1056,8 @@
                         method: 'POST', headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify(Object.assign({}, frozenRequest, {exportOptions: selection.options, language: selection.language,
                             modelBinding: selection.options.showResponsibilities && reportModel ? reportModel : undefined}))
-                    }, { signal: selection.signal, pinnedWorkspaceId: scope.workspaceId });
+                    }, { signal: selection.signal, pinnedWorkspaceId: scope.workspaceId,
+                        timeoutMillis: selection.timeoutMillis });
                     await window.TaxonomyDecisionExport.download(report.response, selection.format, null, selection.signal, report.blob, selection.descriptor);
                 }
             });

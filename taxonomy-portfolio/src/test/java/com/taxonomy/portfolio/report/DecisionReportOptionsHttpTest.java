@@ -10,6 +10,7 @@ import com.taxonomy.extension.api.report.*;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -20,8 +21,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 class DecisionReportOptionsHttpTest {
-    @ParameterizedTest @ValueSource(strings={"html","json"})
-    void configuredNonWordExportsLoadStructuralEvidenceWithoutWordPaginationLimits(String format) throws Exception {
+    @ParameterizedTest
+    @CsvSource({"html,FULL", "json,FULL", "visio,", "visio-pdf,"})
+    void fullReportsAndDefaultDrawingExportsLoadSavedStructuralEvidence(String format, String profile) throws Exception {
         var service = mock(DecisionRationaleSnapshotReportService.class);
         var words = mock(SnapshotWordReportService.class);
         var workspace = mock(WorkspaceResolver.class);
@@ -36,13 +38,14 @@ class DecisionReportOptionsHttpTest {
         when(renderer.render(any())).thenReturn(new ReportRenderResult(new byte[]{1,2,3}));
         var mvc = MockMvcBuilders.standaloneSetup(new DecisionRationaleSnapshotReportController(service,
                 new ReportRendererRegistry(List.of(renderer)), workspace, words)).build();
-        mvc.perform(get("/api/projects/41/snapshots/snapshot-1/decision-report/" + format)
-                .param("language", "de").param("profile", "FULL")).andExpect(status().isOk());
+        var request = get("/api/projects/41/snapshots/snapshot-1/decision-report/" + format).param("language", "de");
+        if (profile != null) request.param("profile", profile);
+        mvc.perform(request).andExpect(status().isOk());
         verify(words).loadEvidence(eq(41L), eq("snapshot-1"), eq("auditor"), any(), eq(Locale.GERMAN), any());
         verify(words, never()).load(any(), any(), any(), any(), any(), any());
         verifyNoInteractions(service);
     }
-    @ParameterizedTest @ValueSource(strings={"docx","html","json"})
+    @ParameterizedTest @ValueSource(strings={"docx","html","json","visio-pdf"})
     void compactSelectionIsBoundConsistentlyWithoutLoadingArchitecture(String format) throws Exception {
         var service = mock(DecisionRationaleSnapshotReportService.class);
         var words = mock(SnapshotWordReportService.class);
