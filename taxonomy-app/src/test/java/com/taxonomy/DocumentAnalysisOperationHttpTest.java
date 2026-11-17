@@ -34,6 +34,11 @@ class DocumentAnalysisOperationHttpTest {
                 entered.countDown(); assertTrue(release.await(15,TimeUnit.SECONDS)); return List.of();
             });
             String observer = UUID.randomUUID().toString();
+            String observation = "/api/analysis-adapters/observations/" + observer;
+            fixture.mvc.perform(get(observation)).andExpect(status().isNotFound());
+            fixture.mvc.perform(get(observation).param("awaitAdmission","true"))
+                    .andExpect(status().isNoContent()).andExpect(header().string("Cache-Control","no-store"))
+                    .andExpect(header().doesNotExist("X-Analysis-Operation-Id"));
             var original = pool.submit(() -> {
                 fixture.login();
                 try { return fixture.mvc.perform(multipart("/api/documents/extract-ai").file(fixture.file)
@@ -42,12 +47,14 @@ class DocumentAnalysisOperationHttpTest {
             });
             try {
                 assertTrue(entered.await(10,TimeUnit.SECONDS));
-                String observation = "/api/analysis-adapters/observations/" + observer;
-                var first = fixture.mvc.perform(get(observation)).andExpect(status().isAccepted())
+                var first = fixture.mvc.perform(get(observation).param("awaitAdmission","true")).andExpect(status().isAccepted())
                         .andExpect(jsonPath("$.sequence").value(0)).andReturn().getResponse();
                 String id = first.getHeader("X-Analysis-Operation-Id");
                 var actor = fixture.actor.getAndSet(PrincipalId.create());
                 fixture.mvc.perform(get(observation)).andExpect(status().isNotFound());
+                fixture.mvc.perform(get(observation).param("awaitAdmission","true"))
+                        .andExpect(status().isNoContent()).andExpect(content().string(""))
+                        .andExpect(header().doesNotExist("X-Analysis-Source-Commit"));
                 fixture.actor.set(actor);
                 var accepted = fixture.mvc.perform(multipart("/api/documents/extract-ai").file(fixture.file)
                         .header("Idempotency-Key","active-command")).andExpect(status().isAccepted())

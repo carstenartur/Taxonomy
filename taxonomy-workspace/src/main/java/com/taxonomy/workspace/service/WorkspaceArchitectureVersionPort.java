@@ -16,6 +16,12 @@ public interface WorkspaceArchitectureVersionPort {
         return version(context, rationale, action);
     }
 
+    /** Adopt a reviewed personal rebase while the caller holds its workspace and projection rows. */
+    default <T> T applyPreparedWorkspaceRebase(RepositoryContext context, String expectedHead, String candidate,
+                                               String rationale, GitAction<T> action) throws IOException {
+        return applyPreparedVersion(context, expectedHead, candidate, rationale, action);
+    }
+
     /** Apply an already prepared version under the editor journal lock, preserving edits accepted after preparation. */
     default <T> T applyPreparedVersion(RepositoryContext context, String expectedHead, String candidate, String rationale,
                                        GitAction<T> action) throws IOException {

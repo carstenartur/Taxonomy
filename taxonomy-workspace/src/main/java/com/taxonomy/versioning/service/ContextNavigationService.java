@@ -95,6 +95,20 @@ public class ContextNavigationService {
         return centralReadContext(scope.username(), scope.repositoryId(), scope.currentBranch());
     }
 
+    /** Hold the same browser selection monitor used by navigation changes through the reviewed command. */
+    public <T> T withEditableBranch(WorkspaceContext scope, String expectedContextId,
+            com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort.GitAction<T> action) throws IOException {
+        var state = scopedNavigation(scope);
+        synchronized (state) {
+            var current = state.getCurrentContext();
+            if (current.mode() != ContextMode.EDITABLE)
+                throw new AccessDeniedException("An editable workspace context is required");
+            if (!current.contextId().equals(expectedContextId) || !scope.currentBranch().equals(current.branch()))
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "The reviewed workspace context changed");
+            return action.run();
+        }
+    }
+
     record TransferTarget(WorkspaceNavigation state, WorkspaceNavigation.NavigationSelection selection, String branch) {
         /** The caller holds the same state monitor as setCurrentContext through the Git ref update. */
         void requireCurrent() {

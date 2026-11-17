@@ -2,6 +2,7 @@ package com.taxonomy.workspace.service;
 
 import com.taxonomy.identity.StableIdentityHash;
 import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.RebaseDslConflict;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
@@ -12,12 +13,22 @@ import org.eclipse.jgit.revwalk.filter.RevFilter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /** A read-only ancestry plan against the last fetched upstream commit. Content conflicts are not evaluated. */
 public record UpstreamRebasePlan(String repositoryId, String workspaceId, String branch, String localCommit,
                                  WorkspaceUpstreamService.Status upstream, State status, String mergeBase,
-                                 List<Commit> commits) {
+                                 List<Commit> commits, String recoverableCommit) {
+    UpstreamRebasePlan(String repositoryId, String workspaceId, String branch, String localCommit,
+                       WorkspaceUpstreamService.Status upstream, State status, String mergeBase, List<Commit> commits) {
+        this(repositoryId, workspaceId, branch, localCommit, upstream, status, mergeBase, commits, null);
+    }
+
+    UpstreamRebasePlan withRecoverableCommit(String commit) {
+        return new UpstreamRebasePlan(repositoryId, workspaceId, branch, localCommit, upstream, status, mergeBase, commits, commit);
+    }
+
     public enum State { NO_LOCAL_BRANCH, NO_TRACKING, UNRELATED, AMBIGUOUS_BASE, NON_LINEAR, TOO_LONG,
                         UP_TO_DATE, FAST_FORWARD, REPLAY }
     public record Commit(String id, String subject) {}
@@ -57,11 +68,22 @@ public record UpstreamRebasePlan(String repositoryId, String workspaceId, String
 
     /** Exact ref, commit and ordered replay identities supplied by an explicit user action. */
     public record ApplyRequest(String expectedRefTag, String expectedLocalCommit,
-                               String expectedTrackedCommit, List<String> orderedCommits) {
+                               String expectedTrackedCommit, List<String> orderedCommits,
+                               Map<String, RebaseDslConflict.Resolution> resolutions) {
+        public ApplyRequest(String expectedRefTag, String expectedLocalCommit, String expectedTrackedCommit,
+                            List<String> orderedCommits) {
+            this(expectedRefTag, expectedLocalCommit, expectedTrackedCommit, orderedCommits, Map.of());
+        }
+
         public ApplyRequest {
             Objects.requireNonNull(expectedRefTag, "expectedRefTag");
             Objects.requireNonNull(expectedLocalCommit, "expectedLocalCommit");
             Objects.requireNonNull(expectedTrackedCommit, "expectedTrackedCommit");
+            resolutions = resolutions == null ? Map.of() : Map.copyOf(resolutions);
+            if (resolutions.size() > MAX_REPLAY_COMMITS || resolutions.values().stream()
+                    .mapToLong(value -> value.text().length()).sum() > 4L * 1024 * 1024) {
+                throw new IllegalArgumentException("The conflict resolutions exceed the replay limit");
+            }
             orderedCommits = List.copyOf(Objects.requireNonNull(orderedCommits, "orderedCommits"));
         }
     }
@@ -69,6 +91,11 @@ public record UpstreamRebasePlan(String repositoryId, String workspaceId, String
     static DslGitRepository.RebaseReplay apply(GitUpstreamTransfer transfer, String repositoryId,
                                                String workspaceId, String branch, ApplyRequest request)
             throws IOException {
+        return replay(transfer, repositoryId, workspaceId, branch, request, true);
+    }
+
+    static DslGitRepository.RebaseReplay replay(GitUpstreamTransfer transfer, String repositoryId, String workspaceId,
+                                                String branch, ApplyRequest request, boolean publish) throws IOException {
         Objects.requireNonNull(request, "request");
         // Invalid request syntax is a 400, but an otherwise valid plan whose refs moved is a 409,
         // even when that movement changed the current plan state from REPLAY to UP_TO_DATE.
@@ -97,13 +124,13 @@ public record UpstreamRebasePlan(String repositoryId, String workspaceId, String
                     reviewed.upstream().sourceCommit(), "Fetch the current upstream before replaying the branch");
         }
         return transfer.target().replayLinearHistory(branch, reviewed.localCommit(), reviewed.mergeBase(),
-                reviewed.upstream().trackedCommit(), request.orderedCommits(), transfer.actor(), () -> {
+                reviewed.upstream().trackedCommit(), request.orderedCommits(), request.resolutions(), transfer.actor(), () -> {
                     var current = readRefTag(transfer, repositoryId, workspaceId, branch);
                     if (!reviewed.refTag().equals(current)) {
                         throw new BranchHeadConflictException(branch, reviewed.localCommit(), null,
                                 "A source, target or tracking Git ref changed during the reviewed rebase");
                     }
-                });
+                }, publish);
     }
 
     private static Refs readRefs(GitUpstreamTransfer transfer, String branch) throws IOException {

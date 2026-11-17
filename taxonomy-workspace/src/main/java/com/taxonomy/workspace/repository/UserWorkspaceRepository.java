@@ -28,6 +28,11 @@ public interface UserWorkspaceRepository extends JpaRepository<UserWorkspace, Lo
     @Query("select w from UserWorkspace w where w.workspaceId = :workspaceId")
     Optional<UserWorkspace> findByWorkspaceIdForUpdate(@Param("workspaceId") String workspaceId);
 
+    /** Claim the exact branch physically, then read owner and lifecycle afresh under that lock. */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update UserWorkspace w set w.currentBranch = w.currentBranch where w.workspaceId = :workspaceId and w.currentBranch = :branch")
+    int lockSelectedBranch(@Param("workspaceId") String workspaceId, @Param("branch") String branch);
+
     /** Called only by the owner-authorized sharing service while holding the workspace row lock. */
     @Modifying
     @Query("update UserWorkspace w set w.collaborative = :enabled where w.workspaceId = :workspaceId")

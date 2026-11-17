@@ -53,6 +53,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
@@ -710,13 +711,28 @@ public class DslGitRepository implements AutoCloseable {
     public record RebasedCommit(String originalCommit, String replacementCommit) { }
 
     public record RebaseReplay(String originalHead, String newHead, String conflictCommit,
-                               List<String> conflictingPaths, List<RebasedCommit> rewritten) {
+                               List<String> conflictingPaths, List<RebasedCommit> rewritten, RebaseDslConflict dslConflict) {
         public boolean completed() { return conflictCommit == null; }
     }
 
     public RebaseReplay replayLinearHistory(String branch, String expectedHead, String mergeBase,
                                            String trackedCommit, List<String> orderedCommits,
                                            String actor, RebaseGuard reauthorizeAndCheckUpstream) throws IOException {
+        return replayLinearHistory(branch, expectedHead, mergeBase, trackedCommit, orderedCommits, Map.of(), actor,
+                reauthorizeAndCheckUpstream);
+    }
+
+    public RebaseReplay replayLinearHistory(String branch, String expectedHead, String mergeBase,
+                                           String trackedCommit, List<String> orderedCommits,
+                                           Map<String, RebaseDslConflict.Resolution> resolutions, String actor, RebaseGuard reauthorizeAndCheckUpstream) throws IOException {
+        return replayLinearHistory(branch, expectedHead, mergeBase, trackedCommit, orderedCommits, resolutions, actor,
+                reauthorizeAndCheckUpstream, true);
+    }
+
+    public RebaseReplay replayLinearHistory(String branch, String expectedHead, String mergeBase,
+                                           String trackedCommit, List<String> orderedCommits,
+                                           Map<String, RebaseDslConflict.Resolution> resolutions, String actor,
+                                           RebaseGuard reauthorizeAndCheckUpstream, boolean publish) throws IOException {
         Objects.requireNonNull(orderedCommits, "orderedCommits");
         Objects.requireNonNull(reauthorizeAndCheckUpstream, "reauthorizeAndCheckUpstream");
         if (branch == null || !Repository.isValidRefName(Constants.R_HEADS + branch)
@@ -732,6 +748,9 @@ public class DslGitRepository implements AutoCloseable {
             throw new IllegalArgumentException("A complete, bounded and reviewed replay is required");
         }
 
+        if (resolutions.size() > orderedCommits.size() || !orderedCommits.containsAll(resolutions.keySet())) {
+            throw new IllegalArgumentException("Resolution outside the reviewed replay");
+        }
         synchronized (gitRepo) {
             reauthorizeAndCheckUpstream.revalidate();
             verifyExpectedHead(branch, expectedHead);
@@ -767,13 +786,25 @@ public class DslGitRepository implements AutoCloseable {
                 var tip = fetched;
                 for (var picked : originals) {
                     var change = mergePickedChange(picked, tip, null);
+                    var resolution = resolutions.get(picked.name());
+                    RebaseDslConflict conflict = null;
+                    if (change.canResolveDsl()) {
+                        conflict = RebaseDslConflict.read(gitRepo, walk.parseCommit(picked.getParent(0)), tip, picked);
+                    }
+                    if (resolution != null) {
+                        if (conflict == null || !resolution.targetBlobId().equals(conflict.target().blobId())) {
+                            throw new BranchHeadConflictException(branch, expectedHead, original.name(),
+                                    "The reviewed model conflict changed");
+                        }
+                        change = mergePickedChange(picked, tip, resolution.text());
+                    }
                     if (change.resultTree() == null) {
                         reauthorizeAndCheckUpstream.revalidate();
                         verifyExpectedHead(branch, expectedHead);
                         return new RebaseReplay(expectedHead, expectedHead, picked.name(),
-                                change.conflictingPaths(), List.copyOf(replacements));
+                                change.conflictingPaths(), List.copyOf(replacements), conflict);
                     }
-                    var evidence = CommitProvenance.capture("rebase", this, storageName, branch,
+                    var evidence = CommitProvenance.capture(resolution == null ? "rebase" : "resolve-rebase", this, storageName, branch,
                             picked.name(), picked.getParent(0).name());
                     String summary = picked.getShortMessage();
                     if (summary.length() > 160) summary = summary.substring(0, 160);
@@ -797,9 +828,9 @@ public class DslGitRepository implements AutoCloseable {
                 // again before the single forced (non-fast-forward) compare-and-set publication.
                 reauthorizeAndCheckUpstream.revalidate();
                 verifyExpectedHead(branch, expectedHead);
-                ExpectedHeadDslCommitter.replaceBranchHead(gitRepo, branch, original, tip,
+                if (publish) ExpectedHeadDslCommitter.replaceBranchHead(gitRepo, branch, original, tip,
                         personIdent(actor), "rebase: " + original.name() + " onto " + fetched.name());
-                return new RebaseReplay(expectedHead, tip.name(), null, List.of(), List.copyOf(replacements));
+                return new RebaseReplay(expectedHead, tip.name(), null, List.of(), List.copyOf(replacements), null);
             }
         }
     }

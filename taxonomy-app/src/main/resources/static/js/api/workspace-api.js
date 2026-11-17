@@ -101,14 +101,31 @@
             return rebasePlanRequest(source, 'HEAD', options, window.TaxonomyApiClient.request)
                 .then(function (response) { return response.headers.get('ETag'); });
         },
-        applyCentralRebase: function (source, plan, etag, options) {
+        applyCentralRebase: function (source, plan, etag, options, resolutions) {
+            return window.TaxonomyWorkspaceApi.applyRebase(source, plan, etag, options, resolutions);
+        },
+        applyRebase: function (source, plan, etag, options, resolutions) {
+            var workspace = source.workspaceId || '';
+            var selection = new URLSearchParams({branch:source.branch});
             var path = '/api/repositories/' + encodeURIComponent(source.repositoryId) + '/upstream/rebase';
-            return json(path + '?branch=' + encodeURIComponent(source.branch), {
+            if (workspace) {
+                path = '/api/workspace/upstream/rebase';
+                selection.set('workspaceId', workspace);
+                selection.set('workspaceScopeKey', workspace);
+                selection.set('repositoryId', source.repositoryId);
+                selection.set('expectedContextId', options.expectedContextId);
+                if (plan.recoverableCommit) {
+                    return json(path + '/resume?' + selection, {candidate:plan.recoverableCommit, expectedHead:plan.localCommit}, 'POST',
+                        Object.assign({}, options, {pinnedWorkspaceId:workspace}));
+                }
+            }
+            return json(path + '?' + selection, {
                 expectedRefTag: etag,
                 expectedLocalCommit: plan.localCommit,
                 expectedTrackedCommit: plan.upstream.trackedCommit,
-                orderedCommits: plan.commits.map(function (commit) { return commit.id; })
-            }, 'POST', Object.assign({}, options, {pinnedWorkspaceId:''}));
+                orderedCommits: plan.commits.map(function (commit) { return commit.id; }),
+                ...(resolutions && Object.keys(resolutions).length ? {resolutions:resolutions} : {})
+            }, 'POST', Object.assign({}, options, {pinnedWorkspaceId:workspace}));
         },
         localChanges: function (branch, options) { return get('/api/workspace/local-changes?branch=' + encodeURIComponent(branch), options); },
         syncFromShared: function (branch, options) {
