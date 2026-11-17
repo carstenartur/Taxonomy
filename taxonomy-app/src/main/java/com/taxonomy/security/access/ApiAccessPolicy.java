@@ -106,6 +106,8 @@ public final class ApiAccessPolicy {
             rules.add(rule(method, "/api/repositories/*/members/**", Access.PERMISSION, REPOSITORY_MANAGE, OWNER));
         }
         rules.add(rule("PUT", "/api/repositories/*/ownership", Access.PERMISSION, REPOSITORY_MANAGE, OWNER));
+        add(rules, "GET", ARCHITECTURE_READ, "/api/repositories/*/ref-policy");
+        rules.add(rule("PUT", "/api/repositories/*/ref-policy", Access.PERMISSION, REPOSITORY_MANAGE, OWNER));
         add(rules, "POST", ADMIN_CONFIGURATION, "/api/repositories");
         for (String path : List.of("/api/repositories/*/workspaces", "/api/architecture/editor/workspaces",
                 "/api/workspace/provision", "/api/workspace/upstream/fetch", "/api/workspace/upstream/fetch-tag", "/api/workspace/upstream/operations/*/retry")) {

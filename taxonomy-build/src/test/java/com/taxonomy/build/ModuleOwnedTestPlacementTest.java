@@ -42,6 +42,8 @@ class ModuleOwnedTestPlacementTest {
             "workspace/storage/JgitStorageHibernateIntegrationTest.java",
             "workspace/storage/JgitStorageOracleMigrationIT.java",
             "workspace/storage/JgitStoragePostgresMigrationIT.java",
+            // Integrates app-owned principal identity, access policy and audit with native database Git.
+            "workspace/storage/VersionedRepositoryRefPolicyTest.java",
             // The application owns the restore migration and runs these contracts on its supported databases.
             "versioning/service/HistoryIndexDatabaseContract.java",
             "versioning/service/HistoryIndexMaintenanceTest.java",

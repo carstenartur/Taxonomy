@@ -78,6 +78,9 @@ class RepositoryOwnershipTransferTest {
         assertThat(audit).containsEntry("ACTOR_PRINCIPAL", before.value().toString()).containsEntry("TARGET_PRINCIPAL", after.value().toString());
         assertThat(audit.get("DETAIL").toString()).contains("project","Team transition");
         assertThatThrownBy(() -> transaction.executeWithoutResult(s -> memberships.removeMembership(repositories.findByRepositoryId("project").orElseThrow(),"alice","alice",0L)))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(auth(2));
+        assertThatThrownBy(() -> transaction.executeWithoutResult(s -> memberships.removeMembership(repositories.findByRepositoryId("project").orElseThrow(),"alice","alice",0L)))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> move(auth(2), identities.local(3).id(), revision)).isInstanceOf(ResponseStatusException.class);
     }

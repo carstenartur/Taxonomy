@@ -128,7 +128,11 @@ Ein validierter OIDC-/JWT-Claim kann dem **aktuell authentifizierten Akteur** zu
 
 Der Claim muss exakte Repository-IDs auf jeweils eine einzelne Rolle abbilden. Werte lauten exakt `READER`, `CONTRIBUTOR`, `MAINTAINER` oder `OWNER` (ohne `ROLE_`-Präfix oder Arrays); Schlüssel dürfen weder leer sein noch umgebende Leerzeichen haben. Schlüssel werden wörtlich abgeglichen; Wildcards werden nicht aufgelöst. Ein fehlerhafter Eintrag bewirkt, dass die gesamte Claim-Abbildung ignoriert wird. Grants werden neben gespeicherten Mitgliedschaften ausgewertet, nur für das exakte Repository und nur wenn der geprüfte Akteur dem Namen des authentifizierten Principals entspricht. Anfrageparameter und Attribute lokaler Anmeldungen liefern keine solchen Grants. Ein Repository-Grant ersetzt weder Anwendungsrolle noch OAuth-Scope oder Eigentum an einem fremden Workspace. Bestehende Kompatibilitätsregeln für öffentliche/primäre Repositorys bleiben erhalten.
 
-Eine OIDC-Browsersitzung kann diese Claim-Grants nur bis zum Ablauf ihres ID-Tokens nutzen. Gespeicherte Repository-Mitgliedschaften werden weiterhin unabhängig davon ausgewertet.
+Bei jeder Prüfung einer Repository-Rolle gilt die Ablaufzeit des OIDC-ID-Tokens einer Browsersitzung oder des JWT-Zugriffstokens einer Bearer-Anfrage. Ein Claim gewährt Zugriff nur mit einer Ablaufzeit in der Zukunft. Gespeicherte Repository-Mitgliedschaften werden weiterhin unabhängig davon ausgewertet.
+
+## Schutz von Modellbranches
+
+Branches ohne konfigurierte Schutzregel verwenden die Prüfungen der Anwendung für Lebenszyklus, Sichtbarkeit, Mitgliedschaft, Anwendungsrolle und Workspace-Eigentum. Eine Regel für den exakten Branch ergänzt Beschränkungen für gewöhnliche Updates, erzwungene Updates und Löschung. Der abgesicherte JGit-Zugriff prüft die Regel innerhalb der nativen Ref-Transaktion, einschließlich direkter JGit-Aufrufe und atomarer Batches. Die Regeländerung verwendet denselben Mutex des physischen Repositorys. Dadurch werden Veröffentlichung und Policy-Änderung instanzübergreifend serialisiert. Eine Policy-Ablehnung wird als HTTP 403 ausgegeben.
 
 ## Swagger und API-Zugriffsbeschreibungen
 
@@ -244,4 +248,12 @@ Administratoren können in der **Benutzerverwaltung** lokale Konten anlegen, Rol
 <a id="browser-sessions"></a>
 ## Angemeldete Sitzungen
 
-Administratoren können die Sitzungsübersicht öffnen, um registrierte, nicht abgelaufene Sitzungen dieser Anwendungsinstanz nach Benutzer zu sehen. **Aktualisieren** lädt einen neuen Messstand. Der Zeitpunkt wird in UTC angezeigt. Eine registrierte Sitzung belegt nicht, dass jemand gerade eine Seite betrachtet; die Übersicht ist keine clusterweite Anwesenheitsanzeige.
+Administratoren können die Sitzungsübersicht öffnen, um registrierte, nicht abgelaufene Sitzungen dieser Anwendungsinstanz nach Benutzer zu sehen. Sitzungen eines lokalen Kontos mit stabiler Principal-ID bleiben nach einer Umbenennung in derselben Gruppe. Ein anderes Konto, das später denselben Anmeldenamen verwendet, erhält eine eigene Gruppe. **Aktualisieren** lädt einen neuen Messstand. Der Zeitpunkt wird in UTC angezeigt. Eine registrierte Sitzung belegt nicht, dass jemand gerade eine Seite betrachtet; die Übersicht ist keine clusterweite Anwesenheitsanzeige.
+
+### Versionierter Branch-Schutz
+
+Der Eigentümer kann die Regel mit `GET /api/repositories/{repositoryId}/ref-policy?branch={branch}` lesen und die angezeigte Revision per PUT auf denselben Endpunkt ändern. Mit `workspaceId` wird eine zugängliche persönliche Arbeitskopie ausgewählt. Die Anfrage enthält `expectedRevision`, `preventUpdates`, `preventForce`, `preventDelete`, `rationale` und optional `adminOverride`. Neue Regeln beginnen bei Revision null mit drei ausgeschalteten Sperren. Jede Änderung verlangt den aktuellen Eigentümer oder einen ausdrücklich berechtigten Administrator.
+
+`preventUpdates` sperrt gewöhnliche und erzwungene Aktualisierungen. `preventForce` sperrt erzwungene Aktualisierungen. Gewöhnliche Aktualisierungen bleiben unter den bestehenden Berechtigungsprüfungen möglich. `preventDelete` sperrt das Löschen des Branches. Jede Regel gehört zum exakten physischen Repository und Branch. Jede native Ref-Änderung liest die aktuelle Regel innerhalb ihrer Veröffentlichungstransaktion. Bereits geöffnete Repository-Zugriffe berücksichtigen nachträgliche Regeländerungen.
+
+Mit ausdrücklich gesetztem `adminOverride` darf ein aktuell berechtigter Administrator die ausgewählte Regel mit protokollierter Begründung ändern. Das Ziel muss aktiv und eine gewählte persönliche Arbeitskopie für diesen Administrator zugänglich sein. Regelrevision, stabile Akteuridentität, alte und neue Sperren sowie die administrative Ausnahme werden gemeinsam mit einem unveränderlichen Audit-Eintrag bestätigt. Ein fehlgeschlagener Audit-Eintrag bricht die Änderung ab. Konkurrierende Änderungen derselben Revision erhalten eine Konfliktantwort.

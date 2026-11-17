@@ -265,14 +265,14 @@
       "fromPackage": "com.taxonomy.backup.restore",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.backup",
-      "classDependencyCount": 72
+      "classDependencyCount": 73
     },
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.backup.restore",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.model",
-      "classDependencyCount": 4
+      "classDependencyCount": 5
     },
     {
       "fromContext": "app-composition",
@@ -1074,23 +1074,37 @@
     },
     {
       "fromContext": "app-composition",
-      "fromPackage": "com.taxonomy.security.service",
+      "fromPackage": "com.taxonomy.security.controller",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.model",
-      "classDependencyCount": 3
-    },
-    {
-      "fromContext": "app-composition",
-      "fromPackage": "com.taxonomy.security.service",
-      "toContext": "workspace",
-      "toPackage": "com.taxonomy.workspace.repository",
       "classDependencyCount": 1
     },
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.security.service",
       "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.model",
+      "classDependencyCount": 9
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.security.service",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.repository",
+      "classDependencyCount": 3
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.security.service",
+      "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
+      "classDependencyCount": 5
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.security.service",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.storage",
       "classDependencyCount": 1
     },
     {

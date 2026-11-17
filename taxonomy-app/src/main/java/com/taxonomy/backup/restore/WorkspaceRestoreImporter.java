@@ -23,7 +23,7 @@ public final class WorkspaceRestoreImporter {
     private static final BackupComponentId OWNER=new BackupComponentId("workspace");
     private static final int MAX_ROWS=100_000,MAX_BYTES=32*1024*1024;
     private static final JsonMapper JSON=JsonMapper.builder().enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).build();
-    private static final List<String> TABLES=List.of("system_repository","user_workspace","repository_membership","sync_state","workspace_branch_sync","editor_workspace","editor_operation","editor_checkpoint","architecture_commit_index","context_history_record","branch_adoption_rule","branch_adoption_event");
+    private static final List<String> TABLES=List.of("system_repository","user_workspace","repository_membership","repository_ref_rule","branch_adoption_rule","branch_adoption_event","sync_state","workspace_branch_sync","editor_workspace","editor_operation","editor_checkpoint","architecture_commit_index","context_history_record");
     private static final List<String> PRIVATE_INDEX_TABLES = List.of("history_index_operation", "history_index_decision", "history_index_purge_target");
 
     public record Result(Map<SourceRecordId,String> editorScopes,int targetRows,int evidenceRows) {
@@ -79,6 +79,9 @@ public final class WorkspaceRestoreImporter {
         var repositories=read(archive,"repositories",RepositoryRecord.class,model,r->new SourceRecordId("workspace.repository",r.repositoryId()),checkpoint);
         var workspaces=read(archive,"workspaces",WorkspaceRecord.class,model,r->new SourceRecordId("workspace.workspace",r.workspaceId()),checkpoint);
         var memberships=read(archive,"memberships",MembershipRecord.class,model,MembershipRecord::sourceId,checkpoint);
+        var refPolicies = RestoreArchiveRecords.declares(archive, OWNER, "data/workspace/ref-policies.ndjson")
+                ? read(archive, "ref-policies", RefPolicyRecord.class, model, RefPolicyRecord::sourceId, checkpoint)
+                : List.<RefPolicyRecord>of();
         var sync=read(archive,"synchronization",SyncRecord.class,model,SyncRecord::sourceId,checkpoint);
         var branchProgress = RestoreArchiveRecords.declares(archive, OWNER, "data/workspace/branch-synchronization.ndjson")
                 ? read(archive,"branch-synchronization",BranchSyncRecord.class,model,BranchSyncRecord::sourceId,checkpoint)
@@ -170,6 +173,27 @@ public final class WorkspaceRestoreImporter {
                     "provisioned_at",timestamp(row.provisionedAt()),"description",row.description(),"archived",row.archived(),"is_default",false,"provisioning_error",null));
         }
         for(var row:memberships) {checkpoint.check();id(row.sourceId(),"workspace.membership");if(!sourceKeys.stream().anyMatch(key->key.repositoryId().equals(row.repositoryId()))||row.role()==null)throw invalid();scope(identities,row.principalScope());instant(row.createdAt());canonicalUuidOptional(row.holderPrincipalId());canonicalUuidOptional(row.grantorPrincipalId());model.classify("memberships",row.sourceId().value(),"INERT_SOURCE_AUTHORITY");}
+        for (var row : refPolicies) {
+            checkpoint.check();
+            id(row.sourceId(), "workspace.ref-policy");
+            sha(row.sourceId().value());
+            required(row.branch(), 255);
+            branch(row.branch());
+            if (row.revision() < 0 || row.revision() == Long.MAX_VALUE) throw invalid();
+            var source = new BackupRepositoryKey(row.repositoryId(), row.workspaceId());
+            var target = generation.allocations().get(source);
+            if (target == null || !sourceKeys.contains(source)) throw invalid();
+            if (!activeRepositories.contains(row.repositoryId())
+                    || row.workspaceId() != null && !activeWorkspaces.contains(row.workspaceId())) {
+                model.classify("ref-policies", row.sourceId().value(), "PRIVATE_QUARANTINE");
+                continue;
+            }
+            String key = com.taxonomy.workspace.model.RepositoryRefRule.key(target.physicalStorageName(), row.branch());
+            model.target("ref-policies", row.sourceId().value(), "repository_ref_rule", "id", key, columns(
+                    "id", key, "storage_name", target.physicalStorageName(), "repository_id", target.targetKey().repositoryId(),
+                    "workspace_id", target.targetKey().workspaceId(), "branch_name", row.branch(), "revision", row.revision(),
+                    "prevent_updates", row.preventUpdates(), "prevent_force", row.preventForce(), "prevent_delete", row.preventDelete()));
+        }
         for(var row:sync) {
             checkpoint.check();var parent=workspaceById.get(row.workspaceId());if(parent==null||!Objects.equals(parent.ownerScope(),row.principalScope()))throw invalid();String scope=scope(identities,row.principalScope());
             if(!activeWorkspaces.contains(row.workspaceId())){model.classify("synchronization",row.sourceId().value(),"PRIVATE_QUARANTINE");continue;}

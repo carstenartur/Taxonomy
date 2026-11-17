@@ -166,6 +166,18 @@ abstract class AbstractExternalDatabaseContainerIT extends AbstractDatabaseConta
                 database.getJdbcUrl(),database.getUsername(),database.getPassword()));
     }
 
+    @Test @Order(29)
+    void versionedBranchPolicyAndNativePublicationUseTheSameDatabaseFence() throws Exception {
+        var database = getDatabaseContainer();
+        var source = new DriverManagerDataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword());
+        URI application = URI.create("http://" + getAppContainer().getHost() + ":" + getAppContainer().getMappedPort(8080));
+        String authorization = "Basic " + Base64.getEncoder().encodeToString(
+                ("admin:" + ContainerTestUtils.TEST_ADMIN_PASSWORD).getBytes(StandardCharsets.UTF_8));
+        try (var contract = new RepositoryHistoryHttpContract(application, authorization)) {
+            contract.verifyRefPolicy(source);
+        }
+    }
+
     @Test @Order(24)
     void webDavLeasesFenceIndependentApplicationHandlesAndRetainExactGitVersions() throws Exception {
         var database = getDatabaseContainer();

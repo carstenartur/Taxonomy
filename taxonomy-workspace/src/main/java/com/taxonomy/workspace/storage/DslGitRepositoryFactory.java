@@ -2,12 +2,18 @@ package com.taxonomy.workspace.storage;
 
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryRefPolicy;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.signing.GitCommitSignatureService;
 import io.github.carstenartur.jgit.storage.hibernate.HibernateRepositoryFactory;
 import io.github.carstenartur.jgit.storage.hibernate.RepositoryDeletionResult;
 import io.github.carstenartur.jgit.storage.hibernate.RepositoryName;
+import io.github.carstenartur.jgit.storage.hibernate.RepositoryDoesNotExistException;
+import io.github.carstenartur.jgit.storage.hibernate.SecuredHibernateRepositoryFactory;
+import io.github.carstenartur.jgit.storage.hibernate.RepositoryAccessRequest;
+import io.github.carstenartur.jgit.storage.hibernate.repository.HibernateRepository;
+import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.internal.storage.dfs.DfsRepositoryDescription;
 import org.eclipse.jgit.internal.storage.dfs.InMemoryRepository;
 import org.slf4j.Logger;
@@ -40,7 +46,9 @@ public class DslGitRepositoryFactory implements AutoCloseable {
     private final HibernateRepositoryFactory storageFactory;
     private final SystemRepositoryService systemRepositoryService;
     private final GitCommitSignatureService signatures;
-    private final io.github.carstenartur.jgit.storage.hibernate.SecuredHibernateRepositoryFactory<PinCleanup> existingPins;
+    private final SecuredHibernateRepositoryFactory<RefAccess> existingRefs;
+    private final SecuredHibernateRepositoryFactory<ModelAccess> modelRefs;
+    private final RepositoryRefPolicy refPolicy;
     private final ConcurrentMap<String, DslGitRepository> cache = new ConcurrentHashMap<>();
 
     /** Legacy/in-memory constructor retained for tests. */
@@ -64,19 +72,28 @@ public class DslGitRepositoryFactory implements AutoCloseable {
 
     DslGitRepositoryFactory(HibernateRepositoryFactory storageFactory, SystemRepositoryService systemRepositoryService,
                             GitCommitSignatureService signatures, org.hibernate.SessionFactory sessions) {
+        this(storageFactory, systemRepositoryService, signatures, sessions, null);
+    }
+
+    DslGitRepositoryFactory(HibernateRepositoryFactory storageFactory, SystemRepositoryService systemRepositoryService,
+                            GitCommitSignatureService signatures, org.hibernate.SessionFactory sessions,
+                            RepositoryRefPolicy refPolicy) {
         this.storageFactory = storageFactory;
+        this.refPolicy = refPolicy;
+        this.modelRefs = sessions == null || refPolicy == null ? null :
+                new SecuredHibernateRepositoryFactory<>(sessions, this::requireModelRef);
         this.systemRepositoryService = systemRepositoryService;
         this.signatures = java.util.Objects.requireNonNull(signatures, "signatures");
-        this.existingPins = sessions == null ? null :
-                new io.github.carstenartur.jgit.storage.hibernate.SecuredHibernateRepositoryFactory<>(sessions,(access,request) -> {
-                    if (!access.name().equals(request.repositoryName())) throw new SecurityException("Mismatched publication storage");
+        this.existingRefs = sessions == null ? null :
+                new SecuredHibernateRepositoryFactory<>(sessions,(access,request) -> {
+                    if (!access.name().equals(request.repositoryName())) throw new SecurityException("Mismatched ref storage");
                     switch (request.operation()) {
                         case DISCOVER, READ -> { }
                         case DELETE_REF -> {
-                            if (access.ref()==null || !access.ref().equals(request.refName())) throw new SecurityException("Mismatched publication pin");
+                            if (access.ref()==null || !access.ref().equals(request.refName())) throw new SecurityException("Unreviewed ref deletion");
                             access.authorize().run();
                         }
-                        default -> throw new SecurityException("Publication cleanup only releases its own private ref");
+                        default -> throw new SecurityException("Only the selected ref may be deleted");
                     }
                 });
     }
@@ -96,7 +113,57 @@ public class DslGitRepositoryFactory implements AutoCloseable {
         return cache.computeIfAbsent("administrative-catalogue-reviews", this::createRepository);
     }
 
-    private record PinCleanup(RepositoryName name,String ref,Runnable authorize) { }
+    private record RefAccess(RepositoryName name, String ref, Runnable authorize) { }
+
+    /** Read the reviewed workspace head without creating missing physical storage. */
+    public String readWorkspaceVariantHead(String workspaceId, String branch) throws IOException {
+        String name = workspaceRepositoryName(workspaceId);
+        if (existingRefs == null) {
+            var opened = cache.get(name);
+            return opened == null ? null : opened.getHeadCommit(branch);
+        }
+        var read = new RefAccess(new RepositoryName(name), null, null);
+        try (var session = existingRefs.open(read.name(), read)) {
+            return new DslGitRepository(session.repository()).getHeadCommit(branch);
+        } catch (RepositoryDoesNotExistException missing) {
+            return null;
+        }
+    }
+
+    /** Delete the reviewed head with an existing-only handle restricted to this workspace and exact ref. */
+    public void deleteWorkspaceVariant(String workspaceId, String branch, String expectedHead, String actor,
+                                       Runnable authorize) throws IOException {
+        authorize.run();
+        String name = workspaceRepositoryName(workspaceId);
+        if (existingRefs == null) {
+            var opened = cache.get(name);
+            if (opened == null) throw new IOException("The reviewed workspace storage is unavailable");
+            opened.deleteBranch(branch, expectedHead, actor);
+            return;
+        }
+        var deletion = new RefAccess(new RepositoryName(name), Constants.R_HEADS + branch, authorize);
+        try (var session = existingRefs.open(deletion.name(), deletion)) {
+            var nativeRepository = (HibernateRepository) session.repository();
+            nativeRepository.inRefTransaction(transaction -> {
+                if (refPolicy != null) refPolicy.require(transaction, name, branch, RepositoryRefPolicy.Operation.DELETE);
+                new DslGitRepository(nativeRepository).deleteBranch(branch, expectedHead, actor);
+                return null;
+            });
+        } catch (RepositoryDoesNotExistException missing) {
+            throw new IOException("The reviewed workspace storage is unavailable", missing);
+        } catch (IOException storage) {
+            throw unwrapAuthorizationFailure(storage);
+        }
+    }
+
+    // JGit can wrap policy denials raised during its final conditional DELETE_REF in an IOException.
+    private static IOException unwrapAuthorizationFailure(IOException storage) {
+        for (Throwable cause = storage.getCause(); cause != null; cause = cause.getCause()) {
+            if (cause instanceof org.springframework.security.access.AccessDeniedException denial) throw denial;
+            if (cause instanceof com.taxonomy.workspace.service.WorkspaceFetchAuthority.FreshLoginRequired fresh) throw fresh;
+        }
+        return storage;
+    }
 
     /** Reopen existing storage without creating it, then conditionally remove the exact private pin. */
     public void releasePublicationPin(String repositoryId,String workspaceId,String operationId,String branch,
@@ -104,19 +171,14 @@ public class DslGitRepositoryFactory implements AutoCloseable {
         authorize.run();
         String name = workspaceId == null ? storageNameFor(repositoryId) : workspaceRepositoryName(workspaceId);
         var committer = new ExpectedHeadDslCommitter();
-        if (existingPins != null) {
-            var access = new PinCleanup(new RepositoryName(name),ExpectedHeadDslCommitter.pinRef(operationId,branch),authorize);
-            try (var existing = existingPins.open(access.name(),access)) {
+        if (existingRefs != null) {
+            var access = new RefAccess(new RepositoryName(name),ExpectedHeadDslCommitter.pinRef(operationId,branch),authorize);
+            try (var existing = existingRefs.open(access.name(),access)) {
                 releasePin(committer,existing.repository(),operationId,branch,recordedCandidate,authorize);
             } catch (io.github.carstenartur.jgit.storage.hibernate.RepositoryDoesNotExistException missing) {
                 throw new IOException("The recorded publication storage is unavailable",missing);
             } catch (IOException storage) {
-                // JGit wraps policy exceptions raised during its final conditional DELETE_REF in an IOException.
-                for (Throwable cause=storage.getCause(); cause!=null; cause=cause.getCause()) {
-                    if (cause instanceof org.springframework.security.access.AccessDeniedException denial) throw denial;
-                    if (cause instanceof com.taxonomy.workspace.service.WorkspaceFetchAuthority.FreshLoginRequired fresh) throw fresh;
-                }
-                throw storage;
+                throw unwrapAuthorizationFailure(storage);
             }
             return;
         }
@@ -130,9 +192,9 @@ public class DslGitRepositoryFactory implements AutoCloseable {
     public void requireRemovedWorkspaceStorage(String workspaceId,Runnable authorize) throws IOException {
         authorize.run();
         String name=workspaceRepositoryName(workspaceId);
-        if (existingPins!=null) {
-            var routing=new PinCleanup(new RepositoryName(name),null,authorize);
-            try (var existing=existingPins.open(routing.name(),routing)) {
+        if (existingRefs!=null) {
+            var routing=new RefAccess(new RepositoryName(name),null,authorize);
+            try (var existing=existingRefs.open(routing.name(),routing)) {
                 throw new IOException("The removed working copy still has physical storage");
             } catch (io.github.carstenartur.jgit.storage.hibernate.RepositoryDoesNotExistException gone) {
                 return;
@@ -287,12 +349,54 @@ public class DslGitRepositoryFactory implements AutoCloseable {
     protected DslGitRepository createRepository(String name) {
         if (storageFactory != null) {
             log.info("Opening database-backed DslGitRepository '{}'", name);
-            return new DslGitRepository(storageFactory, name).withSignatureService(signatures, name);
+            if (modelRefs == null) {
+                return new DslGitRepository(storageFactory, name).withSignatureService(signatures, name);
+            }
+            RepositoryName physicalName = new RepositoryName(name);
+            // Provisioning is privileged infrastructure. Expose only the subsequently secured handle.
+            try (var provisioned = storageFactory.open(physicalName)) {
+                var access = new ModelAccess(physicalName);
+                var secured = modelRefs.open(physicalName, access);
+                access.repository = (HibernateRepository) secured.repository();
+                return new DslGitRepository(secured).withSignatureService(signatures, name);
+            }
         }
         log.info("Creating in-memory DslGitRepository '{}' (test mode)", name);
         return new DslGitRepository(
                 new InMemoryRepository(new DfsRepositoryDescription(name)), true)
                 .withSignatureService(signatures, name);
+    }
+
+    private static final class ModelAccess {
+        final RepositoryName name;
+        HibernateRepository repository;
+
+        ModelAccess(RepositoryName name) {
+            this.name = name;
+        }
+    }
+
+    private void requireModelRef(ModelAccess access, RepositoryAccessRequest request) {
+        if (!access.name.equals(request.repositoryName())) {
+            throw new SecurityException("Mismatched model storage");
+        }
+        String ref = request.refName();
+        if (ref == null || !ref.startsWith(Constants.R_HEADS)) return;
+        RepositoryRefPolicy.Operation operation = switch (request.operation()) {
+            case CREATE_REF, UPDATE_REF -> RepositoryRefPolicy.Operation.UPDATE;
+            case FORCE_UPDATE -> RepositoryRefPolicy.Operation.FORCE;
+            case DELETE_REF -> RepositoryRefPolicy.Operation.DELETE;
+            default -> throw new SecurityException("Unexpected model ref operation");
+        };
+        var repository = java.util.Objects.requireNonNull(access.repository, "Secured model repository");
+        try {
+            repository.inTransaction(transaction -> {
+                refPolicy.require(transaction, access.name.value(), ref.substring(Constants.R_HEADS.length()), operation);
+                return null;
+            });
+        } catch (IOException failure) {
+            throw new java.io.UncheckedIOException("Could not evaluate model branch policy", failure);
+        }
     }
 
     private void seedFromCentral(

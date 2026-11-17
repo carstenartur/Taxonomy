@@ -35,6 +35,16 @@ class StagedWorkspaceSchemaTest {
     }
 
     @Test
+    void branchPolicyCompatibilityRequiresValidatedPre36History() throws IOException {
+        migrateDatabaseTo("35");
+        assertThat(StagedWorkspaceSchema.predatesRefPolicy(database)).isTrue();
+        migrateBusinessSchema(database, "36");
+        assertThat(StagedWorkspaceSchema.predatesRefPolicy(database)).isFalse();
+        new JdbcTemplate(database).execute("drop table repository_ref_rule");
+        assertThat(StagedWorkspaceSchema.predatesRefPolicy(database)).isFalse();
+    }
+
+    @Test
     void recognizesOnlyValidatedPrePublicationHistory() throws IOException {
         assertThat(StagedWorkspaceSchema.predatesPublications(database)).isFalse();
 

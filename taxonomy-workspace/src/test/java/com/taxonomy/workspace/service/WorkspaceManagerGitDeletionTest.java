@@ -26,6 +26,7 @@ class WorkspaceManagerGitDeletionTest {
     private DslGitRepositoryFactory repositoryFactory;
     private WorkspaceManager manager;
     private UserWorkspace workspace;
+    private RepositoryRefPolicy refPolicy;
 
     @BeforeEach
     void setUp() {
@@ -40,7 +41,10 @@ class WorkspaceManagerGitDeletionTest {
                 mock(SystemRepositoryService.class),
                 repositoryFactory);
 
+        refPolicy = mock(RepositoryRefPolicy.class);
+        manager.configureRefPolicies(refPolicy);
         workspace = new UserWorkspace();
+        workspace.setSourceRepositoryId("repository-42");
         workspace.setWorkspaceId("workspace-42");
         workspace.setUsername("alice");
         workspace.setShared(false);
@@ -56,8 +60,9 @@ class WorkspaceManagerGitDeletionTest {
 
         manager.deleteWorkspace("workspace-42", "alice");
 
-        InOrder order = inOrder(repositoryFactory, workspaceRepository);
+        InOrder order = inOrder(repositoryFactory, refPolicy, workspaceRepository);
         order.verify(repositoryFactory).deleteWorkspaceRepository("workspace-42");
+        order.verify(refPolicy).removeWorkspace("repository-42", "workspace-42", "alice");
         order.verify(workspaceRepository).delete(workspace);
     }
 
@@ -71,6 +76,7 @@ class WorkspaceManagerGitDeletionTest {
                 IllegalStateException.class,
                 () -> manager.deleteWorkspace("workspace-42", "alice"));
 
+        verify(refPolicy, never()).removeWorkspace("repository-42", "workspace-42", "alice");
         verify(workspaceRepository, never()).delete(workspace);
     }
 }

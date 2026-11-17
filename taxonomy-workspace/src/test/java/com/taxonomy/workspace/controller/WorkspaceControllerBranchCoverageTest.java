@@ -285,6 +285,35 @@ class WorkspaceControllerBranchCoverageTest {
                 .containsEntry("systemRepositoryId", "system");
     }
 
+    @Test
+    void provisioningStatusRedactsPreviouslyStoredDiagnosticDetails() {
+        UserWorkspace workspace = workspace("w1", "Workspace");
+        workspace.setProvisioningStatus(WorkspaceProvisioningStatus.FAILED);
+        workspace.setProvisioningError("Internal parser detail from an earlier source document");
+        when(workspaceManager.findUserWorkspace("alice")).thenReturn(workspace);
+
+        var response = controller.getProvisioningStatus();
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).containsEntry("status", "FAILED");
+        assertThat((String) response.getBody().get("error"))
+                .isNotBlank().hasSizeLessThanOrEqualTo(255).doesNotContain("Internal parser detail", "source document");
+        workspace.setProvisioningError(null);
+        assertThat(controller.getProvisioningStatus().getBody()).containsEntry("error", null);
+    }
+
+    @Test
+    void provisioningFailureResponseOmitsInternalExceptionDetails() {
+        when(workspaceManager.provisionWorkspaceRepository("alice"))
+                .thenThrow(new IllegalStateException("Internal source document details"));
+
+        var response = controller.provisionWorkspace();
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat((String) response.getBody().get("message"))
+                .isNotBlank().hasSizeLessThanOrEqualTo(255).doesNotContain("Internal source document details");
+    }
+
     private static WorkspaceInfo info(String branch) {
         return new WorkspaceInfo("w1", "alice", "Workspace", branch, "draft", false,
                 null, Instant.parse("2026-01-01T00:00:00Z"), Instant.parse("2026-01-02T00:00:00Z"));

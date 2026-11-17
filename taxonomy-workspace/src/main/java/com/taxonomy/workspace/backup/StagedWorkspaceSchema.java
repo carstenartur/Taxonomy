@@ -25,6 +25,10 @@ final class StagedWorkspaceSchema {
         return missingTablesBefore(database, PUBLICATION, "32.1");
     }
 
+    static boolean predatesRefPolicy(DataSource database) throws IOException {
+        return missingTablesBefore(database, Set.of("repository_ref_rule"), "36");
+    }
+
     static boolean predatesAdoption(DataSource database) throws IOException {
         return missingTablesBefore(database, Set.of("branch_adoption_rule", "branch_adoption_event"), "35");
     }

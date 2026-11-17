@@ -76,6 +76,7 @@ com.taxonomy.versioning.service.HistoryIndexPurgeTarget	workspace	TRANSIENT	Phys
 com.taxonomy.versioning.model.ArchitectureCommitIndex	workspace	PORTABLE_PRIMARY	Retain commit index until complete reconstruction for all retained contexts is proven; Lucene remains rebuildable
 com.taxonomy.versioning.model.ContextHistoryRecord	workspace	PORTABLE_PRIMARY	History profile includes full records; stand export only selected current content/provenance, never inverse/old payloads
 com.taxonomy.workspace.model.RepositoryMembership	workspace	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.workspace.model.RepositoryRefRule	workspace	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.workspace.model.SyncState	workspace	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.workspace.model.WorkspaceBranchSyncState	workspace	PORTABLE_PRIMARY	Branch-scoped actor progress and exact Git observations restored to their mapped owner and source
 com.taxonomy.workspace.model.GitReflogProvenanceRecord	workspace	PORTABLE_PRIMARY	Immutable original imported Git events, preserving order, duplicate events and original time separately from target live audit; history capture includes their referenced objects

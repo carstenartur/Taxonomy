@@ -114,7 +114,7 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
     @Override public int schemaVersion() { return 1; }
     @Override public Set<String> categories() {
         return Set.of("com.taxonomy.workspace.model.SystemRepository", "com.taxonomy.workspace.model.UserWorkspace",
-                "com.taxonomy.workspace.model.RepositoryMembership", "com.taxonomy.workspace.model.SyncState",
+                "com.taxonomy.workspace.model.RepositoryMembership", "com.taxonomy.workspace.model.RepositoryRefRule", "com.taxonomy.workspace.model.SyncState",
                 "com.taxonomy.workspace.service.WorkspaceFetchOperation", "com.taxonomy.workspace.service.CentralFetchOperation",
                 "com.taxonomy.workspace.service.WorkspacePublicationOperation", "com.taxonomy.workspace.service.WorkspacePublicationDecision",
                 "com.taxonomy.workspace.service.BranchAdoptionRule", "com.taxonomy.workspace.service.BranchAdoptionEvent",
@@ -163,6 +163,7 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
         }
         write(sink,"memberships",profile,query(scope,false,"select id,repository_id,username,repository_role,created_at,created_by,updated_at," + principals + " from repository_membership",activeMemberships,"id"),
                 scoped(scope,"repository_id",null,r -> new MembershipRecord(reference(r,"workspace.membership","id"),text(r,"repository_id"),text(r,"username"),enumeration(r,"repository_role",RepositoryRole.class),instant(r,"created_at"),text(r,"created_by"),instant(r,"updated_at"),text(r,"holder_principal_id"),text(r,"grantor_principal_id"))));
+        writeRefPolicies(scope, profile, sink);
         var sync = scope.repositories("w.source_repository_id","w.workspace_id");
         write(sink,"synchronization",profile,query(scope,false,"select w.source_repository_id as captured_repository_id,w.workspace_id as captured_workspace_id,s.id,s.username,s.workspace_id,s.last_synced_commit_id,s.last_sync_timestamp,s.last_published_commit_id,s.last_publish_timestamp,s.sync_status,s.unpublished_commit_count,s.created_at,s.updated_at from sync_state s join user_workspace w on w.workspace_id=s.workspace_id",sync,"s.id"),
                 scoped(scope,"captured_repository_id","captured_workspace_id",linked("captured_workspace_id","workspace_id",r -> new SyncRecord(reference(r,"workspace.sync","id"),text(r,"username"),text(r,"workspace_id"),text(r,"last_synced_commit_id"),instant(r,"last_sync_timestamp"),
@@ -432,6 +433,34 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                 upstreamRepositoryId, text(r,"selected_tag"), text(r,"requested_tag_object"), text(r,"result_tag_object"),
                 workspaceId == null ? detached : null);
     }
+    private void writeRefPolicies(BackupRowScope scope, BackupProfile profile, ComponentSink sink) throws IOException {
+        if (!scope.selectedVersion() && StagedWorkspaceSchema.predatesRefPolicy(database)) return;
+        var selected = scope.repositories("p.repository_id", "p.workspace_id");
+        var parents = new Query("(" + selected.sql() + ") and (p.workspace_id is null or w.workspace_id is not null)",
+                selected.parameters());
+        String select = """
+                select p.id, p.storage_name, p.repository_id, p.workspace_id, p.branch_name, p.revision,
+                       p.prevent_updates, p.prevent_force, p.prevent_delete, r.storage_repository_name as central_storage
+                  from repository_ref_rule p join system_repository r on r.repository_id=p.repository_id
+                  left join user_workspace w on w.workspace_id=p.workspace_id and w.source_repository_id=p.repository_id
+                """;
+        write(sink, "ref-policies", profile, query(scope, false, select, parents, "p.id"),
+                scoped(scope, "repository_id", "workspace_id", row -> {
+                    String workspace = text(row, "workspace_id");
+                    String expectedStorage = workspace == null ? text(row, "central_storage")
+                            : com.taxonomy.workspace.storage.DslGitRepositoryFactory.workspaceRepositoryName(workspace);
+                    if (!Objects.equals(expectedStorage, text(row, "storage_name"))) {
+                        throw new IOException("Branch policy has an inconsistent physical owner");
+                    }
+                    return new RefPolicyRecord(reference(row, "workspace.ref-policy", "id"),
+                            text(row, "repository_id"), workspace, text(row, "branch_name"), row.getLong("revision"),
+                            row.getBoolean("prevent_updates"), row.getBoolean("prevent_force"), row.getBoolean("prevent_delete"));
+                }));
+    }
+
+    public record RefPolicyRecord(SourceRecordId sourceId, String repositoryId, String workspaceId, String branch,
+                                  long revision, boolean preventUpdates, boolean preventForce, boolean preventDelete) { }
+
     private <T extends Record> void write(ComponentSink sink,String kind,BackupProfile profile,Query query,PortableRows.Mapper<T> mapper) throws IOException { rows.write(sink,"workspace",kind,profile,query,mapper); }
     private static <T extends Record> PortableRows.Mapper<T> scoped(BackupRowScope scope,String repositoryColumn,String workspaceColumn,PortableRows.Mapper<T> mapper) {
         return row -> {

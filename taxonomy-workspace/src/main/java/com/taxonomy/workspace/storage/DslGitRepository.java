@@ -9,6 +9,7 @@ import com.taxonomy.workspace.service.BranchHeadConflictException;
 import com.taxonomy.workspace.signing.CommitSignature;
 import com.taxonomy.workspace.signing.GitCommitSignatureService;
 import io.github.carstenartur.jgit.storage.hibernate.HibernateGitStorage;
+import io.github.carstenartur.jgit.storage.hibernate.AuthorizedRepositorySession;
 import io.github.carstenartur.jgit.storage.hibernate.HibernateRepositoryFactory;
 import io.github.carstenartur.jgit.storage.hibernate.RepositoryName;
 import org.eclipse.jgit.diff.DiffEntry;
@@ -80,6 +81,7 @@ public class DslGitRepository implements AutoCloseable {
 
     private final Repository gitRepo;
     private final HibernateGitStorage storageHandle;
+    private final AuthorizedRepositorySession<?> securedHandle;
     private final boolean databaseBacked;
     private final boolean closeRepository;
     private final AtomicBoolean closed = new AtomicBoolean();
@@ -104,10 +106,19 @@ public class DslGitRepository implements AutoCloseable {
     private DslGitRepository(HibernateGitStorage storageHandle) {
         this.gitRepo = storageHandle.repository();
         this.storageHandle = storageHandle;
+        this.securedHandle = null;
         this.databaseBacked = true;
         this.closeRepository = false;
         log.info("Initialised database-backed DslGitRepository ({})",
                 gitRepo.getClass().getSimpleName());
+    }
+
+    DslGitRepository(AuthorizedRepositorySession<?> securedHandle) {
+        this.gitRepo = securedHandle.repository();
+        this.storageHandle = null;
+        this.securedHandle = securedHandle;
+        this.databaseBacked = true;
+        this.closeRepository = false;
     }
 
     /** Create an owned, volatile in-memory repository for unit tests. */
@@ -123,6 +134,7 @@ public class DslGitRepository implements AutoCloseable {
     DslGitRepository(Repository gitRepo, boolean closeRepository) {
         this.gitRepo = Objects.requireNonNull(gitRepo, "gitRepo");
         this.storageHandle = null;
+        this.securedHandle = null;
         this.databaseBacked = false;
         this.closeRepository = closeRepository;
         log.info("Initialised DslGitRepository ({})", gitRepo.getClass().getSimpleName());
@@ -1294,9 +1306,21 @@ public class DslGitRepository implements AutoCloseable {
         update.setForceUpdate(force);
         update.setRefLogIdent(actor);
         update.setRefLogMessage(reflogMessage, true);
-        RefUpdate.Result result = update.update();
+        RefUpdate.Result result;
+        try {
+            result = update.update();
+        } catch (IOException failure) {
+            throw unwrapRefAuthorization(failure);
+        }
         requireSuccessfulUpdate(refName, result);
         return result;
+    }
+
+    /** Preserve a policy denial through JGit's storage exception wrapper. */
+    static IOException unwrapRefAuthorization(IOException failure) {
+        Throwable cause = org.springframework.core.NestedExceptionUtils.getMostSpecificCause(failure);
+        if (cause instanceof org.springframework.security.access.AccessDeniedException denied) throw denied;
+        return failure;
     }
 
     private static void requireSuccessfulUpdate(String refName, RefUpdate.Result result)
@@ -1362,7 +1386,12 @@ public class DslGitRepository implements AutoCloseable {
         update.setForceUpdate(true);
         update.setRefLogIdent(actor == null ? systemIdent() : personIdent(actor));
         update.setRefLogMessage("branch: deleted " + branchName, true);
-        RefUpdate.Result result = update.delete();
+        RefUpdate.Result result;
+        try {
+            result = update.delete();
+        } catch (IOException failure) {
+            throw unwrapRefAuthorization(failure);
+        }
         if (expectedHead != null && (result == RefUpdate.Result.LOCK_FAILURE || result == RefUpdate.Result.REJECTED
                 || result == RefUpdate.Result.REJECTED_CURRENT_BRANCH || result == RefUpdate.Result.NEW)) {
             throw new BranchHeadConflictException(branchName, expectedHead, getHeadCommit(branchName),
@@ -1385,6 +1414,8 @@ public class DslGitRepository implements AutoCloseable {
         }
         if (storageHandle != null) {
             storageHandle.close();
+        } else if (securedHandle != null) {
+            securedHandle.close();
         } else if (closeRepository) {
             gitRepo.close();
         }

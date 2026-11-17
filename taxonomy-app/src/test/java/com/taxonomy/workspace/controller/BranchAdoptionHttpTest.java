@@ -35,8 +35,9 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.doAnswer;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
-        "spring.datasource.url=jdbc:hsqldb:mem:branch-adoption-http;hsqldb.tx=mvcc;hsqldb.lob_compressed=true;hsqldb.lob_file_scale=1",
+        "spring.datasource.url=jdbc:hsqldb:mem:branch-adoption-http;hsqldb.tx=mvcc;hsqldb.lob_compressed=true;hsqldb.lob_file_scale=1;hsqldb.log_size=1",
         "taxonomy.workspace.adoption-poll=3600000",
+        "taxonomy.features.multi-repository-api.enabled=true",
         "taxonomy.security.require-password-change=false"
 })
 @Tag("ci-app-shard-domain-integration")
@@ -161,23 +162,90 @@ class BranchAdoptionHttpTest {
         }
     }
 
-    private JsonNode request(HttpClient client, String repository, String suffix, String method,
-            Map<String, ?> body, int expected) throws Exception {
-        URI uri = URI.create("http://localhost:" + port + "/api/workspace/adoption-rule" + suffix
-                + "?repositoryId=" + repository + "&workspaceId=&workspaceScopeKey=__shared__&branch=draft");
-        String login = Base64.getEncoder().encodeToString((USER + ":" + PASSWORD).getBytes(StandardCharsets.UTF_8));
+    @Test
+    void actualBranchPolicyStopsAutomaticPublicationUntilTheOwnerReviewsBothRevisions() throws Exception {
+        String owner = "branch-policy-owner";
+        String reader = "branch-policy-reader";
+        accounts.createUser(Map.of("username", owner, "roles", List.of("USER", "ARCHITECT")), PASSWORD, "fixture");
+        accounts.createUser(Map.of("username", reader, "roles", List.of("READER")), PASSWORD, "fixture");
+        String repository;
+        try (var login = LocalTestLogin.openExisting(application, owner, PASSWORD)) {
+            repository = provisioning.createRepository("Protected adoption", "branch-policy-adoption", "",
+                    RepositoryVisibility.PRIVATE, owner, "main").getRepositoryId();
+        }
+        var git = repositories.getCentralRepository(repository);
+        String base = git.commitDsl("main", model("base", "base"), owner, "Base");
+        git.createBranch("draft", "main");
+        String rules = "/api/workspace/adoption-rule?repositoryId=" + repository
+                + "&workspaceId=&workspaceScopeKey=__shared__&branch=draft";
+        String policies = "/api/repositories/" + repository + "/ref-policy?branch=draft&workspaceId=";
+        try (var client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build()) {
+            requestAt(client, rules, "PUT", Map.of("enabled", true, "expectedRevision", 0), 200, owner);
+            var protect = Map.of("preventUpdates", true, "preventForce", true, "preventDelete", true,
+                    "rationale", "Review before automatic publication");
+            requestAt(client, policies, "PUT", protect, 428, owner);
+            var decision = new java.util.LinkedHashMap<String, Object>(protect);
+            decision.put("expectedRevision", 0);
+            requestAt(client, policies, "PUT", decision, 403, reader);
+            var protectedPolicy = requestAt(client, policies, "PUT", decision, 200, owner);
+            assertThat(protectedPolicy.path("policy").path("revision").asLong()).isOne();
+            requestAt(client, policies, "PUT", decision, 409, owner);
+            String incoming = git.commitDsl("main", model("base", "incoming"), owner, "Independent upstream change");
+            for (int phase = 0; phase < 3; phase++) worker.checkEnabledRules();
+            var stopped = requestAt(client, rules, "GET", Map.of(), 200, owner);
+            assertThat(stopped.path("status").asString()).isEqualTo("AUTHORIZATION");
+            assertThat(stopped.path("sourceCommit").asString()).isEqualTo(incoming);
+            assertThat(git.getHeadCommit("draft")).isEqualTo(base);
+            assertThat(git.getDslAtHead("draft")).isEqualTo(model("base", "base"));
+            var released = requestAt(client, policies, "PUT", Map.of("expectedRevision", 1, "preventUpdates", false,
+                    "preventForce", true, "preventDelete", true, "adminOverride", false,
+                    "rationale", "Allow the reviewed automatic change"), 200, owner);
+            assertThat(released.path("policy").path("revision").asLong()).isEqualTo(2);
+            String review = "/api/workspace/adoption-rule/decision?repositoryId=" + repository
+                    + "&workspaceId=&workspaceScopeKey=__shared__&branch=draft";
+            var applied = requestAt(client, review, "POST", Map.of("action", "RETRY", "sourceCommit", incoming,
+                    "expectedRevision", stopped.path("revision").asLong()), 200, owner);
+            assertThat(applied.path("status").asString()).isEqualTo("APPLIED");
+            assertThat(git.getHeadCommit("draft")).isNotEqualTo(base);
+            assertThat(git.getDslAtHead("draft")).isEqualTo(model("base", "incoming"));
+            requestAt(client, rules, "PUT", Map.of("enabled", false,
+                    "expectedRevision", applied.path("revision").asLong()), 200, owner);
+        }
+    }
+
+    @Test
+    void theSharedVendorPolicyContractRunsThroughTheActualApplication() throws Exception {
+        String owner = "branch-policy-database";
+        accounts.createUser(Map.of("username", owner, "roles", List.of("USER", "ARCHITECT", "ADMIN")), PASSWORD, "fixture");
+        String authorization = "Basic " + Base64.getEncoder().encodeToString((owner + ":" + PASSWORD).getBytes(StandardCharsets.UTF_8));
+        try (var contract = new com.taxonomy.RepositoryHistoryHttpContract(URI.create("http://localhost:" + port), authorization)) {
+            contract.verifyRefPolicy(application.getBean(javax.sql.DataSource.class));
+        }
+    }
+
+    private JsonNode requestAt(HttpClient client, String path, String method, Map<String, ?> body,
+            int expected, String user) throws Exception {
+        URI uri = URI.create("http://localhost:" + port + path);
+        String login = Base64.getEncoder().encodeToString((user + ":" + PASSWORD).getBytes(StandardCharsets.UTF_8));
         var request = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(20))
                 .header("Authorization", "Basic " + login).header("Accept", "application/json")
                 .header("Content-Type", "application/json").header("X-Taxonomy-Workspace-Id", "")
                 .method(method, body.isEmpty() ? HttpRequest.BodyPublishers.noBody()
                         : HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body))).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        assertThat(response.statusCode()).as("%s %s — %s", method, suffix, response.body()).isEqualTo(expected);
+        assertThat(response.statusCode()).as("%s %s — %s", method, path, response.body()).isEqualTo(expected);
         if (expected == 200) {
             assertThat(response.headers().firstValue("Cache-Control")).hasValueSatisfying(v -> assertThat(v).contains("no-store"));
             return json.readTree(response.body());
         }
         return null;
+    }
+
+    private JsonNode request(HttpClient client, String repository, String suffix, String method,
+            Map<String, ?> body, int expected) throws Exception {
+        String path = "/api/workspace/adoption-rule" + suffix + "?repositoryId=" + repository
+                + "&workspaceId=&workspaceScopeKey=__shared__&branch=draft";
+        return requestAt(client, path, method, body, expected, USER);
     }
 
     private static String model(String a, String b) {

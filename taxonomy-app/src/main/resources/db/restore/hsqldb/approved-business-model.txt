@@ -86,8 +86,6 @@ com.taxonomy.workspace.model.WorkspaceBranchSyncState
 com.taxonomy.workspace.model.SystemRepository
 com.taxonomy.workspace.model.UserWorkspace
 com.taxonomy.workspace.model.WorkspaceProjection
-com.taxonomy.workspace.service.BranchAdoptionEvent
-com.taxonomy.workspace.service.BranchAdoptionRule
 com.taxonomy.workspace.service.CentralFetchOperation
 com.taxonomy.workspace.service.WorkspaceFetchOperation
 com.taxonomy.versioning.service.HistoryIndexOperationRow
@@ -95,3 +93,6 @@ com.taxonomy.versioning.service.HistoryIndexDecisionRow
 com.taxonomy.versioning.service.HistoryIndexPurgeTarget
 com.taxonomy.workspace.service.WorkspacePublicationDecision
 com.taxonomy.workspace.service.WorkspacePublicationOperation
+com.taxonomy.workspace.model.RepositoryRefRule
+com.taxonomy.workspace.service.BranchAdoptionEvent
+com.taxonomy.workspace.service.BranchAdoptionRule

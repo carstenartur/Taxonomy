@@ -10,6 +10,7 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -40,20 +41,18 @@ public class RepositoryClaimGrantProvider implements RepositoryRoleGrantProvider
         // These authentication types are created after JWT/OIDC validation by Spring Security.
         // In particular, local authentication principals and request parameters are not claims.
         Object claim;
+        Instant expiresAt;
         if (authentication instanceof JwtAuthenticationToken jwt) {
+            expiresAt = jwt.getToken().getExpiresAt();
             claim = jwt.getToken().getClaims().get(CLAIM);
         } else if (authentication instanceof OAuth2AuthenticationToken oauth2
                 && oauth2.getPrincipal() instanceof OidcUser oidc) {
-            // A retained browser session can outlive the assertion and its associated UserInfo.
-            var expiresAt = oidc.getIdToken().getExpiresAt();
-            if (expiresAt == null || !expiresAt.isAfter(clock.instant())) {
-                return Optional.empty();
-            }
+            expiresAt = oidc.getIdToken().getExpiresAt();
             claim = oidc.getClaims().get(CLAIM);
         } else {
             return Optional.empty();
         }
-        if (!(claim instanceof Map<?, ?> roles)) {
+        if (expiresAt == null || !expiresAt.isAfter(clock.instant()) || !(claim instanceof Map<?, ?> roles)) {
             return Optional.empty();
         }
 

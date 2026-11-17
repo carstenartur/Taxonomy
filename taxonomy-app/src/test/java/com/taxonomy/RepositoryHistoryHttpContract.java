@@ -15,7 +15,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** The same public A / working copy / fork contract against each packaged database configuration. */
-final class RepositoryHistoryHttpContract implements AutoCloseable {
+public final class RepositoryHistoryHttpContract implements AutoCloseable {
     private static final ObjectMapper JSON = JsonMapper.builder().build();
     private final URI application;
     private final String authorization;
@@ -23,7 +23,7 @@ final class RepositoryHistoryHttpContract implements AutoCloseable {
     private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     private final String name = "history-" + UUID.randomUUID();
 
-    RepositoryHistoryHttpContract(URI application, String authorization) {
+    public RepositoryHistoryHttpContract(URI application, String authorization) {
         this(application, authorization, workspace -> "");
     }
 
@@ -173,6 +173,78 @@ final class RepositoryHistoryHttpContract implements AutoCloseable {
         assertStale(readiness(fork), unprojectable, original);
     }
 
+    public void verifyRefPolicy(javax.sql.DataSource database) throws Exception {
+        String repository = post("/api/repositories", Map.of("displayName", name, "slug", name,
+                "visibility", "PRIVATE", "defaultBranch", "draft")).required("repositoryId").textValue();
+        var central = new Copy(repository, "", "draft");
+        var working = copy(repository, "policy writer", head(central));
+        json("POST", "/api/dsl/branches?name=policy-review&fromBranch=draft", working, Map.of());
+        json("POST", "/api/dsl/branches?name=POLICY-REVIEW&fromBranch=draft", working, Map.of());
+        var selected = new Copy(repository, working.workspace, "policy-review");
+        var differentCase = new Copy(repository, working.workspace, "POLICY-REVIEW");
+        String original = branchHead(working, selected.branch);
+        String model = content(working) + "\nelement POLICY-SELECTED type Capability {\n  title: \"Reviewed policy\";\n}\n";
+        String policyPath = "/api/repositories/" + repository + "/ref-policy";
+        assertThat(get(policyPath, selected).required("revision").asLong()).isZero();
+        var requested = new java.util.LinkedHashMap<String, Object>(Map.of("preventUpdates", true,
+                "preventForce", true, "preventDelete", true, "rationale", "Reviewed branch policy"));
+        request("PUT", policyPath, selected, JSON.writeValueAsString(requested), "application/json", 428);
+        requested.put("expectedRevision", 0);
+        String body = JSON.writeValueAsString(requested);
+        HttpResponse<String> winner;
+        var start = new java.util.concurrent.CountDownLatch(1);
+        try (var workers = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            var attempts = java.util.stream.IntStream.range(0, 2).mapToObj(index -> workers.submit(() -> {
+                assertThat(start.await(10, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                return send("PUT", policyPath, selected, body, "application/json", null);
+            })).toList();
+            start.countDown();
+            var responses = java.util.List.of(attempts.get(0).get(90, java.util.concurrent.TimeUnit.SECONDS),
+                    attempts.get(1).get(90, java.util.concurrent.TimeUnit.SECONDS));
+            assertThat(responses).extracting(HttpResponse::statusCode).containsExactlyInAnyOrder(200, 409);
+            winner = responses.stream().filter(response -> response.statusCode() == 200).findFirst().orElseThrow();
+        }
+        var accepted = JSON.readTree(winner.body());
+        assertThat(accepted.path("policy").path("revision").asLong()).isOne();
+        var jdbc = new org.springframework.jdbc.core.JdbcTemplate(database);
+        var evidence = jdbc.queryForMap("select actor_principal,detail from principal_access_audit where audit_id=?",
+                accepted.required("auditId").textValue());
+        assertThat(evidence.get("actor_principal").toString()).matches("[0-9a-f-]{36}");
+        assertThat(evidence.get("detail").toString()).contains(repository, "Reviewed branch policy", "APPLIED");
+        assertThat(jdbc.queryForObject("select revision from repository_ref_rule where repository_id=? and branch_name=? and workspace_id=?",
+                Long.class, repository, selected.branch, working.workspace)).isOne();
+        var separatePolicy = json("PUT", policyPath, differentCase, Map.of("expectedRevision", 0,
+                "preventUpdates", false, "preventForce", true, "preventDelete", true,
+                "rationale", "Independent exact branch spelling")).required("policy");
+        assertThat(separatePolicy.required("branch").textValue()).isEqualTo(differentCase.branch);
+        assertThat(separatePolicy.required("revision").asLong()).isOne();
+        assertThat(get(policyPath, selected).required("preventUpdates").booleanValue()).isTrue();
+        assertThat(get(policyPath, differentCase).required("preventUpdates").booleanValue()).isFalse();
+        request("POST", "/api/dsl/commit", selected, model, "text/plain;charset=UTF-8", 403);
+        assertThat(branchHead(working, selected.branch)).isEqualTo(original);
+        assertThat(request("POST", "/api/dsl/commit", differentCase, model, "text/plain;charset=UTF-8", 200)
+                .required("databaseBacked").booleanValue()).isTrue();
+        assertThat(branchHead(working, selected.branch)).isEqualTo(original);
+        String otherModel = content(working) + "\nelement POLICY-OTHER type Capability {\n  title: \"Other branch\";\n}\n";
+        assertThat(request("POST", "/api/dsl/commit", working, otherModel, "text/plain;charset=UTF-8", 200)
+                .required("databaseBacked").booleanValue()).isTrue();
+        assertThat(branchHead(working, selected.branch)).isEqualTo(original);
+        requested.put("expectedRevision", 1);
+        requested.put("preventUpdates", false);
+        assertThat(json("PUT", policyPath, selected, requested).path("policy").path("revision").asLong()).isEqualTo(2);
+        var published = request("POST", "/api/dsl/commit", selected, model, "text/plain;charset=UTF-8", 200);
+        assertThat(published.required("databaseBacked").booleanValue()).isTrue();
+        assertThat(branchHead(working, selected.branch)).isEqualTo(published.required("commitId").textValue()).isNotEqualTo(original);
+    }
+
+    private String branchHead(Copy copy, String branch) throws Exception {
+        for (JsonNode candidate : get("/api/dsl/branches", copy).values()) {
+            if (branch.equals(candidate.required("name").textValue()))
+                return candidate.required("headCommitId").textValue();
+        }
+        throw new AssertionError("Expected exact Git branch " + branch);
+    }
+
     private String publishModel(Copy copy, String model) throws Exception {
         var committed = request("POST", "/api/dsl/commit", copy, model, "text/plain;charset=UTF-8", 200);
         assertThat(committed.required("databaseBacked").booleanValue()).isTrue();
@@ -312,7 +384,7 @@ final class RepositoryHistoryHttpContract implements AutoCloseable {
                 .header("Authorization", authorization).header("Accept", "application/json");
         if (revision != null) request.header("If-Match", "\"" + revision + "\"");
         if (copy != null) {
-            path += "?repositoryId=" + copy.repository + "&workspaceId=" + copy.workspace
+            path += (path.contains("?") ? "&" : "?") + "repositoryId=" + copy.repository + "&workspaceId=" + copy.workspace
                     + "&workspaceScopeKey=" + (copy.workspace.isEmpty() ? "__shared__" : copy.workspace) + "&branch=" + copy.branch;
             request.header("X-Taxonomy-Workspace-Id", copy.workspace);
         }

@@ -185,6 +185,35 @@ class RepositoryMembershipServiceTest {
     }
 
     @Test
+    void aBoundPersonalOwnerNeedsTheRecordedPrincipalForReadsAndLockedPolicyChanges() {
+        var repository = repository(RepositoryVisibility.PRIVATE, RepositoryLifecycleState.ACTIVE, false);
+        var principal = java.util.UUID.randomUUID();
+        var other = java.util.UUID.randomUUID();
+        var identity = mock(RepositoryMembershipIdentity.class);
+        service = new RepositoryMembershipService(membershipRepository, Optional.empty(), identity);
+        var holder = membership("repo-a", "owner", RepositoryRole.OWNER);
+        holder.setHolderPrincipalId(principal.toString());
+        when(membershipRepository.findByRepositoryIdAndUsername("repo-a", "owner")).thenReturn(Optional.of(holder));
+        when(membershipRepository.findByRepositoryIdForUpdate("repo-a")).thenReturn(List.of(holder));
+
+        when(identity.currentActor("owner")).thenReturn(Optional.of(principal));
+        assertTrue(service.canRead(repository, "owner"));
+        assertTrue(service.isOwner(repository, "owner"));
+
+        when(identity.currentActor("owner")).thenReturn(Optional.of(other));
+        assertFalse(service.canRead(repository, "owner"));
+        assertFalse(service.isOwner(repository, "owner"));
+        assertThrows(AccessDeniedException.class, () ->
+                service.assignRole(repository, "member", RepositoryRole.READER, "owner", -1L));
+        assertThrows(AccessDeniedException.class, () ->
+                service.transferPersonalOwnership(repository, 0L, "owner", "successor", other, java.util.UUID.randomUUID()));
+        verify(membershipRepository, never()).save(any());
+
+        when(identity.currentActor("owner")).thenReturn(Optional.empty());
+        assertFalse(service.isOwner(repository, "owner"));
+    }
+
+    @Test
     void organizationIdentifierIsNotImplicitlyTreatedAsAUserOwner() {
         SystemRepository organization = repository(
                 RepositoryVisibility.ORGANIZATION, RepositoryLifecycleState.ACTIVE, false);

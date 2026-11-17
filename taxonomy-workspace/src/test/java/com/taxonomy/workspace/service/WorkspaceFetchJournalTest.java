@@ -54,6 +54,19 @@ class WorkspaceFetchJournalTest {
         @Override public void close() { factory.close(); }
     }
 
+    @Test void duplicateFetchRetainsItsOriginalExplicitCause() {
+        try (var db = new Database()) {
+            String cause = UUID.randomUUID().toString();
+            var first = db.journal.admit(CONTEXT, GRANT, CAPTURE, COMMAND, "command", cause);
+            assertThat(db.journal.admit(CONTEXT, GRANT, CAPTURE, COMMAND, "command", null)).isEqualTo(first);
+            assertThat(db.journal.admit(CONTEXT, GRANT, CAPTURE, COMMAND, "command",
+                    cause.toUpperCase(java.util.Locale.ROOT))).isEqualTo(first);
+            assertThatThrownBy(() -> db.journal.admit(CONTEXT, GRANT, CAPTURE, COMMAND, "command", UUID.randomUUID().toString()))
+                    .isInstanceOfSatisfying(ResponseStatusException.class, failure -> assertThat(failure.getStatusCode().value()).isEqualTo(409));
+            assertThat(db.journal.status(CONTEXT, ALICE, first.operationId())).isEqualTo(first);
+        }
+    }
+
     @Test void twoWorkersAndAnExpiredOwnerCanOnlyPublishOneRecordedCommit() throws Exception {
         try (var db = new Database(); var workers = Executors.newFixedThreadPool(2)) {
             var journal = db.journal;

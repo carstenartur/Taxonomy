@@ -52,6 +52,13 @@ public class WorkspaceManager {
     public static final String DEFAULT_USER = "anonymous";
 
     private WorkspaceActorAccess actorAccess = WorkspaceActorAccess.unavailable();
+    private RepositoryRefPolicy refPolicies;
+
+    @Autowired
+    void configureRefPolicies(RepositoryRefPolicy refPolicies) {
+        this.refPolicies = java.util.Objects.requireNonNull(refPolicies);
+    }
+
 
     @org.springframework.beans.factory.annotation.Autowired
     void configureActorAccess(WorkspaceActorAccess actorAccess) {
@@ -454,6 +461,9 @@ public class WorkspaceManager {
         }
         if (repositoryFactory != null) {
             repositoryFactory.deleteWorkspaceRepository(workspaceId);
+        }
+        if (refPolicies != null) {
+            refPolicies.removeWorkspace(workspace.getSourceRepositoryId(), workspaceId, username);
         }
         workspaceRepository.delete(workspace);
         workspaceStates.keySet().removeIf(key -> workspaceId.equals(key.workspaceId()));
