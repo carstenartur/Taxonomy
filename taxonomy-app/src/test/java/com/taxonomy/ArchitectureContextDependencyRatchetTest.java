@@ -281,6 +281,8 @@ class ArchitectureContextDependencyRatchetTest {
                 "com.taxonomy.workspace.repository.UserWorkspaceRepository.findByWorkspaceId(java.lang.String)",
                 "com.taxonomy.workspace.service.RepositoryContext.repositoryId()",
                 "com.taxonomy.workspace.service.RepositoryContext.username()",
+                // Compare the resolved request workspace with the retained source before reading evidence.
+                "com.taxonomy.workspace.service.RepositoryContext.workspaceId()",
                 "com.taxonomy.workspace.service.RepositoryMembershipService.canRead(com.taxonomy.workspace.model.SystemRepository,java.lang.String)",
                 "com.taxonomy.workspace.service.RepositoryMembershipService.canCollaborate(com.taxonomy.workspace.model.SystemRepository,java.lang.String)",
                 "com.taxonomy.workspace.service.SystemRepositoryService.getRepository(java.lang.String)",

@@ -6,9 +6,13 @@ window.AnalysisSnapshotAdoption = function (options) {
     function el(id) { return document.getElementById(id); }
     function t(key) { return options.t.apply(null, arguments); }
     function setBusy(value) { busy = value; if (options.onBusy) options.onBusy(value); render(); }
+    function workspaceId(value) {
+        return value.workspaceId !== undefined ? (value.workspaceId ?? '')
+            : value.workspaceScopeKey === '__shared__' ? '' : value.workspaceScopeKey;
+    }
     function sourceKey(value) {
         return JSON.stringify(['repositoryId','workspaceScopeKey','branch','projectId','requirementId','requirementVersionId','snapshotId']
-            .map(function (key) { return value?.[key] == null ? null : String(value[key]); }));
+            .map(function (key) { return value?.[key] == null ? null : String(value[key]); }).concat(value && workspaceId(value)));
     }
     function viewTitle(item) {
         var title = item.title || item.id, prefix = 'archview.policy.title.';
@@ -35,6 +39,7 @@ window.AnalysisSnapshotAdoption = function (options) {
     function sourceFromView(item) {
         var p = item?.extensions;
         return p?.['x-analysis-snapshot-id'] ? {repositoryId:p['x-analysis-repository-id'],workspaceScopeKey:p['x-analysis-workspace-scope'],
+            workspaceId:workspaceId({workspaceId:p['x-analysis-workspace-id'],workspaceScopeKey:p['x-analysis-workspace-scope']}),
             branch:p['x-analysis-branch'],projectId:Number(p['x-analysis-project-id']),requirementId:Number(p['x-analysis-requirement-id']),
             requirementVersionId:Number(p['x-analysis-requirement-version-id']),snapshotId:p['x-analysis-snapshot-id']} : null;
     }
@@ -104,7 +109,7 @@ window.AnalysisSnapshotAdoption = function (options) {
             var link = el('adoptionSourceLink'); link.hidden = !source;
             if (source) {
                 var url = new URL(window.TaxonomyI18n?.resolveUrl('/architecture/workbench') || '/architecture/workbench',window.location.href || 'https://example.test');
-                var values = {repositoryId:source.repositoryId,workspaceId:source.workspaceScopeKey === '__shared__' ? '' : source.workspaceScopeKey,
+                var values = {repositoryId:source.repositoryId,workspaceId:workspaceId(source),
                     branch:source.branch,projectId:source.projectId,snapshotId:source.snapshotId};
                 Object.keys(values).forEach(function (key) { url.searchParams.set(key,values[key]); });
                 if (window.TaxonomyI18n?.getLocale) url.searchParams.set('lang',window.TaxonomyI18n.getLocale());

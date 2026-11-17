@@ -18,6 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 import java.util.*;
 
 /** Resolves authorized retained evidence before entering the shared, read-only inference engine. */
@@ -86,7 +87,10 @@ public class ArchitectureSourceFocusService {
     private Evidence evidence(RepositoryContext selected, ArchitectureSourceFocusDtos.Source source) {
         if (selected == null || selected.username() == null || !source.repositoryId().equals(selected.repositoryId()))
             throw problem("NOT_FOUND","Source repository is not accessible in the selected context");
-        String workspace = WorkspaceOverlayScope.CENTRAL_SCOPE_KEY.equals(source.workspaceScopeKey()) ? null : source.workspaceScopeKey();
+        String workspace = WorkspaceOverlayScope.resolveWorkspaceId(source.workspaceScopeKey(), source.workspaceId());
+        if ((source.workspaceId() != null || WorkspaceOverlayScope.CENTRAL_SCOPE_KEY.equals(selected.workspaceId()))
+                && !Objects.equals(selected.workspaceId(), workspace))
+            throw problem("SOURCE_IDENTITY_MISMATCH","The selected workspace and retained source disagree");
         UserWorkspace owned = null;
         if (workspace == null) {
             if (!membership.canRead(repositories.getRepository(source.repositoryId()),selected.username()))
@@ -105,7 +109,13 @@ public class ArchitectureSourceFocusService {
         var provenance = new TreeMap<>(retained.provenance());
         provenance.put("x-focus-source-kind",source.kind()); provenance.put("x-analysis-repository-id",source.repositoryId());
         provenance.put("x-analysis-workspace-scope",source.workspaceScopeKey()); provenance.put("x-analysis-branch",source.branch());
-        var evidence = new TreeMap<String,Object>(Map.of("source",source,"graph",retained.graph(),"provenance",provenance));
+        ObjectNode hashPins = json.valueToTree(source);
+        // A redundant transport pin must not invalidate previously retained evidence or operations.
+        if (WorkspaceOverlayScope.CENTRAL_SCOPE_KEY.equals(workspace))
+            provenance.put("x-analysis-workspace-id", workspace);
+        else
+            hashPins.remove("workspaceId");
+        var evidence = new TreeMap<String,Object>(Map.of("source",hashPins,"graph",retained.graph(),"provenance",provenance));
         if (binding != null) {
             evidence.put("modelBinding", binding);
             provenance.put("x-focus-execution-catalogue", binding.analysisCatalogueRevision());

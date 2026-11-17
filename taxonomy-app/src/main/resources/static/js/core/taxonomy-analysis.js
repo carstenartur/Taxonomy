@@ -122,6 +122,10 @@
         body.profileVersion = profile.version;
         return {context:values[0], body:body};
     }
+    function assessmentWorkspace(source) {
+        if (Object.hasOwn(source, 'workspaceId')) return source.workspaceId ?? '';
+        return source.workspaceScopeKey === '__shared__' ? '' : source.workspaceScopeKey;
+    }
     async function assessmentCurrent(input) {
         if (!input?.context) return false;
         var context;
@@ -129,7 +133,8 @@
         catch (_) { return false; }
         return context && ['repositoryId','workspaceScopeKey','branch','commit'].every(function (key) {
             return context[key] === input.context[key];
-        }) && input.body.businessText === getBusinessText()
+        }) && assessmentWorkspace(context) === assessmentWorkspace(input.context)
+            && input.body.businessText === getBusinessText()
             && (!input.body.profileId || input.body.profileId === (document.getElementById('gapProfile')?.value || 'compatibility'))
             && (!input.body.evidenceCompleteness || input.body.evidenceCompleteness === (document.getElementById('gapEvidenceComplete')?.checked ? 'COMPLETE' : 'INCOMPLETE'))
             && (!input.body.scores || JSON.stringify(input.body.scores) === JSON.stringify(getCurrentScores()));
@@ -139,9 +144,7 @@
             && evidence.repositoryId === source.repositoryId && evidence.workspaceScopeKey === source.workspaceScopeKey
             && evidence.branch === source.branch && evidence.commitId === source.commit
             && evidence.evidenceAuthority === 'CANONICAL_SNAPSHOT'
-            && (!Object.hasOwn(evidence, 'workspaceId')
-                || (evidence.workspaceId === null || typeof evidence.workspaceId === 'string')
-                    && (evidence.workspaceId || '__shared__') === source.workspaceScopeKey);
+            && assessmentWorkspace(evidence) === assessmentWorkspace(source);
     }
     function requireAssessmentProof(input, evidence) {
         var body = input.body;

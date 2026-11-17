@@ -25,7 +25,8 @@ function fixture(current=selected) {
 test('graph reads require a complete explicitly selected revision before transport',async()=>{
     const {api,calls}=fixture();
     for(const context of [undefined,{}, {...selected,commit:''},{...selected,repositoryId:''},{...selected,workspaceScopeKey:undefined},
-        {...selected,workspaceScopeKey:undefined,workspaceId:undefined},{...selected,workspaceScopeKey:undefined,workspaceId:null}]) {
+        {...selected,workspaceScopeKey:undefined,workspaceId:undefined},{...selected,workspaceScopeKey:undefined,workspaceId:null},{...selected,workspaceId:'different-copy'},
+        {...selected,workspaceScopeKey:'copy',workspaceId:null}]) {
         await assert.rejects(async()=>api.graphDownstream('CR-1000',2,context));
     }
     assert.equal(calls.length,0,'An unresolved selection must not become a primary-context query');
@@ -189,8 +190,25 @@ function pendingAssessmentFixture(kind='gap') {
                 proposedElements:[],suggestedRelations:[],meanRelevance:null,notes:[]});}};
 }
 
+test('literal shared workspace requires matching assessment evidence',async()=>{
+    for (const [returnedWorkspace,accepted] of [[null,false], [undefined,false], ['__shared__',true]]) {
+        const f=pendingAssessmentFixture();
+        f.current.workspaceId='__shared__';
+        const running=f.run();
+        await new Promise(resolve=>setImmediate(resolve));
+        f.resolve(proof=>{
+            if (returnedWorkspace === undefined) delete proof.workspaceId;
+            else proof.workspaceId=returnedWorkspace;
+            return proof;
+        });
+        await running;
+        assert.equal(f.elements.get('gapAnalysisContent').innerHTML.includes('delivered-result'),accepted);
+    }
+});
+
 for(const [name,change] of [
     ['revision',f=>{f.current.commit='b'.repeat(40);}],
+    ['workspace with the same scope key',f=>{f.current.workspaceId='__shared__';}],
     ['profile',f=>{f.elements.get('gapProfile').value='compatibility';}],
     ['completeness',f=>{f.elements.get('gapEvidenceComplete').checked=true;}],
     ['requirement',f=>{f.elements.get('businessText').value='Later input';}]
@@ -206,7 +224,7 @@ for(const [name,change] of [
 
 for(const [name,mutate] of [
     ['missing',()=>undefined],['repository',p=>({...p,repositoryId:'another-model'})],
-    ['workspace',p=>({...p,workspaceId:'private-b'})],['branch',p=>({...p,branch:'another-branch'})],
+    ['workspace',p=>({...p,workspaceId:'private-b'})], ['literal shared workspace',p=>({...p,workspaceId:'__shared__'})],['branch',p=>({...p,branch:'another-branch'})],
     ['revision',p=>({...p,commitId:'b'.repeat(40)})],['authority',p=>({...p,evidenceAuthority:'RETAINED_ANALYSIS'})],
     ['readiness',p=>({...p,readinessState:'STALE'})],['template',p=>({...p,templateVersion:''})],
     ['threshold',p=>({...p,minimumScore:20})],['completeness',p=>({...p,completeness:'UNKNOWN'})]
@@ -257,7 +275,7 @@ test('live Copilot rejects a pattern from a different model before recommendatio
 
 for(const kind of ['gap','recommendation']) for(const [name,mutate] of [
     ['missing',()=>undefined], ['repository',p=>({...p,repositoryId:'another-model'})],
-    ['workspace',p=>({...p,workspaceId:'private-b'})], ['branch',p=>({...p,branch:'another-branch'})],
+    ['workspace',p=>({...p,workspaceId:'private-b'})], ['literal shared workspace',p=>({...p,workspaceId:'__shared__'})], ['branch',p=>({...p,branch:'another-branch'})],
     ['revision',p=>({...p,commitId:'b'.repeat(40)})], ['profile',p=>({...p,profileId:'another-profile'})],
     ['profile version',p=>({...p,profileVersion:'8'})], ['authority',p=>({...p,evidenceAuthority:'RETAINED_ANALYSIS'})],
     ['false completeness',p=>({...p,evidenceCompleteness:'COMPLETE'})]

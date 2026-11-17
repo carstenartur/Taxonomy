@@ -5,10 +5,11 @@ window.ArchitectureSourceFocusApi = Object.freeze({
         var source = request.source;
         var query = new URLSearchParams();
         ['repositoryId', 'workspaceScopeKey', 'branch'].forEach(function (key) { query.set(key, source[key]); });
-        var workspace = source.workspaceScopeKey === '__shared__' ? '' : source.workspaceScopeKey;
+        var workspace = source.workspaceId !== undefined ? (source.workspaceId ?? '')
+            : source.workspaceScopeKey === '__shared__' ? '' : source.workspaceScopeKey;
         query.set('workspaceId', workspace);
         // Deliberately no If-Match or editor context. The server resolves the pinned durable source.
-        var body = { source: source, sourceId: request.sourceId, candidateLimit: request.candidateLimit,
+        var body = { source: Object.assign({}, source, {workspaceId: workspace}), sourceId: request.sourceId, candidateLimit: request.candidateLimit,
             useAi: request.useAi === true, language: request.language };
         return window.TaxonomyApiClient.request('/api/architecture/focus/suggestions?' + query, {
             method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Taxonomy-Workspace-Id': workspace },

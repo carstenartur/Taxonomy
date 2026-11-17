@@ -107,7 +107,7 @@ test('deliberate canonical view selection uses its source B while retaining inde
     const link=new URL(node('adoptionSourceLink').href,'https://example.test');
     assert.equal(link.searchParams.get('snapshotId'),'snapshot-B');assert.equal(link.searchParams.get('workspaceId'),'source-copy-B');
     await node('adoptionPreview').click();
-    assert.deepEqual(JSON.parse(JSON.stringify(requests[0].source)),sourceB);
+    assert.deepEqual(JSON.parse(JSON.stringify(requests[0].source)),{...sourceB,workspaceId:sourceB.workspaceScopeKey});
     assert.deepEqual(JSON.parse(JSON.stringify(requests[0].context)),target);
 });
 
@@ -124,4 +124,26 @@ test('historical checkpoint links clear a later canonical view selection and pre
     assert.equal(link.searchParams.get('commit'),'a'.repeat(40));
     assert.equal(link.searchParams.get('sourceSnapshotId'),'A');
     assert.equal(link.searchParams.get('workspaceId'),'copy');
+});
+
+test('a preview for central cannot authorize the same snapshot tuple in a __shared__ working copy',async()=>{
+    const {context,node,source}=boot();
+    source.workspaceId='';
+    let selectedId=null;
+    const preview={fingerprint:'central',summary:{addedElements:[],reusedElements:[],addedRelations:[],reusedRelations:[],differences:[],conflicts:[]}};
+    const requests=[];
+    const panel=context.AnalysisSnapshotAdoption({t:key=>key,metadata:()=>({commandId:'one'}),selectedView:()=>selectedId,
+        api:{previewAdoption:async request=>{requests.push(request);return preview;}}});
+    const current=view();current.model.views=[{id:'literal',extensions:{
+        'x-analysis-repository-id':source.repositoryId,'x-analysis-workspace-scope':'__shared__','x-analysis-workspace-id':'__shared__',
+        'x-analysis-branch':source.branch,'x-analysis-project-id':'1','x-analysis-requirement-id':'2',
+        'x-analysis-requirement-version-id':'3','x-analysis-snapshot-id':source.snapshotId}}];
+    panel.update(current);await node('adoptionPreview').click();
+    assert.equal(node('adoptionAccept').disabled,false);
+    selectedId='literal';panel.update(current);
+    assert.equal(node('adoptionAccept').disabled,true);
+    assert.equal(new URL(node('adoptionSourceLink').href,'https://example.test').searchParams.get('workspaceId'),'__shared__');
+    await node('adoptionPreview').click();
+    assert.deepEqual(requests.map(request=>request.source.workspaceId),['','__shared__']);
+    assert.deepEqual(JSON.parse(JSON.stringify(requests[1].context)),target);
 });

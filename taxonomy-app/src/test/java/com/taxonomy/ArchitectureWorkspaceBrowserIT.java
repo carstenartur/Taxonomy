@@ -790,7 +790,7 @@ class ArchitectureWorkspaceBrowserIT {
             assertThat(request.header("If-Match")).isNull();
             assertThat(request.header("X-Taxonomy-Workspace-Id")).isEmpty();
             assertThat(body.get("source")).isEqualTo(Map.of("kind", "ANALYSIS_SNAPSHOT", "repositoryId", "repository-B",
-                    "workspaceScopeKey", "__shared__", "branch", "review/B", "projectId", 42, "requirementId", 7,
+                    "workspaceScopeKey", "__shared__", "workspaceId", "", "branch", "review/B", "projectId", 42, "requirementId", 7,
                     "requirementVersionId", 11, "snapshotId", "snapshot-B"));
         });
         assertThat(page.driver().executeScript("return JSON.stringify(TaxonomyArchitectureWorkspace.getData());")).isEqualTo(evidence);
@@ -819,6 +819,7 @@ class ArchitectureWorkspaceBrowserIT {
         assertThat(page.driver().findElement(By.id("adoptionAccept")).isDisplayed()).isFalse();
         assertThat(page.driver().getCurrentUrl()).contains("architectureSource=working", "sourceSnapshotId=snapshot-B",
                 "sourceWorkspaceScopeKey=__shared__", "sourceRepositoryId=repository-B", "sourceRequirementVersionId=11");
+        assertThat(page.driver().executeScript("return new URL(location.href).searchParams.get('sourceWorkspaceId');")).isEqualTo("");
         assertThat(page.requests().stream().filter(request -> request.path().endsWith("/editor/commands")
                 || request.path().contains("/snapshot-adoptions")).toList()).isEmpty();
         for (String id : List.of("editorRefresh", "editorCheckpoint", "editorNew", "editorPreviewElement", "editorSavePackage"))
