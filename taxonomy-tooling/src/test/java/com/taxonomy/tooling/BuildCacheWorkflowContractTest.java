@@ -32,6 +32,28 @@ class BuildCacheWorkflowContractTest {
             }
         }
     }
+    @Test void cacheSeedResolvesDynamicProvidersForTheReactorUiAndStandalonePlugins() throws Exception {
+        String ci = Files.readString(root().resolve(".github/workflows/ci-cd.yml"));
+        String seed = ci.substring(ci.indexOf("id: maven-seed"), ci.indexOf("Save warmed Maven dependency cache"));
+        assertThat(seed).contains("for pom in pom.xml .github/ui-verification-pom.xml plugins/*/pom.xml; do",
+                "-N -f \"$pom\"", "maven-dependency-plugin:3.11.0:get",
+                "org.apache.maven.surefire:surefire-junit-platform:${maven-surefire-plugin.version}");
+        assertThat(seed.indexOf("surefire-junit-platform")).isLessThan(seed.indexOf("echo \"repository="));
+        try (var modules = Files.newDirectoryStream(root().resolve("plugins"))) {
+            for (Path module : modules) {
+                Path pom = module.resolve("pom.xml");
+                if (Files.isRegularFile(pom)) {
+                    assertThat(Files.readString(pom)).as(pom.toString()).contains(
+                            "<artifactId>maven-surefire-plugin</artifactId><version>${maven-surefire-plugin.version}</version>");
+                }
+            }
+        }
+        String ui = Files.readString(root().resolve(".github/ui-verification-pom.xml"));
+        for (String plugin : List.of("maven-surefire-plugin", "maven-failsafe-plugin")) {
+            assertThat(ui).contains("<artifactId>" + plugin + "</artifactId><version>${maven-surefire-plugin.version}</version>");
+        }
+    }
+
     @Test void dependencyCacheHasOneWriterOnlyAfterSuccessfulFullSeed() throws Exception {
         Path root = root();
         assertThat(root.resolve(".mvn/dependency-cache-epoch")).exists();
