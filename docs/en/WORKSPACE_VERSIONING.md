@@ -210,6 +210,10 @@ If a sync conflict occurs, a resolution modal is shown.
 - **📥 Sync from Team** — Pull the latest changes from the shared repository
 - **📤 Publish for Team** — Push your changes to the shared repository
 
+### Automatically adopt default-branch commits
+
+Under **Versions → Sync**, open **Automatic adoption from the default branch**. The rule starts off. **Enable for this branch** activates it for the displayed target branch. Activation records the current default-branch commit as its starting point. The rule then adopts newly arriving commits in order. Earlier changes remain available through an explicit rebase or individual commit adoption. The on/off indicator stays visible when the details are collapsed. Each personal copy has its own rule, including copies whose branch has the same name as the default branch. Adoption stops at a conflict, a missing prerequisite or a change in permissions. The panel shows the source commit and result. **Recheck this commit** verifies the current conditions. **Skip this commit permanently** leaves that change out. Use **Disable for this branch** to turn off the rule. **Show rule history** lists the actor, source commit, and target revisions before and after each decision.
+
 ---
 
 ## 8. Keyboard & Accessibility

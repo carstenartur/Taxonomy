@@ -354,13 +354,30 @@ public class DslGitRepository implements AutoCloseable {
 
     /** Adopt an already verified descendant with a compare-and-set ref update, without manufacturing another commit. */
     public String fastForwardIfHeadMatches(String branch, String expectedHead, String incomingHead, String author, String message) throws IOException {
+        return fastForwardIfHeadMatches(branch, expectedHead, incomingHead, author, message, false);
+    }
+
+    /** A branch rule must never follow a symbolic target into another branch. */
+    public String publishDefaultCommit(String branch, String expectedHead, String candidate, String actor, String message) throws IOException {
+        return fastForwardIfHeadMatches(branch, expectedHead, candidate, actor, message, true);
+    }
+
+    public String directBranchHead(String branch) throws IOException {
+        Ref current = readFreshRef(Constants.R_HEADS + branch);
+        if (current != null && current.isSymbolic()) throw new IOException("The selected branch is a symbolic reference");
+        return current == null || current.getObjectId() == null ? null : current.getObjectId().name();
+    }
+
+    private String fastForwardIfHeadMatches(String branch, String expectedHead, String incomingHead, String author, String message,
+                                            boolean directOnly) throws IOException {
         if (!Repository.isValidRefName(Constants.R_HEADS + branch)) throw new IllegalArgumentException("Invalid branch");
         // A ref-only publication must not overlap a transfer/checkpoint pack flush either.
         synchronized (gitRepo) {
+            if (directOnly) directBranchHead(branch);
             verifyExpectedHead(branch, expectedHead);
             verifyIncoming(incomingHead, expectedHead);
             if (expectedHead != null && !isAncestor(expectedHead, incomingHead)) throw new IOException("Incoming history is not a descendant");
-            RefUpdate update = gitRepo.updateRef(Constants.R_HEADS + branch);
+            RefUpdate update = gitRepo.updateRef(Constants.R_HEADS + branch, directOnly);
             update.setExpectedOldObjectId(expectedHead == null ? ObjectId.zeroId() : ObjectId.fromString(expectedHead));
             update.setNewObjectId(ObjectId.fromString(incomingHead)); update.setForceUpdate(false);
             update.setRefLogIdent(personIdent(author)); update.setRefLogMessage(message, true);
@@ -646,6 +663,31 @@ public class DslGitRepository implements AutoCloseable {
         }
     }
 
+    /** Prepare the exact default-branch change for an independently fenced adoption operation. */
+    public DefaultCommitAdoption prepareDefaultCommit(String sourceRepository, String sourceBranch, String source,
+                                                      String targetBranch, String target, String actor) throws IOException {
+        verifyExpectedHead(targetBranch, target);
+        try (var walk = new RevWalk(gitRepo)) {
+            var picked = walk.parseCommit(ObjectId.fromString(source));
+            var onto = walk.parseCommit(ObjectId.fromString(target));
+            if (walk.isMergedInto(picked, onto))
+                return new DefaultCommitAdoption("ALREADY_CONTAINED", null, "Source commit is in target history");
+            if (picked.getParentCount() != 1)
+                return new DefaultCommitAdoption("PREREQUISITE", null, "Select a mainline parent manually");
+            verifyIncoming(source, target);
+            var change = mergePickedChange(picked, onto, null);
+            if (change.resultTree() == null)
+                return new DefaultCommitAdoption("CONFLICT", null, String.join(", ", change.conflictingPaths()));
+            if (DefaultCommitAdoption.sameContent(this, onto.getTree(), change.resultTree()))
+                return new DefaultCommitAdoption("ALREADY_CONTAINED", null, "Target already contains this change");
+            var provenance = CommitProvenance.capture("automatic-adoption", this, sourceRepository, sourceBranch,
+                    source, change.baseCommit());
+            String candidate = insertPickedCommit(targetBranch, picked, onto, change, provenance,
+                    personIdent(actor), "Adopt " + sourceBranch + ": " + picked.getShortMessage());
+            return new DefaultCommitAdoption("PREPARED", candidate, null);
+        }
+    }
+
     /** Apply a selected change at the current target head. */
     public String cherryPick(String commitId, String targetBranch) throws IOException {
         return cherryPick(commitId, targetBranch, getHeadCommit(targetBranch));
@@ -682,18 +724,24 @@ public class DslGitRepository implements AutoCloseable {
             var provenance = CommitProvenance.capture(operation, this, storageName, "detached", commitId, change.baseCommit());
             String message = (resolvedDsl == null ? "Cherry-pick: " : "Resolve cherry-pick: ") + picked.getShortMessage();
             PersonIdent committer = author == null ? systemIdent() : personIdent(author);
-            try (var inserter = gitRepo.newObjectInserter()) {
-                var commit = new CommitBuilder();
-                commit.setTreeId(insertProvenanceTree(inserter, change.resultTree(), provenance));
-                commit.setParentId(target);
-                commit.setAuthor(picked.getAuthorIdent());
-                commit.setCommitter(committer);
-                commit.setMessage(message);
-                signCommit(commit, targetBranch);
-                ObjectId result = inserter.insert(commit);
-                inserter.flush();
-                return fastForwardIfHeadMatches(targetBranch, expectedTargetHead, result.name(), committer.getName(), message);
-            }
+            String result = insertPickedCommit(targetBranch, picked, target, change, provenance, committer, message);
+            return fastForwardIfHeadMatches(targetBranch, expectedTargetHead, result, committer.getName(), message);
+        }
+    }
+
+    private String insertPickedCommit(String targetBranch, RevCommit picked, RevCommit target, CherryPickTree change,
+                                      CommitProvenance provenance, PersonIdent committer, String message) throws IOException {
+        try (var inserter = gitRepo.newObjectInserter()) {
+            var commit = new CommitBuilder();
+            commit.setTreeId(insertProvenanceTree(inserter, change.resultTree(), provenance));
+            commit.setParentId(target);
+            commit.setAuthor(picked.getAuthorIdent());
+            commit.setCommitter(committer);
+            commit.setMessage(message);
+            signCommit(commit, targetBranch);
+            ObjectId result = inserter.insert(commit);
+            inserter.flush();
+            return result.name();
         }
     }
 

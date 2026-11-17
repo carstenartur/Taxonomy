@@ -844,3 +844,69 @@ test('Personal rebase recovery adopts the explicitly displayed current branch he
         await page.waitForFunction(() => !document.querySelector('#workspaceApplyRebase'));
     } finally { await page.close(); }
 });
+
+test('default-commit adoption is opt-in, pinned to the branch, and clears a stopped decision on context switch', async () => {
+    const page = await fixture();
+    const endpoint = '/api/workspace/adoption-rule';
+    try {
+        const template = await readFile(path.join(resources,'templates/index.html'),'utf8');
+        const panel = template.match(/<details id="workspaceAdoptionRule"[\s\S]*?<\/details>/)?.[0];
+        assert.ok(panel, 'the sync panel must contain the branch rule');
+        await page.evaluate(html => {
+            document.body.insertAdjacentHTML('beforeend', html);
+            window.selectionForRule = {mode:'EDITABLE',branch:'draft',contextId:'view-1'};
+            window.TaxonomyContextBar = {getCurrentContext:() => window.selectionForRule};
+        }, panel);
+        await page.addScriptTag({path:path.join(resources,'static/js/workspace/taxonomy-branch-adoption.js')});
+        const source = {syncStatus:'UP_TO_DATE',repositoryId:'origin',workspaceId:'work',branch:'draft'};
+        await answer(page,'/api/workspace/sync-state',initial);
+        await page.evaluate(() => TaxonomyWorkspaceSync.refresh());
+        await syncResponse(page,source);
+        async function wait(method, suffix = '') {
+            const path = endpoint + suffix;
+            await page.waitForFunction(({method,path}) => window.statusReads.some(r => r.pending && r.method === method
+                && r.url.split('?')[0] === path),{method,path});
+            return page.evaluate(({method,path}) => {
+                const r = window.statusReads.find(r => r.pending && r.method === method && r.url.split('?')[0] === path);
+                return {url:r.url, body:r.body && JSON.parse(r.body)};
+            },{method,path});
+        }
+        const initialRead = new URL((await wait('GET')).url,'https://fixture.invalid');
+        assert.equal(initialRead.searchParams.get('workspaceId'),'work');
+        assert.equal(initialRead.searchParams.get('branch'),'draft');
+        const off = {...source,sourceRepositoryId:'origin',sourceBranch:'draft',enabled:false,revision:0,status:'DISABLED'};
+        await answer(page,endpoint,off);
+        await page.waitForFunction(() => document.querySelector('#workspaceAdoptionIndicator').textContent.length > 0);
+        assert.equal(await page.locator('#workspaceAdoptionRule').evaluate(panel => panel.open), false);
+        await page.locator('#workspaceAdoptionRule summary').click();
+        // A private copy can track its central default under the very same branch name.
+        await wait('GET');
+        await answer(page, endpoint, off);
+        assert.equal(await page.locator('#workspaceAdoptionRetry').isVisible(),false);
+        await page.locator('#workspaceAdoptionToggle').click();
+        const enable = await wait('PUT');
+        assert.deepEqual(enable.body,{enabled:true,expectedRevision:0});
+        assert.equal(new URL(enable.url,'https://fixture.invalid').searchParams.get('expectedContextId'),'view-1');
+        const stopped = {...off,enabled:true,revision:2,status:'CONFLICT',sourceCommit:'a'.repeat(40)};
+        await answer(page,endpoint,stopped,200,{method:'PUT'});
+        await page.locator('#workspaceAdoptionRetry').waitFor();
+        assert.ok((await page.locator('#workspaceAdoptionResult').innerText()).includes(stopped.sourceCommit));
+        await page.locator('#workspaceAdoptionHistoryButton').click();
+        await wait('GET','/history');
+        await answer(page,endpoint+'/history',[{revision:2,status:'CONFLICT',actor:'reviewer',sourceCommit:stopped.sourceCommit}]);
+        await page.locator('#workspaceAdoptionHistory li').waitFor();
+        assert.match(await page.locator('#workspaceAdoptionHistory').innerText(),/reviewer/);
+        await page.locator('#workspaceAdoptionSkip').click();
+        const skip = await wait('POST','/decision');
+        assert.deepEqual(skip.body,{action:'SKIP',expectedRevision:2,sourceCommit:stopped.sourceCommit});
+        await page.evaluate(() => {
+            window.selectionForRule = {mode:'READ_ONLY',branch:'other',contextId:'view-2',commitId:'b'.repeat(40)};
+            document.dispatchEvent(new CustomEvent('taxonomy:repository-context-changed',{detail:{selectionChanged:true}}));
+        });
+        await answer(page,endpoint+'/decision',{...stopped,status:'SKIPPED'},200,{method:'POST'});
+        assert.equal(await page.locator('#workspaceAdoptionRule').isVisible(),false);
+        assert.equal(await page.locator('#workspaceAdoptionResult').textContent(),'');
+        assert.equal(await page.locator('#workspaceAdoptionHistory').textContent(),'');
+        assert.deepEqual(page.errors,[]);
+    } finally { await page.close(); }
+});
