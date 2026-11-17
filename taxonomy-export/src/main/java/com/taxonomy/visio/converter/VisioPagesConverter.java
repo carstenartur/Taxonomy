@@ -1,7 +1,9 @@
 package com.taxonomy.visio.converter;
 
+import com.taxonomy.diagram.VisioDrawingOptions;
 import com.taxonomy.visio.VisioDocument;
 import com.taxonomy.visio.VisioPage;
+import com.taxonomy.visio.VisioPageLayout;
 import com.thoughtworks.xstream.converters.Converter;
 import com.thoughtworks.xstream.converters.MarshallingContext;
 import com.thoughtworks.xstream.converters.UnmarshallingContext;
@@ -17,10 +19,6 @@ public class VisioPagesConverter implements Converter {
             "http://schemas.microsoft.com/office/visio/2012/main";
     private static final String REL_NS =
             "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-    private static final double MINIMUM_PAGE_WIDTH = 11.0;
-    private static final double MINIMUM_PAGE_HEIGHT = 8.5;
-    private static final double PAGE_MARGIN = 1.0;
-
     @Override
     public boolean canConvert(Class type) {
         return VisioDocument.class.equals(type);
@@ -45,10 +43,24 @@ public class VisioPagesConverter implements Converter {
             writer.addAttribute("IsCustomNameU", "1");
 
             writer.startNode("PageSheet");
-            writeCell(writer, "PageWidth", decimal(pageWidth(page)));
-            writeCell(writer, "PageHeight", decimal(pageHeight(page)));
+            var layout = VisioPageLayout.of(page, document.getDrawingOptions());
+            writeCell(writer, "PageWidth", decimal(layout.width()));
+            writeCell(writer, "PageHeight", decimal(layout.height()));
             writeCell(writer, "PageScale", "1");
             writeCell(writer, "DrawingScale", "1");
+            if (document.getDrawingOptions() != null && document.getDrawingOptions().mode() == VisioDrawingOptions.Mode.WALL) {
+                writeCell(writer, "PrintPageOrientation", "2"); // visPPOLandscape
+                writeCell(writer, "OnPage", "1");
+                writeCell(writer, "PagesX", "1");
+                writeCell(writer, "PagesY", "1");
+                // Windows DMPAPER codes. A0 and A1 media are printer-specific.
+                switch (document.getDrawingOptions().paper()) {
+                    case A4 -> writeCell(writer, "PaperKind", "9");
+                    case A3 -> writeCell(writer, "PaperKind", "8");
+                    case A2 -> writeCell(writer, "PaperKind", "66");
+                    case A1, A0 -> { }
+                }
+            }
             writer.endNode();
 
             writer.startNode("Rel");
@@ -64,30 +76,6 @@ public class VisioPagesConverter implements Converter {
             UnmarshallingContext context) {
         throw new UnsupportedOperationException(
                 "VisioPagesConverter does not support unmarshaling");
-    }
-
-    private static double pageWidth(VisioPage page) {
-        if (page.isEvidencePage()) return 8.3;
-        double right = page.getShapes().stream()
-                .mapToDouble(shape -> shape.getX() + shape.getWidth() / 2.0)
-                .max()
-                .orElse(0.0);
-        if (page.getLegend() != null) right = Math.max(right, page.getLegend().x() + page.getLegend().width() / 2);
-        right = Math.max(right, page.getConnects().stream().filter(c -> c.getTextBox() != null)
-                .mapToDouble(c -> c.getTextBox().x() + c.getTextBox().width() / 2).max().orElse(0));
-        return Math.max(MINIMUM_PAGE_WIDTH, right + PAGE_MARGIN);
-    }
-
-    private static double pageHeight(VisioPage page) {
-        if (page.isEvidencePage()) return 11.7;
-        double top = page.getShapes().stream()
-                .mapToDouble(shape -> shape.getY() + shape.getHeight() / 2.0)
-                .max()
-                .orElse(0.0);
-        if (page.getLegend() != null) top = Math.max(top, page.getLegend().y() + page.getLegend().height() / 2);
-        top = Math.max(top, page.getConnects().stream().filter(c -> c.getTextBox() != null)
-                .mapToDouble(c -> c.getTextBox().y() + c.getTextBox().height() / 2).max().orElse(0));
-        return Math.max(MINIMUM_PAGE_HEIGHT, top + PAGE_MARGIN);
     }
 
     private static void writeCell(

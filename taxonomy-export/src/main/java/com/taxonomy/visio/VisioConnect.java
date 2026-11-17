@@ -19,6 +19,12 @@ public class VisioConnect {
     public VisioTextBox getTextBox() { return textBox; }
     public void setTextBox(VisioTextBox textBox) { this.textBox = textBox; }
 
+    public VisioTextBox textBoxOrDefault(VisioConnectionPoints.Endpoints endpoints) {
+        if (textBox != null) return textBox;
+        return new VisioTextBox(relationType, (endpoints.source().x() + endpoints.target().x()) / 2,
+                (endpoints.source().y() + endpoints.target().y()) / 2, 2, .5);
+    }
+
     public String getFromShape() { return fromShape; }
     public String getToShape() { return toShape; }
     public String getRelationType() { return relationType; }

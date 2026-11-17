@@ -87,7 +87,25 @@ RUN printf 'git.branch=container\ngit.commit.id=%s\ngit.commit.id.abbrev=%s\ngit
 
 # Resolve anything not covered by the seed and always build the actual checkout.
 # Keep the repository in the layer, so external exporters retain its bytes.
-RUN ./mvnw -q -DskipTests package
+RUN <<'PACKAGE' bash
+set -eo pipefail
+log=$(mktemp)
+trap 'rm -f "$log"' EXIT
+package() { ./mvnw -q -DskipTests package; }
+if package 2>&1 | tee "$log"; then
+    exit 0
+else
+    status=$?
+fi
+# A fresh Resolver session can fetch the artifact after a Central connection reset.
+if grep -Eq '^\[ERROR\] Failed to execute goal on project [^: ]+: Could not resolve dependencies for project ' "$log" &&
+   grep -Eq '^\[ERROR\][[:space:]].*Could not transfer artifact [^ ]+ from/to central \([^)]+\): Connection reset[[:space:]]*$' "$log"; then
+    echo 'Maven Central reset a dependency transfer; retrying package once.' >&2
+    package
+else
+    exit "$status"
+fi
+PACKAGE
 
 # ---- optional OpenTelemetry Java agent stage ----
 # Tag retained for automated update discovery; the multi-platform index digest is

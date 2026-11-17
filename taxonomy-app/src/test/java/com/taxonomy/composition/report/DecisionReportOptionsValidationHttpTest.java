@@ -7,7 +7,19 @@ import com.taxonomy.portfolio.report.DecisionRationaleSnapshotReportService;
 import com.taxonomy.shared.config.GlobalExceptionHandler;
 import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.WorkspaceResolver;
+import com.taxonomy.architecture.decision.DecisionRationaleScoreSemanticsAdapter;
+import com.taxonomy.dto.AnalysisModelBinding;
+import com.taxonomy.dto.ViewContext;
+import com.taxonomy.extension.api.report.ReportFormatDescriptor;
+import com.taxonomy.extension.api.report.ReportRendererExtension;
+import com.taxonomy.extension.api.report.ReportRenderResult;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
+import com.taxonomy.reporting.api.decision.DecisionReportOptions;
+import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.mockito.ArgumentCaptor;
 import org.springframework.context.MessageSource;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -60,6 +72,58 @@ class DecisionReportOptionsValidationHttpTest {
                 .content("{\"scores\":{\"CP\":100},\"businessText\":\"Requirement\"}"))
                 .andExpect(status().isBadRequest());
     }
+    @ParameterizedTest
+    @CsvSource({"visio,none,true", "visio-pdf,none,true", "visio,roots,true", "visio-pdf,opt-out,false"})
+    void directDrawingPostsHonorRecordedOwnerDefaultsAndExplicitOptOut(
+            String format, String selection, boolean show) throws Exception {
+        var workspace = mock(WorkspaceResolver.class);
+        var state = mock(RepositoryStateService.class);
+        var context = new WorkspaceContext("architect", "workspace", "draft", "repository");
+        var source = new ViewContext("a".repeat(40), "draft", java.time.Instant.EPOCH, true, false, false);
+        when(workspace.resolveUnambiguousContextForRead()).thenReturn(context);
+        when(state.readSelectedViewContext(context)).thenReturn(java.util.Optional.of(source));
+
+        var report = mock(DecisionRationaleReport.class, RETURNS_DEEP_STUBS);
+        var reports = mock(DecisionRationaleReportService.class);
+        when(reports.generate(any(), any(), any(), any())).thenReturn(report);
+        when(reports.generate(any(), any(), any(), any(), any())).thenReturn(report);
+        when(reports.generate(any(), any(), any(), any(), any(), any(), anyBoolean())).thenReturn(report);
+        var semantics = mock(DecisionRationaleScoreSemanticsAdapter.class);
+        when(semantics.adapt(same(report), anyMap(), any())).thenReturn(report);
+        var registry = mock(ReportRendererRegistry.class);
+        var renderer = mock(ReportRendererExtension.class);
+        when(registry.getRequired("decision-rationale", format)).thenReturn(renderer);
+        when(renderer.descriptor()).thenReturn(new ReportFormatDescriptor(format, "Drawing", "pdf", "application/pdf", true));
+        when(renderer.render(any())).thenReturn(new ReportRenderResult(new byte[]{1}));
+        var mvc = MockMvcBuilders.standaloneSetup(
+                new DecisionRationaleReportController(reports, registry, state, workspace, semantics, null)).build();
+        String optionField = switch (selection) {
+            case "roots" -> ", \"exportOptions\":{\"taxonomyRoots\":[\"CP\"]}";
+            case "opt-out" -> ", \"exportOptions\":{\"taxonomyRoots\":[\"CP\"],\"showResponsibilities\":false}";
+            default -> "";
+        };
+        String body = """
+                {"scores":{"CP":100},"businessText":"Original requirement","modelBinding":{
+                 "state":"MODEL_UNCOMMITTED","repositoryId":"repository","workspaceScopeKey":"workspace",
+                 "branch":"draft","modelSource":"WORKSPACE_REVISION","modelSha256":"%s",
+                 "scope":{},"rootCodes":[],"briefFields":{},"references":[],"excludedRelationTypes":[]}%s}
+                """.formatted("a".repeat(64), optionField);
+        mvc.perform(post("/api/decision-report/" + format).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+        var options = ArgumentCaptor.forClass(DecisionReportOptions.class);
+        if (show) {
+            var binding = ArgumentCaptor.forClass(AnalysisModelBinding.class);
+            verify(reports).generate(any(), eq(context), eq(source), any(), options.capture(), binding.capture(), eq(false));
+            org.assertj.core.api.Assertions.assertThat(binding.getValue().modelSha256()).isEqualTo("a".repeat(64));
+        } else {
+            verify(reports).generate(any(), eq(context), eq(source), any(), options.capture());
+        }
+        org.assertj.core.api.Assertions.assertThat(options.getValue().showResponsibilities()).isEqualTo(show);
+        org.assertj.core.api.Assertions.assertThat(options.getValue().visio().mode().name()).isEqualTo("SCREEN");
+        org.assertj.core.api.Assertions.assertThat(options.getValue().taxonomyRoots())
+                .isEqualTo(selection.equals("none") ? java.util.Set.of() : java.util.Set.of("CP"));
+    }
+
     @Test void inaccessibleGitStorageReturnsAnUnavailableSourceBeforeRendering() throws Exception {
         var state = mock(RepositoryStateService.class);
         var workspace = mock(WorkspaceResolver.class);

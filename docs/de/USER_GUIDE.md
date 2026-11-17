@@ -1096,7 +1096,18 @@ Jeder Bericht enthält:
 
 Öffnen Sie **Entscheidungsbericht …** im Exportbereich unter **Decision Evidence**, auf der Detailseite einer gespeicherten Anforderung oder in deren Architekturansicht. Alle drei Einstiege verwenden denselben Dialog. Aus einer einzelnen Baumansicht wird die aktuelle Teil-Taxonomie vorausgewählt. Bei einem gespeicherten Ergebnis beziehen sich Auswahl und Bericht auf den ausgewählten Analysesnapshot.
 
-Wählen Sie **Visio (.vsdx)** für eine bearbeitbare Baumzeichnung je ausgewählter Teiltaxonomie. Die Knoten zeigen die Bewertungen und sind über Eltern-Kind-Verbindungen verknüpft. Gespeicherte Begründungen stehen in den Shape-Daten. Liegt zum Snapshot eine Architektur vor, öffnet sich die Datei auf deren Diagramm. Die Entscheidungsbäume folgen auf eigenen Seiten. Der vollständige Anforderungstext steht im Anhang.
+#### Eine Visio-Zeichnung erkunden oder als Wandplan drucken
+
+Wählen Sie **Visio (.vsdx)**, um einzelne Shapes und Verbinder zu bearbeiten. Markieren Sie in Visio einen Knoten und öffnen Sie die **Shape-Daten**. Dort stehen seine gespeicherte Bewertung und Begründung, soweit vorhanden. **Visio PDF (.pdf)** liefert feste Zeichnungsseiten zum Lesen, Weitergeben oder Drucken. Das PDF-Format erscheint, wenn die PDF-Erzeugung aktiviert ist.
+
+| Zeichnungslayout | Verwendung |
+|---|---|
+| **Am Bildschirm erkunden** (Voreinstellung) | Vergrößern Sie die Entscheidungsbäume der gewählten Taxonomien und verfolgen Sie einzelne Pfade. Eine vorhandene gespeicherte Architektur erhält eine eigene Zeichnung. In der VSDX-Datei können Sie Shapes verschieben und bearbeiten. |
+| **Als Wandplan drucken** | Wählen Sie A4, A3, A2, A1 oder A0 im Querformat. Voreingestellt ist **A1** (841 × 594 mm). Mit **Kurzbegründungen auf der Zeichnung anzeigen** drucken Sie kurze Fassungen der gespeicherten Begründungen direkt an den Knoten. |
+
+**Zuständigkeiten anzeigen** ist in beiden Varianten voreingestellt. Vorhandene organisatorische Zuordnungen erscheinen an den zugehörigen Knoten. Deaktivieren Sie die Option, wenn Sie die Zuordnungen ausblenden möchten. **Berichtsanhang hinzufügen** ist anfangs ausgeschaltet. Aktivieren Sie die Option für ergänzende Seiten, darunter den vollständigen Anforderungstext, sofern er vorliegt.
+
+Prüfen Sie für den Wandplan die Papiermaße und die ausgewählten Taxonomiekürzel im Dialog. Zum Drucken auf A1 oder A0 wählen Sie das passende Medium auch im Druckertreiber des Großformatdruckers. Wenn **Druckvorschau erstellen** verfügbar ist, klicken Sie darauf und anschließend auf **Druckvorschau öffnen (neuer Tab)**. Sie sehen das PDF für Ihre Auswahl. Eine Änderung etwa am Papierformat oder an den Taxonomien hebt die Vorschau auf. Erstellen Sie sie vor dem Drucken erneut. Ist die PDF-Vorschau hier nicht verfügbar, laden Sie die VSDX-Datei herunter und öffnen Sie die Druckvorschau in Visio.
 
 #### Einen Word-Bericht mit Übersicht und Begründungen erstellen
 

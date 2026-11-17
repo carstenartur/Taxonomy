@@ -2,6 +2,8 @@ package com.taxonomy.export;
 
 import com.taxonomy.visio.VisioDocument;
 import com.taxonomy.visio.VisioPage;
+import com.taxonomy.visio.VisioPageLayout;
+import com.taxonomy.diagram.VisioDrawingOptions;
 import com.taxonomy.visio.VisioNativeShape;
 import com.taxonomy.visio.converter.VisioDocumentConverter;
 import com.taxonomy.visio.converter.VisioPageContentsConverter;
@@ -138,7 +140,7 @@ public class VisioPackageBuilder {
         for (int index = 0; index < doc.getPages().size(); index++) {
             VisioPage page = doc.getPages().get(index);
             String name = "visio/pages/page" + (index + 1) + ".xml";
-            parts.put(name, previousParts.containsKey(page.getId()) ? previousParts.get(page.getId()) : buildPageXml(page, theme));
+            parts.put(name, previousParts.containsKey(page.getId()) ? previousParts.get(page.getId()) : buildPageXml(page, theme, doc.getDrawingOptions()));
             if (!VisioNativeShape.usedOn(page).isEmpty())
                 parts.put("visio/pages/_rels/page" + (index + 1) + ".xml.rels", buildPageMasterRelationships(page));
         }
@@ -317,11 +319,11 @@ public class VisioPackageBuilder {
         return xml.toString();
     }
 
-    private String buildPageXml(VisioPage page, ExportTheme theme) {
+    private String buildPageXml(VisioPage page, ExportTheme theme, VisioDrawingOptions options) {
         XStream xstream = new XStream(new XppDriver());
         xstream.setMode(XStream.NO_REFERENCES);
         xstream.alias("PageContents", VisioPage.class);
-        xstream.registerConverter(new VisioPageContentsConverter(null, theme));
+        xstream.registerConverter(new VisioPageContentsConverter(theme, VisioPageLayout.of(page, options), options));
         return XML_DECLARATION + xstream.toXML(page);
     }
 

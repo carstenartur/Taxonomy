@@ -1070,7 +1070,18 @@ Each report includes:
 
 Open **Decision report …** under **Decision Evidence** in the Export tab, on a saved requirement's detail page or in its architecture view. These entry points share the same dialog. Opening it from a single-tree view preselects that taxonomy. For a saved result, both the choices and the report belong to the selected analysis snapshot.
 
-Choose **Visio (.vsdx)** for an editable tree drawing per selected subtaxonomy. Nodes show their scores and are linked by parent–child connectors. Recorded reasons are available in the shape data. When the snapshot includes an architecture, the file opens on its drawing. Decision trees follow on their own pages. The appendix contains the complete requirement text.
+#### Explore a Visio drawing or print a wall chart
+
+Choose **Visio (.vsdx)** to work with individual shapes and connectors. Select a node and open **Shape Data** in Visio to read its recorded score and reason, where available. Choose **Visio PDF (.pdf)** to read, share or print fixed drawing pages. The PDF option appears when this renderer is enabled.
+
+| Drawing layout | When to use it |
+|---|---|
+| **Explore on screen** (default) | Zoom and follow the decision trees for the selected taxonomies. A saved architecture, when available, has its own drawing. In VSDX you can move and edit shapes. |
+| **Print as a wall chart** | Choose A4, A3, A2, A1 or A0 landscape. The default is **A1** (841 × 594 mm). Enable **Show short reasons on the drawing** to print a short version of recorded explanations alongside the nodes. |
+
+**Show responsibilities** is selected in both layouts. Recorded organizational assignments appear on the corresponding nodes. Clear this option to hide them. **Include report appendix** is switched off by default. Select it to add supporting pages, including the full requirement text when available.
+
+For a wall chart, check the paper dimensions and selected taxonomy codes in the dialog. For A1 or A0, select matching media in the large-format printer driver. When **Generate print preview** is available, select it, then **Open print preview (new tab)** to inspect the PDF rendered from this selection. Changing the paper size, taxonomies or another option clears the preview. Generate it again before printing. If the PDF renderer is unavailable, download the VSDX and open its print preview in Visio.
 
 #### Create a Word report with an overview and reasons
 
