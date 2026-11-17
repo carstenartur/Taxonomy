@@ -38,8 +38,10 @@ import org.springframework.security.oauth2.client.registration.ClientRegistratio
 import org.springframework.security.oauth2.core.oidc.OidcIdToken;
 import org.springframework.security.oauth2.core.oidc.user.DefaultOidcUser;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
@@ -61,6 +63,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -176,6 +179,60 @@ class CurrentPrincipalAuthoritySecurityTest {
             assertThat(access.authorize(principal.scopeKey(),RepositoryScope.WORKSPACE).principalId())
                     .isEqualTo(publication.principalId());
             assertThatThrownBy(() -> access.authorizePublication(principal.scopeKey())).isInstanceOf(AccessDeniedException.class);
+        } finally { SecurityContextHolder.clearContext(); }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"stable-browser", "legacy-browser", "stable-bearer", "legacy-bearer"})
+    void journaledOperationsRequireCurrentExternalAuthorityAtAdmissionAndExecution(String kind) {
+        boolean stable = kind.startsWith("stable-");
+        boolean bearer = kind.endsWith("-bearer");
+        start(true, stable ? KeycloakPrincipalMode.STABLE : KeycloakPrincipalMode.LEGACY);
+        String issuer = "https://idp.test";
+        String subject = "publication-owner";
+        var principal = stable ? identities.oidc(issuer, subject) : null;
+        String scope = stable ? principal.scopeKey() : "alice";
+        var access = new WorkspaceFetchAuthorityAdapter(identities);
+        Instant now = Instant.now();
+        var live = operationLogin(principal, issuer, subject, bearer, now.plusSeconds(600));
+        var expired = operationLogin(principal, issuer, subject, bearer, now);
+        try {
+            SecurityContextHolder.setContext(new SecurityContextImpl(live));
+            var original = access.authorizePublication(scope);
+            access.checkPublicationGrant(original, scope, false);
+            assertThat(access.authorize(scope, RepositoryScope.WORKSPACE)).isEqualTo(original);
+            assertThat(access.authorize(scope, RepositoryScope.CENTRAL_WRITE)).isEqualTo(original);
+            assertThat(access.authorizeHistoryIndex(scope, false)).isEqualTo(original);
+            assertThat(access.authorizeHistoryIndex(scope, true)).isEqualTo(original);
+            assertThatThrownBy(() -> access.checkPublicationGrant(original, scope, true))
+                    .isInstanceOf(WorkspaceFetchAuthority.FreshLoginRequired.class);
+
+            SecurityContextHolder.setContext(new SecurityContextImpl(expired));
+            assertAll(
+                    () -> assertThatThrownBy(() -> access.authorizePublication(scope))
+                            .isInstanceOf(AccessDeniedException.class),
+                    () -> assertThatThrownBy(() -> access.checkPublicationGrant(original, scope, false))
+                            .isInstanceOf(WorkspaceFetchAuthority.FreshLoginRequired.class),
+                    () -> assertThatThrownBy(() -> access.authorize(scope, RepositoryScope.CENTRAL_WRITE))
+                            .isInstanceOf(AccessDeniedException.class),
+                    () -> assertThatThrownBy(() -> access.checkPublication(original, scope, RepositoryScope.WORKSPACE, false))
+                            .isInstanceOf(WorkspaceFetchAuthority.FreshLoginRequired.class),
+                    () -> assertThatThrownBy(() -> access.authorizeHistoryIndex(scope, true))
+                            .isInstanceOf(AccessDeniedException.class),
+                    () -> assertThatThrownBy(() -> access.checkHistoryIndex(original, scope, false, false))
+                            .isInstanceOf(WorkspaceFetchAuthority.FreshLoginRequired.class),
+                    () -> assertThat(access.currentActor(scope)).isEqualTo(original.principalId()));
+
+            String otherSubject = "different-login";
+            if (stable) addBinding(principal, issuer, otherSubject);
+            var different = operationLogin(principal, issuer, otherSubject, bearer, now.plusSeconds(1200));
+            SecurityContextHolder.setContext(new SecurityContextImpl(different));
+            assertThatThrownBy(() -> access.checkPublicationGrant(original, scope, false))
+                    .isInstanceOf(AccessDeniedException.class);
+
+            var renewed = operationLogin(principal, issuer, subject, bearer, now.plusSeconds(1200));
+            SecurityContextHolder.setContext(new SecurityContextImpl(renewed));
+            access.checkPublicationGrant(original, scope, false);
         } finally { SecurityContextHolder.clearContext(); }
     }
 
@@ -547,11 +604,28 @@ class CurrentPrincipalAuthoritySecurityTest {
 
     private Authentication oidc(AppPrincipal principal, String issuer, String subject, boolean stable) {
         Instant now = Instant.now();
-        var token = new OidcIdToken("test-id-token", now, now.plusSeconds(300), Map.of(
+        return oidc(principal, issuer, subject, stable, now, now.plusSeconds(300));
+    }
+
+    private Authentication oidc(AppPrincipal principal, String issuer, String subject, boolean stable,
+                                Instant issuedAt, Instant expiry) {
+        var token = new OidcIdToken("test-id-token", issuedAt, expiry, Map.of(
                 "iss", issuer, "sub", subject, "preferred_username", "alice"));
         var source = new DefaultOidcUser(ROLES, token, "preferred_username");
         var user = stable ? new PrincipalOidcUser(ROLES, source, principal) : source;
         return new OAuth2AuthenticationToken(user, ROLES, "keycloak");
+    }
+
+    private Authentication operationLogin(AppPrincipal principal, String issuer, String subject, boolean bearer, Instant expiry) {
+        Instant issuedAt = expiry.minusSeconds(1800);
+        if (!bearer) return oidc(principal, issuer, subject, principal != null, issuedAt, expiry);
+        var token = Jwt.withTokenValue("test-access-token").header("alg", "RS256")
+                .issuer(issuer).subject(subject).issuedAt(issuedAt).expiresAt(expiry).build();
+        var roles = List.of(ROLES.getFirst(), new SimpleGrantedAuthority("SCOPE_architecture:publish"),
+                new SimpleGrantedAuthority("SCOPE_architecture:write"), new SimpleGrantedAuthority("SCOPE_architecture:delete"),
+                new SimpleGrantedAuthority("SCOPE_analysis:run"));
+        return principal == null ? new JwtAuthenticationToken(token, roles, "alice")
+                : new PrincipalJwtAuthenticationToken(token, roles, principal);
     }
 
     private MockHttpSession session(Authentication authentication) {

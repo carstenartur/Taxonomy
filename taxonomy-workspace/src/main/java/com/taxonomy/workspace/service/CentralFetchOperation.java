@@ -13,6 +13,11 @@ import jakarta.persistence.Table;
 public class CentralFetchOperation extends RepositoryFetchOperation {
     @Column(name = "target_repository_id", nullable = false, length = 255) String targetRepositoryId;
     @Column(name = "source_repository_id", nullable = false, length = 255) String sourceRepositoryId;
+    @Column(name = "publication_generation", length = 36, updatable = false) String publicationGeneration;
+
+    String publicationIdentity() {
+        return publicationGeneration == null ? null : id + "\u0000" + publicationGeneration;
+    }
 
     static String initialId(String repositoryId) {
         return com.taxonomy.workspace.model.SystemRepository.initialForkOperationId(repositoryId);

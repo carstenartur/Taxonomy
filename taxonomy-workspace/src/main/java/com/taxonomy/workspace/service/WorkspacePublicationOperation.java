@@ -6,6 +6,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import java.util.Objects;
 
 /** Recovery evidence for publishing one private working copy to its recorded central branch. */
@@ -21,6 +22,12 @@ public class WorkspacePublicationOperation extends LeasedRepositoryOperation {
     static final String PULL_POLICY = "ARCHITECTURE_PUBLISH+READER";
 
     static final String LEGACY_PULL_POLICY = "ARCHITECTURE_PUBLISH+READER+KEYLESS";
+
+    @Transient boolean priorAttemptsPausedBeforePreparation;
+
+    boolean canBeginPreparation() {
+        return attempts <= 1 || priorAttemptsPausedBeforePreparation;
+    }
 
     boolean isPull() { return PULL_POLICY.equals(policy) || LEGACY_PULL_POLICY.equals(policy); }
 

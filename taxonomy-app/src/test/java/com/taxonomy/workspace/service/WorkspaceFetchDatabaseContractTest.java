@@ -4,6 +4,7 @@ import org.hibernate.SessionFactory;
 import org.hibernate.cfg.Configuration;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 import org.springframework.orm.jpa.JpaTransactionManager;
@@ -29,7 +30,32 @@ public class WorkspaceFetchDatabaseContractTest {
         var db = new DriverManagerDataSource("jdbc:hsqldb:mem:fetch-" + UUID.randomUUID() + ";hsqldb.tx=mvcc", "sa", "");
         new ResourceDatabasePopulator(new ClassPathResource("db/restore/hsqldb/V23__Workspace_fetch_operation.sql"),
                 new ClassPathResource("db/restore/hsqldb/V25__Central_fetch_and_selected_tags.sql")).execute(db);
+        verifyLegacyCentralReceiptUpgrade(db, () -> new ResourceDatabasePopulator(
+                new ClassPathResource("db/restore/hsqldb/V34__Central_fetch_publication_generation.sql")).execute(db));
         verify(db);
+    }
+
+    public static void verifyLegacyCentralReceiptUpgrade(DataSource database, Runnable migrate) {
+        var rows = new JdbcTemplate(database);
+        String id = "f-" + "b".repeat(62);
+        rows.update("""
+                insert into central_fetch_operation (operation_id, fingerprint, cause_id, actor_id, actor_scope,
+                    login_kind, binding_key, policy_code, target_repository_id, source_repository_id,
+                    local_branch, source_branch, requested_commit, phase, attempts, created_at, next_attempt_at)
+                values (?, ?, ?, ?, 'original-owner', 'LOCAL', ?, 'ARCHITECTURE_WRITE+CONTRIBUTOR',
+                    'legacy-fork', 'legacy-source', 'main', 'main', ?, 'RETRYABLE', 1, 12, 34)
+                """, id, "b".repeat(64), id, UUID.randomUUID().toString(), "c".repeat(64), "a".repeat(40));
+        try {
+            String read = "select * from central_fetch_operation where operation_id=?";
+            var before = rows.queryForMap(read, id);
+            migrate.run();
+            var after = rows.queryForMap(read, id);
+            assertThat(after).containsAllEntriesOf(before);
+            assertThat(rows.queryForObject("select publication_generation from central_fetch_operation where operation_id=?",
+                    String.class, id)).isNull();
+        } finally {
+            rows.update("delete from central_fetch_operation where operation_id=?", id);
+        }
     }
 
     public static void verify(DataSource database) throws Exception {

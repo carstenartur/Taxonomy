@@ -100,8 +100,8 @@ public class WorkspaceFetchRecovery {
             } catch (IOException | RuntimeException failure) {
                 // Return the persisted operation to the caller even when Git succeeded and the database update failed.
                 var recorded = journal.status(context, principal, state.operationId());
-                if ("RETRYABLE".equals(recorded.phase())) return new Receipt(recorded.operationId(), null, null);
-                if (!"SUPERSEDED".equals(recorded.phase())) throw failure;
+                if (!"RETRYABLE".equals(recorded.phase()) && !"AWAITING_AUTHORIZATION".equals(recorded.phase())
+                        && !"SUPERSEDED".equals(recorded.phase())) throw failure;
                 state = recorded;
             }
         }
@@ -154,7 +154,8 @@ public class WorkspaceFetchRecovery {
         }
         boolean recovering = operation.attempts > 1;
         var context = operation.context();
-        var fork = operation instanceof CentralFetchOperation ? forks.recorded(operation) : null;
+        var central = operation instanceof CentralFetchOperation recorded ? recorded : null;
+        var fork = central == null ? null : forks.recorded(central);
         if (operation.selectedTag != null) {
             var request = new WorkspaceUpstreamService.TagRequest(operation.selectedTag, operation.requestedTagObject, operation.expected);
             var tag = fork == null
@@ -166,7 +167,7 @@ public class WorkspaceFetchRecovery {
                     tracking.name(), tag.trackedCommit());
         }
         var request = new WorkspaceUpstreamService.Request(operation.requested, operation.expected);
-        if (fork != null) return recovering ? fork.recover(request, authorize) : fork.fetch(request, authorize);
+        if (central != null) return fork.fetchRecorded(request, central.publicationIdentity(), recovering, authorize);
         return upstream.fetchRecorded(context, operation.sourceBranch, operation.forkPoint, request, recovering, authorize, operation.actor);
     }
 }
