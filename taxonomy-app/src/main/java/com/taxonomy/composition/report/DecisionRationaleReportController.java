@@ -297,10 +297,14 @@ public class DecisionRationaleReportController {
             return ResponseEntity.status(HttpStatus.CONFLICT).cacheControl(CacheControl.noStore())
                     .header("X-Taxonomy-Source-State", "STALE").header("X-Taxonomy-Commit", source.basedOnCommit()).build();
         }
-        DecisionRationaleReport report = generate(request, selected, source);
         ReportRendererExtension renderer = reportRendererRegistry.getRequired(
                 DecisionRationaleReportPlugin.REPORT_TYPE_ID, formatId);
         ReportFormatDescriptor format = renderer.descriptor();
+        var options = request.exportOptions();
+        if ("visio".equals(format.id()) || "visio-pdf".equals(format.id())) {
+            options = (options == null ? DecisionReportOptions.full() : options).forVisioDrawing();
+        }
+        DecisionRationaleReport report = generate(request, selected, source, options);
         ReportRenderResult rendered = renderer.render(ReportRenderContext.ofPayload(report));
         byte[] bytes = rendered.bytes();
         ResponseEntity.BodyBuilder response = ResponseEntity.ok()
@@ -341,7 +345,8 @@ public class DecisionRationaleReportController {
         }
     }
 
-    private DecisionRationaleReport generate(DecisionReportRequest request, WorkspaceContext context, ViewContext viewContext) {
+    private DecisionRationaleReport generate(DecisionReportRequest request, WorkspaceContext context, ViewContext viewContext,
+            DecisionReportOptions options) {
         Locale locale = com.taxonomy.reporting.render.decision.DecisionReportLanguage.resolve(
                 com.taxonomy.reporting.render.decision.DecisionReportLanguage.optionalOverride(request.language()),
                 request.analysisLanguage());
@@ -365,12 +370,12 @@ public class DecisionRationaleReportController {
                 .withScope(request.analysisScope(), request.analysisCoverage())
                 .withAnalysisReasonLength(request.analysisReasonLength());
         DecisionRationaleReport report;
-        if (request.exportOptions() != null && request.exportOptions().showResponsibilities()) {
-            report = reportService.generate(input, context, viewContext, locale, request.exportOptions(),
+        if (options != null && options.showResponsibilities()) {
+            report = reportService.generate(input, context, viewContext, locale, options,
                     request.modelBinding(), Boolean.TRUE.equals(request.liveResponsibilities()));
-        } else report = request.exportOptions() == null
+        } else report = options == null
                 ? reportService.generate(input, context, viewContext, locale)
-                : reportService.generate(input, context, viewContext, locale, request.exportOptions());
+                : reportService.generate(input, context, viewContext, locale, options);
         return scoreSemanticsAdapter.adapt(report, scoreDetails, locale);
     }
 

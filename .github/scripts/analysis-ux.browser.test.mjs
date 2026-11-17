@@ -1612,6 +1612,51 @@ test('reload during the first physical document request discovers the admitted o
     }
 });
 
+test('an early observation waits for admission without a failed browser request or a duplicate submission', async () => {
+    const page = await browser.newPage();
+    const origin = 'https://taxonomy.fixture';
+    const errors = [], polls = [];
+    let release, token, posts = 0;
+    const original = new Promise(resolve => { release = resolve; });
+    page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+    try {
+        await page.route(origin + '/**', async route => {
+            const req = route.request(), url = new URL(req.url());
+            if (url.pathname === '/') return route.fulfill({contentType:'text/html',body:'<html></html>'});
+            if (req.method() === 'POST') {
+                posts++;
+                token = req.headers()['x-analysis-observer'];
+                await original;
+                return route.abort().catch(() => {});
+            }
+            polls.push(url);
+            if (polls.length === 1) return route.fulfill({status:204});
+            return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({result:'ready'}),
+                headers:{'X-Analysis-Operation-Id':'04474a8c-3188-4191-871e-c409ee4f0ff7','X-Analysis-Source-Commit':'b'.repeat(40)}});
+        });
+        await page.goto(origin);
+        await installBrowserApiFixture(page,resources);
+        await page.addScriptTag({path:path.join(resources,'static/js/api/analysis-adapter-api.js')});
+        const result = await page.evaluate(async () => {
+            const response = await window.AnalysisAdapterApi.request('/api/analyze-node?workspaceId=workspace',
+                {method:'POST'}, {onPending:() => {}});
+            return {status:response.status, text:await response.text()};
+        });
+        assert.deepEqual(result,{status:200,text:'{"result":"ready"}'});
+        assert.equal(posts,1);
+        assert.equal(polls.length,2);
+        for (const url of polls) {
+            assert.equal(url.pathname,'/api/analysis-adapters/observations/' + token);
+            assert.equal(url.searchParams.get('awaitAdmission'),'true');
+            assert.equal(url.searchParams.get('workspaceId'),'workspace');
+        }
+        assert.deepEqual(errors,[]);
+    } finally {
+        release();
+        await page.close();
+    }
+});
+
 for (const surface of ['node','leaf','editor-focus','source-focus']) {
     test('reopening the same ' + surface + ' action after reload uses only its original scoped observation', async () => {
         const page = await browser.newPage(), origin = 'https://taxonomy.fixture';

@@ -34,7 +34,7 @@ function dom() {
     function element(tag = 'div', id) {
         const classes = new Set(), listeners = new Map();
         const node = {tagName: tag, children: [], attributes: {}, style: {}, dataset: {}, value: '',
-            textContent: '', innerHTML: '', disabled: false, hidden: false, open: false,
+            textContent: '', innerHTML: '', disabled: false, checked: false, hidden: false, open: false,
             classList: {add: c => classes.add(c), remove: c => classes.delete(c), contains: c => classes.has(c),
                 toggle(c, force) {if (force === undefined ? !classes.has(c) : force) classes.add(c); else classes.delete(c);}},
             setAttribute(k, v) {this.attributes[k] = String(v); if (k === 'id') this.id = v; if (k === 'value') this.value = v;},
@@ -567,9 +567,10 @@ function installReportCapabilities(window) {
     window.TaxonomyCapabilities = {load:async () => ({reports}), formats:items => items};
 }
 
-function decisionFixture() {
-    const d = dom(), window = {};
+function decisionFixture(formats, client) {
+    const d = dom(), window = {TaxonomyApiClient:client};
     installReportCapabilities(window);
+    if (formats) window.TaxonomyCapabilities = {load:async () => ({reports:formats}), formats:items => items};
     const context = vm.createContext({window, document: d.document,
         URLSearchParams, URL: d.urls, setTimeout() {}, AbortController, DOMException,
         CustomEvent: class {constructor(type, init) {this.type = type; this.detail = init.detail;}}});
@@ -577,6 +578,82 @@ function decisionFixture() {
     vm.runInContext(source('shared/decision-export-dialog.js'), context);
     return {...d, api: window.TaxonomyDecisionExport};
 }
+
+const drawingFormats = [
+    {id:'visio', displayName:'Visio', fileExtension:'vsdx', contentType:'application/vnd.ms-visio.drawing'},
+    {id:'visio-pdf', displayName:'Visio PDF', fileExtension:'pdf', contentType:'application/pdf'}
+];
+
+test('wall preview reads the selected snapshot, validates provenance and drops superseded requests', async () => {
+    const f = decisionFixture(drawingFormats), pending = [], source = new AbortController();
+    const dialog = f.api.openSaved({projectId:42, snapshotId:'snap', sourceSignal:source.signal, api:{
+        decisionReportOptions:async () => ({roots:[{code:'CP'}]}),
+        downloadDecisionReport(...args) {const gate = deferred(); pending.push({args, gate}); return gate.promise;}
+    }});
+    await tick();
+    const inputs = dialog.querySelectorAll('input');
+    const wall = inputs.find(input => input.value === 'WALL');
+    assert.ok(wall, 'wall mode is selectable');
+    wall.checked = true;
+    await wall.fire('change');
+    const paper = dialog.querySelectorAll('select').find(input => input.attributes.name === 'visioPaper');
+    const preview = dialog.querySelectorAll('button').find(button => button.textContent === 'Druckvorschau erstellen');
+    const link = dialog.querySelector('a');
+    assert.equal(paper.value,'A1');
+    const first = preview.click();
+    assert.deepEqual(JSON.parse(JSON.stringify(pending[0].args.slice(0,3))),['42', 'snap', 'visio-pdf']);
+    assert.deepEqual(JSON.parse(JSON.stringify(pending[0].args[4].visio)),{mode:'WALL',paper:'A1',appendix:false,shortReasons:false});
+    const changePaper = async value => {paper.value=value; await dialog.querySelector('form').fire('change',{target:paper});};
+    await changePaper('A0');
+    await changePaper('A1');
+    assert.equal(pending[0].args[5].signal.aborted,true);
+    const response = id => ({ok:true, headers:{get:key=>({'X-Taxonomy-Snapshot-Id':id,'X-Taxonomy-Analysis-SHA256':'hash','Content-Type':'application/pdf'})[key]},
+        blob:async()=>({size:23})});
+    assert.equal(link.hidden,true);
+    const second = preview.click();
+    pending[1].gate.resolve(response('different')); await second;
+    assert.equal(link.hidden,true);
+    assert.match(dialog.querySelectorAll('p').find(p=>p.attributes.role==='alert').textContent,/Snapshot/);
+    const third = preview.click();
+    assert.equal(pending[2].args[4].visio.paper,'A1');
+    pending[2].gate.resolve(response('snap')); await third;
+    assert.equal(link.hidden,false);
+    pending[0].gate.resolve(response('snap')); await first;
+    assert.equal(link.href,'blob:preview-1', 'an older A response cannot replace the current A preview');
+    source.abort();
+    assert.equal(dialog.open,false);
+    assert.deepEqual(f.revoked,['blob:preview-1']);
+    assert.deepEqual(f.downloads,[]);
+});
+
+test('changing drawing source removes a finished preview and permits reopening for the new source', async () => {
+    let source = 'A';
+    const f = decisionFixture(drawingFormats, {captureContext() {
+        const original = source;
+        return () => source === original;
+    }});
+    const config = {projectId:1, snapshotId:'snap-A', api:{
+        decisionReportOptions:async()=>({roots:[{code:'CP'}]}),
+        downloadDecisionReport:async()=>({ok:true,headers:{get:key=>({'Content-Type':'application/pdf',
+            'X-Taxonomy-Snapshot-Id':'snap-A','X-Taxonomy-Analysis-SHA256':'hash'})[key]},blob:async()=>({size:23})})
+    }};
+    const dialog = f.api.openSaved(config); await tick();
+    const wall = dialog.querySelectorAll('input').find(input=>input.value==='WALL');
+    wall.checked = true;
+    await dialog.querySelector('form').fire('change', {target:wall});
+    await dialog.querySelectorAll('button').find(button=>button.textContent==='Druckvorschau erstellen').click();
+    assert.equal(dialog.querySelector('a').hidden,false);
+    await f.document.fire('taxonomy:repository-context-changed',{});
+    assert.equal(dialog.open,true,'the same source remains open');
+    source='B';
+    await f.document.fire('taxonomy:repository-context-changed',{});
+    assert.equal(dialog.open,false);
+    assert.deepEqual(f.revoked,['blob:preview-1']);
+    source='A';
+    const next = f.api.openSaved(config); await tick();
+    assert.equal(next.open,true);
+    assert.equal(next.querySelector('a').hidden,true);
+});
 
 test('decision document language follows recorded analysis or an independent explicit selection', async () => {
     for (const [recorded, choice, expected] of [
@@ -774,18 +851,19 @@ test('live-analysis export cancellation reaches the real API client transport', 
     assert.equal(timers.size, 0, 'request timeout is cleaned up after cancellation');
 });
 
-function pendingReportBody({ignoreAbort = false, snapshotId = null} = {}) {
+function pendingReportBody({ignoreAbort = false, snapshotId = null, format} = {}) {
     const body = deferred();
-    let signal, reading = false, transportAborted = false;
+    let signal, request, reading = false, transportAborted = false;
     const headers = new Headers({
-        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'Content-Type': format?.contentType || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         'X-Taxonomy-Analysis-SHA256': 'analysis-hash',
-        'Content-Disposition': 'attachment; filename="decision-report.docx"',
+        'Content-Disposition': 'attachment; filename="decision-report.' + (format?.fileExtension || 'docx') + '"',
         ...(snapshotId ? {'X-Taxonomy-Snapshot-Id': snapshotId} : {})
     });
     return {body, reading: () => reading, aborted: () => transportAborted,
-        signal: () => signal,
+        signal: () => signal, request: () => request,
         fetch(url, init) {
+            request = {url, init};
             signal = init.signal;
             signal?.addEventListener('abort', () => {
                 transportAborted = true;
@@ -797,8 +875,8 @@ function pendingReportBody({ignoreAbort = false, snapshotId = null} = {}) {
     };
 }
 
-async function liveReportBodyFixture() {
-    const f = dom(), transfer = pendingReportBody(), timers = new Set();
+async function liveReportBodyFixture(formats, bodyOptions) {
+    const f = dom(), transfer = pendingReportBody(bodyOptions), timers = new Set();
     f.element('textarea', 'businessText').value = 'Current requirement';
     const window = {location: {href: 'http://localhost/', origin: 'http://localhost', pathname: '/'},
         TaxonomyRoleSurface: {}, TaxonomyUiSemantics: {},
@@ -810,9 +888,11 @@ async function liveReportBodyFixture() {
         Request, Headers, AbortController, DOMException,
         setTimeout(fn) {timers.add(fn); return fn;}, clearTimeout: timer => timers.delete(timer),
         S: {currentScores: {CP: 80}, taxonomyData: [{code: 'CP', name: 'Capabilities'}],
+            currentModelBinding:{modelSource:'GIT_CHECKPOINT', branch:'review'},
             lastAnalysisProvider: 'MOCK', lastAnalysisStatus: 'SUCCESS'}});
     canonicalFixture.install(context, ['api/reference-api.js', 'api/analysis-api.js', 'api/export-api.js', 'api/proposals-api.js', 'api/search-api.js', 'api/relations-api.js']);
     installReportCapabilities(window);
+    if (formats) window.TaxonomyCapabilities = {load:async () => ({reports:formats}), formats:items => items};
     vm.runInContext(source('shared/decision-export-dialog.js'), context);
     const browse = source('core/taxonomy-browse.js');
     const start = browse.indexOf("if (btnId === 'exportDecisionReportDocx') {");
@@ -822,6 +902,27 @@ async function liveReportBodyFixture() {
     await tick();
     return {...f, window, transfer, timers, dialog: f.document.body.querySelector('dialog')};
 }
+
+test('live wall preview sends the frozen analysis and nested options to the PDF renderer', async () => {
+    const f = await liveReportBodyFixture(drawingFormats, {format:drawingFormats[1]});
+    const wall = f.dialog.querySelectorAll('input').find(input => input.value === 'WALL');
+    wall.checked = true;
+    await f.dialog.querySelector('form').fire('change', {target:wall});
+    const button = f.dialog.querySelectorAll('button').find(n => n.textContent === 'Druckvorschau erstellen');
+    assert.equal(button.hidden, false);
+    const pending = button.click();
+    await tick();
+    const {url, init} = f.transfer.request();
+    assert.equal(url,liveDecisionPath.replace('docx','visio-pdf'));
+    const body = JSON.parse(init.body);
+    assert.equal(body.businessText,'Current requirement');
+    assert.equal(body.exportOptions.showResponsibilities,true);
+    assert.deepEqual(body.modelBinding,{modelSource:'GIT_CHECKPOINT',branch:'review'});
+    assert.deepEqual(body.exportOptions.visio,{mode:'WALL',paper:'A1',appendix:false,shortReasons:false});
+    f.transfer.body.resolve({size:21}); await pending;
+    assert.equal(f.dialog.querySelector('a').hidden,false);
+    assert.equal(f.downloads.length,0);
+});
 
 test('live export cancellation after headers aborts the pending body transport', async () => {
     const f = await liveReportBodyFixture();
@@ -887,6 +988,19 @@ async function savedRequirementExportFixture(options = {}) {
         queueTransfer() {const next=pendingReportBody({...options,snapshotId:'snapshot-1'});transfers.push(next);return next;},
         submitExport(selection) {return savedSubmit(selection);}};
 }
+
+test('Copilot downloads Visio and its PDF with their advertised file extensions', async () => {
+    for (const format of drawingFormats) {
+        const f = await savedRequirementExportFixture({format});
+        const pending = f.submitExport({format:format.id,descriptor:format,
+            options:{visio:{mode:'WALL',paper:'A1',appendix:false,shortReasons:false}},
+            signal:new AbortController().signal, timeoutMillis:120000,language:'de'});
+        await tick();
+        f.transfer.body.resolve({size:32}); await pending;
+        assert.equal(f.downloads[0]?.download,'decision-report.' + format.fileExtension);
+        assert.equal(f.events.at(-1).detail.status,'SUCCESS');
+    }
+});
 
 test('saved requirement custom submit cancels the adapter body transfer', async () => {
     const f = await savedRequirementExportFixture();

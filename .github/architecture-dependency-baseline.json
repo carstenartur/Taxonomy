@@ -1173,9 +1173,16 @@
     {
       "fromContext": "architecture",
       "fromPackage": "com.taxonomy.architecture.controller",
+      "toContext": "knowledge",
+      "toPackage": "com.taxonomy.relations.service",
+      "classDependencyCount": 3
+    },
+    {
+      "fromContext": "architecture",
+      "fromPackage": "com.taxonomy.architecture.controller",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.controller",
-      "classDependencyCount": 4
+      "classDependencyCount": 5
     },
     {
       "fromContext": "architecture",

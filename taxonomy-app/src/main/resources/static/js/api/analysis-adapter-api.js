@@ -160,17 +160,21 @@ window.AnalysisAdapterApi = (function () {
 
     async function lookup(original, token, options, current, stopped, waitForAdmission) {
         var client = window.TaxonomyApiClient, until = Date.now() + 30000, delay = waitForAdmission ? 350 : 0;
+        var path = scopedPath(original,'/api/analysis-adapters/observations/' + token);
+        var admissionPath = path + (path.includes('?') ? '&' : '?') + 'awaitAdmission=true';
+        var init = {method:'GET', cache:'no-store'};
+        var policy = Object.assign({},options,{retries:0,observeAdmission:undefined,observeResponse:undefined});
         for (;;) {
             if (delay) await new Promise(resolve => setTimeout(resolve, delay));
             if (stopped() || !current() || options.isCurrent && !options.isCurrent())
                 throw new client.ApiError('Request context was superseded',0,original,null,{code:'ABORTED'});
-            try {
-                return await client.request(scopedPath(original,'/api/analysis-adapters/observations/' + token), {method:'GET',cache:'no-store'},
-                    Object.assign({},options,{retries:0,observeAdmission:undefined,observeResponse:undefined}));
-            } catch (error) {
-                if (error.status !== 404 || Date.now() >= until) throw error;
-                delay = Math.min(2000,Math.max(350,delay * 2));
+            if (Date.now() >= until) {
+                // A slow original upload still owns its result. A restored tab needs a definitive lookup.
+                return waitForAdmission ? null : client.request(path, init, policy);
             }
+            var response = await client.request(admissionPath, init, policy);
+            if (response.status !== 204) return response;
+            delay = Math.min(2000,Math.max(350,delay * 2));
         }
     }
 
@@ -204,10 +208,8 @@ window.AnalysisAdapterApi = (function () {
         var original = send(url,Object.assign({},init,{headers}),Object.assign({},options,{retries:0}));
         // An upload can take longer than the admission lookup window. The initial request
         // remains the authority if parsing has not admitted any provider work yet.
-        var observer = lookup(url,token,options,current,() => stopped,true).catch(error => {
-            if (error.status === 404) return original;
-            throw error;
-        });
+        var observer = lookup(url,token,options,current,() => stopped,true)
+            .then(response => response || original);
         try {
             var first = await Promise.race([original,observer]);
             var id = first.headers?.get('X-Analysis-Operation-Id');

@@ -14,6 +14,7 @@ import java.util.Map;
 final class VisioPackageValidator {
 
     // Graph duplication and readable text have distinct, bounded page budgets.
+    static final int MAX_PROPERTIES = 64;
     static final int MAX_DIAGRAM_PAGES = 32;
     static final int MAX_EVIDENCE_PAGES = 128;
     static final int MAX_PAGES = MAX_DIAGRAM_PAGES + MAX_EVIDENCE_PAGES;
@@ -217,7 +218,7 @@ final class VisioPackageValidator {
     }
 
     static void validateProperties(Map<String, VisioProperty> properties) {
-        if (properties.size() > 64) throw invalid("Too many Visio properties");
+        if (properties.size() > MAX_PROPERTIES) throw invalid("Too many Visio properties");
         var requirementUrl = properties.get("taxonomy.requirementUrl");
         if (requirementUrl != null) com.taxonomy.visio.VisioHyperlinks.validateRequirementUrl(requirementUrl);
         for (var entry : properties.entrySet()) {
