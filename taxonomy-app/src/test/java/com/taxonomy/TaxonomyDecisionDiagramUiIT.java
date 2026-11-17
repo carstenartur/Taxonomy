@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Map;
 import org.openqa.selenium.remote.RemoteWebDriver;
+import org.openqa.selenium.support.ui.Select;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import org.springframework.core.io.ClassPathResource;
 import java.net.InetSocketAddress;
@@ -123,6 +124,7 @@ class TaxonomyDecisionDiagramUiIT {
     @Test void printUsesCompleteReadablePagesAndPreservesZoomCollapseAndStoredResults() throws Exception {
         browser.findElement(By.cssSelector("[data-diagram-node='fixture-parent']")).click(); settle();
         browser.executeScript("document.querySelector('.tax-diagram-controls button').click(); window.beforePrintState=JSON.stringify({data:fixtureData,scores:fixtureScores,reasons:TaxonomyState.currentReasons,svg:document.querySelector('#decision-map-svg').outerHTML}); window.printFrame=document.createElement('iframe'); document.body.append(printFrame); window.printCalls=0; window.open=()=>({document:printFrame.contentDocument,closed:false,focus(){},addEventListener(name,fn){window.afterPrint=fn},close(){window.closedPreview=true},requestAnimationFrame(fn){fn()},print(){window.printCalls++}});");
+        selectPrintLayout("pages");
         clickPrint();
         assertThat(browser.executeScript("return printCalls")).isEqualTo(1L);
         assertThat(browser.executeScript(PRINT_IDENTITIES)).isEqualTo("");
@@ -139,7 +141,7 @@ class TaxonomyDecisionDiagramUiIT {
         browser.executeScript("window.open=()=>null"); clickPrint();
         assertThat(browser.findElement(By.cssSelector(".decision-print-status")).getText()).contains(LABELS.getProperty("views.diagram.printBlocked"));
     }
-    @Test void relevantOnlyIsAvailableInTheDiagramToolbarAndUsesTheSharedProjection() {
+    @Test void theSharedRelevanceSelectionFiltersWithoutASecondDiagramControl() {
         browser.executeScript("""
             const select=document.createElement('select');select.id='diagramRelevanceFilter';
             select.innerHTML='<option value="all">All</option><option value="positive">Positive</option>';
@@ -147,18 +149,19 @@ class TaxonomyDecisionDiagramUiIT {
             fixtureData=[{code:'BP',name:'Processes',taxonomyContainer:true,children:[
                 {code:'fixture-context',name:'Context',children:[{code:'fixture-positive',name:'Positive'},
                     {code:'fixture-zero',name:'Zero'},{code:'fixture-missing',name:'Unknown'}]}]}];
-            fixtureScores={'fixture-context':0,'fixture-positive':0.75,'fixture-zero':0};
+            fixtureScores={'fixture-context':0,'fixture-positive':75,'fixture-zero':0};
             window.beforeFilter=JSON.stringify({data:fixtureData,scores:fixtureScores});
             select.addEventListener('change',()=>TaxonomyViews.renderDecisionMap(document.querySelector('#diagram'),
                 TaxonomyViews.filterRelevance(fixtureData,fixtureScores,{},select.value),fixtureScores));
             TaxonomyViews.renderDecisionMap(document.querySelector('#diagram'),fixtureData,fixtureScores);
             """); settle();
-        browser.findElement(By.cssSelector(".tax-diagram-relevance input")).click(); settle();
-        assertThat(browser.executeScript("return document.getElementById('diagramRelevanceFilter').value")).isEqualTo("positive");
+        assertThat(browser.findElements(By.cssSelector(".tax-diagram-relevance"))).isEmpty();
+        var filter = new Select(browser.findElement(By.id("diagramRelevanceFilter")));
+        filter.selectByValue("positive"); settle();
         assertThat(browser.findElements(By.cssSelector("[data-diagram-node='fixture-context']"))).hasSize(1);
         assertThat(browser.findElements(By.cssSelector("[data-diagram-node='fixture-positive']"))).hasSize(1);
         assertThat(browser.findElements(By.cssSelector("[data-diagram-node='fixture-zero'],[data-diagram-node='fixture-missing']"))).isEmpty();
-        browser.findElement(By.cssSelector(".tax-diagram-relevance input")).click(); settle();
+        filter.selectByValue("all"); settle();
         assertThat(browser.findElements(By.cssSelector("[data-diagram-node='fixture-zero'],[data-diagram-node='fixture-missing']"))).hasSize(2);
         assertThat(browser.executeScript("return JSON.stringify({data:fixtureData,scores:fixtureScores})===beforeFilter")).isEqualTo(true);
     }
@@ -168,7 +171,7 @@ class TaxonomyDecisionDiagramUiIT {
         "hide-zero, fixture-context|fixture-positive|fixture-missing",
         "positive, fixture-context|fixture-positive"
     })
-    void sharedRelevanceSelectionIsPreservedOnScreenAndInBothPrintLayouts(String mode,String expectedCodes) {
+    void sharedRelevanceSelectionIsPreservedOnScreenAndInEveryPrintLayout(String mode,String expectedCodes) {
         browser.executeScript("""
             fixtureData=[{code:'BP',name:'Business Processes',taxonomyContainer:true,children:[
                 {code:'fixture-context',name:'Context ancestor',children:[
@@ -185,8 +188,8 @@ class TaxonomyDecisionDiagramUiIT {
             .as(mode+" screen contains exactly the selected ordinary nodes and context ancestors").isEqualTo(expected);
         browser.executeScript("window.filterScreenBefore=document.querySelector('#decision-map-svg').outerHTML");
         preparePrint();
-        for(String printMode:new String[]{"pages","single"}) {
-            new org.openqa.selenium.support.ui.Select(browser.findElement(By.cssSelector(".tax-diagram-print-mode"))).selectByValue(printMode);
+        for(String printMode:new String[]{"pages","single","taxonomy"}) {
+            selectPrintLayout(printMode);
             clickPrint();
             assertThat(browser.executeScript("return [...printFrame.contentDocument.querySelectorAll('[data-print-node]')].map(node=>node.dataset.printNode).sort()"))
                 .as(mode+" "+printMode+" print contains exactly the selected ordinary nodes and context ancestors").isEqualTo(expected);
@@ -220,8 +223,8 @@ class TaxonomyDecisionDiagramUiIT {
         browser.findElement(By.cssSelector("[data-diagram-node='fixture-parent']")).click(); settle();
         browser.executeScript("document.querySelector('.tax-diagram-controls button').click();window.sheetScreenBefore=document.querySelector('#decision-map-svg').outerHTML;window.sheetResultsBefore=JSON.stringify({data:fixtureData,scores:fixtureScores,reasons:TaxonomyState.currentReasons});");
         preparePrint();
-        new org.openqa.selenium.support.ui.Select(browser.findElement(By.cssSelector(".tax-diagram-print-mode"))).selectByValue("single");
-        new org.openqa.selenium.support.ui.Select(browser.findElement(By.cssSelector(".tax-diagram-print-paper"))).selectByValue(paper);
+        selectPrintLayout("single");
+        new Select(browser.findElement(By.cssSelector(".tax-diagram-print-paper"))).selectByValue(paper);
         clickPrint();
         assertThat(browser.executeScript(PRINT_IDENTITIES)).isEqualTo("");
         assertThat(browser.executeScript("""
@@ -244,22 +247,52 @@ class TaxonomyDecisionDiagramUiIT {
             return document.querySelector('#decision-map-svg').outerHTML===sheetScreenBefore
                 && JSON.stringify({data:fixtureData,scores:fixtureScores,reasons:TaxonomyState.currentReasons})===sheetResultsBefore?'':'Screen or saved evidence changed';
             """,paper)).isEqualTo("");
-        String html=(String)browser.executeScript("return printFrame.contentDocument.documentElement.outerHTML");
-        String source=browser.getWindowHandle();browser.switchTo().newWindow(WindowType.TAB);
-        try {
-            browser.get("data:text/html;charset=UTF-8;base64,"+Base64.getEncoder().encodeToString(html.getBytes(StandardCharsets.UTF_8)));
-            var result=((HasCdp)new Augmenter().augment(browser)).executeCdpCommand("Page.printToPDF",Map.of("preferCSSPageSize",true,"printBackground",true));
-            byte[] bytes=Base64.getDecoder().decode((String)result.get("data"));
-            Path directory=Path.of("target/decision-diagram-evidence");Files.createDirectories(directory);
-            Files.write(directory.resolve("decision-large-sheet-"+paper+"-print.pdf"),bytes);
-            try(var pdf=Loader.loadPDF(bytes)) {
-                assertThat(pdf.getNumberOfPages()).isEqualTo(1);
-                var box=pdf.getPage(0).getMediaBox();
-                assertThat(Math.min(box.getWidth(),box.getHeight())).isCloseTo((paper.equals("A0")?841:594)*72f/25.4f,org.assertj.core.data.Offset.offset(1f));
-                assertThat(Math.max(box.getWidth(),box.getHeight())).isCloseTo((paper.equals("A0")?1189:841)*72f/25.4f,org.assertj.core.data.Offset.offset(1f));
-                assertThat(new PDFTextStripper().getText(pdf)).contains("fixture-deeper", "fixture-second", "75%", "Final saved line.");
+        byte[] bytes = printUsingPaperSize();
+        Path directory=Path.of("target/decision-diagram-evidence");Files.createDirectories(directory);
+        Files.write(directory.resolve("decision-large-sheet-"+paper+"-print.pdf"),bytes);
+        try(var pdf=Loader.loadPDF(bytes)) {
+            assertThat(pdf.getNumberOfPages()).isEqualTo(1);
+            var box=pdf.getPage(0).getMediaBox();
+            assertThat(Math.min(box.getWidth(),box.getHeight())).isCloseTo((paper.equals("A0")?841:594)*72f/25.4f,org.assertj.core.data.Offset.offset(1f));
+            assertThat(Math.max(box.getWidth(),box.getHeight())).isCloseTo((paper.equals("A0")?1189:841)*72f/25.4f,org.assertj.core.data.Offset.offset(1f));
+            assertThat(new PDFTextStripper().getText(pdf)).contains("fixture-deeper", "fixture-second", "75%", "Final saved line.");
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource({"A4,210,297", "A3,297,420", "A2,420,594", "A1,594,841", "A0,841,1189"})
+    void defaultPrintCreatesOnePhysicalSheetPerSubtaxonomyAtTheSelectedSize(
+            String format, int shortSide, int longSide) throws Exception {
+        var mode = new Select(browser.findElement(By.cssSelector(".tax-diagram-print-mode")));
+        assertThat(mode.getFirstSelectedOption().getDomProperty("value")).isEqualTo("taxonomy");
+        var paper = new Select(browser.findElement(By.cssSelector(".tax-diagram-print-paper")));
+        assertThat(paper.getOptions()).extracting(option -> option.getDomProperty("value"))
+                .containsExactly("A4", "A3", "A2", "A1", "A0");
+        assertThat(paper.getFirstSelectedOption().getDomProperty("value")).isEqualTo("A1");
+        paper.selectByValue(format);
+        preparePrint();
+        clickPrint();
+        assertThat(browser.executeScript(PRINT_IDENTITIES)).isEqualTo("");
+        assertThat(browser.executeScript("""
+            return [...printFrame.contentDocument.querySelectorAll('.decision-print-page')]
+                .map(page => page.dataset.taxonomyPanel);
+            """)).isEqualTo(java.util.List.of("CP", "BR"));
+        try (var pdf = Loader.loadPDF(printUsingPaperSize())) {
+            assertThat(pdf.getNumberOfPages()).isEqualTo(2);
+            for (var page : pdf.getPages()) {
+                var box = page.getMediaBox();
+                assertThat(Math.min(box.getWidth(), box.getHeight()))
+                        .isCloseTo(shortSide * 72f / 25.4f, org.assertj.core.data.Offset.offset(1f));
+                assertThat(Math.max(box.getWidth(), box.getHeight()))
+                        .isCloseTo(longSide * 72f / 25.4f, org.assertj.core.data.Offset.offset(1f));
             }
-        } finally {browser.close();browser.switchTo().window(source);}
+            var text = new PDFTextStripper();
+            text.setEndPage(1);
+            assertThat(text.getText(pdf)).contains("fixture-deeper", "Final saved line.").doesNotContain("fixture-second");
+            text.setStartPage(2);
+            text.setEndPage(2);
+            assertThat(text.getText(pdf)).contains("fixture-second").doesNotContain("fixture-deeper");
+        }
     }
     @Test void fragmentedParentWithChildAndSiblingsKeepsEveryActualFragmentInsideItsPage() {
         browser.executeScript("""
@@ -268,7 +301,7 @@ class TaxonomyDecisionDiagramUiIT {
                 {code:'fixture-sibling',name:'Ordinary sibling',children:[{code:'fixture-other-leaf',name:'Other ordinary child'}]}]}];
             fixtureScores={'fixture-long':75,'fixture-leaf':55,'fixture-sibling':45,'fixture-other-leaf':35};
             TaxonomyViews.renderDecisionMap(document.querySelector('#diagram'),fixtureData,fixtureScores);
-            """); settle(); preparePrint(); clickPrint();
+            """); settle(); preparePrint(); selectPrintLayout("pages"); clickPrint();
         assertThat(browser.executeScript("return printFrame.contentDocument.querySelectorAll('[data-print-fragment=fixture-long]').length>1")).isEqualTo(true);
         assertThat(browser.executeScript(PRINT_GEOMETRY)).isEqualTo("");
         assertThat(browser.executeScript("return ['fixture-long','fixture-leaf','fixture-sibling','fixture-other-leaf'].every(code=>printFrame.contentDocument.querySelectorAll('[data-print-node=\"'+code+'\"]').length===1)")).isEqualTo(true);
@@ -322,7 +355,7 @@ class TaxonomyDecisionDiagramUiIT {
             TaxonomyViews.renderDecisionMap(document.querySelector('#diagram'),fixtureData,fixtureScores);
             """); settle();
         browser.executeScript("window.fourLevelScreenBefore=document.querySelector('#decision-map-svg').outerHTML");
-        preparePrint(); clickPrint();
+        preparePrint(); selectPrintLayout("pages"); clickPrint();
         assertThat(browser.executeScript("return printFrame.contentDocument.querySelectorAll('.decision-print-page').length")).isEqualTo(1L);
         assertThat(browser.executeScript(PRINT_GEOMETRY)).isEqualTo("");
         assertThat(browser.executeScript("""
@@ -353,6 +386,23 @@ class TaxonomyDecisionDiagramUiIT {
     }
     void preparePrint() {
         browser.executeScript("window.printFrame=document.createElement('iframe');document.body.append(printFrame);window.open=()=>({document:printFrame.contentDocument,closed:false,focus(){},addEventListener(){},requestAnimationFrame(fn){fn()},print(){}});");
+    }
+    private void selectPrintLayout(String value) {
+        new Select(browser.findElement(By.cssSelector(".tax-diagram-print-mode"))).selectByValue(value);
+    }
+    private byte[] printUsingPaperSize() {
+        String html = (String) browser.executeScript("return printFrame.contentDocument.documentElement.outerHTML");
+        String source = browser.getWindowHandle();
+        browser.switchTo().newWindow(WindowType.TAB);
+        try {
+            browser.get("data:text/html;charset=UTF-8;base64," + Base64.getEncoder().encodeToString(html.getBytes(StandardCharsets.UTF_8)));
+            var cdp = (HasCdp) new Augmenter().augment(browser);
+            var result = cdp.executeCdpCommand("Page.printToPDF", Map.of("preferCSSPageSize", true, "printBackground", true));
+            return Base64.getDecoder().decode((String) result.get("data"));
+        } finally {
+            browser.close();
+            browser.switchTo().window(source);
+        }
     }
     void clickPrint() {browser.findElement(By.cssSelector(".tax-diagram-print-button")).click();}
     void capture(String name) throws Exception {
