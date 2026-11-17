@@ -4,7 +4,6 @@ import com.taxonomy.workspace.controller.ExplicitRepositoryReadSelection;
 
 import com.taxonomy.dto.ApqcHierarchyView;
 import jakarta.servlet.http.HttpServletRequest;
-import org.springframework.http.HttpStatus;
 import com.taxonomy.dto.ChangeImpactView;
 import com.taxonomy.dto.EnrichedChangeImpactView;
 import com.taxonomy.dto.GraphNeighborhoodView;
@@ -161,10 +160,5 @@ public class GraphQueryApiController {
     private ArchitectureQuerySource selected(HttpServletRequest request) {
         return ArchitectureQuerySource.resolve(contexts, request.getParameter("repositoryId"), request.getParameter("branch"),
                 request.getParameter("commitId"), request);
-    }
-
-    @ExceptionHandler(IllegalStateException.class)
-    public ResponseEntity<Map<String, String>> unavailable(IllegalStateException error) {
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("status", "UNAVAILABLE", "message", error.getMessage()));
     }
 }
