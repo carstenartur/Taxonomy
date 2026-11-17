@@ -15,6 +15,11 @@ public interface WorkspacePortfolioGitPort {
     /** Check before any Git or database mutation, including merge-base initialization. */
     default void requireAvailable() { }
 
+    /** A reviewed replay may not discard portfolio edits that have yet to reach its original Git head. */
+    default void requireCheckpointedPortfolio(String localDsl, String username, WorkspaceContext context) throws IOException {
+        throw new IllegalStateException("Portfolio checkpoint verification is unavailable");
+    }
+
     /** Read-only source validation for an explicit reconciliation; business rules remain with the portfolio owner. */
     default void validatePortfolio(String localDsl, String candidateDsl) { }
 

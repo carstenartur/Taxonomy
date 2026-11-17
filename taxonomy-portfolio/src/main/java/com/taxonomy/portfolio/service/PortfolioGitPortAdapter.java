@@ -26,6 +26,13 @@ public class PortfolioGitPortAdapter
     @Override public void requireAvailable() { /* This adapter exists only with the feature installed. */ }
 
     @Override
+    public void requireCheckpointedPortfolio(String localDsl, String username, WorkspaceContext context) throws IOException {
+        if (!portfolioGitService.contributeTo(localDsl, username, context).strip().equals(localDsl.strip()))
+            throw new com.taxonomy.workspace.service.BranchHeadConflictException(context.currentBranch(), null, null,
+                    "Commit the current portfolio changes and review the rebase again");
+    }
+
+    @Override
     public void validatePortfolio(String localDsl, String candidateDsl) {
         workspaceConflict(() -> portfolioGitService.validatePortfolio(localDsl, candidateDsl));
     }

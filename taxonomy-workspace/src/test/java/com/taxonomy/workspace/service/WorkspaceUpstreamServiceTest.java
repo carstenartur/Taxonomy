@@ -113,26 +113,207 @@ class WorkspaceUpstreamServiceTest {
         verify(rows, never()).save(any());
     }
 
-    @Test
-    void personalWorkspacePlanDoesNotExposeARebasePost() throws Exception {
-        service.fetch(selected, new WorkspaceUpstreamService.Request(incoming, null));
-        target.createBranchAtCommit("feature", base);
-        String reviewedHead = target.commitDsl("feature", "base", "alice", "local change");
-        var selectedFeature = RepositoryContext.workspace("source", "w1", "feature", "alice");
-        var plan = service.rebasePlan(selectedFeature);
-        assertThat(plan.status()).isEqualTo(UpstreamRebasePlan.State.REPLAY);
-        var request = new UpstreamRebasePlan.ApplyRequest(plan.refTag(), reviewedHead, incoming, List.of(reviewedHead));
+    private static final String BRANCH = "feature";
+    private static final String REBASE_PATH = "/api/workspace/upstream/rebase";
+    private final WorkspacePortfolioGitPort portfolio = mock(WorkspacePortfolioGitPort.class);
+    private final WorkspaceArchitectureVersionPort editor = mock(WorkspaceArchitectureVersionPort.class, CALLS_REAL_METHODS);
+    private final WorkspaceContext featureScope = new WorkspaceContext("alice", "w1", BRANCH, "source");
+    private final UserWorkspaceState state = new UserWorkspaceState("alice", 12, BRANCH);
+    private final RepositoryContext feature = RepositoryContext.workspace("source", "w1", BRANCH, "alice");
+    private com.taxonomy.versioning.service.ContextNavigationService navigation;
+    private String reviewedHead;
+    private String requestBody;
 
+    private void preparePersonalReplay(String changes) throws Exception {
+        service.fetch(selected, new WorkspaceUpstreamService.Request(incoming, null));
+        target.createBranchAtCommit(BRANCH, base);
+        reviewedHead = target.commitDsl(BRANCH, changes, "alice", "local change");
+        workspace.setCurrentBranch(BRANCH);
+        when(rows.lockSelectedBranch("w1", BRANCH)).thenAnswer(inv -> workspace.getCurrentBranch().equals(BRANCH) ? 1 : 0);
+        workspace.setCurrentCommit(reviewedHead);
+        var plan = service.rebasePlan(feature);
+        assertThat(plan.status()).isEqualTo(UpstreamRebasePlan.State.REPLAY);
+        requestBody = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(
+                new UpstreamRebasePlan.ApplyRequest(plan.refTag(), reviewedHead, incoming, List.of(reviewedHead)));
+        var manager = mock(WorkspaceManager.class);
+        when(manager.getOrCreateScopedWorkspaceState(featureScope)).thenReturn(state);
+        navigation = new com.taxonomy.versioning.service.ContextNavigationService(repositories, null, manager, 12);
         var resolver = mock(WorkspaceResolver.class);
-        when(resolver.resolveUnambiguousRepositoryForRead()).thenReturn(selectedFeature);
-        var api = MockMvcBuilders.standaloneSetup(new WorkspaceUpstreamController(service, resolver, recovery)).build();
-        String body = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(request);
-        api.perform(post("/api/workspace/upstream/rebase").contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isNotFound());
-        assertThat(target.getHeadCommit("feature")).isEqualTo(reviewedHead);
+        when(resolver.resolveUnambiguousRepositoryForRead()).thenReturn(feature);
+        when(portfolio.lockedPublicationDigest("alice", featureScope)).thenReturn("initial projection");
+        mvc = MockMvcBuilders.standaloneSetup(new WorkspaceUpstreamController(service, resolver, recovery),
+                new com.taxonomy.workspace.controller.PersonalWorkspaceRebaseController(resolver, navigation,
+                        new PersonalWorkspaceRebase(service, editor, portfolio))).build();
+    }
+
+    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder personalPost(String path, String body) {
+        return post(path).param("repositoryId", "source").param("workspaceId", "w1").param("branch", BRANCH)
+                .param("expectedContextId", state.legacyNavigation().getCurrentContext().contextId())
+                .contentType(MediaType.APPLICATION_JSON).content(body);
+    }
+
+    @Test
+    void personalPostAdoptsExactlyTheReviewedReplayAndRetainsOtherBranches() throws Exception {
+        preparePersonalReplay("base");
+        mvc.perform(personalPost(REBASE_PATH, requestBody)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.originalHead").value(reviewedHead))
+                .andExpect(jsonPath("$.rewritten[0].originalCommit").value(reviewedHead));
+        var newHead = target.getHeadCommit(BRANCH);
+        assertThat(newHead).isNotEqualTo(reviewedHead).isEqualTo(workspace.getCurrentCommit());
+        assertThat(workspace.getLastIntegratedCommit()).isEqualTo(incoming);
+        assertThat(workspace.getLastFetchedCommit()).isEqualTo(incoming);
+        assertThat(workspace.getBaseCommit()).isEqualTo(base);
+        assertThat(target.getHeadCommit("draft")).isEqualTo(local);
         assertThat(source.getHeadCommit("main")).isEqualTo(incoming);
         assertThat(tracked.head(target)).isEqualTo(incoming);
-        assertThat(workspace.getCurrentCommit()).isEqualTo(local);
+        verify(portfolio).materializePortfolio("new upstream", "alice", featureScope);
+        verify(rows, atLeastOnce()).findByWorkspaceIdForUpdate("w1");
+        verify(memberships).lockForRefMutation("source");
+    }
+
+    @Test
+    void personalConflictReturnsThreeVersionsAndAcceptsTheReviewedResolution() throws Exception {
+        preparePersonalReplay("local text");
+        var result = mvc.perform(personalPost(REBASE_PATH, requestBody)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.conflictCommit").value(reviewedHead)).andExpect(jsonPath("$.dslConflict.source.text").value("local text"))
+                .andReturn();
+        assertThat(target.getHeadCommit(BRANCH)).isEqualTo(reviewedHead);
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        var blob = json.readTree(result.getResponse().getContentAsString()).at("/dslConflict/target/blobId").asText();
+        var body = (com.fasterxml.jackson.databind.node.ObjectNode) json.readTree(requestBody);
+        body.putObject("resolutions").putObject(reviewedHead).put("targetBlobId", blob).put("text", "combined");
+        mvc.perform(personalPost(REBASE_PATH, body.toString())).andExpect(status().isOk());
+        assertThat(target.getDslAtCommit(workspace.getCurrentCommit())).isEqualTo("combined");
+    }
+
+    @Test
+    void movedWorkspaceBranchOrBrowserSelectionRejectsTheReviewedPost() throws Exception {
+        preparePersonalReplay("base");
+        workspace.setCurrentBranch("draft");
+        mvc.perform(personalPost(REBASE_PATH, requestBody)).andExpect(status().isConflict());
+        workspace.setCurrentBranch(BRANCH);
+        var prior = personalPost(REBASE_PATH, requestBody);
+        navigation.switchContext("alice", BRANCH, null, featureScope);
+        mvc.perform(prior).andExpect(status().isConflict());
+        navigation.openReadOnly("alice", BRANCH, reviewedHead, featureScope, null, null);
+        assertThatThrownBy(() -> mvc.perform(personalPost(REBASE_PATH, requestBody)))
+                .hasRootCauseInstanceOf(AccessDeniedException.class);
+        assertThat(target.getHeadCommit(BRANCH)).isEqualTo(reviewedHead);
+    }
+
+    @Test
+    void localRefCompetitionPreservesTheCompetingWrite() throws Exception {
+        preparePersonalReplay("base");
+        doAnswer(inv -> { target.commitDsl(BRANCH, "new local", "alice", "independent"); return null; })
+                .when(portfolio).validatePortfolio(anyString(), anyString(), eq("alice"), eq(featureScope));
+        mvc.perform(personalPost(REBASE_PATH, requestBody)).andExpect(status().isConflict());
+        assertThat(target.getDslAtCommit(target.getHeadCommit(BRANCH))).isEqualTo("new local");
+        assertThat(workspace.getCurrentCommit()).isEqualTo(reviewedHead);
+        assertThat(workspace.getLastIntegratedCommit()).isEqualTo(base);
+    }
+
+    @Test
+    void personalPostRequiresCurrentSourceAuthorityAndOwnedReadyWorkingCopy() throws Exception {
+        preparePersonalReplay("base");
+        when(memberships.canContribute(metadata, "alice")).thenReturn(false);
+        assertThatThrownBy(() -> mvc.perform(personalPost(REBASE_PATH, requestBody)))
+                .hasRootCauseInstanceOf(AccessDeniedException.class);
+        when(memberships.canContribute(metadata, "alice")).thenReturn(true);
+        workspace.setArchived(true);
+        assertThatThrownBy(() -> mvc.perform(personalPost(REBASE_PATH, requestBody)))
+                .hasRootCauseInstanceOf(AccessDeniedException.class);
+        assertThat(target.getHeadCommit(BRANCH)).isEqualTo(reviewedHead);
+    }
+
+    @Test
+    void upstreamMovementAfterReviewRequiresANewFetchAndPlan() throws Exception {
+        preparePersonalReplay("base");
+        source.commitDsl("main", "new upstream work", "owner", "independent");
+        mvc.perform(personalPost(REBASE_PATH, requestBody)).andExpect(status().isConflict());
+        assertThat(target.getHeadCommit(BRANCH)).isEqualTo(reviewedHead);
+        assertThat(tracked.head(target)).isEqualTo(incoming);
+    }
+
+    @Test
+    void lostSqlAdoptionCanFinishFromFreshPlanWithoutASecondReplay() throws Exception {
+        preparePersonalReplay("base");
+        doThrow(new IllegalStateException("Interrupted SQL materialization")).doNothing()
+                .when(portfolio).materializePortfolio(anyString(), eq("alice"), eq(featureScope));
+        assertThatThrownBy(() -> mvc.perform(personalPost(REBASE_PATH, requestBody)))
+                .hasRootCauseMessage("Interrupted SQL materialization");
+        String candidate = target.getHeadCommit(BRANCH);
+        assertThat(candidate).isNotEqualTo(reviewedHead);
+        assertThat(workspace.getCurrentCommit()).isEqualTo(reviewedHead);
+        mvc.perform(get("/api/workspace/upstream/rebase-plan")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.recoverableCommit").value(candidate));
+        String resume = recovery(candidate, candidate);
+        mvc.perform(personalPost(REBASE_PATH + "/resume", "{\"candidate\":\"" + reviewedHead + "\"}")).andExpect(status().isConflict());
+        when(portfolio.lockedPublicationDigest("alice", featureScope)).thenReturn("concurrent portfolio edit");
+        doThrow(new BranchHeadConflictException(BRANCH, null, null, "dirty portfolio")).when(portfolio)
+                .requireCheckpointedPortfolio(anyString(), eq("alice"), eq(featureScope));
+        mvc.perform(personalPost(REBASE_PATH + "/resume", resume)).andExpect(status().isConflict());
+        when(portfolio.lockedPublicationDigest("alice", featureScope)).thenReturn("initial projection");
+        mvc.perform(personalPost(REBASE_PATH + "/resume", resume)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.newHead").value(candidate));
+        assertThat(workspace.getCurrentCommit()).isEqualTo(candidate);
+        assertThat(workspace.getLastIntegratedCommit()).isEqualTo(incoming);
+        assertThat(target.getHeadCommit("draft")).isEqualTo(local);
+    }
+
+    @Test
+    void acknowledgedReceiptSurvivingCleanupAllowsANewReviewedRebaseAfterFurtherWork() throws Exception {
+        preparePersonalReplay("base");
+        mvc.perform(personalPost(REBASE_PATH, requestBody)).andExpect(status().isOk());
+        var acknowledged = workspace.getCurrentCommit();
+        // This fixture has no afterCommit callback. The same retained tag survives a cleanup interruption.
+        assertThat(com.taxonomy.workspace.storage.PersonalRebaseReceipt.read(target, feature.repositoryWorkspaceScopeKey()))
+                .isNotNull();
+        String later = target.commitDsl(BRANCH, "new upstream", "alice", "later local work");
+        workspace.setCurrentCommit(later);
+        String nextUpstream = source.commitDsl("main", "second upstream", "owner", "later source");
+        service.fetch(selected, new WorkspaceUpstreamService.Request(nextUpstream, incoming));
+        var plan = service.rebasePlan(feature);
+        assertThat(plan.recoverableCommit()).isNull();
+        var request = new UpstreamRebasePlan.ApplyRequest(plan.refTag(), later, nextUpstream,
+                plan.commits().stream().map(UpstreamRebasePlan.Commit::id).toList());
+        mvc.perform(personalPost(REBASE_PATH, new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(request)))
+                .andExpect(status().isOk());
+        assertThat(workspace.getCurrentCommit()).isNotIn(later, acknowledged);
+        assertThat(workspace.getLastIntegratedCommit()).isEqualTo(nextUpstream);
+        assertThat(target.getHeadCommit("draft")).isEqualTo(local);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+    void anUnsettledReplayAtADifferentHeadRequiresExplicitAdoptionOfThatExactHead(boolean includesReplay) throws Exception {
+        preparePersonalReplay("base");
+        doThrow(new IllegalStateException("interrupted")).doNothing().when(portfolio)
+                .materializePortfolio(anyString(), eq("alice"), eq(featureScope));
+        assertThatThrownBy(() -> mvc.perform(personalPost(REBASE_PATH, requestBody))).hasRootCauseMessage("interrupted");
+        var retained = target.getHeadCommit(BRANCH);
+        String advanced;
+        if (includesReplay) advanced = target.commitDsl(BRANCH, "later branch", "alice", "independent follow-up");
+        else {
+            var replacement = target.getGitRepository().updateRef(Constants.R_HEADS + BRANCH);
+            replacement.setExpectedOldObjectId(ObjectId.fromString(retained));
+            replacement.setNewObjectId(ObjectId.fromString(local));
+            replacement.setForceUpdate(true);
+            assertThat(replacement.update()).isEqualTo(org.eclipse.jgit.lib.RefUpdate.Result.FORCED);
+            advanced = local;
+        }
+        mvc.perform(get("/api/workspace/upstream/rebase-plan")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.recoverableCommit").value(retained)).andExpect(jsonPath("$.localCommit").value(advanced));
+        mvc.perform(personalPost(REBASE_PATH, requestBody)).andExpect(status().isConflict());
+        mvc.perform(personalPost(REBASE_PATH + "/resume", recovery(retained, retained))).andExpect(status().isConflict());
+        mvc.perform(personalPost(REBASE_PATH + "/resume", recovery(retained, advanced))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.newHead").value(advanced));
+        assertThat(target.getHeadCommit(BRANCH)).isEqualTo(advanced);
+        assertThat(workspace.getCurrentCommit()).isEqualTo(advanced);
+        assertThat(workspace.getLastIntegratedCommit()).isEqualTo(includesReplay ? incoming : base);
+    }
+
+    private static String recovery(String candidate, String head) {
+        return "{\"candidate\":\"" + candidate + "\",\"expectedHead\":\"" + head + "\"}";
     }
 
     private String rebasePlanTag() throws Exception {

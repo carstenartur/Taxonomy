@@ -667,23 +667,23 @@ test('A central rebase cannot replay an older fetch after the default branch adv
     } finally { await page.close(); }
 });
 
-for (const outcome of ['applied', 'conflict', 'resolved', 'cancelled']) test(`Reviewed central rebase shows its ${outcome} receipt`, async () => {
+for (const personal of [false, true]) for (const outcome of ['applied', 'conflict', 'resolved', 'cancelled']) test(`Reviewed ${personal ? 'personal' : 'central'} rebase shows its ${outcome} receipt`, async () => {
     const page = await fixture();
     try {
         await page.evaluate(() => {
             document.body.insertAdjacentHTML('beforeend', '<button id="workspaceRebasePlanButton">Plan</button><div id="workspaceRebasePlan"></div>');
-            window.TaxonomyContextBar = {getCurrentContext: () => ({mode:'EDITABLE', branch:'draft/scope'})};
+            window.TaxonomyContextBar = {getCurrentContext: () => ({mode:'EDITABLE', contextId:'active-context', branch:'draft/scope'})};
         });
-        const repository = 'central-fork';
+        const repository = 'central-fork', workspaceId = personal ? 'workspace-2' : null;
         await answer(page, '/api/workspace/sync-state', initial);
         await page.evaluate(() => TaxonomyWorkspaceSync.refresh());
-        await syncResponse(page, {syncStatus:'DIVERGED', repositoryId:repository, workspaceId:null, branch:'draft/scope'});
+        await syncResponse(page, {syncStatus:'DIVERGED', repositoryId:repository, workspaceId, branch:'draft/scope'});
         await page.locator('#workspaceRebasePlanButton').click();
-        const endpoint = '/api/repositories/central-fork/upstream';
+        const endpoint = personal ? '/api/workspace/upstream' : '/api/repositories/central-fork/upstream';
         const localCommit = '3'.repeat(40), trackedCommit = '4'.repeat(40), firstCommit = '2'.repeat(40);
         const tag = 'W/"' + 'e'.repeat(64) + '"';
         await answerCurrentPlan(page, endpoint + '/rebase-plan', {status:'REPLAY', repositoryId:repository,
-            workspaceId:null, branch:'draft/scope', localCommit, mergeBase:'1'.repeat(40),
+            workspaceId, branch:'draft/scope', localCommit, mergeBase:'1'.repeat(40),
             upstream:{sourceRepositoryId:'central', sourceBranch:'main', sourceCommit:trackedCommit, trackedCommit},
             commits:[{id:firstCommit, subject:'First'},{id:localCommit, subject:'Second'}]}, tag);
         const apply = page.locator('#workspaceApplyRebase');
@@ -693,7 +693,7 @@ for (const outcome of ['applied', 'conflict', 'resolved', 'cancelled']) test(`Re
         assert.deepEqual(await writes(), []);
         await apply.click();
         await page.waitForFunction(path => statusReads.some(read => read.method === 'POST' && read.url.startsWith(path)), endpoint + '/rebase?');
-        assert.deepEqual(await writes(), [{url:endpoint + '/rebase?branch=draft%2Fscope',
+        assert.deepEqual(await writes(), [{url:endpoint + '/rebase?branch=draft%2Fscope' + (personal ? '&workspaceId=workspace-2&workspaceScopeKey=workspace-2&repositoryId=central-fork&expectedContextId=active-context' : ''),
             body:{expectedRefTag:tag, expectedLocalCommit:localCommit, expectedTrackedCommit:trackedCommit,
                 orderedCommits:[firstCommit, localCommit]}}]);
         const newHead = '6'.repeat(40);
@@ -811,5 +811,36 @@ test('Live ref changes invalidate a pending or visible plan with an unchanged sy
         assert.equal(new Set(planReads).size, 1, 'GET and HEAD use the same exact pinned selection');
         assert.deepEqual(await page.evaluate(() => TaxonomyWorkspaceSync.getSyncState()), state);
         assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+});
+
+test('Personal rebase recovery adopts the explicitly displayed current branch head', async () => {
+    const page = await fixture();
+    try {
+        await page.evaluate(() => {
+            document.body.insertAdjacentHTML('beforeend', '<button id="workspaceRebasePlanButton">Plan</button><div id="workspaceRebasePlan"></div>');
+            window.TaxonomyContextBar = {getCurrentContext: () => ({mode:'EDITABLE', contextId:'context-A', branch:'draft'})};
+        });
+        const repositoryId = 'repo', workspaceId = 'copy', branch = 'draft';
+        const endpoint = '/api/workspace/upstream', candidate = '3'.repeat(40), head = '4'.repeat(40);
+        await answer(page, '/api/workspace/sync-state', initial);
+        await page.evaluate(() => TaxonomyWorkspaceSync.refresh());
+        await syncResponse(page, {syncStatus:'DIVERGED', repositoryId, workspaceId, branch});
+        await page.locator('#workspaceRebasePlanButton').click();
+        await answerCurrentPlan(page, endpoint + '/rebase-plan', {status:'UP_TO_DATE', repositoryId, workspaceId, branch,
+            localCommit:head, recoverableCommit:candidate, commits:[], upstream:{sourceRepositoryId:'repo', sourceBranch:'main',
+                sourceCommit:'2'.repeat(40), trackedCommit:'2'.repeat(40)}});
+        const panel = page.locator('#workspaceRebasePlan');
+        await page.locator('#workspaceApplyRebase').waitFor();
+        assert.ok((await panel.innerText()).includes(candidate));
+        assert.ok((await panel.innerText()).includes(head));
+        assert.equal(await page.evaluate(() => statusReads.filter(read => read.method === 'POST').length), 0);
+        await page.locator('#workspaceApplyRebase').click();
+        const request = await page.evaluate(() => statusReads.find(read => read.method === 'POST'));
+        assert.deepEqual(JSON.parse(request.body), {candidate, expectedHead:head});
+        assert.ok(request.url.startsWith(endpoint + '/rebase/resume?'));
+        await answer(page, endpoint + '/rebase/resume', {originalHead:'1'.repeat(40), newHead:head, rewritten:[]},
+            200, {method:'POST'});
+        await page.waitForFunction(() => !document.querySelector('#workspaceApplyRebase'));
     } finally { await page.close(); }
 });

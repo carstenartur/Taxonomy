@@ -82,17 +82,11 @@ class ApiPermissionsSecurityTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"/api/repositories/fork/upstream/fetch", "/api/repositories/fork/upstream/fetch-tag",
-            "/api/repositories/fork/upstream/rebase"})
+            "/api/repositories/fork/upstream/rebase", "/api/workspace/upstream/rebase", "/api/workspace/upstream/rebase/resume"})
     void centralForkPublicationRequiresArchitectureWriteAndSessionCsrf(String path) throws Exception {
         mvc.perform(post(path).with(csrf()).with(user("analyst").roles("USER"))).andExpect(status().isForbidden());
         mvc.perform(post(path).with(user("architect").roles("ARCHITECT"))).andExpect(status().isForbidden());
         mvc.perform(post(path).with(csrf()).with(user("architect").roles("ARCHITECT"))).andExpect(status().isOk());
-    }
-
-    @Test
-    void personalWorkspaceRebasePostIsUnavailable() throws Exception {
-        mvc.perform(post("/api/workspace/upstream/rebase").with(csrf()).with(user("architect").roles("ARCHITECT")))
-                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -438,7 +432,7 @@ class ApiPermissionsSecurityTest {
         @RequestMapping({"/api/admin/catalogue/provisional-information-products/IP-1/reviews",
                 "/api/admin/catalogue/provisional-information-products/IP-1/reviews/0000000000000000000000000000000000000001/overlay",
                 "/api/projects/p", "/api/analyze", "/api/analysis-drafts", "/api/workspace/provision",
-                "/api/workspace/upstream/fetch", "/api/workspace/upstream/fetch-tag",
+                "/api/workspace/upstream/fetch", "/api/workspace/upstream/fetch-tag", "/api/workspace/upstream/rebase", "/api/workspace/upstream/rebase/resume",
                 "/api/workspace/upstream/rebase-plan", "/api/repositories/fork/upstream/rebase-plan",
                 "/api/repositories/fork/upstream/rebase",
                 "/api/repositories/fork/upstream/fetch", "/api/repositories/fork/upstream/fetch-tag",

@@ -725,6 +725,14 @@ public class DslGitRepository implements AutoCloseable {
     public RebaseReplay replayLinearHistory(String branch, String expectedHead, String mergeBase,
                                            String trackedCommit, List<String> orderedCommits,
                                            Map<String, RebaseDslConflict.Resolution> resolutions, String actor, RebaseGuard reauthorizeAndCheckUpstream) throws IOException {
+        return replayLinearHistory(branch, expectedHead, mergeBase, trackedCommit, orderedCommits, resolutions, actor,
+                reauthorizeAndCheckUpstream, true);
+    }
+
+    public RebaseReplay replayLinearHistory(String branch, String expectedHead, String mergeBase,
+                                           String trackedCommit, List<String> orderedCommits,
+                                           Map<String, RebaseDslConflict.Resolution> resolutions, String actor,
+                                           RebaseGuard reauthorizeAndCheckUpstream, boolean publish) throws IOException {
         Objects.requireNonNull(orderedCommits, "orderedCommits");
         Objects.requireNonNull(reauthorizeAndCheckUpstream, "reauthorizeAndCheckUpstream");
         if (branch == null || !Repository.isValidRefName(Constants.R_HEADS + branch)
@@ -820,7 +828,7 @@ public class DslGitRepository implements AutoCloseable {
                 // again before the single forced (non-fast-forward) compare-and-set publication.
                 reauthorizeAndCheckUpstream.revalidate();
                 verifyExpectedHead(branch, expectedHead);
-                ExpectedHeadDslCommitter.replaceBranchHead(gitRepo, branch, original, tip,
+                if (publish) ExpectedHeadDslCommitter.replaceBranchHead(gitRepo, branch, original, tip,
                         personIdent(actor), "rebase: " + original.name() + " onto " + fetched.name());
                 return new RebaseReplay(expectedHead, tip.name(), null, List.of(), List.copyOf(replacements), null);
             }

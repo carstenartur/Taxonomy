@@ -19,7 +19,16 @@ import java.util.Objects;
 /** A read-only ancestry plan against the last fetched upstream commit. Content conflicts are not evaluated. */
 public record UpstreamRebasePlan(String repositoryId, String workspaceId, String branch, String localCommit,
                                  WorkspaceUpstreamService.Status upstream, State status, String mergeBase,
-                                 List<Commit> commits) {
+                                 List<Commit> commits, String recoverableCommit) {
+    UpstreamRebasePlan(String repositoryId, String workspaceId, String branch, String localCommit,
+                       WorkspaceUpstreamService.Status upstream, State status, String mergeBase, List<Commit> commits) {
+        this(repositoryId, workspaceId, branch, localCommit, upstream, status, mergeBase, commits, null);
+    }
+
+    UpstreamRebasePlan withRecoverableCommit(String commit) {
+        return new UpstreamRebasePlan(repositoryId, workspaceId, branch, localCommit, upstream, status, mergeBase, commits, commit);
+    }
+
     public enum State { NO_LOCAL_BRANCH, NO_TRACKING, UNRELATED, AMBIGUOUS_BASE, NON_LINEAR, TOO_LONG,
                         UP_TO_DATE, FAST_FORWARD, REPLAY }
     public record Commit(String id, String subject) {}
@@ -82,6 +91,11 @@ public record UpstreamRebasePlan(String repositoryId, String workspaceId, String
     static DslGitRepository.RebaseReplay apply(GitUpstreamTransfer transfer, String repositoryId,
                                                String workspaceId, String branch, ApplyRequest request)
             throws IOException {
+        return replay(transfer, repositoryId, workspaceId, branch, request, true);
+    }
+
+    static DslGitRepository.RebaseReplay replay(GitUpstreamTransfer transfer, String repositoryId, String workspaceId,
+                                                String branch, ApplyRequest request, boolean publish) throws IOException {
         Objects.requireNonNull(request, "request");
         // Invalid request syntax is a 400, but an otherwise valid plan whose refs moved is a 409,
         // even when that movement changed the current plan state from REPLAY to UP_TO_DATE.
@@ -116,7 +130,7 @@ public record UpstreamRebasePlan(String repositoryId, String workspaceId, String
                         throw new BranchHeadConflictException(branch, reviewed.localCommit(), null,
                                 "A source, target or tracking Git ref changed during the reviewed rebase");
                     }
-                });
+                }, publish);
     }
 
     private static Refs readRefs(GitUpstreamTransfer transfer, String branch) throws IOException {

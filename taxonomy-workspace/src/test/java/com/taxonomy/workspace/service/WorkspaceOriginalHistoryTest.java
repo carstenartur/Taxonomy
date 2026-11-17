@@ -435,6 +435,64 @@ class WorkspaceOriginalHistoryTest {
         }
     }
 
+    @Test
+    void personalRebaseRecoversGitAndSqlAfterProcessRestart() throws Exception {
+        String database = "jdbc:hsqldb:file:" + directory.resolve("personal-rebase") + ";shutdown=true";
+        String dsl = "meta system {\n  title: \"Original\";\n}\n";
+        var portfolio = mock(WorkspacePortfolioGitPort.class);
+        when(portfolio.lockedPublicationDigest(anyString(), any())).thenReturn("reviewed portfolio");
+        doThrow(new IllegalStateException("interrupted SQL adoption")).doNothing()
+                .when(portfolio).materializePortfolio(anyString(), anyString(), any());
+        String oldHead, fetched, candidate;
+        RepositoryContext context;
+        try (var fixture = new Fixture(database, GitCommitSignatureService.disabled())) {
+            var sourceId = fixture.createSource().getRepositoryId();
+            context = RepositoryContext.workspace(sourceId, "rebase-copy", "draft", OWNER);
+            var source = fixture.git.getCentralRepository(sourceId);
+            var target = fixture.git.openWorkspaceRepository(context.workspaceId());
+            String base = source.commitDsl("main", dsl, OWNER, "base");
+            fetched = source.commitDsl("main", dsl.replace("Original", "Upstream"), OWNER, "upstream");
+            com.taxonomy.workspace.storage.GitHistoryTransfer.copyCommitClosure(source, target, fetched, List.of());
+            new GitUpstreamRef(sourceId, "main").advance(target, null, fetched, OWNER);
+            target.createBranchAtCommit("draft", base);
+            oldHead = target.commitDsl("draft", dsl, OWNER, "local change");
+            fixture.transactions.executeWithoutResult(tx -> {
+                var row = new UserWorkspace();
+                row.setWorkspaceId(context.workspaceId()); row.setUsername(OWNER); row.setCreatedAt(java.time.Instant.now());
+                row.setSourceRepositoryId(sourceId); row.setSourceBranch("main"); row.setBaseCommit(base);
+                row.setCurrentCommit(oldHead); row.setLastFetchedCommit(fetched); row.setLastIntegratedCommit(base);
+                fixture.rows.save(row);
+            });
+            var upstream = new WorkspaceUpstreamService(fixture.rows, fixture.catalog, fixture.memberships, fixture.git);
+            var plan = upstream.rebasePlan(context);
+            var request = new UpstreamRebasePlan.ApplyRequest(plan.refTag(), oldHead, fetched, List.of(oldHead));
+            var rebase = new PersonalWorkspaceRebase(upstream, fixture.persistence.service, portfolio);
+            assertThrows(IllegalStateException.class, () -> inTransaction(fixture, () -> rebase.apply(context, request)));
+            candidate = target.getHeadCommit("draft");
+            assertNotEquals(oldHead, candidate);
+            assertEquals(oldHead, fixture.rows.findByWorkspaceId("rebase-copy").orElseThrow().getCurrentCommit());
+        }
+        try (var fixture = new Fixture(database, GitCommitSignatureService.disabled())) {
+            var upstream = new WorkspaceUpstreamService(fixture.rows, fixture.catalog, fixture.memberships, fixture.git);
+            assertEquals(candidate, upstream.rebasePlan(context).recoverableCommit());
+            var rebase = new PersonalWorkspaceRebase(upstream, fixture.persistence.service, portfolio);
+            assertEquals(candidate, inTransaction(fixture, () -> rebase.resume(context, candidate, candidate)).newHead());
+            var row = fixture.rows.findByWorkspaceId("rebase-copy").orElseThrow();
+            assertEquals(candidate, row.getCurrentCommit());
+            assertEquals(fetched, row.getLastIntegratedCommit());
+            assertEquals(fetched, row.getLastFetchedCommit());
+            assertTrue(fixture.persistence.service.read(context, null).dsl().contains("Upstream"));
+            assertNull(upstream.rebasePlan(context).recoverableCommit());
+        }
+    }
+
+    private static <T> T inTransaction(Fixture fixture, WorkspaceArchitectureVersionPort.GitAction<T> action) {
+        return fixture.transactions.execute(status -> {
+            try { return action.run(); }
+            catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
+        });
+    }
+
     private static final class Fixture implements AutoCloseable {
         final EditorPersistenceFixture persistence;
         final DslGitRepositoryFactory git;
