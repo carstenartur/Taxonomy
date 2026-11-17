@@ -9,6 +9,10 @@ final class VisioPresentation {
     private VisioPresentation() { }
 
     static void apply(VisioDocument document) {
+        apply(document, null);
+    }
+
+    static void apply(VisioDocument document, VisioDecisionTree decisionTree) {
         document.getPages().forEach(VisioContainers::fit);
         VisioPage overview = document.getPages().getFirst();
         Map<String, VisioShape> nodes = new LinkedHashMap<>();
@@ -66,9 +70,13 @@ final class VisioPresentation {
                 unplaced + " overview captions could not be placed without collision. Native connectors/data remain; consult relationship details."));
         // Mandatory readable evidence reserves page capacity before optional diagram details.
         VisioEvidencePages.append(document, overview);
-        VisioContextPages.append(document);
-        if (dense || unplaced > 0 || shortenedOverviewType) addDetails(document, overview, nodes);
-        VisioContextPages.decorateDiagrams(document);
+        boolean contextOnDrawings = decisionTree == null;
+        VisioContextPages.append(document, contextOnDrawings);
+        if (decisionTree != null) decisionTree.appendTo(document);
+        if (dense || unplaced > 0 || shortenedOverviewType) {
+            addDetails(document, overview, nodes, contextOnDrawings && VisioContextPages.hasContext(document));
+        }
+        if (contextOnDrawings) VisioContextPages.decorateDiagrams(document);
     }
 
     private static Box place(Occupancy occupied, VisioShape from, VisioShape to, double width, double height) {
@@ -83,11 +91,12 @@ final class VisioPresentation {
         return null;
     }
 
-    private static void addDetails(VisioDocument document, VisioPage overview, Map<String, VisioShape> nodes) {
+    private static void addDetails(VisioDocument document, VisioPage overview, Map<String, VisioShape> nodes,
+                                   boolean contextOnDrawings) {
         int shapes = document.getPages().stream().mapToInt(p -> p.getShapes().size() + (p.getLegend() == null ? 0 : 1)).sum();
         int connectors = document.getPages().stream().mapToInt(p -> p.getConnects().size()).sum();
         int covered = 0;
-        int contextShapesPerDetail = VisioContextPages.hasContext(document) ? 1 : 0;
+        int contextShapesPerDetail = contextOnDrawings ? 1 : 0;
         int diagramPages = (int) document.getPages().stream().filter(page -> !page.isEvidencePage()).count();
         while (covered < overview.getConnects().size() && diagramPages < VisioPackageValidator.MAX_DIAGRAM_PAGES) {
             List<VisioConnect> batch = new ArrayList<>();

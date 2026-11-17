@@ -209,7 +209,7 @@ class DecisionRationaleReportTests {
         assertThat(reportRendererRegistry.listDescriptors(
                 DecisionRationaleReportPlugin.REPORT_TYPE_ID))
                 .extracting(descriptor -> descriptor.id())
-                .containsExactly("docx", "html", "json");
+                .containsExactly("docx", "html", "json", "visio");
 
         ReportRendererExtension htmlExtension = reportRendererRegistry.getRequired(
                 DecisionRationaleReportPlugin.REPORT_TYPE_ID, "html");
@@ -248,6 +248,15 @@ class DecisionRationaleReportTests {
                 .render(ReportRenderContext.ofPayload(report)).bytes();
         assertThat(objectMapper.readTree(json).get("metadata").get("generatedBy").asText())
                 .isEqualTo("decision-auditor");
+
+        byte[] visio = reportRendererRegistry.getRequired(DecisionRationaleReportPlugin.REPORT_TYPE_ID, "visio")
+                .render(ReportRenderContext.ofPayload(report)).bytes();
+        Map<String, byte[]> visioParts = unzip(visio);
+        assertThat(visioParts).containsKeys("visio/windows.xml", "visio/pages/pages.xml", "visio/pages/page1.xml");
+        assertThat(new String(visioParts.get("visio/pages/pages.xml"), StandardCharsets.UTF_8))
+                .contains("Entscheidungsbaum");
+        assertThat(new String(visioParts.get("visio/pages/page1.xml"), StandardCharsets.UTF_8))
+                .contains("<Connects>");
     }
 
     @Test

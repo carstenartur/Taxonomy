@@ -134,6 +134,7 @@ public class DecisionRationaleSnapshotReportController {
         WorkspaceContext context = workspaceResolver.resolveCurrentContext();
         String username = workspaceResolver.resolveCurrentUsername();
         ReportFormatDescriptor format = renderer.descriptor();
+        if (options == null && "visio".equals(format.id())) options = DecisionReportOptions.full();
         DecisionRationaleReport report;
         if (options == null) {
             report = "docx".equals(format.id().trim().toLowerCase(Locale.ROOT))

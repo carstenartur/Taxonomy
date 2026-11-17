@@ -6,7 +6,7 @@
         STANDARD: ['SUMMARY', 'TREE', 'CHAPTERS', 'ARCHITECTURE'],
         FULL: ['TITLE_PAGE', 'SUMMARY', 'TREE', 'CHAPTERS', 'ARCHITECTURE', 'EVIDENCE']
     };
-    const types = {docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', html: 'text/html', json: 'application/json'};
+    const types = {docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', html: 'text/html', json: 'application/json', visio: 'application/vnd.ms-visio.drawing'};
     let active = null;
     function reportText(en, de) {return String(document.documentElement.lang).startsWith('de') ? de : en;}
     function selection(input) {
@@ -109,6 +109,7 @@
         const rootGroup = el('fieldset'); rootGroup.append(el('legend', t('Taxonomies in this report', 'Taxonomien im Bericht'))); fieldset.append(rootGroup);
         const sourceScope = el('p'); fieldset.append(sourceScope);
         const jsonNote = el('p', t('JSON includes the complete evidence for your selection; page layout does not apply.', 'JSON enthält die vollständigen Nachweise Ihrer Auswahl; ein Seitenlayout entfällt.')); fieldset.append(jsonNote);
+        const visioNote = el('p', t('Visio creates editable decision trees for the selected taxonomies and includes the saved architecture when available.', 'Visio erzeugt bearbeitbare Entscheidungsbäume für die gewählten Taxonomien und enthält die gespeicherte Architektur, sofern sie verfügbar ist.')); fieldset.append(visioNote);
         const advanced = el('details'); advanced.append(el('summary', t('More options','Weitere Optionen'))); fieldset.append(advanced);
         const contents = select(t('Contents','Inhaltsverzeichnis'),'contents', [['NONE',t('None','Keines')],['SHORT',t('Short — main sections','Kurz – Hauptabschnitte')],['FULL',t('Detailed','Ausführlich')]], 'SHORT', advanced);
         const layout = select(t('Decision tree','Entscheidungsbaum'), 'treeLayout', [['AUTO',t('Automatic (landscape)','Automatisch (Querformat)')],['A4_LANDSCAPE',t('A4 landscape — one page','A4 quer – eine Seite')],['A3_LANDSCAPE',t('A3 landscape — one page','A3 quer – eine Seite')],['TABLE',t('Table','Tabelle')]], 'AUTO', advanced);
@@ -129,7 +130,13 @@
             // Content depth selects sections. The reader's layout and navigation
             // choices remain independent, including for a complete report.
         }
-        function updateFormat() { const json = format.value === 'json'; presentation.hidden = json; advanced.hidden = json; jsonNote.hidden = !json; }
+        function updateFormat() {
+            const layoutFree = ['json', 'visio'].includes(format.value);
+            presentation.hidden = layoutFree;
+            advanced.hidden = layoutFree;
+            jsonNote.hidden = format.value !== 'json';
+            visioNote.hidden = format.value !== 'visio';
+        }
         profile.addEventListener('change',preset);format.addEventListener('change',updateFormat);preset();updateFormat();
         const error = el('p','', {role:'alert'}); form.append(error);
         const retry = el('button', t('Retry loading','Erneut laden'), {type:'button'});retry.hidden = true;form.append(retry);
@@ -195,10 +202,11 @@
             event.preventDefault();if(busy||!ready||!dialog.open||config.sourceSignal?.aborted)return;
             const selected = checks.filter(c=>c.checked&&!c.disabled).map(c=>c.value);
             if (!selected.length) {error.textContent=t('Select at least one taxonomy.','Wählen Sie mindestens eine Taxonomie.');return;}
-            const included = sections.filter(c=>c.checked).map(c=>c.value);
+            const included = format.value === 'visio' ? ['TREE', 'ARCHITECTURE'] : sections.filter(c=>c.checked).map(c=>c.value);
             if(format.value!=='json'&&!included.length){error.textContent=t('Select at least one section.','Wählen Sie mindestens einen Abschnitt.');return;}
             const options = selection({roots,selectedRoots:selected,profile:profile.value,contents:contents.value,treeLayout:layout.value,sections:included,showResponsibilities:responsibility.checked});
             if(format.value==='json') {options.profile='FULL';delete options.sections;delete options.contents;delete options.treeLayout;}
+            if(format.value==='visio') {delete options.contents;delete options.treeLayout;}
             const controller=new AbortController();
             exportController=controller;
             busy=true;fieldset.disabled=true;submit.disabled=true;error.textContent='';
