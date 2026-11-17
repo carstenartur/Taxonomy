@@ -315,6 +315,52 @@ window.TaxonomyWorkspaceSync = (function () {
                 panel.append(list, conflicts);
             }
             planTag = etag;
+            if (!source.workspaceId && selectedContext()?.mode === 'EDITABLE'
+                    && !['main', 'accepted', 'sync-base'].includes(source.branch)
+                    && plan.status === 'REPLAY' && plan.commits.length) {
+                var apply = document.createElement('button');
+                apply.id = 'workspaceApplyRebase';
+                apply.type = 'button';
+                apply.className = 'btn btn-sm btn-primary';
+                apply.textContent = t('workspace.rebase.apply');
+                apply.addEventListener('click', async function () {
+                    if (apply.disabled || !current() || selectedContext()?.mode !== 'EDITABLE' || planTag !== etag) return;
+                    apply.disabled = true;
+                    planTag = null;
+                    if (planCheck) planCheck.abort();
+                    planCheck = null;
+                    status.textContent = t('workspace.rebase.applying');
+                    try {
+                        var result = await window.TaxonomyWorkspaceApi.applyCentralRebase(source, plan, etag, {signal:controller.signal});
+                        if (!current()) return;
+                        if (result.originalHead !== plan.localCommit) throw new Error('Unexpected rebase receipt');
+                        var outcome = document.createElement('p');
+                        if (result.conflictCommit) {
+                            outcome.textContent = t('workspace.rebase.conflict', result.conflictCommit, result.originalHead);
+                            var files = document.createElement('ul');
+                            result.conflictingPaths.forEach(function (path) {
+                                var item = document.createElement('li'); item.textContent = path; files.append(item);
+                            });
+                            panel.replaceChildren(outcome, files);
+                            return;
+                        }
+                        outcome.textContent = t('workspace.rebase.applied', result.newHead);
+                        var replacements = document.createElement('ol');
+                        result.rewritten.forEach(function (entry) {
+                            var item = document.createElement('li');
+                            item.textContent = entry.originalCommit + ' → ' + entry.replacementCommit;
+                            replacements.append(item);
+                        });
+                        panel.replaceChildren(outcome, replacements);
+                        window.TaxonomyOperationResult?.showSuccess?.(t('workspace.rebase.done'), outcome.textContent);
+                        window.TaxonomyGitStatus?.refresh?.();
+                        window.TaxonomyContextBar?.fetchAndRender?.();
+                    } catch (error) {
+                        if (current()) panel.textContent = t(error.status === 409 ? 'workspace.rebase.expired' : 'workspace.rebase.failed');
+                    }
+                });
+                panel.append(apply);
+            }
         } catch (error) {
             if (current()) panel.textContent = t('workspace.rebase.unavailable');
         }

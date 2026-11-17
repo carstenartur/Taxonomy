@@ -213,7 +213,7 @@ async function fixture(messages = {}) {
         window.clearInterval = id => window.statusTimers.delete(id);
         window.statusReads = [];
         window.fetch = (url, init) => new Promise(resolve => {
-            window.statusReads.push({url: String(url), method: init?.method || 'GET', pending: true,
+            window.statusReads.push({url: String(url), method: init?.method || 'GET', body: init?.body, pending: true,
                 answer(value, status = 200, headers) {
                     this.pending = false;
                     resolve(new Response(this.method === 'HEAD' ? null : JSON.stringify(value), {status,
@@ -636,6 +636,49 @@ test('A central fork plan uses the explicit repository and branch without adopti
     } finally { await page.close(); }
 });
 
+
+for (const outcome of ['applied', 'conflict']) test(`Reviewed central rebase shows its ${outcome} receipt`, async () => {
+    const page = await fixture();
+    try {
+        await page.evaluate(() => {
+            document.body.insertAdjacentHTML('beforeend', '<button id="workspaceRebasePlanButton">Plan</button><div id="workspaceRebasePlan"></div>');
+            window.TaxonomyContextBar = {getCurrentContext: () => ({mode:'EDITABLE', branch:'draft/scope'})};
+        });
+        const repository = 'central-fork';
+        await answer(page, '/api/workspace/sync-state', initial);
+        await page.evaluate(() => TaxonomyWorkspaceSync.refresh());
+        await syncResponse(page, {syncStatus:'DIVERGED', repositoryId:repository, workspaceId:null, branch:'draft/scope'});
+        await page.locator('#workspaceRebasePlanButton').click();
+        const endpoint = '/api/repositories/central-fork/upstream';
+        const localCommit = '3'.repeat(40), trackedCommit = '4'.repeat(40), firstCommit = '2'.repeat(40);
+        const tag = 'W/"' + 'e'.repeat(64) + '"';
+        await answerCurrentPlan(page, endpoint + '/rebase-plan', {status:'REPLAY', repositoryId:repository,
+            workspaceId:null, branch:'draft/scope', localCommit, mergeBase:'1'.repeat(40),
+            upstream:{sourceRepositoryId:'central', sourceBranch:'main', sourceCommit:trackedCommit, trackedCommit},
+            commits:[{id:firstCommit, subject:'First'},{id:localCommit, subject:'Second'}]}, tag);
+        const apply = page.locator('#workspaceApplyRebase');
+        await apply.waitFor();
+        const writes = () => page.evaluate(path => statusReads.filter(read => read.method === 'POST' && read.url.startsWith(path))
+            .map(read => ({url:read.url, body:JSON.parse(read.body)})), endpoint + '/rebase?');
+        assert.deepEqual(await writes(), []);
+        await apply.click();
+        await page.waitForFunction(path => statusReads.some(read => read.method === 'POST' && read.url.startsWith(path)), endpoint + '/rebase?');
+        assert.deepEqual(await writes(), [{url:endpoint + '/rebase?branch=draft%2Fscope',
+            body:{expectedRefTag:tag, expectedLocalCommit:localCommit, expectedTrackedCommit:trackedCommit,
+                orderedCommits:[firstCommit, localCommit]}}]);
+        const newHead = '6'.repeat(40);
+        await answer(page, endpoint + '/rebase', outcome === 'conflict' ? {originalHead:localCommit,
+            newHead:localCommit, conflictCommit:firstCommit, conflictingPaths:['model/<branch>.taxdsl'], rewritten:[]}
+            : {originalHead:localCommit, newHead, conflictCommit:null, conflictingPaths:[],
+                rewritten:[{originalCommit:localCommit, replacementCommit:newHead}]}, 200, {method:'POST'});
+        const panel = page.locator('#workspaceRebasePlan');
+        await apply.waitFor({state:'detached'});
+        assert.ok((await panel.locator('p').innerText()).startsWith('workspace.rebase.' + outcome));
+        assert.equal(await panel.locator('li').innerText(), outcome === 'conflict'
+            ? 'model/<branch>.taxdsl' : localCommit + ' → ' + newHead);
+        assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+});
 
 test('A delayed rebase plan is rejected after the same branch advances, and a fresh plan is retained', async () => {
     const page = await fixture();
