@@ -43,7 +43,7 @@ public class WorkspaceBranchDeletion {
     @Transactional(readOnly = true)
     public Preview preview(RepositoryContext selection, String name) throws IOException {
         authorize(selection, name, false);
-        String head = stores.resolveRepository(selection).getHeadCommit(name);
+        String head = stores.readWorkspaceVariantHead(selection.workspaceId(), name);
         if (head == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Variant unavailable");
         return new Preview(name, head, etag(selection, name, head));
     }
@@ -60,7 +60,9 @@ public class WorkspaceBranchDeletion {
         if (!ifMatch.equals(etag(selection, name, head))) {
             throw new ResponseStatusException(HttpStatus.PRECONDITION_FAILED, "The selected variant changed");
         }
-        stores.resolveRepository(selection).deleteBranch(name, head, actorId);
+        stores.deleteWorkspaceVariant(selection.workspaceId(), name, head, actorId, () -> {
+            if (!actorId.equals(authorize(selection, name, false))) throw denied();
+        });
     }
 
     private String authorize(RepositoryContext selection, String name, boolean mutation) {
@@ -76,9 +78,9 @@ public class WorkspaceBranchDeletion {
         if (workspace.getProvisioningStatus() != WorkspaceProvisioningStatus.READY
                 || !selection.branch().equals(workspace.getCurrentBranch())
                 || !memberships.canUseWorkspace(repository, workspace, user)
-                || !memberships.canCollaborate(repository, user)
-                || (!user.equals(workspace.getUsername()) && !memberships.canMaintain(repository, user))) throw denied();
+                || !memberships.canCollaborate(repository, user)) throw denied();
         String actorId = actor.require(user);
+        if (!workspace.matchesOwner(user, actorId) && !memberships.canMaintain(repository, user)) throw denied();
         if (name == null || !Repository.isValidRefName(Constants.R_HEADS + name)) throw new IllegalArgumentException("Invalid branch");
         if (DslGitRepository.isProtectedVariant(name) || name.equals(selection.branch())) {
             throw new IllegalArgumentException("Cannot delete protected branch: " + name);

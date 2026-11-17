@@ -62,6 +62,11 @@ public final class HistoryIndexDatabaseContract {
         try {
             var replay = second.admit(a, "review", REBUILD, GRANT, "same", cause, () -> { throw new AssertionError("Replay recaptured a later head"); });
             assertThat(replay.receipt()).isEqualTo(first.receipt());
+            assertThat(second.admit(a, "review", REBUILD, GRANT, "same", cause.toUpperCase(java.util.Locale.ROOT),
+                    () -> { throw new AssertionError("Replay recaptured a later head"); }).receipt()).isEqualTo(first.receipt());
+            assertThatThrownBy(() -> second.admit(a, "review", REBUILD, GRANT, "same", UUID.randomUUID().toString(),
+                    () -> { throw new AssertionError("Conflicting cause recaptured a later head"); }))
+                    .isInstanceOfSatisfying(ResponseStatusException.class, failure -> assertThat(failure.getStatusCode().value()).isEqualTo(409));
             assertThatThrownBy(() -> second.get(b, GRANT.principalId(), id)).isInstanceOfSatisfying(ResponseStatusException.class,
                     failure -> assertThat(failure.getStatusCode().value()).isEqualTo(404));
             assertThatThrownBy(() -> second.admit(a, "other", REBUILD, GRANT, "same", cause, () -> null))

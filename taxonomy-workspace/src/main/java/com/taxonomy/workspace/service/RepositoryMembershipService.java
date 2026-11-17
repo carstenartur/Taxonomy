@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 /** Evaluates and persists repository-scoped memberships independently of global app roles. */
 @Service
@@ -148,7 +149,7 @@ public class RepositoryMembershipService {
                                           String previousOwner, String successor, java.util.UUID previousPrincipal, java.util.UUID successorPrincipal) {
         String repositoryId = requireRepositoryId(repository);
         var locked = lockMemberships(repositoryId, expectedVersion);
-        if (!isActive(repository) || !isUserCatalogOwner(repository, previousOwner)) {
+        if (!ownsPersonalCatalogue(repository, previousOwner, previousPrincipal, findMembership(locked, previousOwner))) {
             throw new AccessDeniedException("The current personal catalogue owner is required");
         }
         if (previousOwner.equals(successor)) throw new IllegalArgumentException("A different owner is required");
@@ -242,12 +243,11 @@ public class RepositoryMembershipService {
             return Optional.empty();
         }
         String member = username.strip();
-        if (isUserCatalogOwner(repository, member)) {
+        var direct = membershipRepository.findByRepositoryIdAndUsername(repository.getRepositoryId(), member);
+        if (isUserCatalogOwner(repository, member) && hasUnboundOwner(direct)) {
             return Optional.of(RepositoryRole.OWNER);
         }
-        Optional<RepositoryRole> stored = membershipRepository.findByRepositoryIdAndUsername(
-                        repository.getRepositoryId(), member)
-                .filter(RepositoryMembership::isActive)
+        Optional<RepositoryRole> stored = direct.filter(RepositoryMembership::isActive)
                 .filter(row -> belongsToActor(row, member))
                 .map(RepositoryMembership::getRole);
         Optional<RepositoryRole> granted = trustedRole(repository, username);
@@ -435,9 +435,9 @@ public class RepositoryMembershipService {
             throw new AccessDeniedException("Repository OWNER role required");
         }
         String username = requireText(actor, "actor");
-        boolean owner = isUserCatalogOwner(repository, username)
-                || findMembership(lockedMemberships, username)
-                        .filter(RepositoryMembership::isActive)
+        var direct = findMembership(lockedMemberships, username);
+        boolean owner = (isUserCatalogOwner(repository, username) && hasUnboundOwner(direct))
+                || direct.filter(RepositoryMembership::isActive)
                         .filter(row -> belongsToActor(row, username))
                         .map(RepositoryMembership::getRole)
                         .filter(role -> role.grants(RepositoryRole.OWNER))
@@ -498,6 +498,25 @@ public class RepositoryMembershipService {
         RepositoryOwnerType ownerType = repository.getOwnerType();
         return (ownerType == null || ownerType == RepositoryOwnerType.USER)
                 && username.equals(repository.getOwnerId());
+    }
+
+    /** Resolve custody using the principal independently verified by the transfer service. */
+    public boolean ownsPersonalCatalogue(SystemRepository repository, String scope, UUID verifiedActor) {
+        if (!isActive(repository) || !isUserCatalogOwner(repository, scope)) return false;
+        var membership = membershipRepository.findByRepositoryIdAndUsername(repository.getRepositoryId(), scope);
+        return ownsPersonalCatalogue(repository, scope, verifiedActor, membership);
+    }
+
+    private static boolean ownsPersonalCatalogue(SystemRepository repository, String scope, UUID verifiedActor,
+                                                  Optional<RepositoryMembership> membership) {
+        return verifiedActor != null && isActive(repository) && isUserCatalogOwner(repository, scope)
+                && (hasUnboundOwner(membership) || membership.filter(RepositoryMembership::isActive)
+                        .filter(row -> row.getRole() == RepositoryRole.OWNER)
+                        .filter(row -> verifiedActor.toString().equals(row.getHolderPrincipalId())).isPresent());
+    }
+
+    private static boolean hasUnboundOwner(Optional<RepositoryMembership> membership) {
+        return membership.map(RepositoryMembership::getHolderPrincipalId).isEmpty();
     }
 
     private static boolean hasImplicitUserOwner(SystemRepository repository) {

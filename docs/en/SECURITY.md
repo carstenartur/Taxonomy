@@ -128,7 +128,7 @@ A validated OIDC/JWT claim may additionally grant repository roles to the **curr
 
 The claim must be an exact repository-ID-to-single-role map. Values are exactly `READER`, `CONTRIBUTOR`, `MAINTAINER` or `OWNER` (no `ROLE_` prefix or arrays); keys must be nonblank and have no surrounding whitespace. Keys are matched literally; wildcard expansion is not supported. A malformed entry causes the whole claim mapping to be ignored. Grants are considered alongside stored repository memberships, only for the exact repository and only when the evaluated actor equals the authenticated principal's name. Request parameters and local-login attributes cannot supply these grants. A repository grant does not supply an application role, OAuth scope or ownership of another user's workspace. Existing public/primary-repository compatibility rules remain in effect.
 
-An OIDC browser session can use these claim grants only before its ID token expires. Stored repository memberships continue to be evaluated independently.
+Each repository role lookup checks the expiration time of the OIDC ID token for a browser session or of the JWT access token for a bearer request. A claim grants access only when its token has an expiration time in the future. Stored repository memberships continue to be evaluated independently.
 
 ## Swagger and API access descriptions
 
@@ -244,4 +244,4 @@ Administrators can create local accounts, edit their roles, enable or disable ac
 <a id="browser-sessions"></a>
 ## Signed-in sessions
 
-Administrators can open the session inventory to see registered, non-expired sessions for this application instance, grouped by user. **Refresh** obtains a new measurement. The timestamp is shown in UTC. A registered session does not prove that someone is currently viewing a page; the inventory is not a cluster-wide presence indicator.
+Administrators can open the session inventory to see registered, non-expired sessions for this application instance, grouped by user. Local accounts with a stable principal ID retain their session group after a rename. Another account that later uses the same login name has a separate group. **Refresh** obtains a new measurement. The timestamp is shown in UTC. A registered session does not prove that someone is currently viewing a page; the inventory is not a cluster-wide presence indicator.

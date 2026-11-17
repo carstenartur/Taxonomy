@@ -150,6 +150,42 @@ class ExpectedHeadDslCommitterTest {
         }
     }
 
+    @Test
+    void secureVariantDeletionRechecksAuthorityAtTheRefAndPreservesOtherRefs(@TempDir Path temp) throws Exception {
+        String url = "jdbc:hsqldb:file:" + temp.resolve("variants") + ";shutdown=true";
+        try (var writer = new EditorPersistenceFixture(url);
+             var reader = new EditorPersistenceFixture(url);
+             var secured = new DslGitRepositoryFactory(new DefaultHibernateRepositoryFactory(reader.factory), null,
+                     com.taxonomy.workspace.signing.GitCommitSignatureService.disabled(), reader.factory)) {
+            var workspace = writer.repositories.openWorkspaceRepository("owned");
+            String reviewed = workspace.commitDslIfHeadMatches("proposal", null, "# proposal", "actor", "candidate");
+            String neighbor = workspace.commitDslIfHeadMatches("other", null, "# other", "actor", "other");
+            String protectedHead = workspace.commitDslIfHeadMatches("draft", null, "# draft", "actor", "base");
+            assertThat(secured.readWorkspaceVariantHead("owned", "proposal")).isEqualTo(reviewed);
+
+            var checks = new java.util.concurrent.atomic.AtomicInteger();
+            assertThatThrownBy(() -> secured.deleteWorkspaceVariant("owned", "proposal", reviewed, "actor", () -> {
+                if (checks.incrementAndGet() == 2) throw new org.springframework.security.access.AccessDeniedException("No current grant");
+            })).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+            assertThat(checks).hasValue(2);
+            assertThat(workspace.getHeadCommit("proposal")).isEqualTo(reviewed);
+            assertThatThrownBy(() -> secured.deleteWorkspaceVariant("owned", "draft", protectedHead, "actor", () -> {}))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> secured.deleteWorkspaceVariant("owned", "proposal", neighbor, "actor", () -> {}))
+                    .isInstanceOf(com.taxonomy.workspace.service.BranchHeadConflictException.class);
+            secured.deleteWorkspaceVariant("owned", "proposal", reviewed, "actor", () -> {});
+            assertThat(workspace.getHeadCommit("proposal")).isNull();
+            assertThat(workspace.getHeadCommit("other")).isEqualTo(neighbor);
+            assertThat(workspace.getHeadCommit("draft")).isEqualTo(protectedHead);
+
+            int count = storedRepositoryCount(writer);
+            assertThat(secured.readWorkspaceVariantHead("missing", "proposal")).isNull();
+            assertThatThrownBy(() -> secured.deleteWorkspaceVariant("missing", "proposal", reviewed, "actor", () -> {}))
+                    .isInstanceOf(IOException.class);
+            assertThat(storedRepositoryCount(writer)).isEqualTo(count);
+        }
+    }
+
     private static int storedRepositoryCount(EditorPersistenceFixture db) {
         try (var session = db.factory.openSession()) {
             return ((Number) session.createNativeQuery("select count(*) from git_repository_lifecycle", Long.class).getSingleResult()).intValue();

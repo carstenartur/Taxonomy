@@ -2,8 +2,6 @@ package com.taxonomy.security.service;
 
 import com.taxonomy.backup.PrincipalId;
 import com.taxonomy.security.model.AppPrincipal;
-import com.taxonomy.workspace.model.RepositoryLifecycleState;
-import com.taxonomy.workspace.model.RepositoryOwnerType;
 import com.taxonomy.workspace.repository.SystemRepositoryRepository;
 import com.taxonomy.workspace.service.RepositoryMembershipService;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -49,10 +47,8 @@ public class RepositoryOwnershipTransfer {
         var repository = repositories.findByRepositoryId(repositoryId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         String scope = authentication.getName();
-        if (!memberships.canRead(repository, scope)) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-        if (repository.getLifecycleState() != RepositoryLifecycleState.ACTIVE
-                || (repository.getOwnerType() != null && repository.getOwnerType() != RepositoryOwnerType.USER)
-                || !scope.equals(repository.getOwnerId())) {
+        if (!memberships.ownsPersonalCatalogue(repository, scope, actor.value())) {
+            if (!memberships.canRead(repository, scope)) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the current personal catalogue owner can transfer ownership");
         }
         if (repository.getVersion() != expectedVersion) throw stale();

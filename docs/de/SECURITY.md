@@ -128,7 +128,7 @@ Ein validierter OIDC-/JWT-Claim kann dem **aktuell authentifizierten Akteur** zu
 
 Der Claim muss exakte Repository-IDs auf jeweils eine einzelne Rolle abbilden. Werte lauten exakt `READER`, `CONTRIBUTOR`, `MAINTAINER` oder `OWNER` (ohne `ROLE_`-Präfix oder Arrays); Schlüssel dürfen weder leer sein noch umgebende Leerzeichen haben. Schlüssel werden wörtlich abgeglichen; Wildcards werden nicht aufgelöst. Ein fehlerhafter Eintrag bewirkt, dass die gesamte Claim-Abbildung ignoriert wird. Grants werden neben gespeicherten Mitgliedschaften ausgewertet, nur für das exakte Repository und nur wenn der geprüfte Akteur dem Namen des authentifizierten Principals entspricht. Anfrageparameter und Attribute lokaler Anmeldungen liefern keine solchen Grants. Ein Repository-Grant ersetzt weder Anwendungsrolle noch OAuth-Scope oder Eigentum an einem fremden Workspace. Bestehende Kompatibilitätsregeln für öffentliche/primäre Repositorys bleiben erhalten.
 
-Eine OIDC-Browsersitzung kann diese Claim-Grants nur bis zum Ablauf ihres ID-Tokens nutzen. Gespeicherte Repository-Mitgliedschaften werden weiterhin unabhängig davon ausgewertet.
+Bei jeder Prüfung einer Repository-Rolle gilt die Ablaufzeit des OIDC-ID-Tokens einer Browsersitzung oder des JWT-Zugriffstokens einer Bearer-Anfrage. Ein Claim gewährt Zugriff nur mit einer Ablaufzeit in der Zukunft. Gespeicherte Repository-Mitgliedschaften werden weiterhin unabhängig davon ausgewertet.
 
 ## Swagger und API-Zugriffsbeschreibungen
 
@@ -244,4 +244,4 @@ Administratoren können in der **Benutzerverwaltung** lokale Konten anlegen, Rol
 <a id="browser-sessions"></a>
 ## Angemeldete Sitzungen
 
-Administratoren können die Sitzungsübersicht öffnen, um registrierte, nicht abgelaufene Sitzungen dieser Anwendungsinstanz nach Benutzer zu sehen. **Aktualisieren** lädt einen neuen Messstand. Der Zeitpunkt wird in UTC angezeigt. Eine registrierte Sitzung belegt nicht, dass jemand gerade eine Seite betrachtet; die Übersicht ist keine clusterweite Anwesenheitsanzeige.
+Administratoren können die Sitzungsübersicht öffnen, um registrierte, nicht abgelaufene Sitzungen dieser Anwendungsinstanz nach Benutzer zu sehen. Sitzungen eines lokalen Kontos mit stabiler Principal-ID bleiben nach einer Umbenennung in derselben Gruppe. Ein anderes Konto, das später denselben Anmeldenamen verwendet, erhält eine eigene Gruppe. **Aktualisieren** lädt einen neuen Messstand. Der Zeitpunkt wird in UTC angezeigt. Eine registrierte Sitzung belegt nicht, dass jemand gerade eine Seite betrachtet; die Übersicht ist keine clusterweite Anwesenheitsanzeige.
