@@ -314,6 +314,23 @@ test('proposal response body cannot update either presentation or start another 
     assert.deepEqual(h.errors, []);
 });
 
+for (const stage of ['headers', 'body']) {
+    test(`a browser-aborted proposal ${stage} read before pagehide is cancelled without a console failure`, async () => {
+        const { h, read } = await proposalRead();
+        const body = stage === 'body' ? read.bodyPending() : null;
+        await settle();
+        const retained = proposalPresentation(h);
+        h.beforeUnload();
+        assert.equal(read.init.signal.aborted, false,
+            'This reproduces browser cancellation before the application receives pagehide');
+        (body || read).reject(new DOMException('The operation was aborted.', 'AbortError'));
+        await settle();
+        assert.deepEqual(h.errors, [], 'An explicit browser abort must not become a proposal network failure');
+        assert.deepEqual(proposalPresentation(h), retained);
+        assert.equal(h.requests('/api/proposals/pending').length, 1, 'Cancellation must not retry or replace the inbox');
+    });
+}
+
 test('proposal body rejection after pagehide cannot report an obsolete error', async () => {
     const { h, read } = await proposalRead();
     const body = read.bodyPending(); await settle();
