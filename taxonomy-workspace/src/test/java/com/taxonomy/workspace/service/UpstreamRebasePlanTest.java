@@ -96,12 +96,21 @@ class UpstreamRebasePlanTest {
 
     @Test
     void aCleanLinearReplayPublishesOnceWithSignedPerCommitOrigins() throws Exception {
-        String base = store.commitDsl("seed", "first\nsecond\n", "owner", "base");
+        // Three independent edits, all of which must survive the real three-way merge.
+        String baseDsl = String.join("\n", "north", "two", "three", "four", "five", "six",
+                "seven", "eight", "nine", "ten", "eleven", "south", "");
+        String upstreamDsl = baseDsl.replace("north\n", "north-upstream\n");
+        String localOneDsl = baseDsl.replace("five\n", "five-local\n");
+        String localTwoDsl = localOneDsl.replace("ten\n", "ten-local\n");
+        String firstReplacementDsl = upstreamDsl.replace("five\n", "five-local\n");
+        String finalDsl = firstReplacementDsl.replace("ten\n", "ten-local\n");
+
+        String base = store.commitDsl("seed", baseDsl, "owner", "base");
         store.createBranchAtCommit("main", base);
-        String tracked = store.commitDsl("main", "first\nsecond\nupstream\n", "owner", "upstream");
+        String tracked = store.commitDsl("main", upstreamDsl, "owner", "upstream");
         store.createBranchAtCommit("draft", base);
-        String one = store.commitDsl("draft", "first\nsecond\n", "owner", "local one");
-        String two = store.commitDsl("draft", "first\nsecond\n", "owner", "local two");
+        String one = store.commitDsl("draft", localOneDsl, "owner", "local one");
+        String two = store.commitDsl("draft", localTwoDsl, "owner", "local two");
         tracking.advance(store, null, tracked, "owner");
         var transfer = new GitUpstreamTransfer(tracking, store, store, base, "owner", () -> { });
         var plan = UpstreamRebasePlan.read(transfer, "fork", null, "draft");
@@ -115,7 +124,9 @@ class UpstreamRebasePlanTest {
         assertThat(result.rewritten().stream().map(DslGitRepository.RebasedCommit::originalCommit))
                 .containsExactly(one, two);
         assertThat(store.getHeadCommit("draft")).isEqualTo(result.newHead());
-        assertThat(store.getDslAtCommit(result.newHead())).isEqualTo("first\nsecond\nupstream\n");
+        assertThat(store.getDslAtCommit(result.rewritten().getFirst().replacementCommit()))
+                .isEqualTo(firstReplacementDsl);
+        assertThat(store.getDslAtCommit(result.newHead())).isEqualTo(finalDsl);
         try (var walk = new org.eclipse.jgit.revwalk.RevWalk(store.getGitRepository())) {
             var tip = walk.parseCommit(ObjectId.fromString(result.newHead()));
             var previous = walk.parseCommit(tip.getParent(0));
@@ -123,8 +134,50 @@ class UpstreamRebasePlanTest {
             assertThat(walk.parseCommit(previous.getParent(0)).name()).isEqualTo(tracked);
             assertThat(tip.getFullMessage()).contains("Original-Commit: " + two);
             assertThat(previous.getFullMessage()).contains("Original-Commit: " + one);
+            assertThat(previous.getTree()).isNotEqualTo(walk.parseCommit(ObjectId.fromString(tracked)).getTree());
+            assertThat(tip.getTree()).isNotEqualTo(previous.getTree());
         }
         assertThat(store.verifyCommit(result.newHead())).isNotNull();
+    }
+
+    @Test
+    void secondReplayedCommitConflictLeavesFirstReplacementUnpublished() throws Exception {
+        String baseDsl = String.join("\n", "north", "two", "three", "four", "five", "six",
+                "seven", "eight", "nine", "ten", "eleven", "south", "");
+        String upstreamDsl = baseDsl.replace("ten\n", "ten-upstream\n");
+        String localOneDsl = baseDsl.replace("three\n", "three-local\n");
+        String localTwoDsl = localOneDsl.replace("ten\n", "ten-local\n");
+
+        String base = store.commitDsl("seed", baseDsl, "owner", "base");
+        store.createBranchAtCommit("main", base);
+        String tracked = store.commitDsl("main", upstreamDsl, "owner", "upstream");
+        store.createBranchAtCommit("draft", base);
+        String first = store.commitDsl("draft", localOneDsl, "owner", "first local");
+        String second = store.commitDsl("draft", localTwoDsl, "owner", "conflicting second local");
+
+        var result = store.replayLinearHistory("draft", second, base, tracked,
+                java.util.List.of(first, second), "owner", () -> { });
+        assertThat(result.completed()).isFalse();
+        assertThat(result.conflictCommit()).isEqualTo(second);
+        assertThat(result.conflictingPaths()).contains(DslGitRepository.DSL_FILENAME);
+        assertThat(result.newHead()).isEqualTo(second);
+        assertThat(result.rewritten()).hasSize(1);
+        assertThat(result.rewritten().getFirst().originalCommit()).isEqualTo(first);
+        assertThat(store.getHeadCommit("draft")).isEqualTo(second);
+        assertThat(store.getDslAtCommit(second)).isEqualTo(localTwoDsl);
+        assertThat(store.getHeadCommit("main")).isEqualTo(tracked);
+        String unpublished = result.rewritten().getFirst().replacementCommit();
+        assertThat(store.getDslAtCommit(unpublished))
+                .isEqualTo(upstreamDsl.replace("three\n", "three-local\n"));
+        try (var walk = new org.eclipse.jgit.revwalk.RevWalk(store.getGitRepository())) {
+            assertThat(walk.isMergedInto(walk.parseCommit(ObjectId.fromString(unpublished)),
+                    walk.parseCommit(ObjectId.fromString(second)))).isFalse();
+            assertThat(walk.parseCommit(ObjectId.fromString(unpublished)).getParent(0).name())
+                    .isEqualTo(tracked);
+        }
+        assertThat(store.getGitRepository().getRefDatabase()
+                .getRefsByPrefix(org.eclipse.jgit.lib.Constants.R_HEADS)
+                .stream().map(ref -> ref.getObjectId().name())).doesNotContain(unpublished);
     }
 
     @Test
