@@ -101,6 +101,15 @@
             return rebasePlanRequest(source, 'HEAD', options, window.TaxonomyApiClient.request)
                 .then(function (response) { return response.headers.get('ETag'); });
         },
+        applyCentralRebase: function (source, plan, etag, options) {
+            var path = '/api/repositories/' + encodeURIComponent(source.repositoryId) + '/upstream/rebase';
+            return json(path + '?branch=' + encodeURIComponent(source.branch), {
+                expectedRefTag: etag,
+                expectedLocalCommit: plan.localCommit,
+                expectedTrackedCommit: plan.upstream.trackedCommit,
+                orderedCommits: plan.commits.map(function (commit) { return commit.id; })
+            }, 'POST', Object.assign({}, options, {pinnedWorkspaceId:''}));
+        },
         localChanges: function (branch, options) { return get('/api/workspace/local-changes?branch=' + encodeURIComponent(branch), options); },
         syncFromShared: function (branch, options) {
             var headers = options && options.idempotencyKey ? {'Idempotency-Key': options.idempotencyKey} : {};
