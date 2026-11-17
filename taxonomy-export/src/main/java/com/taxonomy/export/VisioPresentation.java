@@ -9,6 +9,10 @@ final class VisioPresentation {
     private VisioPresentation() { }
 
     static void apply(VisioDocument document) {
+        apply(document, new VisioDecisionTree(List.of(), false));
+    }
+
+    static void apply(VisioDocument document, VisioDecisionTree decisionTree) {
         document.getPages().forEach(VisioContainers::fit);
         VisioPage overview = document.getPages().getFirst();
         Map<String, VisioShape> nodes = new LinkedHashMap<>();
@@ -67,6 +71,7 @@ final class VisioPresentation {
         // Mandatory readable evidence reserves page capacity before optional diagram details.
         VisioEvidencePages.append(document, overview);
         VisioContextPages.append(document);
+        decisionTree.appendTo(document);
         if (dense || unplaced > 0 || shortenedOverviewType) addDetails(document, overview, nodes);
         VisioContextPages.decorateDiagrams(document);
     }

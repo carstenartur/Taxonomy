@@ -219,7 +219,7 @@ quality. See [Grouping and scoring](TAXONOMY_SCORING.md).
 9. [Working with Relation Proposals](#9-working-with-relation-proposals)
 10. [Exporting Results](#10-exporting-results)
     - [Generating Reports (MD/HTML/DOCX)](#10a-generating-reports-mdhtmldocx)
-    - [Configure a decision report (Word/HTML/JSON)](#configurable-decision-report)
+    - [Configure a decision report (Word/HTML/JSON/Visio)](#configurable-decision-report)
 11. [Search](#11-search)
     - [Quality Dashboard](#11a-quality-dashboard)
     - [Relations Browser](#11b-relations-browser)
@@ -1066,9 +1066,11 @@ Each report includes:
 > **Note:** The report buttons only appear when analysis scores are available — the same condition as the other export buttons (see [When Export Buttons Appear](#when-export-buttons-appear)).
 
 <a id="configurable-decision-report"></a>
-### 10b. Configure a decision report (Word/HTML/JSON)
+### 10b. Configure a decision report (Word/HTML/JSON/Visio)
 
 Open **Decision report …** under **Decision Evidence** in the Export tab, on a saved requirement's detail page or in its architecture view. These entry points share the same dialog. Opening it from a single-tree view preselects that taxonomy. For a saved result, both the choices and the report belong to the selected analysis snapshot.
+
+Choose **Visio (.vsdx)** for an editable tree drawing per selected subtaxonomy. Nodes show their scores and are linked by parent–child connectors. Recorded reasons are available in the shape data. When the snapshot includes an architecture, the file opens on its drawing. Decision trees follow on their own pages.
 
 #### Create a Word report with an overview and reasons
 

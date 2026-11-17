@@ -41,12 +41,21 @@ public class VisioDiagramService {
     }
 
     public VisioDocument convert(DiagramModel model, VisioExportMetadata metadata) {
+        return convert(model, metadata, new VisioDecisionTree(List.of(), false));
+    }
+
+    public VisioDocument convert(DiagramModel model, VisioExportMetadata metadata, VisioDecisionTree decisionTree) {
         validateGraph(model);
         VisioDocument doc = new VisioDocument();
         doc.getProperties().putAll(metadata.document());
         doc.getProperties().put("taxonomy.exportProfile", VisioProperty.text(VisioHandoffProfile.ID));
         doc.getProperties().put("taxonomy.scoreSemantics", VisioProperty.text("relevance is a normalized selection score in [0,1], not a probability"));
         doc.getLosses().addAll(metadata.losses());
+        if (model.nodes().isEmpty() && !decisionTree.nodes().isEmpty()) {
+            decisionTree.appendTo(doc);
+            VisioContextPages.append(doc);
+            return doc;
+        }
         doc.getLosses().add(new VisioLoss("document", "", "layout", "MAPPED",
                 "Generated layer layout in inches; browser geometry, routing and typography are not copied."));
         VisioPage page = new VisioPage("0", model.title() != null ? model.title() : "Architecture View");
@@ -156,7 +165,7 @@ public class VisioDiagramService {
             double top = page.getShapes().stream().mapToDouble(shape -> shape.getY() + shape.getHeight() / 2).max().orElse(0);
             page.setLegend(new com.taxonomy.visio.VisioTextBox(legend, 5.5, top + 1.3, 10, 1.5));
         }
-        VisioPresentation.apply(doc);
+        VisioPresentation.apply(doc, decisionTree);
         return doc;
     }
 

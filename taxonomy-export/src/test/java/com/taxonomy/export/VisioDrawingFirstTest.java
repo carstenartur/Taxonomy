@@ -18,6 +18,40 @@ class VisioDrawingFirstTest {
     private static final String NS = "http://schemas.microsoft.com/office/visio/2012/main";
 
     @Test
+    void decisionDrawingsKeepRealHierarchyAndPrecedeTextAppendices() throws Exception {
+        var evidence = new VisioDecisionTree(List.of(
+                new VisioDecisionTree.Node(0, "BP", "Processes", 87.5, "Original reason", null),
+                new VisioDecisionTree.Node(1, "BP-1", "Rejected path", 0d, null, null),
+                new VisioDecisionTree.Node(1, "BP-2", "Pending path", null, null, null),
+                new VisioDecisionTree.Node(0, "BR", "Roles", 50d, null, null)), true);
+        var metadata = new VisioExportMetadata(Map.of("taxonomy.requirementText", VisioProperty.text("Saved input")),
+                Map.of(), Map.of(), List.of());
+        for (boolean withArchitecture : List.of(true, false)) {
+            List<DiagramNode> elements = withArchitecture
+                    ? List.of(new DiagramNode("N", "Architecture application", "UA", .5, false, 0)) : List.of();
+            var graph = new DiagramModel("Architecture", elements, List.of(), new DiagramLayout("LR", false));
+            var doc = new VisioDiagramService().convert(graph, metadata, evidence);
+            byte[] contents = new VisioPackageBuilder().build(doc);
+            var names = doc.getPages().stream().map(VisioPage::getName).toList();
+            var drawingNames = withArchitecture ? List.of("Architecture", "Entscheidungsbaum – BP", "Entscheidungsbaum – BR")
+                    : List.of("Entscheidungsbaum – BP", "Entscheidungsbaum – BR");
+            check(names.subList(0, drawingNames.size()).equals(drawingNames), "Drawings must precede source text");
+            int decisionIndex = withArchitecture ? 1 : 0;
+            var decision = doc.getPages().get(decisionIndex);
+            check(decision.getShapes().stream().map(VisioShape::getText).toList().equals(List.of(
+                    "BP · 87.5%\nProcesses", "BP-1 · 0%\nRejected path", "BP-2 · Nicht bewertet\nPending path")),
+                    "Editable nodes distinguish zero from unknown and retain exact percentages");
+            check(decision.getShapes().getFirst().getProperties().get("taxonomy.presenceReason").value().equals("Original reason"),
+                    "Recorded explanation remains accessible in shape data");
+            try (var reader = new XmlVisioDocument(new ByteArrayInputStream(contents))) {
+                var pages = new ArrayList<>(reader.getPages());
+                check(pages.get(decisionIndex).getContent().getConnections().size() == 4,
+                        "Independent Visio reader must resolve both ends of each hierarchy connector");
+            }
+        }
+    }
+
+    @Test
     void graphicalPagesPrecedeEveryTextAppendixWithoutLosingGraphOrEvidence() throws Exception {
         var doc = document(14, 10);
         var before = List.copyOf(doc.getPages());

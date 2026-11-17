@@ -227,7 +227,7 @@ Modellqualität. Siehe [Gruppierung und Bewertung](TAXONOMY_SCORING.md).
 9. [Arbeiten mit Beziehungsvorschlägen](#9-working-with-relation-proposals)
 10. [Ergebnisse exportieren](#10-exporting-results)
     - [Berichte erstellen (MD/HTML/DOCX)](#10a-generating-reports-mdhtmldocx)
-    - [Entscheidungsbericht konfigurieren (Word/HTML/JSON)](#configurable-decision-report)
+    - [Entscheidungsbericht konfigurieren (Word/HTML/JSON/Visio)](#configurable-decision-report)
 11. [Suche](#11-search)
     - [Qualitäts-Dashboard](#11a-quality-dashboard)
     - [Beziehungs-Browser](#11b-relations-browser)
@@ -1092,9 +1092,11 @@ Jeder Bericht enthält:
 > **Hinweis:** Die Bericht-Schaltflächen erscheinen nur, wenn Analysebewertungen vorhanden sind — dieselbe Bedingung wie bei den anderen Export-Schaltflächen (siehe [Wann Export-Schaltflächen erscheinen](#wann-export-schaltflächen-erscheinen)).
 
 <a id="configurable-decision-report"></a>
-### 10b. Entscheidungsbericht konfigurieren (Word/HTML/JSON)
+### 10b. Entscheidungsbericht konfigurieren (Word/HTML/JSON/Visio)
 
 Öffnen Sie **Entscheidungsbericht …** im Exportbereich unter **Decision Evidence**, auf der Detailseite einer gespeicherten Anforderung oder in deren Architekturansicht. Alle drei Einstiege verwenden denselben Dialog. Aus einer einzelnen Baumansicht wird die aktuelle Teil-Taxonomie vorausgewählt. Bei einem gespeicherten Ergebnis beziehen sich Auswahl und Bericht auf den ausgewählten Analysesnapshot.
+
+Wählen Sie **Visio (.vsdx)** für eine bearbeitbare Baumzeichnung je ausgewählter Teiltaxonomie. Die Knoten zeigen die Bewertungen und sind über Eltern-Kind-Verbindungen verknüpft. Gespeicherte Begründungen stehen in den Shape-Daten. Liegt zum Snapshot eine Architektur vor, öffnet sich die Datei auf deren Diagramm. Die Entscheidungsbäume folgen auf eigenen Seiten.
 
 #### Einen Word-Bericht mit Übersicht und Begründungen erstellen
 

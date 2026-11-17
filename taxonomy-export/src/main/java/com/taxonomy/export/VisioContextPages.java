@@ -74,7 +74,7 @@ final class VisioContextPages {
     static void decorateDiagrams(VisioDocument document) {
         if (!hasContext(document)) return;
         for (var page : document.getPages()) {
-            if (page.isEvidencePage() || page.getShapes().stream()
+            if (page.isEvidencePage() || page.isDecisionTree() || page.getShapes().stream()
                     .anyMatch(shape -> shape.getProperties().containsKey("taxonomy.contextBlock"))) continue;
             var fields = contextLines(document);
             String source = value(document, "requirementText");
