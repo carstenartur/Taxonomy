@@ -79,6 +79,30 @@ class BranchAdoptionIntegrationTest {
     }
 
     @Test
+    void anExplicitActivationAfterRestoreStartsAtTheCurrentTipWithAFreshGrant() throws IOException {
+        configure(true);
+        var current = git.commitDsl("main", model("base", "new", "base"), "alice", "new source");
+        in(() -> {
+            var session = SharedEntityManagerCreator.createSharedEntityManager(db);
+            var rule = session.find(BranchAdoptionRule.class, BranchAdoptionRule.key(context));
+            rule.enabled = false;
+            rule.status = "RESTORED_REVIEW_REQUIRED";
+            rule.loginKind = "RESTORED";
+            rule.bindingKey = "0".repeat(64);
+            rule.cursor = rule.sourceTip = rule.prepared = null;
+            rule.nextCheck = Long.MAX_VALUE;
+            return null;
+        });
+        restart();
+        assertThat(rules.due()).isEmpty();
+        configure(true);
+        assertThat(view().sourceCommit()).isEqualTo(current);
+        advance();
+        assertThat(git.getHeadCommit("draft")).isEqualTo(local);
+        assertThat(view().status()).isEqualTo("ENABLED");
+    }
+
+    @Test
     void optionalPerBranchRuleStopsForReviewAndPreservesOrderedGitAndSqlAudit() throws IOException {
         assertThat(rules.inspect(context).enabled()).isFalse();
         String untouched = git.getHeadCommit("untouched");
@@ -164,6 +188,62 @@ class BranchAdoptionIntegrationTest {
     }
 
     @Test
+    void aCurrentCentralMaintainerCanStopAnotherActorsRuleWithoutReplacingItsEvidence() throws IOException {
+        configure(true);
+        var incoming = git.commitDsl("main", model("base", "new", "base"), "alice", "incoming");
+        advance();
+        advance();
+        assertThat(view().status()).isEqualTo("PREPARED");
+        var original = in(() -> {
+            var rule = SharedEntityManagerCreator.createSharedEntityManager(db)
+                    .find(BranchAdoptionRule.class, BranchAdoptionRule.key(context));
+            return new String[] { rule.principalId, rule.username, rule.bindingKey, rule.cursor, rule.sourceTip,
+                    rule.prepared, rule.targetBefore, rule.targetAfter };
+        });
+        var successor = new WorkspaceFetchAuthority.Grant(UUID.randomUUID().toString(), "LOCAL", "b".repeat(64));
+        when(actors.authorize("bob", RepositoryScope.CENTRAL_WRITE)).thenReturn(successor);
+        var system = catalogue.lockCurrentPublicationSource("architecture");
+        when(memberships.canContribute(system, "bob")).thenReturn(true);
+        context = RepositoryContext.centralWrite("architecture", "draft", "bob");
+        assertThatThrownBy(() -> configure(false)).isInstanceOf(AccessDeniedException.class);
+        assertThat(view().enabled()).isTrue();
+
+        when(memberships.canMaintain(system, "bob")).thenReturn(true);
+        configure(false);
+        assertThat(view().enabled()).isFalse();
+        assertThat(view().status()).isEqualTo("DISABLED");
+        assertThat(view().sourceCommit()).isEqualTo(incoming);
+        assertThat(git.getHeadCommit("draft")).isEqualTo(local);
+        assertThat(rules.due()).isEmpty();
+        var retained = in(() -> {
+            var rule = SharedEntityManagerCreator.createSharedEntityManager(db)
+                    .find(BranchAdoptionRule.class, BranchAdoptionRule.key(context));
+            return new String[] { rule.principalId, rule.username, rule.bindingKey, rule.cursor, rule.sourceTip,
+                    rule.prepared, rule.targetBefore, rule.targetAfter };
+        });
+        assertThat(retained).containsExactly(original);
+        var history = rules.history(context);
+        assertThat(history.getFirst().status()).isEqualTo("DISABLED");
+        assertThat(history.getFirst().actor()).isEqualTo(successor.principalId());
+        assertThat(history.getFirst().sourceCommit()).isEqualTo(incoming);
+        assertThat(history.stream().skip(1)).allMatch(event -> grant.principalId().equals(event.actor()));
+
+        configure(true);
+        assertThat(view().enabled()).isTrue();
+        assertThat(view().sourceCommit()).isEqualTo(incoming);
+        assertThat(rules.history(context).getFirst().actor()).isEqualTo(successor.principalId());
+    }
+
+    @Test
+    void theOriginalActorCanStillStopAfterLosingUpstreamContribution() {
+        configure(true);
+        when(memberships.canContribute(any(), eq("alice"))).thenReturn(false);
+        configure(false);
+        assertThat(view().enabled()).isFalse();
+        assertThat(rules.history(context).getFirst().actor()).isEqualTo(grant.principalId());
+    }
+
+    @Test
     void aCleanTextMergeCannotImportABrokenSemanticDependencyAfterAnExplicitSkip() throws IOException {
         configure(true);
         var source = git.getDslAtHead("main");
@@ -211,6 +291,9 @@ class BranchAdoptionIntegrationTest {
         when(actors.authorize("alice", RepositoryScope.CENTRAL_WRITE)).thenReturn(new WorkspaceFetchAuthority.Grant(
                 UUID.randomUUID().toString(), "LOCAL", "b".repeat(64)));
         assertThatThrownBy(() -> decide("RETRY", next)).isInstanceOf(AccessDeniedException.class);
+        when(memberships.canMaintain(any(), eq("alice"))).thenReturn(true);
+        assertThatThrownBy(() -> configure(false)).isInstanceOf(AccessDeniedException.class);
+        assertThat(view().enabled()).isTrue();
         verifyNoInteractions(editor);
     }
 

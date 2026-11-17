@@ -75,18 +75,83 @@ try {
         });
         for (const [mode, sections] of [['TAXONOMIES_ONLY',['TREE']], ['FULL',['TREE','ARCHITECTURE']]]) {
             await page.evaluate(mode => { window.openDrawing(mode); }, mode);
-            await page.getByText('Das PDF behält die ursprüngliche Seitengröße', {exact:false}).waitFor();
+            assert.equal(await page.getByRole('radio', {name:'Am Bildschirm erkunden'}).count(), 1);
+            assert.equal(await page.getByRole('radio', {name:'Am Bildschirm erkunden'}).isChecked(), true);
+            assert.equal(await page.locator('[name=visioAppendix]').isChecked(), false);
+            const units = page.getByRole('checkbox', {name:'Zuständigkeiten anzeigen', exact:true});
+            assert.equal(await units.isChecked(), true);
+            assert.equal(await page.locator('[name=visioPaper]').isVisible(), false);
+            const wall = mode === 'FULL';
+            if (wall) {
+                await page.getByRole('radio', {name:'Als Wandplan drucken'}).check();
+                assert.equal(await page.locator('[name=visioPaper]').inputValue(), 'A1');
+                assert.deepEqual(await page.locator('[name=visioPaper] option').evaluateAll(nodes => nodes.map(n => n.value)),
+                    ['A4','A3','A2','A1','A0']);
+                await page.selectOption('[name=visioPaper]','A2');
+                await units.uncheck();
+                await page.check('[name=visioShortReasons]');
+                await page.check('[name=visioAppendix]');
+                await page.getByRole('button', {name:'Druckvorschau erstellen'}).click();
+                const link = page.getByRole('link', {name:'Druckvorschau öffnen (neuer Tab)'});
+                await link.waitFor();
+                assert.equal(await link.evaluate(async a => (await (await fetch(a.href)).text())), '%PDF-fixture');
+                if (process.env.TAXONOMY_UI_OUTPUT) {
+                    await page.getByRole('group', {name:'Zeichnungslayout',exact:true}).screenshot({
+                        path:join(process.env.TAXONOMY_UI_OUTPUT, 'wall-print-options-' + width + '.png')
+                    });
+                }
+                const preview = await page.evaluate(() => window.drawingRequest);
+                assert.equal(preview.format,'visio-pdf');
+                assert.deepEqual(preview.options.visio,{mode:'WALL',paper:'A2',appendix:true,shortReasons:true});
+                await page.selectOption('[name=visioPaper]','A0');
+                assert.equal(await link.isVisible(), false);
+            }
             const downloaded = page.waitForEvent('download');
             await page.click('button[type=submit]');
             assert.equal((await downloaded).suggestedFilename(), 'taxonomy-decision-report-saved-1.pdf');
             await page.locator('dialog').waitFor({state:'detached'});
             const request = await page.evaluate(() => window.drawingRequest);
             assert.equal(request.format,'visio-pdf');
+            assert.equal(request.options.showResponsibilities,!wall);
+            assert.deepEqual(request.options.visio, wall
+                ? {mode:'WALL',paper:'A0',appendix:true,shortReasons:true}
+                : {mode:'SCREEN',paper:'A1',appendix:false,shortReasons:false});
             assert.equal(request.timeout,120000);
             assert.equal(request.snapshot,'saved-1');
             assert.deepEqual(request.options.taxonomyRoots,['BP']);
             assert.deepEqual(request.options.sections,sections);
         }
+        // Closing and reopening within the same task precedes the native close event.
+        await page.evaluate(() => {
+            const first = window.openDrawing('FULL');
+            first.close();
+            window.reopenedDrawing = window.openDrawing('FULL');
+            window.dialogCountAfterReopen = document.querySelectorAll('dialog').length;
+        });
+        assert.equal(await page.evaluate(()=>!!window.reopenedDrawing?.open),true);
+        assert.equal(await page.evaluate(()=>window.dialogCountAfterReopen),1);
+        await page.keyboard.press('Escape');
+        await page.locator('dialog').waitFor({state:'detached'});
+        // Without the optional PDF renderer the paper summary remains available offline.
+        await page.evaluate(() => {
+            window.TaxonomyCapabilitiesApi = {load:async()=>({features:['reporting'],exports:[],reports:[{
+                id:'visio', reportType:'decision-rationale',displayName:'Visio',fileExtension:'vsdx',
+                contentType:'application/vnd.ms-visio.drawing',
+                plugin:{id:'fixture.reporting',version:'1.0.0',artifactSha256:'a'.repeat(64)}
+            }]})};
+        });
+        await page.click('#open');
+        await page.getByRole('radio',{name:'Als Wandplan drucken'}).check();
+        await page.getByText(/841 × 594 mm.*Druckertreiber A1/).waitFor();
+        assert.equal(await page.getByRole('button',{name:'Druckvorschau erstellen'}).isVisible(),false);
+        await page.getByText(/PDF-Vorschau.*nicht verfügbar/).waitFor();
+        await page.selectOption('[name=visioPaper]','A4');
+        await page.getByText(/297 × 210 mm/).waitFor();
+        assert.equal(await page.getByText(/Druckertreiber A1/).count(),0);
+        await page.click('button[type=submit]');
+        await page.locator('dialog').waitFor({state:'detached'});
+        assert.deepEqual(await page.evaluate(()=>window.attempts.at(-1).options.visio),
+            {mode:'WALL',paper:'A4',appendix:false,shortReasons:false});
         // Capability reload must remove unavailable renderers, accept a new SDK format,
         // and keep the same host-owned keyboard/focus and error controls.
         await page.evaluate(() => {window.TaxonomyCapabilitiesApi={load:async()=>({features:[],exports:[],reports:[]})};});
@@ -113,7 +178,7 @@ try {
         await mkdir(directory,{recursive:true});
         const captures=[];
         for (const language of ['de','en']) {
-            const page=await browser.newPage({viewport:{width:1280,height:1250}});
+            const page=await browser.newPage({viewport:{width:1280,height:1400}});
             // Render the production component with explicit sample input. This is not a full-app snapshot.
             await page.setContent(`<html lang="${language}"><head><meta charset="utf-8"><style>body{font-family:system-ui,sans-serif}</style></head><body></body></html>`);
             await page.addScriptTag({content:capabilitiesSource});
@@ -130,7 +195,8 @@ try {
             const dialog=page.locator('dialog');await dialog.waitFor();
             await page.locator('[type=submit]:enabled').waitFor();
             async function capture(kind) {
-                assert.equal(await dialog.evaluate(node=>node.scrollHeight<=node.clientHeight+1),true,'Documentation shows the complete dialog');
+                const dimensions = await dialog.evaluate(node => ({scroll:node.scrollHeight,client:node.clientHeight}));
+                assert.ok(dimensions.scroll <= dimensions.client + 1, 'Documentation shows the complete dialog ' + JSON.stringify(dimensions));
                 const name=`decision-export-${kind}-${language}.png`;
                 const bytes=await dialog.screenshot({path:join(directory,name)});
                 captures.push({file:name,language,viewport:page.viewportSize(),sha256:createHash('sha256').update(bytes).digest('hex')});

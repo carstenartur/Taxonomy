@@ -36,6 +36,17 @@ class BranchAdoptionTargets {
         return catalogue.getDefaultBranch(selected.repositoryId());
     }
 
+    /** The selected target was read-authorized; stopping does not require upstream contribution. */
+    boolean canStop(RepositoryContext selected, WorkspaceFetchAuthority.Grant grant, String originalPrincipal) {
+        if (originalPrincipal.equals(grant.principalId()))
+            return true;
+        if (selected.workspaceId() != null)
+            return false;
+        var row = catalogue.lockCurrentPublicationSource(selected.repositoryId());
+        memberships.lockForRefMutation(selected.repositoryId());
+        return memberships.canMaintain(row, selected.username());
+    }
+
     Target lock(RepositoryContext selected, WorkspaceFetchAuthority.Grant grant) {
         var row = catalogue.lockCurrentPublicationSource(selected.repositoryId());
         memberships.lockForRefMutation(selected.repositoryId());

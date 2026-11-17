@@ -63,6 +63,34 @@ class DecisionReportOptionsJsonRoundTripTest {
     }
 
     @Test
+    void wallDrawingChoicesSurviveJsonWithoutChangingOtherReportDefaults() {
+        String json = """
+                {"visio":{"mode":"WALL","paper":"A0","appendix":true,"shortReasons":true}}
+                """;
+        var configured = mapper.readValue(json, DecisionReportOptions.class);
+        var drawing = mapper.readTree(mapper.writeValueAsBytes(configured)).path("visio");
+        assertEquals("WALL", drawing.path("mode").asString());
+        assertEquals("A0", drawing.path("paper").asString());
+        assertTrue(drawing.path("appendix").asBoolean());
+        assertTrue(drawing.path("shortReasons").asBoolean());
+        assertFalse(mapper.readTree(mapper.writeValueAsBytes(DecisionReportOptions.full())).has("visio"));
+    }
+
+    @Test
+    void wallSelectionWithoutPaperDefaultsToA1AndLeavesTheAppendixOff() {
+        var options = mapper.readValue("{\"visio\":{\"mode\":\"WALL\"}}", DecisionReportOptions.class);
+        var drawing = options.visio().drawingOptions(true);
+        assertEquals(com.taxonomy.diagram.VisioDrawingOptions.Paper.A1, drawing.paper());
+        assertFalse(drawing.appendix());
+        assertFalse(drawing.showsShortReasons());
+        assertTrue(options.showResponsibilities());
+        var noOwners = mapper.readValue("{\"visio\":{},\"showResponsibilities\":false}", DecisionReportOptions.class);
+        assertFalse(noOwners.showResponsibilities());
+        assertEquals(noOwners, mapper.readValue(mapper.writeValueAsBytes(noOwners), DecisionReportOptions.class));
+        assertFalse(mapper.readTree(mapper.writeValueAsBytes(DecisionReportOptions.full())).has("showResponsibilities"));
+    }
+
+    @Test
     void omittedRootsKeepFullDefaults() {
         assertEquals(DecisionReportOptions.full(), mapper.readValue("{}", DecisionReportOptions.class));
     }

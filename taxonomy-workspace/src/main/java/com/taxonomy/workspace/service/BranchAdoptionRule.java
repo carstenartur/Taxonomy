@@ -62,7 +62,7 @@ public class BranchAdoptionRule {
         status = "DISABLED";
     }
 
-    static String key(RepositoryContext c) {
+    public static String key(RepositoryContext c) {
         return StableIdentityHash.sha256(c.repositoryId().length() + ":" + c.repositoryId()
                 + (c.workspaceId() == null ? "-:" : c.workspaceId().length() + ":" + c.workspaceId()) + c.branch());
     }

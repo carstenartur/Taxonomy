@@ -61,13 +61,14 @@ public class BranchAdoptionService {
         var grant = actors.authorize(c.username(), RepositoryScope.CENTRAL_WRITE);
         // Serializes first activation as well as subsequent updates in every application instance.
         var key = BranchAdoptionRule.key(c);
+        targets.lockRepository(c.repositoryId());
         if (!enabled) {
             var rule = locked(key);
             checkRevision(rule, revision);
             if (rule == null)
                 return inspect(c);
             // Stopping a rule requires current control over this target. Its upstream policy may have changed.
-            if (!rule.principalId.equals(grant.principalId()))
+            if (!targets.canStop(c, grant, rule.principalId))
                 throw BranchAdoptionTargets.denied();
             if (rule.enabled) {
                 rule.enabled = false;
@@ -77,7 +78,6 @@ public class BranchAdoptionService {
             }
             return rule.view();
         }
-        targets.lockRepository(c.repositoryId());
         var rule = locked(key);
         var target = targets.lock(c, grant);
         checkRevision(rule, revision);
@@ -330,6 +330,12 @@ public class BranchAdoptionService {
     }
 
     public void failed(Due observed, boolean denied) {
+        var repositories = db
+                .createQuery("select r.repositoryId from BranchAdoptionRule r where r.id=:id", String.class)
+                .setParameter("id", observed.id()).getResultList();
+        if (repositories.isEmpty())
+            return;
+        targets.lockRepository(repositories.getFirst());
         var rule = locked(observed.id());
         if (rule != null && rule.revision == observed.revision() && rule.enabled)
             stop(rule, denied ? "AUTHORIZATION" : "PREREQUISITE",

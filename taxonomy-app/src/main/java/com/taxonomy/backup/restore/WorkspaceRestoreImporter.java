@@ -23,7 +23,7 @@ public final class WorkspaceRestoreImporter {
     private static final BackupComponentId OWNER=new BackupComponentId("workspace");
     private static final int MAX_ROWS=100_000,MAX_BYTES=32*1024*1024;
     private static final JsonMapper JSON=JsonMapper.builder().enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).build();
-    private static final List<String> TABLES=List.of("system_repository","user_workspace","repository_membership","sync_state","workspace_branch_sync","editor_workspace","editor_operation","editor_checkpoint","architecture_commit_index","context_history_record");
+    private static final List<String> TABLES=List.of("system_repository","user_workspace","repository_membership","sync_state","workspace_branch_sync","editor_workspace","editor_operation","editor_checkpoint","architecture_commit_index","context_history_record","branch_adoption_rule","branch_adoption_event");
     private static final List<String> PRIVATE_INDEX_TABLES = List.of("history_index_operation", "history_index_decision", "history_index_purge_target");
 
     public record Result(Map<SourceRecordId,String> editorScopes,int targetRows,int evidenceRows) {
@@ -266,6 +266,8 @@ public final class WorkspaceRestoreImporter {
         }
         classifyPublications(archive.manifest().request().profile(),publications,decisions,workspaceById,activeWorkspaces,
                 identities,principals,model,checkpoint);
+        inspectAdoption(archive, generation, identities, principals, sourceKeys, activeRepositories, activeWorkspaces,
+                workspaceById, model, checkpoint);
         for(var row:editors) {
             checkpoint.check();sourceEditorById.put(row.sourceId(),row);if(row.semanticRevision()<0||row.checkpointRevision()<0||row.checkpointRevision()>row.semanticRevision())throw invalid();utf8(row.dsl());canonicalUuidOptional(row.interruptedCheckpoint());
             if(!activeWorkspaces.contains(row.workspaceId())||privateEditors.contains(row.sourceId())){model.classify("working-states",row.sourceId().value(),"PRIVATE_QUARANTINE");continue;}
@@ -303,6 +305,118 @@ public final class WorkspaceRestoreImporter {
         for(var row:context) {checkpoint.check();required(row.principalScope(),255);canonicalUuidOptional(row.fromContext());canonicalUuidOptional(row.toContext());canonicalUuidOptional(row.originContext());instant(row.createdAt());model.classify("context-history",row.sourceId().value(),"PRIVATE_HISTORICAL_SOURCE");}
         var principalsSorted=new TreeMap<String,RestorePrincipalAllocation>();principals.forEach((id,allocation)->principalsSorted.put(id.value().toString(),allocation));
         model.planHash=hash(List.of(gitBinding(git,generation.allocations()),principalsSorted,model.targets.values(),model.evidence.values()));checkpoint.check();return model;
+    }
+
+    private static final Set<String> ADOPTION_STATUSES = Set.of("DISABLED", "ENABLED", "SELECTED", "PREPARED",
+            "APPLIED", "ALREADY_CONTAINED", "CONFLICT", "PREREQUISITE", "AUTHORIZATION", "SKIPPED",
+            "RESTORED_REVIEW_REQUIRED");
+
+    private static void inspectAdoption(VerifiedBackup archive, RestoreTargetGeneration generation,
+            RestoreIdentityImporter.Result identities, Map<PrincipalId, RestorePrincipalAllocation> principals,
+            Set<BackupRepositoryKey> sourceKeys, Set<String> activeRepositories, Set<String> activeWorkspaces,
+            Map<String, WorkspaceRecord> workspaces, Model model, BackupCheckpoint checkpoint) throws IOException {
+        boolean declared = RestoreArchiveRecords.declares(archive, OWNER, "data/workspace/adoption-rules.ndjson");
+        if (declared != RestoreArchiveRecords.declares(archive, OWNER, "data/workspace/adoption-events.ndjson"))
+            throw invalid();
+        if (!declared) return;
+        var rules = read(archive, "adoption-rules", AdoptionRuleRecord.class, model, AdoptionRuleRecord::sourceId, checkpoint);
+        var events = read(archive, "adoption-events", AdoptionEventRecord.class, model, AdoptionEventRecord::sourceId, checkpoint);
+        var byId = new HashMap<SourceRecordId, AdoptionRuleRecord>();
+        var targets = new HashMap<SourceRecordId, String>();
+        var revisions = new HashSet<String>();
+        for (var row : rules) {
+            checkpoint.check();
+            id(row.sourceId(), "workspace.adoption-rule");
+            sha(row.sourceId().value());
+            required(row.repositoryId(), 255);
+            required(row.actorScope(), 255);
+            required(row.branch(), 255);
+            required(row.sourceBranch(), 255);
+            branch(row.branch());
+            branch(row.sourceBranch());
+            publicationActor(row.originalActor());
+            if (!Set.of("LOCAL", "OIDC", "LEGACY_OIDC", "RESTORED").contains(row.loginKind())
+                    || row.revision() < 1 || row.revision() == Long.MAX_VALUE || !ADOPTION_STATUSES.contains(row.status())
+                    || row.detail() != null && row.detail().length() > 255
+                    || byId.putIfAbsent(row.sourceId(), row) != null) throw invalid();
+            adoptionCommits(row.cursor(), row.sourceCommit(), row.sourceTip(), row.targetBefore(), row.targetAfter(), row.preparedCommit());
+            var source = new BackupRepositoryKey(row.repositoryId(), row.workspaceId());
+            var sourceContext = row.workspaceId() == null
+                    ? RepositoryContext.centralRead(row.repositoryId(), row.branch(), row.actorScope())
+                    : RepositoryContext.workspace(row.repositoryId(), row.workspaceId(), row.branch(), row.actorScope());
+            if (!com.taxonomy.workspace.service.BranchAdoptionRule.key(sourceContext).equals(row.sourceId().value()))
+                throw invalid();
+            var workspace = row.workspaceId() == null ? null : workspaces.get(row.workspaceId());
+            if (workspace != null && !workspace.repositoryId().equals(row.repositoryId())) throw invalid();
+            boolean detached = !sourceKeys.contains(source) || row.workspaceId() != null && workspace == null;
+            if (row.detached() && archive.manifest().request().profile() != BackupProfile.INSTALLATION_FULL
+                    || detached && !row.detached()) throw invalid();
+            var actor = adoptionActor(principals, row.originalActor());
+            boolean active = row.workspaceId() == null ? activeRepositories.contains(row.repositoryId())
+                    : activeWorkspaces.contains(row.workspaceId());
+            if (row.detached() || !active || actor == null
+                    || !actor.targetScope().equals(identities.sourceScopes().get(row.actorScope()))) {
+                model.classify("adoption-rules", row.sourceId().value(), "PRIVATE_QUARANTINE");
+                continue;
+            }
+            var allocation = generation.allocations().get(source);
+            if (allocation == null) throw invalid();
+            var target = allocation.targetKey();
+            var context = target.workspaceId() == null
+                    ? RepositoryContext.centralRead(target.repositoryId(), row.branch(), actor.targetScope())
+                    : RepositoryContext.workspace(target.repositoryId(), target.workspaceId(), row.branch(), actor.targetScope());
+            String key = com.taxonomy.workspace.service.BranchAdoptionRule.key(context);
+            targets.put(row.sourceId(), key);
+            model.target("adoption-rules", row.sourceId().value(), "branch_adoption_rule", "id", key, columns(
+                    "id", key, "repository_id", target.repositoryId(), "workspace_id", target.workspaceId(),
+                    "target_branch", row.branch(), "source_branch", row.sourceBranch(), "actor_scope", actor.targetScope(),
+                    "principal_id", actor.targetPrincipal().value().toString(), "login_kind", "RESTORED", "binding_key", "0".repeat(64),
+                    "enabled", false, "revision", row.revision(), "next_check", Long.MAX_VALUE,
+                    "status", "RESTORED_REVIEW_REQUIRED", "detail", "Original operation evidence is retained. Enable with current permission to adopt future commits.",
+                    "source_cursor", null, "source_tip", null, "prepared_commit", null, "source_commit", row.sourceCommit(),
+                    "target_before", row.targetBefore(), "target_after", row.targetAfter()));
+            model.classify("adoption-rules", row.sourceId().value(), row.enabled() || row.preparedCommit() != null
+                    ? "INTERRUPTED_SOURCE_OPERATION" : "HISTORICAL_SOURCE_OPERATION");
+        }
+        for (var row : events) {
+            checkpoint.check();
+            id(row.sourceId(), "workspace.adoption-event");
+            canonicalUuid(row.sourceId().value());
+            id(row.rule(), "workspace.adoption-rule");
+            var parent = byId.get(row.rule());
+            if (parent == null || row.revision() < 1 || row.revision() > parent.revision() || row.recordedAt() < 0
+                    || !revisions.add(row.rule().value() + ":" + row.revision()) || !ADOPTION_STATUSES.contains(row.status())
+                    || row.detail() != null && row.detail().length() > 255) throw invalid();
+            required(row.sourceBranch(), 255);
+            branch(row.sourceBranch());
+            publicationActor(row.originalActor());
+            adoptionCommits(row.sourceCommit(), row.targetBefore(), row.targetAfter());
+            var actor = adoptionActor(principals, row.originalActor());
+            String target = targets.get(row.rule());
+            if (target == null || actor == null) {
+                model.classify("adoption-events", row.sourceId().value(), "PRIVATE_QUARANTINE");
+                continue;
+            }
+            String id = UUID.nameUUIDFromBytes((generation.generationId() + ":" + row.sourceId().kind() + ":"
+                    + row.sourceId().value()).getBytes(StandardCharsets.UTF_8)).toString();
+            model.target("adoption-events", row.sourceId().value(), "branch_adoption_event", "id", id, columns(
+                    "id", id, "rule_id", target, "revision", row.revision(), "recorded_at", row.recordedAt(),
+                    "actor_id", actor.targetPrincipal().value().toString(), "source_branch", row.sourceBranch(),
+                    "source_commit", row.sourceCommit(), "target_before", row.targetBefore(), "target_after", row.targetAfter(),
+                    "status", row.status(), "detail", row.detail()));
+            model.classify("adoption-events", row.sourceId().value(), "HISTORICAL_SOURCE_OPERATION");
+        }
+    }
+
+    private static RestorePrincipalAllocation adoptionActor(Map<PrincipalId, RestorePrincipalAllocation> principals,
+            String original) {
+        if (!original.matches("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}")) return null;
+        var mapped = principals.get(new PrincipalId(UUID.fromString(original)));
+        return mapped != null && mapped.disposition() == RestorePrincipalAllocation.Disposition.EXPLICIT_TARGET ? mapped : null;
+    }
+
+    private static void adoptionCommits(String... values) throws IOException {
+        for (String value : values) if (value != null && !value.matches("[a-f0-9]{40}")) throw invalid();
     }
 
     private static void inspectHistoryIndex(VerifiedBackup archive, Model model, List<RepositoryRecord> repositories,

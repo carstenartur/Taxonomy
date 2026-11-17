@@ -30,6 +30,53 @@ class WorkspaceRestoreImporterTest {
     private final String editor=RepositoryContext.workspace(workspace.repositoryId(),workspace.workspaceId(),"main","source-owner").repositoryWorkspaceScopeKey();
     private static final String COMMAND="00000000-0000-0000-0000-000000000019",SAVE="00000000-0000-0000-0000-000000000020",RAW="Unsaved architecture\nλ\n",TIME="2026-10-10T00:00:00Z";
 
+    @Test
+    void adoptedRulesRestorePausedWithOriginalAuditAndWithoutSourceReplayAuthority() throws Exception {
+        try (var fixture = fixture(null, false, false, null, principal.value().toString())) {
+            var importer = new WorkspaceRestoreImporter();
+            var generation = fixture.generation();
+            var first = importer.restore(fixture.archive, generation, fixture.principals, fixture.git, () -> {});
+            assertThat(importer.restore(fixture.archive, generation, fixture.principals, fixture.git, () -> {}))
+                    .isEqualTo(first);
+            var target = new JdbcTemplate(fixture.target);
+            String key = com.taxonomy.workspace.service.BranchAdoptionRule.key(
+                    RepositoryContext.workspace("target-repository", "target-workspace", "main", "target-owner"));
+            var rule = target.queryForMap("select * from branch_adoption_rule where id=?", key);
+            assertThat(rule).containsEntry("ENABLED", false).containsEntry("STATUS", "RESTORED_REVIEW_REQUIRED")
+                    .containsEntry("PRINCIPAL_ID", fixture.principals.get(principal).targetPrincipal().value().toString())
+                    .containsEntry("LOGIN_KIND", "RESTORED").containsEntry("BINDING_KEY", "0".repeat(64))
+                    .containsEntry("NEXT_CHECK", Long.MAX_VALUE).containsEntry("SOURCE_COMMIT", fixture.commit)
+                    .containsEntry("TARGET_AFTER", fixture.commit)
+                    .containsEntry("SOURCE_CURSOR", null).containsEntry("SOURCE_TIP", null).containsEntry("PREPARED_COMMIT", null);
+            assertThat(target.queryForList("select status from branch_adoption_event order by revision", String.class))
+                    .containsExactly("ENABLED", "PREPARED");
+            assertThat(target.queryForList("select source_commit from branch_adoption_event order by revision", String.class))
+                    .containsOnly(fixture.commit);
+            String original = target.queryForObject(
+                    "select record_json from restore_workspace_evidence where record_kind='adoption-rules'", String.class);
+            assertThat(original).contains("\"originalActor\":\"" + principal.value() + "\"")
+                    .contains("\"preparedCommit\":\"" + fixture.commit + "\"")
+                    .contains("\"enabled\":true").doesNotContain("bindingKey", "nextCheck", "a".repeat(64));
+            assertThat(target.queryForList("select actor_id from branch_adoption_event", String.class))
+                    .containsOnly(fixture.principals.get(principal).targetPrincipal().value().toString());
+            assertThat(target.queryForList("select recorded_at from branch_adoption_event", Long.class))
+                    .containsOnly(Instant.parse(TIME).toEpochMilli());
+            assertThat(target.queryForObject("select count(*) from branch_adoption_rule where enabled=true", Long.class)).isZero();
+        }
+    }
+
+    @Test
+    void anUnmappedAdoptionActorKeepsTheWholeOperationInPrivateSourceEvidence() throws Exception {
+        try (var fixture = fixture(null, false, false, null, UUID.randomUUID().toString())) {
+            new WorkspaceRestoreImporter().restore(fixture.archive, fixture.generation(), fixture.principals, fixture.git, () -> {});
+            var target = new JdbcTemplate(fixture.target);
+            assertThat(target.queryForObject("select count(*) from branch_adoption_rule", Long.class)).isZero();
+            assertThat(target.queryForObject("select count(*) from branch_adoption_event", Long.class)).isZero();
+            assertThat(target.queryForList("select classification from restore_workspace_evidence where record_kind like 'adoption-%'",
+                    String.class)).hasSize(3).containsOnly("PRIVATE_QUARANTINE");
+        }
+    }
+
     @Test void repositoryHistoryRetainsARevokedDisabledCollaboratorsAcceptedWorkWithoutReplayingGrants() throws Exception {
         try (var fixture=fixture(null,false,false,"source-retired")) {
             assertThat(fixture.archive.manifest().request().profile()).isEqualTo(BackupProfile.REPOSITORY_HISTORY);
@@ -272,6 +319,10 @@ class WorkspaceRestoreImporterTest {
     }
     private Fixture fixture()throws Exception{return fixture(null,false,false,null);}
     private Fixture fixture(String sourceVersion,boolean systemOwner,boolean historicalUnknownPrincipal,String journalActor)throws Exception {
+        return fixture(sourceVersion,systemOwner,historicalUnknownPrincipal,journalActor,null);
+    }
+    private Fixture fixture(String sourceVersion,boolean systemOwner,boolean historicalUnknownPrincipal,String journalActor,
+            String adoptionActor)throws Exception {
         Path nativeSource=root.resolve(UUID.randomUUID()+"-source");Files.createDirectories(nativeSource);
         var git=Git.init().setDirectory(nativeSource.toFile()).setInitialBranch("main").call();Files.writeString(nativeSource.resolve("architecture.taxdsl"),"architecture Original {}");git.add().addFilepattern(".").call();
         String commit=git.commit().setMessage("Original source history").setAuthor(new PersonIdent("Original","source@example.test",Date.from(Instant.parse(TIME)),TimeZone.getTimeZone("UTC"))).setCommitter(new PersonIdent("Original","source@example.test",Date.from(Instant.parse(TIME)),TimeZone.getTimeZone("UTC"))).call().name();
@@ -283,6 +334,20 @@ class WorkspaceRestoreImporterTest {
             RestoreSchemaMigration.bootstrap(database(), source, () -> {});
         }
         var rows = new JdbcTemplate(source);
+        if (adoptionActor != null) {
+            String rule = com.taxonomy.workspace.service.BranchAdoptionRule.key(
+                    RepositoryContext.workspace("source-repository", "source-workspace", "main", "source-owner"));
+            rows.update("insert into branch_adoption_rule(id,repository_id,workspace_id,target_branch,source_branch,actor_scope,"
+                    + "principal_id,login_kind,binding_key,enabled,revision,next_check,status,source_cursor,source_commit,source_tip,"
+                    + "target_before,target_after,prepared_commit) values(?,'source-repository','source-workspace','main','main',"
+                    + "'source-owner',?,'LOCAL',?,true,2,0,'PREPARED',?,?,?,?,?,?)",
+                    rule, adoptionActor, "a".repeat(64), commit, commit, commit, commit, commit, commit);
+            for (int revision = 1; revision <= 2; revision++)
+                rows.update("insert into branch_adoption_event(id,rule_id,revision,recorded_at,actor_id,source_branch,source_commit,"
+                        + "target_before,target_after,status) values(?,?,?,?,?,'main',?,?,?,?)", UUID.randomUUID().toString(),
+                        rule, revision, Instant.parse(TIME).toEpochMilli(), adoptionActor, commit, commit, commit,
+                        revision == 1 ? "ENABLED" : "PREPARED");
+        }
         rows.update("insert into app_principal(principal_id,scope_key,enabled) values(?,'source-owner',1)",principal.value().toString());
         rows.update("insert into system_repository(repository_id,slug,display_name,visibility,lifecycle_state,owner_type,owner_id,topology_mode,default_branch,fork_point_commit,last_fetch_commit,primary_repo,created_at,version) values('source-repository','source-slug','Original','PUBLIC','ACTIVE','USER','source-owner','INTERNAL_SHARED','main',?,?,true,?,0)",commit,commit,java.sql.Timestamp.from(Instant.parse(TIME)));
         rows.update("insert into user_workspace(workspace_id,username,display_name,current_branch,base_branch,shared,collaborative,created_at,provisioning_status,topology_mode,source_repository_id,source_branch,relationship_type,base_commit,current_commit,last_fetched_commit,last_integrated_commit,sync_target_branch,archived,is_default) values('source-workspace','source-owner','Original work','main','main',true,true,?,'READY','INTERNAL_SHARED','source-repository','main','WORKING_COPY',?,?,?,?,'main',false,true)",java.sql.Timestamp.from(Instant.parse(TIME)),commit,commit,commit,commit);

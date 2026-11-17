@@ -187,9 +187,12 @@ class ScenarioDocumentQaTest {
         String shape = "<Shape><Section N='Property'>";
         for (var pair : java.util.Map.of("taxonomy.id", "edge-α", "taxonomy.sourceId", "a", "taxonomy.targetId", "b",
                 "taxonomy.type", "SUPPORTS", "taxonomy.displayKey", "R1", "taxonomy.captionDisposition", "READABLE_DETAIL").entrySet())
-            shape += "<Row><Cell N='Label' V='" + pair.getKey() + "'/><Cell N='Value' V='" + pair.getValue() + "'/></Row>";
+            shape += "<Row N='t" + java.util.HexFormat.of().formatHex(pair.getKey().getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                    + "'><Cell N='Label' V='Übersetztes Feld'/><Cell N='Value' V='" + pair.getValue() + "'/></Row>";
         shape += "</Section><Text>R1 N1 → N2\nSUPPORTS</Text></Shape>";
-        var parts = java.util.Map.of("visio/pages/page1.xml", ("<PageContents><Shapes>" + shape + "</Shapes></PageContents>").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        var parts = java.util.Map.of("visio/pages/page1.xml", ("<PageContents><Shapes>" + shape.replace("<Section N='Property'>",
+                "<Section N='Property'><Row N='title'><Cell N='Label' V='Extra'/><Cell N='Value' V='Custom'/></Row>") +
+                "</Shapes></PageContents>").getBytes(java.nio.charset.StandardCharsets.UTF_8));
         assertThat(ScenarioDocumentQa.checkVisioRelationships(parts, source, "R1 N1 → N2 SUPPORTS\f")).containsEntry("renderedRelationships", 1);
         assertThatThrownBy(() -> ScenarioDocumentQa.checkVisioRelationships(parts, source, "R1 N1 → N2\fSUPPORTS"))
                 .hasMessageContaining("rendered relationship");

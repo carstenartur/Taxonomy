@@ -149,9 +149,17 @@ public class ScopedAnalysisAdapterExecution implements DocumentAnalysisExecution
         return cancel ? response(operation) : checkedStatus(context, operation);
     }
 
-    ResponseEntity<?> observe(String token) {
+    ResponseEntity<?> observe(String token, boolean awaitAdmission) {
         var context = workspaces.resolveCurrentRepositoryContextForRead();
-        return checkedStatus(context, store.observe(scope(context), token));
+        var owner = scope(context);
+        AnalysisAdapterStore.Operation operation;
+        try {
+            operation = store.observe(owner, token);
+        } catch (ResponseStatusException failure) {
+            if (!awaitAdmission || !HttpStatus.NOT_FOUND.equals(failure.getStatusCode())) throw failure;
+            return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();
+        }
+        return checkedStatus(context, operation);
     }
 
     private ResponseEntity<?> checkedStatus(RepositoryContext context, AnalysisAdapterStore.Operation operation) {

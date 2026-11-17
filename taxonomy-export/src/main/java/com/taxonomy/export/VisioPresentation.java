@@ -1,5 +1,6 @@
 package com.taxonomy.export;
 
+import com.taxonomy.diagram.VisioDrawingOptions;
 import com.taxonomy.visio.*;
 
 import java.util.*;
@@ -9,10 +10,10 @@ final class VisioPresentation {
     private VisioPresentation() { }
 
     static void apply(VisioDocument document) {
-        apply(document, null);
+        apply(document, null, null);
     }
 
-    static void apply(VisioDocument document, VisioDecisionTree decisionTree) {
+    static void apply(VisioDocument document, VisioDecisionTree decisionTree, VisioDrawingOptions options) {
         document.getPages().forEach(VisioContainers::fit);
         VisioPage overview = document.getPages().getFirst();
         Map<String, VisioShape> nodes = new LinkedHashMap<>();
@@ -21,6 +22,7 @@ final class VisioPresentation {
         int ordinal = 0;
         for (var connect : overview.getConnects()) relationKeys.put(id(connect), "R" + (++ordinal));
         boolean dense = overview.getConnects().size() > 6 || overview.getShapes().size() > 12;
+        var labels = options != null && options.german() ? MermaidLabels.german() : MermaidLabels.english();
         int unplaced = 0;
         boolean shortenedOverviewType = false;
         for (var page : document.getPages()) {
@@ -28,6 +30,7 @@ final class VisioPresentation {
             Map<String, VisioShape> pageNodes = new HashMap<>();
             page.getShapes().forEach(shape -> pageNodes.put(shape.getId(), shape));
             var occupied = new Occupancy();
+            var columns = options == null ? null : new VisioConnectionPoints.Columns(page.getShapes());
             for (var shape : page.getShapes()) {
                 // A container's interior is intentionally occupied by members;
                 // only its title blocks captions. Avoid huge spatial bucket
@@ -44,39 +47,72 @@ final class VisioPresentation {
                 String fullCaption = key + " " + connect.getRelationType()
                         + (connect.getProperties().containsKey("taxonomy.provenanceStatus") ? " | " + connect.getProperties().get("taxonomy.provenanceStatus").value() : "");
                 String text = dense ? key : display(fullCaption, 24, 2);
-                boolean shortened = !dense && shortened(fullCaption, text);
+                if (options != null) {
+                    fullCaption = switch (connect.getRelationType()) {
+                        case "CONTAINS" -> options.german() ? "enthält" : "contains";
+                        case "REQUIRES" -> options.german() ? "benötigt" : "requires";
+                        default -> labels.relationLabel(connect.getRelationType());
+                    };
+                    text = display(fullCaption, 22, 2);
+                }
+                boolean shortened = (options != null || !dense) && shortened(fullCaption, text);
                 if (shortened && page == overview) {
                     shortenedOverviewType = true;
                     document.getLosses().add(new VisioLoss("relationship", id(connect), "overviewType", "TRUNCATED",
-                            "Overview type shortened; consult native relationship details and full taxonomy.type."));
+                            options == null ? "Overview type shortened; consult native relationship details and full taxonomy.type."
+                                    : "Overview type shortened; full relation type retained in taxonomy.type."));
                 }
                 double width = dense ? .7 : 2.0, height = dense ? .3 : .5;
+                if (options != null) {
+                    int longest = text.lines().mapToInt(String::length).max().orElse(1);
+                    width = Math.min(2, Math.max(.55, .13 + longest * .09));
+                    height = text.contains("\n") ? .46 : .30;
+                }
                 var from = pageNodes.get(connect.getFromShape()); var to = pageNodes.get(connect.getToShape());
-                Box position = place(occupied, from, to, width, height);
+                Box position = columns == null ? null : placeOnRoute(occupied, columns.route(connect, from, to), width, height);
+                if (position == null) position = place(occupied, from, to, width, height);
                 if (position == null) {
                     // An omitted caption is explicit; its canonical connector is never omitted.
                     text = "";
                     position = new Box((from.getX() + to.getX()) / 2, (from.getY() + to.getY()) / 2, width, height);
-                    connect.getProperties().put("taxonomy.captionDisposition", VisioProperty.text("DETAIL_REQUIRED"));
+                    connect.getProperties().put("taxonomy.captionDisposition", VisioProperty.text(options == null ? "DETAIL_REQUIRED" : "SHAPE_DATA"));
                     if (page == overview) unplaced++;
                 } else {
                     occupied.add(position);
-                    connect.getProperties().put("taxonomy.captionDisposition", VisioProperty.text(dense ? "COMPACT_KEY" : shortened ? "TYPE_TRUNCATED" : "KEY_AND_TYPE"));
+                    connect.getProperties().put("taxonomy.captionDisposition", VisioProperty.text(options != null ? "TYPE" : dense ? "COMPACT_KEY" : shortened ? "TYPE_TRUNCATED" : "KEY_AND_TYPE"));
                 }
                 connect.setTextBox(new VisioTextBox(text, position.x, position.y, width, height));
             }
         }
         if (unplaced > 0) document.getLosses().add(new VisioLoss("document", "", "overviewCaptions", "OMITTED",
-                unplaced + " overview captions could not be placed without collision. Native connectors/data remain; consult relationship details."));
+                unplaced + (options == null
+                        ? " overview captions could not be placed without collision. Native connectors/data remain; consult relationship details."
+                        : " overview captions could not be placed without collision. Native connectors and their type remain available in Shape Data.")));
         // Mandatory readable evidence reserves page capacity before optional diagram details.
-        VisioEvidencePages.append(document, overview);
-        boolean contextOnDrawings = decisionTree == null;
-        VisioContextPages.append(document, contextOnDrawings);
-        if (decisionTree != null) decisionTree.appendTo(document);
-        if (dense || unplaced > 0 || shortenedOverviewType) {
+        boolean appendix = options == null || options.appendix();
+        boolean contextOnDrawings = options == null && decisionTree == null;
+        if (appendix) {
+            VisioEvidencePages.append(document, overview);
+            VisioContextPages.append(document, contextOnDrawings);
+        }
+        if (decisionTree != null) decisionTree.appendTo(document, options);
+        if (appendix && (dense || unplaced > 0 || shortenedOverviewType)) {
             addDetails(document, overview, nodes, contextOnDrawings && VisioContextPages.hasContext(document));
         }
         if (contextOnDrawings) VisioContextPages.decorateDiagrams(document);
+    }
+
+    /** Start with the actual native path, including the vertical segment of a routed gutter. */
+    private static Box placeOnRoute(Occupancy occupied, VisioConnectionPoints.Route route, double width, double height) {
+        var start = route.endpoints().source();
+        var end = route.endpoints().target();
+        double dx = end.x() - start.x(), dy = end.y() - start.y();
+        for (double fraction : new double[]{.5, .30, .70, .15, .85}) {
+            double x = start.x() + dx * (route.gutterFraction() == null ? fraction : route.gutterFraction());
+            var candidate = new Box(x, start.y() + dy * fraction, width, height);
+            if (candidate.left() >= .1 && candidate.bottom() >= .1 && !occupied.intersects(candidate)) return candidate;
+        }
+        return null;
     }
 
     private static Box place(Occupancy occupied, VisioShape from, VisioShape to, double width, double height) {
@@ -184,6 +220,18 @@ final class VisioPresentation {
             text.appendCodePoint(cp); used += weight; offset += Character.charCount(cp);
         }
         return text.toString();
+    }
+
+    static String drawingNodeCaption(String code, String score, String title, String owner, String reason,
+                                     VisioDrawingOptions options) {
+        String caption = code + " · " + score + "\n" + title;
+        if (options.mode() == VisioDrawingOptions.Mode.WALL && owner != null && !owner.isBlank()) {
+            caption += "\n" + display((options.german() ? "Zuständig: " : "Owner: ") + owner, 40, 1);
+        }
+        if (options.showsShortReasons() && reason != null && !reason.isBlank()) {
+            caption += "\n" + display(reason.strip().replaceAll("\\s+", " "), 40, 2);
+        }
+        return caption;
     }
 
     static String nodeFooter(String depth, String unitName, int columns) {

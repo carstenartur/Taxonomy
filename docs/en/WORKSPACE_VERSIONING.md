@@ -214,6 +214,10 @@ If a sync conflict occurs, a resolution modal is shown.
 
 Under **Versions → Sync**, open **Automatic adoption from the default branch**. The rule starts off. **Enable for this branch** activates it for the displayed target branch. Activation records the current default-branch commit as its starting point. The rule then adopts newly arriving commits in order. Earlier changes remain available through an explicit rebase or individual commit adoption. The on/off indicator stays visible when the details are collapsed. Each personal copy has its own rule, including copies whose branch has the same name as the default branch. Adoption stops at a conflict, a missing prerequisite or a change in permissions. The panel shows the source commit and result. **Recheck this commit** verifies the current conditions. **Skip this commit permanently** leaves that change out. Use **Disable for this branch** to turn off the rule. **Show rule history** lists the actor, source commit, and target revisions before and after each decision.
 
+An authorized repository owner or maintainer can also stop another actor’s rule on a central branch. History records the person who stopped it, while the original source state and any prepared operation remain intact.
+
+After restoring a backup, rules remain disabled. Mapped historical decisions keep their original commit identities and timestamps. Earlier authorization and prepared operations remain in the restore evidence. Enabling a restored rule checks current permission and starts adopting future commits.
+
 ---
 
 ## 8. Keyboard & Accessibility

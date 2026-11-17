@@ -85,6 +85,8 @@ com.taxonomy.workspace.model.WorkspaceProjection	workspace	REBUILDABLE	Rebuild w
 com.taxonomy.workspace.service.CentralFetchOperation	workspace	PORTABLE_PRIMARY	Central fork transfers and selected tags retain scoped history; an isolated restore imports no lease or credentials
 com.taxonomy.workspace.service.WorkspaceFetchOperation	workspace	PORTABLE_PRIMARY	Exact scoped fetch authority and status; restore active attempts as interrupted without a dispatch lease
 com.taxonomy.workspace.service.WorkspacePublicationDecision	workspace	PORTABLE_PRIMARY	Append-only source decisions retain original actors and executors in isolated history evidence
+com.taxonomy.workspace.service.BranchAdoptionRule	workspace	PORTABLE_PRIMARY	Explicit per-branch rule and original source/candidate evidence; restore disabled with no live grant and require authenticated activation from the current default tip
+com.taxonomy.workspace.service.BranchAdoptionEvent	workspace	PORTABLE_PRIMARY	Immutable source actor and commit audit; unknown identities remain private source evidence and restored history never schedules work
 com.taxonomy.workspace.service.WorkspacePublicationOperation	workspace	PORTABLE_PRIMARY	Workspace-owned publication journal and Git observations are retained without live authorization bindings, leases or cleanup schedules
 storage.jgit.objects-refs-reflogs	workspace	GIT_PRIMARY	All logical repositories via Git objects/refs plus explicit reflog records; never duplicate physical pack tables
 storage.git.preferences	application	GIT_PRIMARY	Current sanitized preferences or full authorized history; credentials excluded by default

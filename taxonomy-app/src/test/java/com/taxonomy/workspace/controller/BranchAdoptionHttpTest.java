@@ -1,6 +1,8 @@
 package com.taxonomy.workspace.controller;
 
 import com.taxonomy.security.model.PrincipalUserDetails;
+import com.taxonomy.security.access.WorkspaceFetchAuthorityAdapter;
+import com.taxonomy.workspace.service.RepositoryScope;
 import com.taxonomy.security.service.UserManagementService;
 import com.taxonomy.testsupport.LocalTestLogin;
 import com.taxonomy.workspace.model.RepositoryVisibility;
@@ -14,6 +16,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.ApplicationContext;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -27,10 +30,12 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.doAnswer;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
-        "spring.datasource.url=jdbc:hsqldb:mem:branch-adoption-http",
+        "spring.datasource.url=jdbc:hsqldb:mem:branch-adoption-http;hsqldb.tx=mvcc;hsqldb.lob_compressed=true;hsqldb.lob_file_scale=1",
         "taxonomy.workspace.adoption-poll=3600000",
         "taxonomy.security.require-password-change=false"
 })
@@ -45,6 +50,7 @@ class BranchAdoptionHttpTest {
     @Autowired DslGitRepositoryFactory repositories;
     @Autowired BranchAdoptionWorker worker;
     @Autowired ObjectMapper json;
+    @MockitoSpyBean WorkspaceFetchAuthorityAdapter actors;
 
     @Test
     void authenticatedRuleAppliesOrderedChangesAndExposesAnExactReviewableConflict() throws Exception {
@@ -113,6 +119,45 @@ class BranchAdoptionHttpTest {
             assertThat(applied).extracting(e -> e.get("actor").asString()).containsOnly(actor);
             assertThat(applied.getLast().get("targetBefore").asString()).isEqualTo(draft);
             assertThat(applied.getFirst().get("targetAfter").asString()).isEqualTo(kept);
+            request(client, repository, "", "PUT",
+                    Map.of("enabled", true, "expectedRevision", disabled.get("revision").asLong()), 200);
+            git.commitDsl("main", model("different", "third"), USER, "A future change");
+            worker.checkEnabledRules();
+            worker.checkEnabledRules();
+            var ready = request(client, repository, "", "GET", Map.of(), 200);
+            assertThat(ready.get("status").asString()).isEqualTo("PREPARED");
+            var publicationReached = new java.util.concurrent.CountDownLatch(1);
+            var allowPublication = new java.util.concurrent.CountDownLatch(1);
+            var permissionChecks = new java.util.concurrent.atomic.AtomicInteger();
+            doAnswer(call -> {
+                call.callRealMethod();
+                if (permissionChecks.incrementAndGet() == 2) {
+                    publicationReached.countDown();
+                    assertThat(allowPublication.await(15, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                }
+                return null;
+            }).when(actors).checkPublication(any(), eq(USER), eq(RepositoryScope.CENTRAL_WRITE), eq(true));
+            try (var threads = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+                var publishing = threads.submit(worker::checkEnabledRules);
+                assertThat(publicationReached.await(15, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                var stopping = threads.submit(() -> request(client, repository, "", "PUT",
+                        Map.of("enabled", false, "expectedRevision", ready.get("revision").asLong()), 409));
+                try {
+                    assertThatThrownBy(() -> stopping.get(1, java.util.concurrent.TimeUnit.SECONDS))
+                            .isInstanceOf(java.util.concurrent.TimeoutException.class);
+                } finally {
+                    allowPublication.countDown();
+                }
+                publishing.get(15, java.util.concurrent.TimeUnit.SECONDS);
+                stopping.get(15, java.util.concurrent.TimeUnit.SECONDS);
+            }
+            var afterPublication = request(client, repository, "", "GET", Map.of(), 200);
+            request(client, repository, "", "PUT",
+                    Map.of("enabled", false, "expectedRevision", afterPublication.get("revision").asLong()), 200);
+            String stoppedHead = git.getHeadCommit("draft");
+            git.commitDsl("main", model("different", "fourth"), USER, "After disabled");
+            worker.checkEnabledRules();
+            assertThat(git.getHeadCommit("draft")).isEqualTo(stoppedHead);
         }
     }
 

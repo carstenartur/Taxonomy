@@ -53,6 +53,7 @@ class MeasuredShardBalanceTest {
     "com.taxonomy.portfolio.reformulation.ReformulationEvidenceRoundTripTest",
     "com.taxonomy.portfolio.reformulation.ReformulationQuestionWorkflowTest",
     "com.taxonomy.workspace.controller.WorkspaceControllerTest",
+    "com.taxonomy.workspace.controller.BranchAdoptionHttpTest",
     "com.taxonomy.composition.analysis.artemis.ArtemisProviderRateQuotasTest",
     "com.taxonomy.composition.analysis.artemis.ArtemisAnalysisTransportTest",
     "com.taxonomy.portfolio.reformulation.ReformulationReportTest",

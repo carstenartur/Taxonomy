@@ -26,6 +26,8 @@ class ModuleOwnedTestPlacementTest {
             "workspace/controller/ExternalSyncControllerTest.java",
             "workspace/controller/WorkspaceAccessSecurityIT.java",
             "workspace/controller/WorkspaceControllerTest.java",
+            // Runs the complete application with persisted login, real HTTP/Tomcat and native database Git.
+            "workspace/controller/BranchAdoptionHttpTest.java",
             "workspace/controller/WorkspaceProvisioningBoundaryIT.java",
             "workspace/controller/WorkspaceReadOnlyProvisioningTest.java",
             "workspace/controller/WorkspaceScopedEndpointIsolationTest.java",
