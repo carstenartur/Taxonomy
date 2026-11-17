@@ -441,6 +441,7 @@ class WorkspaceOriginalHistoryTest {
         String dsl = "meta system {\n  title: \"Original\";\n}\n";
         var portfolio = mock(WorkspacePortfolioGitPort.class);
         when(portfolio.lockedPublicationDigest(anyString(), any())).thenReturn("reviewed portfolio");
+        when(portfolio.matchesCheckpoint(anyString(), eq(OWNER), any())).thenReturn(true);
         doThrow(new IllegalStateException("interrupted SQL adoption")).doNothing()
                 .when(portfolio).materializePortfolio(anyString(), anyString(), any());
         String oldHead, fetched, candidate;

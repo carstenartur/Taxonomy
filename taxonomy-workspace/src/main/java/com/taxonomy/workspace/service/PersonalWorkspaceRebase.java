@@ -44,7 +44,7 @@ public class PersonalWorkspaceRebase {
         var oldDsl = local.getDslAtCommit(replay.originalHead());
         var candidate = local.getDslAtCommit(replay.newHead());
         String digest = portfolio.lockedPublicationDigest(context.username(), workspace);
-        portfolio.requireCheckpointedPortfolio(oldDsl, context.username(), workspace);
+        requireCheckpointedPortfolio(oldDsl, workspace);
         portfolio.validatePortfolio(oldDsl, candidate, context.username(), workspace);
         var receipt = new PersonalRebaseReceipt(context.repositoryId(), context.workspaceId(), context.branch(),
                 transfer.upstream().branch(), transfer.forkPoint(), context.username(), row.getOwnerPrincipalId(),
@@ -94,7 +94,7 @@ public class PersonalWorkspaceRebase {
         var workspace = WorkspaceResolver.workspaceContext(context);
         var dsl = local.getDslAtCommit(expectedHead);
         if (!receipt.portfolioDigest().equals(portfolio.lockedPublicationDigest(context.username(), workspace)))
-            portfolio.requireCheckpointedPortfolio(dsl, context.username(), workspace);
+            requireCheckpointedPortfolio(dsl, workspace);
         portfolio.validatePortfolio(local.getDslAtCommit(receipt.replay().originalHead()), dsl, context.username(), workspace);
         editor.applyPreparedWorkspaceRebase(context, receipt.replay().originalHead(), expectedHead, "Adopt reviewed personal branch",
                 () -> local.verifyExpectedHead(context.branch(), expectedHead));
@@ -131,6 +131,12 @@ public class PersonalWorkspaceRebase {
         });
     }
 
+
+    private void requireCheckpointedPortfolio(String dsl, WorkspaceContext workspace) throws BranchHeadConflictException {
+        if (!portfolio.matchesCheckpoint(dsl, workspace.username(), workspace))
+            throw new BranchHeadConflictException(workspace.currentBranch(), null, null,
+                    "Commit the current portfolio changes and review the rebase again");
+    }
 
     private static BranchHeadConflictException changed(RepositoryContext context) {
         return new BranchHeadConflictException(context.branch(), null, null, "Refresh the personal rebase plan and review its current state");

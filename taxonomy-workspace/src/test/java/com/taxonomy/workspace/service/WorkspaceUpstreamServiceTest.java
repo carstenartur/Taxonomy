@@ -146,6 +146,7 @@ class WorkspaceUpstreamServiceTest {
                 new UpstreamRebasePlan.ApplyRequest(plan.refTag(), reviewedHead, incoming, List.of(reviewedHead)));
         var manager = mock(WorkspaceManager.class);
         when(manager.getOrCreateScopedWorkspaceState(featureScope)).thenReturn(state);
+        when(portfolio.matchesCheckpoint(anyString(), eq("alice"), eq(featureScope))).thenReturn(true);
         navigation = new com.taxonomy.versioning.service.ContextNavigationService(repositories, null, manager, 12);
         var resolver = mock(WorkspaceResolver.class);
         when(resolver.resolveUnambiguousRepositoryForRead()).thenReturn(feature);
@@ -235,6 +236,16 @@ class WorkspaceUpstreamServiceTest {
     }
 
     @Test
+    void uncheckpointedPortfolioRejectsTheReviewedPostBeforePublication() throws Exception {
+        preparePersonalReplay("base");
+        when(portfolio.matchesCheckpoint(anyString(), eq("alice"), eq(featureScope))).thenReturn(false);
+        mvc.perform(personalPost(REBASE_PATH, requestBody)).andExpect(status().isConflict());
+        assertThat(target.getHeadCommit(BRANCH)).isEqualTo(reviewedHead);
+        assertThat(workspace.getLastIntegratedCommit()).isEqualTo(base);
+        verify(portfolio, never()).materializePortfolio(anyString(), anyString(), any());
+    }
+
+    @Test
     void upstreamMovementAfterReviewRequiresANewFetchAndPlan() throws Exception {
         preparePersonalReplay("base");
         source.commitDsl("main", "new upstream work", "owner", "independent");
@@ -258,8 +269,7 @@ class WorkspaceUpstreamServiceTest {
         String resume = recovery(candidate, candidate);
         mvc.perform(personalPost(REBASE_PATH + "/resume", "{\"candidate\":\"" + reviewedHead + "\"}")).andExpect(status().isConflict());
         when(portfolio.lockedPublicationDigest("alice", featureScope)).thenReturn("concurrent portfolio edit");
-        doThrow(new BranchHeadConflictException(BRANCH, null, null, "dirty portfolio")).when(portfolio)
-                .requireCheckpointedPortfolio(anyString(), eq("alice"), eq(featureScope));
+        when(portfolio.matchesCheckpoint(anyString(), eq("alice"), eq(featureScope))).thenReturn(false);
         mvc.perform(personalPost(REBASE_PATH + "/resume", resume)).andExpect(status().isConflict());
         when(portfolio.lockedPublicationDigest("alice", featureScope)).thenReturn("initial projection");
         mvc.perform(personalPost(REBASE_PATH + "/resume", resume)).andExpect(status().isOk())
