@@ -20,6 +20,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @Component
@@ -52,6 +53,12 @@ public class WorkspaceFetchAuthorityAdapter implements WorkspaceFetchAuthority, 
     }
 
     private Grant authorize(String username, ApiPermission required) {
+        Grant grant = currentGrant(username, required);
+        if (!hasCurrentAssertion(grant)) throw denied();
+        return grant;
+    }
+
+    private Grant currentGrant(String username, ApiPermission required) {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
         String actor = currentActor(username);
         if (!ApiAccessPolicy.hasPermission(authentication, required)) throw denied();
@@ -103,9 +110,25 @@ public class WorkspaceFetchAuthorityAdapter implements WorkspaceFetchAuthority, 
         return purge ? ApiPermission.ARCHITECTURE_DELETE : ApiPermission.ARCHITECTURE_WRITE;
     }
 
+    private static boolean hasCurrentAssertion(Grant grant) {
+        if ("LOCAL".equals(grant.loginKind())) return true;
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        Instant expiresAt;
+        if (authentication instanceof JwtAuthenticationToken jwt) {
+            expiresAt = jwt.getToken().getExpiresAt();
+        } else if (authentication instanceof OAuth2AuthenticationToken oauth2
+                && oauth2.getPrincipal() instanceof OidcUser oidc) {
+            expiresAt = oidc.getIdToken().getExpiresAt();
+        } else {
+            return false;
+        }
+        return expiresAt != null && expiresAt.isAfter(Instant.now());
+    }
+
     private void checkGrant(Grant original, String username, ApiPermission required, boolean unattended) {
         if (!unattended) {
-            if (!authorize(username, required).equals(original)) throw denied();
+            if (!currentGrant(username, required).equals(original)) throw denied();
+            if (!hasCurrentAssertion(original)) throw new FreshLoginRequired();
             return;
         }
         if ("LEGACY_OIDC".equals(original.loginKind())) throw new FreshLoginRequired();

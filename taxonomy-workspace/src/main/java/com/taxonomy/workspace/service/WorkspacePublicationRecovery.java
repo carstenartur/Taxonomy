@@ -117,7 +117,11 @@ public class WorkspacePublicationRecovery {
                         checkLease.run();
                         actors.checkPublicationGrant(original,row.username,WORKER.equals(claim.executor()));
                     };
-                    authorize.run();
+                    try {
+                        authorize.run();
+                    } catch (WorkspaceFetchAuthority.FreshLoginRequired failure) {
+                        throw new FreshLoginRequiredBeforePhase();
+                    }
                     RepositoryMembershipIdentity.RecordedActor.during(row.username, original, () -> {
                         executor.execute(row, authorize);
                         return null;
@@ -125,7 +129,7 @@ public class WorkspacePublicationRecovery {
                 });
                 if (state.completedAt()!=null) return state;
             } catch (WorkspaceFetchAuthority.FreshLoginRequired failure) {
-                return journal.decide(claim,AWAITING_AUTHORIZATION,"FRESH_LOGIN_REQUIRED");
+                return journal.awaitAuthorization(claim, failure instanceof FreshLoginRequiredBeforePhase);
             } catch (AccessDeniedException failure) {
                 return journal.decide(claim,DENIED,"AUTHORIZATION_REVOKED");
             } catch (Superseded failure) {
@@ -148,6 +152,8 @@ public class WorkspacePublicationRecovery {
             }
         }
     }
+
+    private static final class FreshLoginRequiredBeforePhase extends WorkspaceFetchAuthority.FreshLoginRequired { }
 
     static final class SemanticConflict extends IOException {
         SemanticConflict(String message) { super(message); }

@@ -25,6 +25,7 @@ import static com.taxonomy.workspace.service.WorkspacePublicationOperation.Statu
 public class WorkspacePublicationJournal {
     static final long LEASE = Duration.ofMinutes(5).toMillis();
     private static final int MAX_ATTEMPTS = 6;
+    private static final String PAUSED_BEFORE_PREPARE = "FRESH_LOGIN_REQUIRED_BEFORE_PREPARE";
     private final EntityManager entities;
     private final TransactionTemplate transaction;
     private final Clock clock;
@@ -177,6 +178,8 @@ public class WorkspacePublicationJournal {
         try {
             return transaction.execute(tx -> {
                 var row=locked(claim);
+                row.priorAttemptsPausedBeforePreparation = row.step == Step.PREPARE && row.attempts > 1
+                        && allPriorAttemptsPausedBeforePreparation(row);
                 try { action.run(row,() -> leases.requireCurrent(row,claim.lease())); } catch (IOException failure) { throw new UncheckedIOException(failure); }
                 var applied=row.step;
                 if (applied==Step.SOURCE_REF || row.isPull() && applied==Step.WORKSPACE_REF) {
@@ -191,6 +194,25 @@ public class WorkspacePublicationJournal {
         } catch (UncheckedIOException failure) { throw failure.getCause(); }
     }
 
+    private boolean allPriorAttemptsPausedBeforePreparation(WorkspacePublicationOperation row) {
+        // Each fenced preflight pause records at most one event per attempt. A crashed or
+        // interrupted preparation leaves its attempt without this proof even if its refs match.
+        return entities.createQuery("""
+                select count(d) from WorkspacePublicationDecision d
+                where d.operation=:id and d.phase='PREPARE' and d.decision=:pause
+                """, Long.class).setParameter("id", row.id).setParameter("pause", PAUSED_BEFORE_PREPARE)
+                .getSingleResult() == row.attempts - 1;
+    }
+
+    View awaitAuthorization(Claim claim, boolean beforePhase) {
+        return transaction.execute(tx -> {
+            var row = locked(claim);
+            pause(row, AWAITING_AUTHORIZATION, "FRESH_LOGIN_REQUIRED", null);
+            event(row, claim.executor(), beforePhase && row.step == Step.PREPARE ? PAUSED_BEFORE_PREPARE : row.decision);
+            return view(row);
+        });
+    }
+
     View decide(Claim claim,Status status,String decision) {
         return decide(claim,status,decision,false,null);
     }
@@ -202,9 +224,8 @@ public class WorkspacePublicationJournal {
             if (confirmedSourceAncestor && sourceTime!=null && row.publishedAt==null) row.publishedAt=sourceTime.toEpochMilli();
             if (status==SUPERSEDED && row.sourceObservedAt==null) settle(row,MANUAL_REVIEW,"WORKSPACE_ADVANCED_BEFORE_SOURCE");
             else if (status==RETRYABLE && row.attempts>=MAX_ATTEMPTS) settle(row,MANUAL_REVIEW,"ATTEMPTS_EXHAUSTED");
-            else if (status==RETRYABLE || status==AWAITING_AUTHORIZATION) {
-                row.phase=status.name(); row.decision=decision; row.lease=null;
-                row.nextAttemptAt=status==RETRYABLE ? clock.millis()+Math.min(300_000,1000L << (row.attempts-1)) : null;
+            else if (status==RETRYABLE) {
+                pause(row, status, decision, clock.millis()+Math.min(300_000,1000L << (row.attempts-1)));
                 event(row,claim.executor(),decision);
             } else settle(row,status,decision);
             return view(row);
@@ -290,6 +311,13 @@ public class WorkspacePublicationJournal {
         var row=leases.locked(WorkspacePublicationOperation.class,claim.lease());
         leases.requireCurrent(row,claim.lease());
         return row;
+    }
+
+    private static void pause(WorkspacePublicationOperation row, Status status, String decision, Long nextAttemptAt) {
+        row.phase = status.name();
+        row.decision = decision;
+        row.lease = null;
+        row.nextAttemptAt = nextAttemptAt;
     }
 
     private void settle(WorkspacePublicationOperation row,Status status,String decision) {

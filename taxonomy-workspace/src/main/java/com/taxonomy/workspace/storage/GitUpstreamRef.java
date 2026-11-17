@@ -7,6 +7,7 @@ import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.RefUpdate;
+import org.eclipse.jgit.lib.ReflogReader;
 import org.eclipse.jgit.lib.Repository;
 
 import java.io.IOException;
@@ -36,6 +37,12 @@ public record GitUpstreamRef(String repositoryId, String branch) {
 
     /** Only publish a previously copied and verified commit closure. */
     public void advance(DslGitRepository destination, String expected, String incoming, String actor) throws IOException {
+        advance(destination, expected, incoming, actor, null, null);
+    }
+
+    /** Bind a journalled transfer to the native ref update, including its expected old commit. */
+    public void advance(DslGitRepository destination, String expected, String incoming, String actor,
+                        String publicationIdentity, String observedSourceHead) throws IOException {
         var repository = destination.getGitRepository();
         synchronized (repository) {
             String actual = head(destination);
@@ -49,7 +56,12 @@ public record GitUpstreamRef(String repositoryId, String branch) {
             update.setNewObjectId(ObjectId.fromString(incoming));
             update.setForceUpdate(false);
             update.setRefLogIdent(new PersonIdent(actor, "taxonomy@localhost"));
-            update.setRefLogMessage("fetch: record verified upstream commit", true);
+            if (publicationIdentity == null) {
+                update.setRefLogMessage("fetch: record verified upstream commit", true);
+            } else {
+                update.setForceRefLog(true);
+                update.setRefLogMessage(publicationPrefix(publicationIdentity) + ObjectId.fromString(observedSourceHead).name(), false);
+            }
             switch (update.update()) {
                 case NEW, FAST_FORWARD, NO_CHANGE -> { }
                 case LOCK_FAILURE, REJECTED, REJECTED_CURRENT_BRANCH ->
@@ -57,5 +69,33 @@ public record GitUpstreamRef(String repositoryId, String branch) {
                 default -> throw new IOException("Could not publish Git upstream tracking ref");
             }
         }
+    }
+
+    /** Read the source head verified when this receipt's exact tracking update was published. */
+    public String publishedSourceHead(DslGitRepository destination, String expected, String incoming,
+                                      String publicationIdentity) throws IOException {
+        ReflogReader reader;
+        try {
+            reader = destination.getGitRepository().getReflogReader(name());
+        } catch (UnsupportedOperationException unavailable) {
+            return null;
+        }
+        if (reader == null) return null;
+        ObjectId previous = expected == null ? ObjectId.zeroId() : ObjectId.fromString(expected);
+        ObjectId candidate = ObjectId.fromString(incoming);
+        String prefix = publicationPrefix(publicationIdentity);
+        for (var entry : reader.getReverseEntries(64)) {
+            String comment = entry.getComment();
+            if (previous.equals(entry.getOldId()) && candidate.equals(entry.getNewId())
+                    && comment != null && comment.startsWith(prefix)) {
+                String observed = comment.substring(prefix.length());
+                if (ObjectId.isId(observed)) return ObjectId.fromString(observed).name();
+            }
+        }
+        return null;
+    }
+
+    private static String publicationPrefix(String publicationIdentity) {
+        return "fetch: publish verified upstream operation " + StableIdentityHash.sha256(publicationIdentity) + " source ";
     }
 }

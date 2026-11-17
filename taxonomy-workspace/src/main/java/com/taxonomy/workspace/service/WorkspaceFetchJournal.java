@@ -149,6 +149,7 @@ public class WorkspaceFetchJournal {
                     var fork = new CentralFetchOperation();
                     fork.targetRepositoryId = selected.repositoryId();
                     fork.sourceRepositoryId = source.sourceRepositoryId();
+                    if (tag == null) fork.publicationGeneration = UUID.randomUUID().toString();
                     operation = fork;
                 } else {
                     var copy = new WorkspaceFetchOperation();

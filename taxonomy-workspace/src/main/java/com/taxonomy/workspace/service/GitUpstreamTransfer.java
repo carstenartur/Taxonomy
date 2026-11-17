@@ -36,6 +36,10 @@ record GitUpstreamTransfer(GitUpstreamRef upstream, DslGitRepository source, Dsl
     }
 
     Status fetch(Request request, Runnable fence) throws IOException {
+        return fetch(request, fence, null);
+    }
+
+    private Status fetch(Request request, Runnable fence, String publicationIdentity) throws IOException {
         String incoming = request.sourceCommit();
         String tracked = upstream.head(target);
         if (!Objects.equals(tracked, request.expectedTrackedCommit()) && !incoming.equals(tracked)) {
@@ -60,22 +64,47 @@ record GitUpstreamTransfer(GitUpstreamRef upstream, DslGitRepository source, Dsl
             throw new BranchHeadConflictException(upstream.branch(), head, currentHead, "Source branch changed during transfer");
         }
         fence.run();
-        upstream.advance(target, tracked, incoming, actor);
+        upstream.advance(target, tracked, incoming, actor, publicationIdentity, head);
         return new Status(upstream.repositoryId(), upstream.branch(), head, upstream.name(), incoming);
+    }
+
+    Status fetchRecorded(Request request, String publicationIdentity, boolean recovering,
+                         Runnable fence) throws IOException {
+        if (!recovering) return fetch(request, fence, publicationIdentity);
+        String incoming = request.sourceCommit();
+        String observedSource = publicationIdentity == null ? null
+                : upstream.publishedSourceHead(target, request.expectedTrackedCommit(), incoming, publicationIdentity);
+        if (observedSource == null) {
+            return recover(request, fence, publicationIdentity);
+        }
+
+        // The original update already verified upstream. Current authorization still governs its acknowledgement.
+        target.verifySnapshot(incoming);
+        reauthorize.run();
+        fence.run();
+        String retained = upstream.head(target);
+        if (retained == null || !reachable(target, incoming, retained)) {
+            throw new BranchHeadConflictException(upstream.name(), incoming, retained, "The published tracking history changed");
+        }
+        return new Status(upstream.repositoryId(), upstream.branch(), observedSource, upstream.name(), incoming);
     }
 
     /** A recovery may settle from a retained descendant without moving any ref. */
     Status recover(Request request, Runnable fence) throws IOException {
+        return recover(request, fence, null);
+    }
+
+    private Status recover(Request request, Runnable fence, String publicationIdentity) throws IOException {
         try {
-            return fetch(request, fence);
+            return fetch(request, fence, publicationIdentity);
         } catch (BranchHeadConflictException changed) {
             if (!upstream.name().equals(changed.getBranch())) throw changed;
-            String actual = upstream.head(target);
-            if (actual == null || actual.equals(request.sourceCommit())
-                    || !reachable(target, request.sourceCommit(), actual)) throw changed;
             reauthorize.run();
             fence.run();
-            throw new Superseded(actual);
+            String retained = upstream.head(target);
+            if (retained == null || retained.equals(request.sourceCommit())
+                    || !reachable(target, request.sourceCommit(), retained)) throw changed;
+            throw new Superseded(retained);
         }
     }
 
