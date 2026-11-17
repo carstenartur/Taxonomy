@@ -15,12 +15,7 @@ const scores = { 'QA-D': 95, 'QA-D-A': 90, 'QA-D-B': 85,
 /** Real D3 rendering, native focus/key events and local zoom controls. */
 export async function runDiagramKeyboardWorkflow({ page, evidence }) {
   const container = page.locator('#taxonomyTree');
-  await page.evaluate(() => {
-    if (!document.getElementById('diagramRelevanceFilter')) {
-      const source = document.createElement('select'); source.id = 'diagramRelevanceFilter'; source.hidden = true;
-      source.append(new Option('All', 'all'), new Option('Relevant', 'positive')); document.body.append(source);
-    }
-  });
+  const relevanceFilter = page.locator('#diagramRelevanceFilter');
   async function render(method, options = {}) {
     await page.evaluate(({ method, fixture, scores, context }) => {
       const host = document.getElementById('taxonomyTree');
@@ -214,28 +209,23 @@ export async function runDiagramKeyboardWorkflow({ page, evidence }) {
   await expect(branch).toHaveAttribute('aria-expanded', 'false');
   await expect.poll(viewport).toEqual(treeViewport);
   for (const view of ['list', 'tree']) {
-    if (view === 'tree') {
-      await render('renderTreeDiagram', { context: treeContext });
-      await container.locator('.tax-diagram-relevance input').focus();
-    }
+    await relevanceFilter.focus();
     await page.evaluate(context => {
       const host = document.getElementById('taxonomyTree');
       window.TaxonomyViews.prepareDiagramContext(host, context);
       host.replaceChildren(document.createElement('p'));
-      if (context.view === 'tree') {
-        window.TaxonomyViews.installDiagramRelevanceControl(host);
-        window.TaxonomyViews.restoreDiagramControlFocus(host);
-      }
+      window.TaxonomyViews.restoreDiagramControlFocus(host);
     }, { ...treeContext, view });
-    if (view === 'tree') { await expect(container.locator('.tax-diagram-relevance input')).toBeFocused(); }
+    await expect(relevanceFilter).toBeFocused();
     await render('renderTreeDiagram', { context: treeContext });
+    await expect(relevanceFilter).toBeFocused();
     await expect(branch).toHaveAttribute('aria-expanded', 'false');
     await expect.poll(viewport).toEqual(treeViewport);
   }
   await render('renderTreeDiagram', { context: { ...treeContext, analysisKey: 'viewport-regression-two' } });
   await expect(branch).toHaveAttribute('aria-expanded', 'true');
   await expect.poll(viewport).toEqual({ x: 0, y: 0, k: 1 });
-  await expect(container.locator('.tax-diagram-relevance input')).not.toBeFocused();
+  await expect(relevanceFilter).toBeFocused();
   evidence.passed('tree context survives Canvas/SVG, other views, other roots and empty projections; a new analysis resets it');
 
   // Growing evidence can change geometry even though the reader did not navigate.

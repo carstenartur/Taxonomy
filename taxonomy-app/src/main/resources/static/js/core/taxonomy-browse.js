@@ -835,17 +835,6 @@
         refreshAnalysisDuration();
         if (!data || data.length === 0) { return; }
         const container = document.getElementById('taxonomyTree');
-        const responsibilities = window.TaxonomyResponsibilityDisplay;
-        const diagram = ['sunburst', 'tree', 'decision'].includes(S.currentView);
-        if (responsibilities && responsibilityViewVisible()) {
-            responsibilities.bindAnalysis(Boolean(S.currentModelBinding && scores && Object.keys(scores).length));
-            renderResponsibilitySummary(responsibilities, data, scores);
-            const control = document.getElementById('taxonomyResponsibilityControl');
-            if (control) {
-                if (!control.firstChild && !diagram) control.appendChild(responsibilities.control());
-                control.hidden = diagram;
-            }
-        }
         window.TaxonomyViews?.prepareDiagramContext?.(container, {
             analysisKey: diagramContextGeneration, view: S.currentView, treeRoot: S.currentTreeRoot
         });
@@ -857,14 +846,20 @@
             if (S.currentView === 'tree') diagramData = [data.find(r => r.code === S.currentTreeRoot) || data[0]];
             diagramData = window.TaxonomyViews.filterRelevance(diagramData, scores, S.currentScoreDetails, filter ? filter.value : 'all');
         }
+        const responsibilities = window.TaxonomyResponsibilityDisplay;
+        if (responsibilities && responsibilityViewVisible()) {
+            responsibilities.bindAnalysis(Boolean(S.currentModelBinding && scores && Object.keys(scores).length));
+            renderResponsibilitySummary(responsibilities, data, scores);
+            const control = document.getElementById('taxonomyResponsibilityControl');
+            if (control) {
+                const diagramControls = diagramData.length > 0 && ['sunburst', 'tree', 'decision'].includes(S.currentView);
+                if (!control.firstChild && !diagramControls) control.appendChild(responsibilities.control());
+                control.hidden = diagramControls;
+            }
+        }
         if (diagramData.length === 0) {
             cleanupD3(container);
             container.innerHTML = '<p class="text-muted p-3" role="status">' + t('view.relevance.empty') + '</p>';
-            if (diagram) window.TaxonomyViews?.installDiagramRelevanceControl?.(container);
-            if (responsibilities && responsibilityViewVisible()) {
-                const toolbar = container.querySelector('.tax-diagram-controls');
-                if (toolbar) toolbar.appendChild(responsibilities.control());
-            }
             window.TaxonomyViews?.restoreDiagramControlFocus?.(container);
             container.setAttribute('data-view-rendered', S.currentView);
         } else {

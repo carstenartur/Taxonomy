@@ -181,31 +181,7 @@
         controls.appendChild(hint);
         surface.setAttribute('aria-describedby', hint.id);
         container.insertBefore(controls, container.children[0]);
-        installDiagramRelevanceControl(container);
         return controls;
-    }
-
-    /** Reuse the browse projection policy, including when the selected subset is empty. */
-    function installDiagramRelevanceControl(container) {
-        var source = document.getElementById && document.getElementById('diagramRelevanceFilter');
-        if (!source) { return; }
-        var toolbar = container.querySelector('.tax-diagram-controls');
-        if (!toolbar) {
-            toolbar = document.createElement('div'); toolbar.className = 'tax-diagram-controls';
-            toolbar.setAttribute('role', 'group'); toolbar.setAttribute('aria-label', t('views.diagram.controls'));
-            container.insertBefore(toolbar, container.children[0]);
-        }
-        if (toolbar.querySelector('.tax-diagram-relevance')) { return; }
-        var label = document.createElement('label'); label.className = 'tax-diagram-relevance form-check d-flex align-items-center gap-2 mb-0';
-        var checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.className = 'form-check-input';
-        checkbox.checked = source.value === 'positive';
-        checkbox.addEventListener('change', function () {
-            source.value = checkbox.checked ? 'positive' : 'all';
-            source.dispatchEvent(new Event('change', {bubbles: true}));
-        });
-        var caption = document.createElement('span'); caption.textContent = t('views.diagram.relevantOnly');
-        label.append(checkbox, caption); label.title = t('view.relevance.hint');
-        toolbar.insertBefore(label, toolbar.querySelector('.tax-diagram-hint'));
     }
 
     function expandDiagramTree(root, update) {
@@ -994,7 +970,7 @@
             .on('zoom', function (event) { zoomLayer.attr('transform', event.transform); });
         svg.call(treeZoom);
         installDiagramZoomControls(container, svg.node(), svg, treeZoom, function () { return zoomLayer.node().getBBox(); });
-        installDiagramPrintControls(container, function (mode) { printTreeDiagram(data, scores, container, mode); });
+        installDiagramPrintControls(container, 'tree', function (mode) { printTreeDiagram(data, scores, container, mode); });
         var treeNavigation = createDiagramNavigation(container, svg.node(), {
             scores: scores, activate: function (node) { toggleDiagramBranch(node, update); }
         });
@@ -1742,17 +1718,19 @@
         return value > 0 ? Math.max(2, Math.min(4, 2 + value / 50)) : 1;
     }
 
-    function installDiagramPrintControls(container, print) {
+    function installDiagramPrintControls(container, view, print) {
         var toolbar = container.querySelector('.tax-diagram-controls');
         var display = window.TaxonomyResponsibilityDisplay;
         if (display) toolbar.insertBefore(display.control(), toolbar.querySelector('.tax-diagram-hint'));
+        var preferences = container._taxPrintPreferences ||= {};
+        var settings = preferences[view] ||= {mode: view === 'decision' ? 'taxonomy' : 'pages', paper: 'A1'};
         var mode = document.createElement('select');
         mode.className = 'form-select form-select-sm tax-diagram-print-mode';
         mode.setAttribute('aria-label', t('views.diagram.printMode'));
         [['pages', 'views.diagram.printPages'], ['single', 'views.diagram.printSingle'], ['taxonomy', 'views.diagram.printTaxonomy']].forEach(function (entry) {
             var option = document.createElement('option'); option.value = entry[0]; option.textContent = t(entry[1]); mode.appendChild(option);
         });
-        mode.value = container._taxPrintMode || 'pages';
+        mode.value = settings.mode;
         var paper = document.createElement('select');
         paper.className = 'form-select form-select-sm tax-diagram-print-paper';
         paper.setAttribute('aria-label', t('views.diagram.printPaper'));
@@ -1761,12 +1739,12 @@
         });
         function updatePaper() {
             paper.disabled = mode.value === 'pages';
-            paper.value = paper.disabled ? 'A4' : container._taxPrintPaper || 'A1';
+            paper.value = paper.disabled ? 'A4' : settings.paper;
             paper.title = t(paper.disabled ? 'views.diagram.printPaperSections' : 'views.diagram.printPaper');
         }
         updatePaper();
-        mode.addEventListener('change', function () { container._taxPrintMode = mode.value; updatePaper(); });
-        paper.addEventListener('change', function () { container._taxPrintPaper = paper.value; });
+        mode.addEventListener('change', function () { settings.mode = mode.value; updatePaper(); });
+        paper.addEventListener('change', function () { settings.paper = paper.value; });
         var button = document.createElement('button'); button.type = 'button';
         button.className = 'btn btn-sm btn-outline-secondary tax-diagram-print-button';
         button.textContent = t('views.diagram.print');
@@ -1977,7 +1955,7 @@
             .on('zoom', function (event) { zoomLayer.attr('transform', event.transform); });
         svg.call(decisionZoom);
         installDiagramZoomControls(container, svg.node(), svg, decisionZoom, function () { return zoomLayer.node().getBBox(); });
-        installDiagramPrintControls(container, function (mode) { printDecisionDiagram(printLayout, container, mode); });
+        installDiagramPrintControls(container, 'decision', function (mode) { printDecisionDiagram(printLayout, container, mode); });
         var decisionNavigation = createDiagramNavigation(container, svg.node(), {
             scores: scores, activate: function (node) { toggleDiagramBranch(node, dmUpdate); }
         });
@@ -2604,7 +2582,7 @@
             var dpr = window.devicePixelRatio || 1;
             return {x: 0, y: 0, width: canvas.width / dpr, height: canvas.height / dpr};
         }, true);
-        installDiagramPrintControls(container, function (mode) { printTreeDiagram(data, scores, container, mode); });
+        installDiagramPrintControls(container, 'tree', function (mode) { printTreeDiagram(data, scores, container, mode); });
         installTreeActions(container, root, performLayout, canvasNavigation, scores);
 
         // Initial layout and draw
@@ -2912,7 +2890,6 @@
         renderSunburst: renderSunburst,
         filterRelevance: filterRelevance,
         filterZeroRelevance: filterZeroRelevance,
-        installDiagramRelevanceControl: installDiagramRelevanceControl,
         renderTreeDiagram: renderTreeDiagram,
         renderTreeCanvas: renderTreeCanvas,
         renderDecisionMap: renderDecisionMap,
