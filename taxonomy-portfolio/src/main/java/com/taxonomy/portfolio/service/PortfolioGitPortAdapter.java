@@ -26,6 +26,11 @@ public class PortfolioGitPortAdapter
     @Override public void requireAvailable() { /* This adapter exists only with the feature installed. */ }
 
     @Override
+    public boolean matchesCheckpoint(String localDsl, String username, WorkspaceContext context) {
+        return portfolioGitService.contributeTo(localDsl, username, context).strip().equals(localDsl.strip());
+    }
+
+    @Override
     public void validatePortfolio(String localDsl, String candidateDsl) {
         workspaceConflict(() -> portfolioGitService.validatePortfolio(localDsl, candidateDsl));
     }

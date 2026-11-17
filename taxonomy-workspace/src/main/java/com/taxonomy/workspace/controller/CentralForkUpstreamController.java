@@ -70,7 +70,7 @@ public class CentralForkUpstreamController {
     @Operation(summary = "Apply a reviewed linear rebase on one central fork branch",
             description = "Requires current source and destination contributor permissions and an exact ref-bound "
                     + "plan. Publishes the branch once or returns a conflict without mutation. "
-                    + "No automatic adoption or conflict resolution is enabled.")
+                    + "An explicit text resolution applies only to its reviewed model conflict.")
     public DslGitRepository.RebaseReplay rebase(@PathVariable String repositoryId, @RequestParam String branch,
             @RequestBody UpstreamRebasePlan.ApplyRequest request) throws IOException {
         return upstream.rebase(repositoryId, resolver.resolveCurrentUsername(), branch, request);

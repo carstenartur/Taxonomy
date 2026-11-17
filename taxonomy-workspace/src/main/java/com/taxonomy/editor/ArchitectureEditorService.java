@@ -457,13 +457,24 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
     @Override
     public <T> T applyPreparedVersion(RepositoryContext context, String expectedHead, String candidate, String rationale,
                                       GitAction<T> action) throws IOException {
+        return applyPreparedVersion(context, expectedHead, candidate, rationale, action, false);
+    }
+
+    @Override
+    public <T> T applyPreparedWorkspaceRebase(RepositoryContext context, String expectedHead, String candidate, String rationale,
+                                              GitAction<T> action) throws IOException {
+        return applyPreparedVersion(context, expectedHead, candidate, rationale, action, true);
+    }
+
+    private <T> T applyPreparedVersion(RepositoryContext context, String expectedHead, String candidate, String rationale,
+                                       GitAction<T> action, boolean joined) throws IOException {
         requireWritable(context);
         Objects.requireNonNull(candidate, "prepared commit");
         try (var write = writeBarrier.enter(backupScope(context))) {
             var repository = repositories.resolveRepository(context);
             var initial = snapshot(context).state();
             try {
-                return journal.locked(context, initial, session -> {
+                java.util.function.Function<EditorJournal.Session, T> adopt = session -> {
                     var state = session.state();
                     try {
                         if (!Objects.equals(state.checkpointCommit(), candidate)) {
@@ -481,7 +492,8 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
                         importVersionAt(context, session, rationale, repository, candidate);
                         return result;
                     } catch (IOException failure) { throw new java.io.UncheckedIOException(failure); }
-                });
+                };
+                return joined ? journal.joinedControlLocked(context, initial, adopt) : journal.locked(context, initial, adopt);
             } catch (java.io.UncheckedIOException failure) { throw failure.getCause(); }
         }
     }

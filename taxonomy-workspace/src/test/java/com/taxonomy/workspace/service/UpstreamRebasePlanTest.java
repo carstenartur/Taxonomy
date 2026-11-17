@@ -5,6 +5,7 @@ import com.taxonomy.workspace.signing.SigningTestKeys;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.GitHistoryTransfer;
 import com.taxonomy.workspace.storage.GitUpstreamRef;
+import com.taxonomy.workspace.storage.RebaseDslConflict;
 import org.eclipse.jgit.lib.CommitBuilder;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
@@ -21,6 +22,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.taxonomy.workspace.service.UpstreamRebasePlan.State.*;
@@ -171,6 +173,10 @@ class UpstreamRebasePlanTest {
         assertThat(result.conflictingPaths()).contains(DslGitRepository.DSL_FILENAME);
         assertThat(result.newHead()).isEqualTo(second);
         assertThat(result.rewritten()).hasSize(1);
+        var conflict = result.dslConflict();
+        assertThat(conflict.base().text()).isEqualTo(localOneDsl);
+        assertThat(conflict.target().text()).isEqualTo(upstreamDsl.replace("three\n", "three-local\n"));
+        assertThat(conflict.source().text()).isEqualTo(localTwoDsl);
         assertThat(result.rewritten().getFirst().originalCommit()).isEqualTo(first);
         assertThat(store.getHeadCommit("draft")).isEqualTo(second);
         assertThat(store.getDslAtCommit(second)).isEqualTo(localTwoDsl);
@@ -187,6 +193,41 @@ class UpstreamRebasePlanTest {
         assertThat(store.getGitRepository().getRefDatabase()
                 .getRefsByPrefix(org.eclipse.jgit.lib.Constants.R_HEADS)
                 .stream().map(ref -> ref.getObjectId().name())).doesNotContain(unpublished);
+    }
+
+    @Test
+    void resolutionIsBoundToTheReviewedPlanAndTargetText() throws Exception {
+        String base = store.commitDsl("seed", "base\n", "owner", "base");
+        store.createBranchAtCommit("main", base);
+        String upstream = store.commitDsl("main", "upstream\n", "owner", "upstream");
+        store.createBranchAtCommit("draft", base);
+        String local = store.commitDsl("draft", "local\n", "author", "local");
+        tracking.advance(store, null, upstream, "owner");
+        var transfer = new GitUpstreamTransfer(tracking, store, store, base, "owner", () -> { });
+        var plan = UpstreamRebasePlan.read(transfer, "fork", null, "draft");
+        var initial = new UpstreamRebasePlan.ApplyRequest(plan.refTag(), local, upstream, List.of(local));
+        var conflict = UpstreamRebasePlan.apply(transfer, "fork", null, "draft", initial).dslConflict();
+        assertThat(conflict.target().text()).isEqualTo("upstream\n");
+        assertThat(store.getHeadCommit("draft")).isEqualTo(local);
+
+        var wrongTarget = new UpstreamRebasePlan.ApplyRequest(plan.refTag(), local, upstream, List.of(local),
+                Map.of(local, new RebaseDslConflict.Resolution(conflict.base().blobId(), "old decision")));
+        assertThatThrownBy(() -> UpstreamRebasePlan.apply(transfer, "fork", null, "draft", wrongTarget))
+                .isInstanceOf(BranchHeadConflictException.class);
+        assertThat(store.getHeadCommit("draft")).isEqualTo(local);
+
+        var resolved = new UpstreamRebasePlan.ApplyRequest(plan.refTag(), local, upstream, List.of(local),
+                Map.of(local, new RebaseDslConflict.Resolution(conflict.target().blobId(), "both changes\n")));
+        var applied = UpstreamRebasePlan.apply(transfer, "fork", null, "draft", resolved);
+        assertThat(applied.completed()).isTrue();
+        assertThat(store.getProvenance(applied.newHead()).operation()).isEqualTo("resolve-rebase");
+        assertThat(store.getProvenance(applied.newHead()).sources().getFirst().commitId()).isEqualTo(local);
+        assertThat(store.getDslAtCommit(applied.newHead())).isEqualTo("both changes\n");
+        assertThat(store.getHeadCommit("main")).isEqualTo(upstream);
+        assertThat(store.getHeadCommit("draft")).isEqualTo(applied.newHead());
+        assertThat(applied.rewritten()).containsExactly(new DslGitRepository.RebasedCommit(local, applied.newHead()));
+        assertThatThrownBy(() -> UpstreamRebasePlan.apply(transfer, "fork", null, "draft", resolved))
+                .isInstanceOf(BranchHeadConflictException.class);
     }
 
     @Test

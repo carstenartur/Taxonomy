@@ -76,7 +76,7 @@ public class WorkspaceResolver {
         return workspaceContext(resolveUnambiguousRepositoryForRead());
     }
 
-    private static WorkspaceContext workspaceContext(RepositoryContext selected) {
+    public static WorkspaceContext workspaceContext(RepositoryContext selected) {
         return new WorkspaceContext(selected.username(), selected.workspaceId(), selected.branch(), selected.repositoryId());
     }
 

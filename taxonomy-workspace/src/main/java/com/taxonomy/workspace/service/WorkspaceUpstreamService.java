@@ -46,7 +46,7 @@ public class WorkspaceUpstreamService {
         return new Capture(transfer.inspect(), transfer.forkPoint());
     }
 
-    private record WorkingCopy(UserWorkspace workspace, GitUpstreamTransfer transfer) {}
+    record WorkingCopy(UserWorkspace workspace, GitUpstreamTransfer transfer) {}
 
     private WorkspaceActorAccess actors = WorkspaceActorAccess.unavailable();
 
@@ -75,8 +75,15 @@ public class WorkspaceUpstreamService {
 
     @Transactional(readOnly = true)
     public UpstreamRebasePlan rebasePlan(RepositoryContext selected) throws IOException {
-        return UpstreamRebasePlan.read(open(selected, false).transfer(), selected.repositoryId(),
-                selected.workspaceId(), selected.branch());
+        var copy = open(selected, false);
+        var plan = UpstreamRebasePlan.read(copy.transfer(), selected.repositoryId(), selected.workspaceId(), selected.branch());
+        var pending = com.taxonomy.workspace.storage.PersonalRebaseReceipt.read(copy.transfer().target(),
+                selected.repositoryWorkspaceScopeKey());
+        if (pending != null && plan.localCommit() != null && !pending.replay().originalHead().equals(plan.localCommit())
+                && (pending.replay().newHead().equals(plan.localCommit()) || !pending.acknowledgedBy(copy.transfer().target(),
+                copy.workspace().getCurrentCommit(), copy.workspace().getLastIntegratedCommit())))
+            return plan.withRecoverableCommit(pending.replay().newHead());
+        return plan;
     }
 
     @Transactional(readOnly = true)
@@ -140,7 +147,23 @@ public class WorkspaceUpstreamService {
         return open(selected, forUpdate, null);
     }
 
+    WorkingCopy lockForRebase(RepositoryContext selected) throws IOException {
+        if (selected.scope() != RepositoryScope.WORKSPACE) throw unavailable();
+        catalogue.lockCurrentPublicationSource(selected.repositoryId());
+        memberships.lockForRefMutation(selected.repositoryId());
+        if (rows.lockSelectedBranch(selected.workspaceId(), selected.branch()) != 1)
+            throw new BranchHeadConflictException(selected.branch(), null, null, "The selected workspace branch changed");
+        var copy = open(selected, true, null, true);
+        if (!selected.branch().equals(copy.workspace().getCurrentBranch()))
+            throw new BranchHeadConflictException(selected.branch(), null, null, "The selected workspace branch changed");
+        return copy;
+    }
+
     private WorkingCopy open(RepositoryContext selected, boolean forUpdate, String originalActor) {
+        return open(selected, forUpdate, originalActor, false);
+    }
+
+    private WorkingCopy open(RepositoryContext selected, boolean forUpdate, String originalActor, boolean lockedSource) {
         if (selected.scope() != RepositoryScope.WORKSPACE) throw unavailable();
         var workspace = (forUpdate ? rows.findByWorkspaceIdForUpdate(selected.workspaceId())
                 : rows.findByWorkspaceId(selected.workspaceId())).orElseThrow(WorkspaceUpstreamService::unavailable);
@@ -149,13 +172,20 @@ public class WorkspaceUpstreamService {
         if (!owner || workspace.isArchived() || workspace.isShared()
                 || workspace.getProvisioningStatus() != WorkspaceProvisioningStatus.READY
                 || !selected.repositoryId().equals(workspace.getSourceRepositoryId())) throw unavailable();
-        requireSource(selected.repositoryId(), selected.username());
+        Runnable authorize = () -> {
+            if (lockedSource) {
+                if (!actors.owns(selected.username(), workspace) ||
+                        !memberships.canContribute(catalogue.getRepository(selected.repositoryId()), selected.username()))
+                    throw unavailable();
+            } else requireSource(selected.repositoryId(), selected.username());
+        };
+        authorize.run();
         var upstream = new GitUpstreamRef(workspace.getSourceRepositoryId(),
                 workspace.resolveUpstreamBranch(catalogue.getRepository(selected.repositoryId())));
         return new WorkingCopy(workspace, new GitUpstreamTransfer(upstream,
                 repositories.getCentralRepository(upstream.repositoryId()),
                 repositories.openWorkspaceRepository(workspace.getWorkspaceId()), workspace.getBaseCommit(),
-                selected.username(), () -> requireSource(upstream.repositoryId(), selected.username())));
+                selected.username(), authorize));
     }
 
     private void requireSource(String repository, String actor) {
