@@ -18,6 +18,47 @@ class BuildCacheWorkflowContractTest {
         assertThat(docker).doesNotContain("--mount=type=cache,target=/root/.m2/repository");
         assertThat(docker).contains("./mvnw -q -DskipTests package");
     }
+    @Test void packageRetriesOnlyCentralDependencyResetsOnce(@TempDir Path fixture) throws Exception {
+        String docker = Files.readString(root().resolve("Dockerfile"));
+        int nextStage = docker.indexOf("\nFROM otel/");
+        String command = docker.substring(docker.lastIndexOf("\nRUN ", nextStage) + 5, nextStage);
+        Path wrapper = fixture.resolve("mvnw");
+        Files.writeString(wrapper, """
+                #!/bin/sh
+                echo "$*" >> calls
+                if [ "$(wc -l < calls)" -eq 1 ]; then
+                    cat error >&2
+                    exit "$FIRST_EXIT"
+                fi
+                exit "$SECOND_EXIT"
+                """);
+        assertThat(wrapper.toFile().setExecutable(true)).isTrue();
+        String resolution = "[ERROR] Failed to execute goal on project taxonomy-app: Could not resolve dependencies for project com.taxonomy:taxonomy-app:jar:1.0\n";
+        String reset = "Could not transfer artifact example:input:jar:1.0 from/to central (https://repo.maven.apache.org/maven2): Connection reset";
+        String cached = "[ERROR]     example:input:jar:1.0 failed to transfer during a previous attempt. Original error: " + reset;
+        assertPackageAttempts(fixture, command, "", 0, 99, 0, 1);
+        assertPackageAttempts(fixture, command, resolution + cached, 1, 0, 0, 2);
+        assertPackageAttempts(fixture, command, resolution + "[ERROR]     " + reset, 1, 23, 23, 2);
+        assertPackageAttempts(fixture, command, resolution + "[ERROR]     Could not find artifact example:input:jar:1.0", 17, 0, 17, 1);
+        assertPackageAttempts(fixture, command, resolution + cached.replace("from/to central", "from/to private"), 17, 0, 17, 1);
+        assertPackageAttempts(fixture, command, "[ERROR] Compilation failure\n" + cached, 17, 0, 17, 1);
+    }
+
+    private void assertPackageAttempts(Path fixture, String command, String error, int firstExit,
+                                       int secondExit, int expectedExit, int attempts) throws Exception {
+        Files.deleteIfExists(fixture.resolve("calls"));
+        Files.writeString(fixture.resolve("error"), error + "\n");
+        ProcessBuilder process = new ProcessBuilder("bash", "-c", command).directory(fixture.toFile());
+        process.environment().put("FIRST_EXIT", Integer.toString(firstExit));
+        process.environment().put("SECOND_EXIT", Integer.toString(secondExit));
+        process.redirectErrorStream(true).redirectOutput(fixture.resolve("log").toFile());
+        Process build = process.start();
+        assertThat(build.waitFor(10, TimeUnit.SECONDS)).isTrue();
+        assertThat(build.exitValue()).as(error).isEqualTo(expectedExit);
+        assertThat(Files.readAllLines(fixture.resolve("calls"))).containsExactlyElementsOf(
+                Collections.nCopies(attempts, "-q -DskipTests package"));
+    }
+
     @Test void everyDependencyCacheKeysStandalonePomAndWrapperInputs() throws Exception {
         try (var files = Files.list(root().resolve(".github/workflows"))) {
             for (Path file : files.filter(p -> p.toString().endsWith(".yml")).toList()) {
