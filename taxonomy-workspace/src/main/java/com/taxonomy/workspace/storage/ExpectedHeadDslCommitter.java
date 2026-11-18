@@ -89,7 +89,7 @@ public final class ExpectedHeadDslCommitter {
         try {
             result = update.update();
         } catch (IOException failure) {
-            throw DslGitRepository.unwrapRefAuthorization(failure);
+            throw DslGitRepository.unwrapRefUpdateFailure(failure);
         }
         return switch (result) {
             case NEW, FAST_FORWARD, FORCED -> new CommitResult(candidate.name(), headName(expected), result);

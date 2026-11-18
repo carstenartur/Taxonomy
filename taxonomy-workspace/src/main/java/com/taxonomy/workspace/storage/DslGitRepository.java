@@ -1318,14 +1318,14 @@ public class DslGitRepository implements AutoCloseable {
         try {
             result = update.update();
         } catch (IOException failure) {
-            throw unwrapRefAuthorization(failure);
+            throw unwrapRefUpdateFailure(failure);
         }
         requireSuccessfulUpdate(refName, result);
         return result;
     }
 
     /** Preserve a policy denial through JGit's storage exception wrapper. */
-    static IOException unwrapRefAuthorization(IOException failure) {
+    static IOException unwrapRefUpdateFailure(IOException failure) {
         Throwable cause = org.springframework.core.NestedExceptionUtils.getMostSpecificCause(failure);
         if (cause instanceof org.springframework.security.access.AccessDeniedException denied) throw denied;
         return failure;
@@ -1398,7 +1398,7 @@ public class DslGitRepository implements AutoCloseable {
         try {
             result = update.delete();
         } catch (IOException failure) {
-            throw unwrapRefAuthorization(failure);
+            throw unwrapRefUpdateFailure(failure);
         }
         if (expectedHead != null && (result == RefUpdate.Result.LOCK_FAILURE || result == RefUpdate.Result.REJECTED
                 || result == RefUpdate.Result.REJECTED_CURRENT_BRANCH || result == RefUpdate.Result.NEW)) {
