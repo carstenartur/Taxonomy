@@ -1,4 +1,4 @@
-/** Correlates the deliberately rejected durable START with its missing receipt. */
+/** Correlates the deliberately rejected durable START with its missing receipt observations. */
 export function createRejectedAnalysisFixture() {
   let expected;
   let rejectedStarts = 0;
@@ -36,14 +36,17 @@ export function createRejectedAnalysisFixture() {
         return rejectedStarts === 1;
       }
       if (failure.method === 'GET' && failure.path === expected.receiptPath && failure.status === 404) {
+        // A status read may already be in flight when START is rejected. Recovery
+        // then observes the same identity again after that decision; those reads
+        // do not submit another START or create another continuation.
         missingReceipts += 1;
-        return missingReceipts === 1;
+        return true;
       }
       return false;
     },
     assertComplete() {
-      if (!expected || rejectedStarts !== 1 || missingReceipts !== 1) {
-        throw new Error('Expected exactly one injected START rejection and one same-ID missing receipt: '
+      if (!expected || rejectedStarts !== 1 || missingReceipts < 1) {
+        throw new Error('Expected exactly one injected START rejection and at least one same-ID missing receipt: '
           + JSON.stringify({ expected, rejectedStarts, missingReceipts }));
       }
     }

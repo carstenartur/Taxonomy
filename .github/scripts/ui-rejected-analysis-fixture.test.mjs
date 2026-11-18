@@ -26,12 +26,12 @@ const rejectedStart = { path: '/api/analyze', method: 'POST', status: 503,
 const missingReceipt = { path: '/api/analysis-continuations/4f4c29d8-4269-4101-90fc-6d92412cf4d5',
   method: 'GET', status: 404, requestId: 'receipt-request' };
 
-async function audit(failures, { role = 'USER', method = 'POST', body = {
+async function audit(failures, { role = 'USER', method = 'POST', mount = '', body = {
   resumable: true, continuationAction: 'START', continuationId
 } } = {}) {
   let routeHandler;
   let fulfilled = false;
-  const request = { method: () => method, url: () => 'http://127.0.0.1:8080/api/analyze',
+  const request = { method: () => method, url: () => 'http://127.0.0.1:8080' + mount + '/api/analyze',
     postDataJSON: () => body, headers: () => ({ 'x-request-id': 'start-request' }) };
   const route = { request: () => request, fulfill: async response => {
     assert.equal(response.status, 503);
@@ -74,16 +74,42 @@ test('the rejected durable start admits exactly its same-ID missing receipt obse
   await audit([rejectedStart, missingReceipt]);
 });
 
+for (const mount of ['', '/taxonomy']) {
+  test(`the rejected START admits repeated same-ID receipt reads at ${mount || 'the root mount'}`, async () => {
+    await audit([{ ...rejectedStart, path: mount + rejectedStart.path },
+      ...['initial-read', 'decision-observation', 'restored-observation'].map(requestId => ({
+        ...missingReceipt, path: mount + missingReceipt.path, requestId
+      }))], { mount });
+  });
+}
+
+test('a mounted rejection never authorizes the same UUID at a different mount', async () => {
+  await assert.rejects(audit([{ ...rejectedStart, path: '/taxonomy' + rejectedStart.path },
+    missingReceipt], { mount: '/taxonomy' }));
+});
+
+test('the injection cannot reject a second START even with the same identity', async () => {
+  const fixture = fixtureImports.createRejectedAnalysisFixture();
+  let fulfilled = 0;
+  const route = { request: () => ({ method: () => 'POST',
+    url: () => 'http://127.0.0.1:8080/api/analyze',
+    postDataJSON: () => ({ resumable: true, continuationAction: 'START', continuationId })
+  }), fulfill: async () => { fulfilled++; } };
+  await fixture.rejectStart(route);
+  await assert.rejects(fixture.rejectStart(route), /requires one resumable START/);
+  assert.equal(fulfilled, 1);
+});
+
 for (const [label, failures] of [
   ['missing receipt observation', [rejectedStart]],
   ['missing rejected start', [missingReceipt]],
   ['no observed requests', []],
-  ['duplicate receipt observation', [rejectedStart, missingReceipt, { ...missingReceipt }]],
   ['duplicate rejected start', [rejectedStart, { ...rejectedStart }, missingReceipt]],
   ['wrong continuation ID', [rejectedStart, { ...missingReceipt, path: '/api/analysis-continuations/another-id' }]],
   ['wrong observation method', [rejectedStart, { ...missingReceipt, method: 'POST' }]],
   ['wrong observation status', [rejectedStart, { ...missingReceipt, status: 503 }]],
   ['wrong start method', [{ ...rejectedStart, method: 'GET' }, missingReceipt]],
+  ['wrong start status', [{ ...rejectedStart, status: 502 }, missingReceipt]],
   ['another start response', [{ ...rejectedStart, requestId: 'unrelated-request' }, missingReceipt]],
   ['unrelated missing receipt', [rejectedStart, missingReceipt,
     { ...missingReceipt, path: '/api/analysis-continuations/another-id' }]],

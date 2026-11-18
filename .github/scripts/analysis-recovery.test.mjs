@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { webcrypto } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { createRejectedAnalysisFixture } from './ui-rejected-analysis-fixture.mjs';
 const analysisSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis.js', import.meta.url), 'utf8');
 const analysisApiSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/api/analysis-api.js', import.meta.url), 'utf8');
 const source = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-recovery.js', import.meta.url), 'utf8');
@@ -92,6 +93,75 @@ function harness(language = 'en') {
     reject: error=>rejectPending(error), recovery:window.TaxonomyAnalysisRecovery};
 }
 async function settle(){for(let i=0;i<8;i++)await new Promise(resolve=>setImmediate(resolve));}
+
+for (const schedule of ['immediate rejection', 'background read in flight', 'background read already finished']) {
+ test(`rejected START fixture audits real recovery with ${schedule}`, async () => {
+  const h = harness(), fixture = createRejectedAnalysisFixture(), failures = [];
+  let releasePost, releaseRead;
+  const postPending = new Promise(resolve => { releasePost = resolve; });
+  const readPending = new Promise(resolve => { releaseRead = resolve; });
+  const missing = () => ({ ok: false, status: 404, json: async () => ({ detail: 'Unknown continuation' }) });
+  const request = h.window.TaxonomyAnalysisSessionApi.request;
+  h.window.TaxonomyAnalysisSessionApi.request = async (url, options, workspace) => {
+   const response = await request(url, options, workspace);
+   failures.push({ path: url, method: options.method, status: response.status,
+    requestId: 'receipt-' + failures.length });
+   return response;
+  };
+  h.recovery.startManagedAnalysis();
+  const body = h.analyses[0], id = body.continuationId;
+  const rejection = fixture.rejectStart({ request: () => ({
+   method: () => 'POST', url: () => 'http://127.0.0.1:8080/api/analyze', postDataJSON: () => body
+  }), fulfill: async response => {
+   await postPending;
+   failures.push({ path: '/api/analyze', method: 'POST', status: response.status,
+    requestId: response.headers['x-request-id'] });
+   h.reject(Object.assign(new Error('QA provider is temporarily unavailable'), { httpStatus: response.status }));
+  } });
+  try {
+   assert.equal(h.timers.size, 1, 'The real run schedules an observation before its START outcome');
+   if (schedule !== 'immediate rejection') {
+    h.readResponses.push(readPending, missing());
+    const [timerId, callback] = h.timers.entries().next().value;
+    h.timers.delete(timerId);
+    callback();
+    await settle();
+    assert.equal(h.requests.length, 1);
+    if (schedule === 'background read already finished') {
+     releaseRead(missing());
+     await settle();
+     assert.equal(h.S.recoveryContext.syncState, 'UNAVAILABLE');
+    }
+   } else h.readResponses.push(missing());
+   releasePost();
+   await rejection;
+   await settle();
+   if (schedule === 'background read in flight') {
+    assert.equal(h.requests.length, 1, 'afterDecision waits for the earlier in-flight read');
+    releaseRead(missing());
+    await settle();
+   }
+   assert.equal(h.requests.length, schedule === 'immediate rejection' ? 1 : 2);
+   assert.ok(h.requests.every(read => read.url === '/api/analysis-continuations/' + id
+    && read.method === 'GET' && read.workspace === 'ws-a'));
+   assert.equal(h.analyses.length, 1, 'Status observations never resubmit START');
+   assert.equal(body.continuationAction, 'START');
+   assert.equal(body.resumable, true);
+   assert.equal(h.S.recoveryContext.id, id);
+   assert.equal(h.S.recoveryContext.syncState, 'UNAVAILABLE');
+   assert.equal(h.S.recoveryContext.observationStatus, 404);
+   assert.equal(h.timers.size, 0, 'UNAVAILABLE has no further background polling');
+   for (const failure of failures) {
+    assert.equal(fixture.matches(failure), true, 'The real recovery observation must satisfy its fixture: ' + JSON.stringify(failure));
+   }
+   fixture.assertComplete();
+  } finally {
+   releasePost(); releaseRead(missing());
+   await rejection;
+   await settle();
+  }
+ });
+}
 
 for(const action of ['startCopilot','startManagedAnalysis']) for(const refresh of [false,true])
  for(const provider of ['', 'CUSTOM_OPENAI', 'GEMINI']) {
