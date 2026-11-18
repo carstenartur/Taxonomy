@@ -1347,7 +1347,10 @@ function evidenceReceiptHarness({ statusResponse } = {}) {
           .then(response => response.json()).catch(error => { failures.push(error); throw error; });
     }
   });
-  h.window.TaxonomyAnalysisSession = { saveNow: h.context.saveCurrentDraft };
+  h.window.TaxonomyAnalysisSession = { saveNow: h.context.saveCurrentDraft,
+    state: () => ({ workspaceId: h.runtime.workspaceId, version: h.runtime.version,
+      ready: !h.runtime.restoring && !h.runtime.invalidating && !h.runtime.resetting
+        && !h.runtime.conflict && !h.runtime.serverUnconfirmed }) };
   const pageGlobals = { window: h.window, document: h.document,
     fetch: (...args) => h.window.fetch(...args) };
   const page = { evaluate(callback, argument) {
@@ -1576,7 +1579,7 @@ test('a pending draft choice blocks evidence without selecting or resaving a dra
   const requests = f.requests.length;
   f.h.runtime.restoring = true;
   f.h.runtime.draftDecisionPending = true;
-  await assert.rejects(f.evidence.runAxe('analysis-error'), /did not reach a confirmed saved state/);
+  await assert.rejects(f.evidence.runAxe('analysis-error'), /changed or is not ready for evidence capture/);
   assert.equal(f.h.runtime.restoring, true);
   assert.equal(f.h.runtime.draftDecisionPending, true);
   assert.equal(f.requests.length, requests);

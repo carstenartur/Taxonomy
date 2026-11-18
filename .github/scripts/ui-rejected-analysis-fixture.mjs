@@ -17,6 +17,7 @@ export function createRejectedAnalysisFixture() {
       // Capture the actual target before fulfilling: its admission observation
       // can start as soon as the injected response reaches the application.
       expected = {
+        continuationId: body.continuationId,
         startPath: path,
         receiptPath: path.replace(/\/analyze$/, '/analysis-continuations/' + body.continuationId),
         requestId: 'qa-rejected-analysis-' + body.continuationId
@@ -27,6 +28,16 @@ export function createRejectedAnalysisFixture() {
         headers: { 'x-request-id': expected.requestId },
         body: JSON.stringify({ error: 'QA_PROVIDER_UNAVAILABLE', message: 'Deterministic QA failure' })
       });
+    },
+    async waitForObservation(page) {
+      if (!expected) throw new Error('The observation requires a captured START');
+      // Scoring finishes its error UI before Recovery consumes the final status
+      // body. Do not let blocking Axe work overtake that afterDecision read.
+      await page.waitForFunction(id => {
+        const current = window.TaxonomyState?.recoveryContext;
+        return current?.id === id && current.rejectionStatus === 503
+          && current.syncState === 'UNAVAILABLE' && current.observationStatus === 404;
+      }, expected.continuationId, { timeout: 30_000 });
     },
     matches(failure) {
       if (!expected) return false;

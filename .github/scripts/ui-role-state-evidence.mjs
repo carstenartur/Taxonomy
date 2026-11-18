@@ -18,23 +18,68 @@ export function createRoleStateEvidence({ page, outputDir, checks, findings }) {
       if (!required && !session && !context
           && !document.querySelector('script[data-taxonomy-analysis-session]')) return null;
       const runtime = context?.runtime;
-      if (!session || typeof session.saveNow !== 'function'
+      if (!session || typeof session.saveNow !== 'function' || typeof session.state !== 'function'
           || !runtime?.workspaceId
           || typeof context.currentPayload !== 'function'
           || typeof context.comparable !== 'function') {
         throw new Error('Analysis draft persistence contract is unavailable');
       }
 
+      const workspaceId = runtime.workspaceId;
+      const scope = () => JSON.stringify([runtime.workspaceId, runtime.analysisGeneration,
+        runtime.draftGeneration, runtime.draftAcknowledgementGeneration]);
+      const initialScope = scope();
+      function requireReady() {
+        const state = session.state();
+        if (!state?.ready || state.workspaceId !== workspaceId || scope() !== initialScope
+            || runtime.conflict || runtime.restoring || runtime.invalidating || runtime.resetting
+            || runtime.serverUnconfirmed || runtime.draftDecisionPending) {
+          throw new Error('Analysis draft changed or is not ready for evidence capture');
+        }
+      }
+      function cleanPayload() {
+        requireReady();
+        const payload = context.currentPayload();
+        if (runtime.saveInFlight || runtime.saveQueued
+            || context.comparable(payload) !== runtime.lastSavedComparable) {
+          throw new Error('Analysis draft has an unsaved change before evidence capture');
+        }
+        return payload;
+      }
+      function sourceIdentity(payload) {
+        const reference = payload?.analysisReference;
+        if (reference?.workspaceId === workspaceId && reference.continuationId) {
+          return JSON.stringify(['reference', workspaceId, reference.continuationId,
+            reference.operationId, reference.recoveryVersion]);
+        }
+        const recovery = payload?.recoveryContext;
+        return recovery?.workspaceId === workspaceId && recovery.id
+          ? JSON.stringify(['recovery', workspaceId, recovery.id]) : null;
+      }
+
+      requireReady();
       const saved = await session.saveNow();
       if (saved !== true) {
         throw new Error('Analysis draft did not reach a confirmed saved state');
       }
-      if (runtime.conflict) {
-        throw new Error('Analysis draft entered conflict before evidence capture');
+      const before = cleanPayload();
+      const localVersion = runtime.version;
+      const identity = sourceIdentity(before);
+      if (!Number.isSafeInteger(localVersion) || localVersion < 0) {
+        throw new Error('Analysis draft has no confirmed revision before evidence capture');
       }
+      // Read-only recovery observations may rebase a clean browser payload
+      // without writing another draft revision. Preserve the complete receipt
+      // of this exact source/version before awaiting the independent server GET.
+      const acknowledged = (runtime.acknowledgedDraftWrites || []).find(entry => {
+        if (!identity || entry.version !== localVersion || typeof entry.serialized !== 'string') return false;
+        try { return sourceIdentity(JSON.parse(entry.serialized)) === identity; }
+        catch { return false; }
+      });
+      const acknowledgedPayload = acknowledged?.serialized;
 
       const response = await fetch(
-        `/api/analysis-drafts/${encodeURIComponent(runtime.workspaceId)}`,
+        `/api/analysis-drafts/${encodeURIComponent(workspaceId)}`,
         {
           method: 'GET',
           headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
@@ -45,12 +90,17 @@ export function createRoleStateEvidence({ page, outputDir, checks, findings }) {
         throw new Error(`Analysis draft verification returned HTTP ${response.status}`);
       }
       const view = await response.json();
+      const after = cleanPayload();
+      if (runtime.version !== localVersion || sourceIdentity(after) !== identity) {
+        throw new Error('Analysis draft revision or source changed during evidence verification');
+      }
       return {
-        workspaceId: runtime.workspaceId,
-        localVersion: runtime.version,
+        workspaceId,
+        localVersion,
         remoteVersion: view.version,
-        equivalent: context.comparable(context.currentPayload())
-          === context.comparable(view.payload)
+        comparison: acknowledgedPayload === undefined ? 'current-payload' : 'acknowledged-write',
+        equivalent: view.workspaceId === workspaceId && context.comparable(view.payload)
+          === (acknowledgedPayload ?? context.comparable(after))
       };
     }, state === 'analysis-success');
 

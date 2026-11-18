@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import vm from 'node:vm';
 
 const flow = await readFile(new URL('./ui-role-state-flow.mjs', import.meta.url), 'utf8');
 // Run the actual injection and final audit without starting a browser. The only
@@ -138,3 +139,42 @@ for (const [label, body] of [
     await assert.rejects(audit([rejectedStart, missingReceipt], { body }), /resumable START/);
   });
 }
+
+test('rejected-analysis evidence waits for the observation before invoking blocking Axe', async () => {
+  const start = flow.indexOf("  passed('rejected analysis finalizes live progress and disables cancellation');");
+  const endMarker = "  await saveState('analysis-error');";
+  const end = flow.indexOf(endMarker, start) + endMarker.length;
+  assert.ok(start >= 0 && end > start);
+  const run = new AsyncFunction('rejectedAnalysis', 'page', 'passed', 'runAxe', 'saveState', flow.slice(start, end));
+  let release, observed = false;
+  const pending = new Promise(resolve => { release = resolve; });
+  const work = run({ waitForObservation: async () => { await pending; observed = true; } }, {}, () => {},
+    async () => assert.equal(observed, true, 'Axe must not overtake the final recovery observation'), async () => {});
+  release();
+  await work;
+});
+
+test('the observation wait is bound to the actual intercepted UUID and final rejection status', async () => {
+  const fixture = fixtureImports.createRejectedAnalysisFixture();
+  await fixture.rejectStart({ request: () => ({ method: () => 'POST',
+    url: () => 'https://taxonomy.example/api/analyze',
+    postDataJSON: () => ({ resumable: true, continuationAction: 'START', continuationId }) }),
+  fulfill: async () => {} });
+  const final = { id: continuationId, rejectionStatus: 503, syncState: 'UNAVAILABLE', observationStatus: 404 };
+  const changes = [{ id: 'another-id' }, { rejectionStatus: 409 },
+    { syncState: 'CHECKING' }, { observationStatus: 503 }];
+  await fixture.waitForObservation({ waitForFunction: async (callback, id, options) => {
+    assert.equal(id, continuationId);
+    assert.equal(options.timeout, 30_000);
+    const evaluate = value => vm.runInNewContext('(' + callback.toString() + ')(id)', {
+      window: { TaxonomyState: { recoveryContext: value } }, id
+    });
+    assert.equal(evaluate(final), true);
+    for (const change of changes) assert.equal(evaluate({ ...final, ...change }), false);
+    assert.equal(Boolean(evaluate(null)), false);
+  } });
+});
+
+test('an observation cannot be awaited before any START was captured', async () => {
+  await assert.rejects(fixtureImports.createRejectedAnalysisFixture().waitForObservation({}), /captured START/);
+});

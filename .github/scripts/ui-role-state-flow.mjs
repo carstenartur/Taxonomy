@@ -637,6 +637,7 @@ export async function runRoleStateFlow({
   });
   passed('rejected analysis finalizes live progress and disables cancellation');
   passed('analysis provider error retains hierarchy and retry action');
+  await rejectedAnalysis.waitForObservation(page);
   await runAxe('analysis-error');
   await saveState('analysis-error');
 
