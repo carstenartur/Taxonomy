@@ -938,7 +938,7 @@ for (const [prefix, status] of [['', 200], ['/teams/blue/taxonomy', 200], ['/tax
 }
 
 for (const [driver, marker] of [
-  ['ui-role-state-flow.mjs', "body: JSON.stringify({ error: 'QA_PROVIDER_UNAVAILABLE'"],
+  ['ui-role-state-flow.mjs', 'route => rejectedAnalysis.rejectStart(route)'],
   ['ui-primary-session-workflow.mjs', 'await new Promise(resolve => setTimeout(resolve, 3_000))'],
   ['ui-special-modes-acceptance.mjs', "status: 'PARTIAL'"]
 ]) {

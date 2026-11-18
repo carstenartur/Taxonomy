@@ -316,7 +316,7 @@ class ScreenshotGeneratorIT {
                 });
     }
 
-    private void waitForSuccessfulAnalysis() {
+    private void waitForSuccessfulAnalysis(String continuationId) {
         wait(120).withMessage(() -> "Analysis did not finish: "
                 + driver.findElement(By.id("statusArea")).getText()).until(d -> {
             String status = (String) ((JavascriptExecutor) d).executeScript(
@@ -324,7 +324,70 @@ class ScreenshotGeneratorIT {
             if (status == null || "IN_PROGRESS".equals(status)) return false;
             Assertions.assertEquals("SUCCESS", status,
                     "Analysis failed: " + d.findElement(By.id("statusArea")).getText());
-            return !d.findElements(By.cssSelector("#statusArea .alert-success")).isEmpty();
+            return hasSuccessfulAnalysis() && Boolean.TRUE.equals(((JavascriptExecutor) d).executeScript("""
+                    const state = window.TaxonomyState;
+                    return state.analysisRecovery?.id === arguments[0]
+                        && state.recoveryContext?.id === arguments[0]
+                        && state.analysisRecovery?.state === 'COMPLETED'
+                        && !state.analysisRecovery.openQuestions?.length
+                        && state.recoveryContext.confirmed === true
+                        && !state.recoveryContext.evidenceConflict
+                        && window.TaxonomyAnalysisRecovery.isStatusKnown();
+                    """, continuationId));
+        });
+    }
+
+    /** Read the real durable result in this tab's workspace; no score data is manufactured. */
+    private Map<?, ?> completedAnalysisSnapshot(String continuationId) {
+        Assertions.assertNotNull(continuationId, "A screenshot analysis needs a durable receipt");
+        String workspace = (String) ((JavascriptExecutor) driver).executeScript(
+                "return window.TaxonomyAnalysisSession.state().workspaceId;");
+        Assertions.assertNotNull(workspace, "A screenshot analysis needs its workspace");
+        Map<?, ?> snapshot = requestFixture("/api/analysis-continuations/" + continuationId
+                + "?workspaceId=" + URLEncoder.encode(workspace, StandardCharsets.UTF_8), "GET", null, null,
+                Map.of("X-Taxonomy-Workspace-Id", workspace));
+        Map<?, ?> recovery = (Map<?, ?>) snapshot.get("recovery");
+        Map<?, ?> request = (Map<?, ?>) snapshot.get("request");
+        Map<?, ?> result = (Map<?, ?>) snapshot.get("result");
+        Assertions.assertNotNull(recovery, "Saved analysis has no receipt");
+        Assertions.assertNotNull(request, "Saved analysis has no admitted input");
+        Assertions.assertNotNull(result, "Saved analysis has no result");
+        Assertions.assertEquals(continuationId, recovery.get("id"));
+        Assertions.assertEquals("COMPLETED", recovery.get("state"));
+        Assertions.assertEquals("SUCCESS", result.get("status"));
+        Assertions.assertEquals(REQUIREMENT_TEXT, request.get("businessText"));
+        return snapshot;
+    }
+
+    private void assertSavedAnalysisVisible(Map<?, ?> snapshot) {
+        Map<?, ?> recovery = (Map<?, ?>) snapshot.get("recovery");
+        Map<?, ?> result = (Map<?, ?>) snapshot.get("result");
+        Map<?, ?> visible = (Map<?, ?>) ((JavascriptExecutor) driver).executeScript("""
+                const state = window.TaxonomyState;
+                return {recovery: state.analysisRecovery, raw: state.currentRawScores,
+                    effective: state.currentEffectiveScores, displayed: state.currentScores,
+                    reasons: state.currentReasons, scope: state.lastAnalysisScope,
+                    model: state.currentModelBinding, provider: state.analysisProviderId};
+                """);
+        Map<?, ?> visibleRecovery = (Map<?, ?>) visible.get("recovery");
+        for (String field : List.of("id", "version", "state", "completedCalls")) {
+            Assertions.assertEquals(recovery.get(field), visibleRecovery.get(field), "Saved receipt " + field);
+        }
+        Object effective = result.get("effectiveScores") == null ? result.get("scores") : result.get("effectiveScores");
+        Assertions.assertEquals(result.get("rawScores"), visible.get("raw"), "Saved raw scores");
+        Assertions.assertEquals(effective, visible.get("effective"), "Saved effective scores");
+        Assertions.assertEquals(effective, visible.get("displayed"), "Displayed scores must be the saved effective scores");
+        Assertions.assertEquals(result.get("reasons"), visible.get("reasons"), "Saved explanations");
+        Assertions.assertEquals(result.get("analysisScope"), visible.get("scope"), "Saved taxonomy scope");
+        Assertions.assertEquals(result.get("modelBinding"), visible.get("model"), "Saved model basis");
+        Assertions.assertEquals(result.get("analysisProviderId"), visible.get("provider"), "Saved provider authority");
+    }
+
+    private String screenshotAnalysisPlan() {
+        return wait(15).withMessage("Screenshot analysis must have a confirmed admission decision").until(d -> {
+            String kind = (String) ((JavascriptExecutor) d).executeScript(
+                    "return window.TaxonomyAnalysisRecovery.startPlan(true).kind;");
+            return "OBSERVE".equals(kind) ? null : kind;
         });
     }
 
@@ -648,13 +711,47 @@ class ScreenshotGeneratorIT {
                 textarea, REQUIREMENT_TEXT);
         WebElement analyzeBtn = driver.findElement(By.id("analyzeBtn"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", analyzeBtn);
-        // Observe replacement of the real score envelope to reject stale previous results.
-        js("window.__screenshotPreviousScores = window.TaxonomyState.currentScores;");
-        js("arguments[0].click();", analyzeBtn);
-        wait(15).withMessage("Analyze must start a new score envelope").until(d ->
-                Boolean.TRUE.equals(((JavascriptExecutor) d).executeScript(
-                        "return window.TaxonomyState.currentScores !== window.__screenshotPreviousScores;")));
-        waitForSuccessfulAnalysis();
+        String plan = screenshotAnalysisPlan();
+        String previousId = (String) ((JavascriptExecutor) driver).executeScript(
+                "return window.TaxonomyState.analysisRecovery?.id || null;");
+        Map<?, ?> retained = null;
+        if ("CONFLICT".equals(plan)) {
+            // The preceding interactive capture intentionally replaced visible evidence.
+            // Resolve that specific conflict through the user's explicit adoption action.
+            retained = completedAnalysisSnapshot(previousId);
+            if (driver.findElement(By.id("analysisRecoveryDialog")).getAttribute("open") == null) {
+                clickVisible(analyzeBtn);
+            }
+            clickVisible(wait(5).until(ExpectedConditions.elementToBeClickable(By.id("analysisRecoveryLoadResult"))));
+            waitForSuccessfulAnalysis(previousId);
+            assertSavedAnalysisVisible(retained);
+            clickVisible(driver.findElement(By.id("analysisRecoveryClose")));
+            wait(5).until(d -> d.findElement(By.id("analysisRecoveryDialog")).getAttribute("open") == null);
+            plan = screenshotAnalysisPlan();
+        }
+        Assertions.assertTrue(List.of("NEW", "EXTEND", "RELATIONS", "REUSE").contains(plan),
+                "Unexpected screenshot analysis admission: " + plan);
+        if ("REUSE".equals(plan) && retained == null) retained = completedAnalysisSnapshot(previousId);
+        clickVisible(analyzeBtn);
+        String expectedId = "REUSE".equals(plan) ? previousId : wait(15)
+                .withMessage("New analysis work must acquire its own durable receipt").until(d -> {
+                    String id = (String) ((JavascriptExecutor) d).executeScript(
+                            "return window.TaxonomyState.analysisRecovery?.id || null;");
+                    return id == null || id.equals(previousId) ? null : id;
+                });
+        waitForSuccessfulAnalysis(expectedId);
+        Map<?, ?> accepted = completedAnalysisSnapshot(expectedId);
+        if ("REUSE".equals(plan)) {
+            Map<?, ?> before = (Map<?, ?>) retained.get("recovery");
+            Map<?, ?> after = (Map<?, ?>) accepted.get("recovery");
+            for (String field : List.of("id", "version", "completedCalls")) {
+                Assertions.assertEquals(before.get(field), after.get(field), "Reuse must preserve receipt " + field);
+            }
+        }
+        assertSavedAnalysisVisible(accepted);
+        Assertions.assertEquals("REUSE", screenshotAnalysisPlan(), "Completed evidence must cover the current analysis basis");
+        Assertions.assertNull(driver.findElement(By.id("analysisRecoveryDialog")).getAttribute("open"),
+                "A confirmed ordinary analysis must leave the next screenshot controls accessible");
     }
 
     private void js(String script, Object... args) {

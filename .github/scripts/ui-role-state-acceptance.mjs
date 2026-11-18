@@ -4,7 +4,7 @@ import { openRoleSession } from './ui-role-fixtures.mjs';
 import { createRoleStateEvidence } from './ui-role-state-evidence.mjs';
 import { captureFailureEvidence } from './ui-evidence-policy.mjs';
 import { measureCatalogueSearch } from './ui-catalogue-search-budget.mjs';
-import { isolateRoleStateScenario } from './ui-role-state-isolation.mjs';
+import { isolateRoleStateScenario, isolateCompletedRoleStateScenario } from './ui-role-state-isolation.mjs';
 import { runRoleStateFlow } from './ui-role-state-flow.mjs';
 import { runSystemInformationAcceptance } from './system-information-acceptance.mjs';
 import { createConsoleErrorLedger, createNavigationPollEvidence } from './ui-navigation-poll-evidence.mjs';
@@ -247,6 +247,17 @@ try {
     page, role, zoom, forcedColors, checks, httpFailures,
     externalRequests, consoleErrors, evidence
   });
+  taskMeasurements.failedStep = 'isolating completed role-state scenario';
+  const previousIsolationHttpFailures = httpFailures.length;
+  const previousIsolationConsoleErrors = consoleErrors.length;
+  const previousIsolationExternalRequests = externalRequests.length;
+  await isolateCompletedRoleStateScenario(page);
+  if (httpFailures.length !== previousIsolationHttpFailures
+      || consoleErrors.length !== previousIsolationConsoleErrors
+      || externalRequests.length !== previousIsolationExternalRequests) {
+    throw new Error('Completed role-state isolation introduced HTTP, console or external-request failures');
+  }
+  checks.push('isolated completed role-state draft before independent workflows');
   if (role === 'ADMIN') {
     taskMeasurements.failedStep = 'system-information browser acceptance';
     const previousSystemHttpFailures = httpFailures.length;

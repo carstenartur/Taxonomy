@@ -279,10 +279,9 @@
         if (!preserveArchitecture) {
             const archPanel = document.getElementById('architectureViewPanel');
             if (archPanel) { archPanel.style.display = 'none'; }
+            const sugPanel = document.getElementById('suggestedRelationsPanel');
+            if (sugPanel) { sugPanel.style.display = 'none'; }
         }
-        // Also hide suggested relations
-        const sugPanel = document.getElementById('suggestedRelationsPanel');
-        if (sugPanel) { sugPanel.style.display = 'none'; }
     }
 
     function updateAnalysisLog(info) {
@@ -472,6 +471,7 @@
     function applyAnalysisResult(result, settings) {
         var text = settings.text, requestedScope = settings.requestedScope, provider = settings.provider;
         var options = settings.options || {}, analysisStart = settings.analysisStart || new Date();
+        var replacesDerivedEvidence = Boolean(options.continuation?.taxonomySourceContinuationId);
         setAnalyzing(false);
         if (window.__TaxonomyAnalysisSessionContext) window.__TaxonomyAnalysisSessionContext.runtime.preserveRestoredEvidence = false;
         if (Array.isArray(result.tree) && result.tree.length) S.taxonomyData = result.tree;
@@ -492,7 +492,7 @@
         S.lastAnalysisStatus = result.status || 'UNKNOWN';
         S.storedBusinessText = text;
         S.lastAnalyzedText = text;
-        if (result.architectureView) S.currentArchView = result.architectureView;
+        if (result.architectureView || replacesDerivedEvidence) S.currentArchView = result.architectureView || null;
         B().renderView(S.taxonomyData, S.currentScores);
 
         console.log('[Taxonomy] Analysis result:', result);
@@ -561,14 +561,14 @@
         var hasRelationEvidence = Object.prototype.hasOwnProperty.call(result, 'relationSearchReport')
             || (result.architectureView && Object.prototype.hasOwnProperty.call(
                 result.architectureView, 'relationSearchReport'));
-        if (!options.recoveryManaged || hasRelationEvidence) {
+        if (!options.recoveryManaged || hasRelationEvidence || replacesDerivedEvidence) {
             acceptRelationSearchReport(result);
         }
 
         // Render architecture view if present
         if (result.architectureView) {
             renderArchitectureView(result.architectureView);
-        } else if (!options.recoveryManaged) {
+        } else if (!options.recoveryManaged || replacesDerivedEvidence) {
             renderArchitectureView(null);
         }
         // Render suggested relationships from provisional relations
@@ -641,8 +641,7 @@
             return;
         }
 
-        if (!options.continuation && requestedScope?.mode === 'TAXONOMIES_ONLY'
-                && window.TaxonomyAnalysisRecovery?.startManagedAnalysis) {
+        if (!options.continuation && window.TaxonomyAnalysisRecovery?.startManagedAnalysis) {
             return window.TaxonomyAnalysisRecovery.startManagedAnalysis();
         }
 
@@ -770,7 +769,7 @@
 
         Object.assign(requestBody, window.TaxonomyArchitectureLifecycle?.selectedAnalysisModel?.());
         if (options.continuation) requestBody = Object.assign({}, options.continuation);
-        else if (requestBody.includeArchitectureView) {
+        else {
             requestBody.resumable = true;
             requestBody.continuationId = operationId;
             requestBody.continuationAction = 'START';
@@ -1718,6 +1717,12 @@
     }
 
     function renderArchitectureView(view) {
+        var summaryButton = document.getElementById('viewSummary');
+        if (summaryButton) summaryButton.style.display = view ? '' : 'none';
+        if (!view && S.currentView === 'summary') {
+            if (typeof B().switchView === 'function') B().switchView('list');
+            else S.currentView = 'list';
+        }
         const panel = document.getElementById('architectureViewPanel');
         const content = document.getElementById('architectureViewContent');
         const placeholder = document.getElementById('architecturePlaceholder');
@@ -2142,6 +2147,10 @@
      * Renders the Suggested Relationships panel from provisional relation hypotheses.
      */
     function renderSuggestedRelations(provisionalRelations) {
+        provisionalRelations = Array.isArray(provisionalRelations) ? provisionalRelations : [];
+        // This is also the canonical state saved by the draft lifecycle. Empty
+        // accepted evidence replaces the old array even when its panel is absent.
+        window._currentProvisionalRelations = provisionalRelations;
         var panel = document.getElementById('suggestedRelationsPanel');
         var content = document.getElementById('suggestedRelationsContent');
         var badge = document.getElementById('suggestedRelationsBadge');
@@ -2149,6 +2158,8 @@
 
         if (!provisionalRelations || provisionalRelations.length === 0) {
             panel.style.display = 'none';
+            content.innerHTML = '';
+            if (badge) badge.textContent = '0';
             return;
         }
 
@@ -2195,8 +2206,6 @@
         content.innerHTML = html;
         panel.style.display = '';
 
-        // Store for action handlers
-        window._currentProvisionalRelations = provisionalRelations;
         // The Git adapter owns Undo commands and reinstalls them on restored rows.
         window.TaxonomyHypothesisReview?.renderRestoredState();
     }

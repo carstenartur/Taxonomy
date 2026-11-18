@@ -5,6 +5,7 @@ import {
   openSharedNavigation,
   waitForSharedNavigationToClose
 } from './ui-role-fixtures.mjs';
+import { createRejectedAnalysisFixture } from './ui-rejected-analysis-fixture.mjs';
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -617,11 +618,9 @@ export async function runRoleStateFlow({
   await sunburst.scrollIntoViewIfNeeded();
   await sunburst.click();
   await page.waitForFunction(() => window.TaxonomyState.currentView === 'sunburst');
-  await page.route(url => url.pathname.endsWith('/api/analyze'), route => route.fulfill({
-    status: 503,
-    contentType: 'application/json',
-    body: JSON.stringify({ error: 'QA_PROVIDER_UNAVAILABLE', message: 'Deterministic QA failure' })
-  }), { times: 1 });
+  const rejectedAnalysis = createRejectedAnalysisFixture();
+  await page.route(url => url.pathname.endsWith('/api/analyze'),
+    route => rejectedAnalysis.rejectStart(route), { times: 1 });
   await page.locator('#analyzeBtn').click();
   await page.waitForFunction(() => {
     const text = document.querySelector('#statusArea')?.textContent?.toLowerCase() || '';
@@ -638,6 +637,7 @@ export async function runRoleStateFlow({
   });
   passed('rejected analysis finalizes live progress and disables cancellation');
   passed('analysis provider error retains hierarchy and retry action');
+  await rejectedAnalysis.waitForObservation(page);
   await runAxe('analysis-error');
   await saveState('analysis-error');
 
@@ -945,7 +945,7 @@ export async function runRoleStateFlow({
   }
 
   const expectedHttpFailure = failure => {
-    if (failure.status === 503 && failure.path === '/api/analyze') return true;
+    if (rejectedAnalysis.matches(failure)) return true;
     if (failure.path === '/api/proposals/from-hypothesis') {
       if (role === 'USER' && failure.status === 403) return true;
       if (role !== 'USER' && failure.status === 409) return true;
@@ -953,6 +953,7 @@ export async function runRoleStateFlow({
     return false;
   };
   const unexpected = httpFailures.filter(failure => !expectedHttpFailure(failure));
+  rejectedAnalysis.assertComplete();
   assert(unexpected.length === 0, `Unexpected HTTP failures: ${JSON.stringify(unexpected)}`);
   passed('expected HTTP error states only');
   assert(externalRequests.length === 0,

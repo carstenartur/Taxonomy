@@ -9,6 +9,10 @@ const source = readFileSync(new URL('../../taxonomy-app/src/main/resources/stati
 const recoverySource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-recovery.js', import.meta.url), 'utf8');
 function fixture(options = {}) {
     const statuses = [], calls = [], observations = [], renders = [], order = [], progressActions = [];
+    const recoveryUi = { opened: false, openCount: 0, message: '',
+        update(message) { this.message = message; }, close() { this.opened = false; },
+        open() { this.opened = true; this.openCount++; }, isOpen() { return this.opened; },
+        error(message) { statuses.push(['error', message]); }, isDismissed: () => false };
     let rejectRequest, activeMonitor;
     const requests = [];
     const sessionState = { ready: true, workspaceId: 'workspace-a' };
@@ -47,8 +51,7 @@ function fixture(options = {}) {
     function loadRecovery() {
         window.__TaxonomyAnalysisSessionContext = { S: state,
             runtime: { workspaceId: sessionState.workspaceId, analysisGeneration: 0 }, language: () => 'en' };
-        window.TaxonomyRecoveryViewport = { mount: () => ({ update() {}, close() {},
-            error(message) { statuses.push(['error', message]); }, isDismissed: () => false }) };
+        window.TaxonomyRecoveryViewport = { mount: actions => { recoveryUi.actions = actions; return recoveryUi; } };
         document.addEventListener = () => {};
         textField.addEventListener = () => {};
         sandbox.sessionStorage = { getItem: () => null, setItem() {}, removeItem() {} };
@@ -58,9 +61,110 @@ function fixture(options = {}) {
         return window.TaxonomyAnalysisRecovery;
     }
     return { window, state, sessionState, statuses, calls, observations, progress, renders, order, loadRecovery,
-        requests, progressActions, sandbox, rejectRequest: error => error.httpStatus
+        requests, progressActions, sandbox, recoveryUi, rejectRequest: error => error.httpStatus
             ? requests.at(-1).resolve(Response.json({detail: error.message}, {status: error.httpStatus}))
             : rejectRequest(error) };
+}
+
+for (const [action, failure, observation, opens] of [
+    ['analyze', 503, 404, false],
+    ['copilot', 503, 404, true],
+    ['analyze', 'network', 404, true],
+    ['analyze', 503, 503, true],
+    ['analyze', 503, 403, true],
+    ['analyze', 503, 'RUNNING', true],
+    ['analyze', 503, 'PAUSED', true],
+    ['analyze', 503, 'COMPLETED', true]
+]) {
+    test(`recovery presentation after ${action} ${failure} and observed ${observation}`, async () => {
+        const f = fixture({ crypto: webcrypto }); f.progress();
+        f.window.TaxonomyAnalysisSession = { state: () => f.sessionState };
+        const recovery = f.loadRecovery();
+        vm.runInContext(readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/api/analysis-session-api.js', import.meta.url), 'utf8'), f.sandbox);
+        const start = () => action === 'copilot' ? recovery.startCopilot() : f.window.TaxonomyScoring.runAnalysis();
+        const work = start(), sent = JSON.parse(f.calls[0][1].body), target = f.state.recoveryContext;
+        if (failure === 'network') f.requests[0].reject(new TypeError('Failed to fetch'));
+        else f.requests[0].resolve(Response.json({ error: 'QA_PROVIDER_UNAVAILABLE', message: 'Deterministic QA failure' }, { status: failure }));
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(f.calls.length, 2, 'the rejected start must read its original continuation, without another POST');
+        assert.equal(f.calls[1][1].method, 'GET');
+        assert.equal(f.calls[1][0], '/api/analysis-continuations/' + sent.continuationId + '?workspaceId=workspace-a');
+        assert.equal(new Headers(f.calls[1][1].headers).get('X-Taxonomy-Workspace-Id'), 'workspace-a');
+        const openedBeforeRead = f.recoveryUi.openCount;
+        if (typeof observation === 'number') f.requests[1].resolve(Response.json({ detail: 'Analysis continuation unavailable' }, { status: observation }));
+        else {
+            const status = { id: sent.continuationId, version: 3, state: observation, completedCalls: 1,
+                openQuestions: observation === 'PAUSED' ? [{ key: 'open', nodes: ['BP'], skipped: false }] : [] };
+            f.requests[1].resolve(Response.json({ request: sent, recovery: status,
+                result: observation === 'RUNNING' ? null : { status: observation === 'COMPLETED' ? 'SUCCESS' : 'PARTIAL',
+                    recovery: status, rawScores: { BP: 80 }, scores: { BP: 80 }, reasons: { BP: 'Accepted evidence' }, analysisScope: sent.analysisScope } }));
+        }
+        await work;
+        assert.equal(f.recoveryUi.opened, opens);
+        assert.equal(f.state.recoveryContext, target); assert.equal(target.id, sent.continuationId);
+        assert.equal(f.calls.length, 2, 'observation never repeats the provider request');
+        if (!opens) {
+            assert.equal(openedBeforeRead, 0, 'ordinary rejection waits for its status read without trapping navigation');
+            assert.equal(f.recoveryUi.openCount, 0, 'an unregistered ordinary start is reported inline');
+            assert.ok(f.statuses.some(([kind, message]) => kind === 'danger' && message.includes('Deterministic QA failure')));
+            assert.equal(target.confirmed, undefined); assert.equal(target.observationStatus, 404);
+            assert.equal(target.syncState, 'UNAVAILABLE'); assert.ok(f.recoveryUi.message);
+            f.recoveryUi.actions.open(); assert.equal(f.recoveryUi.opened, true, 'the explicit status action remains available');
+            start(); assert.equal(f.calls.length, 2, 'keeping navigation usable must not authorize a fresh start');
+            assert.equal(f.state.recoveryContext, target);
+        }
+    });
+}
+
+test('recovery presentation keeps ordinary successful analysis non-modal', async () => {
+    const f = fixture({ crypto: webcrypto }); f.progress();
+    f.window.TaxonomyAnalysisSession = { state: () => f.sessionState }; f.loadRecovery();
+    const work = f.window.TaxonomyScoring.runAnalysis(), sent = JSON.parse(f.calls[0][1].body);
+    f.requests[0].resolve(Response.json({ status: 'SUCCESS', rawScores: { BP: 80 }, scores: { BP: 80 }, reasons: {},
+        recovery: { id: sent.continuationId, version: 3, state: 'COMPLETED', openQuestions: [] } }));
+    await work;
+    assert.equal(f.recoveryUi.openCount, 0); assert.equal(f.recoveryUi.opened, false);
+    assert.equal(f.state.currentRawScores.BP, 80); assert.equal(f.state.recoveryContext.confirmed, true);
+    f.recoveryUi.actions.open(); assert.equal(f.recoveryUi.opened, true);
+});
+
+for (const language of ['en', 'de']) for (const action of ['analyze', 'copilot']) for (const extension of [false, true]) {
+    test(`completed reuse presentation ${language} ${action} from restored ${extension ? 'extension' : 'ordinary'} source`, async () => {
+        const f = fixture({ crypto: webcrypto, includeArchitecture: true }); f.progress();
+        f.window.TaxonomyAnalysisSession = { state: () => f.sessionState };
+        let ready; f.window.TaxonomyAnalysisSessionReady = new Promise(resolve => { ready = resolve; });
+        const scope = { taxonomyRoots: ['BP'], mode: 'FULL' };
+        f.window.TaxonomyAnalysisScope = { read: () => scope, acceptResult: value => { f.state.lastAnalysisScope = value; } };
+        const recovery = f.loadRecovery();
+        f.window.__TaxonomyAnalysisSessionContext.language = () => language;
+        vm.runInContext(readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/api/analysis-session-api.js', import.meta.url), 'utf8'), f.sandbox);
+        const id = webcrypto.randomUUID(), request = { businessText: 'communications', provider: null,
+            resumable: true, continuationId: id, continuationAction: 'START', analysisScope: scope, includeArchitectureView: true };
+        if (extension) Object.assign(request, { taxonomySourceContinuationId: webcrypto.randomUUID(), taxonomySourceVersion: 3, taxonomyRequestedScope: scope });
+        const status = { id, version: 7, state: 'COMPLETED', completedCalls: 39, openQuestions: [] };
+        const saved = { request, recovery: status, result: { status: 'SUCCESS', recovery: status,
+            rawScores: { BP: 71.125 }, scores: { BP: 71.125 }, reasons: { BP: 'Saved explanation.\nKeep verbatim.' },
+            analysisScope: scope, analysisProviderId: 'CUSTOM_OPENAI', analysisCoverage: { failedOrBlockedNodes: 0, nodes: {} },
+            tree: [{ code: 'BP', children: [] }], architectureView: { title: 'Retained architecture' } } };
+        const storage = new Map([['taxonomy.recovery.active.v1', JSON.stringify({ id, workspaceId: 'workspace-a' })]]);
+        f.sandbox.sessionStorage = { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) };
+        ready(); await new Promise(resolve => setImmediate(resolve));
+        assert.equal(f.calls.length, 1); assert.equal(f.calls[0][1].method, 'GET');
+        f.requests[0].resolve(Response.json(saved)); await new Promise(resolve => setImmediate(resolve));
+        const source = f.state.recoveryContext;
+        assert.equal(source.noFollowups, extension, 'restored source history must not decide the current button presentation');
+        assert.equal(recovery.startPlan(action === 'analyze').kind, 'REUSE');
+        const retained = JSON.stringify([f.state.currentRawScores, f.state.currentReasons, f.state.currentArchView]);
+        if (action === 'copilot') recovery.startCopilot(); else f.window.TaxonomyScoring.runAnalysis();
+        assert.equal(f.calls.length, 1, 'completed reuse must not start a provider request or another observation');
+        assert.equal(f.state.recoveryContext, source); assert.equal(source.id, id);
+        assert.equal(JSON.stringify([f.state.currentRawScores, f.state.currentReasons, f.state.currentArchView]), retained);
+        assert.equal(f.recoveryUi.opened, action === 'copilot');
+        assert.equal(f.statuses.at(-1)[0], 'info');
+        assert.match(f.statuses.at(-1)[1], language === 'de' ? /Analyse abgeschlossen.*bereits vollständig bewertet/ : /Analysis complete.*already fully assessed/);
+        f.recoveryUi.actions.open(); assert.equal(f.recoveryUi.opened, true, 'explicit Analysis status remains available');
+        assert.equal(f.calls.length, 1); assert.equal(source.noFollowups, extension);
+    });
 }
 
 for (const phase of ['no lifecycle', 'progress loaded before lifecycle', 'loader still running']) {
@@ -114,12 +218,193 @@ test('ordinary architecture analysis requests a real retained server continuatio
     assert.equal(request.businessText,'communications');assert.equal(request.includeArchitectureView,true);
     assert.equal(f.calls.length,1);
 });
-test('ordinary analysis with architecture disabled keeps its opt-out and does not create an unnecessary continuation', () => {
+test('ordinary analysis with architecture disabled keeps its opt-out and a reusable continuation', () => {
     const f=fixture({includeArchitecture:false});f.progress();f.window.TaxonomyAnalysisSession={state:()=>f.sessionState};
     f.window.TaxonomyScoring.runAnalysis();
     const request=JSON.parse(f.calls[0][1].body);
-    assert.equal(request.includeArchitectureView,false);assert.equal(request.resumable,undefined);
-    assert.equal(request.continuationId,undefined);
+    assert.equal(request.includeArchitectureView,false);assert.equal(request.resumable,true);
+    assert.equal(request.continuationId,new Headers(f.calls[0][1].headers).get('X-Analysis-Operation-Id'));
+});
+
+for (const action of ['copilot','analyze']) for (const roots of [['CP'],[]]) {
+ test(`${action} sends the saved taxonomy source and selected work through the real analysis transport`,async()=>{
+    const f=fixture({crypto:webcrypto,includeArchitecture:false});f.progress();
+    f.window.TaxonomyAnalysisSession={state:()=>f.sessionState};
+    f.state.taxonomyData=[{code:'BP'},{code:'CP'}];
+    let scope={taxonomyRoots:['BP'],mode:'TAXONOMIES_ONLY'};
+    f.window.TaxonomyAnalysisScope={read:()=>scope,acceptResult:value=>{f.state.lastAnalysisScope=value;},restrictsGlobalAnalysis:()=>true};
+    const recovery=f.loadRecovery();
+    const start=()=>action==='copilot'?recovery.startCopilot():f.window.TaxonomyScoring.runAnalysis();
+    const first=start();const initial=JSON.parse(f.calls[0][1].body);
+    const sourceResult={status:'SUCCESS',rawScores:{BP:80},scores:{BP:80},reasons:{BP:'Accepted BP explanation'},
+      analysisScope:scope,analysisCoverage:{failedOrBlockedNodes:0,nodes:{}},
+      recovery:{id:initial.continuationId,version:7,state:'COMPLETED',openQuestions:[]}};
+    f.requests[0].resolve(Response.json(sourceResult));await first;
+    const source=f.state.recoveryContext,oldValues=JSON.stringify([f.state.currentRawScores,f.state.currentReasons]);
+    scope={taxonomyRoots:roots,mode:'TAXONOMIES_ONLY'};
+    const second=start();
+    assert.equal(f.calls.length,2);
+    const request=JSON.parse(f.calls[1][1].body);
+    assert.equal(request.taxonomySourceContinuationId,source.id);assert.equal(request.taxonomySourceVersion,7);
+    assert.notEqual(request.continuationId,source.id);assert.equal(request.resumable,true);
+    assert.deepEqual(request.analysisScope,scope);assert.equal(request.includeArchitectureView,false);
+    assert.equal(request.scores,undefined);assert.equal(request.rawScores,undefined);
+    assert.equal(JSON.stringify([f.state.currentRawScores,f.state.currentReasons]),oldValues);
+    assert.equal(new Headers(f.calls[1][1].headers).get('X-Taxonomy-Workspace-Id'),'workspace-a');
+    f.requests[1].resolve(Response.json({...sourceResult,rawScores:{BP:80,CP:60},scores:{BP:80,CP:60},
+      reasons:{BP:'Accepted BP explanation',CP:'New CP explanation'},
+      analysisScope:{taxonomyRoots:['BP','CP'],mode:'TAXONOMIES_ONLY'},
+      recovery:{id:request.continuationId,version:1,state:'COMPLETED',openQuestions:[]}}));await second;
+    assert.deepEqual({...f.state.currentRawScores},{BP:80,CP:60});
+    assert.equal(f.state.currentReasons.BP,'Accepted BP explanation');
+    assert.deepEqual(Array.from(f.state.lastAnalysisScope.taxonomyRoots),['BP','CP']);
+ });
+}
+
+test('ordinary full analysis without an architecture view still retains a durable source',()=>{
+ const f=fixture({crypto:webcrypto,includeArchitecture:false,analysisScope:{taxonomyRoots:['BP'],mode:'FULL'}});f.progress();
+ f.window.TaxonomyAnalysisSession={state:()=>f.sessionState};f.loadRecovery();
+ f.window.TaxonomyScoring.runAnalysis();const request=JSON.parse(f.calls[0][1].body);
+ assert.equal(request.includeArchitectureView,false);assert.equal(request.resumable,true);
+ assert.equal(request.continuationAction,'START');assert.equal(request.continuationId,f.state.recoveryContext.id);
+});
+
+test('managed automatic starts retain the secure random-values fallback',()=>{
+ const f=fixture({crypto:{getRandomValues:webcrypto.getRandomValues.bind(webcrypto)},includeArchitecture:false});f.progress();
+ f.window.TaxonomyAnalysisSession={state:()=>f.sessionState};f.loadRecovery();f.window.TaxonomyScoring.runAnalysis();
+ assert.equal(f.calls.length,1);
+ const request=JSON.parse(f.calls[0][1].body);
+ assert.match(request.continuationId,/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+});
+
+for(const action of ['copilot','analyze']) test(`${action} rejects a missing secure ID source without changing retained evidence`,()=>{
+ const f=fixture({crypto:{},includeArchitecture:false});f.progress();
+ f.window.TaxonomyAnalysisSession={state:()=>f.sessionState};const recovery=f.loadRecovery();
+ const before=JSON.stringify([f.state.currentRawScores,f.state.currentReasons,f.state.currentArchView,f.state.lastAnalysisStatus]);
+ if(action==='copilot')recovery.startCopilot();else f.window.TaxonomyScoring.runAnalysis();
+ assert.equal(f.calls.length,0);assert.equal(f.observations.length,0);
+ assert.equal(JSON.stringify([f.state.currentRawScores,f.state.currentReasons,f.state.currentArchView,f.state.lastAnalysisStatus]),before);
+ assert.equal(f.state.recoveryContext,undefined);assert.match(f.statuses.at(-1)[1],/secure analysis identity/i);
+});
+
+test('accepted wider node-only result clears earlier relation views only after admission',async()=>{
+ const f=fixture({crypto:webcrypto});f.progress();f.window.TaxonomyAnalysisSession={state:()=>f.sessionState};
+ let scope={taxonomyRoots:['BP'],mode:'FULL'};
+ f.window.TaxonomyAnalysisScope={read:()=>scope,acceptResult:value=>{f.state.lastAnalysisScope=value;},restrictsGlobalAnalysis:()=>true};
+ f.loadRecovery();const first=f.window.TaxonomyScoring.runAnalysis();const initial=JSON.parse(f.calls[0][1].body);
+ f.requests[0].resolve(Response.json({status:'SUCCESS',rawScores:{BP:80},scores:{BP:80},reasons:{BP:'Retained'},analysisScope:scope,
+  architectureView:{title:'BP view'},relationSearchReport:{title:'BP relations'},
+  recovery:{id:initial.continuationId,version:3,state:'COMPLETED',openQuestions:[]}}));await first;
+ const suggestedPanel={style:{display:''}},originalGet=f.sandbox.document.getElementById;
+ f.sandbox.document.getElementById=id=>id==='suggestedRelationsPanel'?suggestedPanel:originalGet(id);
+ scope={taxonomyRoots:['CP'],mode:'TAXONOMIES_ONLY'};const next=f.window.TaxonomyScoring.runAnalysis();
+ assert.equal(f.state.currentArchView.title,'BP view');assert.equal(f.state.currentRelationSearchReport.title,'BP relations');
+ assert.equal(suggestedPanel.style.display,'');
+ const target=JSON.parse(f.calls[1][1].body);
+ f.requests[1].resolve(Response.json({status:'SUCCESS',rawScores:{BP:80,CP:70},scores:{BP:80,CP:70},reasons:{BP:'Retained'},
+  analysisScope:{taxonomyRoots:['BP','CP'],mode:'TAXONOMIES_ONLY'},
+  recovery:{id:target.continuationId,version:1,state:'COMPLETED',openQuestions:[]}}));await next;
+ assert.equal(f.state.currentArchView,null);assert.equal(f.state.currentRelationSearchReport,null);
+});
+
+for(const mode of ['TAXONOMIES_ONLY','FULL']) for(const mounted of [false,true])
+ test(`review ${mode} acceptance clears canonical suggestions and summary ${mounted?'with':'without'} relation panels`,async()=>{
+  const f=fixture({crypto:webcrypto});f.progress();f.window.TaxonomyAnalysisSession={state:()=>f.sessionState};
+  f.state.taxonomyData=[{code:'BP'},{code:'CP'}];let scope={taxonomyRoots:['BP'],mode:'FULL'};
+  f.window.TaxonomyAnalysisScope={read:()=>scope,acceptResult:value=>{f.state.lastAnalysisScope=value;},restrictsGlobalAnalysis:()=>true};
+  const fields={viewSummary:{style:{display:'none'}}};
+  if(mounted)Object.assign(fields,{suggestedRelationsPanel:{style:{display:'none'}},suggestedRelationsContent:{innerHTML:''},suggestedRelationsBadge:{textContent:''}});
+  const originalGet=f.sandbox.document.getElementById;f.sandbox.document.getElementById=id=>fields[id]||originalGet(id);
+  f.loadRecovery();const first=f.window.TaxonomyScoring.runAnalysis();const initial=JSON.parse(f.calls[0][1].body);
+  const suggestions=[{sourceCode:'BP',targetCode:'CP',relationType:'SUPPORTS',confidence:0.8,reasoning:'Saved suggestion'}];
+  const sourceResult={status:'SUCCESS',rawScores:{BP:80},scores:{BP:80},reasons:{BP:'Retained'},analysisScope:scope,
+   architectureView:{title:'BP view'},provisionalRelations:suggestions,
+   recovery:{id:initial.continuationId,version:3,state:'COMPLETED',openQuestions:[]}};
+  f.requests[0].resolve(Response.json(sourceResult));await first;
+  assert.deepEqual(JSON.parse(JSON.stringify(f.window._currentProvisionalRelations)),suggestions);
+  f.state.currentView='summary';scope={taxonomyRoots:['CP'],mode};const second=f.window.TaxonomyScoring.runAnalysis();
+  assert.equal(f.state.currentView,'summary');assert.equal(fields.viewSummary.style.display,'');
+  assert.deepEqual(JSON.parse(JSON.stringify(f.window._currentProvisionalRelations)),suggestions);
+  const target=JSON.parse(f.calls[1][1].body);
+  const accepted={status:'SUCCESS',rawScores:{BP:80,CP:70},scores:{BP:80,CP:70},reasons:{BP:'Retained'},
+   analysisScope:{taxonomyRoots:['BP','CP'],mode},
+   recovery:{id:target.continuationId,version:1,state:'COMPLETED',openQuestions:[]}};
+  if(mode==='TAXONOMIES_ONLY')accepted.provisionalRelations=[];
+  f.requests[1].resolve(Response.json(accepted));await second;
+  assert.deepEqual(Array.from(f.window._currentProvisionalRelations),[]);
+  assert.equal(f.state.currentArchView,null);assert.equal(f.state.currentView,'list');assert.equal(fields.viewSummary.style.display,'none');
+  // Serialize and restore through the real working-draft modules, with the canonical
+  // response already accepted by real Scoring and AnalysisApi above.
+  delete f.window.__TaxonomyAnalysisSessionContext;delete f.window.TaxonomyAnalysisSession;
+  f.window.setTimeout=f.sandbox.setTimeout;f.window.clearTimeout=f.sandbox.clearTimeout;
+  f.window.TaxonomyBrowse.updateExportGroupVisibility=()=>{};
+  f.sandbox.document.dispatchEvent=()=>{};
+  f.sandbox.CustomEvent=class {constructor(type,options={}){this.type=type;this.detail=options.detail;}};
+  for(const name of ['taxonomy-analysis-session-core.js','taxonomy-analysis-session-draft.js'])
+   vm.runInContext(readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/'+name,import.meta.url),'utf8'),f.sandbox);
+  const C=f.window.__TaxonomyAnalysisSessionContext;C.runtime.workspaceId='workspace-a';
+  const saved=JSON.parse(JSON.stringify(C.currentPayload(true)));
+  assert.deepEqual(saved.provisionalRelations,[]);assert.equal(saved.currentView,'list');
+  f.window._currentProvisionalRelations=suggestions;f.state.currentView='summary';f.state.currentArchView={title:'Stale view'};
+  C.applyDraft({version:1,payload:saved});
+  assert.deepEqual(Array.from(f.window._currentProvisionalRelations),[]);assert.equal(f.state.currentView,'list');
+  assert.equal(fields.viewSummary.style.display,'none');
+ });
+
+for(const action of ['copilot','analyze'])test(`review mode-only FULL Server Default uses taxonomy admission through ${action}`,async()=>{
+ const f=fixture({crypto:webcrypto,includeArchitecture:true});f.progress();
+ f.window.TaxonomyAnalysisSession={state:()=>f.sessionState};f.state.taxonomyData=[{code:'BP'}];
+ const provider={value:''},originalGet=f.sandbox.document.getElementById;
+ f.sandbox.document.getElementById=id=>id==='providerSelect'?provider:originalGet(id);
+ let scope={taxonomyRoots:['BP'],mode:'TAXONOMIES_ONLY'};
+ f.window.TaxonomyAnalysisScope={read:()=>scope,acceptResult:value=>{f.state.lastAnalysisScope=value;},restrictsGlobalAnalysis:()=>true};
+ const recovery=f.loadRecovery(),start=()=>action==='copilot'?recovery.startCopilot():f.window.TaxonomyScoring.runAnalysis();
+ const first=start(),initial=JSON.parse(f.calls[0][1].body);
+ f.requests[0].resolve(Response.json({status:'SUCCESS',rawScores:{BP:80},scores:{BP:80},reasons:{BP:'Saved explanation'},
+  analysisScope:scope,analysisProviderId:'CUSTOM_OPENAI',
+  recovery:{id:initial.continuationId,version:3,state:'COMPLETED',openQuestions:[]}}));await first;
+ scope={taxonomyRoots:['BP'],mode:'FULL'};const second=start(),request=JSON.parse(f.calls[1][1].body);
+ assert.equal(request.provider,null);assert.equal(request.includeArchitectureView,true);
+ assert.deepEqual(request.analysisScope,scope);assert.equal(request.taxonomySourceContinuationId,initial.continuationId);
+ assert.equal(request.relationSourceContinuationId,undefined);assert.equal(f.state.currentRawScores.BP,80);
+ f.requests[1].resolve(Response.json({detail:'The server default provider changed; start a new analysis'},{status:409}));await second;
+ assert.equal(f.state.recoveryContext.id,initial.continuationId);
+ assert.equal(f.state.currentRawScores.BP,80);assert.equal(f.state.currentReasons.BP,'Saved explanation');
+ start();assert.equal(f.calls.length,2,'the rejected mode transition is not automatically repeated');
+});
+
+test('review ordinary node-to-FULL opt-out uses taxonomy admission and accepts a report without a projection',async()=>{
+ const f=fixture({crypto:webcrypto,includeArchitecture:false});f.progress();f.window.TaxonomyAnalysisSession={state:()=>f.sessionState};
+ f.state.taxonomyData=[{code:'BP'}];let scope={taxonomyRoots:['BP'],mode:'TAXONOMIES_ONLY'};
+ f.window.TaxonomyAnalysisScope={read:()=>scope,acceptResult:value=>{f.state.lastAnalysisScope=value;},restrictsGlobalAnalysis:()=>true};
+ f.loadRecovery();const first=f.window.TaxonomyScoring.runAnalysis();const initial=JSON.parse(f.calls[0][1].body);
+ const original={status:'SUCCESS',rawScores:{BP:80},scores:{BP:80},reasons:{BP:'Saved explanation'},analysisScope:scope,
+  recovery:{id:initial.continuationId,version:3,state:'COMPLETED',openQuestions:[]}};
+ f.requests[0].resolve(Response.json(original));await first;
+ scope={taxonomyRoots:['BP'],mode:'FULL'};const second=f.window.TaxonomyScoring.runAnalysis();
+ const request=JSON.parse(f.calls[1][1].body);
+ assert.equal(request.taxonomySourceContinuationId,initial.continuationId);assert.equal(request.relationSourceContinuationId,undefined);
+ assert.equal(request.includeArchitectureView,false);assert.equal(f.state.currentRawScores.BP,80);
+ const report={sources:[],searchExhausted:true};
+ f.requests[1].resolve(Response.json({...original,analysisScope:scope,relationSearchReport:report,architectureView:null,copilot:null,
+  recovery:{id:request.continuationId,version:1,state:'COMPLETED',openQuestions:[]}}));await second;
+ assert.equal(f.state.currentArchView,null);assert.equal(f.state.currentCopilot,null);
+ assert.deepEqual(JSON.parse(JSON.stringify(f.state.currentRelationSearchReport)),report);
+ assert.equal(f.state.currentReasons.BP,'Saved explanation');
+});
+
+for(const nextProjection of [false,true])test(`review same-mode projection change to ${nextProjection} is not swallowed by reuse`,async()=>{
+ const f=fixture({crypto:webcrypto,includeArchitecture:!nextProjection});f.progress();f.window.TaxonomyAnalysisSession={state:()=>f.sessionState};
+ const scope={taxonomyRoots:['BP'],mode:'FULL'};
+ f.window.TaxonomyAnalysisScope={read:()=>scope,acceptResult:value=>{f.state.lastAnalysisScope=value;},restrictsGlobalAnalysis:()=>true};
+ f.loadRecovery();const first=f.window.TaxonomyScoring.runAnalysis();const initial=JSON.parse(f.calls[0][1].body);
+ f.requests[0].resolve(Response.json({status:'SUCCESS',rawScores:{BP:80},scores:{BP:80},reasons:{},analysisScope:scope,
+  recovery:{id:initial.continuationId,version:3,state:'COMPLETED',openQuestions:[]}}));await first;
+ const originalGet=f.sandbox.document.getElementById;
+ f.sandbox.document.getElementById=id=>id==='includeArchitectureView'?{checked:nextProjection}:originalGet(id);
+ f.window.TaxonomyScoring.runAnalysis();assert.equal(f.calls.length,2);
+ const request=JSON.parse(f.calls[1][1].body);
+ assert.equal(request.includeArchitectureView,nextProjection);assert.equal(request.taxonomySourceContinuationId,initial.continuationId);
 });
 for(const status of ['SUCCESS','PARTIAL'])for(const generation of [0,1])test('ordinary '+status+' analysis binds its retained request in generation '+generation+' without automatic follow-ups',async()=>{
     const f=fixture();f.progress();f.window.TaxonomyAnalysisSession={state:()=>f.sessionState};

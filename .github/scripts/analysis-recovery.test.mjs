@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { webcrypto } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { createRejectedAnalysisFixture } from './ui-rejected-analysis-fixture.mjs';
 const analysisSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis.js', import.meta.url), 'utf8');
 const analysisApiSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/api/analysis-api.js', import.meta.url), 'utf8');
 const source = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-recovery.js', import.meta.url), 'utf8');
@@ -44,10 +45,10 @@ function harness(language = 'en') {
   const context={window,document,crypto:webcrypto,sessionStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
     setTimeout:fn=>{timers.set(++timer,fn);return timer;},clearTimeout:id=>timers.delete(id), URLSearchParams, console};
   vm.runInNewContext(source,context);
-  function complete(state='PAUSED') {
+  function complete(state='PAUSED', additions={}) {
     const q={key:'question-a',nodes:['BP-1327','BP-1481'],error:'Invalid JSON',attempts:1,skipped:state==='COMPLETED_WITH_GAPS'||state==='STOPPED'};
     const result={recovery:{id:S.recoveryContext.id,version:7,state,completedCalls:2,openQuestions:state==='COMPLETED'?[]:[q]},
-      rawScores:{BP:100,'BP-1000':80},scores:{BP:100,'BP-1000':80},analysisCoverage:{failedOrBlockedNodes:state==='COMPLETED'?0:4,nodes:{}},status:state==='COMPLETED'?'SUCCESS':'PARTIAL',reasons:{BP:'Original reason'}};
+      rawScores:{BP:100,'BP-1000':80},scores:{BP:100,'BP-1000':80},analysisCoverage:{failedOrBlockedNodes:state==='COMPLETED'?0:4,nodes:{}},status:state==='COMPLETED'?'SUCCESS':'PARTIAL',reasons:{BP:'Original reason'},...additions};
     S.currentRawScores=result.rawScores;S.currentEffectiveScores=result.scores;S.currentScores=result.scores;S.currentReasons=result.reasons;
     snapshot={request:S.recoveryContext.request,recovery:result.recovery,result};pending(result);return result;
   }
@@ -92,6 +93,163 @@ function harness(language = 'en') {
     reject: error=>rejectPending(error), recovery:window.TaxonomyAnalysisRecovery};
 }
 async function settle(){for(let i=0;i<8;i++)await new Promise(resolve=>setImmediate(resolve));}
+
+for (const schedule of ['immediate rejection', 'background read in flight', 'background read already finished']) {
+ test(`rejected START fixture audits real recovery with ${schedule}`, async () => {
+  const h = harness(), fixture = createRejectedAnalysisFixture(), failures = [];
+  let releasePost, releaseRead;
+  const postPending = new Promise(resolve => { releasePost = resolve; });
+  const readPending = new Promise(resolve => { releaseRead = resolve; });
+  const missing = () => ({ ok: false, status: 404, json: async () => ({ detail: 'Unknown continuation' }) });
+  const request = h.window.TaxonomyAnalysisSessionApi.request;
+  h.window.TaxonomyAnalysisSessionApi.request = async (url, options, workspace) => {
+   const response = await request(url, options, workspace);
+   failures.push({ path: url, method: options.method, status: response.status,
+    requestId: 'receipt-' + failures.length });
+   return response;
+  };
+  h.recovery.startManagedAnalysis();
+  const body = h.analyses[0], id = body.continuationId;
+  const rejection = fixture.rejectStart({ request: () => ({
+   method: () => 'POST', url: () => 'http://127.0.0.1:8080/api/analyze', postDataJSON: () => body
+  }), fulfill: async response => {
+   await postPending;
+   failures.push({ path: '/api/analyze', method: 'POST', status: response.status,
+    requestId: response.headers['x-request-id'] });
+   h.reject(Object.assign(new Error('QA provider is temporarily unavailable'), { httpStatus: response.status }));
+  } });
+  try {
+   assert.equal(h.timers.size, 1, 'The real run schedules an observation before its START outcome');
+   if (schedule !== 'immediate rejection') {
+    h.readResponses.push(readPending, missing());
+    const [timerId, callback] = h.timers.entries().next().value;
+    h.timers.delete(timerId);
+    callback();
+    await settle();
+    assert.equal(h.requests.length, 1);
+    if (schedule === 'background read already finished') {
+     releaseRead(missing());
+     await settle();
+     assert.equal(h.S.recoveryContext.syncState, 'UNAVAILABLE');
+    }
+   } else h.readResponses.push(missing());
+   releasePost();
+   await rejection;
+   await settle();
+   if (schedule === 'background read in flight') {
+    assert.equal(h.requests.length, 1, 'afterDecision waits for the earlier in-flight read');
+    releaseRead(missing());
+    await settle();
+   }
+   assert.equal(h.requests.length, schedule === 'immediate rejection' ? 1 : 2);
+   assert.ok(h.requests.every(read => read.url === '/api/analysis-continuations/' + id
+    && read.method === 'GET' && read.workspace === 'ws-a'));
+   assert.equal(h.analyses.length, 1, 'Status observations never resubmit START');
+   assert.equal(body.continuationAction, 'START');
+   assert.equal(body.resumable, true);
+   assert.equal(h.S.recoveryContext.id, id);
+   assert.equal(h.S.recoveryContext.syncState, 'UNAVAILABLE');
+   assert.equal(h.S.recoveryContext.observationStatus, 404);
+   assert.equal(h.timers.size, 0, 'UNAVAILABLE has no further background polling');
+   for (const failure of failures) {
+    assert.equal(fixture.matches(failure), true, 'The real recovery observation must satisfy its fixture: ' + JSON.stringify(failure));
+   }
+   fixture.assertComplete();
+  } finally {
+   releasePost(); releaseRead(missing());
+   await rejection;
+   await settle();
+  }
+ });
+}
+
+for(const action of ['startCopilot','startManagedAnalysis']) for(const refresh of [false,true])
+ for(const provider of ['', 'CUSTOM_OPENAI', 'GEMINI']) {
+ test(`review provider ${provider||'Server Default'} remains concrete ${refresh?'after':'before'} GET through ${action}`,async()=>{
+  const h=harness();let selected={taxonomyRoots:['BP'],mode:'TAXONOMIES_ONLY'};
+  h.fields.providerSelect.value='';h.S.taxonomyData=[{code:'BP'},{code:'CP'}];
+  h.window.TaxonomyAnalysisScope={read:()=>selected,restrictsGlobalAnalysis:()=>true};
+  h.recovery[action]();h.complete('COMPLETED',{analysisProviderId:'CUSTOM_OPENAI'});await settle();
+  const source=h.S.recoveryContext.id;
+  if(refresh){h.snapshot().request={...h.snapshot().request,provider:'CUSTOM_OPENAI'};await h.recovery.refresh();}
+  selected={taxonomyRoots:['CP'],mode:'TAXONOMIES_ONLY'};h.fields.providerSelect.value=provider;
+  h.recovery[action]();assert.equal(h.analyses.length,2);
+  assert.equal(h.analyses[1].provider,provider||null,'the server must still see the default-selection intent');
+  assert.equal(h.analyses[1].taxonomySourceContinuationId,provider==='GEMINI'?undefined:source);
+ });
+}
+
+for(const [expectation,value,compatible] of [['expectedCommit','a'.repeat(40),true],['expectedSemanticRevision',9,true],
+ ['expectedCommit','b'.repeat(40),false],['expectedSemanticRevision',10,false]]) {
+ test(`review nullable saved model expectations ${compatible?'match':'reject'} ${expectation}`,async()=>{
+  const h=harness();let selected={taxonomyRoots:['BP'],mode:'TAXONOMIES_ONLY'},model=null;
+  h.window.TaxonomyAnalysisScope={read:()=>selected,restrictsGlobalAnalysis:()=>true};
+  h.window.TaxonomyArchitectureLifecycle={selectedAnalysisModel:()=>model};
+  h.recovery.startCopilot();h.complete('COMPLETED',{modelBinding:{commit:'a'.repeat(40),semanticRevision:9}});await settle();
+  const source=h.S.recoveryContext.id;
+  h.snapshot().request={...h.snapshot().request,expectedCommit:null,expectedSemanticRevision:null};await h.recovery.refresh();
+  model={[expectation]:value};selected={taxonomyRoots:['CP'],mode:'TAXONOMIES_ONLY'};
+  h.recovery.startCopilot();assert.equal(h.analyses.length,2);
+  assert.equal(h.analyses[1].taxonomySourceContinuationId,compatible?source:undefined);
+ });
+}
+
+for(const action of ['startCopilot','startManagedAnalysis']) for(const skipped of [false,true]) {
+ test(`review ${action} ${skipped?'accepts an explicit SKIP':'protects unresolved uncertainty'}`,async()=>{
+  const h=harness();let selected={taxonomyRoots:['BP'],mode:'TAXONOMIES_ONLY'};
+  h.window.TaxonomyAnalysisScope={read:()=>selected,restrictsGlobalAnalysis:()=>true};
+  h.recovery[action]();h.complete('COMPLETED_WITH_GAPS');await settle();const source=h.S.recoveryContext.id;
+  Object.assign(h.S.analysisRecovery.openQuestions[0],{outcomeUncertain:true,skipped,error:'OUTCOME_UNCERTAIN: interrupted'});
+  selected={taxonomyRoots:['CP'],mode:'TAXONOMIES_ONLY'};h.recovery[action]();
+  assert.equal(h.analyses.length,skipped?2:1);
+  if(skipped)assert.equal(h.analyses[1].taxonomySourceContinuationId,source);
+  else assert.equal(h.S.recoveryContext.id,source);
+ });
+}
+
+for(const action of ['startCopilot','startManagedAnalysis']) for(const historicalUncertainty of [false,true]) {
+ test(`review ${action} offers an explicit fresh run after cancellation${historicalUncertainty?' with historic uncertainty':''}`,async()=>{
+  const h=harness();let selected={taxonomyRoots:['BP'],mode:'TAXONOMIES_ONLY'};
+  h.window.TaxonomyAnalysisScope={read:()=>selected,restrictsGlobalAnalysis:()=>true};
+  h.recovery[action]();h.complete('CANCELLED');await settle();
+  h.S.analysisRecovery.openQuestions=historicalUncertainty?[{key:'old',outcomeUncertain:true,skipped:false}]:[];
+  const source=h.S.recoveryContext,visible=JSON.stringify([h.S.currentRawScores,h.S.currentReasons]);
+  selected={taxonomyRoots:['CP'],mode:'TAXONOMIES_ONLY'};h.recovery[action]();
+  assert.equal(h.analyses.length,1);assert.equal(h.S.recoveryContext,source);
+  assert.equal(JSON.stringify([h.S.currentRawScores,h.S.currentReasons]),visible);
+  assert.ok(h.options().some(option=>option.id==='analysisRecoveryStartNew'));
+  h.act('analysisRecoveryStartNew');assert.equal(h.analyses.length,2);
+  assert.notEqual(h.analyses[1].continuationId,source.id);
+  assert.equal(h.analyses[1].taxonomySourceContinuationId,undefined);
+  assert.equal(h.analyses[1].relationSourceContinuationId,undefined);
+  assert.deepEqual(Array.from(h.analyses[1].analysisScope.taxonomyRoots),['CP']);
+ });
+}
+
+for(const next of ['same','other root','completed root','new source revision']) {
+ test(`review rejected CP intent permits ${next} without an automatic retry`,async()=>{
+  const h=harness();let selected={taxonomyRoots:['BP'],mode:'TAXONOMIES_ONLY'};
+  h.S.taxonomyData=[{code:'BP'},{code:'CP'},{code:'DP'}];
+  h.window.TaxonomyAnalysisScope={read:()=>selected,restrictsGlobalAnalysis:()=>true};
+  h.recovery.startCopilot();h.complete('COMPLETED');await settle();const source=h.S.recoveryContext.id;
+  selected={taxonomyRoots:['CP'],mode:'TAXONOMIES_ONLY'};h.recovery.startManagedAnalysis();
+  h.reject(Object.assign(new Error('This selected target already exists'),{httpStatus:409}));await settle();
+  assert.equal(h.analyses.length,2);assert.equal(h.S.recoveryContext.id,source);
+  if(next==='other root')selected={taxonomyRoots:['DP'],mode:'TAXONOMIES_ONLY'};
+  if(next==='completed root')selected={taxonomyRoots:['BP'],mode:'TAXONOMIES_ONLY'};
+  if(next==='new source revision'){
+   const saved=h.snapshot();saved.recovery={...saved.recovery,version:8};saved.result={...saved.result,recovery:saved.recovery};
+   await h.recovery.refresh();
+  }
+  const expected=next==='same'?'REVIEW':next==='completed root'?'REUSE':'EXTEND';
+  assert.equal(h.recovery.startPlan().kind,expected);h.recovery.startManagedAnalysis();
+  assert.equal(h.analyses.length,expected==='EXTEND'?3:2);
+  if(expected==='EXTEND'){
+   assert.equal(h.analyses[2].taxonomySourceContinuationId,source);
+   assert.equal(h.analyses[2].taxonomySourceVersion,next==='new source revision'?8:7);
+  }
+ });
+}
 function ordinaryResult(h) {
  const request={businessText:h.fields.businessText.value.trim(),resumable:true,continuationAction:'START',
   continuationId:'ordinary-result',analysisScope:{mode:'FULL',taxonomyRoots:[]},includeArchitectureView:true};
@@ -117,6 +275,137 @@ test('ordinary confirmed results bind recovery to the current generation without
  h.recovery.open();assert.equal(h.ui.opened,true);
  assert.ok(h.options().some(option=>option.id==='analysisRecoveryRetry'));
  h.runtime.analysisGeneration++;assert.equal(h.recovery.isManaged(),false);
+});
+
+for (const action of ['startCopilot','startManagedAnalysis']) for (const roots of [['CP'],[]]) {
+ test(`${action} extends completed BP into ${roots.length?'CP':'all taxonomies'} without discarding accepted evidence`,async()=>{
+  const h=harness();let selected={taxonomyRoots:['BP'],mode:'TAXONOMIES_ONLY'};
+  h.S.taxonomyData=[{code:'BP'},{code:'CP'}];
+  h.window.TaxonomyAnalysisScope={read:()=>selected,restrictsGlobalAnalysis:()=>true};
+  h.recovery[action]();h.complete('COMPLETED');await settle();
+  const source=h.S.recoveryContext, visible=JSON.stringify([h.S.currentRawScores,h.S.currentScores,h.S.currentReasons]);
+  selected={taxonomyRoots:roots,mode:'TAXONOMIES_ONLY'};
+  h.recovery[action]();
+  assert.equal(h.analyses.length,2);
+  const request=h.analyses[1];
+  assert.notEqual(request.continuationId,source.id);
+  assert.equal(request.taxonomySourceContinuationId,source.id);assert.equal(request.taxonomySourceVersion,7);
+  assert.deepEqual(Array.from(request.analysisScope.taxonomyRoots),roots);
+  assert.equal(request.scores,undefined);assert.equal(request.rawScores,undefined);
+  assert.equal(JSON.stringify([h.S.currentRawScores,h.S.currentScores,h.S.currentReasons]),visible);
+ });
+}
+
+for (const action of ['startCopilot','startManagedAnalysis']) {
+ test(`${action} reuses completed selected work and preserves manual evidence edits`,async()=>{
+  const h=harness();h.S.taxonomyData=[{code:'BP'},{code:'CP'}];
+  let selected={taxonomyRoots:['BP','CP'],mode:'TAXONOMIES_ONLY'};
+  h.window.TaxonomyAnalysisScope={read:()=>selected,restrictsGlobalAnalysis:()=>true};
+  h.recovery[action]();h.complete('COMPLETED');await settle();const source=h.S.recoveryContext;
+  selected={taxonomyRoots:[],mode:'TAXONOMIES_ONLY'};
+  h.recovery[action]();assert.equal(h.analyses.length,1);assert.equal(h.S.recoveryContext,source);
+  h.S.currentReasons.BP='Locally revised explanation';
+  h.recovery[action]();
+  assert.equal(h.analyses.length,1);assert.equal(h.S.currentReasons.BP,'Locally revised explanation');
+  assert.equal(source.evidenceConflict,true);
+  assert.ok(h.options().some(option=>option.id==='analysisRecoveryLoadResult'));
+ });
+}
+
+for (const setting of ['provider','language','commit','revision']) {
+ test(`changed ${setting} starts a separate analysis instead of silently extending the old basis`,async()=>{
+  const h=harness();let language='en',model={expectedCommit:'a'.repeat(40)};
+  h.window.TaxonomyContentLanguage={analysis:()=>language};
+  h.window.TaxonomyArchitectureLifecycle={selectedAnalysisModel:()=>model};
+  h.window.TaxonomyAnalysisScope={read:()=>({taxonomyRoots:['BP'],mode:'TAXONOMIES_ONLY'}),restrictsGlobalAnalysis:()=>true};
+  h.recovery.startCopilot();h.complete('COMPLETED');await settle();const source=h.S.recoveryContext;
+  if(setting==='provider')h.fields.providerSelect.value='GEMINI';
+  if(setting==='language')language='de';
+  if(setting==='commit')model={expectedCommit:'b'.repeat(40)};
+  if(setting==='revision')model={expectedSemanticRevision:0};
+  h.recovery.startCopilot();assert.equal(h.analyses.length,2);
+  assert.notEqual(h.analyses[1].continuationId,source.id);
+  assert.equal(h.analyses[1].taxonomySourceContinuationId,undefined);
+  assert.equal(h.analyses[1].provider,h.fields.providerSelect.value);
+  assert.equal(h.analyses[1].analysisLanguage,language);
+  assert.equal(h.analyses[1].expectedCommit,model.expectedCommit);
+  assert.equal(h.analyses[1].expectedSemanticRevision,model.expectedSemanticRevision);
+ });
+}
+
+test('new catalogue roots cannot make an older all-taxonomy result appear complete',async()=>{
+ const h=harness();h.S.taxonomyData=[{code:'BP'}];
+ h.window.TaxonomyAnalysisScope={read:()=>({taxonomyRoots:[],mode:'TAXONOMIES_ONLY'}),restrictsGlobalAnalysis:()=>true};
+ h.recovery.startCopilot();h.complete('COMPLETED');await settle();
+ h.S.taxonomyData.push({code:'CP'});h.recovery.startCopilot();
+ assert.equal(h.analyses.length,2);assert.equal(h.analyses[1].taxonomySourceContinuationId,undefined);
+});
+
+test('a mode-only extension after a taxonomy union uses the full accepted source scope',async()=>{
+ const h=harness();let selected={taxonomyRoots:['BP'],mode:'TAXONOMIES_ONLY'};
+ h.S.taxonomyData=[{code:'BP'},{code:'CP'}];
+ h.window.TaxonomyAnalysisScope={read:()=>selected,restrictsGlobalAnalysis:()=>true};
+ h.recovery.startCopilot();h.complete('COMPLETED');await settle();
+ selected={taxonomyRoots:['CP'],mode:'TAXONOMIES_ONLY'};h.recovery.startCopilot();
+ h.complete('COMPLETED',{analysisScope:{taxonomyRoots:['BP','CP'],mode:'TAXONOMIES_ONLY'}});await settle();
+ const source=h.S.recoveryContext.id;selected={taxonomyRoots:[],mode:'FULL'};h.recovery.startCopilot();
+ const request=h.analyses[2];
+ assert.equal(request.relationSourceContinuationId,source);assert.equal(request.taxonomySourceContinuationId,undefined);
+ assert.deepEqual(Array.from(request.analysisScope.taxonomyRoots),['BP','CP']);
+});
+
+for (const state of ['RUNNING','PAUSED','STOPPED','unknown','uncertain question']) {
+ test(`a wider selection preserves the ${state} source and makes no competing start`,async()=>{
+  const h=harness();let selected={taxonomyRoots:['BP'],mode:'TAXONOMIES_ONLY'};
+  h.window.TaxonomyAnalysisScope={read:()=>selected,restrictsGlobalAnalysis:()=>true};
+  h.recovery.startCopilot();h.complete(state==='unknown'?'COMPLETED':state==='uncertain question'?'COMPLETED_WITH_GAPS':state);await settle();
+  const source=h.S.recoveryContext;
+  if(state==='unknown')source.syncState='UNAVAILABLE';
+  if(state==='uncertain question')Object.assign(h.S.analysisRecovery.openQuestions[0],{outcomeUncertain:true,skipped:false});
+  selected={taxonomyRoots:[],mode:'TAXONOMIES_ONLY'};
+  h.recovery.startManagedAnalysis();
+  assert.equal(h.analyses.length,1);assert.equal(h.S.recoveryContext,source);assert.equal(h.ui.opened,true);
+ });
+}
+
+for (const failure of ['rejected','lost response']) {
+ test(`taxonomy extension ${failure} preserves evidence and the correct recovery identity`,async()=>{
+  const h=harness();let selected={taxonomyRoots:['BP'],mode:'TAXONOMIES_ONLY'};
+  h.window.TaxonomyAnalysisScope={read:()=>selected,restrictsGlobalAnalysis:()=>true};
+  h.recovery.startCopilot();h.complete('COMPLETED');await settle();
+  const source=h.S.recoveryContext,visible=JSON.stringify([h.S.currentRawScores,h.S.currentReasons]);
+  selected={taxonomyRoots:['CP'],mode:'TAXONOMIES_ONLY'};h.recovery.startManagedAnalysis();
+  const target=h.S.recoveryContext;
+  h.reject(Object.assign(new Error(failure==='rejected'?'Saved source changed':'Failed to fetch'),
+   failure==='rejected'?{httpStatus:409}:{code:'NETWORK_ERROR'}));await settle();
+  assert.equal(JSON.stringify([h.S.currentRawScores,h.S.currentReasons]),visible);
+  assert.equal(h.S.recoveryContext,failure==='rejected'?source:target);
+  if(failure==='lost response') {
+   h.recovery.startCopilot();h.recovery.startManagedAnalysis();
+   assert.equal(h.analyses.length,2);assert.equal(h.S.recoveryContext.id,target.id);
+  } else {
+   assert.equal(h.S.analysisRecovery.state,'COMPLETED');
+   h.recovery.startManagedAnalysis();assert.equal(h.analyses.length,2);
+   assert.ok(h.options().some(option=>option.id==='analysisRecoveryStartNew'));
+   h.act('analysisRecoveryStartNew');assert.equal(h.analyses.length,3);
+   assert.equal(h.analyses[2].taxonomySourceContinuationId,undefined);
+   assert.deepEqual(Array.from(h.analyses[2].analysisScope.taxonomyRoots),['CP']);
+  }
+ });
+}
+
+test('accepted taxonomy extension hydration drops relation views belonging to the earlier scope',async()=>{
+ const h=harness();let selected={taxonomyRoots:['BP'],mode:'FULL'};
+ h.window.TaxonomyAnalysisScope={read:()=>selected,restrictsGlobalAnalysis:()=>true};
+ h.recovery.startCopilot();h.complete('COMPLETED');await settle();
+ h.S.lastAnalyzedText=h.fields.businessText.value;
+ h.S.currentArchView={title:'BP view'};h.S.currentRelationSearchReport={title:'BP relations'};
+ h.window.TaxonomyScoring.acceptRelationSearchReport=result=>{h.S.currentRelationSearchReport=result?.relationSearchReport||null;};
+ selected={taxonomyRoots:['CP'],mode:'TAXONOMIES_ONLY'};h.recovery.startManagedAnalysis();
+ assert.deepEqual(h.S.currentArchView,{title:'BP view'});assert.deepEqual(h.S.currentRelationSearchReport,{title:'BP relations'});
+ h.complete('COMPLETED',{analysisScope:{taxonomyRoots:['BP','CP'],mode:'TAXONOMIES_ONLY'}});await settle();
+ await h.recovery.refresh();
+ assert.equal(h.S.currentArchView,null);assert.equal(h.S.currentRelationSearchReport,null);
 });
 for(const mismatch of ['workspace','input','last analyzed text','request id','result id','result version','invalid version','not ready','invalidating'])
  test(`ordinary recovery binding rejects ${mismatch} without replacing its prior context`,()=>{
@@ -812,7 +1101,7 @@ function persistedRecovery(shared = {}, admissionReady = true) {
   dispatchEvent(event){for(const fn of listeners.get(event.type)||[])fn(event);}};
  const ui={update(){},close(){},error(){},isDismissed:()=>true,open(title,message,build,actions){options=actions;}};
  const window={TaxonomyState:S,TaxonomyRecoveryViewport:{mount:()=>ui},
-  TaxonomyBrowse:{renderView(){},updateExportGroupVisibility(){}},
+  TaxonomyBrowse:{showStatus(){},renderView(){},updateExportGroupVisibility(){}},
   TaxonomyScoring:{renderArchitectureView(){},renderSuggestedRelations(){},runAnalysis(value){analyses.push(copy(value.continuation));return new Promise(()=>{});}},
   TaxonomyAnalysisScope:{read:()=>selected,acceptResult(){},restrictsGlobalAnalysis:()=>true},
   setTimeout(fn){timers.set(++sequence,fn);return sequence;},clearTimeout:key=>timers.delete(key),
@@ -826,9 +1115,10 @@ function persistedRecovery(shared = {}, admissionReady = true) {
     }
     return {ok:true,status:200,json:async()=>copy(shared.draft||null)};
    }
-   assert.equal(url,'/api/analysis-continuations/'+id);
+   const saved=shared.snapshots?.[url.split('/').at(-1)] || shared.snapshot;
+   assert.equal(url,'/api/analysis-continuations/'+saved.recovery.id);
    if(shared.readGate)return shared.readGate;
-   return {ok:true,json:async()=>copy(shared.snapshot)};
+   return {ok:true,json:async()=>copy(saved)};
   }}};
  const context=vm.createContext({window,document,crypto:webcrypto,console,Set,
   sessionStorage:{getItem:key=>shared.storage.get(key)||null,setItem:(key,value)=>shared.storage.set(key,value),removeItem:key=>shared.storage.delete(key)},
@@ -864,6 +1154,47 @@ test('reload during a retried node assessment accepts newer server evidence and 
  after.window.TaxonomyAnalysisRecovery.extendRelations();
  assert.equal(after.analyses[0].relationSourceVersion,9);
  assert.equal(after.analyses[0].relationSourceContinuationId,before.S.recoveryContext.id);
+});
+
+test('restored taxonomy extension retries its original requested work rather than its aggregate union',async()=>{
+ const shared={},before=persistedRecovery(shared);
+ const requested={taxonomyRoots:['CP'],mode:'TAXONOMIES_ONLY'},union={taxonomyRoots:['BP','CP'],mode:'TAXONOMIES_ONLY'};
+ Object.assign(shared.snapshot.request,{analysisScope:union,taxonomyRequestedScope:requested,
+  taxonomySourceContinuationId:'retained-bp-source',taxonomySourceVersion:7});
+ shared.snapshot.result.analysisScope=union;
+ await before.restore();await before.save();
+ const restored=persistedRecovery(shared);await restored.restore();restored.retry();
+ assert.equal(restored.analyses.length,1);
+ const request=restored.analyses[0];
+ assert.deepEqual(request.analysisScope,requested);
+ assert.equal(request.taxonomySourceContinuationId,'retained-bp-source');assert.equal(request.taxonomySourceVersion,7);
+ assert.equal(request.continuationId,shared.snapshot.recovery.id);assert.equal(request.continuationAction,'RETRY');
+ assert.deepEqual(Array.from(restored.S.lastAnalysisScope.taxonomyRoots),['BP','CP']);
+});
+
+test('reload after lost extension admission observes the pending target instead of reopening its older draft source',async()=>{
+ const shared={},before=persistedRecovery(shared);before.completed();await before.restore();await before.save();
+ const copy=value=>JSON.parse(JSON.stringify(value));
+ const source=copy(shared.snapshot),sourceId=source.recovery.id;
+ before.window.TaxonomyAnalysisScope.read=()=>({taxonomyRoots:['BP'],mode:'TAXONOMIES_ONLY'});
+ before.window.TaxonomyAnalysisRecovery.startManagedAnalysis();const request=before.analyses[0];
+ const targetId=request.continuationId;assert.notEqual(targetId,sourceId);
+ const recovery={id:targetId,version:1,state:'RUNNING',openQuestions:[]};
+ const union={taxonomyRoots:['BP','CP'],mode:'TAXONOMIES_ONLY'};
+ const target={request:{...request,analysisScope:union,taxonomyRequestedScope:request.analysisScope},recovery,
+  result:{...source.result,recovery,analysisScope:union}};
+ shared.snapshots={[sourceId]:source,[targetId]:target};
+ // No draft save after the target was sent: only the synchronous pending pointer survived.
+ const restored=persistedRecovery(shared);await restored.restore();
+ assert.equal(restored.S.recoveryContext.id,targetId);assert.equal(restored.S.analysisRecovery.state,'RUNNING');
+ assert.equal(restored.S.currentRawScores.CP,95);
+ restored.window.TaxonomyAnalysisRecovery.startManagedAnalysis();assert.equal(restored.analyses.length,0);
+ target.recovery={...recovery,version:2,state:'COMPLETED'};
+ target.result={...target.result,recovery:target.recovery,rawScores:{CP:95,BP:80},scores:{CP:90,BP:80},
+  effectiveScores:{CP:90,BP:80},reasons:{CP:'New completed explanation',BP:'New BP explanation'}};
+ await restored.refresh();
+ assert.equal(restored.S.currentRawScores.BP,80);assert.equal(restored.S.recoveryContext.evidenceConflict,false);
+ assert.equal(restored.S.recoveryContext.id,targetId);
 });
 
 for(const edit of ['raw score','effective score','reason','new assessment']) {

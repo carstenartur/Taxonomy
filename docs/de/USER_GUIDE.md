@@ -178,12 +178,45 @@ den vollständigen Modus oder **Nur Knotenbewertung**. Die Auswahl bleibt an den
 gebunden und wird bei kompatibler Wiederholung/Fortsetzung sowie im JSON-Austausch
 erhalten. Einstellungen für den nächsten Lauf verändern kein früheres Ergebnis.
 
+**Weitere Teiltaxonomien ergänzen:** Lassen Sie die Anforderung unverändert, wählen
+Sie weitere Bereiche oder **Alle Teiltaxonomien** und klicken Sie erneut auf
+**Copilot** oder **Mit KI analysieren**. Beide Aktionen behalten die gespeicherten
+Bewertungen und Begründungen bei und bearbeiten nur neue oder noch offene Arbeit
+innerhalb der aktuellen Auswahl. Bereits abgeschlossene Bewertungen, einschließlich
+gültig ausgeschlossener Zweige, werden nicht erneut beim Anbieter angefragt. Ist die
+Auswahl bereits vollständig bewertet und sind Modus und Option für die
+Architekturansicht unverändert, wird der vorhandene Stand angezeigt.
+
+Die Auswahl bestimmt die nächste Arbeit; **Umfang des Ergebnisses** zeigt den
+gesamten erhaltenen Ergebnisstand. Beispiel: Nach einer teilweise abgeschlossenen
+BP-Analyse ergänzt die Auswahl CP nur CP und erhält die offenen BP-Bereiche.
+**Alle Teiltaxonomien** bezieht auch die noch offenen BP-Bewertungen ein. Solange ein
+Lauf läuft, pausiert ist oder sein Ausgang unbekannt ist, öffnet ein erneuter Start
+seinen Analyse-Status. Die neue Auswahl bleibt erhalten; es startet kein zweiter Lauf.
+
+Eine geänderte Anforderung, Anbieterauswahl, Analysesprache oder Modellgrundlage
+führt zu einer neuen Analyse. Lokal bearbeitete Bewertungen und Begründungen werden
+nicht still überschrieben: Im Analyse-Status können Sie den gespeicherten Stand laden
+oder ausdrücklich eine neue Analyse starten. Wird eine Ergänzung wegen einer
+geänderten gespeicherten Grundlage abgewiesen, etwa nach einem Wechsel des
+Server-Standardanbieters, bleiben die bisherigen Ergebnisse erhalten; der
+Analyse-Status bietet ebenfalls **Neue Analyse mit aktueller Auswahl
+starten** an. Diese Aktion steht auch nach einem bestätigten Abbruch zur Verfügung;
+das Teilergebnis bleibt bis zu Ihrer Entscheidung sichtbar. Diese ausdrückliche
+Wahl ersetzt die sichtbaren Ergebnisse.
+
 Ausgewählte Wurzeln begrenzen Bewertung und Relationsquellen. Im vollständigen
 Modus können weiterhin passende Relationsziele aus anderen Teiltaxonomien untersucht
 werden. „Nur Taxonomien“ führt keine Relationssuche oder relationenabhängige
 Architekturableitung aus und ist keine abgeschlossene vollständige Architekturanalyse.
 
 Nach einem gespeicherten Lauf mit **Nur Knotenbewertung** ergänzt **Relationssuche ergänzen** die Beziehungen. Die vorhandenen Bewertungen und Begründungen bleiben erhalten. Der zusätzliche Schritt verwendet die ursprüngliche Anforderung, Taxonomie und Anbieterauswahl. Nach einem Neuladen steht er im selben Workspace wieder zur Verfügung. Geänderte Eingaben, bearbeitete oder ergänzte Bewertungen und Begründungen sowie ältere Importe ohne passenden gespeicherten Lauf werden mit einer Erklärung abgewiesen; starten Sie dann eine neue Knotenbewertung. Eine pausierte oder mit offenen Prüfungen beendete Relationssuche lässt sich über diese Prüfungen fortsetzen.
+
+Bei einer angenommenen Ergänzung werden Architekturansicht und Relationsbericht
+aus dem neuen Ergebnis übernommen. Eine frühere Ansicht für einen kleineren Umfang
+gilt nicht für die erweiterten Ergebnisse. **Nur Knotenbewertung** enthält keine
+Relationsansicht; bis zur Annahme oder bei einer abgewiesenen Ergänzung bleibt der
+bisherige Stand sichtbar.
 
 Im Analyse-Status bleibt jede ausgewählte Teiltaxonomie in derselben Reihenfolge und behält ihren Knotenbalken auch während der Relationssuche. Die zunächst aufgeklappte Liste kann eingeklappt werden. Solange der Umfang noch nicht feststeht, zeigt die Anzeige keinen festen Prozentwert.
 

@@ -90,6 +90,8 @@
 .github/scripts/ui-proposal-fixtures.test.mjs
 .github/scripts/ui-qa-polish.test.mjs
 .github/scripts/ui-role-fixtures.test.mjs
+.github/scripts/ui-rejected-analysis-fixture.test.mjs
+.github/scripts/ui-role-state-evidence.test.mjs
 .github/scripts/ui-role-state-http-failure-policy.test.mjs
 .github/scripts/ui-role-state-isolation.test.mjs
 .github/scripts/ui-shard-plan.test.mjs

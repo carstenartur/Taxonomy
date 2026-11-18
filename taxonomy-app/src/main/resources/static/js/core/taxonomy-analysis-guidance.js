@@ -38,7 +38,9 @@
             : Boolean(text.trim() || S.currentScores || S.currentArchView || S.currentRelationSearchReport);
         var running = ['IN_PROGRESS', 'RUNNING', 'QUEUED'].includes(S.lastAnalysisStatus)
             || Boolean(window.__TaxonomyAnalysisSessionContext?.analysisRunning?.());
+        var startPlan = window.TaxonomyAnalysisRecovery?.startPlan?.();
         return {running: running, text: text, ready: Boolean(session?.ready),
+            startPlan:startPlan,
             shared: session?.workspaceId === null,
             unpersisted: session?.workspaceId === null && meaningful,
             stale: S.lastAnalyzedText != null && text !== S.lastAnalyzedText,
@@ -51,7 +53,10 @@
         var c = condition();
         var key = c.running ? 'running' : c.unpersisted ? 'workspace' : c.stale ? 'stale' : !c.text.trim() ? 'empty'
             : !c.ready ? 'unavailable' : c.partial ? 'partial' : S.lastAnalysisStatus ? 'complete' : 'empty';
-        setText(el('analysisNextStepText'), t(key));
+        var next = c.startPlan;
+        var changedPlan = next && ['EXTEND','RELATIONS','CONFLICT','REVIEW','UNBOUND'].includes(next.kind)
+            || next?.kind === 'NEW' && S.lastAnalyzedText != null && !c.stale;
+        setText(el('analysisNextStepText'), !c.running && !c.unpersisted && c.ready && changedPlan ? next.message : t(key));
         var saved = requirementUrl();
         setText(el('analysisReformulationHint'), t(saved ? 'saved' : 'unsaved'));
         ['analysisReformulationAction'].forEach(function (id) {
@@ -68,8 +73,10 @@
         });
         el('analysisClarifyAction').hidden = !c.partial || c.running || c.stale;
         el('analysisClarifyAction').disabled = busy || !c.ready;
-        el('analysisReanalyzeAction').hidden = !c.stale || c.running;
+        el('analysisReanalyzeAction').hidden = (!c.stale && !changedPlan) || c.running;
         el('analysisReanalyzeAction').disabled = busy || !c.ready || !c.text.trim();
+        setText(el('analysisReanalyzeAction'), t(next && ['EXTEND','RELATIONS'].includes(next.kind) ? 'extend'
+            : next && ['CONFLICT','REVIEW'].includes(next.kind) ? 'status' : 'analyze'));
     }
     async function navigate(event, target) {
         // Modified link clicks retain normal browser behavior; they do not discard this page.
@@ -136,10 +143,12 @@
     });
     ['taxonomy:view-rendered', 'taxonomy:analysis-progress', 'taxonomy:analysis-running-changed',
         'taxonomy:analysis-invalidated', 'taxonomy:analysis-cancelled', 'taxonomy:analysis-draft-restored',
-        'taxonomy:analysis-source-ready', 'taxonomy:page-activated'].forEach(function (name) {
+        'taxonomy:analysis-source-ready', 'taxonomy:page-activated', 'taxonomy:analysis-recovery-updated',
+        'taxonomy:content-language-changed', 'taxonomy:analysis-selection-changed'].forEach(function (name) {
         document.addEventListener(name, render);
     });
     el('businessText')?.addEventListener('input', render);
+    document.addEventListener('change', render);
     var status = el('statusArea');
     if (status) new MutationObserver(render).observe(status, {childList:true, subtree:true});
     function watchSessionReady() {
