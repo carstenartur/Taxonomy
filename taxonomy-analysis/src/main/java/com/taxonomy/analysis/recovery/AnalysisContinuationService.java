@@ -53,9 +53,13 @@ public class AnalysisContinuationService {
     /** Adds selected node work to one immutable, owned source revision. Browser scores are never input. */
     public AnalysisRequest resolveTaxonomiesRequest(AnalysisRequest decision, String username, WorkspaceContext scope) {
         authorize(username, scope);
-        if (!decision.isResumable() || decision.getTaxonomySourceVersion() == null)
+        if (!decision.isResumable())
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Taxonomy extension requires a durable source revision");
-        if (decision.getRelationSourceContinuationId() != null || decision.getRelationSourceVersion() != null)
+        if (decision.getTaxonomySourceVersion() == null)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Taxonomy extension requires a durable source revision");
+        if (decision.getRelationSourceContinuationId() != null)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Taxonomy and relations sources are mutually exclusive");
+        if (decision.getRelationSourceVersion() != null)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Taxonomy and relations sources are mutually exclusive");
         var input = store.taxonomyInput(decision, scope);
         var saved = input.request();

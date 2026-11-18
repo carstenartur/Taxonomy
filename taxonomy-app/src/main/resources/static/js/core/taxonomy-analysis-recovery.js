@@ -356,7 +356,7 @@
         function localEvidence() { return C.currentAnalysisEvidence ? C.currentAnalysisEvidence() : currentNodeEvidence(); }
         var acceptedEvidence = options.acceptSavedResult ? localEvidence() : null;
         var wasOpen = Boolean(ui.isOpen?.()), recovering = Boolean(c.syncState || c.observationError);
-        var reopen = wasOpen || Boolean(options.afterDecision);
+        var reopen = wasOpen || Boolean(options.afterDecision && !options.deferDialog);
         reading = observation;
         if (recovering || options.afterDecision || wasOpen && !options.background) {
             observeDraftChanges(function () { c.syncState = 'CHECKING'; }); update();
@@ -449,14 +449,20 @@
             });
         };
     }
-    async function recoverDecision(context, error) {
+    async function recoverDecision(context, error, ordinaryStart) {
         context.rejectionStatus = errorStatus(error) || null; context.rejectionMessage = error.message;
         context.decisionDiagnostic = error.message;
         context.recoveryEvent = context.rejectionStatus === 409 ? 'CONFLICT' : context.rejectionStatus ? 'REJECTED' : 'UNCONFIRMED';
-        context.syncState = 'CHECKING'; update(); open();
+        // Ordinary analysis already displays its HTTP error inline. Check whether
+        // that fresh start has a saved run before interrupting navigation with a
+        // recovery dialog. The identity and unknown-outcome guards stay intact.
+        var deferDialog = Boolean(ordinaryStart && context.rejectionStatus && !context.confirmed);
+        context.syncState = 'CHECKING'; update();
+        if (!deferDialog) open();
         // Confirm the same identity without resubmitting the decision.
-        await refresh({ afterDecision: true });
-        if (inScope(context)) open();
+        await refresh({ afterDecision: true, deferDialog: deferDialog });
+        var noSavedStart = deferDialog && !context.confirmed && context.observationStatus === 404;
+        if (inScope(context) && !noSavedStart) open();
     }
     async function run(action, question, newOperation) {
         var c = current();
@@ -507,7 +513,8 @@
             return result;
         } catch (error) {
             if (!inScope(c)) return;
-            setBusy(false); await recoverDecision(c, error);
+            setBusy(false); await recoverDecision(c, error,
+                newOperation === true && c.noFollowups && body.continuationAction === 'START');
         } finally {
             clearTimeout(poll); poll = null;
             if (inScope(c)) { restoreArchitecture(); setBusy(false); update(); if (S.analysisRecovery?.state === 'RUNNING') scheduleRead(); }
@@ -949,8 +956,8 @@
         if (covered && (accepted?.mode || 'FULL') === desired.analysisScope.mode
                 && desired.includeArchitectureView === Boolean(source.request.includeArchitectureView)
                 && recovery.state === 'COMPLETED' && !recovery.openQuestions?.length && !S.analysisCoverage?.failedOrBlockedNodes)
-            return {kind:'REUSE', request:desired, message:text('Die gewählten Teiltaxonomien sind vollständig bewertet.',
-                'The selected taxonomies are fully assessed.')};
+            return {kind:'REUSE', request:desired, message:text('Analyse abgeschlossen: Die gewählten Teiltaxonomien sind bereits vollständig bewertet.',
+                'Analysis complete: the selected taxonomies are already fully assessed.')};
         return {kind:'EXTEND', request:desired, message:text(
             'Vorhandene Bewertungen bleiben erhalten. Die gewählten neuen und offenen Bereiche werden ergänzt.',
             'Existing assessments are retained. New and unfinished selected areas will be added.')};
@@ -986,7 +993,10 @@
         if (['OBSERVE','REUSE','REVIEW','CONFLICT'].includes(plan.kind)) {
             if (plan.kind === 'CONFLICT') current().evidenceConflict = true;
             window.TaxonomyBrowse?.showStatus(plan.kind === 'REUSE' ? 'info' : 'warning', plan.message);
-            open(); return;
+            // The current button owns presentation, independently of the
+            // restored source's follow-up policy. Ordinary reuse stays inline.
+            if (plan.kind !== 'REUSE' || manual !== true) open();
+            return;
         }
         if (plan.kind === 'UNBOUND') {
             var evidence = currentNodeEvidence(), requirement = input();

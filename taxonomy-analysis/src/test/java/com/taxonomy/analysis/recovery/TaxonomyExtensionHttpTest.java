@@ -147,6 +147,56 @@ class TaxonomyExtensionHttpTest {
         }
     }
 
+    @Test void everyIncompleteOrMixedTaxonomySourceRejectsWithoutCreatingWork() throws Exception {
+        try (var fixture = new Fixture()) {
+            var source = fixture.analyze(fixture.start(Set.of("BP")));
+            for (var mutation : List.<java.util.function.Consumer<Map<String, Object>>>of(
+                    r -> r.put("resumable", false),
+                    r -> r.remove("taxonomySourceVersion"),
+                    r -> r.put("relationSourceContinuationId", source.getRecovery().id()),
+                    r -> r.put("relationSourceVersion", source.getRecovery().version()))) {
+                var request = fixture.extend(source, Set.of("CP")); mutation.accept(request);
+                fixture.reject(request, 400);
+                var decision = fixture.mapper.convertValue(request, AnalysisRequest.class);
+                assertThatThrownBy(() -> fixture.continuations.resolveTaxonomiesRequest(decision, "alice", fixture.scope))
+                        .isInstanceOfSatisfying(org.springframework.web.server.ResponseStatusException.class,
+                                failure -> assertThat(failure.getStatusCode().value()).isEqualTo(400));
+                assertThatThrownBy(() -> fixture.store.read(decision.getContinuationId(), fixture.scope))
+                        .hasMessageContaining("404");
+            }
+            var retained = fixture.store.read(source.getRecovery().id(), fixture.scope);
+            assertThat(retained.recovery()).isEqualTo(source.getRecovery());
+            assertThat(retained.result().getRawScores()).isEqualTo(source.getRawScores());
+            assertThat(retained.result().getReasons()).isEqualTo(source.getReasons());
+            assertThat(fixture.calls).containsExactlyEntriesOf(Map.of("BP", 1));
+        }
+    }
+
+    @Test void eitherRelationsSourceFieldRejectsAtTheJournalBoundaryWithoutCreatingWork() throws Exception {
+        try (var fixture = new Fixture()) {
+            var source = fixture.analyze(fixture.start(Set.of("BP")));
+            for (var mutation : List.<java.util.function.Consumer<AnalysisRequest>>of(
+                    r -> r.setRelationSourceContinuationId(source.getRecovery().id()),
+                    r -> r.setRelationSourceVersion(source.getRecovery().version()))) {
+                var request = fixture.mapper.convertValue(fixture.extend(source, Set.of("CP")), AnalysisRequest.class);
+                mutation.accept(request);
+                assertThatThrownBy(() -> fixture.store.taxonomyInput(request, fixture.scope))
+                        .isInstanceOfSatisfying(org.springframework.web.server.ResponseStatusException.class,
+                                failure -> assertThat(failure.getStatusCode().value()).isEqualTo(409));
+                assertThatThrownBy(() -> fixture.store.begin(request, fixture.scope, "rejected-mixed-source", List.of()))
+                        .isInstanceOfSatisfying(org.springframework.web.server.ResponseStatusException.class,
+                                failure -> assertThat(failure.getStatusCode().value()).isEqualTo(409));
+                assertThatThrownBy(() -> fixture.store.read(request.getContinuationId(), fixture.scope))
+                        .hasMessageContaining("404");
+            }
+            var retained = fixture.store.read(source.getRecovery().id(), fixture.scope);
+            assertThat(retained.recovery()).isEqualTo(source.getRecovery());
+            assertThat(retained.result().getRawScores()).isEqualTo(source.getRawScores());
+            assertThat(retained.result().getReasons()).isEqualTo(source.getReasons());
+            assertThat(fixture.calls).containsExactlyEntriesOf(Map.of("BP", 1));
+        }
+    }
+
     @Test void sourceRequestAndRequestedWorkSurviveRestartAndRejectConflictingDuplicate() throws Exception {
         try (var fixture = new Fixture()) {
             var source = fixture.analyze(fixture.start(Set.of("BP")));

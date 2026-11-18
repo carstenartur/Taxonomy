@@ -206,7 +206,9 @@ public class AnalysisContinuationStore {
     }
 
     private AnalysisContinuationRun taxonomySource(AnalysisRequest request, WorkspaceContext scope, LockModeType lock) {
-        if (request.getRelationSourceContinuationId() != null || request.getRelationSourceVersion() != null)
+        if (request.getRelationSourceContinuationId() != null)
+            throw conflict("Taxonomy and relations sources are mutually exclusive");
+        if (request.getRelationSourceVersion() != null)
             throw conflict("Taxonomy and relations sources are mutually exclusive");
         String id = requireId(request.getTaxonomySourceContinuationId());
         if (id.equals(request.getContinuationId())) throw conflict("A taxonomy extension requires a new continuation identity");

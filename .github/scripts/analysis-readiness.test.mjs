@@ -9,6 +9,10 @@ const source = readFileSync(new URL('../../taxonomy-app/src/main/resources/stati
 const recoverySource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-recovery.js', import.meta.url), 'utf8');
 function fixture(options = {}) {
     const statuses = [], calls = [], observations = [], renders = [], order = [], progressActions = [];
+    const recoveryUi = { opened: false, openCount: 0, message: '',
+        update(message) { this.message = message; }, close() { this.opened = false; },
+        open() { this.opened = true; this.openCount++; }, isOpen() { return this.opened; },
+        error(message) { statuses.push(['error', message]); }, isDismissed: () => false };
     let rejectRequest, activeMonitor;
     const requests = [];
     const sessionState = { ready: true, workspaceId: 'workspace-a' };
@@ -47,8 +51,7 @@ function fixture(options = {}) {
     function loadRecovery() {
         window.__TaxonomyAnalysisSessionContext = { S: state,
             runtime: { workspaceId: sessionState.workspaceId, analysisGeneration: 0 }, language: () => 'en' };
-        window.TaxonomyRecoveryViewport = { mount: () => ({ update() {}, close() {}, open() {},
-            error(message) { statuses.push(['error', message]); }, isDismissed: () => false }) };
+        window.TaxonomyRecoveryViewport = { mount: actions => { recoveryUi.actions = actions; return recoveryUi; } };
         document.addEventListener = () => {};
         textField.addEventListener = () => {};
         sandbox.sessionStorage = { getItem: () => null, setItem() {}, removeItem() {} };
@@ -58,9 +61,110 @@ function fixture(options = {}) {
         return window.TaxonomyAnalysisRecovery;
     }
     return { window, state, sessionState, statuses, calls, observations, progress, renders, order, loadRecovery,
-        requests, progressActions, sandbox, rejectRequest: error => error.httpStatus
+        requests, progressActions, sandbox, recoveryUi, rejectRequest: error => error.httpStatus
             ? requests.at(-1).resolve(Response.json({detail: error.message}, {status: error.httpStatus}))
             : rejectRequest(error) };
+}
+
+for (const [action, failure, observation, opens] of [
+    ['analyze', 503, 404, false],
+    ['copilot', 503, 404, true],
+    ['analyze', 'network', 404, true],
+    ['analyze', 503, 503, true],
+    ['analyze', 503, 403, true],
+    ['analyze', 503, 'RUNNING', true],
+    ['analyze', 503, 'PAUSED', true],
+    ['analyze', 503, 'COMPLETED', true]
+]) {
+    test(`recovery presentation after ${action} ${failure} and observed ${observation}`, async () => {
+        const f = fixture({ crypto: webcrypto }); f.progress();
+        f.window.TaxonomyAnalysisSession = { state: () => f.sessionState };
+        const recovery = f.loadRecovery();
+        vm.runInContext(readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/api/analysis-session-api.js', import.meta.url), 'utf8'), f.sandbox);
+        const start = () => action === 'copilot' ? recovery.startCopilot() : f.window.TaxonomyScoring.runAnalysis();
+        const work = start(), sent = JSON.parse(f.calls[0][1].body), target = f.state.recoveryContext;
+        if (failure === 'network') f.requests[0].reject(new TypeError('Failed to fetch'));
+        else f.requests[0].resolve(Response.json({ error: 'QA_PROVIDER_UNAVAILABLE', message: 'Deterministic QA failure' }, { status: failure }));
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(f.calls.length, 2, 'the rejected start must read its original continuation, without another POST');
+        assert.equal(f.calls[1][1].method, 'GET');
+        assert.equal(f.calls[1][0], '/api/analysis-continuations/' + sent.continuationId + '?workspaceId=workspace-a');
+        assert.equal(new Headers(f.calls[1][1].headers).get('X-Taxonomy-Workspace-Id'), 'workspace-a');
+        const openedBeforeRead = f.recoveryUi.openCount;
+        if (typeof observation === 'number') f.requests[1].resolve(Response.json({ detail: 'Analysis continuation unavailable' }, { status: observation }));
+        else {
+            const status = { id: sent.continuationId, version: 3, state: observation, completedCalls: 1,
+                openQuestions: observation === 'PAUSED' ? [{ key: 'open', nodes: ['BP'], skipped: false }] : [] };
+            f.requests[1].resolve(Response.json({ request: sent, recovery: status,
+                result: observation === 'RUNNING' ? null : { status: observation === 'COMPLETED' ? 'SUCCESS' : 'PARTIAL',
+                    recovery: status, rawScores: { BP: 80 }, scores: { BP: 80 }, reasons: { BP: 'Accepted evidence' }, analysisScope: sent.analysisScope } }));
+        }
+        await work;
+        assert.equal(f.recoveryUi.opened, opens);
+        assert.equal(f.state.recoveryContext, target); assert.equal(target.id, sent.continuationId);
+        assert.equal(f.calls.length, 2, 'observation never repeats the provider request');
+        if (!opens) {
+            assert.equal(openedBeforeRead, 0, 'ordinary rejection waits for its status read without trapping navigation');
+            assert.equal(f.recoveryUi.openCount, 0, 'an unregistered ordinary start is reported inline');
+            assert.ok(f.statuses.some(([kind, message]) => kind === 'danger' && message.includes('Deterministic QA failure')));
+            assert.equal(target.confirmed, undefined); assert.equal(target.observationStatus, 404);
+            assert.equal(target.syncState, 'UNAVAILABLE'); assert.ok(f.recoveryUi.message);
+            f.recoveryUi.actions.open(); assert.equal(f.recoveryUi.opened, true, 'the explicit status action remains available');
+            start(); assert.equal(f.calls.length, 2, 'keeping navigation usable must not authorize a fresh start');
+            assert.equal(f.state.recoveryContext, target);
+        }
+    });
+}
+
+test('recovery presentation keeps ordinary successful analysis non-modal', async () => {
+    const f = fixture({ crypto: webcrypto }); f.progress();
+    f.window.TaxonomyAnalysisSession = { state: () => f.sessionState }; f.loadRecovery();
+    const work = f.window.TaxonomyScoring.runAnalysis(), sent = JSON.parse(f.calls[0][1].body);
+    f.requests[0].resolve(Response.json({ status: 'SUCCESS', rawScores: { BP: 80 }, scores: { BP: 80 }, reasons: {},
+        recovery: { id: sent.continuationId, version: 3, state: 'COMPLETED', openQuestions: [] } }));
+    await work;
+    assert.equal(f.recoveryUi.openCount, 0); assert.equal(f.recoveryUi.opened, false);
+    assert.equal(f.state.currentRawScores.BP, 80); assert.equal(f.state.recoveryContext.confirmed, true);
+    f.recoveryUi.actions.open(); assert.equal(f.recoveryUi.opened, true);
+});
+
+for (const language of ['en', 'de']) for (const action of ['analyze', 'copilot']) for (const extension of [false, true]) {
+    test(`completed reuse presentation ${language} ${action} from restored ${extension ? 'extension' : 'ordinary'} source`, async () => {
+        const f = fixture({ crypto: webcrypto, includeArchitecture: true }); f.progress();
+        f.window.TaxonomyAnalysisSession = { state: () => f.sessionState };
+        let ready; f.window.TaxonomyAnalysisSessionReady = new Promise(resolve => { ready = resolve; });
+        const scope = { taxonomyRoots: ['BP'], mode: 'FULL' };
+        f.window.TaxonomyAnalysisScope = { read: () => scope, acceptResult: value => { f.state.lastAnalysisScope = value; } };
+        const recovery = f.loadRecovery();
+        f.window.__TaxonomyAnalysisSessionContext.language = () => language;
+        vm.runInContext(readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/api/analysis-session-api.js', import.meta.url), 'utf8'), f.sandbox);
+        const id = webcrypto.randomUUID(), request = { businessText: 'communications', provider: null,
+            resumable: true, continuationId: id, continuationAction: 'START', analysisScope: scope, includeArchitectureView: true };
+        if (extension) Object.assign(request, { taxonomySourceContinuationId: webcrypto.randomUUID(), taxonomySourceVersion: 3, taxonomyRequestedScope: scope });
+        const status = { id, version: 7, state: 'COMPLETED', completedCalls: 39, openQuestions: [] };
+        const saved = { request, recovery: status, result: { status: 'SUCCESS', recovery: status,
+            rawScores: { BP: 71.125 }, scores: { BP: 71.125 }, reasons: { BP: 'Saved explanation.\nKeep verbatim.' },
+            analysisScope: scope, analysisProviderId: 'CUSTOM_OPENAI', analysisCoverage: { failedOrBlockedNodes: 0, nodes: {} },
+            tree: [{ code: 'BP', children: [] }], architectureView: { title: 'Retained architecture' } } };
+        const storage = new Map([['taxonomy.recovery.active.v1', JSON.stringify({ id, workspaceId: 'workspace-a' })]]);
+        f.sandbox.sessionStorage = { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) };
+        ready(); await new Promise(resolve => setImmediate(resolve));
+        assert.equal(f.calls.length, 1); assert.equal(f.calls[0][1].method, 'GET');
+        f.requests[0].resolve(Response.json(saved)); await new Promise(resolve => setImmediate(resolve));
+        const source = f.state.recoveryContext;
+        assert.equal(source.noFollowups, extension, 'restored source history must not decide the current button presentation');
+        assert.equal(recovery.startPlan(action === 'analyze').kind, 'REUSE');
+        const retained = JSON.stringify([f.state.currentRawScores, f.state.currentReasons, f.state.currentArchView]);
+        if (action === 'copilot') recovery.startCopilot(); else f.window.TaxonomyScoring.runAnalysis();
+        assert.equal(f.calls.length, 1, 'completed reuse must not start a provider request or another observation');
+        assert.equal(f.state.recoveryContext, source); assert.equal(source.id, id);
+        assert.equal(JSON.stringify([f.state.currentRawScores, f.state.currentReasons, f.state.currentArchView]), retained);
+        assert.equal(f.recoveryUi.opened, action === 'copilot');
+        assert.equal(f.statuses.at(-1)[0], 'info');
+        assert.match(f.statuses.at(-1)[1], language === 'de' ? /Analyse abgeschlossen.*bereits vollständig bewertet/ : /Analysis complete.*already fully assessed/);
+        f.recoveryUi.actions.open(); assert.equal(f.recoveryUi.opened, true, 'explicit Analysis status remains available');
+        assert.equal(f.calls.length, 1); assert.equal(source.noFollowups, extension);
+    });
 }
 
 for (const phase of ['no lifecycle', 'progress loaded before lifecycle', 'loader still running']) {
