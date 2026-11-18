@@ -70,6 +70,28 @@ public class AnalysisContinuationStore {
             run.state = "NEW";
             run.relationCallsSpent = 0;
             AnalysisResult retained = null;
+            if (request.getTaxonomySourceContinuationId() != null) {
+                var source = taxonomySource(request, scope, LockModeType.PESSIMISTIC_WRITE);
+                requireNewExtension(signature, scope);
+                retained = readResult(source);
+                var original = mapper.readValue(source.requestJson, AnalysisRequest.class);
+                requireTaxonomyAuthority(original, request, retained, tree);
+                run.requestJson = mapper.writeValueAsString(request);
+                em.persist(run);
+                copyTaxonomyQuestions(source, run, request, scope, retained);
+                if (TaxonomyExtensionEvidence.noWork(source.state, original, request, retained, tree)) {
+                    // A complete equivalent result has no new node or relation work. Keep its
+                    // evidence addressable under the new receipt, without creating worker tasks.
+                    copyRelationQuestions(source, run);
+                    run.relationCallsSpent = source.relationCallsSpent;
+                    var result = TaxonomyExtensionEvidence.completedCopy(mapper, retained, request);
+                    run.state = "COMPLETED"; run.updatedAt = System.currentTimeMillis();
+                    writeResult(run, result); em.flush();
+                    result.setRecovery(view(run));
+                    return new Claim(id, null, result);
+                }
+                retained = TaxonomyExtensionEvidence.seed(mapper, retained, request);
+            }
             if (request.getRelationSourceContinuationId() != null) {
                 var source = relationSource(request, scope, LockModeType.PESSIMISTIC_WRITE);
                 var duplicate = em.createQuery("select r.id from AnalysisContinuationRun r where r.inputHash=:hash and r.username=:owner and r.workspaceId=:workspace and r.state<>'CANCELLED'", String.class)
@@ -107,6 +129,10 @@ public class AnalysisContinuationStore {
         } else {
             authorize(run, scope);
             var savedRequest = mapper.readValue(run.requestJson, AnalysisRequest.class);
+            if (!Objects.equals(savedRequest.getTaxonomySourceContinuationId(), request.getTaxonomySourceContinuationId())
+                    || !Objects.equals(savedRequest.getTaxonomySourceVersion(), request.getTaxonomySourceVersion())
+                    || !Objects.equals(savedRequest.getTaxonomyRequestedScope(), request.getTaxonomyRequestedScope()))
+                throw conflict("This continuation belongs to a different taxonomy source or requested selection");
             if (!Objects.equals(savedRequest.getRelationSourceContinuationId(), request.getRelationSourceContinuationId())
                     || !Objects.equals(savedRequest.getRelationSourceVersion(), request.getRelationSourceVersion()))
                 throw conflict("This continuation belongs to a different retained source revision");
@@ -158,6 +184,156 @@ public class AnalysisContinuationStore {
         if (savedRequest.getRelationSourceContinuationId() != null && previous != null) resetRelationAttempt(previous, savedRequest);
         return new Claim(id, run.claimToken, null, previousRelations,
                 savedRequest.getRelationSourceContinuationId() == null ? null : previous);
+    }
+
+    /** Reads the accepted target on replay, otherwise its exact authorized source revision. */
+    @Transactional
+    public Snapshot taxonomyInput(AnalysisRequest request, WorkspaceContext scope) {
+        requireScope(scope);
+        var target = em.find(AnalysisContinuationRun.class, requireId(request.getContinuationId()));
+        if (target != null) {
+            authorize(target, scope);
+            var saved = mapper.readValue(target.requestJson, AnalysisRequest.class);
+            var requested = request.getTaxonomyRequestedScope() == null ? request.getAnalysisScope() : request.getTaxonomyRequestedScope();
+            if (!Objects.equals(saved.getTaxonomySourceContinuationId(), request.getTaxonomySourceContinuationId())
+                    || !Objects.equals(saved.getTaxonomySourceVersion(), request.getTaxonomySourceVersion())
+                    || !Objects.equals(saved.getTaxonomyRequestedScope(), requested))
+                throw conflict("This continuation belongs to a different taxonomy source or requested selection");
+            return new Snapshot(view(target), readResult(target), saved, target.clusterOperationId);
+        }
+        var source = taxonomySource(request, scope, LockModeType.PESSIMISTIC_READ);
+        return new Snapshot(view(source), readResult(source), mapper.readValue(source.requestJson, AnalysisRequest.class), source.clusterOperationId);
+    }
+
+    private AnalysisContinuationRun taxonomySource(AnalysisRequest request, WorkspaceContext scope, LockModeType lock) {
+        if (request.getRelationSourceContinuationId() != null || request.getRelationSourceVersion() != null)
+            throw conflict("Taxonomy and relations sources are mutually exclusive");
+        String id = requireId(request.getTaxonomySourceContinuationId());
+        if (id.equals(request.getContinuationId())) throw conflict("A taxonomy extension requires a new continuation identity");
+        var source = em.find(AnalysisContinuationRun.class, id, lock);
+        if (source == null) throw notFound();
+        authorize(source, scope);
+        if (request.getTaxonomySourceVersion() == null || request.getTaxonomySourceVersion() != source.version)
+            throw conflict("A newer taxonomy source revision exists; refresh before extending the analysis");
+        requireTaxonomySource(source);
+        return source;
+    }
+
+    private void requireTaxonomySource(AnalysisContinuationRun source) {
+        var result = readResult(source);
+        if (!Set.of("COMPLETED", "COMPLETED_WITH_GAPS").contains(source.state)
+                || result == null || result.getTree() == null || result.getTree().isEmpty()
+                || result.getAnalysisCoverage() == null || !Set.of("SUCCESS", "PARTIAL").contains(result.getStatus())
+                || result.getWarnings().stream().anyMatch(w -> w.startsWith("RESTORED_HISTORICAL_SOURCE_EVIDENCE:"))
+                || questionMetadata(source).stream().anyMatch(q -> "ATTEMPT".equals(q.state)
+                    || "FAILED".equals(q.state)))
+            throw conflict("Taxonomy extension requires completed retained node evidence; observe or recover running or uncertain work first");
+    }
+
+    private void requireNewExtension(String signature, WorkspaceContext scope) {
+        var duplicate = em.createQuery("select r.id from AnalysisContinuationRun r where r.inputHash=:hash and r.username=:owner and r.workspaceId=:workspace and r.state<>'CANCELLED'", String.class)
+                .setParameter("hash", signature).setParameter("owner", scope.username()).setParameter("workspace", scope.workspaceId())
+                .setMaxResults(1).getResultList();
+        if (!duplicate.isEmpty()) throw conflict("This source revision already has a taxonomy continuation: " + duplicate.getFirst());
+    }
+
+    private void requireTaxonomyAuthority(AnalysisRequest original, AnalysisRequest request, AnalysisResult retained, List<TaxonomyNodeDto> tree) {
+        var requested = request.getTaxonomyRequestedScope();
+        if (requested == null || !Objects.equals(original.getBusinessText(), request.getBusinessText())
+                || !Objects.equals(original.getProvider(), request.getProvider())
+                || !Objects.equals(original.getAnalysisLanguage(), request.getAnalysisLanguage())
+                || !Objects.equals(original.getAnalysisReasonLength(), request.getAnalysisReasonLength())
+                || !Objects.equals(original.getContinuationAuthority(), request.getContinuationAuthority())
+                || !Objects.equals(original.getModelBinding() == null ? null : original.getModelBinding().withScope(request.getAnalysisScope()), request.getModelBinding())
+                || !Objects.equals(TaxonomyExtensionEvidence.union(original.getAnalysisScope(), requested, tree), request.getAnalysisScope())
+                || !mapper.writeValueAsString(retained.getTree()).equals(mapper.writeValueAsString(tree)))
+            throw conflict("Taxonomy extension differs from its retained source authority");
+    }
+
+    private void copyTaxonomyQuestions(AnalysisContinuationRun source, AnalysisContinuationRun target, AnalysisRequest request,
+            WorkspaceContext scope, AnalysisResult retained) {
+        var accepted = new LinkedHashMap<String, Double>();
+        var acceptedReasons = new LinkedHashMap<String, String>();
+        var nodes = TaxonomyExtensionEvidence.membership(retained.getTree());
+        var copied = new LinkedHashMap<String, AnalysisQuestionCheckpoint>();
+        collectTaxonomyQuestions(source, scope, new HashSet<>(), copied);
+        if (copied.size() > MAX_QUESTIONS) throw conflict("Retained taxonomy questions exceed the continuation bound");
+        for (var old : copied.values()) {
+            var detail = questionDetail(old.nodeCodes, old.prompt, old.detailJson);
+            if ("SUCCESS".equals(old.state)) {
+                if (detail == null) throw conflict("Accepted taxonomy question evidence is unavailable");
+                detail.getScores().forEach((code, score) -> {
+                    if (!Objects.equals(retained.getRawScores().get(code), score))
+                        throw conflict("Accepted question differs from the retained taxonomy scores");
+                    Double duplicate = accepted.putIfAbsent(code, score);
+                    if (duplicate != null && !duplicate.equals(score)) throw conflict("Conflicting retained taxonomy answers");
+                });
+                if (detail.getReasons() != null) detail.getReasons().forEach((code, reason) -> {
+                    if (!Objects.equals(retained.getReasons().get(code), reason))
+                        throw conflict("Accepted question differs from the retained taxonomy explanations");
+                    String duplicate = acceptedReasons.putIfAbsent(code, reason);
+                    if (duplicate != null && !duplicate.equals(reason)) throw conflict("Conflicting retained taxonomy explanations");
+                });
+            }
+            String state = !"SUCCESS".equals(old.state) && TaxonomyExtensionEvidence.requested(request.getTaxonomyRequestedScope(), nodes,
+                    payloads.parseLayout(old.nodeCodes).nodes()) ? "READY" : old.state;
+            copyQuestion(target, old, state);
+        }
+        if (!accepted.equals(retained.getRawScores()) || !acceptedReasons.equals(retained.getReasons()))
+            throw conflict("The original accepted taxonomy question history is unavailable; start a new analysis");
+    }
+
+    private void copyQuestion(AnalysisContinuationRun target, AnalysisQuestionCheckpoint old, String state) {
+        var q = new AnalysisQuestionCheckpoint();
+        q.id = target.id + ":" + old.questionKey; q.run = target; q.questionKey = old.questionKey;
+        q.inputHash = old.inputHash; q.provider = old.provider; q.nodeCodes = old.nodeCodes;
+        q.prompt = old.prompt; q.detailJson = old.detailJson; q.state = state;
+        q.attempts = old.attempts; q.startedAt = old.startedAt; q.error = old.error;
+        target.payloadCharacters += storedCharacters(q.prompt, q.detailJson);
+        if (target.payloadCharacters > MAX_RUN_CHARACTERS) throw conflict("Retained question evidence exceeds the continuation bound");
+        em.persist(q);
+    }
+
+    private void copyRelationQuestions(AnalysisContinuationRun source, AnalysisContinuationRun target) {
+        var relations = questions(source).stream().filter(q -> AnalysisCheckpointSession.isRelationQuestion(q.questionKey)).toList();
+        long existing = em.createQuery("select count(q) from AnalysisQuestionCheckpoint q where q.run.id=:id", Long.class)
+                .setParameter("id", target.id).getSingleResult();
+        if (existing + relations.size() > MAX_QUESTIONS) throw conflict("Retained questions exceed the continuation bound");
+        var report = readResult(source).getRelationSearchReport();
+        if (report != null && report.totalCalls() > 0 && relations.isEmpty())
+            throw conflict("The original relation question history is unavailable; start a new analysis");
+        for (var q : relations) {
+            if (!Set.of("SUCCESS", "DECOMPOSED", "SUPERSEDED").contains(q.state))
+                throw conflict("Original relation questions still require a recovery decision");
+            copyQuestion(target, q, q.state);
+        }
+    }
+
+    private void collectTaxonomyQuestions(AnalysisContinuationRun source, WorkspaceContext scope, Set<String> visited,
+            Map<String, AnalysisQuestionCheckpoint> result) {
+        if (!visited.add(source.id) || visited.size() > 64) throw conflict("Invalid taxonomy source ancestry");
+        authorize(source, scope);
+        var saved = mapper.readValue(source.requestJson, AnalysisRequest.class);
+        if (saved.getRelationSourceContinuationId() != null) {
+            var parent = em.find(AnalysisContinuationRun.class, requireId(saved.getRelationSourceContinuationId()), LockModeType.PESSIMISTIC_READ);
+            if (parent == null) throw conflict("Original taxonomy source history is unavailable");
+            authorize(parent, scope);
+            if (saved.getRelationSourceVersion() == null || saved.getRelationSourceVersion() != parent.version)
+                throw conflict("Original taxonomy source history changed; refresh the source analysis");
+            requireTaxonomySource(parent);
+            collectTaxonomyQuestions(parent, scope, visited, result);
+        }
+        for (var q : questions(source)) {
+            if (AnalysisCheckpointSession.isRelationQuestion(q.questionKey) || "SUPERSEDED".equals(q.state)) continue;
+            if (!Set.of("SUCCESS", "CLARIFICATION", "UNASSESSED", "SKIPPED").contains(q.state))
+                throw conflict("Original taxonomy questions require an explicit recovery decision");
+            var previous = result.putIfAbsent(q.questionKey, q);
+            if (previous != null && (!Objects.equals(previous.inputHash, q.inputHash)
+                    || !Objects.equals(previous.provider, q.provider) || !Objects.equals(previous.state, q.state)
+                    || !Objects.equals(previous.nodeCodes, q.nodeCodes) || !Objects.equals(previous.prompt, q.prompt)
+                    || !Objects.equals(previous.detailJson, q.detailJson)))
+                throw conflict("Conflicting taxonomy source question history");
+        }
     }
 
     /** Resolves a new extension or its existing target without changing the source.
@@ -263,9 +439,36 @@ public class AnalysisContinuationStore {
 
     @Transactional
     public AnalysisCheckpointSession.Checkpoint prepare(Claim claim, AnalysisCheckpointSession.Question request) {
-        return prepareQuestion(claim, request, true);
+        return prepare(claim, request, true);
     }
-    private AnalysisCheckpointSession.Checkpoint prepareQuestion(Claim claim, AnalysisCheckpointSession.Question request, boolean compatibleLocal) {
+
+    /** Loaded once per worker session; the claim lock requires a regular PostgreSQL transaction. */
+    @Transactional
+    public AnalysisScope taxonomyRequestedScope(Claim claim) {
+        checkpointOwner(claim, false);
+        String json = em.createQuery("select r.requestJson from AnalysisContinuationRun r where r.id=:id", String.class)
+                .setParameter("id", claim.id()).getSingleResult();
+        return mapper.readValue(json, AnalysisRequest.class).getTaxonomyRequestedScope();
+    }
+
+    /** Local traversal uses real catalogue membership, including codes unrelated to their root prefix. */
+    @Transactional
+    public java.util.function.Predicate<AnalysisCheckpointSession.Question> taxonomyWork(Claim claim) {
+        AnalysisScope requested = taxonomyRequestedScope(claim);
+        if (requested == null) return question -> true;
+        String json = em.createQuery("select r.resultJson from AnalysisContinuationRun r where r.id=:id", String.class)
+                .setParameter("id", claim.id()).getSingleResult();
+        var membership = TaxonomyExtensionEvidence.membership(resultPayload(json).getTree());
+        return question -> AnalysisCheckpointSession.isRelationQuestion(question.key())
+                || TaxonomyExtensionEvidence.requested(requested, membership, question.nodes());
+    }
+
+    @Transactional
+    public AnalysisCheckpointSession.Checkpoint prepare(Claim claim, AnalysisCheckpointSession.Question request, boolean allowAttempt) {
+        return prepareQuestion(claim, request, true, allowAttempt);
+    }
+    private AnalysisCheckpointSession.Checkpoint prepareQuestion(Claim claim, AnalysisCheckpointSession.Question request,
+            boolean compatibleLocal, boolean allowAttempt) {
         var run = checkpointOwner(claim, true);
         var question = question(run.id(), request.key());
         if (question == null && compatibleLocal) {
@@ -289,6 +492,12 @@ public class AnalysisContinuationStore {
             question.provider = request.provider(); question.nodeCodes = payloads.encodeNodes(request.nodes());
             question.state = "READY";
             em.persist(question);
+        }
+        if (!allowAttempt && !AnalysisCheckpointSession.isRelationQuestion(request.key())) {
+            // Keep absent/unfinished evidence explicit without admitting a provider attempt.
+            question.state = "SKIPPED";
+            question.error = "UNSELECTED_WORK: retained scope is outside the requested taxonomy work";
+            return checkpoint(question, request);
         }
         question.attempts++; question.startedAt = System.currentTimeMillis(); question.state = "ATTEMPT";
         String currentNode = String.join(", ", request.nodes());
@@ -383,6 +592,12 @@ public class AnalysisContinuationStore {
 
     @Transactional
     public AnalysisCheckpointSession.Checkpoint prepareDistributed(Claim claim, AnalysisCheckpointSession.Question input, QuestionOwner owner) {
+        return prepareDistributed(claim, input, owner, true);
+    }
+
+    @Transactional
+    public AnalysisCheckpointSession.Checkpoint prepareDistributed(Claim claim, AnalysisCheckpointSession.Question input,
+            QuestionOwner owner, boolean allowAttempt) {
         var run = checkpointOwner(claim, true);
         if (!Objects.equals(run.operationId(), owner.operationId())) throw conflict("Question operation binding was superseded");
         String scopedKey = AnalysisCheckpointSession.digest("distributed-question-v1", owner.namespace(), input.key(), input.inputHash());
@@ -411,7 +626,7 @@ public class AnalysisContinuationStore {
             updateCheckpointOwner(claim, run, "PAUSED", run.payloadCharacters(), run.currentNode());
             return checkpoint(existing, request);
         }
-        var admitted = prepareQuestion(claim, request, false);
+        var admitted = prepareQuestion(claim, request, false, allowAttempt);
         if ("ATTEMPT".equals(admitted.state())) {
             var question = question(run.id(), request.key());
             question.attemptOwner = owner.owner(); question.clusterOperationId = owner.operationId();
@@ -663,6 +878,8 @@ public class AnalysisContinuationStore {
         List<TaxonomyNodeDto> tree = previous != null && previous.getTree() != null
                 ? previous.getTree() : fallbackTree.get();
         boolean relationsOnly = frozenRequest.getRelationSourceContinuationId() != null;
+        boolean taxonomyExtension = frozenRequest.getTaxonomySourceContinuationId() != null;
+        if (taxonomyExtension && previous != null) TaxonomyExtensionEvidence.preserve(previous, result);
         if (relationsOnly && previous != null && !sameNodeEvidence(previous, result))
             throw conflict("Relations work cannot replace retained node assessments or explanations");
         AnalysisScope analysisScope = frozenRequest.getAnalysisScope();
@@ -688,7 +905,7 @@ public class AnalysisContinuationStore {
         } else if (!open.isEmpty()) {
             run.state = "COMPLETED_WITH_GAPS"; result.setStatus("PARTIAL");
         } else run.state = "SUCCESS".equals(result.getStatus()) ? "COMPLETED" : "COMPLETED_WITH_GAPS";
-        if (run.clusterOperationId != null) {
+        if (run.clusterOperationId != null || taxonomyExtension) {
             var raw = new LinkedHashMap<>(result.getRawScores());
             var reasons = new LinkedHashMap<>(result.getReasons() == null ? Map.<String,String>of() : result.getReasons());
             var acceptedDetails = em.createQuery("select q.nodeCodes, q.prompt, q.detailJson from AnalysisQuestionCheckpoint q "

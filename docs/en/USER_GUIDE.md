@@ -171,12 +171,41 @@ full mode or **Node assessment only**. The choice is frozen with the run and ret
 through compatible retry/continuation and JSON exchange. Changing the controls
 for a future run does not reinterpret an earlier result.
 
+**Add more taxonomies:** Keep the requirement unchanged, select additional areas
+or **All taxonomies**, then click **Copilot** or **Analyze with AI** again. Both
+actions retain the saved assessments and explanations and process only new or
+unfinished work within the current selection. Completed assessments, including
+validly excluded branches, do not cause another provider request. If the selection
+is already fully assessed and the mode and architecture-view option are unchanged,
+the existing result is shown.
+
+The selection controls the next work; **Result scope** shows the complete retained
+result. For example, selecting CP after a partly completed BP analysis adds CP while
+keeping the unfinished BP areas open. **All taxonomies** also includes the unfinished
+BP assessments. If a run is active, paused or its outcome is unknown, starting again
+opens its analysis status. Your new selection is retained without starting a second run.
+
+A changed requirement, provider selection, analysis language or model basis starts
+a new analysis. Locally edited assessments and explanations are not silently
+overwritten: analysis status lets you load the saved result or explicitly start a
+new analysis. If an extension is rejected because its saved basis changed, for
+example the server's default provider, the previous results remain available and
+analysis status offers **Start a new analysis
+with the current selection**. The same action is available after a confirmed
+cancellation; the partial result remains visible until you choose it. That explicit
+choice replaces the visible results.
+
 Selected roots limit scoring and relationship sources. In full mode, compatible
 relationship targets in other taxonomies can still be searched. Taxonomies-only
 mode does not perform relationship discovery or relationship-dependent architecture
 derivation; it must not be presented as a completed full architecture analysis.
 
 After a saved **Node assessment only** run, **Add relationship search** adds the relationships while retaining the existing scores and explanations. This step uses the original requirement, taxonomy and provider selection. It remains available in the same workspace after reload. Changed inputs, edited or independently extended assessments and explanations, and older imports without a matching saved run receive an explanation; start a new node assessment in that case. A paused relationship search or one completed with open assessments can be continued through those assessments.
+
+Once an extension is accepted, its result supplies the architecture view and
+relationship report. An earlier view for a smaller scope does not describe the
+extended result. **Node assessment only** has no relationship view; the previous
+result remains visible until acceptance or if the extension is rejected.
 
 Each selected taxonomy keeps the same position and node bar throughout node assessment and relationship search. The list is initially expanded and can be collapsed. No fixed percentage is shown until the work scope is known.
 

@@ -32,6 +32,18 @@ function harness() {
 }
 const copy = value => JSON.parse(JSON.stringify(value));
 
+for(const selection of [null,[]])test(`review loading catalogue preserves ${selection===null?'all':'explicit none'} while hint reads scope`,()=>{
+ const h=harness(),tree=h.S.taxonomyData;h.S.taxonomyData=[];
+ h.nodes.set('analysisScopeActionHint',{textContent:''});
+ h.window.TaxonomyAnalysisRecovery={startPlan(){try{h.scope.read();return {message:'Ready'};}catch(error){return {message:error.message};}}};
+ h.scope.restoreOptions({taxonomySelection:selection,analysisMode:'FULL'});h.scope.renderStartHint();
+ assert.deepEqual(copy(h.scope.options().taxonomySelection),selection);
+ h.S.taxonomyData=tree;h.scope.render(tree);
+ assert.deepEqual(h.inputs().map(input=>input.checked),selection===null?[true,true]:[false,false]);
+ if(selection===null)assert.deepEqual(copy(h.scope.read()),{taxonomyRoots:[],mode:'FULL'});
+ else assert.throws(()=>h.scope.read(),/analysis.scope.select.one/);
+});
+
 test('all roots default to legacy full analysis and selection produces a canonical scope', () => {
     const h = harness();
     assert.deepEqual(copy(h.scope.read()), {taxonomyRoots: [], mode: 'FULL'});
@@ -66,7 +78,23 @@ test('restored selection survives catalogue rendering and stays separate from ev
 test('a missing previously selected root is not silently replaced with all taxonomies', () => {
     const h = harness();
     h.scope.restoreOptions({taxonomySelection: ['REMOVED'], analysisMode: 'FULL'});
-    assert.throws(() => h.scope.read(), /analysis.scope.select.one/);
+    assert.throws(() => h.scope.read(), /analysis.scope.unavailable/);
+});
+
+test('a mixed valid and missing selection never silently becomes all taxonomies', () => {
+    const h=harness();
+    h.scope.restoreOptions({taxonomySelection:['BP','REMOVED'],analysisMode:'FULL'});
+    assert.throws(()=>h.scope.read(),/analysis.scope.unavailable/);
+    assert.deepEqual(copy(h.scope.options().taxonomySelection),['BP','REMOVED']);
+    h.change(h.inputs()[0]);
+    assert.deepEqual(copy(h.scope.read()),{taxonomyRoots:['BP'],mode:'FULL'});
+});
+
+test('scope comparisons expand all against the catalogue and leave frozen result scope unchanged', () => {
+    const h=harness();h.scope.acceptResult({taxonomyRoots:['BP'],mode:'TAXONOMIES_ONLY'});
+    assert.deepEqual(copy(h.scope.roots({taxonomyRoots:[]})),['BP','CP']);
+    assert.deepEqual(copy(h.scope.roots({taxonomyRoots:['CP','BP','BP']})),['BP','CP']);
+    assert.deepEqual(copy(h.S.lastAnalysisScope),{taxonomyRoots:['BP'],mode:'TAXONOMIES_ONLY'});
 });
 
 for (const action of ['enterManualScoringMode', 'applyManualScores']) {

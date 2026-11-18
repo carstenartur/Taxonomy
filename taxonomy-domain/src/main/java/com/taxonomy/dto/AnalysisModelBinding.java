@@ -58,6 +58,14 @@ public record AnalysisModelBinding(
         return executionCatalogueRevision == null ? catalogueRevision : executionCatalogueRevision;
     }
 
+    /** Extending selected evidence changes its scope, never its captured model or catalogue. */
+    public AnalysisModelBinding withScope(AnalysisScope value) {
+        return new AnalysisModelBinding(state, repositoryId, workspaceScopeKey, branch, commit, semanticRevision,
+                modelSource, modelSha256, catalogueRevision, catalogueDefinitionVersion, rootCodes, value,
+                briefVersion, briefFields, references, excludedRelationTypes, profileProblem,
+                executionCatalogueRevision, responsibilities);
+    }
+
     public AnalysisModelBinding {
         Objects.requireNonNull(state, "model binding state");
         Objects.requireNonNull(repositoryId, "repository");

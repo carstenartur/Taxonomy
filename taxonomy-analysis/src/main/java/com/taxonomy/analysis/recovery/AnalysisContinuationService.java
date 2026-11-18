@@ -50,6 +50,87 @@ public class AnalysisContinuationService {
     private record Authority(String provider, com.taxonomy.extension.api.plugin.PluginInvocation binding,
             String scoringPolicy, String relationPolicy, String catalogueHash) { }
 
+    /** Adds selected node work to one immutable, owned source revision. Browser scores are never input. */
+    public AnalysisRequest resolveTaxonomiesRequest(AnalysisRequest decision, String username, WorkspaceContext scope) {
+        authorize(username, scope);
+        if (!decision.isResumable() || decision.getTaxonomySourceVersion() == null)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Taxonomy extension requires a durable source revision");
+        if (decision.getRelationSourceContinuationId() != null || decision.getRelationSourceVersion() != null)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Taxonomy and relations sources are mutually exclusive");
+        var input = store.taxonomyInput(decision, scope);
+        var saved = input.request();
+        AnalysisRequestModelAdmission.requireExpected(saved.getModelBinding(), decision.getExpectedCommit(), decision.getExpectedSemanticRevision());
+        requireTaxonomyExpectations(decision, saved);
+        var frozen = mapper.readValue(mapper.writeValueAsString(saved), AnalysisRequest.class);
+        boolean replay = Objects.equals(input.recovery().id(), decision.getContinuationId());
+        if (!replay) {
+            var requested = decision.getTaxonomyRequestedScope() == null ? decision.getAnalysisScope() : decision.getTaxonomyRequestedScope();
+            var tree = treeFor(saved, scope);
+            try {
+                requested.validateRoots(tree.stream().map(TaxonomyNodeDto::getCode).collect(java.util.stream.Collectors.toSet()));
+            } catch (IllegalArgumentException invalid) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, invalid.getMessage(), invalid);
+            }
+            String provider = saved.getProvider();
+            if (provider == null || provider.isBlank() || saved.getContinuationAuthority() == null)
+                throw TaxonomyExtensionEvidence.conflict("The original taxonomy provider authority is unavailable; start a new analysis");
+            if (providers != null && (decision.getProvider() == null || decision.getProvider().isBlank())) {
+                // Resolve Server Default before entering the source's frozen provider
+                // scope. Existing target receipts deliberately bypass this live check.
+                String currentDefault = providers.isMockMode() ? "MOCK" : providers.getActiveProviderId().value();
+                if (!provider.equalsIgnoreCase(currentDefault))
+                    throw TaxonomyExtensionEvidence.conflict("The server default provider changed; select the retained provider or start a new analysis");
+            }
+            Authority authority = mapper.readValue(saved.getContinuationAuthority(), Authority.class);
+            var binding = providers == null ? null : providers.captureProviderBinding(provider);
+            try (var ignored = providers == null ? null : providers.withRequestProvider(provider, binding);
+                 var reasons = AnalysisReasonContext.open(saved.getAnalysisReasonLength());
+                 var language = AnalysisLanguageContext.open(saved.getAnalysisLanguage())) {
+                requireProvider(authority, provider, binding);
+                validateAuthority(authority, tree);
+                store.verifySourceSignature(decision.getTaxonomySourceContinuationId(), scope, signature(saved, tree));
+            }
+            if (saved.getModelBinding() == null) requireCurrentSource(input.result(), scope);
+            else {
+                AdmittedCatalogue.requireWorkspace(saved.getModelBinding(), scope);
+                if (admissionModels != null) {
+                    var current = AnalysisRequestModelAdmission.capture(admissionModels, scope,
+                            decision.getExpectedCommit(), decision.getExpectedSemanticRevision(), saved.getModelBinding().scope());
+                    if (!Objects.equals(current, saved.getModelBinding()))
+                        throw TaxonomyExtensionEvidence.conflict("The architecture or catalogue basis changed; start a new analysis");
+                }
+            }
+            var union = TaxonomyExtensionEvidence.union(saved.getAnalysisScope(), requested, tree);
+            frozen.setAnalysisScope(union);
+            frozen.setTaxonomyRequestedScope(requested);
+            frozen.setTaxonomySourceContinuationId(decision.getTaxonomySourceContinuationId());
+            frozen.setTaxonomySourceVersion(decision.getTaxonomySourceVersion());
+            frozen.setRelationSourceContinuationId(null); frozen.setRelationSourceVersion(null); frozen.setRelationSourcePartial(false);
+            frozen.setModelBinding(saved.getModelBinding() == null ? null : saved.getModelBinding().withScope(union));
+            frozen.setIncludeArchitectureView(decision.isIncludeArchitectureView());
+            if (decision.getMaxArchitectureNodes() != null) frozen.setMaxArchitectureNodes(decision.getMaxArchitectureNodes());
+        } else if (decision.isIncludeArchitectureView() != saved.isIncludeArchitectureView()
+                || decision.getMaxArchitectureNodes() != null && !Objects.equals(decision.getMaxArchitectureNodes(), saved.getMaxArchitectureNodes())) {
+            throw TaxonomyExtensionEvidence.conflict("The target analysis options differ from its admitted request");
+        }
+        frozen.setResumable(true); frozen.setContinuationId(decision.getContinuationId());
+        frozen.setContinuationAction(decision.getContinuationAction()); frozen.setContinuationVersion(decision.getContinuationVersion());
+        frozen.setContinuationQuestion(decision.getContinuationQuestion()); frozen.setContinuationQuestions(decision.getContinuationQuestions());
+        return frozen;
+    }
+
+    private static void requireTaxonomyExpectations(AnalysisRequest requested, AnalysisRequest saved) {
+        if (requested.getBusinessText() != null && !Objects.equals(requested.getBusinessText(), saved.getBusinessText()))
+            throw TaxonomyExtensionEvidence.conflict("Requirement text differs from the retained taxonomy source; start a new analysis");
+        if (requested.getProvider() != null && !requested.getProvider().isBlank()
+                && !requested.getProvider().equalsIgnoreCase(saved.getProvider()))
+            throw TaxonomyExtensionEvidence.conflict("The selected provider differs from the retained taxonomy source; start a new analysis");
+        if (requested.getAnalysisLanguage() != null && requested.getAnalysisLanguage() != saved.getAnalysisLanguage())
+            throw TaxonomyExtensionEvidence.conflict("The selected language differs from the retained taxonomy source; start a new analysis");
+        if (requested.getAnalysisReasonLength() != null && requested.getAnalysisReasonLength() != AnalysisReasonContext.effective(saved.getAnalysisReasonLength()))
+            throw TaxonomyExtensionEvidence.conflict("The selected reason length differs from the retained taxonomy source; start a new analysis");
+    }
+
     /** The only HTTP input for an extension is an owned source revision and a new target identity. */
     public AnalysisRequest resolveRelationsRequest(AnalysisRequest decision, String username, WorkspaceContext scope) {
         authorize(username, scope);
@@ -95,6 +176,7 @@ public class AnalysisContinuationService {
                         ? mapper.writeValueAsString(authority) : saved.getContinuationAuthority());
             }
             frozen.setAnalysisScope(new AnalysisScope(saved.getAnalysisScope().taxonomyRoots(), AnalysisMode.FULL));
+            frozen.setTaxonomySourceContinuationId(null); frozen.setTaxonomySourceVersion(null); frozen.setTaxonomyRequestedScope(null);
             frozen.setIncludeArchitectureView(true);
             frozen.setRelationSourceContinuationId(decision.getRelationSourceContinuationId());
             frozen.setRelationSourceVersion(decision.getRelationSourceVersion());
@@ -146,6 +228,7 @@ public class AnalysisContinuationService {
     }
     private AnalysisRequest frozenRequest(AnalysisRequest request, String username, WorkspaceContext scope, int maxNodes,
             AnalysisAdmissionModelPort initialModel) {
+        if (request.getTaxonomySourceContinuationId() != null) return resolveTaxonomiesRequest(request, username, scope);
         if (request.getRelationSourceContinuationId() != null) return resolveRelationsRequest(request, username, scope);
         var frozen = mapper.readValue(mapper.writeValueAsString(request), AnalysisRequest.class);
         frozen.setMaxArchitectureNodes(maxNodes);
@@ -186,7 +269,18 @@ public class AnalysisContinuationService {
         } else frozen.setContinuationAuthority(null);
         return frozen;
     }
-    private Execution relationsReplay(AnalysisRequest request, WorkspaceContext scope) {
+    private Execution extensionReplay(AnalysisRequest request, WorkspaceContext scope) {
+        if (request.getTaxonomySourceContinuationId() != null
+                && "START".equals(Objects.toString(request.getContinuationAction(), "START"))) {
+            var input = store.taxonomyInput(request, scope);
+            if (Objects.equals(input.recovery().id(), request.getContinuationId()) && !"RUNNING".equals(input.recovery().state())) {
+                // A lost response asks for the already accepted receipt, not new provider authority.
+                var frozen = resolveTaxonomiesRequest(request, scope.username(), scope);
+                var result = input.result(); result.setRecovery(input.recovery());
+                return new Execution(new AnalysisContinuationStore.Claim(request.getContinuationId(), null, result), null, frozen, null, scope);
+            }
+            return null;
+        }
         if (request.getRelationSourceContinuationId() == null
                 || !"START".equals(Objects.toString(request.getContinuationAction(), "START"))) return null;
         var input = store.relationInput(request, scope);
@@ -197,7 +291,7 @@ public class AnalysisContinuationService {
     }
     public Execution begin(AnalysisRequest request, String username, WorkspaceContext scope, int maxNodes) {
         authorize(username, scope);
-        var replay = relationsReplay(request, scope); if (replay != null) return replay;
+        var replay = extensionReplay(request, scope); if (replay != null) return replay;
         return beginFrozen(frozenRequest(request, username, scope, maxNodes, admissionModels), scope);
     }
 
@@ -240,7 +334,7 @@ public class AnalysisContinuationService {
     }
     public Execution beginDistributed(AnalysisRequest request, String username, WorkspaceContext scope, int maxNodes) {
         authorize(username, scope);
-        var replay = relationsReplay(request, scope); if (replay != null) return replay;
+        var replay = extensionReplay(request, scope); if (replay != null) return replay;
         if (providers == null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Frozen provider authority is unavailable");
         var frozen = frozenRequest(request, username, scope, maxNodes, admissionModels);
         String provider = frozen.getProvider();
@@ -353,6 +447,9 @@ public class AnalysisContinuationService {
                 AnalysisLanguageContext.POLICY, request.getAnalysisLanguage().value());
         if (request.getModelBinding() != null) reasoned = AnalysisCheckpointSession.digest(reasoned,
                 "architecture-model-v1", mapper.writeValueAsString(request.getModelBinding()));
+        if (request.getTaxonomySourceContinuationId() != null) reasoned = AnalysisCheckpointSession.digest(reasoned,
+                "retained-taxonomies-v1", request.getTaxonomySourceContinuationId(), String.valueOf(request.getTaxonomySourceVersion()),
+                mapper.writeValueAsString(request.getTaxonomyRequestedScope()));
         return request.getRelationSourceContinuationId() == null ? reasoned
                 : AnalysisCheckpointSession.digest(reasoned, "retained-relations-v1", request.getRelationSourceContinuationId(),
                         String.valueOf(request.getRelationSourceVersion()));
@@ -384,9 +481,11 @@ public class AnalysisContinuationService {
             this.workspace = workspace;
             this.claim = claim; distributedBinding = binding; frozenRequest = request; providerBinding = pluginBinding;
             relationBudget = binding == null ? captureBudgetPolicy(claim, request) : binding.relationBudget();
+            java.util.function.Predicate<AnalysisCheckpointSession.Question> work = request == null || request.getTaxonomyRequestedScope() == null
+                    || claim.completedResult() != null || binding != null ? null : store.taxonomyWork(claim);
             session = claim.completedResult() != null || binding != null ? null : new AnalysisCheckpointSession(new AnalysisCheckpointSession.Store() {
                 public AnalysisCheckpointSession.Checkpoint prepare(AnalysisCheckpointSession.Question q) {
-                    return store.prepare(claim, q);
+                    return work == null ? store.prepare(claim, q) : store.prepare(claim, q, work.test(q));
                 }
                 public RelationSearchReport previousRelations() {
                     return claim.previousRelations();

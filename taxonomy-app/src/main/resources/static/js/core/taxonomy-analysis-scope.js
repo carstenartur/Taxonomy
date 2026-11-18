@@ -37,6 +37,7 @@
     }
     function captureSelection() {
         var choices = inputs();
+        if (!choices.length) return; // unloaded controls are not an explicit user selection of none
         var chosen = choices.filter(function (input) { return input.checked; })
             .map(function (input) { return input.dataset.taxonomyRoot; }).sort();
         selection = choices.length && chosen.length === choices.length ? null : chosen;
@@ -44,6 +45,9 @@
     function read() {
         syncMode();
         if (!document.getElementById('analysisTaxonomyRoots')) return {taxonomyRoots: [], mode: mode};
+        var available = inputs().map(function (input) { return input.dataset.taxonomyRoot; });
+        var missing = available.length ? (selection || []).filter(function (code) { return !available.includes(code); }) : [];
+        if (missing.length) throw new Error(t('analysis.scope.unavailable') + ' ' + missing.join(', '));
         captureSelection();
         if (selection !== null && !selection.length) throw new Error(t('analysis.scope.select.one'));
         return {taxonomyRoots: selection === null ? [] : selection.slice(), mode: mode};
@@ -69,6 +73,22 @@
         var roots = S.taxonomyData || [];
         return !roots.length || roots.some(function (root) { return !selected.includes(root.code); });
     }
+    function roots(scope) {
+        var codes = scope?.taxonomyRoots || [];
+        if (!codes.length) codes = (S.taxonomyData || []).map(function (root) { return root.code; });
+        return Array.from(new Set(codes)).sort();
+    }
+    function renderStartHint() {
+        var hint = document.getElementById('analysisScopeActionHint');
+        if (!hint) return;
+        var plan = window.TaxonomyAnalysisRecovery?.startPlan?.();
+        hint.textContent = plan?.message || t('analysis.scope.incremental');
+    }
+    function selectionChanged() {
+        renderStartHint();
+        if (document.dispatchEvent && typeof CustomEvent === 'function')
+            document.dispatchEvent(new CustomEvent('taxonomy:analysis-selection-changed'));
+    }
     function renderEvidence() {
         var label = document.getElementById('analysisScopeEvidence');
         if (!label) return;
@@ -77,6 +97,7 @@
         if (scope) label.textContent = t('analysis.scope.result') + ': '
             + (scope.taxonomyRoots?.length ? scope.taxonomyRoots.join(', ') : t('analysis.scope.all'))
             + ' · ' + t(scope.mode === 'TAXONOMIES_ONLY' ? 'analysis.scope.nodes.only' : 'analysis.scope.full');
+        renderStartHint();
     }
     function acceptResult(scope) {
         S.lastAnalysisScope = scope ? {taxonomyRoots: (scope.taxonomyRoots || []).slice(), mode: scope.mode || 'FULL'} : null;
@@ -85,15 +106,21 @@
     document.addEventListener('change', function (event) {
         if (event.target?.dataset?.taxonomyRoot) captureSelection();
         if (event.target?.id === 'analysisMode') syncMode();
+        selectionChanged();
     });
     document.addEventListener('click', function (event) {
         if (event.target?.id !== 'analysisSelectAll') return;
         selection = null; render(S.taxonomyData);
         window.__TaxonomyAnalysisSessionContext?.queueSave?.();
+        selectionChanged();
     });
     document.addEventListener('DOMContentLoaded', function () { render(S.taxonomyData); });
     document.addEventListener('taxonomy-i18n-loaded', function () { render(S.taxonomyData); });
     document.addEventListener('taxonomy:analysis-draft-restored', renderEvidence);
+    ['taxonomy:analysis-recovery-updated', 'taxonomy:analysis-source-ready', 'taxonomy:content-language-changed',
+        'taxonomy:analysis-invalidated'].forEach(function (name) { document.addEventListener(name, renderStartHint); });
+    document.getElementById('businessText')?.addEventListener('input', renderStartHint);
     window.TaxonomyAnalysisScope = {read: read, render: render, options: options,
-        restoreOptions: restoreOptions, acceptResult: acceptResult, restrictsGlobalAnalysis: restrictsGlobalAnalysis};
+        restoreOptions: restoreOptions, acceptResult: acceptResult, restrictsGlobalAnalysis: restrictsGlobalAnalysis,
+        roots: roots, renderStartHint: renderStartHint};
 }());

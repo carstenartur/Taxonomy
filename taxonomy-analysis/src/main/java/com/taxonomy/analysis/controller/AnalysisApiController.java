@@ -148,24 +148,37 @@ public class AnalysisApiController {
 
     @Operation(summary = "Analyze business requirement",
             description = "Analyzes a business requirement against the taxonomy using the configured LLM provider. Optionally includes an architecture view. "
+                    + "To add selected missing taxonomy work, send resumable=true, a new continuationId, taxonomySourceContinuationId, "
+                    + "taxonomySourceVersion and the desired analysisScope. Accepted source answers are retained; only selected unfinished questions can call the provider. "
+                    + "The result scope is the union; taxonomyRequestedScope is server-maintained work metadata and must be used as analysisScope when restoring this target. "
                     + "To add only relationship search to a completed durable node-only assessment, send resumable=true, a new continuationId, "
                     + "relationSourceContinuationId and relationSourceVersion. The owned saved requirement, catalogue, scores, explanations, provider and policies "
                     + "remain authoritative; supplied preferences cannot replace them. Reusing the target continuationId observes/replays its accepted result. "
                     + "continuationAuthority is server-maintained metadata and is overwritten on new ordinary starts.",
             tags = {"Analysis"})
     @ApiResponse(responseCode = "200", description = "Analysis completed")
-    @ApiResponse(responseCode = "400", description = "Business text is blank, the provider is unknown, or a relation source revision is missing")
+    @ApiResponse(responseCode = "400", description = "Business text is blank, the provider is unknown, a source revision is missing, or incompatible source types were supplied")
     @ApiResponse(responseCode = "404", description = "The continuation or source is unavailable in the current owner/workspace scope")
-    @ApiResponse(responseCode = "409", description = "Source revision, catalogue, source commit or provider policy changed; the source is running or unsupported; or relation work already exists")
+    @ApiResponse(responseCode = "409", description = "Source revision, catalogue, source commit or provider policy changed; the source is running or unsupported; or equivalent retained work already exists")
     @PostMapping("/analyze")
     public ResponseEntity<AnalysisResult> analyze(@RequestBody AnalysisRequest request) {
         ResponseEntity<AnalysisResult> guard = checkInitialized();
         if (guard != null) return guard;
         if (request == null) return ResponseEntity.badRequest().build();
         request.setModelBinding(null);
+        request.setTaxonomyRequestedScope(null);
+        if (request.getTaxonomySourceContinuationId() != null && request.getRelationSourceContinuationId() != null)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose either a taxonomy source or a relations source");
+        if (request.getTaxonomySourceContinuationId() == null && request.getTaxonomySourceVersion() != null)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A taxonomy source identity is required");
         String resolvedUsername = null;
         WorkspaceContext resolvedContext = null;
-        if (request.getRelationSourceContinuationId() != null) {
+        if (request.getTaxonomySourceContinuationId() != null) {
+            if (continuationService == null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Durable continuation is unavailable");
+            resolvedUsername = workspaceResolver.resolveCurrentUsername();
+            resolvedContext = resolveWorkspaceContext(resolvedUsername);
+            request = continuationService.resolveTaxonomiesRequest(request, resolvedUsername, resolvedContext);
+        } else if (request.getRelationSourceContinuationId() != null) {
             if (continuationService == null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Durable continuation is unavailable");
             resolvedUsername = workspaceResolver.resolveCurrentUsername();
             resolvedContext = resolveWorkspaceContext(resolvedUsername);

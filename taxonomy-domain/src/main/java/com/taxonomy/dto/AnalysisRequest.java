@@ -29,6 +29,18 @@ public class AnalysisRequest {
     public AnalysisScope getAnalysisScope() { return analysisScope; }
     public void setAnalysisScope(AnalysisScope value) { analysisScope = AnalysisScope.orDefault(value); }
 
+    /** Owned, revision-bound source of accepted node answers for an additive analysis. */
+    private String taxonomySourceContinuationId;
+    private Long taxonomySourceVersion;
+    /** Server-frozen work selection; analysisScope is the accumulated result scope. */
+    private AnalysisScope taxonomyRequestedScope;
+    public String getTaxonomySourceContinuationId() { return taxonomySourceContinuationId; }
+    public void setTaxonomySourceContinuationId(String value) { taxonomySourceContinuationId = value; }
+    public Long getTaxonomySourceVersion() { return taxonomySourceVersion; }
+    public void setTaxonomySourceVersion(Long value) { taxonomySourceVersion = value; }
+    public AnalysisScope getTaxonomyRequestedScope() { return taxonomyRequestedScope; }
+    public void setTaxonomyRequestedScope(AnalysisScope value) { taxonomyRequestedScope = value; }
+
     /** Explicit source of server-retained node evidence for a new relations-only continuation. */
     private String relationSourceContinuationId;
     private Long relationSourceVersion;

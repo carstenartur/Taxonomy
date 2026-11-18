@@ -104,17 +104,22 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
                 || task.taskType() == AnalysisTaskType.RELATION_ANALYSIS && !binding.relationPolicyHash().equals(relationPolicyHash))
             throw new IllegalStateException("Frozen continuation provider or policy changed");
         var claim = new com.taxonomy.analysis.recovery.AnalysisContinuationStore.Claim(binding.id(), binding.token(), null);
-        tx.executeWithoutResult(status -> {
+        AnalysisScope requestedWork = tx.execute(status -> {
             diagnosticAuthority(task, input.deliveryAttempt());
             if (!binding.equals(command(input.context()).continuationBinding()))
                 throw new IllegalStateException("Unexpected continuation command authority");
+            return continuations.taxonomyRequestedScope(claim);
         });
+        boolean allowNodeAttempt = requestedWork == null || task.taskType() == AnalysisTaskType.RELATION_ANALYSIS
+                || task.routingRoot() != null && requestedWork.selects(task.routingRoot().code());
         var questionOwner = new com.taxonomy.analysis.recovery.AnalysisContinuationStore.QuestionOwner(task.envelope().operationId(),
                 task.taskId().value(), input.deliveryAttempt(), java.util.UUID.randomUUID().toString(),
                 task.taskType().name() + ":" + (task.routingRoot() == null ? "all" : task.routingRoot().code()));
         return new com.taxonomy.analysis.recovery.AnalysisCheckpointSession(new com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Store() {
             public com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Checkpoint prepare(com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Question question) {
-                return tx.execute(status -> { diagnosticAuthority(task, input.deliveryAttempt()); return continuations.prepareDistributed(claim, question, questionOwner); });
+                return tx.execute(status -> { diagnosticAuthority(task, input.deliveryAttempt());
+                    return requestedWork == null ? continuations.prepareDistributed(claim, question, questionOwner)
+                            : continuations.prepareDistributed(claim, question, questionOwner, allowNodeAttempt); });
             }
             public void finish(com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Question question, String state, LlmCallDetail detail) {
                 tx.executeWithoutResult(status -> { diagnosticAuthority(task, input.deliveryAttempt()); continuations.finishDistributed(claim, question, state, detail, questionOwner); });
