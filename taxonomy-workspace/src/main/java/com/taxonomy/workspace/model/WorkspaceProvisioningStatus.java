@@ -18,6 +18,9 @@ public enum WorkspaceProvisioningStatus {
     /** Workspace is fully provisioned and ready for use. */
     READY,
 
-    /** Provisioning failed; see {@code provisioningError} for details. */
-    FAILED
+    /** Provisioning failed and can be reviewed before an explicit retry. */
+    FAILED;
+
+    /** Public status text excludes diagnostic messages that may contain source document content. */
+    public static final String FAILURE_MESSAGE = "Workspace provisioning failed.";
 }

@@ -77,6 +77,28 @@ class RepositoryClaimGrantProviderTest {
         assertEquals(allowed ? RepositoryRole.MAINTAINER : null, grants.findRole("repo-a", "alice").orElse(null));
     }
 
+    @ParameterizedTest
+    @CsvSource({"-1, true", "0, false", "1, false"})
+    void bearerClaimLifetimeIsCheckedWhenTheRepositoryRoleIsUsed(long offsetNanos, boolean allowed) {
+        Instant expiry = Instant.parse("2026-11-01T00:00:00Z");
+        var grants = new RepositoryClaimGrantProvider(Clock.fixed(expiry.plusNanos(offsetNanos), ZoneOffset.UTC));
+        var token = Jwt.withTokenValue("fixture").header("alg", "RS256").subject("alice")
+                .issuedAt(expiry.minusSeconds(60)).expiresAt(expiry)
+                .claim("taxonomy_repository_roles", Map.of("repo-a", "READER")).build();
+        authenticate(new JwtAuthenticationToken(token, List.of(), "alice"));
+
+        assertEquals(allowed, grants.findRole("repo-a", "alice").isPresent());
+    }
+
+    @Test
+    void bearerClaimsWithoutAnExpiryDoNotEstablishARepositoryRole() {
+        var token = Jwt.withTokenValue("fixture").header("alg", "RS256").subject("alice")
+                .claim("taxonomy_repository_roles", Map.of("repo-a", "READER")).build();
+        authenticate(new JwtAuthenticationToken(token, List.of(), "alice"));
+
+        assertTrue(provider.findRole("repo-a", "alice").isEmpty());
+    }
+
     @Test
     void localAuthenticationMapPrincipalCannotSupplyGrants() {
         authenticate(UsernamePasswordAuthenticationToken.authenticated(
@@ -130,7 +152,7 @@ class RepositoryClaimGrantProviderTest {
 
     private static Jwt token(Object roles) {
         return Jwt.withTokenValue("token").header("alg", "RS256").subject("alice")
-                .claim("taxonomy_repository_roles", roles).build();
+                .expiresAt(Instant.now().plusSeconds(300)).claim("taxonomy_repository_roles", roles).build();
     }
 
     private static void authenticate(Authentication authentication) {

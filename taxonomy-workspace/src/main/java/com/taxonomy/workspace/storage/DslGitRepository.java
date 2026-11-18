@@ -9,6 +9,7 @@ import com.taxonomy.workspace.service.BranchHeadConflictException;
 import com.taxonomy.workspace.signing.CommitSignature;
 import com.taxonomy.workspace.signing.GitCommitSignatureService;
 import io.github.carstenartur.jgit.storage.hibernate.HibernateGitStorage;
+import io.github.carstenartur.jgit.storage.hibernate.AuthorizedRepositorySession;
 import io.github.carstenartur.jgit.storage.hibernate.HibernateRepositoryFactory;
 import io.github.carstenartur.jgit.storage.hibernate.RepositoryName;
 import org.eclipse.jgit.diff.DiffEntry;
@@ -80,6 +81,7 @@ public class DslGitRepository implements AutoCloseable {
 
     private final Repository gitRepo;
     private final HibernateGitStorage storageHandle;
+    private final AuthorizedRepositorySession<?> securedHandle;
     private final boolean databaseBacked;
     private final boolean closeRepository;
     private final AtomicBoolean closed = new AtomicBoolean();
@@ -104,10 +106,19 @@ public class DslGitRepository implements AutoCloseable {
     private DslGitRepository(HibernateGitStorage storageHandle) {
         this.gitRepo = storageHandle.repository();
         this.storageHandle = storageHandle;
+        this.securedHandle = null;
         this.databaseBacked = true;
         this.closeRepository = false;
         log.info("Initialised database-backed DslGitRepository ({})",
                 gitRepo.getClass().getSimpleName());
+    }
+
+    DslGitRepository(AuthorizedRepositorySession<?> securedHandle) {
+        this.gitRepo = securedHandle.repository();
+        this.storageHandle = null;
+        this.securedHandle = securedHandle;
+        this.databaseBacked = true;
+        this.closeRepository = false;
     }
 
     /** Create an owned, volatile in-memory repository for unit tests. */
@@ -123,6 +134,7 @@ public class DslGitRepository implements AutoCloseable {
     DslGitRepository(Repository gitRepo, boolean closeRepository) {
         this.gitRepo = Objects.requireNonNull(gitRepo, "gitRepo");
         this.storageHandle = null;
+        this.securedHandle = null;
         this.databaseBacked = false;
         this.closeRepository = closeRepository;
         log.info("Initialised DslGitRepository ({})", gitRepo.getClass().getSimpleName());
@@ -354,13 +366,30 @@ public class DslGitRepository implements AutoCloseable {
 
     /** Adopt an already verified descendant with a compare-and-set ref update, without manufacturing another commit. */
     public String fastForwardIfHeadMatches(String branch, String expectedHead, String incomingHead, String author, String message) throws IOException {
+        return fastForwardIfHeadMatches(branch, expectedHead, incomingHead, author, message, false);
+    }
+
+    /** A branch rule must never follow a symbolic target into another branch. */
+    public String publishDefaultCommit(String branch, String expectedHead, String candidate, String actor, String message) throws IOException {
+        return fastForwardIfHeadMatches(branch, expectedHead, candidate, actor, message, true);
+    }
+
+    public String directBranchHead(String branch) throws IOException {
+        Ref current = readFreshRef(Constants.R_HEADS + branch);
+        if (current != null && current.isSymbolic()) throw new IOException("The selected branch is a symbolic reference");
+        return current == null || current.getObjectId() == null ? null : current.getObjectId().name();
+    }
+
+    private String fastForwardIfHeadMatches(String branch, String expectedHead, String incomingHead, String author, String message,
+                                            boolean directOnly) throws IOException {
         if (!Repository.isValidRefName(Constants.R_HEADS + branch)) throw new IllegalArgumentException("Invalid branch");
         // A ref-only publication must not overlap a transfer/checkpoint pack flush either.
         synchronized (gitRepo) {
+            if (directOnly) directBranchHead(branch);
             verifyExpectedHead(branch, expectedHead);
             verifyIncoming(incomingHead, expectedHead);
             if (expectedHead != null && !isAncestor(expectedHead, incomingHead)) throw new IOException("Incoming history is not a descendant");
-            RefUpdate update = gitRepo.updateRef(Constants.R_HEADS + branch);
+            RefUpdate update = gitRepo.updateRef(Constants.R_HEADS + branch, directOnly);
             update.setExpectedOldObjectId(expectedHead == null ? ObjectId.zeroId() : ObjectId.fromString(expectedHead));
             update.setNewObjectId(ObjectId.fromString(incomingHead)); update.setForceUpdate(false);
             update.setRefLogIdent(personIdent(author)); update.setRefLogMessage(message, true);
@@ -485,7 +514,7 @@ public class DslGitRepository implements AutoCloseable {
     /** List all local branches. */
     public List<DslBranch> listBranches() throws IOException {
         List<DslBranch> branches = new ArrayList<>();
-        for (Ref ref : gitRepo.getRefDatabase().getRefsByPrefix(Constants.R_HEADS)) {
+        for (Ref ref : readFreshBranchRefs()) {
             String name = ref.getName().substring(Constants.R_HEADS.length());
             String headCommitId = ref.getObjectId() != null ? ref.getObjectId().name() : null;
             Instant created = oldestCommitTime(ref);
@@ -646,6 +675,31 @@ public class DslGitRepository implements AutoCloseable {
         }
     }
 
+    /** Prepare the exact default-branch change for an independently fenced adoption operation. */
+    public DefaultCommitAdoption prepareDefaultCommit(String sourceRepository, String sourceBranch, String source,
+                                                      String targetBranch, String target, String actor) throws IOException {
+        verifyExpectedHead(targetBranch, target);
+        try (var walk = new RevWalk(gitRepo)) {
+            var picked = walk.parseCommit(ObjectId.fromString(source));
+            var onto = walk.parseCommit(ObjectId.fromString(target));
+            if (walk.isMergedInto(picked, onto))
+                return new DefaultCommitAdoption("ALREADY_CONTAINED", null, "Source commit is in target history");
+            if (picked.getParentCount() != 1)
+                return new DefaultCommitAdoption("PREREQUISITE", null, "Select a mainline parent manually");
+            verifyIncoming(source, target);
+            var change = mergePickedChange(picked, onto, null);
+            if (change.resultTree() == null)
+                return new DefaultCommitAdoption("CONFLICT", null, String.join(", ", change.conflictingPaths()));
+            if (DefaultCommitAdoption.sameContent(this, onto.getTree(), change.resultTree()))
+                return new DefaultCommitAdoption("ALREADY_CONTAINED", null, "Target already contains this change");
+            var provenance = CommitProvenance.capture("automatic-adoption", this, sourceRepository, sourceBranch,
+                    source, change.baseCommit());
+            String candidate = insertPickedCommit(targetBranch, picked, onto, change, provenance,
+                    personIdent(actor), "Adopt " + sourceBranch + ": " + picked.getShortMessage());
+            return new DefaultCommitAdoption("PREPARED", candidate, null);
+        }
+    }
+
     /** Apply a selected change at the current target head. */
     public String cherryPick(String commitId, String targetBranch) throws IOException {
         return cherryPick(commitId, targetBranch, getHeadCommit(targetBranch));
@@ -682,18 +736,24 @@ public class DslGitRepository implements AutoCloseable {
             var provenance = CommitProvenance.capture(operation, this, storageName, "detached", commitId, change.baseCommit());
             String message = (resolvedDsl == null ? "Cherry-pick: " : "Resolve cherry-pick: ") + picked.getShortMessage();
             PersonIdent committer = author == null ? systemIdent() : personIdent(author);
-            try (var inserter = gitRepo.newObjectInserter()) {
-                var commit = new CommitBuilder();
-                commit.setTreeId(insertProvenanceTree(inserter, change.resultTree(), provenance));
-                commit.setParentId(target);
-                commit.setAuthor(picked.getAuthorIdent());
-                commit.setCommitter(committer);
-                commit.setMessage(message);
-                signCommit(commit, targetBranch);
-                ObjectId result = inserter.insert(commit);
-                inserter.flush();
-                return fastForwardIfHeadMatches(targetBranch, expectedTargetHead, result.name(), committer.getName(), message);
-            }
+            String result = insertPickedCommit(targetBranch, picked, target, change, provenance, committer, message);
+            return fastForwardIfHeadMatches(targetBranch, expectedTargetHead, result, committer.getName(), message);
+        }
+    }
+
+    private String insertPickedCommit(String targetBranch, RevCommit picked, RevCommit target, CherryPickTree change,
+                                      CommitProvenance provenance, PersonIdent committer, String message) throws IOException {
+        try (var inserter = gitRepo.newObjectInserter()) {
+            var commit = new CommitBuilder();
+            commit.setTreeId(insertProvenanceTree(inserter, change.resultTree(), provenance));
+            commit.setParentId(target);
+            commit.setAuthor(picked.getAuthorIdent());
+            commit.setCommitter(committer);
+            commit.setMessage(message);
+            signCommit(commit, targetBranch);
+            ObjectId result = inserter.insert(commit);
+            inserter.flush();
+            return result.name();
         }
     }
 
@@ -1122,10 +1182,18 @@ public class DslGitRepository implements AutoCloseable {
     /** Return all branch names without the {@code refs/heads/} prefix. */
     public List<String> getBranchNames() throws IOException {
         List<String> names = new ArrayList<>();
-        for (Ref ref : gitRepo.getRefDatabase().getRefsByPrefix(Constants.R_HEADS)) {
+        for (Ref ref : readFreshBranchRefs()) {
             names.add(ref.getName().substring(Constants.R_HEADS.length()));
         }
         return names;
+    }
+
+    /** Include ref changes made through independent handles, such as reviewed variant deletion. */
+    private List<Ref> readFreshBranchRefs() throws IOException {
+        synchronized (gitRepo) {
+            gitRepo.scanForRepoChanges();
+            return gitRepo.getRefDatabase().getRefsByPrefix(Constants.R_HEADS);
+        }
     }
 
     /** Count commits reachable from a branch. */
@@ -1246,9 +1314,21 @@ public class DslGitRepository implements AutoCloseable {
         update.setForceUpdate(force);
         update.setRefLogIdent(actor);
         update.setRefLogMessage(reflogMessage, true);
-        RefUpdate.Result result = update.update();
+        RefUpdate.Result result;
+        try {
+            result = update.update();
+        } catch (IOException failure) {
+            throw unwrapRefUpdateFailure(failure);
+        }
         requireSuccessfulUpdate(refName, result);
         return result;
+    }
+
+    /** Preserve a policy denial through JGit's storage exception wrapper. */
+    static IOException unwrapRefUpdateFailure(IOException failure) {
+        Throwable cause = org.springframework.core.NestedExceptionUtils.getMostSpecificCause(failure);
+        if (cause instanceof org.springframework.security.access.AccessDeniedException denied) throw denied;
+        return failure;
     }
 
     private static void requireSuccessfulUpdate(String refName, RefUpdate.Result result)
@@ -1314,7 +1394,12 @@ public class DslGitRepository implements AutoCloseable {
         update.setForceUpdate(true);
         update.setRefLogIdent(actor == null ? systemIdent() : personIdent(actor));
         update.setRefLogMessage("branch: deleted " + branchName, true);
-        RefUpdate.Result result = update.delete();
+        RefUpdate.Result result;
+        try {
+            result = update.delete();
+        } catch (IOException failure) {
+            throw unwrapRefUpdateFailure(failure);
+        }
         if (expectedHead != null && (result == RefUpdate.Result.LOCK_FAILURE || result == RefUpdate.Result.REJECTED
                 || result == RefUpdate.Result.REJECTED_CURRENT_BRANCH || result == RefUpdate.Result.NEW)) {
             throw new BranchHeadConflictException(branchName, expectedHead, getHeadCommit(branchName),
@@ -1337,6 +1422,8 @@ public class DslGitRepository implements AutoCloseable {
         }
         if (storageHandle != null) {
             storageHandle.close();
+        } else if (securedHandle != null) {
+            securedHandle.close();
         } else if (closeRepository) {
             gitRepo.close();
         }

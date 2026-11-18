@@ -97,7 +97,7 @@ class WorkspaceDefaultBootstrapReadinessTest {
             assertThrows(RuntimeException.class,
                     () -> fixture.resolver.resolveRepositoryContextForUser(USER));
             assertEquals(WorkspaceProvisioningStatus.FAILED, fixture.saved.get().getProvisioningStatus());
-            assertEquals("Workspace storage unavailable", fixture.saved.get().getProvisioningError());
+            assertEquals(WorkspaceProvisioningStatus.FAILURE_MESSAGE, fixture.saved.get().getProvisioningError());
 
             doCallRealMethod().when(fixture.factory).openWorkspaceRepository(workspaceId);
             assertEquals(409, assertThrows(ResponseStatusException.class,

@@ -835,6 +835,9 @@
         refreshAnalysisDuration();
         if (!data || data.length === 0) { return; }
         const container = document.getElementById('taxonomyTree');
+        const focused = document.activeElement;
+        const focusedCode = container.contains(focused) && focused.getAttribute('role') === 'treeitem'
+            ? focused.dataset.code : null;
         window.TaxonomyViews?.prepareDiagramContext?.(container, {
             analysisKey: diagramContextGeneration, view: S.currentView, treeRoot: S.currentTreeRoot
         });
@@ -911,6 +914,13 @@
                 document.getElementById('taxonomyTree').setAttribute('data-view-rendered', 'summary');
                 break;
         }
+        }
+        // Deferred page/draft refreshes replace rows while the user can already be navigating them.
+        if (focusedCode) {
+            const replacement = findRenderedNode(focusedCode);
+            if (replacement?.getAttribute('role') === 'treeitem' && isVisibleTreeElement(replacement)) {
+                replacement.focus({preventScroll: true});
+            }
         }
         document.dispatchEvent(new CustomEvent('taxonomy:view-rendered', {
             detail: { view: S.currentView }

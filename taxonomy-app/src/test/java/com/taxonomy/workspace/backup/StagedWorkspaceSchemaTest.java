@@ -22,6 +22,29 @@ class StagedWorkspaceSchemaTest {
     }
 
     @Test
+    void adoptionCompatibilityRequiresBothTablesAndValidatedPre35History() throws IOException {
+        migrateDatabaseTo("34");
+        assertThat(StagedWorkspaceSchema.predatesAdoption(database)).isTrue();
+        migrateBusinessSchema(database, "35");
+        assertThat(StagedWorkspaceSchema.predatesAdoption(database)).isFalse();
+        var rows = new JdbcTemplate(database);
+        rows.execute("drop table branch_adoption_event");
+        assertThatThrownBy(() -> StagedWorkspaceSchema.predatesAdoption(database)).isInstanceOf(IOException.class);
+        rows.execute("drop table branch_adoption_rule");
+        assertThat(StagedWorkspaceSchema.predatesAdoption(database)).isFalse();
+    }
+
+    @Test
+    void branchPolicyCompatibilityRequiresValidatedPre36History() throws IOException {
+        migrateDatabaseTo("35");
+        assertThat(StagedWorkspaceSchema.predatesRefPolicy(database)).isTrue();
+        migrateBusinessSchema(database, "36");
+        assertThat(StagedWorkspaceSchema.predatesRefPolicy(database)).isFalse();
+        new JdbcTemplate(database).execute("drop table repository_ref_rule");
+        assertThat(StagedWorkspaceSchema.predatesRefPolicy(database)).isFalse();
+    }
+
+    @Test
     void recognizesOnlyValidatedPrePublicationHistory() throws IOException {
         assertThat(StagedWorkspaceSchema.predatesPublications(database)).isFalse();
 

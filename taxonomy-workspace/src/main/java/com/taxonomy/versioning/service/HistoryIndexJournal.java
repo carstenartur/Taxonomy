@@ -89,7 +89,7 @@ public class HistoryIndexJournal {
         try {
             return transaction.execute(status -> {
                 var existing = lookup(id);
-                if (existing != null) return replay(existing, selected, branch, kind, grant);
+                if (existing != null) return replay(existing, selected, branch, kind, grant, cause);
                 var capture = source.get();
                 long now = clock.millis();
                 jdbc.update("""
@@ -111,14 +111,15 @@ public class HistoryIndexJournal {
         } catch (DuplicateKeyException conflict) {
             var winner = lookup(id);
             if (winner == null) throw conflict;
-            return replay(winner, selected, branch, kind, grant);
+            return replay(winner, selected, branch, kind, grant, cause);
         }
     }
 
-    private Operation replay(Operation row, RepositoryContext selected, String branch, Kind kind, Grant grant) {
+    private Operation replay(Operation row, RepositoryContext selected, String branch, Kind kind, Grant grant, String cause) {
         checkOwner(row, selected, grant.principalId());
         if (row.receipt.archivedAt() != null) throw new ResponseStatusException(HttpStatus.GONE);
-        if (row.receipt.kind() != kind || !row.receipt.branch().equals(branch) || !row.grant.equals(grant)) {
+        if (row.receipt.kind() != kind || !row.receipt.branch().equals(branch) || !row.grant.equals(grant)
+                || (cause != null && !cause.equalsIgnoreCase(row.receipt.causationId()))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "History index command differs from the original");
         }
         return row;

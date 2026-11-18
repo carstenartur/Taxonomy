@@ -76,6 +76,7 @@ com.taxonomy.versioning.service.HistoryIndexPurgeTarget	workspace	TRANSIENT	Phys
 com.taxonomy.versioning.model.ArchitectureCommitIndex	workspace	PORTABLE_PRIMARY	Retain commit index until complete reconstruction for all retained contexts is proven; Lucene remains rebuildable
 com.taxonomy.versioning.model.ContextHistoryRecord	workspace	PORTABLE_PRIMARY	History profile includes full records; stand export only selected current content/provenance, never inverse/old payloads
 com.taxonomy.workspace.model.RepositoryMembership	workspace	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.workspace.model.RepositoryRefRule	workspace	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.workspace.model.SyncState	workspace	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.workspace.model.WorkspaceBranchSyncState	workspace	PORTABLE_PRIMARY	Branch-scoped actor progress and exact Git observations restored to their mapped owner and source
 com.taxonomy.workspace.model.GitReflogProvenanceRecord	workspace	PORTABLE_PRIMARY	Immutable original imported Git events, preserving order, duplicate events and original time separately from target live audit; history capture includes their referenced objects
@@ -85,6 +86,8 @@ com.taxonomy.workspace.model.WorkspaceProjection	workspace	REBUILDABLE	Rebuild w
 com.taxonomy.workspace.service.CentralFetchOperation	workspace	PORTABLE_PRIMARY	Central fork transfers and selected tags retain scoped history; an isolated restore imports no lease or credentials
 com.taxonomy.workspace.service.WorkspaceFetchOperation	workspace	PORTABLE_PRIMARY	Exact scoped fetch authority and status; restore active attempts as interrupted without a dispatch lease
 com.taxonomy.workspace.service.WorkspacePublicationDecision	workspace	PORTABLE_PRIMARY	Append-only source decisions retain original actors and executors in isolated history evidence
+com.taxonomy.workspace.service.BranchAdoptionRule	workspace	PORTABLE_PRIMARY	Explicit per-branch rule and original source/candidate evidence; restore disabled with no live grant and require authenticated activation from the current default tip
+com.taxonomy.workspace.service.BranchAdoptionEvent	workspace	PORTABLE_PRIMARY	Immutable source actor and commit audit; unknown identities remain private source evidence and restored history never schedules work
 com.taxonomy.workspace.service.WorkspacePublicationOperation	workspace	PORTABLE_PRIMARY	Workspace-owned publication journal and Git observations are retained without live authorization bindings, leases or cleanup schedules
 storage.jgit.objects-refs-reflogs	workspace	GIT_PRIMARY	All logical repositories via Git objects/refs plus explicit reflog records; never duplicate physical pack tables
 storage.git.preferences	application	GIT_PRIMARY	Current sanitized preferences or full authorized history; credentials excluded by default

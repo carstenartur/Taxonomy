@@ -1,5 +1,7 @@
 package com.taxonomy.security.service;
 
+import com.taxonomy.backup.PrincipalId;
+import com.taxonomy.security.model.PrincipalUserDetails;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -12,6 +14,7 @@ import org.springframework.security.web.session.HttpSessionDestroyedEvent;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -41,6 +44,37 @@ class BrowserSessionInventoryTest {
         assertThat(snapshot.users().getFirst().sessionCount()).isEqualTo(2);
         assertThat(snapshot.users().getFirst().lastRequest()).isNotNull();
         assertThat(snapshot.toString()).doesNotContain("raw-session-", "secret-must-not-leak", "ROLE_ADMIN");
+    }
+
+    @Test
+    void stableLocalRegistryGroupsRenamesAndKeepsRecycledLoginNamesSeparate() {
+        var original = new PrincipalId(UUID.randomUUID());
+        var replacement = new PrincipalId(UUID.randomUUID());
+        var before = new PrincipalUserDetails(original, "first-name", "password-one", true, List.of());
+        var renamed = new PrincipalUserDetails(original, "new-name", "password-two", true, List.of());
+        var recycled = new PrincipalUserDetails(replacement, "first-name", "password-three", true, List.of());
+        registry.registerNewSession("before", before);
+        registry.registerNewSession("renamed", renamed);
+        registry.registerNewSession("recycled", recycled);
+        assertThat(registry.getAllSessions(before, false)).extracting(s -> s.getSessionId())
+                .containsExactlyInAnyOrder("before", "renamed");
+        assertThat(registry.getAllSessions(recycled, false)).extracting(s -> s.getSessionId()).containsExactly("recycled");
+        registry.getSessionInformation("before").expireNow();
+        var snapshot = inventory.snapshot();
+        assertThat(snapshot.userCount()).isEqualTo(2);
+        assertThat(snapshot.users()).extracting(BrowserSessionInventory.UserSessions::username)
+                .containsExactly("first-name", "new-name");
+        assertThat(snapshot.toString()).doesNotContain(original.value().toString(), replacement.value().toString(), "password-");
+        before.eraseCredentials();
+        assertThat(before.getPassword()).isNull();
+        assertThat(before).isEqualTo(renamed).isNotEqualTo(recycled);
+        assertThat(before.hashCode()).isEqualTo(renamed.hashCode());
+
+        var legacy = User.withUsername("first-name").password("unused").roles("USER").build();
+        registry.registerNewSession("legacy", legacy);
+        assertThat(legacy.equals(recycled)).isFalse();
+        assertThat(recycled.equals(legacy)).isFalse();
+        assertThat(inventory.snapshot().userCount()).isEqualTo(3);
     }
 
     @Test

@@ -30,6 +30,15 @@
             Object.assign({}, options, {pinnedWorkspaceId:workspace, retries:0}));
     }
 
+    function branchAdoptionRequest(source, contextId, method, path, body, options) {
+        var workspace = source.workspaceId || '';
+        var selection = new URLSearchParams({repositoryId:source.repositoryId, workspaceId:workspace, branch:source.branch});
+        if (workspace && method !== 'GET') selection.set('expectedContextId', contextId);
+        var url = '/api/workspace/adoption-rule' + path + '?' + selection;
+        var policy = Object.assign({},options,{pinnedWorkspaceId:workspace});
+        return method === 'GET' ? request(url,{method:'GET',cache:'no-store'},policy) : json(url,body,method,policy);
+    }
+
     var switchGeneration = 0;
 
     function beginSwitch(id) {
@@ -90,6 +99,18 @@
             return post('/api/workspace/' + encodeURIComponent(id) + '/switch', options).then(acknowledge);
         },
         syncState: function (options) { return get('/api/workspace/sync-state', options); },
+        branchAdoptionRule: function (source, options) {
+            return branchAdoptionRequest(source,null,'GET','',null,options);
+        },
+        branchAdoptionHistory: function (source, options) {
+            return branchAdoptionRequest(source,null,'GET','/history',null,options);
+        },
+        setBranchAdoption: function (source, contextId, enabled, expectedRevision, options) {
+            return branchAdoptionRequest(source,contextId,'PUT','',{enabled,expectedRevision},options);
+        },
+        decideBranchAdoption: function (source, contextId, action, expectedRevision, sourceCommit, options) {
+            return branchAdoptionRequest(source,contextId,'POST','/decision',{action,expectedRevision,sourceCommit},options);
+        },
         rebasePlan: function (source, options) {
             if (!options?.includeETag) return rebasePlanRequest(source, 'GET', options, request);
             return rebasePlanRequest(source, 'GET', options, window.TaxonomyApiClient.request)

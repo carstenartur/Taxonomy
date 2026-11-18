@@ -105,6 +105,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         if (logClientDisconnect(exception)) {
             return null;
         }
+        Throwable cause = org.springframework.core.NestedExceptionUtils.getMostSpecificCause(exception);
+        if (cause instanceof AccessDeniedException denied && !responseCommitted(request)) {
+            return handleAccessDenied(denied, request);
+        }
         log.error("Unhandled exception: status=500, type=INTERNAL_ERROR");
         if (responseCommitted(request)) {
             return null;

@@ -3,7 +3,6 @@ package com.taxonomy.workspace.service;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
-import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -11,13 +10,13 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class WorkspaceBranchDeletionTest {
     private final DslGitRepositoryFactory stores = mock(DslGitRepositoryFactory.class);
-    private final DslGitRepository git = mock(DslGitRepository.class);
     private final RepositoryMembershipService members = mock(RepositoryMembershipService.class);
     private final SystemRepositoryService repositories = mock(SystemRepositoryService.class);
     private final UserWorkspaceRepository rows = mock(UserWorkspaceRepository.class);
@@ -37,8 +36,7 @@ class WorkspaceBranchDeletionTest {
         when(members.canUseWorkspace(repo, copy, "ann")).thenReturn(true);
         when(members.canCollaborate(repo, "ann")).thenReturn(true);
         when(actor.require("ann")).thenReturn("stable-actor");
-        when(stores.resolveRepository(selected)).thenReturn(git);
-        when(git.getHeadCommit("alternative")).thenReturn(head);
+        when(stores.readWorkspaceVariantHead("copy", "alternative")).thenReturn(head);
     }
 
     @Test void confirmedDeletionUsesReviewedHeadAndVerifiedActor() throws Exception {
@@ -47,7 +45,7 @@ class WorkspaceBranchDeletionTest {
         service.delete(selected, "alternative", receipt.etag());
         verify(repositories).lock("repo");
         verify(rows).findByWorkspaceIdForUpdate("copy");
-        verify(git).deleteBranch("alternative", head, "stable-actor");
+        verify(stores).deleteWorkspaceVariant(eq("copy"), eq("alternative"), eq(head), eq("stable-actor"), any());
     }
 
     @Test void centralAndRevokedAuthorityCannotReachTheRef() throws Exception {
@@ -56,14 +54,14 @@ class WorkspaceBranchDeletionTest {
         var receipt = service.preview(selected, "alternative");
         when(members.canCollaborate(repo, copy.getUsername())).thenReturn(false);
         assertThatThrownBy(() -> service.delete(selected,"alternative",receipt.etag())).isInstanceOf(AccessDeniedException.class);
-        verify(git, never()).deleteBranch(anyString(), anyString(), anyString());
+        verify(stores, never()).deleteWorkspaceVariant(anyString(), anyString(), anyString(), anyString(), any());
     }
 
     @Test void identicalHeadForAnotherBranchCannotReuseTheReview() throws Exception {
         var receipt = service.preview(selected, "alternative");
         assertThatThrownBy(() -> service.delete(selected, "other-branch", receipt.etag()))
                 .isInstanceOfSatisfying(ResponseStatusException.class, e -> assertThat(e.getStatusCode().value()).isEqualTo(412));
-        verify(git, never()).deleteBranch(anyString(), anyString(), anyString());
+        verify(stores, never()).deleteWorkspaceVariant(anyString(), anyString(), anyString(), anyString(), any());
     }
 
     @Test void identicalHeadAndBranchOnAnotherCopyCannotReuseTheReview() throws Exception {
@@ -76,7 +74,7 @@ class WorkspaceBranchDeletionTest {
         when(members.canUseWorkspace(repo, second, "ann")).thenReturn(true);
         assertThatThrownBy(() -> service.delete(other, "alternative", receipt.etag()))
                 .isInstanceOfSatisfying(ResponseStatusException.class, e -> assertThat(e.getStatusCode().value()).isEqualTo(412));
-        verify(git, never()).deleteBranch(anyString(), anyString(), anyString());
+        verify(stores, never()).deleteWorkspaceVariant(anyString(), anyString(), anyString(), anyString(), any());
     }
 
     @Test void sharedMaintainerMustHoldFreshDeletePermission() throws Exception {
@@ -85,19 +83,19 @@ class WorkspaceBranchDeletionTest {
         var receipt = service.preview(selected, "alternative");
         when(actor.require("ann")).thenThrow(new AccessDeniedException("Permission revoked"));
         assertThatThrownBy(() -> service.delete(selected, "alternative", receipt.etag())).isInstanceOf(AccessDeniedException.class);
-        verify(git, never()).deleteBranch(anyString(), anyString(), anyString());
+        verify(stores, never()).deleteWorkspaceVariant(anyString(), anyString(), anyString(), anyString(), any());
     }
 
     @Test void primaryContributionCompatibilityCannotAuthorizeDestructiveDeletion() {
         when(members.canContribute(repo, "ann")).thenReturn(true);
         when(members.canCollaborate(repo, "ann")).thenReturn(false);
         assertThatThrownBy(() -> service.delete(selected, "alternative", null)).isInstanceOf(AccessDeniedException.class);
-        verifyNoInteractions(git);
+        verifyNoInteractions(stores);
     }
 
     @Test void cannotOfferTheSynchronizationBaseForDeletion() {
         assertThatThrownBy(() -> service.preview(selected, "sync-base")).isInstanceOf(IllegalArgumentException.class);
-        verifyNoInteractions(git);
+        verifyNoInteractions(stores);
     }
 
     @Test void missingAndWildcardPreconditionsCannotReachTheRef() {
@@ -105,12 +103,30 @@ class WorkspaceBranchDeletionTest {
                 .isInstanceOfSatisfying(ResponseStatusException.class,e -> assertThat(e.getStatusCode().value()).isEqualTo(428));
         assertThatThrownBy(() -> service.delete(selected,"alternative","*"))
                 .isInstanceOfSatisfying(ResponseStatusException.class,e -> assertThat(e.getStatusCode().value()).isEqualTo(400));
-        verifyNoInteractions(git);
+        verifyNoInteractions(stores);
+    }
+
+    @Test void boundWorkspaceOwnerAndMaintainerCanDeleteButOrdinaryCollaboratorsCannot() throws Exception {
+        var owner = UUID.randomUUID().toString();
+        var collaborator = UUID.randomUUID().toString();
+        copy.assignOwnerPrincipal(UUID.fromString(owner));
+        copy.setCollaborative(true);
+        when(actor.require("ann")).thenReturn(owner);
+        var receipt = service.preview(selected, "alternative");
+
+        when(actor.require("ann")).thenReturn(collaborator);
+        assertThatThrownBy(() -> service.preview(selected, "alternative")).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> service.delete(selected, "alternative", receipt.etag())).isInstanceOf(AccessDeniedException.class);
+        verify(stores, never()).deleteWorkspaceVariant(anyString(), anyString(), anyString(), anyString(), any());
+
+        when(members.canMaintain(repo, "ann")).thenReturn(true);
+        service.delete(selected, "alternative", receipt.etag());
+        verify(stores).deleteWorkspaceVariant(eq("copy"), eq("alternative"), eq(head), eq(collaborator), any());
     }
 
     @Test void ordinarySharedEditingDoesNotGrantDeletion() {
         copy.setUsername("owner");
         assertThatThrownBy(() -> service.preview(selected, "alternative")).isInstanceOf(AccessDeniedException.class);
-        verifyNoInteractions(git);
+        verifyNoInteractions(stores);
     }
 }

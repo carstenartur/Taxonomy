@@ -1,5 +1,6 @@
 package com.taxonomy.security.service;
 
+import com.taxonomy.security.model.StablePrincipal;
 import org.springframework.security.core.session.SessionInformation;
 import org.springframework.security.core.session.SessionRegistry;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -36,9 +37,9 @@ public class BrowserSessionInventory {
                 unidentifiedSessions += sessions.size();
                 continue;
             }
-            Instant lastRequest = sessions.stream().map(session -> session.getLastRequest().toInstant())
-                    .max(Comparator.naturalOrder()).orElseThrow();
-            String displayName = displayName(principal);
+            var mostRecent = sessions.stream().max(Comparator.comparing(SessionInformation::getLastRequest)).orElseThrow();
+            Instant lastRequest = mostRecent.getLastRequest().toInstant();
+            String displayName = displayName(mostRecent.getPrincipal());
             UserSessions previous = users.get(identity);
             int count = sessions.size();
             if (previous != null) {
@@ -60,13 +61,14 @@ public class BrowserSessionInventory {
 
     private static Identity identity(Object principal) {
         if (principal instanceof OidcUser oidc) {
-            // Display names may collide or change. Issuer + subject is the identity;
-            // neither claims nor tokens are serialized by this projection.
             if (oidc.getIssuer() == null || oidc.getSubject() == null) return null;
-            return new Identity("OIDC", oidc.getIssuer().toString(), oidc.getSubject());
+            return new Identity("OIDC", new OidcIdentity(oidc.getIssuer().toString(), oidc.getSubject()));
         }
         if (principal instanceof UserDetails user) {
-            return new Identity("LOCAL", "", user.getUsername());
+            if (user instanceof StablePrincipal stable) {
+                return new Identity("LOCAL", stable.principalId());
+            }
+            return new Identity("LOCAL", user.getUsername());
         }
         return null; // Never fall back to arbitrary principal.toString().
     }
@@ -84,7 +86,8 @@ public class BrowserSessionInventory {
                 : name.substring(0, MAX_DISPLAY_NAME_LENGTH - 1) + "…";
     }
 
-    private record Identity(String kind, String issuer, String subject) { }
+    private record Identity(String kind, Object key) { }
+    private record OidcIdentity(String issuer, String subject) { }
     public record UserSessions(String username, String authenticationType, int sessionCount, Instant lastRequest) { }
     public record Snapshot(Instant timestamp, String scope, int userCount, int sessionCount,
                            int unidentifiedSessionCount, boolean truncated, List<UserSessions> users) { }

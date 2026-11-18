@@ -457,7 +457,10 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
     @Override
     public <T> T applyPreparedVersion(RepositoryContext context, String expectedHead, String candidate, String rationale,
                                       GitAction<T> action) throws IOException {
-        return applyPreparedVersion(context, expectedHead, candidate, rationale, action, false);
+        // Publication already owns the workspace metadata fence. Its editor adoption must use
+        // that transaction too, including rollback when the surrounding phase is not acknowledged.
+        boolean joined = org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive();
+        return applyPreparedVersion(context, expectedHead, candidate, rationale, action, joined);
     }
 
     @Override

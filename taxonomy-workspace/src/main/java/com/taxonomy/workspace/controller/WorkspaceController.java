@@ -19,6 +19,7 @@ import com.taxonomy.workspace.service.WorkspaceMetadataOperation;
 import org.springframework.web.server.ResponseStatusException;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
@@ -540,7 +541,7 @@ public class WorkspaceController {
             if (ws.getProvisioningStatus() == com.taxonomy.workspace.model.WorkspaceProvisioningStatus.PROVISIONING) {
                 result.put("leaseExpiresAt", ws.getProvisioningLeaseUntil());
             }
-            result.put("error", ws.getProvisioningError());
+            result.put("error", ws.getProvisioningError() == null ? null : WorkspaceProvisioningStatus.FAILURE_MESSAGE);
         }
         return ResponseEntity.ok(result);
     }
@@ -571,7 +572,7 @@ public class WorkspaceController {
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(Map.of(
                     "error", "Provisioning failed",
-                    "message", e.getMessage()
+                    "message", WorkspaceProvisioningStatus.FAILURE_MESSAGE
             ));
         }
     }

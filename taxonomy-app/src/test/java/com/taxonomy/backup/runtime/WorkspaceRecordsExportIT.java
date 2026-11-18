@@ -14,15 +14,18 @@ import org.junit.jupiter.params.provider.CsvSource;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import static com.taxonomy.backup.runtime.CurrentStateExportIT.*;
 import static org.assertj.core.api.Assertions.*;
 
 class WorkspaceRecordsExportIT {
-    private static final List<String> WORKSPACE_DATASETS = List.of("repositories","workspaces","memberships","synchronization",
+    private static final List<String> SELECTED_VERSION_DATASETS = List.of("repositories","workspaces","memberships","ref-policies","synchronization",
             "branch-synchronization","fetch-journal","central-fetch-journal","publication-journal","publication-decisions","index-recovery","index-decisions",
             "working-states","operations","checkpoints","commit-index","context-history").stream()
             .map(name -> "data/workspace/" + name + ".ndjson").toList();
+    private static final List<String> WORKSPACE_DATASETS = Stream.concat(SELECTED_VERSION_DATASETS.stream(),
+            Stream.of("data/workspace/adoption-rules.ndjson", "data/workspace/adoption-events.ndjson")).toList();
 
     @ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(strings = {"control", "long"})
     void legacyJournalLabelsOutsideTheIdentityDomainDoNotBecomePrincipalReferences(String shape) throws Exception {
@@ -169,6 +172,7 @@ class WorkspaceRecordsExportIT {
 
             var history = new Contents();
             contributor.write(snapshot(BackupProfile.REPOSITORY_HISTORY, scope), history);
+            assertThat(history.entries.keySet()).containsExactlyInAnyOrderElementsOf(WORKSPACE_DATASETS);
             for (String dataset : List.of("operations", "checkpoints", "commit-index")) {
                 assertThat(records(history, dataset)).as(dataset).hasSize(1);
             }
@@ -191,20 +195,24 @@ class WorkspaceRecordsExportIT {
             var contributor = new WorkspaceBackupContributor(fixture.database, dsl -> dsl);
             var full = new Contents();
             contributor.write(snapshot(BackupProfile.INSTALLATION_FULL, new BackupScope.Installation()), full);
+            assertThat(full.entries.keySet()).containsExactlyInAnyOrderElementsOf(WORKSPACE_DATASETS);
             for (String dataset : List.of("repositories", "workspaces", "memberships", "synchronization", "working-states", "operations", "checkpoints", "commit-index", "context-history")) {
                 assertThat(records(full, dataset)).as(dataset).hasSize(2);
             }
             assertThat(full.text()).contains("NAVIGATION-ALICE", "NAVIGATION-BOB").doesNotContain("SOURCE-STORAGE", "SOURCE-CREDENTIAL");
             var selected = new Contents();
             contributor.write(snapshot(BackupProfile.SELECTED_VERSION, new BackupScope.Workspace("repo-a", "private-a")), selected);
-            assertThat(selected.entries.keySet()).containsExactlyInAnyOrderElementsOf(WORKSPACE_DATASETS);
+            assertThat(selected.entries.keySet()).containsExactlyInAnyOrderElementsOf(SELECTED_VERSION_DATASETS);
             for (var entry : selected.entries.entrySet()) {
                 assertThat(new String(entry.getValue(), StandardCharsets.UTF_8).lines()).as(entry.getKey())
                         .hasSize(1).allMatch(line -> line.contains("\"schemaVersion\":1") && line.contains("SELECTED_VERSION"));
             }
             assertThat(contributor.componentId()).isEqualTo(new BackupComponentId("workspace"));
             assertThat(contributor.schemaVersion()).isEqualTo(1);
-            assertThat(contributor.categories()).hasSize(16).contains(UserWorkspace.class.getName(), ContextHistoryRecord.class.getName(),
+            assertThat(contributor.categories()).hasSize(19).contains(UserWorkspace.class.getName(), ContextHistoryRecord.class.getName(),
+                    RepositoryRefRule.class.getName(),
+                    com.taxonomy.workspace.service.BranchAdoptionRule.class.getName(),
+                    com.taxonomy.workspace.service.BranchAdoptionEvent.class.getName(),
                     com.taxonomy.workspace.model.WorkspaceBranchSyncState.class.getName(),
                     com.taxonomy.workspace.service.WorkspaceFetchOperation.class.getName(),
                     com.taxonomy.workspace.service.CentralFetchOperation.class.getName(),

@@ -94,6 +94,14 @@ public class WorkspaceResolver {
         return resolveCurrentRepositoryContext(false);
     }
 
+    /** The admitted request's routing selection, without provisioning or treating it as a current grant. */
+    public static java.util.Optional<RepositoryContext> resolvedRequestSelection() {
+        RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
+        Object selected = attributes == null ? null : attributes.getAttribute(
+                REQUEST_REPOSITORY_CONTEXT_ATTRIBUTE, RequestAttributes.SCOPE_REQUEST);
+        return selected instanceof RepositoryContext context ? java.util.Optional.of(context) : java.util.Optional.empty();
+    }
+
     /** An observational route must not silently choose a primary from multiple readable sources. */
     public RepositoryContext resolveUnambiguousRepositoryForRead() {
         RepositoryContext selected = resolveCurrentRepositoryContextForRead();

@@ -518,6 +518,50 @@ class ArchitectureEditorServiceTest {
         assertThat(git.getCommitCount("draft")).isEqualTo(3);
     }
 
+    @Test void preparedPublicationJoinsOuterRollbackAndRecoversWithoutLosingLaterEdits() throws Exception {
+        var git = fixture.repositories.resolveRepository(alice);
+        execute(update("Checkpoint before publication"));
+        String expected = service.checkpoint(alice, new CreateCheckpointCommand(service.read(alice, null).context(), metadata())).commitId();
+        String operation = UUID.randomUUID().toString();
+        String candidate = git.prepareDslCommit(operation, "draft", expected, null, SEED.replace("Original", "Published"),
+                "alice", "Frozen publication", null);
+        var before = fixture.journal.read(alice);
+        var checkpointsBefore = fixture.journal.checkpoints(alice);
+        var transaction = new org.springframework.transaction.support.TransactionTemplate(
+                new org.springframework.orm.jpa.JpaTransactionManager(fixture.factory));
+
+        assertThatThrownBy(() -> transaction.execute(status -> {
+            try {
+                assertThat(service.applyPreparedVersion(alice, expected, candidate, "Publish prepared version",
+                        () -> git.publishPreparedDslCommit(operation, "draft", expected, candidate))).isEqualTo(candidate);
+            } catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
+            // The Git effect is durable, but the publication phase has not acknowledged its database work.
+            throw new IllegalStateException("Publication acknowledgement lost after editor import");
+        })).isInstanceOf(IllegalStateException.class).hasMessage("Publication acknowledgement lost after editor import");
+
+        assertThat(git.getHeadCommit("draft")).isEqualTo(candidate);
+        assertThat(fixture.journal.read(alice)).isEqualTo(before);
+        assertThat(fixture.journal.checkpoints(alice)).isEqualTo(checkpointsBefore);
+
+        var restarted = new ArchitectureEditorService(fixture.repositories, fixture.journal, new ArchitectureCheckpointWriter());
+        java.util.function.Function<org.springframework.transaction.TransactionStatus, String> retry = status -> {
+            try {
+                return restarted.applyPreparedVersion(alice, expected, candidate, "Publish prepared version",
+                        () -> git.publishPreparedDslCommit(operation, "draft", expected, candidate));
+            } catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
+        };
+        assertThat(transaction.execute(retry::apply)).isEqualTo(candidate);
+        assertThat(restarted.read(alice, null).dsl()).contains("Published");
+
+        restarted.execute(alice, new Command(restarted.read(alice, null).context(), metadata(), update("Later accepted edit")));
+        var later = fixture.journal.read(alice);
+        assertThat(transaction.execute(retry::apply)).isEqualTo(candidate);
+        assertThat(fixture.journal.read(alice)).isEqualTo(later);
+        assertThat(restarted.read(alice, null).dsl()).contains("Later accepted edit");
+        assertThat(restarted.read(alice, null).history()).filteredOn(entry -> entry.kind().equals("VERSION_IMPORT")).hasSize(1);
+        assertThat(git.getCommitCount("draft")).isEqualTo(3);
+    }
+
     @Test void failedVersionCompletionRequiresRecoveryAndNeverOverwritesUncheckpointedEdits() throws Exception {
         var git = fixture.repositories.resolveRepository(alice);
         execute(update("Checkpointed edit"));

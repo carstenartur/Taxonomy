@@ -77,6 +77,12 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                 queries.add(new Query("select w.repository_id,w.workspace_id,w.scope_id as parent_scope,h.scope_id as child_scope,h.actor as principal_scope from "
                         + table + " h join editor_workspace w on w.scope_id=h.scope_id where " + history.sql() + " order by h.id", history.parameters()));
         }
+        if (scope.history() && !scope.selectedVersion() && !StagedWorkspaceSchema.predatesAdoption(database)) {
+            var adoption = scope.repositories("r.repository_id", "r.workspace_id");
+            queries.add(new Query("select r.repository_id,r.workspace_id,r.id as parent_scope,r.id as child_scope,"
+                    + "r.actor_scope as principal_scope from branch_adoption_rule r where " + adoption.sql()
+                    + " order by r.id", adoption.parameters()));
+        }
         var captured = new HashSet<String>();
         if (!scope.selectedVersion() && !StagedWorkspaceSchema.predatesPublications(database)) {
             var selected = scope.repositories("p.repository_id","p.workspace_id");
@@ -108,9 +114,10 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
     @Override public int schemaVersion() { return 1; }
     @Override public Set<String> categories() {
         return Set.of("com.taxonomy.workspace.model.SystemRepository", "com.taxonomy.workspace.model.UserWorkspace",
-                "com.taxonomy.workspace.model.RepositoryMembership", "com.taxonomy.workspace.model.SyncState",
+                "com.taxonomy.workspace.model.RepositoryMembership", "com.taxonomy.workspace.model.RepositoryRefRule", "com.taxonomy.workspace.model.SyncState",
                 "com.taxonomy.workspace.service.WorkspaceFetchOperation", "com.taxonomy.workspace.service.CentralFetchOperation",
                 "com.taxonomy.workspace.service.WorkspacePublicationOperation", "com.taxonomy.workspace.service.WorkspacePublicationDecision",
+                "com.taxonomy.workspace.service.BranchAdoptionRule", "com.taxonomy.workspace.service.BranchAdoptionEvent",
                 "com.taxonomy.workspace.model.WorkspaceBranchSyncState",
                 "com.taxonomy.editor.persistence.EditorWorkspace", "com.taxonomy.editor.persistence.EditorOperation",
                 "com.taxonomy.editor.persistence.EditorCheckpoint", "com.taxonomy.versioning.model.ArchitectureCommitIndex",
@@ -119,7 +126,7 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
     }
     @Override public List<String> omissions(BackupProfile profile) {
         var omissions = new ArrayList<String>();
-        if (!profile.includesHistory()) omissions.add("workspace: editor operations, publication decisions, checkpoint bodies, commit index and context history are excluded");
+        if (!profile.includesHistory()) omissions.add("workspace: editor operations, publication and branch adoption decisions, checkpoint bodies, commit index and context history are excluded");
         if (profile == BackupProfile.SELECTED_VERSION) omissions.add("workspace: current unversioned working copies and routing metadata are excluded; selected Git state is authoritative");
         if (profile != BackupProfile.INSTALLATION_FULL) omissions.add("workspace: cross-context navigation history is outside the selected scope");
         omissions.add("workspace: physical storage names, runtime row versions, provisioning errors, fork acknowledgement authority and remote credentials are target-owned");
@@ -156,6 +163,7 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
         }
         write(sink,"memberships",profile,query(scope,false,"select id,repository_id,username,repository_role,created_at,created_by,updated_at," + principals + " from repository_membership",activeMemberships,"id"),
                 scoped(scope,"repository_id",null,r -> new MembershipRecord(reference(r,"workspace.membership","id"),text(r,"repository_id"),text(r,"username"),enumeration(r,"repository_role",RepositoryRole.class),instant(r,"created_at"),text(r,"created_by"),instant(r,"updated_at"),text(r,"holder_principal_id"),text(r,"grantor_principal_id"))));
+        writeRefPolicies(scope, profile, sink);
         var sync = scope.repositories("w.source_repository_id","w.workspace_id");
         write(sink,"synchronization",profile,query(scope,false,"select w.source_repository_id as captured_repository_id,w.workspace_id as captured_workspace_id,s.id,s.username,s.workspace_id,s.last_synced_commit_id,s.last_sync_timestamp,s.last_published_commit_id,s.last_publish_timestamp,s.sync_status,s.unpublished_commit_count,s.created_at,s.updated_at from sync_state s join user_workspace w on w.workspace_id=s.workspace_id",sync,"s.id"),
                 scoped(scope,"captured_repository_id","captured_workspace_id",linked("captured_workspace_id","workspace_id",r -> new SyncRecord(reference(r,"workspace.sync","id"),text(r,"username"),text(r,"workspace_id"),text(r,"last_synced_commit_id"),instant(r,"last_sync_timestamp"),
@@ -201,6 +209,7 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                     return fetchRecord(r, "workspace.central-fetch", target, null, source, detached);
                 });
         writePublications(scope, profile, sink);
+        writeAdoptionRules(scope, profile, sink);
         var editors = scope.repositories("repository_id","workspace_id");
         write(sink,"working-states",profile,query(scope,false,"select scope_id,repository_id,workspace_id,branch,dsl,semantic_revision,checkpoint_commit,checkpoint_revision,pending_checkpoint from editor_workspace",editors,"scope_id"),
                 scoped(scope,"repository_id","workspace_id",r -> new WorkingStateRecord(reference(r,"workspace.editor","scope_id"),text(r,"repository_id"),text(r,"workspace_id"),text(r,"branch"),document(scope,unframe(text(r,"dsl"))),r.getLong("semantic_revision"),text(r,"checkpoint_commit"),r.getLong("checkpoint_revision"),text(r,"pending_checkpoint"))));
@@ -424,6 +433,34 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                 upstreamRepositoryId, text(r,"selected_tag"), text(r,"requested_tag_object"), text(r,"result_tag_object"),
                 workspaceId == null ? detached : null);
     }
+    private void writeRefPolicies(BackupRowScope scope, BackupProfile profile, ComponentSink sink) throws IOException {
+        if (!scope.selectedVersion() && StagedWorkspaceSchema.predatesRefPolicy(database)) return;
+        var selected = scope.repositories("p.repository_id", "p.workspace_id");
+        var parents = new Query("(" + selected.sql() + ") and (p.workspace_id is null or w.workspace_id is not null)",
+                selected.parameters());
+        String select = """
+                select p.id, p.storage_name, p.repository_id, p.workspace_id, p.branch_name, p.revision,
+                       p.prevent_updates, p.prevent_force, p.prevent_delete, r.storage_repository_name as central_storage
+                  from repository_ref_rule p join system_repository r on r.repository_id=p.repository_id
+                  left join user_workspace w on w.workspace_id=p.workspace_id and w.source_repository_id=p.repository_id
+                """;
+        write(sink, "ref-policies", profile, query(scope, false, select, parents, "p.id"),
+                scoped(scope, "repository_id", "workspace_id", row -> {
+                    String workspace = text(row, "workspace_id");
+                    String expectedStorage = workspace == null ? text(row, "central_storage")
+                            : com.taxonomy.workspace.storage.DslGitRepositoryFactory.workspaceRepositoryName(workspace);
+                    if (!Objects.equals(expectedStorage, text(row, "storage_name"))) {
+                        throw new IOException("Branch policy has an inconsistent physical owner");
+                    }
+                    return new RefPolicyRecord(reference(row, "workspace.ref-policy", "id"),
+                            text(row, "repository_id"), workspace, text(row, "branch_name"), row.getLong("revision"),
+                            row.getBoolean("prevent_updates"), row.getBoolean("prevent_force"), row.getBoolean("prevent_delete"));
+                }));
+    }
+
+    public record RefPolicyRecord(SourceRecordId sourceId, String repositoryId, String workspaceId, String branch,
+                                  long revision, boolean preventUpdates, boolean preventForce, boolean preventDelete) { }
+
     private <T extends Record> void write(ComponentSink sink,String kind,BackupProfile profile,Query query,PortableRows.Mapper<T> mapper) throws IOException { rows.write(sink,"workspace",kind,profile,query,mapper); }
     private static <T extends Record> PortableRows.Mapper<T> scoped(BackupRowScope scope,String repositoryColumn,String workspaceColumn,PortableRows.Mapper<T> mapper) {
         return row -> {
@@ -439,6 +476,52 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
             return mapper.read(row);
         };
     }
+    private void writeAdoptionRules(BackupRowScope scope, BackupProfile profile, ComponentSink sink) throws IOException {
+        if (scope.selectedVersion() || StagedWorkspaceSchema.predatesAdoption(database)) return;
+        var selected = scope.repositories("r.repository_id", "r.workspace_id");
+        String parents = " from branch_adoption_rule r left join system_repository p on p.repository_id=r.repository_id"
+                + " left join user_workspace w on w.workspace_id=r.workspace_id";
+        String query = "select r.id,r.repository_id,r.workspace_id,r.target_branch,r.source_branch,r.actor_scope,"
+                + "r.principal_id,r.login_kind,r.enabled,r.revision,r.status,r.detail,r.source_cursor,r.source_commit,"
+                + "r.source_tip,r.target_before,r.target_after,r.prepared_commit,p.repository_id as parent_repository,"
+                + "w.workspace_id as parent_workspace,w.source_repository_id as workspace_repository" + parents;
+        write(sink, "adoption-rules", profile, query(scope, false, query, selected, "r.id"),
+                scoped(scope, "repository_id", "workspace_id", r -> {
+                    boolean detached = text(r, "parent_repository") == null
+                            || text(r, "workspace_id") != null && text(r, "parent_workspace") == null;
+                    if (text(r, "parent_workspace") != null
+                            && !Objects.equals(text(r, "repository_id"), text(r, "workspace_repository")))
+                        throw new IOException("Branch adoption belongs to a different workspace repository");
+                    return new AdoptionRuleRecord(reference(r, "workspace.adoption-rule", "id"),
+                            text(r, "repository_id"), text(r, "workspace_id"), text(r, "target_branch"),
+                            text(r, "source_branch"), text(r, "actor_scope"), text(r, "principal_id"),
+                            text(r, "login_kind"), r.getBoolean("enabled"), r.getLong("revision"),
+                            text(r, "status"), text(r, "detail"), text(r, "source_cursor"),
+                            text(r, "source_commit"), text(r, "source_tip"), text(r, "target_before"),
+                            text(r, "target_after"), text(r, "prepared_commit"), detached);
+                }));
+        String events = "select e.id,e.rule_id,e.revision,e.recorded_at,e.actor_id,e.source_branch,e.source_commit,"
+                + "e.target_before,e.target_after,e.status,e.detail,r.repository_id,r.workspace_id"
+                + " from branch_adoption_event e join branch_adoption_rule r on r.id=e.rule_id";
+        write(sink, "adoption-events", profile, query(scope, true, events, selected, "e.rule_id,e.revision"),
+                scoped(scope, "repository_id", "workspace_id", r -> new AdoptionEventRecord(
+                        reference(r, "workspace.adoption-event", "id"), reference(r, "workspace.adoption-rule", "rule_id"),
+                        r.getLong("revision"), r.getLong("recorded_at"), text(r, "actor_id"), text(r, "source_branch"),
+                        text(r, "source_commit"), text(r, "target_before"), text(r, "target_after"),
+                        text(r, "status"), text(r, "detail"))));
+    }
+
+    public record AdoptionRuleRecord(SourceRecordId sourceId, String repositoryId, String workspaceId, String branch,
+            String sourceBranch, String actorScope, String originalActor, String loginKind, boolean enabled, long revision,
+            String status, String detail, String cursor, String sourceCommit, String sourceTip, String targetBefore,
+            String targetAfter, String preparedCommit, boolean detached) {
+    }
+
+    public record AdoptionEventRecord(SourceRecordId sourceId, SourceRecordId rule, long revision, long recordedAt,
+            String originalActor, String sourceBranch, String sourceCommit, String targetBefore, String targetAfter,
+            String status, String detail) {
+    }
+
     private String document(BackupRowScope scope,String dsl) { return scope.history() ? dsl : projector.currentState(dsl); }
     private static Query query(BackupRowScope scope,boolean history,String select,Query predicate,String order) {
         return scope.selectedVersion() || history && !scope.history() ? null : new Query(select + " where " + predicate.sql() + " order by " + order,predicate.parameters());

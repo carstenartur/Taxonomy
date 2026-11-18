@@ -55,7 +55,7 @@ class TaxonomySchemaPostgresMigrationIT {
                 """);
         new com.taxonomy.shared.config.SchemaContractMigration(source).migrate();
         TaxonomySchemaMigrationConfig.migrateApplicationSchema(Flyway.configure().dataSource(source).load().getConfiguration());
-        assertThat(successfulVersions(source)).endsWith("62.4", "62.5", "63", "64");
+        assertThat(successfulVersions(source)).endsWith("62.4", "62.5", "63", "64", "65", "66");
         assertThat(singleLong(source, "select count(*) from user_workspace where username='same-name' and owner_principal_id is null")).isEqualTo(1);
     }
 
@@ -66,7 +66,7 @@ class TaxonomySchemaPostgresMigrationIT {
         installApplicationAtVersion(source, "63");
         WorkspaceFetchDatabaseContractTest.verifyLegacyCentralReceiptUpgrade(source, () ->
                 TaxonomySchemaMigrationConfig.migrateApplicationSchema(Flyway.configure().dataSource(source).load().getConfiguration()));
-        assertThat(successfulVersions(source)).endsWith("63", "64");
+        assertThat(successfulVersions(source)).endsWith("63", "64", "65", "66");
     }
 
     @Test
@@ -231,10 +231,12 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(tableExists(dataSource, TaxonomySchemaMigrationConfig.HISTORY_TABLE)).isTrue();
         assertSelectedFetchSchema(dataSource);
         assertPublicationSchema(dataSource);
+        assertBranchAdoptionSchema(dataSource);
+        assertRepositoryRefPolicySchema(dataSource);
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "62", "62.1", "62.2", "62.3", "62.4", "62.5", "63", "64");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "62", "62.1", "62.2", "62.3", "62.4", "62.5", "63", "64", "65", "66");
     }
 
     @Test
@@ -263,6 +265,8 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(singleString(dataSource, "select fork_initiator_key from system_repository where repository_id = 'journal-upgrade' and version = 3"))
                 .isEqualTo("original-actor");
         assertPublicationSchema(dataSource);
+        assertBranchAdoptionSchema(dataSource);
+        assertRepositoryRefPolicySchema(dataSource);
         TaxonomySchemaMigrationConfig.migrateApplicationSchema(configuration);
         assertThat(successfulVersions(dataSource)).isEqualTo(upgraded);
     }
@@ -338,10 +342,12 @@ class TaxonomySchemaPostgresMigrationIT {
                 .isTrue();
         assertSelectedFetchSchema(dataSource);
         assertPublicationSchema(dataSource);
+        assertBranchAdoptionSchema(dataSource);
+        assertRepositoryRefPolicySchema(dataSource);
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "62", "62.1", "62.2", "62.3", "62.4", "62.5", "63", "64");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "57", "62", "62.1", "62.2", "62.3", "62.4", "62.5", "63", "64", "65", "66");
         assertIntegrationSchema(dataSource);
         assertInventorySchema(dataSource);
         assertReformulationSchema(dataSource);
@@ -635,6 +641,31 @@ class TaxonomySchemaPostgresMigrationIT {
                 "operation_id");
         assertRecoveryIndex(dataSource, "analysis_task_completion", "idx_analysis_completion_operation", true,
                 "operation_id");
+    }
+
+    private static void assertRepositoryRefPolicySchema(DataSource dataSource) throws SQLException {
+        assertThat(tableExists(dataSource, "repository_ref_rule")).isTrue();
+        for (String column : List.of("id", "storage_name", "repository_id", "workspace_id", "branch_name",
+                "revision", "prevent_updates", "prevent_force", "prevent_delete")) {
+            assertThat(columnExists(dataSource, "repository_ref_rule", column)).as("repository_ref_rule." + column).isTrue();
+        }
+    }
+
+    private static void assertBranchAdoptionSchema(DataSource dataSource) throws SQLException {
+        var tables = Map.of(
+                "branch_adoption_rule", List.of("id", "repository_id", "workspace_id", "target_branch", "source_branch",
+                        "actor_scope", "principal_id", "login_kind", "binding_key", "enabled", "revision", "next_check",
+                        "status", "detail", "source_cursor", "source_commit", "source_tip", "target_before", "target_after",
+                        "prepared_commit"),
+                "branch_adoption_event", List.of("id", "rule_id", "revision", "recorded_at", "actor_id", "source_branch",
+                        "source_commit", "target_before", "target_after", "status", "detail"));
+        for (var table : tables.entrySet()) {
+            assertThat(tableExists(dataSource, table.getKey())).as(table.getKey()).isTrue();
+            for (var column : table.getValue())
+                assertThat(columnExists(dataSource, table.getKey(), column)).as(table.getKey() + "." + column).isTrue();
+        }
+        assertThat(foreignKeyBindings(dataSource, "branch_adoption_event", "branch_adoption_event_rule_id_fkey"))
+                .containsExactly("rule_id->branch_adoption_rule.id");
     }
 
     private static void assertPublicationSchema(DataSource dataSource) throws SQLException {

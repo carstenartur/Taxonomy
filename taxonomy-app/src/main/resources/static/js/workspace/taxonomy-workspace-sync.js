@@ -64,6 +64,7 @@ window.TaxonomyWorkspaceSync = (function () {
         var planButton = document.getElementById('workspaceRebasePlanButton');
         if (planButton) planButton.hidden = true;
         syncState = null;
+        window.TaxonomyBranchAdoption?.clear();
         document.getElementById('syncStatusIndicator')?.remove();
         document.getElementById('syncStatePanel')?.replaceChildren();
         var local = document.getElementById('localChangesPanel');
@@ -98,6 +99,7 @@ window.TaxonomyWorkspaceSync = (function () {
                 // Treat any changed sync observation as a new plan authority; do not show a stale plan.
                 if (syncState && JSON.stringify(state) !== JSON.stringify(syncState)) clearRebasePlan();
                 syncState = state;
+                window.TaxonomyBranchAdoption?.select(state, context, Object.hasOwn(lifecycleLabels, state.syncStatus));
                 checkVisibleRebasePlan(state);
                 var planButton = document.getElementById('workspaceRebasePlanButton');
                 if (planButton) planButton.hidden = !state.repositoryId || !state.branch

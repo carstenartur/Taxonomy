@@ -139,6 +139,18 @@ class GlobalExceptionHandlerDiagnosticPrivacyTest {
     }
 
     @Test
+    void wrappedNativeRefDenialKeepsItsForbiddenStatusAndLocalizedSafeMessage() {
+        var exception = new java.io.IOException(PRIVATE_MESSAGE,
+                new org.springframework.security.access.AccessDeniedException(PRIVATE_CAUSE));
+        var response = new GlobalExceptionHandler(messages).handleGenericException(exception,
+                request(new MockHttpServletResponse()));
+        assertThat(response).isNotNull();
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(response.getBody().get("message")).isEqualTo(LOCALIZED_FORBIDDEN);
+        assertSafeDiagnostic(Level.WARN, "403");
+    }
+
+    @Test
     void actualFrameworkHandlerDoesNotLeakASecondaryCommittedResponseWarning() throws Exception {
         var actualHandler = new GlobalExceptionHandler(messages);
         var servletResponse = new MockHttpServletResponse();

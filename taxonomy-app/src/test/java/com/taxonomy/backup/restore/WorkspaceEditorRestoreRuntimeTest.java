@@ -52,6 +52,36 @@ class WorkspaceEditorRestoreRuntimeTest {
     private static final BackupComponentId APPLICATION=new BackupComponentId("application"),WORKSPACE_OWNER=new BackupComponentId("workspace");
     @TempDir Path temporary;
 
+    @Test
+    void portableBranchRestrictionsRemainEffectiveAfterTargetStorageReallocation() throws Exception {
+        try (var fixture = fixture(SOURCE_SCOPE)) {
+            fixture.restore();
+            var rows = new JdbcTemplate(fixture.target);
+            assertThat(rows.queryForObject("select count(*) from repository_ref_rule", Integer.class)).isEqualTo(2);
+            var policies = rows.queryForList("select storage_name,revision,prevent_updates,prevent_force,prevent_delete from repository_ref_rule order by revision");
+            assertThat(policies.getFirst()).containsEntry("STORAGE_NAME", "ws-editor-target-workspace")
+                    .containsEntry("REVISION", 3L).containsEntry("PREVENT_UPDATES", true)
+                    .containsEntry("PREVENT_FORCE", true).containsEntry("PREVENT_DELETE", true);
+            assertThat(policies.getLast()).containsEntry("STORAGE_NAME", "editor-target-central-storage")
+                    .containsEntry("REVISION", 7L).containsEntry("PREVENT_UPDATES", false)
+                    .containsEntry("PREVENT_FORCE", true).containsEntry("PREVENT_DELETE", true);
+
+            var policy = new com.taxonomy.security.service.VersionedRepositoryRefPolicy(null,null,null,null,null,null);
+            var catalogue = mock(SystemRepositoryService.class);
+            try (var protectedStores = new DslStorageConfig().dslGitRepositoryFactory(
+                    new DefaultHibernateRepositoryFactory(fixture.targetFactory), catalogue,
+                    com.taxonomy.workspace.signing.GitCommitSignatureService.disabled(), fixture.targetFactory, policy)) {
+                var working = protectedStores.openWorkspaceRepository("editor-target-workspace");
+                String before = working.getHeadCommit("main");
+                assertThatThrownBy(() -> working.commitDsl("main", "# forbidden", TARGET_SCOPE, "forbidden"))
+                        .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+                assertThat(working.getHeadCommit("main")).isEqualTo(before);
+            }
+            rows.update("update repository_ref_rule set prevent_updates=false where revision=3");
+            assertThatThrownBy(fixture::restore).isInstanceOf(IOException.class).hasMessageContaining("proof");
+        }
+    }
+
     @Test void explicitActorRebindingPreservesActualEditorHistoryUndoRedoAndInterruptedCheckpointEvidence()throws Exception {
         try(var fixture=fixture(SOURCE_SCOPE,null,true)) {
             fixture.restore();
@@ -547,6 +577,18 @@ class WorkspaceEditorRestoreRuntimeTest {
             rows.update("insert into workspace_publication_decision(operation_id,original_actor,executor_id,phase_code,decision_code,decision_at) values(?,?,'system:workspace-publication','CANDIDATES','APPLIED',2)",
                     "1".repeat(64),principal.value().toString());
         }
+        rows.update("""
+                insert into repository_ref_rule(id,storage_name,repository_id,workspace_id,branch_name,revision,
+                    prevent_updates,prevent_force,prevent_delete) values(?,?,?,?,?,7,false,true,true)
+                """, com.taxonomy.workspace.model.RepositoryRefRule.key("editor-source-central-storage", "main"),
+                "editor-source-central-storage", CENTRAL.repositoryId(), null, "main");
+        rows.update("""
+                insert into repository_ref_rule(id,storage_name,repository_id,workspace_id,branch_name,revision,
+                    prevent_updates,prevent_force,prevent_delete) values(?,?,?,?,?,3,true,true,true)
+                """, com.taxonomy.workspace.model.RepositoryRefRule.key(
+                        DslGitRepositoryFactory.workspaceRepositoryName(WORKSPACE.workspaceId()), "main"),
+                DslGitRepositoryFactory.workspaceRepositoryName(WORKSPACE.workspaceId()),
+                WORKSPACE.repositoryId(), WORKSPACE.workspaceId(), "main");
         if (analysis != null) analysis.seed(sourceFactory,principal,sourceContext,baseline);
         var archive=export(source,sourceFactory,principal,analysis != null,includeFork ? Set.of(CENTRAL,WORKSPACE,FORK) : Set.of(CENTRAL,WORKSPACE));
         RestoreSchemaMigration.bootstrap(source,target,CHECK);

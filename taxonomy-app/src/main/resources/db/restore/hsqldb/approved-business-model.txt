@@ -93,3 +93,6 @@ com.taxonomy.versioning.service.HistoryIndexDecisionRow
 com.taxonomy.versioning.service.HistoryIndexPurgeTarget
 com.taxonomy.workspace.service.WorkspacePublicationDecision
 com.taxonomy.workspace.service.WorkspacePublicationOperation
+com.taxonomy.workspace.model.RepositoryRefRule
+com.taxonomy.workspace.service.BranchAdoptionEvent
+com.taxonomy.workspace.service.BranchAdoptionRule

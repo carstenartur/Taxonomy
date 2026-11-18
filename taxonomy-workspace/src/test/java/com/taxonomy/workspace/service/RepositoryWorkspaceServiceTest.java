@@ -158,7 +158,7 @@ class RepositoryWorkspaceServiceTest {
         assertEquals(List.of(
                 WorkspaceProvisioningStatus.PROVISIONING,
                 WorkspaceProvisioningStatus.FAILED), persistedStates);
-        assertEquals("tracking ref failed", persistedError.get());
+        assertEquals(WorkspaceProvisioningStatus.FAILURE_MESSAGE, persistedError.get());
         verify(repositoryFactory).deleteWorkspaceRepository(anyString());
     }
 
@@ -187,7 +187,7 @@ class RepositoryWorkspaceServiceTest {
         assertEquals(List.of(
                 WorkspaceProvisioningStatus.PROVISIONING,
                 WorkspaceProvisioningStatus.FAILED), persistedStates);
-        assertEquals("seed failed", persistedError.get());
+        assertEquals(WorkspaceProvisioningStatus.FAILURE_MESSAGE, persistedError.get());
         verify(repositoryFactory).deleteWorkspaceRepository(anyString());
     }
 

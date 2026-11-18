@@ -85,7 +85,12 @@ public final class ExpectedHeadDslCommitter {
         } else {
             update.setRefLogMessage("commit: " + message,true);
         }
-        var result = update.update();
+        RefUpdate.Result result;
+        try {
+            result = update.update();
+        } catch (IOException failure) {
+            throw DslGitRepository.unwrapRefUpdateFailure(failure);
+        }
         return switch (result) {
             case NEW, FAST_FORWARD, FORCED -> new CommitResult(candidate.name(), headName(expected), result);
             case LOCK_FAILURE, REJECTED, REJECTED_CURRENT_BRANCH ->

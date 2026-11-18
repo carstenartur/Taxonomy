@@ -106,12 +106,18 @@ public final class ApiAccessPolicy {
             rules.add(rule(method, "/api/repositories/*/members/**", Access.PERMISSION, REPOSITORY_MANAGE, OWNER));
         }
         rules.add(rule("PUT", "/api/repositories/*/ownership", Access.PERMISSION, REPOSITORY_MANAGE, OWNER));
+        add(rules, "GET", ARCHITECTURE_READ, "/api/repositories/*/ref-policy");
+        rules.add(rule("PUT", "/api/repositories/*/ref-policy", Access.PERMISSION, REPOSITORY_MANAGE, OWNER));
         add(rules, "POST", ADMIN_CONFIGURATION, "/api/repositories");
         for (String path : List.of("/api/repositories/*/workspaces", "/api/architecture/editor/workspaces",
                 "/api/workspace/provision", "/api/workspace/upstream/fetch", "/api/workspace/upstream/fetch-tag", "/api/workspace/upstream/operations/*/retry")) {
             rules.add(rule("POST", path, Access.PERMISSION, ANALYSIS_RUN, CONTRIBUTOR));
         }
         rules.add(rule("DELETE", "/api/workspace/upstream/operations/*", Access.PERMISSION, ANALYSIS_RUN, CONTRIBUTOR));
+        rules.add(rule("GET", "/api/workspace/adoption-rule", Access.PERMISSION, ARCHITECTURE_READ, RESOURCE_CHECKS));
+        rules.add(rule("GET", "/api/workspace/adoption-rule/history", Access.PERMISSION, ARCHITECTURE_READ, RESOURCE_CHECKS));
+        rules.add(rule("PUT", "/api/workspace/adoption-rule", Access.PERMISSION, ARCHITECTURE_WRITE, CONTRIBUTOR));
+        rules.add(rule("POST", "/api/workspace/adoption-rule/decision", Access.PERMISSION, ARCHITECTURE_WRITE, CONTRIBUTOR));
         for (String path : List.of("/api/workspace/upstream", "/api/workspace/upstream/tag",
                 "/api/workspace/upstream/rebase-plan", "/api/workspace/upstream/operations/*")) {
             rules.add(rule("GET", path, Access.PERMISSION, ARCHITECTURE_READ, CONTRIBUTOR));

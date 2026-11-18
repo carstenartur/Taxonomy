@@ -211,6 +211,14 @@ Bei einem Sync-Konflikt wird ein Lösungsdialog angezeigt.
 - **📥 Vom Team aktualisieren** — Die neuesten Änderungen vom gemeinsamen Repository übernehmen
 - **📤 Für Team veröffentlichen** — Ihre Änderungen an das gemeinsame Repository senden
 
+### Default-Commits automatisch übernehmen
+
+Öffne unter **Versionen → Synchronisieren** die **Automatische Übernahme vom Default-Branch**. Die Regel ist zunächst ausgeschaltet. **Für diesen Branch einschalten** aktiviert sie für den angezeigten Zielbranch. Beim Einschalten wird der aktuelle Default-Commit als Ausgangspunkt gespeichert. Die Automatik übernimmt danach neu hinzukommende Commits in Reihenfolge. Frühere Änderungen kannst du mit dem ausdrücklichen Rebase oder einer einzelnen Commit-Übernahme einbeziehen. Die Ein-/Aus-Anzeige bleibt auch bei zugeklappten Details sichtbar. Jede persönliche Arbeitskopie hat ihre eigene Regel, auch wenn ihr Branch denselben Namen wie der Default-Branch trägt. Bei einem Konflikt, fehlenden Voraussetzungen oder geänderten Berechtigungen hält die Übernahme an. Im Feld siehst du den betroffenen Quellcommit und das Ergebnis. **Diesen Commit erneut prüfen** prüft die aktuellen Bedingungen. **Diesen Commit dauerhaft überspringen** lässt die angezeigte Änderung aus. Mit **Für diesen Branch ausschalten** beendest du die Regel. **Regelverlauf anzeigen** zeigt, wer entschieden hat, welcher Quellcommit betroffen war und welche Zielstände vor und nach der Entscheidung galten.
+
+Bei einem zentralen Branch können auch die aktuell berechtigten Repository-Eigentümer oder Maintainer eine fremde Regel ausschalten. Der Verlauf nennt die tatsächlich handelnde Person und bewahrt die ursprünglichen Quellstände sowie bereits vorbereitete Vorgänge.
+
+Nach dem Wiederherstellen einer Sicherung bleiben die Regeln ausgeschaltet. Zugeordnete historische Entscheidungen behalten ihre ursprünglichen Commit-Stände und Zeitpunkte. Frühere Berechtigungen und vorbereitete Vorgänge werden als Wiederherstellungsnachweis aufbewahrt. Mit dem erneuten Einschalten beginnt eine aktuelle Berechtigungsprüfung und die Übernahme künftig hinzukommender Commits.
+
 ---
 
 ## 8. Tastatur & Barrierefreiheit

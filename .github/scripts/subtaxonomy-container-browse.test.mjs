@@ -338,6 +338,29 @@ test('keyboard navigation roves among actual entries within the current area tre
     assert.ok(h.document.activeElement === button, 'tree navigation does not intercept native heading controls');
 });
 
+for (const view of ['list', 'tabs']) {
+    test(`${view} keeps keyboard navigation on the same original row after a background redraw`, () => {
+        const h = harness({ view });
+        h.row('BP-1000').focus();
+        h.key('ArrowRight'); h.key('ArrowRight');
+        const previousRow = h.row('BP-1327');
+        assert.ok(h.document.activeElement === previousRow);
+
+        h.browse.renderView(h.state.taxonomyData, { 'BP-1327': 83 });
+
+        assert.notEqual(h.row('BP-1327'), previousRow, 'the restored scores rebuild the original row');
+        assert.ok(h.document.activeElement === h.row('BP-1327'), 'focus follows the same catalogue entry');
+        assert.deepEqual(tabStops(h.row('BP-1327').closest('[role="tree"]')), ['BP-1327']);
+        h.key('ArrowUp');
+        assert.ok(h.document.activeElement === h.row('BP-1000'), 'keyboard navigation uses the replacement tree');
+
+        const input = h.document.getElementById('businessText');
+        input.focus();
+        h.browse.renderView(h.state.taxonomyData, { 'BP-1327': 91 });
+        assert.ok(h.document.activeElement === input, 'background rendering leaves external user focus alone');
+    });
+}
+
 test('successive lazy materialization preserves the focused row and creates no hidden tab stops', () => {
     const h = harness({ interactive: true });
     h.window.TaxonomyScoring.runInteractiveAnalysis();

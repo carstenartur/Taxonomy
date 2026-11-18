@@ -143,7 +143,7 @@ public class WorkspaceFetchJournal {
         try {
             return transaction.execute(status -> {
                 var existing = find(id);
-                if (existing != null) return replay(existing, selected, actor, command);
+                if (existing != null) return replay(existing, selected, actor, command, cause);
                 RepositoryFetchOperation operation;
                 if (central) {
                     var fork = new CentralFetchOperation();
@@ -184,7 +184,7 @@ public class WorkspaceFetchJournal {
             // An independent request may have committed the same scoped primary key first.
             var existing = transaction.execute(status -> find(id));
             if (existing == null) throw failure;
-            return replay(existing, selected, actor, command);
+            return replay(existing, selected, actor, command, cause);
         }
     }
 
@@ -334,10 +334,12 @@ public class WorkspaceFetchJournal {
         });
     }
 
-    private static View replay(RepositoryFetchOperation row, RepositoryContext selected, String principal, String command) {
+    private static View replay(RepositoryFetchOperation row, RepositoryContext selected, String principal, String command, String cause) {
         if (!row.ownedBy(selected, principal)) throw missing();
         if (row.archivedAt != null) throw new ResponseStatusException(HttpStatus.GONE, "FETCH_ARCHIVED");
-        if (!row.fingerprint.equals(command)) throw new ResponseStatusException(HttpStatus.CONFLICT, "Fetch command changed");
+        if (!row.fingerprint.equals(command) || (cause != null && !cause.equalsIgnoreCase(row.causeId))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Fetch command changed");
+        }
         return view(row);
     }
 

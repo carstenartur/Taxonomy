@@ -1014,6 +1014,18 @@
                             <button id="workspaceRebasePlanButton" type="button" class="btn btn-sm btn-outline-secondary mb-2" hidden
                                     aria-controls="workspaceRebasePlan" th:text="#{workspace.rebase.plan}">Show rebase plan</button>
                             <div id="workspaceRebasePlan" aria-live="polite"></div>
+                            <details id="workspaceAdoptionRule" class="mb-3" hidden>
+                                <summary><span th:text="#{workspace.adoption.title}">Automatic adoption from the default branch</span> <span id="workspaceAdoptionIndicator" class="small"></span></summary>
+                                <p class="small text-body-secondary mt-2" th:text="#{workspace.adoption.future}">Starting from activation, the rule checks new default-branch commits in order.</p>
+                                <p id="workspaceAdoptionResult" class="small text-break my-2" role="status"></p>
+                                <div class="d-flex flex-wrap gap-2">
+                                    <button id="workspaceAdoptionToggle" type="button" class="btn btn-sm btn-outline-primary" hidden></button>
+                                    <button id="workspaceAdoptionRetry" type="button" class="btn btn-sm btn-outline-secondary" th:text="#{workspace.adoption.retry}" hidden>Recheck this commit</button>
+                                    <button id="workspaceAdoptionSkip" type="button" class="btn btn-sm btn-outline-secondary" th:text="#{workspace.adoption.skip}" hidden>Skip this commit permanently</button>
+                                    <button id="workspaceAdoptionHistoryButton" type="button" class="btn btn-sm btn-outline-secondary" aria-controls="workspaceAdoptionHistory" th:text="#{workspace.adoption.history}" hidden>Show rule history</button>
+                                </div>
+                                <ol id="workspaceAdoptionHistory" class="small text-break mt-2" hidden></ol>
+                            </details>
                             <fieldset id="workspaceSyncActions" class="d-flex gap-2" disabled>
                                 <button class="btn btn-sm btn-outline-primary" onclick="TaxonomyWorkspaceSync.syncFromShared()" th:title="#{workspace.sync.from.shared.title}" title="Pull changes from team repository into your workspace">
                                     &#128229; <span th:text="#{workspace.sync.from.shared}">Sync from Team</span>
@@ -1674,6 +1686,7 @@
 <script th:src="@{/js/shared/responsibility-display.js}" src="/js/shared/responsibility-display.js"></script>
 <script th:src="@{/js/core/taxonomy-views.js}"></script>
 <script th:src="@{/js/workspace/taxonomy-git-status.js}"></script>
+<script th:src="@{/js/workspace/taxonomy-branch-adoption.js}"></script>
 <script th:src="@{/js/workspace/taxonomy-workspace-sync.js}"></script>
 <script th:src="@{/js/workspace/taxonomy-workspace-provisioning.js}"></script>
 <script th:src="@{/js/versioning/taxonomy-viewcontext.js}"></script>
