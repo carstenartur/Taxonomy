@@ -111,7 +111,10 @@
         status.textContent = '';
         paint();
         try {
-            const command = {...intent, context: view.context, metadata: {commandId: crypto.randomUUID(), rationale: reason.value}};
+            const commandId = crypto.randomUUID();
+            const command = {...intent, context: view.context, metadata: {
+                commandId, correlationId: commandId, causationId: commandId, rationale: reason.value
+            }};
             const result = await api.preview(command);
             if (ticket !== generation) return;
             if (!result.change.changes.length) {
