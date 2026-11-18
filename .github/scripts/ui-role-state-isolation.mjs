@@ -58,6 +58,20 @@ export async function isolateRoleStateScenario(page, timeout = DEFAULT_TIMEOUT_M
   await page.evaluate(async () => {
     await window.TaxonomyAnalysisSession.reload();
   });
+  await clearConfirmedRoleStateDraft(page, timeout);
+}
+
+/**
+ * Retire the draft owned by a successfully audited role scenario before another
+ * independent workflow begins. Its current session already owns the confirmed
+ * CAS revision. Reloading first would restore the deliberately rejected START
+ * and issue another status request for a continuation that was never admitted.
+ */
+export async function isolateCompletedRoleStateScenario(page, timeout = DEFAULT_TIMEOUT_MS) {
+  await clearConfirmedRoleStateDraft(page, timeout);
+}
+
+async function clearConfirmedRoleStateDraft(page, timeout) {
   await waitForAnalysisSessionReady(page, timeout);
   const workspaceId = await authoritativeWorkspaceId(page);
 
@@ -121,7 +135,11 @@ export async function isolateRoleStateScenario(page, timeout = DEFAULT_TIMEOUT_M
           || payload.architectureView
           || hasEntries(payload.discrepancies)
           || hasEntries(payload.productCoverageGaps)
-          || hasEntries(payload.provisionalRelations)) {
+          || hasEntries(payload.provisionalRelations)
+          || payload.analysisRecovery != null
+          || payload.recoveryContext != null
+          || payload.analysisOperationId != null
+          || payload.analysisReference != null) {
         throw new Error(
           'Role-state isolation did not return the authoritative empty draft');
       }
@@ -132,6 +150,16 @@ export async function isolateRoleStateScenario(page, timeout = DEFAULT_TIMEOUT_M
     } else {
       throw new Error(
         `Role-state isolation verification returned HTTP ${response.status}, expected 200 or 204`);
+    }
+
+    const recoveryPointer = JSON.parse(
+      window.sessionStorage.getItem('taxonomy.recovery.active.v1') || 'null');
+    if (window.TaxonomyState.analysisRecovery != null
+        || window.TaxonomyState.recoveryContext != null
+        || window.TaxonomyState.analysisOperationId != null
+        || window.__TaxonomyAnalysisSessionContext?.runtime?.analysisReference != null
+        || recoveryPointer?.workspaceId === expectedWorkspaceId) {
+      throw new Error('Role-state isolation retained a browser analysis recovery reference');
     }
 
     const input = document.getElementById('businessText');

@@ -9,8 +9,16 @@ const draftSource = await readFile(new URL(
 const projectsSource = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-projects.js',
   import.meta.url), 'utf8');
+const [coreSource, uiSource, recoverySource, acceptanceSource] = await Promise.all([
+  '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-core.js',
+  '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-ui.js',
+  '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-recovery.js',
+  './ui-role-state-acceptance.mjs'
+].map(path => readFile(new URL(path, import.meta.url), 'utf8')));
 
-import { isolateRoleStateScenario } from './ui-role-state-isolation.mjs';
+import * as isolation from './ui-role-state-isolation.mjs';
+const { isolateRoleStateScenario } = isolation;
+const recoveryStorageKey = 'taxonomy.recovery.active.v1';
 
 function installHarness(options = {}) {
   const previousWindow = globalThis.window;
@@ -26,13 +34,16 @@ function installHarness(options = {}) {
     ? 'workspace-42' : options.workspaceId;
   const remoteStatus = options.remoteStatus === undefined
     ? 204 : options.remoteStatus;
+  const storage = new Map([['unrelated-ui-preference', 'retained']]);
 
   const input = {
     value: 'Restored requirement from another browser profile',
     classList: {
       contains(name) {
         return name === 'stale-results' && stale;
-      }
+      },
+      remove(name) { if (name === 'stale-results') stale = false; },
+      add(name) { if (name === 'stale-results') stale = true; }
     },
     dispatchEvent(event) {
       calls.push(`event:${event.type}`);
@@ -61,6 +72,12 @@ function installHarness(options = {}) {
   };
   globalThis.window = {
     TaxonomyState: taxonomyState,
+    __TaxonomyAnalysisSessionContext: { runtime: {} },
+    sessionStorage: {
+      getItem: key => storage.get(key) ?? null,
+      setItem: (key, value) => storage.set(key, String(value)),
+      removeItem: key => storage.delete(key)
+    },
     TaxonomyBrowse: {
       switchView(view) {
         calls.push(`view:${view}`);
@@ -90,6 +107,13 @@ function installHarness(options = {}) {
         input.value = '';
         stale = false;
         conflict = false;
+        if (options.retainedLocalReference === 'analysisReference') {
+          window.__TaxonomyAnalysisSessionContext.runtime.analysisReference = { continuationId: 'old-run' };
+        } else if (options.retainedLocalReference === 'recoveryPointer') {
+          storage.set(recoveryStorageKey, JSON.stringify({ id: 'old-run', workspaceId: currentWorkspaceId }));
+        } else if (options.retainedLocalReference) {
+          taxonomyState[options.retainedLocalReference] = { id: 'old-run' };
+        }
       },
       async saveNow() {
         calls.push('save');
@@ -155,6 +179,7 @@ function installHarness(options = {}) {
     input,
     tree,
     taxonomyState,
+    storage,
     restore() {
       globalThis.window = previousWindow;
       globalThis.document = previousDocument;
@@ -500,7 +525,9 @@ for (const [label, remoteDraft] of [
   ['active state', emptyDraft({ payload: { draftState: 'ACTIVE', businessText: '' } })],
   ...Object.entries({ businessText: 'Previous requirement', scores: { BP: 90 },
     architectureView: { nodes: ['BP'] }, discrepancies: ['old'],
-    productCoverageGaps: ['old'], provisionalRelations: ['old'] })
+    productCoverageGaps: ['old'], provisionalRelations: ['old'],
+    analysisRecovery: { id: 'old-run' }, recoveryContext: { id: 'old-run' },
+    analysisReference: { continuationId: 'old-run' }, analysisOperationId: 'old-operation' })
     .map(([key, value]) => [key, emptyDraft({
       payload: { ...emptyDraft().payload, [key]: value } })])
 ]) {
@@ -589,4 +616,317 @@ test('isolates successive profiles using the production versioned draft writer',
   } finally {
     harness.restore();
   }
+});
+
+// Execute the actual acceptance boundary without importing its Playwright entry
+// point. The role flow and browser/HTTP/DOM boundaries are doubled; serialization,
+// invalidation, CAS saving, restoration and recovery use the production modules.
+const boundaryStart = acceptanceSource.indexOf('  taskMeasurements = await runRoleStateFlow({');
+const boundaryEnd = acceptanceSource.indexOf("  if (role === 'ADMIN') {", boundaryStart);
+assert.ok(boundaryStart >= 0 && boundaryEnd > boundaryStart, 'Acceptance boundary must remain identifiable');
+const runAcceptanceBoundary = new (Object.getPrototypeOf(async function () {}).constructor)(
+  'environment', `
+  const { page, role, zoom, forcedColors, checks, httpFailures, externalRequests,
+    consoleErrors, evidence, runRoleStateFlow, isolateCompletedRoleStateScenario } = environment;
+  let taskMeasurements = {};
+  ${acceptanceSource.slice(boundaryStart, boundaryEnd)}
+  return taskMeasurements;
+`);
+
+function boundaryEnvironment(harness, overrides = {}) {
+  return { page: harness.page, role: 'USER', zoom: 1, forcedColors: false,
+    checks: [], httpFailures: [], externalRequests: [], consoleErrors: [], evidence: {},
+    runRoleStateFlow: async () => ({ failedStep: null }),
+    isolateCompletedRoleStateScenario: isolation.isolateCompletedRoleStateScenario,
+    ...overrides };
+}
+
+function installRecoveryDraftHarness({ holdFirstWrite = false } = {}) {
+  const harness = installHarness();
+  const listeners = new Map(), pendingEvents = [], requests = [], writes = [];
+  const timers = new Map();
+  const pendingWrite = holdFirstWrite ? deferred() : null;
+  let firstWrite = true;
+  let timerId = 0, persisted;
+  const addEventListener = (type, listener) => {
+    if (!listeners.has(type)) listeners.set(type, []);
+    listeners.get(type).push(listener);
+  };
+  Object.assign(document, {
+    readyState: 'loading', documentElement: { lang: 'en' },
+    body: { classList: { toggle() {} } }, querySelectorAll: () => [],
+    addEventListener,
+    dispatchEvent(event) {
+      for (const listener of listeners.get(event.type) || []) {
+        const result = listener(event);
+        if (result?.then) pendingEvents.push(result);
+      }
+      return true;
+    }
+  });
+  harness.input.addEventListener = addEventListener;
+  const dispatchInput = harness.input.dispatchEvent;
+  harness.input.dispatchEvent = event => {
+    dispatchInput.call(harness.input, event);
+    event.target = harness.input;
+    return document.dispatchEvent(event);
+  };
+  harness.tree.querySelectorAll = () => [];
+  Object.assign(window.TaxonomyBrowse, {
+    renderView() { harness.tree.dataset.viewRendered = harness.taxonomyState.currentView; },
+    updateExportGroupVisibility() {}
+  });
+  Object.assign(window, {
+    console, setTimeout(callback) { timers.set(++timerId, callback); return timerId; },
+    clearTimeout(id) { timers.delete(id); },
+    TaxonomyScoring: { renderArchitectureView() {}, renderSuggestedRelations() {} },
+    TaxonomyRecoveryViewport: { mount: () => ({ update() {}, close() {}, isOpen: () => false }) }
+  });
+  delete window.TaxonomyAnalysisSession;
+  delete window.__TaxonomyAnalysisSessionContext;
+  const realm = vm.createContext({ window, document, console, Set,
+    sessionStorage: window.sessionStorage,
+    clearTimeout: window.clearTimeout, setTimeout: window.setTimeout,
+    CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options?.detail; } }
+  });
+  for (const source of [coreSource, uiSource, draftSource, projectsSource, recoverySource]) {
+    vm.runInContext(source, realm);
+  }
+  const context = window.__TaxonomyAnalysisSessionContext;
+  Object.assign(context.runtime, { initialized: true, workspaceResolved: true,
+    workspaceId: 'workspace-42', version: 4 });
+  const continuationId = '0bc655c5-864b-4e65-b1cb-86228af07436';
+  const rejectedRequest = { businessText: harness.input.value, resumable: true,
+    continuationAction: 'START', continuationId };
+  Object.assign(harness.taxonomyState, {
+    analysisRecovery: { id: continuationId, state: 'RUNNING', version: 0, openQuestions: [] },
+    recoveryContext: { id: continuationId, workspaceId: 'workspace-42',
+      request: rejectedRequest, syncState: 'UNAVAILABLE', confirmed: false, followups: {} }
+  });
+  harness.storage.set(recoveryStorageKey, JSON.stringify({ id: continuationId,
+    workspaceId: 'workspace-42', pendingRequest: rejectedRequest }));
+  persisted = { workspaceId: 'workspace-42', version: 4,
+    payload: JSON.parse(JSON.stringify(context.currentPayload())) };
+  context.runtime.lastSavedComparable = context.comparable(persisted.payload);
+  window.TaxonomyAnalysisSessionApi.request = async (path, options = {}) => {
+    requests.push({ path, ...options });
+    if (path === '/api/analysis-continuations/' + continuationId) {
+      return { ok: false, status: 404, json: async () => ({ detail: 'Unknown continuation' }) };
+    }
+    assert.equal(path, '/api/analysis-drafts/workspace-42');
+    if (options.method === 'PUT') {
+      const body = JSON.parse(options.body);
+      if (firstWrite && pendingWrite) {
+        firstWrite = false;
+        await pendingWrite.promise;
+      }
+      if (body.expectedVersion !== persisted.version) {
+        return { ok: false, status: 409, json: async () => ({ detail: 'Draft revision conflict' }) };
+      }
+      persisted = { workspaceId: persisted.workspaceId, version: persisted.version + 1,
+        payload: body.payload };
+      writes.push({ expectedVersion: body.expectedVersion, draft: structuredClone(persisted) });
+    } else assert.equal(options.method, 'GET');
+    return { ok: true, status: 200, json: async () => structuredClone(persisted) };
+  };
+  return { ...harness, context, requests, writes, continuationId,
+    session: window.TaxonomyAnalysisSession,
+    persisted: () => structuredClone(persisted),
+    advanceRemoteRevision: () => { persisted.version++; },
+    releaseWrite: () => pendingWrite?.resolve(),
+    async flushEvents() {
+      while (pendingEvents.length) await Promise.all(pendingEvents.splice(0));
+    }
+  };
+}
+
+test('completed role scenario clears its rejected START before a later production reload', async () => {
+  const harness = installRecoveryDraftHarness();
+  const priorFailures = [{ method: 'POST', path: '/api/analyze', status: 503 },
+    { method: 'GET', path: '/api/analysis-continuations/' + harness.continuationId, status: 404 }];
+  const environment = boundaryEnvironment(harness, { httpFailures: [...priorFailures] });
+  try {
+    await runAcceptanceBoundary(environment);
+    await harness.session.reload();
+    await harness.flushEvents();
+    assert.deepEqual(harness.requests.filter(request => request.path.includes('/analysis-continuations/')), [],
+      'The next scenario must not re-read the never-admitted START');
+    assert.equal(harness.writes.length, 1);
+    assert.equal(harness.writes[0].expectedVersion, 4);
+    const saved = harness.persisted();
+    assert.equal(saved.version, 5);
+    assert.equal(saved.payload.draftState, 'EMPTY');
+    for (const field of ['analysisRecovery', 'recoveryContext', 'analysisOperationId', 'analysisReference']) {
+      assert.equal(saved.payload[field] ?? null, null, `No persisted ${field}`);
+    }
+    assert.equal(harness.taxonomyState.recoveryContext, null);
+    assert.equal(harness.taxonomyState.analysisRecovery, null);
+    assert.equal(harness.context.runtime.analysisReference, null);
+    assert.equal(harness.storage.get(recoveryStorageKey), undefined);
+    assert.equal(harness.storage.get('unrelated-ui-preference'), 'retained');
+    assert.equal(harness.requests.findIndex(request => request.method === 'PUT'), 0,
+      'Completion must save the confirmed current state before performing any reload');
+    assert.equal(harness.requests[1].cache, 'no-store');
+    assert.deepEqual(environment.httpFailures, priorFailures, 'Previously audited failures remain in the report');
+  } finally { harness.restore(); }
+});
+
+for (const field of ['analysisRecovery', 'recoveryContext', 'analysisOperationId', 'analysisReference', 'recoveryPointer']) {
+  test(`rejects a surviving browser ${field} even when the remote draft is empty`, async () => {
+    const harness = installHarness({ retainedLocalReference: field });
+    try {
+      await assert.rejects(() => isolateRoleStateScenario(harness.page, 1_000),
+        /retained a browser analysis recovery reference/);
+    } finally { harness.restore(); }
+  });
+}
+
+for (const ledger of ['httpFailures', 'consoleErrors', 'externalRequests']) {
+  test(`completed-scenario isolation rejects new ${ledger} without erasing prior evidence`, async () => {
+    const harness = installHarness();
+    const previous = { message: 'Previously audited evidence' };
+    const added = { message: 'Unexpected cleanup evidence', method: 'GET', status: 404 };
+    const environment = boundaryEnvironment(harness, {
+      [ledger]: [previous],
+      isolateCompletedRoleStateScenario: async page => {
+        await isolation.isolateCompletedRoleStateScenario(page, 1_000);
+        environment[ledger].push(added);
+      }
+    });
+    try {
+      await assert.rejects(() => runAcceptanceBoundary(environment),
+        /Completed role-state isolation introduced HTTP, console or external-request failures/);
+      assert.deepEqual(environment[ledger], [previous, added]);
+    } finally { harness.restore(); }
+  });
+}
+
+test('a failed role flow retains its draft and never enters completion isolation', async () => {
+  const harness = installHarness();
+  let cleanupCalls = 0;
+  try {
+    await assert.rejects(() => runAcceptanceBoundary(boundaryEnvironment(harness, {
+      runRoleStateFlow: async () => { throw new Error('Role audit failed'); },
+      isolateCompletedRoleStateScenario: async () => { cleanupCalls++; }
+    })), /Role audit failed/);
+    assert.equal(cleanupCalls, 0);
+    assert.deepEqual(harness.calls, []);
+    assert.notEqual(harness.input.value, '');
+  } finally { harness.restore(); }
+});
+
+for (const [label, options, message] of [
+  ['visible conflict', { conflictMarker: true }, /cannot mutate while a draft conflict is active/],
+  ['missing workspace', { workspaceId: null }, /without an authoritative workspace ID/],
+  ['conflict before mutation', { conflictBeforeMutation: true }, /cannot mutate while a draft conflict is active/],
+  ['visible conflict before mutation', { conflictMarkerBeforeMutation: true }, /cannot mutate while a draft conflict is active/],
+  ['workspace changed before mutation', { workspaceIdBeforeMutation: 'workspace-other' }, /workspace changed before authoritative cleanup/],
+  ['conflicted save', { conflictAfterSave: true }, /could not clear the authoritative draft revision/],
+  ['unsuccessful save', { saveResult: false }, /could not clear the authoritative draft revision/],
+  ['workspace changed during save', { workspaceIdAfterSave: 'workspace-other' }, /workspace changed during authoritative cleanup/],
+  ['wrong remote revision', { remoteStatus: 200, version: 4, remoteDraft: emptyDraft({ version: 5 }) }, /did not return the authoritative empty draft/],
+  ['remote verification failure', { remoteStatus: 503 }, /verification returned HTTP 503/]
+]) {
+  test(`completed scenario retains the ${label} boundary without reloading`, async () => {
+    const harness = installHarness(options);
+    try {
+      await assert.rejects(() => runAcceptanceBoundary(boundaryEnvironment(harness)), message);
+      assert.equal(harness.calls.includes('reload'), false);
+      assert.equal(harness.calls.includes('event:input'), false);
+      assert.equal(harness.calls.includes('view:list'), false);
+    } finally { harness.restore(); }
+  });
+}
+
+test('completed scenario waits for the real source readiness without first reloading', async () => {
+  const harness = installProductionSessionHarness();
+  const completion = runAcceptanceBoundary(boundaryEnvironment(harness)).then(
+    () => ({ error: null }), error => ({ error }));
+  try {
+    await harness.session.whenInitialized();
+    await new Promise(resolve => setImmediate(resolve));
+    const beforeWorkspace = [...harness.calls];
+    harness.releaseWorkspace();
+    await new Promise(resolve => setImmediate(resolve));
+    const beforeContext = [...harness.calls];
+    harness.releaseContext();
+    const outcome = await completion;
+    assert.deepEqual(beforeWorkspace, []);
+    assert.deepEqual(beforeContext, []);
+    assert.equal(outcome.error, null);
+    assert.equal(harness.calls.includes('reload'), false);
+    assert.equal(harness.calls.filter(call => call === 'save').length, 1);
+  } finally {
+    harness.releaseWorkspace(); harness.releaseContext();
+    await completion;
+    harness.restore();
+  }
+});
+
+test('completed scenario rejects real source readiness lost before mutation', async () => {
+  const harness = installProductionSessionHarness({ unavailableBeforeMutation: true });
+  try {
+    harness.releaseWorkspace(); harness.releaseContext();
+    await harness.session.whenInitialized();
+    await new Promise(resolve => setImmediate(resolve));
+    await assert.rejects(() => runAcceptanceBoundary(boundaryEnvironment(harness)),
+      /source became unavailable before authoritative cleanup/);
+    assert.deepEqual(harness.calls, []);
+  } finally { harness.restore(); }
+});
+
+test('completed scenario cannot overwrite a newer remote revision through the production CAS writer', async () => {
+  const harness = installRecoveryDraftHarness();
+  try {
+    harness.advanceRemoteRevision();
+    const remoteBefore = harness.persisted();
+    await assert.rejects(() => runAcceptanceBoundary(boundaryEnvironment(harness)),
+      /could not clear the authoritative draft revision/);
+    assert.equal(harness.session.state().conflict, true);
+    assert.deepEqual(harness.persisted(), remoteBefore);
+    assert.equal(harness.writes.length, 0);
+    assert.deepEqual(harness.requests.map(({ method }) => method), ['PUT']);
+    assert.equal(JSON.parse(harness.requests[0].body).expectedVersion, 4);
+  } finally { harness.restore(); }
+});
+
+test('completed scenario drains an in-flight production save before verifying its EMPTY revision', async () => {
+  const harness = installRecoveryDraftHarness({ holdFirstWrite: true });
+  let pendingSave, completion;
+  try {
+    harness.input.value += ' local edit';
+    pendingSave = harness.session.saveNow();
+    assert.equal(harness.requests.length, 1);
+    completion = runAcceptanceBoundary(boundaryEnvironment(harness));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(harness.writes.length, 0, 'The old save is still waiting for its receipt');
+    assert.equal(harness.requests.some(({ method }) => method === 'GET'), false);
+    harness.releaseWrite();
+    await pendingSave;
+    await completion;
+    assert.deepEqual(harness.writes.map(write => [write.expectedVersion, write.draft.payload.draftState]),
+      [[4, 'ACTIVE'], [5, 'EMPTY']]);
+    assert.equal(harness.persisted().version, 6);
+    assert.equal(harness.session.state().version, 6);
+    assert.deepEqual(harness.requests.map(({ method }) => method), ['PUT', 'PUT', 'GET']);
+    assert.equal(harness.requests.at(-1).cache, 'no-store');
+    await harness.session.reload();
+    await harness.flushEvents();
+    assert.equal(harness.requests.some(({ path }) => path.includes('/analysis-continuations/')), false);
+  } finally {
+    harness.releaseWrite();
+    await Promise.allSettled([pendingSave, completion]);
+    harness.restore();
+  }
+});
+
+test('completion verification leaves unrelated storage and a foreign workspace pointer untouched', async () => {
+  const harness = installHarness();
+  const foreignPointer = JSON.stringify({ id: 'foreign-run', workspaceId: 'workspace-other' });
+  harness.storage.set(recoveryStorageKey, foreignPointer);
+  try {
+    await runAcceptanceBoundary(boundaryEnvironment(harness));
+    assert.equal(harness.storage.get(recoveryStorageKey), foreignPointer);
+    assert.equal(harness.storage.get('unrelated-ui-preference'), 'retained');
+  } finally { harness.restore(); }
 });
