@@ -253,6 +253,46 @@ class BranchAdoptionHttpTest {
     }
 
     @Test
+    void missingRequiredFieldsLeaveTheRuleAndBothBranchesUnchanged() throws Exception {
+        String owner = "branch-input-validation";
+        accounts.createUser(Map.of("username", owner, "roles", List.of("USER", "ARCHITECT")), PASSWORD, "fixture");
+        String repository;
+        try (var login = LocalTestLogin.openExisting(application, owner, PASSWORD)) {
+            repository = provisioning.createRepository("Adoption input validation", "branch-input-validation", "",
+                    RepositoryVisibility.PRIVATE, owner, "main").getRepositoryId();
+        }
+        var git = repositories.getCentralRepository(repository);
+        String sourceBefore = git.commitDsl("main", model("base", "base"), owner, "Base");
+        git.createBranch("draft", "main");
+        String targetBefore = git.commitDsl("draft", model("mine", "base"), owner, "Local work");
+        String selection = "?repositoryId=" + repository
+                + "&workspaceId=&workspaceScopeKey=__shared__&branch=draft";
+        String rule = "/api/workspace/adoption-rule" + selection;
+        String decision = "/api/workspace/adoption-rule/decision" + selection;
+
+        try (var client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build()) {
+            var before = requestAt(client, rule, "GET", Map.of(), 200, owner);
+            assertThat(before.get("enabled").booleanValue()).isFalse();
+            assertThat(before.get("revision").asLong()).isZero();
+
+            requestAt(client, rule, "PUT", Map.of("enabled", true), 400, owner);
+            requestAt(client, rule, "PUT", Map.of("expectedRevision", 0), 400, owner);
+            requestAt(client, decision, "POST", Map.of("action", "SKIP", "sourceCommit", sourceBefore), 400, owner);
+            requestAt(client, decision, "POST", Map.of("action", "SKIP", "expectedRevision", 0), 400, owner);
+
+            var after = requestAt(client, rule, "GET", Map.of(), 200, owner);
+            assertThat(after.get("enabled").booleanValue()).isFalse();
+            assertThat(after.get("revision").asLong()).isZero();
+            var history = requestAt(client, "/api/workspace/adoption-rule/history" + selection,
+                    "GET", Map.of(), 200, owner);
+            assertThat(history.isArray()).isTrue();
+            assertThat(history.size()).isZero();
+            assertThat(git.getHeadCommit("main")).isEqualTo(sourceBefore);
+            assertThat(git.getHeadCommit("draft")).isEqualTo(targetBefore);
+        }
+    }
+
+    @Test
     void actualBranchPolicyStopsAutomaticPublicationUntilTheOwnerReviewsBothRevisions() throws Exception {
         String owner = "branch-policy-owner";
         String reader = "branch-policy-reader";

@@ -67,6 +67,21 @@ class WorkspaceManagerGitDeletionTest {
     }
 
     @Test
+    void deletesWorkspaceWithATransactionOnlyRefPolicy() {
+        manager.configureRefPolicies((session, storage, branch, operation) -> {
+            throw new AssertionError("Workspace cleanup must not invoke a ref mutation on deleted storage");
+        });
+        when(repositoryFactory.deleteWorkspaceRepository("workspace-42"))
+                .thenReturn(new RepositoryDeletionResult(3, 2, 0));
+
+        manager.deleteWorkspace("workspace-42", "alice");
+
+        InOrder order = inOrder(repositoryFactory, workspaceRepository);
+        order.verify(repositoryFactory).deleteWorkspaceRepository("workspace-42");
+        order.verify(workspaceRepository).delete(workspace);
+    }
+
+    @Test
     void preservesWorkspaceMetadataWhenGitDeletionFails() {
         doThrow(new IllegalStateException("repository still open"))
                 .when(repositoryFactory)
