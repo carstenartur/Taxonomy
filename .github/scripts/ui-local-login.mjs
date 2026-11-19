@@ -103,6 +103,7 @@ export async function verifyAnonymousLocalLogin(page, {
     await expect(page.getByLabel(language.password, { exact: true })).toHaveValue('');
     passed(`${language.code} localized generic authentication error`);
 
+    const retainedLoginForm = await page.content();
     await signInWithKeyboard(page, username, password, url => url.pathname === applicationPath
       && url.searchParams.get('loginAcceptance') === language.code);
     await expectLocale(page, root, language);
@@ -115,6 +116,25 @@ export async function verifyAnonymousLocalLogin(page, {
         'Application scripts must remain disabled in the no-JavaScript profile').toBe('undefined');
     }
     passed(`${language.code} keyboard login and saved request preserve locale`);
+
+    // Reuse the pre-login document as an old tab would. The first successful
+    // login rotated its CSRF token; this native form submission must recover
+    // without a Whitelabel 403, including in the no-JavaScript context profile.
+    await page.setContent(retainedLoginForm, { waitUntil: 'networkidle' });
+    const repeatedPost = page.waitForResponse(response =>
+      response.request().method() === 'POST'
+      && new URL(response.url()).pathname === loginPath);
+    await signInWithKeyboard(page, username, password,
+      url => url.pathname === applicationPath && url.search === '');
+    expect((await repeatedPost).status(), 'An old login form returns the authenticated browser with GET')
+      .toBe(303);
+    await expect(page).toHaveURL(url => url.pathname === applicationPath && url.search === '');
+    await expect(page.locator('#mainContent')).toBeVisible();
+    await expectLocale(page, root, language);
+    const retainedAccount = await page.request.get(`${root}/api/account/me`);
+    expect(retainedAccount.status()).toBe(200);
+    expect(await retainedAccount.json()).toMatchObject({ username });
+    passed(`${language.code} repeated login form retains the authenticated session`);
 
     // Use the framework's real CSRF-protected confirmation form, including when JS is off.
     await page.goto(`${root}/logout`, { waitUntil: 'networkidle' });

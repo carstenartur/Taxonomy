@@ -19,6 +19,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.WebApplicationContext;
 
 import java.util.List;
 
@@ -27,11 +29,15 @@ import static org.hamcrest.Matchers.containsString;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.security.test.web.servlet.response.SecurityMockMvcResultMatchers.authenticated;
+import static org.springframework.security.test.web.servlet.response.SecurityMockMvcResultMatchers.unauthenticated;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** Proves the productive form-login chain observes authoritative authentication outcomes. */
@@ -54,6 +60,9 @@ class LoginRateLimitFilterSecurityChainTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private WebApplicationContext context;
 
     @Autowired
     private LoginRateLimitFilter loginRateLimitFilter;
@@ -185,6 +194,39 @@ class LoginRateLimitFilterSecurityChainTest {
         prefixedForm(peer, ADMIN_PASSWORD)
                 .andExpect(status().is(423))
                 .andExpect(header().exists(HttpHeaders.RETRY_AFTER));
+    }
+
+    @Test
+    void expiredFormRecoveryNeitherResetsNorIncrementsCredentialFailures() throws Exception {
+        String peer = "203.0.113.76";
+        wrongFormLogin(peer);
+        // TestSecuritySupport adds CSRF to the autoconfigured MockMvc. This
+        // request must reach the real rejection path without that fixture.
+        var expiredFormMvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
+        expiredFormMvc.perform(post("/login").with(remoteAddress(peer))
+                        .param("username", "admin").param("password", ADMIN_PASSWORD))
+                .andExpect(status().isSeeOther())
+                .andExpect(redirectedUrl("/login?expired"))
+                .andExpect(unauthenticated());
+        wrongFormLogin(peer);
+        mockMvc.perform(post("/login").with(remoteAddress(peer)).with(csrf())
+                        .param("username", "admin").param("password", ADMIN_PASSWORD))
+                .andExpect(status().is(423));
+    }
+
+    @Test
+    void anAuthenticatedFormLoginStillClearsEarlierCredentialFailures() throws Exception {
+        String peer = "203.0.113.77";
+        wrongFormLogin(peer);
+        mockMvc.perform(post("/login").with(remoteAddress(peer)).with(csrf())
+                        .param("username", "admin").param("password", ADMIN_PASSWORD))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(authenticated().withUsername("admin"));
+        wrongFormLogin(peer);
+        mockMvc.perform(post("/login").with(remoteAddress(peer)).with(csrf())
+                        .param("username", "admin").param("password", ADMIN_PASSWORD))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(authenticated().withUsername("admin"));
     }
 
     private void wrongBasic(String peer, String forwardedFor) throws Exception {

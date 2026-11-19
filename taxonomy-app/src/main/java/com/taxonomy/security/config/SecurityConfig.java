@@ -107,8 +107,9 @@ public class SecurityConfig {
                     .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN)))
             .formLogin(form -> form.loginPage("/login").permitAll())
             .httpBasic(Customizer.withDefaults())
-            .exceptionHandling(exceptions -> exceptions.defaultAuthenticationEntryPointFor(
-                    apiEntryPoint, SecurityConfig::isRestClient))
+            .exceptionHandling(exceptions -> exceptions
+                .defaultAuthenticationEntryPointFor(apiEntryPoint, SecurityConfig::isRestClient)
+                .accessDeniedHandler(new LocalLoginCsrfAccessDeniedHandler()))
             .logout(Customizer.withDefaults());
 
         // A custom login page disables Spring's generated logout page and its CSS too.

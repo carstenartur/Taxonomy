@@ -149,10 +149,9 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
             return;
         }
 
-        boolean successfulFormResponse = formLoginAttempt
-                && isRedirect(responseStatus)
-                && !errorRedirect;
-        if (isAuthenticated() || successfulFormResponse) {
+        // A CSRF-rejected form can redirect to a fresh login page without
+        // authenticating. Only the authoritative context may clear failures.
+        if (isAuthenticated()) {
             clearFailures(peerKey);
         }
     }
