@@ -8,6 +8,7 @@
     <licenses><license><name>MIT License</name><url>https://opensource.org/licenses/MIT</url></license></licenses>
     <properties>
         <maven-surefire-plugin.version>3.6.1</maven-surefire-plugin.version>
+        <junit.version>6.1.3</junit.version>
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <taxonomy.sdk.version>${project.version}</taxonomy.sdk.version>
@@ -20,7 +21,9 @@
             <exclusions><exclusion><groupId>*</groupId><artifactId>*</artifactId></exclusion></exclusions></dependency>
         <dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-export</artifactId><version>${taxonomy.sdk.version}</version><scope>provided</scope>
             <exclusions><exclusion><groupId>*</groupId><artifactId>*</artifactId></exclusion></exclusions></dependency>
-        <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><version>6.1.3</version><scope>test</scope></dependency>
+        <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><version>${junit.version}</version><scope>test</scope></dependency>
+        <!-- Include Surefire's matching runtime launcher in dependency prefetch and offline builds. -->
+        <dependency><groupId>org.junit.platform</groupId><artifactId>junit-platform-launcher</artifactId><version>${junit.version}</version><scope>test</scope></dependency>
         <dependency><groupId>org.assertj</groupId><artifactId>assertj-core</artifactId><version>3.27.7</version><scope>test</scope></dependency>
         <dependency><groupId>org.slf4j</groupId><artifactId>slf4j-api</artifactId><version>2.0.20</version><scope>provided</scope></dependency>
     </dependencies>

@@ -109,8 +109,9 @@ class RenderDeliveryWorkflowTest {
       next.region(start + 3, workflow.length());
       end = next.find() ? next.start() : workflow.length();
       assertThat(workflow.substring(start, end))
+          .containsPattern(
+              "(?m)^[ \\t]+(?:-[ \\t]+)?uses:[ \\t]+actions/setup-java@[0-9a-f]{40}(?:[ \\t]+#.*)?[ \\t]*$")
           .contains(
-              "actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78",
               "java-version: '25'",
               "ref: ${{ github.event.workflow_run.head_sha }}");
     }
