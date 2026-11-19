@@ -27,6 +27,8 @@ final class LocalLoginCsrfAccessDeniedHandler implements AccessDeniedHandler {
     @Override
     public void handle(HttpServletRequest request, HttpServletResponse response,
                        AccessDeniedException exception) throws IOException, ServletException {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        boolean authenticated = trust.isAuthenticated(authentication);
         if (!(exception instanceof CsrfException)
                 || !"POST".equals(request.getMethod())
                 || !"/login".equals(SecurityConfig.protocolPath(request))) {
@@ -35,8 +37,7 @@ final class LocalLoginCsrfAccessDeniedHandler implements AccessDeniedHandler {
         }
         // A successful login rotates the token. A repeated old form can therefore
         // be rejected while its browser session is already authenticated.
-        var authentication = SecurityContextHolder.getContext().getAuthentication();
         redirect.sendRedirect(request, response,
-                trust.isAuthenticated(authentication) ? "/" : "/login?expired");
+                authenticated ? "/" : "/login?expired");
     }
 }

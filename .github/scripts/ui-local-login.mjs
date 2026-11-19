@@ -103,38 +103,42 @@ export async function verifyAnonymousLocalLogin(page, {
     await expect(page.getByLabel(language.password, { exact: true })).toHaveValue('');
     passed(`${language.code} localized generic authentication error`);
 
-    const retainedLoginForm = await page.content();
-    await signInWithKeyboard(page, username, password, url => url.pathname === applicationPath
-      && url.searchParams.get('loginAcceptance') === language.code);
-    await expectLocale(page, root, language);
-    await expect(page.locator('#mainContent')).toBeVisible();
-    const account = await page.request.get(`${root}/api/account/me`);
-    expect(account.status(), 'The form login must authenticate the browser session').toBe(200);
-    expect(await account.json()).toMatchObject({ username });
-    if (!javaScriptEnabled) {
-      expect(await page.evaluate(() => typeof window.TaxonomyI18n),
-        'Application scripts must remain disabled in the no-JavaScript profile').toBe('undefined');
-    }
-    passed(`${language.code} keyboard login and saved request preserve locale`);
+    // Keep a real old tab: it shares the session cookie but retains the form
+    // token that the successful login in the main tab will rotate.
+    const retainedLoginPage = await page.context().newPage();
+    try {
+      await retainedLoginPage.goto(`${root}/login`, { waitUntil: 'domcontentloaded' });
+      await expect(retainedLoginPage.locator('#loginForm input[name="_csrf"]')).toHaveValue(/\S+/);
+      await signInWithKeyboard(page, username, password, url => url.pathname === applicationPath
+        && url.searchParams.get('loginAcceptance') === language.code);
+      await expectLocale(page, root, language);
+      await expect(page.locator('#mainContent')).toBeVisible();
+      const account = await page.request.get(`${root}/api/account/me`);
+      expect(account.status(), 'The form login must authenticate the browser session').toBe(200);
+      expect(await account.json()).toMatchObject({ username });
+      if (!javaScriptEnabled) {
+        expect(await page.evaluate(() => typeof window.TaxonomyI18n),
+          'Application scripts must remain disabled in the no-JavaScript profile').toBe('undefined');
+      }
+      passed(`${language.code} keyboard login and saved request preserve locale`);
 
-    // Reuse the pre-login document as an old tab would. The first successful
-    // login rotated its CSRF token; this native form submission must recover
-    // without a Whitelabel 403, including in the no-JavaScript context profile.
-    await page.setContent(retainedLoginForm, { waitUntil: 'networkidle' });
-    const repeatedPost = page.waitForResponse(response =>
-      response.request().method() === 'POST'
-      && new URL(response.url()).pathname === loginPath);
-    await signInWithKeyboard(page, username, password,
-      url => url.pathname === applicationPath && url.search === '');
-    expect((await repeatedPost).status(), 'An old login form returns the authenticated browser with GET')
-      .toBe(303);
-    await expect(page).toHaveURL(url => url.pathname === applicationPath && url.search === '');
-    await expect(page.locator('#mainContent')).toBeVisible();
-    await expectLocale(page, root, language);
-    const retainedAccount = await page.request.get(`${root}/api/account/me`);
-    expect(retainedAccount.status()).toBe(200);
-    expect(await retainedAccount.json()).toMatchObject({ username });
-    passed(`${language.code} repeated login form retains the authenticated session`);
+      const repeatedPost = retainedLoginPage.waitForResponse(response =>
+        response.request().method() === 'POST'
+        && new URL(response.url()).pathname === loginPath);
+      await signInWithKeyboard(retainedLoginPage, username, password,
+        url => url.pathname === applicationPath && url.search === '');
+      expect((await repeatedPost).status(), 'An old login form returns the authenticated browser with GET')
+        .toBe(303);
+      await expect(retainedLoginPage).toHaveURL(url => url.pathname === applicationPath && url.search === '');
+      await expect(retainedLoginPage.locator('#mainContent')).toBeVisible();
+      await expectLocale(retainedLoginPage, root, language);
+      const retainedAccount = await retainedLoginPage.request.get(`${root}/api/account/me`);
+      expect(retainedAccount.status()).toBe(200);
+      expect(await retainedAccount.json()).toMatchObject({ username });
+      passed(`${language.code} repeated login form retains the authenticated session`);
+    } finally {
+      await retainedLoginPage.close();
+    }
 
     // Use the framework's real CSRF-protected confirmation form, including when JS is off.
     await page.goto(`${root}/logout`, { waitUntil: 'networkidle' });
