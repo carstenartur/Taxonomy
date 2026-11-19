@@ -20,6 +20,8 @@
                     <h1 class="h3 card-title text-center mb-4" th:text="#{login.title}">Sign in</h1>
                     <div th:if="${param.error != null}" class="alert alert-danger" role="alert"
                          th:text="#{login.error}">Invalid username or password.</div>
+                    <div th:if="${param.expired != null}" class="alert alert-warning" role="alert"
+                         th:text="#{login.expired}">The sign-in form has expired. Please sign in again.</div>
                     <div th:if="${param.logout != null}" class="alert alert-success" role="status"
                          th:text="#{login.loggedOut}">You have been signed out.</div>
                     <form id="loginForm" class="login-form" method="post" th:action="@{/login}">

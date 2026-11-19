@@ -34,6 +34,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.context.WebApplicationContext;
+import org.springframework.web.filter.ForwardedHeaderFilter;
 
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -44,6 +45,8 @@ import static org.hamcrest.Matchers.not;
 import static org.mockito.Mockito.mock;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
+import static org.springframework.security.test.web.servlet.response.SecurityMockMvcResultMatchers.authenticated;
+import static org.springframework.security.test.web.servlet.response.SecurityMockMvcResultMatchers.unauthenticated;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -98,6 +101,136 @@ class LocalLoginFlowTest {
     }
 
     @ParameterizedTest
+    @ValueSource(strings = {"/taxonomy", "/tanonomy", "/apps/taxonomy"})
+    void renderedLoginFormReturnsToTheApplicationUnderANativeContext(String prefix) throws Exception {
+        var login = mvc.perform(get(prefix + "/login").contextPath(prefix))
+                .andExpect(status().isOk()).andReturn();
+        var session = (MockHttpSession) login.getRequest().getSession(false);
+        mvc.perform(post(prefix + "/login").contextPath(prefix).session(session)
+                        .param("_csrf", formCsrf(login.getResponse().getContentAsString()))
+                        .param("username", "qa-user").param("password", "qa-password"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl(prefix + "/"));
+        mvc.perform(get(prefix + "/qa-login-protected").contextPath(prefix).session(session))
+                .andExpect(status().isOk());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "/taxonomy", "/tanonomy", "/apps/taxonomy"})
+    void repeatedLoginFormReturnsTheAuthenticatedUserToTheApplication(String prefix) throws Exception {
+        var login = mvc.perform(get(prefix + "/login").contextPath(prefix))
+                .andExpect(status().isOk()).andReturn();
+        var session = (MockHttpSession) login.getRequest().getSession(false);
+        String originalToken = formCsrf(login.getResponse().getContentAsString());
+        mvc.perform(post(prefix + "/login").contextPath(prefix).session(session)
+                        .param("_csrf", originalToken)
+                        .param("username", "qa-user").param("password", "qa-password"))
+                .andExpect(redirectedUrl(prefix + "/"));
+
+        // Successful authentication rotates the token. A second submission of
+        // the old tab must not strand an already signed-in user on a 403 page.
+        mvc.perform(post(prefix + "/login").contextPath(prefix).session(session)
+                        .param("_csrf", originalToken)
+                        .param("username", "different-user").param("password", "ignored-password"))
+                .andExpect(status().isSeeOther())
+                .andExpect(redirectedUrl(prefix + "/"))
+                .andExpect(authenticated().withUsername("qa-user"));
+        mvc.perform(get(prefix + "/qa-login-protected").contextPath(prefix).session(session))
+                .andExpect(status().isOk());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "/taxonomy", "/tanonomy", "/apps/taxonomy"})
+    void expiredLoginFormCanBeRenewedWithoutAcceptingItsCredentials(String prefix) throws Exception {
+        var oldLogin = mvc.perform(get(prefix + "/login").contextPath(prefix)).andReturn();
+        String oldToken = formCsrf(oldLogin.getResponse().getContentAsString());
+        ((MockHttpSession) oldLogin.getRequest().getSession(false)).invalidate();
+
+        var expired = mvc.perform(post(prefix + "/login").contextPath(prefix)
+                        .param("_csrf", oldToken)
+                        .param("username", "qa-user").param("password", "qa-password"))
+                .andExpect(status().isSeeOther())
+                .andExpect(redirectedUrl(prefix + "/login?expired"))
+                .andExpect(unauthenticated()).andReturn();
+        var session = (MockHttpSession) expired.getRequest().getSession(false);
+        var renewed = mvc.perform(get(prefix + "/login").contextPath(prefix).session(session)
+                        .param("expired", "").param("lang", "de"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("Das Anmeldeformular ist abgelaufen. Bitte melden Sie sich erneut an.")))
+                .andReturn();
+        mvc.perform(post(prefix + "/login").contextPath(prefix).session(session)
+                        .param("_csrf", formCsrf(renewed.getResponse().getContentAsString()))
+                        .param("username", "qa-user").param("password", "qa-password"))
+                .andExpect(redirectedUrl(prefix + "/"))
+                .andExpect(authenticated().withUsername("qa-user"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/taxonomy", "/tanonomy", "/apps/taxonomy"})
+    void forwardedPrefixLoginPreservesTheSavedNavigation(String prefix) throws Exception {
+        var proxyMvc = MockMvcBuilders.webAppContextSetup(context)
+                .addFilters(new ForwardedHeaderFilter()).apply(springSecurity()).build();
+        var navigation = proxyMvc.perform(get("/qa-login-protected").accept("text/html")
+                        .header("X-Forwarded-Proto", "https")
+                        .header("X-Forwarded-Host", "taxonomy.example.test")
+                        .header("X-Forwarded-Prefix", prefix))
+                .andExpect(redirectedUrl("https://taxonomy.example.test" + prefix + "/login"))
+                .andReturn();
+        var session = (MockHttpSession) navigation.getRequest().getSession(false);
+        var login = proxyMvc.perform(get("/login").session(session)
+                        .header("X-Forwarded-Proto", "https")
+                        .header("X-Forwarded-Host", "taxonomy.example.test")
+                        .header("X-Forwarded-Prefix", prefix))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("action=\"" + prefix + "/login\"")))
+                .andReturn();
+        proxyMvc.perform(post("/login").session(session)
+                        .header("X-Forwarded-Proto", "https")
+                        .header("X-Forwarded-Host", "taxonomy.example.test")
+                        .header("X-Forwarded-Prefix", prefix)
+                        .param("_csrf", formCsrf(login.getResponse().getContentAsString()))
+                        .param("username", "qa-user").param("password", "qa-password"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("https://taxonomy.example.test" + prefix + "/qa-login-protected?continue"));
+        proxyMvc.perform(get("/qa-login-protected").session(session)
+                        .header("X-Forwarded-Proto", "https")
+                        .header("X-Forwarded-Host", "taxonomy.example.test")
+                        .header("X-Forwarded-Prefix", prefix))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void forwardedPrefixIsKeptWhenAnAuthenticatedLoginFormIsRepeated() throws Exception {
+        var proxyMvc = MockMvcBuilders.webAppContextSetup(context)
+                .addFilters(new ForwardedHeaderFilter()).apply(springSecurity()).build();
+        var login = proxyMvc.perform(get("/login").header("X-Forwarded-Prefix", "/edge/tanonomy"))
+                .andExpect(status().isOk()).andReturn();
+        var session = (MockHttpSession) login.getRequest().getSession(false);
+        String token = formCsrf(login.getResponse().getContentAsString());
+        proxyMvc.perform(post("/login").session(session).header("X-Forwarded-Prefix", "/edge/tanonomy")
+                        .param("_csrf", token)
+                        .param("username", "qa-user").param("password", "qa-password"))
+                .andExpect(authenticated().withUsername("qa-user"));
+        proxyMvc.perform(post("/login").session(session).header("X-Forwarded-Prefix", "/edge/tanonomy")
+                        .param("_csrf", token)
+                        .param("username", "qa-user").param("password", "qa-password"))
+                .andExpect(status().isSeeOther())
+                .andExpect(redirectedUrl("/edge/tanonomy/"))
+                .andExpect(authenticated().withUsername("qa-user"));
+    }
+
+    @Test
+    void forwardedPrefixIsKeptWhenAnAnonymousLoginFormNeedsRenewal() throws Exception {
+        var proxyMvc = MockMvcBuilders.webAppContextSetup(context)
+                .addFilters(new ForwardedHeaderFilter()).apply(springSecurity()).build();
+        proxyMvc.perform(post("/login").header("X-Forwarded-Prefix", "/edge/tanonomy")
+                        .param("username", "qa-user").param("password", "qa-password"))
+                .andExpect(status().isSeeOther())
+                .andExpect(redirectedUrl("/edge/tanonomy/login?expired"))
+                .andExpect(unauthenticated());
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {"", "/taxonomy", "/apps/taxonomy"})
     void loginDeclaresAFaviconAvailableBeforeAuthentication(String prefix) throws Exception {
         String icon = prefix + "/images/favicon.png";
@@ -112,7 +245,8 @@ class LocalLoginFlowTest {
     @Test
     void authenticationStillRequiresCsrfAndResumesTheSavedRequest() throws Exception {
         mvc.perform(post("/login").param("username", "qa-user").param("password", "qa-password"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isSeeOther()).andExpect(redirectedUrl("/login?expired"))
+                .andExpect(unauthenticated());
         var denied = mvc.perform(get("/qa-login-protected").accept("text/html"))
                 .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/login"))
                 .andReturn();

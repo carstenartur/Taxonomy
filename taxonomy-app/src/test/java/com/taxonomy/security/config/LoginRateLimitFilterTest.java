@@ -129,6 +129,23 @@ class LoginRateLimitFilterTest {
     }
 
     @Test
+    void aLoginRedirectWithoutAuthenticationDoesNotClearCredentialFailures() throws Exception {
+        LoginRateLimitFilter filter = filter(2, 60);
+        String peer = "203.0.113.37";
+        basicFailure(filter, peer, null);
+
+        invoke(filter, request("POST", "/login", peer), response -> {
+            response.setStatus(303);
+            response.setHeader(HttpHeaders.LOCATION, "/login?expired");
+        });
+
+        basicFailure(filter, peer, null);
+        MockHttpServletResponse locked = invoke(filter,
+                basicRequest("/api/taxonomy", peer, null), response -> response.setStatus(200));
+        assertThat(locked.getStatus()).isEqualTo(423);
+    }
+
+    @Test
     void forwardingHeaderCannotCreateAnotherPeerIdentity() throws Exception {
         LoginRateLimitFilter filter = filter(2, 60);
         String peer = "203.0.113.40";
