@@ -263,7 +263,7 @@ public final class RepositoryHistoryHttpContract implements AutoCloseable {
         var committed = request("POST", "/api/dsl/commit", copy, model, "text/plain;charset=UTF-8", 200);
         assertThat(committed.required("databaseBacked").booleanValue()).isTrue();
         assertThat(head(copy)).isEqualTo(committed.required("commitId").textValue());
-        var published = json("POST", "/api/workspace/publish", copy, Map.of());
+        var published = publishWithEvidence(copy);
         assertThat(published.required("success").booleanValue()).isTrue();
         return published.required("mergeCommit").textValue();
     }
@@ -324,19 +324,7 @@ public final class RepositoryHistoryHttpContract implements AutoCloseable {
         assertThat(result.required("databaseBacked").booleanValue()).isTrue();
         String commit = result.required("commitId").textValue();
         assertThat(head(copy)).isEqualTo(commit);
-        JsonNode published;
-        try {
-            published = json("POST", "/api/workspace/publish", copy, Map.of());
-        } catch (AssertionError failedResponse) {
-            try {
-                String evidence = publicationEvidence.apply(copy.workspace);
-                if (!evidence.isEmpty()) failedResponse.addSuppressed(new AssertionError(evidence));
-            } catch (RuntimeException evidenceUnavailable) {
-                failedResponse.addSuppressed(new AssertionError("Publication evidence unavailable: "
-                        + evidenceUnavailable.getClass().getSimpleName()));
-            }
-            throw failedResponse;
-        }
+        JsonNode published = publishWithEvidence(copy);
         assertThat(published.required("status").textValue()).isEqualTo("COMPLETED");
         String id = published.required("operationId").textValue();
         JsonNode receipt = get("/api/workspace/publications/" + id, copy);
@@ -347,6 +335,21 @@ public final class RepositoryHistoryHttpContract implements AutoCloseable {
         assertThat(receipt.required("decisionCode").textValue()).isEqualTo("COMPLETED");
         assertThat(published.required("mergeCommit").textValue()).isEqualTo(commit);
         return commit;
+    }
+
+    private JsonNode publishWithEvidence(Copy copy) throws Exception {
+        try {
+            return json("POST", "/api/workspace/publish", copy, Map.of());
+        } catch (AssertionError failedResponse) {
+            try {
+                String evidence = publicationEvidence.apply(copy.workspace);
+                if (!evidence.isEmpty()) failedResponse.addSuppressed(new AssertionError(evidence));
+            } catch (RuntimeException evidenceUnavailable) {
+                failedResponse.addSuppressed(new AssertionError("Publication evidence unavailable: "
+                        + evidenceUnavailable.getClass().getSimpleName()));
+            }
+            throw failedResponse;
+        }
     }
 
     private void archiveAndDelete(Copy removed, Copy survivor, String retained, String marker) throws Exception {

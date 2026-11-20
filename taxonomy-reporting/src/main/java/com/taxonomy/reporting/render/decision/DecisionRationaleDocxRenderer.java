@@ -576,7 +576,7 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
         addMetadataRow(evidence, labels.analysisModel(), report.metadata().analysisModel());
         addMetadataRow(evidence, labels.analysisStatus(), report.metadata().analysisStatus());
         addMetadataRow(evidence, labels.analysisDuration(), labels.durationMillis(report.metadata().analysisDurationMillis()));
-        addMetadataRow(evidence, labels.completeness(),
+        addMetadataRow(evidence, labels.decisionTreeCompleteness(),
                 percent(report.metadata().completenessPercent()));
 
         if (!report.discrepancies().isEmpty()) {

@@ -50,7 +50,7 @@ Wiederherstellung des Arbeitsstands nicht als Nachweis für den neuen Baum über
 | Entscheidungsbericht HTML | Gespeicherte Begründungen waren nicht überall vollständig erreichbar; ausgeschaltete Zuständigkeiten konnten in einzelnen Darstellungen trotzdem erscheinen. | Vollständige Begründungsziele und Verweise; der Zuständigkeitsschalter gilt für Tabellen, Baum, Abbildung und Kapitel, ohne die Quelldaten zu verändern. |
 | Entscheidungsbericht auf schmalen Bildschirmen | Zwei breite Tabellen dehnten den deutschen STANDARD-Bericht bei 390 px Bildschirmbreite auf 558 px aus. | Benannte, per Tastatur erreichbare Scrollbereiche erhalten lesbare Spalten und begrenzen die Seite auf 390 px. Desktopbild und alle zehn gerenderten Druckseiten des geprüften Falls bleiben identisch. |
 | Entscheidungsbericht Herkunft | Quellgraph und ausgewählter Berichtsgraph konnten unter einer unklaren Hash-Beschriftung erscheinen. | Der Umfang nennt den vollständigen Quellgraph; die Herkunft bezeichnet den Fingerabdruck des tatsächlich dargestellten Architekturgraphs. Beide Werte bleiben erhalten. |
-| Vollständigkeitsanzeige | Ein Prozentwert war ohne klare Bezugsmenge leicht als Aussage über den gesamten Katalog misszuverstehen. | Die Beschriftung benennt die erwarteten bewerteten Knoten des ausgewählten Entscheidungsbaums. Der aufgezeichnete Wert und der Status `PARTIAL` bleiben unverändert. |
+| Vollständigkeitsanzeige | Ein Prozentwert war ohne klare Bezugsmenge leicht als Aussage über den gesamten Katalog misszuverstehen. | Die Entscheidungsevidenz benennt ausdrücklich die erwarteten bewerteten Knoten des ausgewählten Entscheidungsbaums. Die Vollständigkeit von Architekturmustern behält eine davon unabhängige Beschriftung. Aufgezeichnete Werte und der Status `PARTIAL` bleiben unverändert. |
 | Reformulierungsberichte | Ermittlungskontext, Quellstellen und Herkunft erschienen als schwer lesbares Roh-JSON oder gingen in der menschenlesbaren Darstellung verloren. | Lesbare Felder für Quelle, UUID, Klassifikation, Status, Konfidenz, Reviewflag, alternative Sprache, Beiträge und unbekannte verschachtelte Felder. Explizite Null und `false`, wörtlicher Alttext sowie Text/UTF-16-Positionen einer Quellstelle bleiben erhalten. Fehlender Kontext erhält eine lokalisierte Kennzeichnung. |
 | Mermaid | Kollidierende oder reservierte IDs konnten Knoten und Kanten beschädigen; der Teilstatus war im Diagramm nicht zuverlässig sichtbar. | Eindeutige parserfeste Aliase einschließlich reservierter Linkziele, Layer und Suffixkollisionen; originale IDs bleiben in den Beschriftungen. Der Titel einschließlich `PARTIAL / TEILERGEBNIS` ist sichtbar. Die Titelgruppe übernimmt ausdrücklich die Diagrammrichtung. |
 | Structurizr | Der Workspace-Titel konnte beim nativen Import abweichen oder mit Anführungszeichen/abschließendem Backslash ungültig werden. | Native Workspace-Namenssyntax und passende Literalbehandlung. Titel sowie 50 Knoten und 36 gerichtete typisierte Beziehungen werden tatsächlich wieder eingelesen. |
@@ -122,6 +122,15 @@ Portfolio-Berichts-/Prozenttests. Diese gezielten Nachläufe überschneiden sich
 mit der ursprünglichen 480er-Auswahl; die Zahlen sind keine Anzahl zusätzlicher
 unterschiedlicher Tests. Die mobilen Tabellen und der Portfolio-Seitenumbruch
 wurden zusätzlich anhand der frisch erzeugten tatsächlichen Browserausgabe geprüft.
+
+Der anschließende vollständige PR-Lauf fand eine gemeinsam verwendete Beschriftung:
+Die präzisierte Entscheidungsknoten-Beschriftung war auch in der nativen
+Architektur-Mustertabelle erschienen. Die beiden bestehenden Prozenttests wurden
+lokal unverändert als fehlschlagend reproduziert. Nach Trennung der fachlichen
+Beschriftungen bestanden alle 210 Tests des Reporting-Moduls einschließlich
+nativer Visio-Prüfungen ohne Fehler oder Skips. Zusätzliche Deutsch-/Englisch-Fälle
+prüfen tatsächliche HTML-/Word-Ausgaben; die gerenderten Mustertabellen zeigen
+die passende Überschrift sowie korrekt begrenzte 100-%- und 0-%-Werte.
 
 Die Regressionen liegen in den bestehenden Eigentümern, unter anderem
 `MermaidExportServiceTest`, `StructurizrInteroperabilityTest`,

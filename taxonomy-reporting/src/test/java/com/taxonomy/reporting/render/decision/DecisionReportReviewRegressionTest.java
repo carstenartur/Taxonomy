@@ -4,12 +4,20 @@ import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
 import com.taxonomy.reporting.api.decision.DecisionReportOptions;
 import com.taxonomy.reporting.api.decision.DecisionReportScope;
 import com.taxonomy.reporting.api.document.DecisionTreeOverview;
+import com.taxonomy.dto.ArchitectureReport;
+import com.taxonomy.dto.DetectedPattern;
+import com.taxonomy.dto.PatternDetectionView;
+import com.taxonomy.reporting.render.document.ArchitectureReportDocxRenderer;
 import com.taxonomy.reporting.render.document.DecisionTreeFigureRenderer;
 import com.taxonomy.reporting.render.document.WordDocumentWriter;
 import com.taxonomy.reporting.render.document.WordReportLayoutException;
 import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFTableCell;
+import org.apache.poi.xwpf.usermodel.XWPFTableRow;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.io.ByteArrayInputStream;
 import java.util.*;
@@ -19,6 +27,46 @@ import static com.taxonomy.reporting.api.decision.DecisionReportOptions.*;
 import static com.taxonomy.reporting.api.decision.DecisionRationaleReport.Disposition.*;
 
 class DecisionReportReviewRegressionTest {
+    @ParameterizedTest
+    @CsvSource({
+            "en, Expected decision-tree nodes scored, Completeness, Title",
+            "de, Erwartete Entscheidungsknoten mit Bewertung, Vollständigkeit, Titel"
+    })
+    void distinguishesDecisionTreeScoringFromArchitecturePatternCompleteness(
+            String language, String treeLabel, String patternLabel, String titleLabel) throws Exception {
+        var base = DecisionRationaleTemplateRendererTest.report();
+        var decision = new DecisionRationaleReport(base.title(), language, base.requirement(), base.status(),
+                base.metadata(), base.executiveSummary(), base.chapters(), base.leadingLeaves(), base.warnings(),
+                base.productCoverageGaps(), base.discrepancies(), base.viewContext(), base.scoreDetails(),
+                base.architecture(), base.scope());
+        var html = new DecisionRationaleHtmlRenderer(new DecisionChapterDiagramRenderer()).render(decision);
+        assertThat(html).contains("<dt>" + treeLabel + "</dt><dd>100 %</dd>")
+                .doesNotContain("<dt>" + patternLabel + "</dt>");
+        try (var doc = open(decision)) {
+            assertThat(doc.getTables().stream().flatMap(table -> table.getRows().stream())
+                    .map(DecisionReportReviewRegressionTest::cellText).toList())
+                    .contains(List.of(treeLabel, "100 %")).doesNotContain(List.of(patternLabel, "100 %"));
+        }
+
+        var patterns = new PatternDetectionView();
+        patterns.setMatchedPatterns(List.of(new DetectedPattern(
+                "Full pattern", List.of("Step"), List.of("Step"), List.of(), 150.0)));
+        patterns.setIncompletePatterns(List.of(new DetectedPattern(
+                "Missing pattern", List.of("Step"), List.of(), List.of("Step"), -10.0)));
+        var architecture = new ArchitectureReport();
+        architecture.setPatternDetection(patterns);
+        byte[] word = new ArchitectureReportDocxRenderer().render(architecture, language, Map.of());
+        try (var doc = new XWPFDocument(new ByteArrayInputStream(word))) {
+            var table = doc.getTables().stream()
+                    .filter(candidate -> candidate.getRows().stream().map(DecisionReportReviewRegressionTest::cellText)
+                            .anyMatch(cells -> cells.contains("Full pattern")))
+                    .findFirst().orElseThrow();
+            assertThat(cellText(table.getRow(0))).startsWith(titleLabel, patternLabel);
+            assertThat(table.getRows().stream().skip(1).map(DecisionReportReviewRegressionTest::cellText).toList())
+                    .containsExactly(List.of("Full pattern", "100%", ""), List.of("Missing pattern", "0%", "Step"));
+        }
+    }
+
     @Test void htmlTreeNavigatesToOnlyTheReasonsThatWereActuallyRecorded() {
         var renderer = new DecisionRationaleHtmlRenderer(new DecisionChapterDiagramRenderer());
         for (var layout : List.of(TreeLayout.TABLE, TreeLayout.AUTO)) {
@@ -235,6 +283,9 @@ class DecisionReportReviewRegressionTest {
     }
     private static XWPFDocument open(DecisionRationaleReport report) throws Exception {
         return new XWPFDocument(new ByteArrayInputStream(new DecisionRationaleDocxRenderer(new DecisionChapterDiagramRenderer()).render(report)));
+    }
+    private static List<String> cellText(XWPFTableRow row) {
+        return row.getTableCells().stream().map(XWPFTableCell::getText).toList();
     }
     private static void assertResolved(XWPFDocument doc) {
         String ns = "declare namespace w='http://schemas.openxmlformats.org/wordprocessingml/2006/main'; ";

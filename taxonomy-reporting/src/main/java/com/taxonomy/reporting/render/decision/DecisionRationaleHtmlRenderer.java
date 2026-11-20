@@ -501,7 +501,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
         evidence(html, labels.analysisModel(), report.metadata().analysisModel());
         evidence(html, labels.analysisStatus(), report.metadata().analysisStatus());
         evidence(html, labels.analysisDuration(), labels.durationMillis(report.metadata().analysisDurationMillis()));
-        evidence(html, labels.completeness(), percent(report.metadata().completenessPercent()));
+        evidence(html, labels.decisionTreeCompleteness(), percent(report.metadata().completenessPercent()));
         html.append("</dl><h3>").append(text(labels.methodology())).append("</h3><p>")
                 .append(text(report.executiveSummary().methodologyNote())).append("</p>");
         if (!report.discrepancies().isEmpty()) {
