@@ -57,13 +57,14 @@ public final class DecisionReportLabels {
     public String hierarchyEvidence() { return german ? "Hierarchiequelle" : "Hierarchy evidence"; }
     public String frozenHierarchy() { return german ? "Im Analysesnapshot eingefrorene Taxonomiehierarchie" : "Taxonomy hierarchy frozen in the analysis snapshot"; }
     public String liveHierarchy() { return german ? "Aktuell geladene Taxonomiehierarchie" : "Currently loaded taxonomy hierarchy"; }
-    public String completeness() { return german ? "Vollständigkeit" : "Completeness"; }
+    public String completeness() { return german ? "Erwartete Entscheidungsknoten mit Bewertung" : "Expected decision-tree nodes scored"; }
     public String executiveSummary() { return german ? "Kurzfassung" : "Executive summary"; }
     public String leadingLeaf() { return german ? "Führender Blattknoten nach effektiver Relevanz" : "Leading leaf by effective relevance"; }
     public String highestPath() { return german ? "Führender Entscheidungspfad" : "Leading decision path"; }
     public String step() { return german ? "Schritt" : "Step"; }
     public String node() { return german ? "Knoten" : "Node"; }
     public String score() { return german ? "Effektive Relevanz" : "Effective relevance"; }
+    public String directScore() { return german ? "Direkte Bewertung" : "Direct score"; }
     public String localShare() { return german ? "Lokaler Anteil / Produkteignung" : "Local share / product suitability"; }
     public String rationale() { return german ? "Kurzbegründung" : "Short rationale"; }
     public String reasonSource() { return german ? "Herkunft" : "Source"; }
@@ -152,6 +153,8 @@ public final class DecisionReportLabels {
     public String includedRelationships() { return german ? "Enthaltene Beziehungen" : "Included Relationships"; }
     public String gapAnalysis() { return german ? "Lückenanalyse" : "Gap Analysis"; }
     public String totalGaps() { return german ? "Lücken insgesamt" : "Total Gaps"; }
+    public String gapRule() { return german ? "Regel" : "Rule"; }
+    public String gapCardinality() { return german ? "Beobachtet / Soll-Anzahl" : "Observed / required count"; }
     public String missingRelations() { return german ? "Fehlende Beziehungen" : "Missing Relations"; }
     public String expectedType() { return german ? "Erwarteter Typ" : "Expected Type"; }
     public String expectedTargetRoot() { return german ? "Erwarteter Zielbereich" : "Expected Target Root"; }

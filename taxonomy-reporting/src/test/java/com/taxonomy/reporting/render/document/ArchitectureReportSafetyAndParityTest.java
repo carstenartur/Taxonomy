@@ -17,6 +17,88 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class ArchitectureReportSafetyAndParityTest {
     @Test
+    void humanFormatsRetainArchitectureScopeOwnershipAndGapEvidence() throws Exception {
+        var report = fixture();
+        report.setViewContext(new ViewContext("retained-graph-commit", "retained-graph-branch", null, false, false, false));
+        var item = new RequirementElementView();
+        item.setNodeCode("CP-match");
+        item.setTitle("Matched capability");
+        item.setTaxonomySheet("CP");
+        item.setRelevance(.75);
+        item.setResponsibility(new TaxonomyResponsibilityLookup.Assignment("unit-42", "Operations & Review", "CP"));
+        var view = new RequirementArchitectureView();
+        view.setAnchors(List.of(new RequirementAnchor("CP-match", 75, "RETAINED-ANCHOR-RATIONALE")));
+        view.setTotalAnchors(1);
+        view.setTotalElements(1);
+        view.setMaxHopDistance(2);
+        view.setIncludedElements(List.of(item));
+        report.setArchitectureView(view);
+        var gaps = new GapAnalysisView();
+        gaps.setJudgments(List.of(new ObligationJudgment("source-rule", "CP-match", "CP", "SERVES",
+                java.util.Set.of("BP"), 2, 4, 1, ObligationProfile.Severity.WARNING,
+                ObligationJudgment.Status.VIOLATED, "RETAINED-GAP-JUDGMENT")));
+        report.setGapAnalysis(gaps);
+        var reasons = Map.of("CP-match", "SAVED-NODE-REASON-END");
+        var text = new ArchitectureReportTextRenderer();
+        String markdown = text.renderMarkdown(report, "en", reasons);
+        String html = text.renderHtml(report, "en", reasons);
+        byte[] bytes = new ArchitectureReportDocxRenderer().render(report, "en", reasons);
+        try (var document = new XWPFDocument(new ByteArrayInputStream(bytes));
+                var extractor = new XWPFWordExtractor(document)) {
+            for (String content : List.of("unit-42", "retained-graph-branch", "retained-graph-commit",
+                    "RETAINED-ANCHOR-RATIONALE", "1 / 2..4", "RETAINED-GAP-JUDGMENT", "SAVED-NODE-REASON-END")) {
+                assertThat(markdown).contains(content);
+                assertThat(html).contains(content);
+                assertThat(extractor.getText()).contains(content);
+            }
+        }
+        assertThat(html).contains("Operations &amp; Review", "<svg");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void embeddedSvgLinksToTheRecordedNodeAndRelationshipEvidence(boolean explicitlySupplied) throws Exception {
+        var report = fixture();
+        var view = new RequirementArchitectureView();
+        var source = new RequirementElementView();
+        source.setNodeCode("source");
+        source.setTitle("Source node");
+        source.setTaxonomySheet("CP");
+        var target = new RequirementElementView();
+        target.setNodeCode("target");
+        target.setTitle("Target node");
+        target.setTaxonomySheet("BP");
+        view.setIncludedElements(List.of(source, target));
+
+        var relation = new RequirementRelationshipView();
+        relation.setSourceCode("source");
+        relation.setTargetCode("target");
+        relation.setRelationType("SUPPORTS");
+        relation.setPresenceReason("Reason for this edge");
+        relation.setRecordedConfidence(0d);
+        view.setIncludedRelationships(List.of(relation));
+        report.setArchitectureView(view);
+        report.setNodeReasons(Map.of("source", "Reason in the saved document"));
+        var renderer = new ArchitectureReportTextRenderer();
+        String expected = explicitlySupplied ? "Explicitly supplied reason" : "Reason in the saved document";
+        String html = explicitlySupplied ? renderer.renderHtml(report, "en", Map.of("source", expected)) : renderer.renderHtml(report);
+
+        var fragment = html.substring(html.indexOf("<svg"), html.indexOf("</svg>") + "</svg>".length());
+        var svg = javax.xml.parsers.DocumentBuilderFactory.newNSInstance().newDocumentBuilder()
+                .parse(new org.xml.sax.InputSource(new java.io.StringReader(fragment)));
+        assertThat(linkedSvgText(svg, "data-edge-id", "e1")).contains("source -> target", "Reason for this edge", "Confidence: 0.0");
+        assertThat(linkedSvgText(svg, "data-node-id", "source")).contains(expected);
+        assertThat(linkedSvgText(svg, "data-node-id", "target")).doesNotContain(expected, "Explanation:");
+    }
+
+    private static String linkedSvgText(org.w3c.dom.Document svg, String attribute, String id) throws Exception {
+        var xpath = javax.xml.xpath.XPathFactory.newInstance().newXPath();
+        String href = xpath.evaluate("//*[@" + attribute + "='" + id + "']/parent::*/@*[local-name()='href']", svg);
+        assertThat(href).startsWith("#");
+        return xpath.evaluate("//*[@id='" + href.substring(1) + "']", svg);
+    }
+
+    @Test
     void retainedMatchedAndIncompletePatternSupportSurvivesEveryReportFormat() throws Exception {
         var report = fixture(); var patterns = new PatternDetectionView();
         var matched = new DetectedPattern(); matched.setPatternName("Matched retained pattern"); matched.setCompleteness(100);

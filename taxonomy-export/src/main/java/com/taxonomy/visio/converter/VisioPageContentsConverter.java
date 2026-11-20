@@ -199,14 +199,21 @@ public class VisioPageContentsConverter implements Converter {
             writeCell(writer, "TxtLocPinX", decimal(width / 2), "TxtWidth*0.5");
             writeCell(writer, "TxtLocPinY", decimal(header / 2), "TxtHeight*0.5");
         }
-        if (evidence || poster()) {
-            String margin = decimal(layout.length(evidence ? .1 : 4d / 72));
+        boolean decisionCard = poster() && shape.getProperties().containsKey("taxonomy.evaluationStatus");
+        boolean screenOwner = options != null && !poster() && shape.getProperties().containsKey("taxonomy.responsibilityName");
+        if (evidence || poster() || screenOwner) {
+            double inset = layout.length(evidence ? .1 : 4d / 72);
+            String margin = decimal(inset);
             writeCell(writer, "LeftMargin", margin);
-            if (kind != VisioNativeShape.APPLICATION) writeCell(writer, "RightMargin", margin);
+            if (decisionCard && kind == VisioNativeShape.INFORMATION) {
+                double fold = VisioNativeShape.INFORMATION_FOLD_WIDTH;
+                writeCell(writer, "RightMargin", decimal(width * fold + inset), "Width*" + decimal(fold) + "+" + margin);
+            } else if (kind != VisioNativeShape.APPLICATION) {
+                writeCell(writer, "RightMargin", margin);
+            }
             writeCell(writer, "TopMargin", margin);
             writeCell(writer, "BottomMargin", margin);
         }
-        boolean decisionCard = poster() && shape.getProperties().containsKey("taxonomy.evaluationStatus");
         int points = !evidence && !container && (shape.getHeight() >= 1 || decisionCard) ? 12 : 10;
         writeCharacterStyle(writer, points,
                 nativePresentation ? "#172B4D" : theme.nodeText(shape.getType(), "#172B4D"));
@@ -424,14 +431,15 @@ public class VisioPageContentsConverter implements Converter {
             writeRectangleGeometry(writer, width, height);
             return;
         }
+        double foldStart = 1 - VisioNativeShape.INFORMATION_FOLD_WIDTH;
         double[][] outline = switch (kind) {
-            case INFORMATION -> new double[][]{{0, 0}, {1, 0}, {1, .75}, {.88, 1}, {0, 1}, {0, 0}};
+            case INFORMATION -> new double[][]{{0, 0}, {1, 0}, {1, .75}, {foldStart, 1}, {0, 1}, {0, 0}};
             case ROLE -> new double[][]{{.08, 0}, {.92, 0}, {1, .5}, {.92, 1}, {.08, 1}, {0, .5}, {.08, 0}};
             default -> new double[][]{{0, 0}, {1, 0}, {1, 1}, {0, 1}, {0, 0}};
         };
         writePolygon(writer, 0, width, height, outline, kind == VisioNativeShape.CONTAINER, inherited);
         if (kind == VisioNativeShape.INFORMATION)
-            writePolygon(writer, 1, width, height, new double[][]{{.88, 1}, {.88, .75}, {1, .75}}, true, inherited);
+            writePolygon(writer, 1, width, height, new double[][]{{foldStart, 1}, {foldStart, .75}, {1, .75}}, true, inherited);
         if (kind == VisioNativeShape.APPLICATION) {
             writePolygon(writer, 1, width, height, new double[][]{{.82, .72}, {.97, .72}, {.97, .95}, {.82, .95}, {.82, .72}}, true, inherited);
             writePolygon(writer, 2, width, height, new double[][]{{.78, .76}, {.86, .76}, {.86, .81}, {.78, .81}, {.78, .76}}, true, inherited);

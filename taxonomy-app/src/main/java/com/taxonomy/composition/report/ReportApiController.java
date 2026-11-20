@@ -115,7 +115,7 @@ public class ReportApiController {
     }
 
     @Operation(summary = "Export JSON report",
-            description = "Returns the full architecture report as structured JSON")
+            description = "Returns the architecture report as structured JSON, including recorded node reasons and analysis language when available")
     @ApiResponse(responseCode = "200", description = "JSON report returned")
     @ApiResponse(responseCode = "400", description = "Scores are missing")
     @PostMapping("/json")
@@ -123,7 +123,10 @@ public class ReportApiController {
         if (!isValid(request)) {
             return ResponseEntity.badRequest().build();
         }
-        ArchitectureReport report = prepareReport(request).report();
+        PreparedReport prepared = prepareReport(request);
+        ArchitectureReport report = prepared.report();
+        report.setNodeReasons(prepared.reasons());
+        if (prepared.language() != null) report.setLanguageTag(prepared.language().value());
         if (request.analysisReference() == null) {
             WorkspaceContext context = workspaceResolver.resolveCurrentContext();
             String username = context.username();

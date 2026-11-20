@@ -1,6 +1,7 @@
 package com.taxonomy.export;
 
 import com.taxonomy.diagram.VisioDrawingOptions;
+import com.taxonomy.visio.VisioNativeShape;
 
 import java.awt.Font;
 import java.util.ArrayList;
@@ -21,10 +22,18 @@ final class VisioWallTree {
 
     static List<Card> layout(List<VisioDecisionTree.Node> nodes, int[] parents, VisioDrawingOptions options) {
         int columns = 1 + nodes.stream().mapToInt(VisioDecisionTree.Node::depth).max().orElse(0);
-        double width = Math.clamp((A1_CONTENT_WIDTH - (columns - 1) * COLUMN_GAP) / columns, 3.5, 6.8);
-        // The application icon reserves the right fifth of the card. Use the same inset for a role hexagon.
         String taxonomy = nodes.getFirst().code();
-        double textWidth = (width * ("UA".equals(taxonomy) || "BR".equals(taxonomy) ? .76 : .93) - .14) * 72;
+        boolean informationProduct = "IP".equals(taxonomy);
+        // Keep room for the fold without adding avoidable rows to dense information product sheets.
+        double maximumWidth = informationProduct ? 7.8 : 6.8;
+        double width = Math.clamp((A1_CONTENT_WIDTH - (columns - 1) * COLUMN_GAP) / columns, 3.5, maximumWidth);
+        double textFraction = switch (taxonomy) {
+            case "UA", "BR" -> .76; // Application icon or role hexagon.
+            case "IP" -> .93 - VisioNativeShape.INFORMATION_FOLD_WIDTH;
+            default -> .93;
+        };
+        double textWidth = (width * textFraction - .14) * 72;
+        int headingLines = informationProduct ? Integer.MAX_VALUE : 3;
         var captions = new String[nodes.size()];
         var heights = new double[nodes.size()];
         var subtree = new double[nodes.size()];
@@ -32,7 +41,7 @@ final class VisioWallTree {
         for (int index = nodes.size() - 1; index >= 0; index--) {
             var node = nodes.get(index);
             String heading = node.code() + " · " + VisioDecisionTree.rating(node.score(), options.german()) + " · " + node.title();
-            var lines = new ArrayList<>(DiagramTextWrapper.wrapMeasured(heading, FONT, textWidth, 3, node.code()));
+            var lines = new ArrayList<>(DiagramTextWrapper.wrapMeasured(heading, FONT, textWidth, headingLines, node.code()));
             if (node.responsibility() != null) {
                 String owner = (options.german() ? "Zuständig: " : "Owner: ") + node.responsibility().name();
                 lines.addAll(DiagramTextWrapper.wrapMeasured(owner, FONT, textWidth, 1, ""));

@@ -102,10 +102,7 @@ public final class ReformulationReportRenderer {
         for (DecisionQuestion q : in.questions()) {
             out.add(new Block(3, q.id() + " — " + q.wording()));
             out.add(new Block(0, "Status: " + q.state() + "\n" + t(in, "Geltungsbereich: ", "Scope: ") + q.key().scope()
-                    + "\n" + t(in, "Antwortmöglichkeiten: ", "Answer options: ") + q.answerSchema().options()
-                    + "\n" + t(in, "Antworttyp: ", "Answer type: ") + q.answerSchema().kind()
-                    + "\n" + t(in, "Einheit / Minimum / Maximum: ", "Unit / minimum / maximum: ")
-                    + Objects.toString(q.answerSchema().unit(), "—") + " / " + q.answerSchema().minimum() + " / " + q.answerSchema().maximum()
+                    + "\n" + answerSchema(in, q.answerSchema())
                     + "\n" + t(in, "Auswirkungen: ", "Consequences: ") + Objects.toString(q.consequences(), "")
                     + "\n" + t(in, "Vorausgesetzte Fragen: ", "Prerequisite questions: ") + q.prerequisites()
                     + "\n" + t(in, "Abhängige Fragen: ", "Dependent questions: ") + q.dependentQuestionIds()
@@ -113,6 +110,15 @@ public final class ReformulationReportRenderer {
             for (DecisionQuestion.Discovery discovery : q.discoveries()) discovery(out, in, discovery);
             for (DecisionQuestion.Origin origin : q.origins()) {
                 out.add(new Block(0, t(in, "Ursprüngliche Frage: ", "Original question: ") + origin.id() + " — " + origin.wording()));
+                out.add(new Block(0, t(in, "Ursprungsstatus: ", "Origin state: ") + origin.state()
+                        + "\n" + t(in, "Thema: ", "Subject: ") + origin.key().subject()
+                        + "\n" + t(in, "Dimension: ", "Dimension: ") + origin.key().dimension()
+                        + "\n" + t(in, "Geltungsbereich: ", "Scope: ") + origin.key().scope()
+                        + "\n" + answerSchema(in, origin.answerSchema())
+                        + "\n" + t(in, "Auswirkungen: ", "Consequences: ") + Objects.toString(origin.consequences(), "")
+                        + "\n" + t(in, "Vorausgesetzte Fragen: ", "Prerequisite questions: ") + origin.prerequisites()
+                        + "\n" + t(in, "Abhängige Fragen: ", "Dependent questions: ") + origin.dependentQuestionIds()
+                        + "\n" + t(in, "Aussagen: ", "Statements: ") + origin.affectedStatementIds()));
                 for (DecisionQuestion.Discovery discovery : origin.discoveries()) discovery(out, in, discovery);
             }
             for (DecisionQuestion.SourceResolution resolution : q.sourceResolutions()) {
@@ -146,12 +152,24 @@ public final class ReformulationReportRenderer {
 
     private static void discovery(List<Block> out, Input in, DecisionQuestion.Discovery discovery) {
         out.add(new Block(0, t(in, "Entdeckt bei: ", "Discovered at: ") + discovery.location()
-                + "\n" + t(in, "Kontext: ", "Context: ") + discovery.context()
                 + "\n" + t(in, "Begründung: ", "Rationale: ") + discovery.rationale()
                 + "\n" + t(in, "Knoten: ", "Nodes: ") + discovery.nodeIds()
                 + "\n" + t(in, "Verbindungen: ", "Edges: ") + discovery.edgeIds()));
+        out.add(new Block(0, t(in, "Kontext: ", "Context: ")
+                + String.join("\n", ReformulationDiscoveryPresentation.context(discovery.context(), in.language().equals("de")))));
         spans(out, in, discovery.sourceSpans());
     }
+    private static String answerSchema(Input in, DecisionQuestion.AnswerSchema schema) {
+        return t(in, "Antworttyp: ", "Answer type: ") + schema.kind()
+                + "\n" + t(in, "Antwortmöglichkeiten: ", "Answer options: ") + schema.options()
+                + "\n" + t(in, "Einheit / Minimum / Maximum: ", "Unit / minimum / maximum: ")
+                + Objects.toString(schema.unit(), "—") + " / " + Objects.toString(schema.minimum(), "—") + " / " + Objects.toString(schema.maximum(), "—")
+                + "\n" + t(in, "Optionsbedeutungen: ", "Option meanings: ") + new TreeMap<>(schema.optionMeanings())
+                + "\n" + t(in, "Unvereinbare Optionen: ", "Incompatible options: ") + schema.incompatibleOptions()
+                + "\n" + t(in, "Anwendbarkeit: ", "Applicability: ") + schema.applicability().stream()
+                        .map(condition -> condition.questionId() + " → " + condition.anyOf()).toList();
+    }
+
     private static void spans(List<Block> out, Input in, List<Statement.SourceSpan> spans) {
         for (var span : spans) out.add(new Block(0, t(in, "Originalstelle (UTF-16): ", "Source span (UTF-16): ")
                 + span.start() + "–" + span.end() + "\n" + span.exactText()));

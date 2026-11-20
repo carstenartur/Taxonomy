@@ -224,14 +224,22 @@ final class VisioPresentation {
 
     static String drawingNodeCaption(String code, String score, String title, String owner, String reason,
                                      VisioDrawingOptions options) {
-        String caption = code + " · " + score + "\n" + title;
-        if (options.mode() == VisioDrawingOptions.Mode.WALL && owner != null && !owner.isBlank()) {
-            caption += "\n" + display((options.german() ? "Zuständig: " : "Owner: ") + owner, 40, 1);
-        }
+        String caption = code + " · " + score + "\n" + title + drawingOwnerCaption(owner, options);
         if (options.showsShortReasons() && reason != null && !reason.isBlank()) {
             caption += "\n" + display(reason.strip().replaceAll("\\s+", " "), 40, 2);
         }
         return caption;
+    }
+
+    static String drawingOwnerCaption(String owner, VisioDrawingOptions options) {
+        if (owner == null || owner.isBlank()) return "";
+        int columns = options.mode() == VisioDrawingOptions.Mode.WALL ? 40 : 46;
+        return "\n" + display((options.german() ? "Zuständig: " : "Owner: ") + owner, columns, 1);
+    }
+
+    static double screenCardHeight(boolean assigned) {
+        // Leave room for the owner line when the application icon narrows the text area.
+        return assigned ? 1.42 : 1.05;
     }
 
     static String nodeFooter(String depth, String unitName, int columns) {

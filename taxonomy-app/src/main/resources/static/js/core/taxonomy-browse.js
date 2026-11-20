@@ -988,7 +988,8 @@
         if (btnId === 'exportJson') {
             if (window.TaxonomyExport) {
                 var bt = document.getElementById('businessText');
-                window.TaxonomyExport.exportJson(S.currentScores, S.currentReasons, bt ? bt.value : '', null);
+                var recordedProvider = S.lastAnalysisProvider === 'IMPORTED' ? null : S.lastAnalysisProvider;
+                window.TaxonomyExport.exportJson(S.currentScores, S.currentReasons, bt ? bt.value : '', recordedProvider);
             }
             return;
         }

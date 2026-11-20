@@ -75,14 +75,40 @@ public class PortfolioAggregationService {
     public ProjectPortfolioView build(Long projectId,
                                       String username,
                                       WorkspaceContext context) {
+        return build(projectId, null, username, context);
+    }
+
+    @Transactional(readOnly = true)
+    public ProjectPortfolioView build(Long projectId,
+                                      Long requirementId,
+                                      String username,
+                                      WorkspaceContext context) {
         ProjectView project = projectService.getProject(projectId, username, context);
         List<RequirementView> requirements = projectService.listRequirements(projectId, username, context);
+        if (requirementId != null) {
+            requirements = requirements.stream().filter(item -> requirementId.equals(item.id())).toList();
+            if (requirements.isEmpty()) {
+                throw PortfolioException.notFound("Requirement not found in project: " + requirementId);
+            }
+        }
         List<RequirementElementMapping> mappings = elementRepository.findCurrentMappingsForProject(projectId);
         List<ProjectSolutionView> solutions = solutionService.listProjectSolutions(
                 projectId, username, context);
         List<ConflictView> conflicts = conflictService.list(projectId, username, context);
         List<RequirementSolutionLink> solutionLinks = requirementSolutionRepository.findByProjectId(projectId);
         List<SolutionProductCandidate> productCandidates = productCandidateRepository.findByProjectId(projectId);
+
+        if (requirementId != null) {
+            mappings = mappings.stream().filter(mapping -> requirementId.equals(mapping.getSnapshot().getRequirementId())).toList();
+            solutions = solutions.stream().filter(solution -> solution.requirements().stream()
+                    .anyMatch(link -> requirementId.equals(link.requirementId())))
+                    .map(solution -> scopeSolution(solution, requirementId)).toList();
+            conflicts = conflicts.stream().filter(conflict -> requirementId.equals(conflict.requirementAId())
+                    || requirementId.equals(conflict.requirementBId())).toList();
+            solutionLinks = solutionLinks.stream().filter(link -> requirementId.equals(link.getRequirement().getId())).toList();
+            var solutionIds = solutions.stream().map(ProjectSolutionView::id).collect(Collectors.toSet());
+            productCandidates = productCandidates.stream().filter(candidate -> solutionIds.contains(candidate.getProjectSolution().getId())).toList();
+        }
 
         List<AggregatedTaxonomyNode> taxonomyNodes = aggregateTaxonomy(mappings);
         MatrixView requirementTaxonomy = requirementTaxonomyMatrix(requirements, mappings);
@@ -101,6 +127,13 @@ public class PortfolioAggregationService {
                 requirementTaxonomy,
                 requirementSolution,
                 solutionProduct);
+    }
+
+    private static ProjectSolutionView scopeSolution(ProjectSolutionView solution, Long requirementId) {
+        return new ProjectSolutionView(solution.id(), solution.projectId(), solution.solution(), solution.status(),
+                solution.actionStatus(), solution.priority(), solution.rationale(), solution.createdBy(), solution.createdAt(),
+                solution.updatedAt(), solution.requirements().stream().filter(link -> requirementId.equals(link.requirementId())).toList(),
+                solution.productCandidates(), solution.inventoryComparisonId(), solution.inventoryFingerprint(), solution.inventoryHardExclusions());
     }
 
     private List<AggregatedTaxonomyNode> aggregateTaxonomy(

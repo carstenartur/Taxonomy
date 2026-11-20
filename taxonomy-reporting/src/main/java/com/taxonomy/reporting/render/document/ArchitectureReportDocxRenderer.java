@@ -70,6 +70,18 @@ public final class ArchitectureReportDocxRenderer {
                 w.paragraph("Copilot: " + labels.retainedCopilotStatus(report.getCopilot().state()));
                 report.getCopilot().notes().forEach(w::paragraph);
             } else w.paragraph(labels.liveReportNotice());
+            var view = report.getArchitectureView();
+            if (view != null) {
+                w.heading(labels.architectureSummary(), 1, null);
+                w.table(List.of(labels.metric(), labels.value()), ArchitectureReportTextRenderer.architectureCounts(view, labels));
+                if (!view.getAnchors().isEmpty()) {
+                    w.heading(labels.anchorNodes(), 2, null);
+                    var anchors = w.table(List.of(labels.node(), labels.directScore(), labels.rationale()), view.getAnchors().stream()
+                            .map(anchor -> List.of(value(anchor.getNodeCode(), labels), anchor.getDirectScore() + "%", value(anchor.getReason(), labels)))
+                            .toList());
+                    w.columnWidths(anchors, 20, 17, 63);
+                }
+            }
             w.heading(labels.score(), 1, null);
             w.table(
                     List.of(labels.node(), labels.score()),
@@ -77,9 +89,8 @@ public final class ArchitectureReportDocxRenderer {
                             ? List.of()
                             : report.getScores().entrySet().stream()
                                     .sorted(Map.Entry.comparingByKey())
-                                    .map(e -> List.of(e.getKey(), e.getValue() + "%"))
+                                    .map(e -> List.of(e.getKey(), e.getValue() == null ? labels.notEvaluated() : e.getValue() + "%"))
                                     .toList());
-            var view = report.getArchitectureView();
             if (view != null
                     && view.getIncludedElements() != null
                     && !view.getIncludedElements().isEmpty()) {
@@ -147,10 +158,15 @@ public final class ArchitectureReportDocxRenderer {
             var gaps = report.getGapAnalysis();
             if (gaps != null) {
                 w.heading(labels.gaps(), 1, null);
+                w.paragraph(labels.totalGaps() + ": " + gaps.getTotalGaps());
                 w.paragraph("Profile: " + gaps.getProfileId() + " @ " + gaps.getProfileVersion());
                 w.paragraph("Evidence: " + gaps.getEvidenceAuthority() + " / " + gaps.getEvidenceCompleteness() + "; revision " + gaps.getCommitId());
-                w.table(List.of("Rule", labels.source(), "Status", labels.rationale()), gaps.getJudgments().stream()
-                        .map(e -> List.of(value(e.ruleId(), labels), value(e.sourceNodeCode(), labels), e.status().name(), value(e.description(), labels))).toList());
+                if (!gaps.getJudgments().isEmpty()) {
+                    var judgments = w.table(List.of(labels.gapRule(), labels.source(), "Status", labels.gapCardinality(), labels.rationale()),
+                            gaps.getJudgments().stream().map(e -> List.of(value(e.ruleId(), labels), value(e.sourceNodeCode(), labels),
+                                    e.status().name(), ArchitectureReportTextRenderer.cardinality(e), value(e.description(), labels))).toList());
+                    w.columnWidths(judgments, 14, 14, 16, 18, 38);
+                }
                 gaps.getNotes().forEach(w::paragraph);
             }
             var patterns = report.getPatternDetection();
@@ -240,13 +256,9 @@ public final class ArchitectureReportDocxRenderer {
             }
             w.heading(labels.provenance(), 1, null);
             w.paragraph(labels.generatedAt() + ": " + report.getGeneratedAt());
-            var modelEvidence = AnalysisModelEvidence.rows(report, labels);
-            if (!modelEvidence.isEmpty()) w.table(List.of(labels.titleLabel(), labels.value()), modelEvidence);
-            if (report.getViewContext() != null) {
-                w.paragraph(labels.branch() + ": " + report.getViewContext().basedOnBranch());
-                w.paragraph(
-                        labels.basedOnCommit() + ": " + report.getViewContext().basedOnCommit());
-            }
+            var provenance = new ArrayList<>(AnalysisModelEvidence.rows(report, labels));
+            provenance.addAll(ArchitectureReportTextRenderer.graphProvenance(report.getViewContext(), labels));
+            if (!provenance.isEmpty()) w.table(List.of(labels.titleLabel(), labels.value()), provenance);
             document.write(output);
             return output.toByteArray();
         } catch (com.taxonomy.reporting.render.document.WordReportLayoutException exception) {

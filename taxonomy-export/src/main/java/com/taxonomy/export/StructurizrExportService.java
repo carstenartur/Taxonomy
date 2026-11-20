@@ -24,7 +24,17 @@ public class StructurizrExportService {
      */
     public String export(DiagramModel model) {
         StringBuilder sb = new StringBuilder();
-        sb.append("workspace {\n\n");
+        sb.append("workspace {\n");
+        if (model.title() != null && !model.title().isBlank()) {
+            String title = escapeQuotes(model.title().replace("\r\n", " ").replace('\r', ' ').replace('\n', ' '));
+            if (title.endsWith("\\")) {
+                // A trailing backslash escapes the closing quote in a quoted name. The native text block preserves it.
+                sb.append("    name \"\"\"\n        ").append(title).append("\n    \"\"\"\n");
+            } else {
+                sb.append("    name \"").append(title).append("\"\n");
+            }
+        }
+        sb.append('\n');
         sb.append("    model {\n");
 
         Map<String, String> idMap = new HashMap<>();

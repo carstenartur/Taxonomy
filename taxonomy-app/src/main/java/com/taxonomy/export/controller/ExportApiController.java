@@ -29,6 +29,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
@@ -260,7 +261,9 @@ public class ExportApiController {
     @ApiResponse(responseCode = "500", description = "File generation failed; working state unchanged")
     @PostMapping("/diagram/current/{formatId}")
     public ResponseEntity<?> exportCurrentDiagram(@Parameter(description = "Registered export format identifier") @PathVariable("formatId") String formatId,
-            @RequestBody RequirementArchitectureView view) {
+            @RequestBody RequirementArchitectureView view,
+            @Parameter(description = "Optional content locale for adapters with localized labels")
+            @RequestParam(name = "locale", required = false) String locale) {
         Optional<ExportFormatExtension> extensionOpt = exportFormatRegistry.findByFormatId(formatId);
         if (extensionOpt.isEmpty()) {
             return ResponseEntity.notFound().build();
@@ -271,6 +274,7 @@ public class ExportApiController {
             ExportFormatDescriptor descriptor = extension.descriptor();
             Map<String, Object> options = new HashMap<>();
             options.put("elementReasons", elementReasons(view));
+            if (locale != null && !locale.isBlank()) options.put("locale", locale);
             if (VisioExportExtension.FORMAT_ID.equals(descriptor.id()) && view.getOriginalRequirementText() != null) {
                 options.put("originalRequirementText", view.getOriginalRequirementText());
             }
@@ -287,6 +291,10 @@ public class ExportApiController {
             return ResponseEntity.internalServerError()
                     .body(Map.of("error", "The architecture file could not be created. The working state was not changed."));
         }
+    }
+
+    public ResponseEntity<?> exportCurrentDiagram(String formatId, RequirementArchitectureView view) {
+        return exportCurrentDiagram(formatId, view, null);
     }
 
     /** Captured node explanations are presentation evidence, independent of neutral diagram identity. */

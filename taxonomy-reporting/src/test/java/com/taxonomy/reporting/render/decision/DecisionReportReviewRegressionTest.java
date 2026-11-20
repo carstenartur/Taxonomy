@@ -19,6 +19,75 @@ import static com.taxonomy.reporting.api.decision.DecisionReportOptions.*;
 import static com.taxonomy.reporting.api.decision.DecisionRationaleReport.Disposition.*;
 
 class DecisionReportReviewRegressionTest {
+    @Test void htmlTreeNavigatesToOnlyTheReasonsThatWereActuallyRecorded() {
+        var renderer = new DecisionRationaleHtmlRenderer(new DecisionChapterDiagramRenderer());
+        for (var layout : List.of(TreeLayout.TABLE, TreeLayout.AUTO)) {
+            var base = DecisionCompactReportTest.report(layout, 4);
+            var report = base.withScope(base.scope().withRecordedReasons(Map.of("CP-1", "Recorded zero-score reason.")));
+            var html = renderer.render(report);
+            var original = DecisionNodeEvidence.reasonBookmark("CP-1");
+            var missing = DecisionNodeEvidence.reasonBookmark("CP-2");
+            assertThat(html).contains("href=\"#" + original + "\"", "id=\"" + original + "\"",
+                    "Recorded zero-score reason.", "Not evaluated", "0%")
+                    .doesNotContain("href=\"#" + missing + "\"");
+        }
+    }
+
+    @Test void htmlSnapshotArchitectureKeepsGapsAndProvenanceFromTheSameFrozenGraph() {
+        var base = DecisionRationaleTemplateRendererTest.report();
+        var graph = new com.taxonomy.diagram.DiagramModel("Saved graph",
+                List.of(new com.taxonomy.diagram.DiagramNode("BP", "Business processes", "Process", .75, true, 0)),
+                List.of(), new com.taxonomy.diagram.DiagramLayout("LR", true));
+        var source = new com.taxonomy.diagram.DiagramModel(graph.title(), List.of(graph.nodes().getFirst(),
+                new com.taxonomy.diagram.DiagramNode("CP", "Capabilities", "Capability", .5, false, 0)),
+                graph.edges(), graph.layout());
+        var sourceDigest = com.taxonomy.reporting.api.document.ArchitectureReportDocument.graphSha256(source);
+        var digest = com.taxonomy.reporting.api.document.ArchitectureReportDocument.graphSha256(graph);
+        assertThat(digest).isNotEqualTo(sourceDigest);
+        var evidence = new com.taxonomy.reporting.api.document.ArchitectureReportDocument.SnapshotEvidence(
+                1L, 2L, 3L, 4, "saved-graph-snapshot", "saved-graph-repository", "saved-graph-workspace",
+                "saved-graph-branch", "saved-graph-commit", "MOCK", "fixture", "saved-graph-taxonomy", digest);
+        var architecture = com.taxonomy.reporting.render.document.ArchitectureReportDocuments.from(
+                "Saved graph", "en", base.requirement(), "Report selection: BP · Source graph SHA-256: " + sourceDigest, "Saved recommendation",
+                List.of("SAVED-GAP-TERMINAL"), graph, new com.taxonomy.export.LayeredDiagramLayoutService().layout(graph),
+                null, evidence);
+        var html = new DecisionRationaleHtmlRenderer(new DecisionChapterDiagramRenderer()).render(base.withArchitecture(architecture));
+        assertThat(html).contains("SAVED-GAP-TERMINAL", "Saved recommendation", "saved-graph-snapshot",
+                "saved-graph-branch", "saved-graph-commit", "Source graph SHA-256: " + sourceDigest,
+                "<dt>Architecture graph SHA-256</dt><dd>" + digest + "</dd>");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = TreeLayout.class, names = {"AUTO", "TABLE"})
+    void htmlResponsibilityOptionControlsPreviouslyAssignedGraphAndTreeNodes(TreeLayout layout) {
+        var base = DecisionCompactReportTest.report(layout, 2);
+        var graphOwner = new com.taxonomy.dto.TaxonomyResponsibilityLookup.Assignment("graph-unit", "Archive owner", "graph-source");
+        var treeOwner = new com.taxonomy.dto.TaxonomyResponsibilityLookup.Assignment("tree-unit", "Tree owner", "tree-source");
+        var node = new com.taxonomy.diagram.DiagramNode("other", "Saved element", "Capability", .8, true,
+                0, 1, false, null, false, graphOwner);
+        var graph = new com.taxonomy.diagram.DiagramModel("Saved graph", List.of(node), List.of(),
+                new com.taxonomy.diagram.DiagramLayout("LR", false));
+        var tree = base.scope().decisionTree().withResponsibilities(Map.of("CP", treeOwner));
+        var digest = com.taxonomy.reporting.api.document.ArchitectureReportDocument.graphSha256(graph);
+        var evidence = new com.taxonomy.reporting.api.document.ArchitectureReportDocument.SnapshotEvidence(
+                1L, 2L, 3L, 4, "snapshot", "repo", "workspace", "branch", "commit", "provider", "model", "taxonomy", digest);
+        var architecture = com.taxonomy.reporting.render.document.ArchitectureReportDocuments.from("Graph", "en",
+                base.requirement(), "Scope", "", List.of(), graph, new com.taxonomy.export.LayeredDiagramLayoutService().layout(graph), tree, evidence);
+        for (boolean show : List.of(true, false)) {
+            var options = new DecisionReportOptions(Profile.FULL, null, Contents.NONE, layout, null, show);
+            var scope = new DecisionReportScope(null, null, base.scope().availableRoots(), base.scope().reportRoots(),
+                    base.scope().selectedNodeCodes(), tree, options, true, true);
+            var html = new DecisionRationaleHtmlRenderer(new DecisionChapterDiagramRenderer())
+                    .render(base.withScope(scope).withArchitecture(architecture));
+            assertThat(html).contains("Saved element");
+            String[] owners = {"Organizational responsibilities", "Archive owner", "graph-unit", "graph-source", "Tree owner"};
+            if (show) assertThat(html).contains(owners);
+            else assertThat(html).doesNotContain(owners);
+            assertThat(graph.nodes().getFirst().responsibility()).isEqualTo(graphOwner);
+            assertThat(tree.responsibilitiesByCode()).containsEntry("CP", treeOwner);
+        }
+    }
+
     @Test void compactSnapshotDownloadShowsTheModelAssignmentAndActualCatalogueGeneration() throws Exception {
         var base = DecisionCompactReportTest.report(TreeLayout.AUTO, 4);
         var binding = new com.taxonomy.dto.AnalysisModelBinding(com.taxonomy.dto.AnalysisModelBinding.State.CATALOGUE_UNRESOLVED,

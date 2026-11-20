@@ -583,7 +583,7 @@ The incoming LLM quota is counted per stable authenticated identity and applicat
 
 ### Export Button Visibility
 
-The export buttons (SVG, PNG, PDF, CSV, JSON, Visio, ArchiMate, Mermaid) only appear when there are analysis scores greater than 0. If no analysis has been run, or if all scores are 0, the export buttons are hidden and a hint text **"📋 Analyze first to enable exports"** is shown instead. Within **Architecture → Export**, **📤 Load Scores** is available even without existing scores and can restore a previous analysis.
+Recorded analysis scores enable the score-dependent export group, including recorded zero scores. The available formats depend on the installed capabilities and the data required by each export; architecture-specific downloads additionally require a current Architecture View with elements. Without recorded scores, score-dependent exports show **"📋 Analyze first to enable exports"**. Within **Architecture → Export**, **📤 Load Scores** is available even without existing scores and can restore a previous analysis.
 
 ---
 
@@ -977,19 +977,19 @@ The [scenario reference workflow](https://github.com/carstenartur/Taxonomy/blob/
 
 ### SVG Export
 
-Click **📥 SVG** to download the current taxonomy view as a scalable vector graphics (SVG) file. Suitable for embedding in documents or further editing in vector graphics software.
+Click **📥 SVG** in the main Export tab to download the complete selected diagram model as scalable vector graphics, including collapsed and offscreen branches. Viewport capture is a separate action. The SVG is suitable for embedding in documents or editing in vector graphics software.
 
 ### PNG Export
 
-Click **📥 PNG** to download a rasterised image of the selected taxonomy view. Verify the exported scope and dimensions; a viewport capture and a complete diagram are different artifacts.
+Click **📥 PNG** in the main Export tab to rasterise the same complete selected model used by SVG. The resolution selector controls the pixel scale. Verify the resulting dimensions and legibility, especially for large diagrams; viewport capture is a separate action.
 
 ### PDF (Print)
 
-Click **📥 PDF** to trigger the browser's print dialogue, pre-configured to print the current view as a PDF.
+Click **📥 PDF** in the main Export tab to download a vector PDF from the complete selected diagram model. **Print diagram** and whole-page browser printing are separate actions with their own page layout and scope.
 
 ### CSV (Scores)
 
-Click **📥 CSV** to download a comma-separated file containing all node codes, names, and their analysis scores. Open in a spreadsheet application for further analysis or reporting.
+Click **📥 CSV** to download recorded node codes, names and effective relevance as a comma-separated file. `Score` is effective relevance; the optional `Reason` column contains an assessment diagnostic. Use saved analysis JSON for the complete recorded scoring rationale and assessment history.
 
 The `AnalysisTaxonomies` and `AnalysisMode` columns identify the recorded analysis scope. They remain empty for older results without that information. Selection in the decision-report dialog applies to its Word/HTML/JSON report; CSV continues to use its own export action.
 
@@ -1060,7 +1060,7 @@ This enables **offline review** and **reproducibility** — you can share a scor
 
 ### When Export Buttons Appear
 
-The export buttons only appear after analysis has been run and at least one taxonomy node has a score greater than 0. Navigation or reload does not by itself prove that saved work is lost. Reopen the saved working draft or project snapshot in the same context and check the recorded status before repeating model calls. A hint message **"📋 Analyze first to enable exports"** is shown when exports are unavailable. Re-run the analysis or use **📤 Load Scores** to restore the export buttons.
+Score-dependent export buttons become available when a valid recorded score is present; a recorded zero also qualifies. Navigation or reload does not by itself prove that saved work is lost. Reopen the saved working draft or project snapshot in the same context and check the recorded status before repeating model calls. A hint message **"📋 Analyze first to enable exports"** is shown when exports are unavailable. Re-run the analysis or use **📤 Load Scores** to restore the export buttons.
 
 ---
 

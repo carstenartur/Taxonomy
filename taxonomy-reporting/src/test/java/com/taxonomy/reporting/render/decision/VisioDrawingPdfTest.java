@@ -1,11 +1,18 @@
 package com.taxonomy.reporting.render.decision;
 
+import com.taxonomy.diagram.DiagramLayout;
+import com.taxonomy.diagram.DiagramModel;
+import com.taxonomy.diagram.DiagramNode;
+import com.taxonomy.diagram.VisioDrawingOptions;
+import com.taxonomy.dto.TaxonomyResponsibilityLookup.Assignment;
 import com.taxonomy.export.VisioDiagramService;
 import com.taxonomy.export.VisioPackageBuilder;
 import com.taxonomy.extension.api.report.ReportRenderContext;
 import com.taxonomy.reporting.api.decision.DecisionReportOptions;
+import com.taxonomy.visio.VisioExportMetadata;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.pdfbox.text.TextPosition;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
@@ -16,6 +23,7 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -119,6 +127,42 @@ class VisioDrawingPdfTest {
                 }
             }
             assertThat(new PDFTextStripper().getText(pdf)).contains("CP-2");
+        }
+    }
+
+    @Test
+    @EnabledIfSystemProperty(named="taxonomy.test.visio-pdf", matches="true")
+    void installedRendererKeepsLongApplicationOwnerTextInsideItsScreenCard() throws Exception {
+        var assignment = new Assignment("app-ops", "Architecture Operations QA", "assigned-source");
+        var node = new DiagramNode("UA-1544", "Strategic Deployment, Redeployment and RSOM Planning Applications", "UA",
+                .72, false, 0, 3, false, null, false, assignment);
+        var graph = new DiagramModel("Screen application", List.of(node), List.of(), new DiagramLayout("LR", false));
+        var drawing = new VisioDiagramService().convert(graph, VisioExportMetadata.unbound(), null, VisioDrawingOptions.screen(false));
+        var card = drawing.getPages().getFirst().getShapes().getFirst();
+        Path source = Files.write(temp.resolve("application.vsdx"), new VisioPackageBuilder().build(drawing));
+        byte[] rendered = VisioDrawingPdf.convert(source, "soffice", "pdfunite", "pdfinfo");
+        try (var pdf = Loader.loadPDF(rendered)) {
+            var positions = new ArrayList<TextPosition>();
+            var text = new PDFTextStripper() {
+                @Override protected void writeString(String value, List<TextPosition> glyphs) throws IOException {
+                    positions.addAll(glyphs);
+                    super.writeString(value, glyphs);
+                }
+            };
+            assertThat(text.getText(pdf).replaceAll("\\s+", " "))
+                    .contains(node.label(), "Owner: " + assignment.name());
+            assertThat(positions).isNotEmpty();
+            double pageHeight = pdf.getPage(0).getMediaBox().getHeight();
+            double left = (card.getX() - card.getWidth() / 2) * 72;
+            double right = (card.getX() + card.getWidth() / 2) * 72;
+            double top = pageHeight - (card.getY() + card.getHeight() / 2) * 72;
+            double bottom = pageHeight - (card.getY() - card.getHeight() / 2) * 72;
+            assertThat(positions).allSatisfy(glyph -> {
+                assertThat((double) glyph.getXDirAdj()).isGreaterThan(left + 2);
+                assertThat((double) (glyph.getXDirAdj() + glyph.getWidthDirAdj())).isLessThan(right - 2);
+                assertThat((double) (glyph.getYDirAdj() - glyph.getHeightDir())).isGreaterThan(top + 2);
+                assertThat((double) glyph.getYDirAdj()).isLessThan(bottom - 2);
+            });
         }
     }
 

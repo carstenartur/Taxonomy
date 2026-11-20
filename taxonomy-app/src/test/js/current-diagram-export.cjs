@@ -17,7 +17,7 @@ function fixture(view = {viewTitle: 'Existing result', includedElements: [{nodeC
             remove() {}, click() {}, querySelector() {return null;}, querySelectorAll() {return [];} };
         return e;
     }
-    for (const id of ['exportGroup','exportSvg','exportPng','exportVisio','exportArchiMate','exportMermaid','exportStructurizr']) {
+    for (const id of ['exportGroup','exportSvg','exportPng','exportVisio','exportArchiMate','exportMermaid','exportStructurizr','exportJson']) {
         const el=element('button');el.id=id;elements.set(id,el);
     }
     const businessText=element('textarea');businessText.id='businessText';businessText.value='original';elements.set('businessText',businessText);
@@ -44,6 +44,52 @@ function fixture(view = {viewTitle: 'Existing result', includedElements: [{nodeC
         emitWindow(type){for(const handler of windowListeners.get(type)||[])handler({type});},
         api:window.TaxonomyExport,run:()=>window.TaxonomyExport.exportVisio('original')};
 }
+
+for (const recordedProvider of ['Recorded provider', null]) {
+    test(`the score JSON button uses ${recordedProvider ? 'the recorded provider' : 'an absent provider'} independently of the next run`, async () => {
+        const f = fixture();
+        f.state.lastAnalysisProvider = recordedProvider ?? 'IMPORTED';
+        f.state.analysisProviderId = recordedProvider ? 'RECORDED_PROVIDER_ID' : null;
+        const nextProvider = f.element('select');
+        nextProvider.value = 'NEXT_PROVIDER';
+        f.elements.set('providerSelect', nextProvider);
+        const browse = readFileSync(path.resolve(__dirname, '../../main/resources/static/js/core/taxonomy-browse.js'), 'utf8');
+        const registration = browse.slice(browse.indexOf('// Export buttons'), browse.indexOf('// Import JSON button'));
+        const handler = browse.slice(browse.indexOf('function handleExport(btnId)'), browse.indexOf('// Retain one explicit evidence snapshot'));
+        vm.runInNewContext(registration + handler, {window: f.window, document: f.document, S: f.state});
+
+        f.elements.get('exportJson').listeners.click();
+        await new Promise(resolve => setImmediate(resolve));
+
+        assert.equal(f.requests.length, 1);
+        assert.equal(f.requests[0].url, '/api/scores/export');
+        const payload = JSON.parse(f.requests[0].options.body);
+        f.resolve({ok: true, json: async () => payload});
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(f.downloads.length, 1);
+        assert.equal(payload.provider || null, recordedProvider);
+        assert.equal(payload.analysisProviderId, f.state.analysisProviderId);
+    });
+}
+
+test('current Mermaid requests the recorded German content language even when the interface is English', async () => {
+    const f = fixture();
+    f.state.lastAnalysisLanguage = 'de';
+    f.document.readyState = 'loading';
+    const contentLanguage = readFileSync(path.resolve(__dirname, '../../main/resources/static/js/shared/content-language.js'), 'utf8');
+    vm.runInNewContext(contentLanguage, {window: f.window, document: f.document});
+
+    const pending = f.api.exportMermaid('original');
+    await Promise.resolve();
+    f.resolve({ok: true, redirected: false, headers: {get: () => 'text/plain; charset=UTF-8'},
+        text: async () => 'flowchart LR\n    node["A"]\n'});
+    assert.equal(await pending, true);
+
+    assert.equal(f.requests.length, 1);
+    const url = new URL(f.requests[0].url, 'https://fixture.test');
+    assert.equal(url.pathname, '/api/diagram/current/mermaid');
+    assert.equal(url.searchParams.get('locale'), 'de');
+});
 
 for (const scopeKind of ['missing', 'null', 'selected']) {
     test(`JSON file import and re-export preserves ${scopeKind} evidence scope`, async () => {

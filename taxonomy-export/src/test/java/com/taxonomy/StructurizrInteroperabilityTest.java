@@ -3,12 +3,37 @@ package com.taxonomy;
 import com.taxonomy.diagram.*;
 import com.taxonomy.export.StructurizrExportService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import java.time.Duration;
 import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 class StructurizrInteroperabilityTest {
+    @Test void officialParserPreservesWorkingTitleAndPartialStatus() throws Exception {
+        var node = new DiagramNode("fixture-node", "Übergabe", "Business Processes", .6, false, 2);
+        var model = new DiagramModel("Arbeitsstand Übergabe — PARTIAL / TEILERGEBNIS", List.of(node), List.of(),
+                new DiagramLayout("LR", true));
+        var parser = new com.structurizr.dsl.StructurizrDslParser();
+        parser.setRestricted(true);
+
+        parser.parse(new StructurizrExportService().export(model));
+
+        assertThat(parser.getWorkspace().getName()).isEqualTo("Arbeitsstand Übergabe — PARTIAL / TEILERGEBNIS");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"extends", "Übergabe \"A\" & Süd", "Weg endet mit \\"})
+    void officialParserKeepsLiteralWorkspaceTitle(String title) throws Exception {
+        var parser = new com.structurizr.dsl.StructurizrDslParser();
+        parser.setRestricted(true);
+
+        parser.parse(new StructurizrExportService().export(new DiagramModel(title, List.of(), List.of(), null)));
+
+        assertThat(parser.getWorkspace().getName()).isEqualTo(title);
+    }
+
     @Test void officialParserAcceptsFlatTaxonomyWithoutInventingC4ParentsAndPreservesIdentity() {
         var model = new DiagramModel("Reference", List.of(
                 new DiagramNode("a-b", "Same label", "Core Services", 1, true, 1),

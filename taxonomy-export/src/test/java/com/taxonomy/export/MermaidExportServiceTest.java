@@ -2,9 +2,12 @@ package com.taxonomy.export;
 
 import com.taxonomy.diagram.*;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -98,6 +101,69 @@ class MermaidExportServiceTest {
         String result = service.export(model);
 
         assertTrue(result.contains("CP_1023 -->|realizes| CR_1047"));
+    }
+
+    @Test
+    void collidingSpellingsRemainDistinctDirectedEndpoints() {
+        var source = new DiagramNode("fixture-a-b", "Source process", "Business Processes", .6, false, 2);
+        var target = new DiagramNode("fixture-a_b", "Target information", "Information Products", .4, false, 5);
+        var edge = new DiagramEdge("fixture-edge", "fixture-a-b", "fixture-a_b", "CONSUMES", .3);
+        var model = new DiagramModel("Authored graph", List.of(source, target), List.of(edge), new DiagramLayout("LR", true));
+
+        String result = service.export(model);
+
+        var sourceDeclaration = Pattern.compile("(?m)^\\s*([a-zA-Z0-9_]+)\\[\"fixture-a-b Source process").matcher(result);
+        var targetDeclaration = Pattern.compile("(?m)^\\s*([a-zA-Z0-9_]+)\\[\"fixture-a_b Target information").matcher(result);
+        assertTrue(sourceDeclaration.find(), result);
+        assertTrue(targetDeclaration.find(), result);
+        assertNotEquals(sourceDeclaration.group(1), targetDeclaration.group(1), "Distinct nodes must not become a self-relation");
+        assertTrue(result.contains(sourceDeclaration.group(1) + " -->|consumes| " + targetDeclaration.group(1)), result);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"_top", "_self", "_parent", "_blank"})
+    void linkTargetTokensRemainDistinctDirectedNodesAndLayerLabels(String token) {
+        var source = new DiagramNode(token, "Source", "Business Processes", .6, false, 2);
+        var target = new DiagramNode(token + "_2", "Target", "Information Products", .4, false, 3);
+        var sameLayer = new DiagramNode("layer-member", "Member", token, 0, false, 1);
+        var edge = new DiagramEdge("edge", source.id(), target.id(), "CONSUMES", .3);
+        var graph = new DiagramModel("Authored graph", List.of(source, target, sameLayer), List.of(edge),
+                new DiagramLayout("LR", true));
+
+        String result = service.export(graph);
+        var layer = Pattern.compile("subgraph (\\w+)\\[\"" + token + "\"\\]").matcher(result);
+        var start = Pattern.compile("(\\w+)\\[\"" + token + " Source").matcher(result);
+        var end = Pattern.compile("(\\w+)\\[\"" + token + "_2 Target").matcher(result);
+        assertTrue(layer.find() && start.find() && end.find(), result);
+        assertFalse(List.of(layer.group(1), start.group(1), end.group(1)).contains(token), result);
+        assertEquals(3, java.util.stream.Stream.of(layer.group(1), start.group(1), end.group(1)).distinct().count());
+        assertTrue(result.contains(start.group(1) + " -->|consumes| " + end.group(1)), result);
+    }
+
+    @Test
+    void workingTitleAndPartialStatusAppearInTheDiagram() {
+        var node = new DiagramNode("fixture-node", "Übergabe", "Business Processes", .6, false, 2);
+        var model = new DiagramModel("Arbeitsstand Übergabe — PARTIAL / TEILERGEBNIS", List.of(node), List.of(),
+                new DiagramLayout("LR", true));
+
+        String result = service.export(model);
+
+        assertTrue(result.lines().anyMatch(line -> line.contains("Arbeitsstand Übergabe — PARTIAL / TEILERGEBNIS")
+                && !line.stripLeading().startsWith("%%")), result);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"LR", "TB"})
+    void titleGroupPreservesConfiguredDiagramDirection(String direction) {
+        var node = new DiagramNode("fixture-node", "Authored node", "Business Processes", .6, false, 2);
+        var model = new DiagramModel("Authored diagram", List.of(node), List.of(), new DiagramLayout(direction, true));
+
+        String result = service.export(model);
+
+        assertTrue(result.startsWith("flowchart " + direction + "\n"), result);
+        var titleGroup = Pattern.compile("(?m)^\\h+subgraph\\h+\\S+\\[\"Authored diagram\"\\]\\R\\h+direction "
+                + direction + "$");
+        assertTrue(titleGroup.matcher(result).find(), "The titled subgraph must preserve the graph direction:\n" + result);
     }
 
     @Test

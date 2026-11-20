@@ -6,6 +6,7 @@ import com.taxonomy.portfolio.dto.PortfolioDtos.MatrixView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.ProjectPortfolioView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.ProjectSolutionView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.SourceReference;
 import com.taxonomy.portfolio.model.RequirementAnalysisSnapshot;
 import com.taxonomy.portfolio.repository.RequirementAnalysisSnapshotRepository;
 import com.taxonomy.workspace.service.WorkspaceContext;
@@ -76,7 +77,9 @@ public class PortfolioReportService {
                                  String matrix,
                                  String username,
                                  WorkspaceContext context) {
-        ProjectPortfolioView portfolio = aggregationService.build(projectId, username, context);
+        ProjectPortfolioView portfolio = requirementId == null
+                ? aggregationService.build(projectId, username, context)
+                : aggregationService.build(projectId, requirementId, username, context);
         ReportModel model = buildModel(portfolio, requirementId, PortfolioScope.key(username, context), format);
         String baseName = safeFilename(portfolio.project().projectKey()
                 + (requirementId != null ? "-" + model.requirements().get(0).requirementKey() : "-portfolio"));
@@ -97,25 +100,7 @@ public class PortfolioReportService {
     }
 
     private ReportModel buildModel(ProjectPortfolioView portfolio, Long requirementId, String scopeKey, Format format) {
-        List<RequirementView> requirements = requirementId == null
-                ? portfolio.requirements()
-                : portfolio.requirements().stream()
-                        .filter(requirement -> requirement.id().equals(requirementId))
-                        .toList();
-        if (requirementId != null && requirements.isEmpty()) {
-            throw PortfolioException.notFound("Requirement not found in project: " + requirementId);
-        }
-        List<Long> requirementIds = requirements.stream().map(RequirementView::id).toList();
-        List<ProjectSolutionView> solutions = portfolio.solutions().stream()
-                .filter(solution -> requirementId == null
-                        || solution.requirements().stream()
-                                .anyMatch(link -> requirementIds.contains(link.requirementId())))
-                .toList();
-        List<ConflictView> conflicts = portfolio.conflicts().stream()
-                .filter(conflict -> requirementId == null
-                        || requirementIds.contains(conflict.requirementAId())
-                        || requirementIds.contains(conflict.requirementBId()))
-                .toList();
+        List<RequirementView> requirements = portfolio.requirements();
         List<SnapshotBaseline> baselines = new ArrayList<>();
         for (RequirementView requirement : requirements) {
             if (requirement.currentAnalysisSnapshotId() == null) continue;
@@ -131,8 +116,8 @@ public class PortfolioReportService {
                 portfolio.metrics(),
                 requirements,
                 portfolio.taxonomyNodes(),
-                solutions,
-                conflicts,
+                portfolio.solutions(),
+                portfolio.conflicts(),
                 portfolio.requirementTaxonomyMatrix(),
                 portfolio.requirementSolutionMatrix(),
                 portfolio.solutionProductMatrix(),
@@ -184,10 +169,7 @@ public class PortfolioReportService {
             output.append(requirement.currentVersion() != null
                     ? requirement.currentVersion().text() : "No current text").append("\n\n");
             if (requirement.currentVersion() != null && requirement.currentVersion().source() != null) {
-                var source = requirement.currentVersion().source();
-                output.append("**Source:** artifact ").append(nullSafe(source.sourceArtifactId()))
-                        .append(", section ").append(nullSafe(source.sectionReference()))
-                        .append(", page ").append(nullSafe(source.pageNumber())).append("\n\n");
+                output.append(sourceReference(requirement.currentVersion().source())).append("\n\n");
             }
         }
 
@@ -231,45 +213,121 @@ public class PortfolioReportService {
 
         output.append("## Conflicts and open decisions\n\n");
         if (model.conflicts().isEmpty()) output.append("No conflict hypotheses recorded.\n\n");
-        for (ConflictView conflict : model.conflicts()) {
-            output.append("- **").append(conflict.requirementAKey()).append(" ↔ ")
-                    .append(conflict.requirementBKey()).append(":** ")
-                    .append(conflict.title()).append(" — ").append(conflict.status())
-                    .append(". ").append(nullSafe(conflict.evidence())).append("\n");
-        }
+        for (ConflictView conflict : model.conflicts()) output.append("- ").append(conflictFinding(conflict)).append('\n');
 
         output.append("\n## Reproducibility baseline\n\n");
-        output.append("| Requirement | Snapshot | Version | Provider/model | Taxonomy | Prompt | Branch/commit |\n")
-                .append("|---|---|---:|---|---|---|---|\n");
-        model.baselines().forEach(baseline -> output.append('|')
-                .append(baseline.requirementKey()).append('|').append(baseline.snapshotId())
-                .append('|').append(baseline.requirementVersion()).append('|')
-                .append(nullSafe(baseline.provider())).append('/').append(nullSafe(baseline.modelName()))
-                .append('|').append(shortHash(baseline.taxonomyFingerprint()))
-                .append('|').append(shortHash(baseline.promptFingerprint()))
-                .append('|').append(nullSafe(baseline.branchName())).append('/')
-                .append(shortHash(baseline.commitSha())).append("|\n"));
+        output.append("| Requirement | Snapshot | Version | Provider/model | Taxonomy | Prompt | Branch/commit | Analysed at |\n")
+                .append("|---|---|---:|---|---|---|---|---|\n");
+        model.baselines().forEach(baseline -> output.append('|').append(String.join("|", baselineCells(baseline).stream()
+                .map(PortfolioReportService::escapeMarkdown).toList())).append("|\n"));
         return output.toString();
     }
 
     private String html(ReportModel model) {
-        String markdown = markdown(model);
         StringBuilder html = new StringBuilder("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">")
                 .append("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">")
                 .append("<title>").append(escapeHtml(model.project().projectKey())).append(" report</title>")
                 .append("<style>body{font:16px system-ui;max-width:1100px;margin:auto;padding:2rem;line-height:1.5}")
                 .append("table{border-collapse:collapse;width:100%;margin:1rem 0}th,td{border:1px solid #777;padding:.4rem;text-align:left}")
-                .append("code{overflow-wrap:anywhere}.meta{color:#555}</style></head><body>");
-        for (String line : markdown.split("\\R", -1)) {
-            if (line.startsWith("# ")) html.append("<h1>").append(escapeHtml(line.substring(2))).append("</h1>");
-            else if (line.startsWith("## ")) html.append("<h2>").append(escapeHtml(line.substring(3))).append("</h2>");
-            else if (line.startsWith("### ")) html.append("<h3>").append(escapeHtml(line.substring(4))).append("</h3>");
-            else if (line.startsWith("- ")) html.append("<p>• ").append(escapeHtml(line.substring(2))).append("</p>");
-            else if (!line.startsWith("|") && !line.isBlank()) html.append("<p>").append(escapeHtml(line)).append("</p>");
+                .append("thead{display:table-header-group}th,td,p,pre{overflow-wrap:anywhere}pre,p{white-space:pre-wrap}")
+                .append("@media print{tr{break-inside:avoid}}")
+                .append("</style></head><body><main><h1>")
+                .append(model.reportType().equals("PROJECT") ? "Project portfolio report" : "Requirement report")
+                .append("</h1>");
+        htmlText(html, "p", model.project().projectKey() + " — " + model.project().title());
+        htmlText(html, "p", "Generated: " + model.generatedAt() + " · Workspace: " + nullSafe(model.project().workspaceId()));
+        html.append("<h2>Management summary</h2><ul>");
+        htmlText(html, "li", "Requirements: " + model.metrics().totalRequirements());
+        htmlText(html, "li", "Analysed: " + model.metrics().analyzedRequirements());
+        htmlText(html, "li", "Requirements without confirmed solution: " + model.metrics().requirementsWithoutConfirmedSolution());
+        htmlText(html, "li", "Solutions: " + model.metrics().totalSolutions());
+        htmlText(html, "li", "Selected products: " + model.metrics().selectedProducts());
+        htmlText(html, "li", "Open conflicts: " + model.metrics().openConflicts());
+        html.append("</ul><h2>Requirements</h2>");
+        for (RequirementView requirement : model.requirements()) {
+            htmlText(html, "h3", requirement.requirementKey() + " — " + requirement.title());
+            var version = requirement.currentVersion();
+            htmlText(html, "p", version == null ? "No current text" : version.text());
+            if (version != null && version.source() != null) htmlText(html, "p", sourceReference(version.source()));
         }
-        html.append("<h2>Machine-readable baseline</h2><pre><code>")
-                .append(escapeHtml(json(model))).append("</code></pre></body></html>");
+        html.append("<h2>Taxonomy coverage</h2>");
+        htmlTable(html, List.of("Node", "Title", "Requirements", "Max score", "Average relevance"),
+                model.taxonomyNodes().stream().map(node -> List.of(node.nodeCode(), nullSafe(node.title()),
+                        String.valueOf(node.requirementCount()), AnalysisPercentages.display(node.maximumDirectScore()),
+                        AnalysisPercentages.display(node.averageRelevance() * 100))).toList());
+        if (!model.productCoverageGaps().isEmpty()) {
+            html.append("<h2>Product coverage gaps</h2>");
+            for (var family : model.productCoverageGaps()) {
+                htmlText(html, "h3", family.familyCode() + " — " + nullSafe(family.familyName()));
+                htmlText(html, "p", "Classification: " + family.classification() + " (v" + family.revision() + ")");
+                html.append("<ul>");
+                family.observations().forEach(observation -> htmlText(html, "li", gapEvidence(observation)));
+                html.append("</ul>");
+            }
+        }
+        html.append("<h2>Solutions and products</h2>");
+        for (var solution : model.solutions()) {
+            htmlText(html, "h3", solution.solution().solutionKey() + " — " + solution.solution().title());
+            html.append("<ul>");
+            htmlText(html, "li", "Status: " + solution.status());
+            htmlText(html, "li", "Action: " + solution.actionStatus());
+            solution.requirements().forEach(link -> htmlText(html, "li", link.requirementKey() + ": " + link.coveragePercent()
+                    + "% (" + link.reviewStatus() + ")"));
+            solution.productCandidates().forEach(candidate -> htmlText(html, "li", candidate.product().productKey() + " · "
+                    + candidate.product().manufacturer() + " " + candidate.product().productName() + ": " + candidate.selectionStatus()
+                    + ", source " + nullSafe(candidate.product().sourceReference())));
+            html.append("</ul>");
+        }
+        html.append("<h2>Conflicts and open decisions</h2>");
+        if (model.conflicts().isEmpty()) htmlText(html, "p", "No conflict hypotheses recorded.");
+        else {
+            html.append("<ul>");
+            model.conflicts().forEach(conflict -> htmlText(html, "li", conflictFinding(conflict)));
+            html.append("</ul>");
+        }
+        html.append("<h2>Reproducibility baseline</h2>");
+        htmlTable(html, List.of("Requirement", "Snapshot", "Version", "Provider/model", "Taxonomy", "Prompt", "Branch/commit", "Analysed at"),
+                model.baselines().stream().map(PortfolioReportService::baselineCells).toList());
+        html.append("<details><summary>Machine-readable baseline</summary><pre><code>")
+                .append(escapeHtml(json(model))).append("</code></pre></details></main></body></html>");
         return html.toString();
+    }
+
+    private static void htmlText(StringBuilder html, String tag, String value) {
+        html.append('<').append(tag).append('>').append(escapeHtml(value)).append("</").append(tag).append('>');
+    }
+
+    private static void htmlTable(StringBuilder html, List<String> headers, List<List<String>> rows) {
+        html.append("<table><thead><tr>");
+        headers.forEach(header -> html.append("<th scope=\"col\">").append(escapeHtml(header)).append("</th>"));
+        html.append("</tr></thead><tbody>");
+        for (var row : rows) {
+            html.append("<tr>");
+            row.forEach(value -> htmlText(html, "td", value));
+            html.append("</tr>");
+        }
+        html.append("</tbody></table>");
+    }
+
+    private static List<String> baselineCells(SnapshotBaseline baseline) {
+        return List.of(baseline.requirementKey(), baseline.snapshotId(), String.valueOf(baseline.requirementVersion()),
+                nullSafe(baseline.provider()) + "/" + nullSafe(baseline.modelName()),
+                nullSafe(baseline.taxonomyFingerprint()), nullSafe(baseline.promptFingerprint()),
+                nullSafe(baseline.branchName()) + "/" + nullSafe(baseline.commitSha()), nullSafe(baseline.createdAt()));
+    }
+
+    private static String sourceReference(SourceReference source) {
+        return "Source: artifact " + nullSafe(source.sourceArtifactId()) + ", section " + nullSafe(source.sectionReference())
+                + ", page " + nullSafe(source.pageNumber());
+    }
+
+    private static String conflictFinding(ConflictView conflict) {
+        var result = new StringBuilder().append(conflict.requirementAKey()).append(" ↔ ").append(conflict.requirementBKey())
+                .append(": ").append(conflict.title()).append(" — ").append(conflict.status());
+        if (conflict.evidence() != null && !conflict.evidence().isBlank()) result.append(". ").append(conflict.evidence());
+        if (conflict.resolutionNote() != null && !conflict.resolutionNote().isBlank())
+            result.append(". Review note: ").append(conflict.resolutionNote());
+        return result.toString();
     }
 
     private byte[] docx(ReportModel model) {
@@ -279,6 +337,7 @@ public class PortfolioReportService {
                     ? "Project portfolio report" : "Requirement report", 1);
             paragraph(document, model.project().projectKey() + " — " + model.project().title(), true);
             paragraph(document, "Generated: " + model.generatedAt(), false);
+            paragraph(document, "Workspace: " + nullSafe(model.project().workspaceId()), false);
             title(document, "Management summary", 2);
             bullet(document, "Requirements: " + model.requirements().size());
             bullet(document, "Analysed: " + model.metrics().analyzedRequirements());
@@ -286,15 +345,14 @@ public class PortfolioReportService {
                     + model.metrics().requirementsWithoutConfirmedSolution());
             bullet(document, "Solutions: " + model.solutions().size());
             bullet(document, "Selected products: " + model.metrics().selectedProducts());
+            bullet(document, "Open conflicts: " + model.metrics().openConflicts());
             title(document, "Requirements", 2);
             for (RequirementView requirement : model.requirements()) {
                 title(document, requirement.requirementKey() + " — " + requirement.title(), 3);
                 paragraph(document, requirement.currentVersion() != null
                         ? requirement.currentVersion().text() : "No current text", false);
                 if (requirement.currentVersion() != null && requirement.currentVersion().source() != null) {
-                    var source = requirement.currentVersion().source();
-                    paragraph(document, "Source: section " + nullSafe(source.sectionReference())
-                            + ", page " + nullSafe(source.pageNumber()), false);
+                    paragraph(document, sourceReference(requirement.currentVersion().source()), false);
                 }
             }
             title(document, "Taxonomy coverage", 2);
@@ -331,22 +389,14 @@ public class PortfolioReportService {
                             + candidate.product().sourceReference());
                 }
             }
-            title(document, "Conflicts", 2);
+            title(document, "Conflicts and open decisions", 2);
+            if (model.conflicts().isEmpty()) paragraph(document, "No conflict hypotheses recorded.", false);
             for (ConflictView conflict : model.conflicts()) {
-                bullet(document, conflict.requirementAKey() + " ↔ " + conflict.requirementBKey()
-                        + ": " + conflict.title() + " — " + conflict.status());
+                bullet(document, conflictFinding(conflict));
             }
             title(document, "Reproducibility baseline", 2);
-            XWPFTable baseline = document.createTable(Math.max(1, model.baselines().size() + 1), 6);
-            tableHeader(baseline, "Requirement", "Snapshot", "Version", "Provider/model", "Taxonomy/prompt", "Branch/commit");
-            for (int index = 0; index < model.baselines().size(); index++) {
-                SnapshotBaseline item = model.baselines().get(index);
-                tableRow(baseline, index + 1, item.requirementKey(), item.snapshotId(),
-                        String.valueOf(item.requirementVersion()),
-                        nullSafe(item.provider()) + "/" + nullSafe(item.modelName()),
-                        shortHash(item.taxonomyFingerprint()) + "/" + shortHash(item.promptFingerprint()),
-                        nullSafe(item.branchName()) + "/" + shortHash(item.commitSha()));
-            }
+            if (model.baselines().isEmpty()) paragraph(document, "No analysis snapshot recorded.", false);
+            model.baselines().forEach(item -> snapshotProvenance(document, item));
             document.write(output);
             return output.toByteArray();
         } catch (IOException error) {
@@ -380,8 +430,7 @@ public class PortfolioReportService {
         for (String row : matrix.rows()) {
             output.append(csvCell(row));
             for (String column : matrix.columns()) {
-                output.append(',').append(matrix.values().getOrDefault(row, Map.of())
-                        .getOrDefault(column, 0d));
+                output.append(',').append(csvCell(matrix.values().getOrDefault(row, Map.of()).get(column)));
             }
             output.append('\n');
         }
@@ -406,6 +455,24 @@ public class PortfolioReportService {
         run.setText(nullSafe(text));
     }
 
+    private static void snapshotProvenance(XWPFDocument document, SnapshotBaseline item) {
+        var paragraph = document.createParagraph();
+        paragraph.getCTP().addNewPPr().addNewKeepLines();
+        var heading = paragraph.createRun();
+        heading.setBold(true);
+        heading.setText(item.requirementKey() + " · " + item.snapshotId());
+        for (String line : List.of("Version: " + item.requirementVersion() + " · Provider/model: "
+                        + nullSafe(item.provider()) + "/" + nullSafe(item.modelName())
+                        + " · Analysed at: " + nullSafe(item.createdAt()),
+                "Taxonomy fingerprint: " + nullSafe(item.taxonomyFingerprint()),
+                "Prompt fingerprint: " + nullSafe(item.promptFingerprint()),
+                "Branch/commit: " + nullSafe(item.branchName()) + "/" + nullSafe(item.commitSha()))) {
+            var run = paragraph.createRun();
+            run.addBreak();
+            run.setText(line);
+        }
+    }
+
     private static void bullet(XWPFDocument document, String text) {
         XWPFParagraph paragraph = document.createParagraph();
         paragraph.setStyle("ListBullet");
@@ -414,6 +481,7 @@ public class PortfolioReportService {
 
     private static void tableHeader(XWPFTable table, String... values) {
         tableRow(table, 0, values);
+        table.getRow(0).setRepeatHeader(true);
         for (var cell : table.getRow(0).getTableCells()) {
             cell.getParagraphs().get(0).getRuns().get(0).setBold(true);
         }
@@ -441,12 +509,8 @@ public class PortfolioReportService {
 
     private static String csvCell(Object value) {
         String text = Objects.toString(value, "");
-        return text.matches(".*[\",\\r\\n].*")
+        return text.matches("(?s).*[\",\\r\\n].*")
                 ? '"' + text.replace("\"", "\"\"") + '"' : text;
-    }
-
-    private static String shortHash(String value) {
-        return value == null || value.isBlank() ? "—" : value.substring(0, Math.min(12, value.length()));
     }
 
     private static String nullSafe(Object value) {
@@ -454,7 +518,7 @@ public class PortfolioReportService {
     }
 
     private static String escapeMarkdown(String value) {
-        return nullSafe(value).replace("|", "\\|");
+        return nullSafe(value).replace("\\", "\\\\").replace("|", "\\|").replaceAll("\\R", " ");
     }
 
     private static String escapeHtml(String value) {

@@ -60,6 +60,8 @@ public record VisioDecisionTree(List<Node> nodes, boolean german) {
         }
         var wall = options != null && options.mode() == VisioDrawingOptions.Mode.WALL
                 ? VisioWallTree.layout(section, parents, options) : List.<VisioWallTree.Card>of();
+        double screenHeight = VisioPresentation.screenCardHeight(options != null && wall.isEmpty()
+                && section.stream().anyMatch(node -> node.responsibility() != null));
         double[] rows = new double[section.size()];
         int leafRow = 0;
         // Reverse preorder visits the last leaf first, at the bottom of the Visio page.
@@ -70,7 +72,7 @@ public record VisioDecisionTree(List<Node> nodes, boolean german) {
             Node node = section.get(index);
             String shapeId = Integer.toString(index + 1);
             var card = wall.isEmpty() ? null : wall.get(index);
-            var shape = shape(node, code, shapeId, rows[index], options, card);
+            var shape = shape(node, code, shapeId, rows[index], screenHeight, options, card);
             page.getShapes().add(shape);
             int parent = parents[index];
             if (parent >= 0) {
@@ -98,14 +100,18 @@ public record VisioDecisionTree(List<Node> nodes, boolean german) {
                 : BigDecimal.valueOf(score).stripTrailingZeros().toPlainString() + "%";
     }
 
-    private VisioShape shape(Node node, String type, String shapeId, double row, VisioDrawingOptions options,
-                             VisioWallTree.Card card) {
+    private VisioShape shape(Node node, String type, String shapeId, double row, double screenHeight,
+                             VisioDrawingOptions options, VisioWallTree.Card card) {
         Double score = node.score();
         VisioShape shape;
         if (card == null) {
             String text = node.code() + " · " + rating(score, options == null ? german : options.german())
                     + "\n" + VisioPresentation.display(node.title(), 46, 3);
-            shape = new VisioShape(shapeId, text, 2.2 + node.depth() * 4.2, 1.25 + row * 1.3, 3.3, 1.05, type, false);
+            if (options != null && node.responsibility() != null) {
+                text += VisioPresentation.drawingOwnerCaption(node.responsibility().name(), options);
+            }
+            shape = new VisioShape(shapeId, text, 2.2 + node.depth() * 4.2,
+                    1.25 + row * (screenHeight + .25), 3.3, screenHeight, type, false);
         } else {
             shape = new VisioShape(shapeId, card.text(), card.x(), card.y(), card.width(), card.height(), type, false);
         }
