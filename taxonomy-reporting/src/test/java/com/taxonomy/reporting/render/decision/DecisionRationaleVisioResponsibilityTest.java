@@ -16,6 +16,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 
+import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -49,16 +50,28 @@ class DecisionRationaleVisioResponsibilityTest {
                 beans.getBeanProvider(VisioPackageBuilder.class));
         var result = renderer.render(ReportRenderContext.ofPayload(decision));
         var pages = new StringBuilder();
+        var drawingText = new StringBuilder();
+        var parser = DocumentBuilderFactory.newNSInstance().newDocumentBuilder();
         try (var zip = new ZipInputStream(new ByteArrayInputStream(result.bytes()))) {
             for (var entry = zip.getNextEntry(); entry != null; entry = zip.getNextEntry()) {
                 if (entry.getName().matches("visio/pages/page[0-9]+\\.xml")) {
-                    pages.append(new String(zip.readAllBytes(), StandardCharsets.UTF_8));
+                    byte[] page = zip.readAllBytes();
+                    pages.append(new String(page, StandardCharsets.UTF_8));
+                    var captions = parser.parse(new ByteArrayInputStream(page)).getElementsByTagNameNS("*", "Text");
+                    for (int i = 0; i < captions.getLength(); i++) {
+                        drawingText.append(captions.item(i).getTextContent()).append('\n');
+                    }
                 }
             }
         }
         assertThat(pages).contains("Saved element", "Capabilities");
-        if (show) assertThat(pages).contains(graphOwner.name(), treeOwner.name(), graphOwner.unitId(), treeOwner.unitId());
-        else assertThat(pages).doesNotContain(graphOwner.name(), treeOwner.name(), graphOwner.unitId(), treeOwner.unitId());
+        if (show) {
+            assertThat(pages).contains(graphOwner.name(), treeOwner.name(), graphOwner.unitId(), treeOwner.unitId());
+            assertThat(drawingText).contains(graphOwner.name(), treeOwner.name());
+        } else {
+            assertThat(pages).doesNotContain(graphOwner.name(), treeOwner.name(), graphOwner.unitId(), treeOwner.unitId());
+            assertThat(drawingText).doesNotContain(graphOwner.name(), treeOwner.name());
+        }
         assertThat(decision.architecture().diagram().nodes().getFirst().responsibility()).isEqualTo(graphOwner);
         assertThat(ArchitectureReportDocument.graphSha256(decision.architecture().diagram())).isEqualTo(digest);
         assertThat(decision.scope().decisionTree().responsibilitiesByCode()).containsEntry("CP", treeOwner);

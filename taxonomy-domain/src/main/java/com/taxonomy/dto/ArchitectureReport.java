@@ -2,6 +2,8 @@ package com.taxonomy.dto;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -33,6 +35,8 @@ public class ArchitectureReport {
     private String businessText;
     private Instant generatedAt;
     private Map<String, Double> scores;
+    private Map<String, String> nodeReasons;
+    private String languageTag;
 
     private RequirementArchitectureView architectureView;
     private GapAnalysisView gapAnalysis;
@@ -60,6 +64,18 @@ public class ArchitectureReport {
 
     public Map<String, Double> getScores() { return scores; }
     public void setScores(Map<String, Double> scores) { this.scores = scores; }
+
+    /** Recorded explanations, keyed by original node code. */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY)
+    public Map<String, String> getNodeReasons() { return nodeReasons; }
+    public void setNodeReasons(Map<String, String> value) {
+        nodeReasons = value == null ? null : Collections.unmodifiableMap(new LinkedHashMap<>(value));
+    }
+
+    /** Recorded analysis content language. Missing historical language stays absent. */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    public String getLanguageTag() { return languageTag; }
+    public void setLanguageTag(String value) { languageTag = value; }
 
     public RequirementArchitectureView getArchitectureView() { return architectureView; }
     public void setArchitectureView(RequirementArchitectureView architectureView) { this.architectureView = architectureView; }

@@ -601,7 +601,7 @@ Das eingehende LLM-Kontingent gilt je stabiler authentifizierter Identität und 
 
 ### Sichtbarkeit der Export-Schaltflächen
 
-Die Export-Schaltflächen (SVG, PNG, PDF, CSV, JSON, Visio, ArchiMate, Mermaid) erscheinen nur, wenn Analysebewertungen größer als 0 vorhanden sind. Wenn keine Analyse durchgeführt wurde oder alle Bewertungen 0 sind, werden die Export-Schaltflächen ausgeblendet und stattdessen der Hinweistext **„📋 Analyze first to enable exports"** angezeigt. Unter **Architektur → Export** ist **📤 Load Scores** auch ohne vorhandene Bewertungen verfügbar und kann eine frühere Analyse wiederherstellen.
+Gespeicherte Analysebewertungen schalten die bewertungsabhängige Exportgruppe frei, einschließlich gespeicherter Nullwerte. Die angebotenen Formate hängen von den installierten Fähigkeiten und den jeweils benötigten Daten ab; architekturspezifische Downloads benötigen zusätzlich eine aktuelle Architecture View mit Elementen. Ohne gespeicherte Bewertungen zeigen bewertungsabhängige Exporte **„📋 Analyze first to enable exports"**. Unter **Architektur → Export** ist **📤 Load Scores** auch ohne vorhandene Bewertungen verfügbar und kann eine frühere Analyse wiederherstellen.
 
 ---
 
@@ -1006,19 +1006,19 @@ Der [Referenzablauf](https://github.com/carstenartur/Taxonomy/blob/main/docs/tes
 
 ### SVG-Export
 
-Klicken Sie auf **📥 SVG**, um die aktuelle Taxonomie-Ansicht als skalierbare Vektorgrafik (SVG-Datei) herunterzuladen. Geeignet zum Einbetten in Dokumente oder zur weiteren Bearbeitung in Vektorgrafiksoftware.
+Klicken Sie im Hauptbereich **Export** auf **📥 SVG**, um das vollständige ausgewählte Diagrammmodell als skalierbare Vektorgrafik herunterzuladen, einschließlich geschlossener und außerhalb des Bildausschnitts liegender Zweige. Die Aufnahme eines Bildausschnitts ist eine eigene Aktion. SVG eignet sich zum Einbetten in Dokumente und zum Bearbeiten in Vektorgrafiksoftware.
 
 ### PNG-Export
 
-Klicken Sie auf **📥 PNG**, um ein gerastertes Bild der ausgewählten Taxonomieansicht herunterzuladen. Prüfen Sie Umfang und Abmessungen; ein Bildausschnitt und ein vollständiges Diagramm sind verschiedene Artefakte.
+Klicken Sie im Hauptbereich **Export** auf **📥 PNG**, um dasselbe vollständige ausgewählte Modell wie bei SVG zu rasterisieren. Die Auflösungsauswahl bestimmt den Pixelmaßstab. Prüfen Sie Abmessungen und Lesbarkeit, insbesondere bei großen Diagrammen; die Aufnahme eines Bildausschnitts ist eine eigene Aktion.
 
 ### PDF (Drucken)
 
-Klicken Sie auf **📥 PDF**, um den Druckdialog des Browsers auszulösen, der vorkonfiguriert ist, um die aktuelle Ansicht als PDF zu drucken.
+Klicken Sie im Hauptbereich **Export** auf **📥 PDF**, um ein Vektor-PDF des vollständigen ausgewählten Diagrammmodells herunterzuladen. **Diagramm drucken** und der Ganzseitendruck des Browsers sind eigene Aktionen mit eigenem Seitenlayout und Umfang.
 
 ### CSV (Bewertungen)
 
-Klicken Sie auf **📥 CSV**, um eine kommagetrennte Datei herunterzuladen, die alle Knoten-Codes, Namen und ihre Analyse-Bewertungen enthält. Öffnen Sie die Datei in einer Tabellenkalkulationsanwendung zur weiteren Analyse oder Berichterstellung.
+Klicken Sie auf **📥 CSV**, um aufgezeichnete Knoten-Codes, Namen und effektive Relevanz als kommagetrennte Datei herunterzuladen. `Score` ist die effektive Relevanz; die optionale Spalte `Reason` enthält eine Bewertungsdiagnose. Die vollständige gespeicherte Bewertungsbegründung und der Bewertungsverlauf stehen im gespeicherten Analyse-JSON.
 
 Die Spalten `AnalysisTaxonomies` und `AnalysisMode` nennen den aufgezeichneten Analyseumfang. Bei älteren Ergebnissen ohne diese Information bleiben sie leer. Die Auswahl im Entscheidungsbericht-Dialog bezieht sich auf dessen Word-/HTML-/JSON-Bericht; CSV wird weiterhin über seine eigene Aktion erzeugt.
 
@@ -1089,7 +1089,7 @@ Dies ermöglicht **Offline-Überprüfung** und **Reproduzierbarkeit** — Sie k�
 
 ### Wann Export-Schaltflächen erscheinen
 
-Die Export-Schaltflächen erscheinen nur, nachdem eine Analyse durchgeführt wurde und mindestens ein Taxonomie-Knoten eine Bewertung größer als 0 hat. Navigation oder Neuladen beweisen nicht, dass gespeicherte Arbeit verloren ist. Öffnen Sie im selben Kontext den gespeicherten Arbeitsentwurf oder Projektsnapshot und prüfen Sie den Status, bevor Sie Modellaufrufe wiederholen. Ein Hinweis **"📋 Analyze first to enable exports"** wird angezeigt, wenn Exporte nicht verfügbar sind. Führen Sie die Analyse erneut durch oder verwenden Sie **📤 Load Scores**, um die Export-Schaltflächen wiederherzustellen.
+Bewertungsabhängige Export-Schaltflächen werden mit einer gültigen gespeicherten Bewertung verfügbar; ein gespeicherter Nullwert zählt ebenfalls. Navigation oder Neuladen beweisen nicht, dass gespeicherte Arbeit verloren ist. Öffnen Sie im selben Kontext den gespeicherten Arbeitsentwurf oder Projektsnapshot und prüfen Sie den Status, bevor Sie Modellaufrufe wiederholen. Ein Hinweis **"📋 Analyze first to enable exports"** wird angezeigt, wenn Exporte nicht verfügbar sind. Führen Sie die Analyse erneut durch oder verwenden Sie **📤 Load Scores**, um die Export-Schaltflächen wiederherzustellen.
 
 ---
 

@@ -4,9 +4,14 @@ import com.taxonomy.diagram.*;
 import com.taxonomy.dto.TaxonomyResponsibilityLookup.Assignment;
 import com.taxonomy.visio.*;
 import org.junit.jupiter.api.Test;
+import org.w3c.dom.Element;
 
+import javax.xml.parsers.DocumentBuilderFactory;
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -155,6 +160,50 @@ class VisioDecisionDrawingContentTest {
             var next = leaves.get(i);
             assertTrue(previous.getY() + previous.getHeight() / 2 < next.getY() - next.getHeight() / 2);
         }
+    }
+
+    @Test
+    void wallInformationProductTitlesStayOutsideTheNativeFold() throws Exception {
+        String title = "Airborne Early Warning Status of Forces Reports";
+        String finalWord = "TitleEndMarker";
+        String longTitle = "Interdepartmental information exchange, verification, and release coordination. ".repeat(6) + finalWord;
+        var informationProducts = new VisioDecisionTree(List.of(
+                new VisioDecisionTree.Node(0, "IP", "Information Products", 100d, null, null),
+                new VisioDecisionTree.Node(1, "IP-1772", title, null,
+                        "Die gespeicherte Begründung beschreibt eine überprüfbare Übergabe und ihre Bedingung.", payroll),
+                new VisioDecisionTree.Node(1, "IP-long-title-fixture", longTitle, 100d, null, null)), true);
+        var options = new VisioDrawingOptions(VisioDrawingOptions.Mode.WALL, VisioDrawingOptions.Paper.A1,
+                false, true, true);
+        var drawing = new VisioDiagramService().convert(graph(false), metadata, informationProducts, options);
+        var parts = VisioHandoffContractTest.parts(new VisioPackageBuilder().build(drawing));
+        var page = DocumentBuilderFactory.newNSInstance().newDocumentBuilder().parse(new ByteArrayInputStream(
+                parts.get("visio/pages/page1.xml").getBytes(StandardCharsets.UTF_8)));
+        var shapes = page.getElementsByTagNameNS("*", "Shape");
+        var elements = IntStream.range(0, shapes.getLength()).mapToObj(index -> (Element) shapes.item(index)).toList();
+        var product = elements.stream().filter(shape -> shape.getAttribute("Name").startsWith("IP-1772 · "))
+                .findFirst().orElseThrow();
+        String visible = product.getElementsByTagNameNS("*", "Text").item(0).getTextContent();
+        assertTrue(visible.startsWith("IP-1772"));
+        assertTrue(visible.replaceAll("\\s+", " ").contains(title));
+        var longProduct = elements.stream().filter(shape -> shape.getAttribute("Name").startsWith("IP-long-title-fixture · "))
+                .findFirst().orElseThrow();
+        String longVisible = longProduct.getElementsByTagNameNS("*", "Text").item(0).getTextContent();
+        assertTrue(longVisible.lines().count() > 3, "The authored fixture must exercise more than three title lines");
+        assertTrue(longVisible.stripTrailing().endsWith(finalWord));
+        assertTrue(longVisible.replaceAll("\\s+", " ").contains(longTitle));
+        assertEquals("5", product.getAttribute("Master"), "Keep the native Information master");
+        var cells = product.getElementsByTagNameNS("*", "Cell");
+        double width = 0, rightMargin = 0;
+        for (int index = 0; index < cells.getLength(); index++) {
+            var cell = (Element) cells.item(index);
+            if (cell.getAttribute("N").equals("Width")) width = Double.parseDouble(cell.getAttribute("V"));
+            if (cell.getAttribute("N").equals("RightMargin")) {
+                rightMargin = Double.parseDouble(cell.getAttribute("V"));
+                assertTrue(cell.getAttribute("F").startsWith("Width*0.12+"), "The fold inset must follow shape resizing");
+            }
+        }
+        assertTrue(width > 0);
+        assertTrue(rightMargin >= width * .12, "The visible text area must end before the native fold");
     }
 
     @Test

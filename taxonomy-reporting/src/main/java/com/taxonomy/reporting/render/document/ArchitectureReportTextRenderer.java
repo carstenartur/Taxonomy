@@ -3,7 +3,11 @@ package com.taxonomy.reporting.render.document;
 import com.taxonomy.dto.*;
 import com.taxonomy.reporting.render.decision.DecisionReportLabels;
 import org.springframework.stereotype.Component;
+import com.taxonomy.export.DiagramProjectionService;
 import com.taxonomy.export.ExportThemeProvider;
+import com.taxonomy.export.LayeredDiagramLayoutService;
+import com.taxonomy.export.PersistedDiagramProjection;
+import com.taxonomy.export.SvgDiagramRenderer;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import java.time.Instant;
@@ -39,6 +43,17 @@ public final class ArchitectureReportTextRenderer {
 
     public String renderMarkdown(ArchitectureReport report, String language, Map<String, String> nodeReasons) {
         var labels = new DecisionReportLabels(language);
+        StringBuilder markdown = reportMarkdown(report, nodeReasons, labels);
+        if (report.getMermaidDiagram() != null && !report.getMermaidDiagram().isBlank()) {
+            markdown.append(diagramHeading(report, labels)).append("```mermaid\n").append(report.getMermaidDiagram());
+            if (!report.getMermaidDiagram().endsWith("\n")) markdown.append('\n');
+            markdown.append("```\n\n");
+        }
+        return markdown.append(footer(labels)).toString();
+    }
+
+    private StringBuilder reportMarkdown(ArchitectureReport report, Map<String, String> nodeReasons,
+            DecisionReportLabels labels) {
         StringBuilder md = new StringBuilder();
 
         md.append("# ").append(labels.architectureAnalysisTitle()).append("\n\n");
@@ -52,29 +67,22 @@ public final class ArchitectureReportTextRenderer {
             report.getCopilot().notes().forEach(note -> md.append(note).append("\n\n"));
         }
 
-        var modelEvidence = AnalysisModelEvidence.rows(report, labels);
-        if (!modelEvidence.isEmpty()) {
+        var provenance = new ArrayList<>(AnalysisModelEvidence.rows(report, labels));
+        provenance.addAll(graphProvenance(report.getViewContext(), labels));
+        if (!provenance.isEmpty()) {
             md.append("## ").append(labels.provenance()).append("\n\n");
-            tableHeader(md, labels.titleLabel(), labels.value());
-            for (var row : modelEvidence) {
-                md.append("| ").append(tableText(row.get(0))).append(" | ").append(tableText(row.get(1))).append(" |\n");
-            }
-            md.append("\n");
+            table(md, provenance, labels.titleLabel(), labels.value());
         }
 
         // Architecture Summary
         md.append("## 1. ").append(labels.architectureSummary()).append("\n\n");
         RequirementArchitectureView view = report.getArchitectureView();
         if (view != null) {
-            tableHeader(md, labels.metric(), labels.value());
-            md.append("| ").append(labels.anchors()).append(" | ").append(view.getTotalAnchors()).append(" |\n");
-            md.append("| ").append(labels.elementCount()).append(" | ").append(view.getTotalElements()).append(" |\n");
-            md.append("| ").append(labels.relationshipCount()).append(" | ").append(view.getTotalRelationships()).append(" |\n");
-            md.append("| ").append(labels.maxHopDistance()).append(" | ").append(view.getMaxHopDistance()).append(" |\n\n");
+            table(md, architectureCounts(view, labels), labels.metric(), labels.value());
 
             if (!view.getAnchors().isEmpty()) {
                 md.append("### ").append(labels.anchorNodes()).append("\n\n");
-                tableHeader(md, labels.node(), labels.score(), labels.rationale());
+                tableHeader(md, labels.node(), labels.directScore(), labels.rationale());
                 for (RequirementAnchor anchor : view.getAnchors()) {
                     md.append("| ").append(tableCode(anchor.getNodeCode())).append(" | ");
                     md.append(anchor.getDirectScore()).append("% | ");
@@ -82,6 +90,13 @@ public final class ArchitectureReportTextRenderer {
                 }
                 md.append("\n");
             }
+        }
+
+        if (report.getScores() != null && !report.getScores().isEmpty()) {
+            md.append("### ").append(labels.score()).append("\n\n");
+            table(md, report.getScores().entrySet().stream().sorted(Map.Entry.comparingByKey())
+                    .map(entry -> List.of(entry.getKey(), entry.getValue() == null ? labels.notEvaluated() : entry.getValue() + "%"))
+                    .toList(), labels.node(), labels.score());
         }
 
         if (view != null && !view.getIncludedElements().isEmpty()) {
@@ -94,6 +109,15 @@ public final class ArchitectureReportTextRenderer {
                         .append(tableText(element.getIncludedBecause())).append(" |\n");
             }
             md.append("\n");
+            var responsibilities = view.getIncludedElements().stream().filter(element -> element.getResponsibility() != null)
+                    .map(element -> {
+                        var owner = element.getResponsibility();
+                        return List.of(element.getNodeCode(), owner.name(), owner.unitId(), owner.sourceId());
+                    }).toList();
+            if (!responsibilities.isEmpty()) {
+                md.append("### ").append(labels.organizationalResponsibilities()).append("\n\n");
+                table(md, responsibilities, labels.node(), labels.responsibility(), labels.responsibilityUnitId(), labels.responsibilitySource());
+            }
         }
         if (nodeReasons != null && !nodeReasons.isEmpty()) {
             md.append("### ").append(labels.recordedNodeReasons()).append("\n\n");
@@ -127,11 +151,10 @@ public final class ArchitectureReportTextRenderer {
             md.append("Evidence: ").append(tableText(gaps.getEvidenceAuthority())).append(" / ").append(gaps.getEvidenceCompleteness())
                     .append("; revision ").append(tableText(gaps.getCommitId())).append("\n\n");
             if (!gaps.getJudgments().isEmpty()) {
-                tableHeader(md, "Rule", labels.source(), "Status", "Observed / cardinality", labels.description());
+                tableHeader(md, labels.gapRule(), labels.source(), "Status", labels.gapCardinality(), labels.description());
                 for (var judgment : gaps.getJudgments()) {
                     md.append("| ").append(tableText(judgment.ruleId())).append(" | ").append(tableCode(judgment.sourceNodeCode()))
-                            .append(" | ").append(judgment.status()).append(" | ").append(judgment.observedCount()).append(" / ")
-                            .append(judgment.minCount()).append("..").append(judgment.maxCount() == null ? "*" : judgment.maxCount())
+                            .append(" | ").append(judgment.status()).append(" | ").append(cardinality(judgment))
                             .append(" | ").append(tableText(judgment.description())).append(" |\n");
                 }
                 md.append("\n");
@@ -243,21 +266,7 @@ public final class ArchitectureReportTextRenderer {
             md.append("\n");
         }
 
-        // Mermaid Diagram
-        if (report.getMermaidDiagram() != null && !report.getMermaidDiagram().isBlank()) {
-            md.append("## ").append(report.getPendingProposals().isEmpty() ? "5" : "6")
-              .append(". ").append(labels.architectureDiagram()).append("\n\n");
-            md.append("```mermaid\n");
-            md.append(report.getMermaidDiagram());
-            if (!report.getMermaidDiagram().endsWith("\n")) {
-                md.append("\n");
-            }
-            md.append("```\n\n");
-        }
-
-        md.append("---\n*").append(labels.generatedNotice()).append("*\n");
-
-        return md.toString();
+        return md;
     }
 
     /**
@@ -268,12 +277,11 @@ public final class ArchitectureReportTextRenderer {
     }
 
     public String renderHtml(ArchitectureReport report, String language) {
-        return renderHtml(report, language, Map.of());
+        return renderHtml(report, language, report.getNodeReasons());
     }
 
     public String renderHtml(ArchitectureReport report, String language, Map<String, String> nodeReasons) {
         var labels = new DecisionReportLabels(language);
-        String markdown = renderMarkdown(report, language, nodeReasons);
         StringBuilder html = new StringBuilder();
 
         html.append("<!DOCTYPE html>\n<html lang=\"").append(labels.german() ? "de" : "en").append("\">\n<head>\n");
@@ -293,6 +301,8 @@ public final class ArchitectureReportTextRenderer {
         html.append("    code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }\n");
         html.append("    pre { background: #f8f9fa; padding: 1rem; border-radius: 4px; overflow-x: auto; }\n");
         html.append("    .mermaid { background: #fff; padding: 1rem; border: 1px solid #eee; border-radius: 4px; }\n");
+        html.append("    .architecture-figure { margin: 1rem 0; overflow: auto; } .architecture-figure svg { display: block; }\n");
+        html.append("    @media print { .architecture-figure { overflow: visible; } .architecture-figure svg { max-width: 100%; height: auto; } }\n");
         html.append("    hr { border: none; border-top: 1px solid #eee; margin: 2rem 0; }\n");
         html.append("    strong { color: #2c3e50; }\n");
         html.append("    p,td,th { overflow-wrap: anywhere; } h2,h3,h4 { break-after: avoid; }\n");
@@ -300,8 +310,18 @@ public final class ArchitectureReportTextRenderer {
         html.append(themes.current().htmlReportStyles());
         html.append("</head>\n<body>\n");
 
-        // Convert markdown to simple HTML
-        html.append(markdownToHtml(markdown));
+        var view = report.getArchitectureView();
+        if (view == null || view.getIncludedElements().isEmpty()) {
+            html.append(markdownToHtml(renderMarkdown(report, language, nodeReasons)));
+        } else {
+            html.append(markdownToHtml(reportMarkdown(report, nodeReasons, labels).append(diagramHeading(report, labels)).toString()));
+            var graph = PersistedDiagramProjection.project(new DiagramProjectionService(), view, labels.architectureTitle());
+            var scene = new LayeredDiagramLayoutService().layout(graph);
+            // The projected scene already carries the relationship evidence recorded in the view.
+            String svg = new SvgDiagramRenderer(themes).render(scene, nodeReasons, Map.of(), Locale.forLanguageTag(language));
+            html.append("<figure class=\"architecture-figure\">").append(svg, svg.indexOf("<svg"), svg.length()).append("</figure>");
+            html.append(markdownToHtml(footer(labels)));
+        }
 
         html.append("\n</body>\n</html>\n");
 
@@ -319,6 +339,42 @@ public final class ArchitectureReportTextRenderer {
     private static void tableHeader(StringBuilder markdown, String... headers) {
         markdown.append("| ").append(String.join(" | ", headers)).append(" |\n|")
                 .append("---|".repeat(headers.length)).append("\n");
+    }
+
+    private static void table(StringBuilder markdown, List<List<String>> rows, String... headers) {
+        tableHeader(markdown, headers);
+        for (var row : rows) {
+            markdown.append("| ").append(String.join(" | ", row.stream().map(ArchitectureReportTextRenderer::tableText).toList()))
+                    .append(" |\n");
+        }
+        markdown.append('\n');
+    }
+
+    static List<List<String>> architectureCounts(RequirementArchitectureView view, DecisionReportLabels labels) {
+        return List.of(List.of(labels.anchors(), String.valueOf(view.getTotalAnchors())),
+                List.of(labels.elementCount(), String.valueOf(view.getTotalElements())),
+                List.of(labels.relationshipCount(), String.valueOf(view.getTotalRelationships())),
+                List.of(labels.maxHopDistance(), String.valueOf(view.getMaxHopDistance())));
+    }
+
+    static List<List<String>> graphProvenance(ViewContext view, DecisionReportLabels labels) {
+        if (view == null) return List.of();
+        return List.of(List.of(labels.german() ? "Zweig des Architekturgraphen" : "Architecture graph branch",
+                        Objects.toString(view.basedOnBranch(), labels.unknown())),
+                List.of(labels.german() ? "Commit des Architekturgraphen" : "Architecture graph commit",
+                        Objects.toString(view.basedOnCommit(), labels.unknown())));
+    }
+
+    static String cardinality(ObligationJudgment judgment) {
+        return judgment.observedCount() + " / " + judgment.minCount() + ".." + (judgment.maxCount() == null ? "*" : judgment.maxCount());
+    }
+
+    private static String diagramHeading(ArchitectureReport report, DecisionReportLabels labels) {
+        return "## " + (report.getPendingProposals().isEmpty() ? 5 : 6) + ". " + labels.architectureDiagram() + "\n\n";
+    }
+
+    private static String footer(DecisionReportLabels labels) {
+        return "---\n*" + labels.generatedNotice() + "*\n";
     }
 
     // ── Internal helpers ──────────────────────────────────────────────────────

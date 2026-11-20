@@ -377,7 +377,7 @@ abstract class AbstractDatabaseContainerIT {
     @Test
     @Order(32)
     void forkAndWorkspaceRebuildAndPurgeOnlyTheirOwnGitProjections() throws Exception {
-        try (var contract = new RepositoryHistoryHttpContract(URI.create(baseUrl()), BASIC_AUTH)) {
+        try (var contract = new RepositoryHistoryHttpContract(URI.create(baseUrl()), BASIC_AUTH, this::publicationEvidence)) {
             contract.verifyTargetProjections();
         }
     }

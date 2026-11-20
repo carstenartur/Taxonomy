@@ -87,8 +87,12 @@ public class VisioDiagramService {
             decisionTree.nodes().forEach(node -> decisionsByCode.put(node.code(), node));
         }
         boolean wall = options != null && options.mode() == VisioDrawingOptions.Mode.WALL;
+        boolean screenWithResponsibilities = options != null && !wall && sortedNodes.stream().anyMatch(node ->
+                node.responsibility() != null || (decisionsByCode.containsKey(node.id())
+                        && decisionsByCode.get(node.id()).responsibility() != null));
         double width = options == null ? SHAPE_WIDTH : 3.3;
-        double height = options == null ? SHAPE_HEIGHT : wall ? (options.showsShortReasons() ? 1.7 : 1.32) : 1.05;
+        double height = options == null ? SHAPE_HEIGHT : VisioPresentation.screenCardHeight(screenWithResponsibilities);
+        if (wall) height = options.showsShortReasons() ? 1.7 : 1.32;
         int layerIdx = 0;
         for (var entry : layerGroups.entrySet().stream()
                 .sorted(Comparator.comparingInt(Map.Entry::getKey)).toList()) {

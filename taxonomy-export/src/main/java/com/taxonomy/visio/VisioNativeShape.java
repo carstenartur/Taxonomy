@@ -14,6 +14,8 @@ public enum VisioNativeShape {
     CONTAINER(7, "Taxonomy Container"),
     CONNECTOR(8, "Taxonomy Connector");
 
+    public static final double INFORMATION_FOLD_WIDTH = .12;
+
     private final int id;
     private final String label;
 

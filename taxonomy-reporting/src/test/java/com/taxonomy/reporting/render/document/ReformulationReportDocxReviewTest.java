@@ -19,6 +19,25 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ReformulationReportDocxReviewTest {
+    @Test void capturedDiscoveryUsesTaxonomyLabelsAndPositionsRatherThanObjectSyntax() throws Exception {
+        var key = new DecisionQuestion.Key("storage", "duration", "BP");
+        var schema = new DecisionQuestion.AnswerSchema(DecisionQuestion.AnswerSchema.Kind.TEXT, List.of(), null, null, null);
+        String context = """
+                {"current":{"id":"BP-1000","parentIds":["BP"],"score":0.125,
+                "description":"{\\"nameEn\\":\\"Business processes\\",\\"description\\":\\"Saved description\\"}"},
+                "terminalContributions":[],"directParentContributions":[]}
+                """;
+        var discovery = new DecisionQuestion.Discovery("saved location", context, "saved rationale",
+                List.of(new com.taxonomy.reformulation.Statement.SourceSpan(1, 5, "ABCD")), List.of(), List.of());
+        var origin = new DecisionQuestion.Origin("prior", key, "Prior wording", List.of(discovery),
+                List.of(), schema, List.of(), List.of(), "", DecisionQuestion.State.OPEN);
+        var question = new DecisionQuestion("current", key, "Saved question", List.of(discovery), List.of(), schema,
+                List.of(), List.of(), "", DecisionQuestion.State.OPEN, List.of(), List.of(origin), List.of());
+        assertThat(text(input(List.of(question)), emptyGraph(List.of())))
+                .contains("BP-1000", "Business processes", "Saved description", "0.125%", "1–5", "ABCD")
+                .doesNotContain("SourceSpan[", "directParentContributions", "nameEn");
+    }
+
     private final ReformulationReportDocxRenderer renderer = new ReformulationReportDocxRenderer();
 
     private FrozenReformulationArchitecture emptyGraph(List<String> gaps) {
@@ -50,6 +69,57 @@ class ReformulationReportDocxReviewTest {
         String actual = text(input(List.of(question)), emptyGraph(List.of()));
         assertThat(actual).contains("Origin question: prior", "saved location", "saved context", "saved rationale")
                 .doesNotContain("Discovery[", "sourceSpans=", "nodeIds=");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"docx", "html", "markdown"})
+    void readableDiscoveryPreservesFrozenMetadataAndStatementContributions(String format) throws Exception {
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        var catalogue = Map.of("nameEn", "Saved name", "source", "AJP-2, 2.4, 2.",
+                "uuid", "saved-uuid", "state", "approved", "analysisRole", "CATEGORY",
+                "classificationReviewRequired", false, "classificationConfidence", 0,
+                "unrecognizedField", Map.of("detail", "Saved extension"));
+        var current = Map.of("id", "subject", "description", json.writeValueAsString(catalogue),
+                "score", 0, "directContributions", List.of(Map.of("wording", "Retained statement",
+                        "sourceSpans", List.of(Map.of("start", 0, "end", 3, "exactText", "ABC")))));
+        String saved = json.writeValueAsString(Map.of("current", current, "terminalContributions", List.of(),
+                "additionalContext", "Retained context detail"));
+        assertThat(readableDiscovery(format, "en", saved)).contains("Saved name", "Source: AJP-2, 2.4, 2.",
+                "UUID: saved-uuid", "State: approved", "Analysis role: CATEGORY", "Classification review required: false",
+                "Classification confidence: 0", "unrecognizedField", "detail", "Saved extension", "Retained statement",
+                "ABC", "Retained context detail", "0%").doesNotContain("directContributions", "classificationReviewRequired");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"docx", "html", "markdown"})
+    void missingDiscoveryContextStillExportsTheRecordedLocationAndRationale(String format) throws Exception {
+        assertThat(readableDiscovery(format, "en", null))
+                .contains("Saved location", "Saved rationale", "Not recorded").doesNotContain("Context: null");
+        assertThat(readableDiscovery(format, "en", "Legacy context  with original spacing"))
+                .contains("Legacy context  with original spacing");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"docx", "html", "markdown"})
+    void emptyStructuredDiscoveryUsesTheGermanAbsentValue(String format) throws Exception {
+        assertThat(readableDiscovery(format, "de", "{\"current\":null,\"terminalContributions\":[]}"))
+                .contains("Nicht erfasst", "Saved rationale");
+    }
+
+    private String readableDiscovery(String format, String language, String context) throws Exception {
+        var discovery = new DecisionQuestion.Discovery("Saved location", context, "Saved rationale", List.of(), List.of(), List.of());
+        var question = new DecisionQuestion("question", new DecisionQuestion.Key("subject", "choice", "scope"),
+                "Saved question", List.of(discovery), List.of(), new DecisionQuestion.AnswerSchema(
+                DecisionQuestion.AnswerSchema.Kind.TEXT, List.of(), null, null, null),
+                List.of(), List.of(), "", DecisionQuestion.State.OPEN, List.of(), List.of(), List.of());
+        var report = new ReformulationReportRenderer.Input(language, false, Map.of(), "Original", "Proposal",
+                List.of(), List.of(), List.of(question), List.of(), new ValidationReport(List.of()), "{}");
+        // The archival appendix is empty, so only the reading content can satisfy the assertions.
+        return switch (format) {
+            case "html" -> ReformulationReportRenderer.html(report);
+            case "markdown" -> ReformulationReportRenderer.markdown(report);
+            default -> text(report, emptyGraph(List.of()));
+        };
     }
 
     @Test void repeatedDiscoveryContextsArePreservedOnceWithLinksAcrossQuestionsAndOrigins() throws Exception {

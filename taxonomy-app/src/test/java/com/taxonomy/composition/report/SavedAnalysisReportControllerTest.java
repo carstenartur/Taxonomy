@@ -74,6 +74,8 @@ class SavedAnalysisReportControllerTest {
             assertThat(mapper.treeToValue(report.path("modelBinding"), AnalysisModelBinding.class)).isEqualTo(binding);
             assertThat(report.path("scores").has("FORGED")).isFalse();
             assertThat(report.path("scores").path("BP").asDouble()).isEqualTo(70d);
+            assertThat(report.has("nodeReasons")).isFalse();
+            assertThat(report.has("languageTag")).isFalse();
             assertThat(report.path("gapAnalysis").path("notes").get(0).asString()).isEqualTo("Frozen gap evidence");
             assertThat(report.path("recommendation").path("meanRelevance").asDouble()).isEqualTo(71d);
             assertThat(report.path("recommendation").has("confidence")).isFalse();
@@ -161,6 +163,29 @@ class SavedAnalysisReportControllerTest {
             assertThat(report.getViewContext().basedOnCommit()).isEqualTo("frozen-commit");
             assertThat(report.getCopilot()).isSameAs(result.getCopilot());
             verifyNoInteractions(context.getBean(RepositoryStateService.class));
+        }
+        verifyNoInteractions(architecture, gaps, patterns, recommendations, proposals, metadata, cluster);
+    }
+
+    @Test
+    void continuationJsonIncludesRecordedReasonsAndContentLanguage() throws Exception {
+        var result = savedResult();
+        result.setReasons(Map.of("BP", "Erfasste Begründung zur Übergabe"));
+        var request = new AnalysisRequest("Gespeicherte Anforderung zur Übergabe");
+        request.setAnalysisLanguage(AnalysisLanguage.GERMAN);
+        when(continuations.read("continuation", "alice", workspace)).thenReturn(
+                new AnalysisContinuationStore.Snapshot(null, result, request, OPERATION));
+
+        try (var context = context()) {
+            String body = mvc(context).perform(post("/api/report/json").contentType(MediaType.APPLICATION_JSON)
+                    .content(mapper.writeValueAsString(Map.of("analysisReference", Map.of("continuationId", "continuation",
+                            "operationId", OPERATION, "workspaceId", "ws-a"), "analysisLanguage", "en",
+                            "reasons", Map.of("BP", "Forged rationale")))))
+                    .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+            var report = mapper.readTree(body);
+            assertThat(report.path("nodeReasons").path("BP").asString()).isEqualTo("Erfasste Begründung zur Übergabe");
+            assertThat(report.path("languageTag").asString()).isEqualTo("de");
+            assertThat(body).doesNotContain("Forged rationale");
         }
         verifyNoInteractions(architecture, gaps, patterns, recommendations, proposals, metadata, cluster);
     }

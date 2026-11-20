@@ -40,6 +40,11 @@ import java.util.stream.Collectors;
  */
 public class MermaidExportService {
 
+    private static final String TITLE_GROUP = "taxonomy_diagram_title";
+    private static final Set<String> RESERVED_IDS = Set.of(TITLE_GROUP, "end", "subgraph", "graph", "flowchart",
+            "classDef", "class", "style", "click", "linkStyle", "interpolate", "call", "href",
+            "_top", "_self", "_parent", "_blank");
+
     private static final Map<String, String> LAYER_STYLE = Map.of(
             "Capabilities", "cap",
             "Business Processes", "proc",
@@ -76,26 +81,38 @@ public class MermaidExportService {
      * @return Mermaid-formatted diagram text
      */
     public String export(DiagramModel model, MermaidLabels labels) {
-        if (model == null || model.nodes().isEmpty()) {
+        if (model == null) {
             return "flowchart LR\n    empty[\"No data\"]\n";
         }
 
         StringBuilder sb = new StringBuilder();
         String direction = model.layout() != null ? model.layout().direction() : "LR";
         sb.append("flowchart ").append(direction).append('\n');
+        boolean titled = model.title() != null && !model.title().isBlank();
+        if (titled) {
+            sb.append("    subgraph ").append(TITLE_GROUP).append("[\"").append(escapeTitle(model.title())).append("\"]\n");
+            sb.append("        direction ").append(direction).append('\n');
+        }
+        if (model.nodes().isEmpty()) {
+            sb.append("    empty[\"No data\"]\n");
+            if (titled) sb.append("    end\n");
+            return sb.toString();
+        }
 
-        renderLayerSubgraphs(sb, model.nodes(), labels, false);
+        MermaidIds ids = MermaidIds.forNodes(model.nodes());
+        renderLayerSubgraphs(sb, model.nodes(), labels, false, ids);
 
         // Render edges
         for (DiagramEdge edge : model.edges()) {
-            String src = sanitizeId(edge.sourceId());
-            String tgt = sanitizeId(edge.targetId());
+            String src = ids.node(edge.sourceId());
+            String tgt = ids.node(edge.targetId());
             String relLabel = labels.relationLabel(edge.relationType());
             sb.append("    ").append(src).append(" -->|").append(escape(relLabel)).append("| ").append(tgt).append('\n');
         }
+        if (titled) sb.append("    end\n");
 
         appendStyleDefinitions(sb);
-        appendClassAssignments(sb, model.nodes(), labels);
+        appendClassAssignments(sb, model.nodes(), ids);
 
         return sb.toString();
     }
@@ -136,6 +153,7 @@ public class MermaidExportService {
 
         List<DiagramNode> showcaseNodes = curated.nodes();
         List<DiagramEdge> showcaseEdges = curated.edges();
+        MermaidIds ids = MermaidIds.forNodes(showcaseNodes);
 
         // ── Render ──────────────────────────────────────────────────────────
         StringBuilder sb = new StringBuilder();
@@ -152,13 +170,13 @@ public class MermaidExportService {
         for (Map.Entry<String, List<DiagramNode>> entry : sortedGroups) {
             String type = entry.getKey();
             List<DiagramNode> nodes = entry.getValue();
-            String subId = sanitizeId(type);
+            String subId = ids.layers().get(type);
             String displayType = labels.showcaseLayerLabel(type);
 
             sb.append("    subgraph ").append(subId)
               .append("[\"").append(escape(displayType)).append("\"]\n");
             for (DiagramNode node : nodes) {
-                String nodeId = sanitizeId(node.id());
+                String nodeId = ids.node(node.id());
                 boolean isProminent = node.anchor() || node.relevance() >= MermaidLabels.HOTSPOT_THRESHOLD;
                 String nameLine = truncateLabel(node.label(), MermaidLabels.SHOWCASE_MAX_LABEL_LENGTH);
                 String metaLine = buildShowcaseMetaLine(node, labels);
@@ -177,8 +195,8 @@ public class MermaidExportService {
         }
 
         for (DiagramEdge edge : showcaseEdges) {
-            String src = sanitizeId(edge.sourceId());
-            String tgt = sanitizeId(edge.targetId());
+            String src = ids.node(edge.sourceId());
+            String tgt = ids.node(edge.targetId());
             String relLabel = labels.relationLabel(edge.relationType());
             sb.append("    ").append(src).append(" -->|")
               .append(escape(relLabel)).append("| ").append(tgt).append('\n');
@@ -188,7 +206,7 @@ public class MermaidExportService {
         // Pass nodes in subgraph render order for deterministic class assignments
         List<DiagramNode> renderOrder = sortedGroups.stream()
                 .flatMap(e -> e.getValue().stream()).toList();
-        appendClassAssignments(sb, renderOrder, labels);
+        appendClassAssignments(sb, renderOrder, ids);
 
         return sb.toString();
     }
@@ -200,7 +218,7 @@ public class MermaidExportService {
      * nested containment when nodes are flagged as containers.
      */
     private void renderLayerSubgraphs(StringBuilder sb, List<DiagramNode> allNodes,
-                                       MermaidLabels labels, boolean showcase) {
+                                       MermaidLabels labels, boolean showcase, MermaidIds ids) {
         // Index: parentId → children
         Map<String, List<DiagramNode>> childrenOf = new LinkedHashMap<>();
         Set<String> childIds = new LinkedHashSet<>();
@@ -229,7 +247,7 @@ public class MermaidExportService {
         for (Map.Entry<String, List<DiagramNode>> entry : sortedGroups) {
             String type = entry.getKey();
             List<DiagramNode> nodes = entry.getValue();
-            String subId = sanitizeId(type);
+            String subId = ids.layers().get(type);
             String displayType = showcase ? labels.showcaseLayerLabel(type) : labels.layerLabel(type);
 
             sb.append("    subgraph ").append(subId)
@@ -238,9 +256,9 @@ public class MermaidExportService {
             for (DiagramNode node : nodes) {
                 if (node.container()) {
                     // Render as nested sub-graph containing its children
-                    renderContainerSubgraph(sb, node, childrenOf, labels, showcase);
+                    renderContainerSubgraph(sb, node, childrenOf, labels, showcase, ids);
                 } else {
-                    renderNode(sb, node, labels, showcase, "        ");
+                    renderNode(sb, node, labels, showcase, "        ", ids);
                 }
             }
 
@@ -253,14 +271,14 @@ public class MermaidExportService {
      */
     private void renderContainerSubgraph(StringBuilder sb, DiagramNode container,
                                           Map<String, List<DiagramNode>> childrenOf,
-                                          MermaidLabels labels, boolean showcase) {
-        String containerId = sanitizeId(container.id());
+                                          MermaidLabels labels, boolean showcase, MermaidIds ids) {
+        String containerId = ids.node(container.id());
         sb.append("        subgraph ").append(containerId)
           .append("[\"").append(escape(container.label())).append("\"]\n");
 
         List<DiagramNode> children = childrenOf.getOrDefault(container.id(), List.of());
         for (DiagramNode child : children) {
-            renderNode(sb, child, labels, showcase, "            ");
+            renderNode(sb, child, labels, showcase, "            ", ids);
         }
 
         sb.append("        end\n");
@@ -270,8 +288,8 @@ public class MermaidExportService {
      * Renders a single non-container node with the appropriate shape and label.
      */
     private void renderNode(StringBuilder sb, DiagramNode node, MermaidLabels labels,
-                             boolean showcase, String indent) {
-        String nodeId = sanitizeId(node.id());
+                             boolean showcase, String indent, MermaidIds ids) {
+        String nodeId = ids.node(node.id());
         if (showcase) {
             boolean isProminent = node.anchor() || node.relevance() >= MermaidLabels.HOTSPOT_THRESHOLD;
             String nameLine = truncateLabel(node.label(), MermaidLabels.SHOWCASE_MAX_LABEL_LENGTH);
@@ -352,16 +370,15 @@ public class MermaidExportService {
         sb.append("    classDef hotspot fill:#D32F2F,color:#fff,stroke:#B71C1C,stroke-width:3px\n");
     }
 
-    private void appendClassAssignments(StringBuilder sb, List<DiagramNode> nodes,
-                                         MermaidLabels labels) {
+    private void appendClassAssignments(StringBuilder sb, List<DiagramNode> nodes, MermaidIds ids) {
         for (DiagramNode node : nodes) {
             if (node.container()) continue; // containers are sub-graphs, not styled nodes
             String cls = LAYER_STYLE.getOrDefault(node.type(), "");
             if (!cls.isEmpty()) {
-                sb.append("    class ").append(sanitizeId(node.id())).append(' ').append(cls).append('\n');
+                sb.append("    class ").append(ids.node(node.id())).append(' ').append(cls).append('\n');
             }
             if (node.relevance() >= MermaidLabels.HOTSPOT_THRESHOLD) {
-                sb.append("    class ").append(sanitizeId(node.id())).append(" hotspot\n");
+                sb.append("    class ").append(ids.node(node.id())).append(" hotspot\n");
             }
         }
     }
@@ -384,6 +401,40 @@ public class MermaidExportService {
     static String sanitizeId(String id) {
         if (id == null) return "unknown";
         return id.replaceAll("[^a-zA-Z0-9_]", "_");
+    }
+
+    private record MermaidIds(Map<String, String> nodes, Map<String, String> layers) {
+        private static MermaidIds forNodes(List<DiagramNode> items) {
+            Set<String> used = new LinkedHashSet<>(RESERVED_IDS);
+            Map<String, Integer> suffixes = new LinkedHashMap<>();
+            Map<String, String> layerIds = new LinkedHashMap<>();
+            items.stream().map(DiagramNode::type).distinct().sorted()
+                    .forEach(type -> layerIds.put(type, claim(type, used, suffixes)));
+            Map<String, String> nodeIds = new LinkedHashMap<>();
+            items.stream().map(DiagramNode::id).distinct().sorted()
+                    .forEach(id -> nodeIds.put(id, claim(id, used, suffixes)));
+            return new MermaidIds(nodeIds, layerIds);
+        }
+
+        private static String claim(String id, Set<String> used, Map<String, Integer> suffixes) {
+            String base = sanitizeId(id);
+            String candidate = base;
+            while (!used.add(candidate)) {
+                int suffix = suffixes.merge(base, 2, (previous, first) -> previous + 1);
+                candidate = base + '_' + suffix;
+            }
+            return candidate;
+        }
+
+        private String node(String id) {
+            String alias = nodes.get(id);
+            return alias == null ? sanitizeId(id) : alias;
+        }
+    }
+
+    private static String escapeTitle(String title) {
+        return escape(title.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                .replace("\r\n", " ").replace('\r', ' ').replace('\n', ' '));
     }
 
     /**

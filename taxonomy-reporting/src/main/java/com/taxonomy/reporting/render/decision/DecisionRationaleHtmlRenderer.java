@@ -1,5 +1,6 @@
 package com.taxonomy.reporting.render.decision;
 
+import com.taxonomy.reporting.api.document.DecisionTreeOverview;
 import com.taxonomy.reporting.render.document.DecisionTreeFigureRenderer;
 
 import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
@@ -90,7 +91,9 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
                 .append("</span><span class=\"page-counter\"></span></footer>");
 
         var options = report.scope().options();
+        var visibleTree = visibleTree(report);
         var nodeEvidence = new DecisionNodeEvidence(report);
+        var reasonCodes = nodeEvidence.linkedReasonCodes();
         if (options.includes(DecisionReportOptions.Section.TITLE_PAGE)) renderTitlePage(html, report, labels);
         html.append("<section class=\"source-notice\"><h1>").append(text(report.title())).append("</h1><p>")
                 .append(text(report.requirement())).append("</p>");
@@ -102,7 +105,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
         if (options.includes(DecisionReportOptions.Section.ARCHITECTURE) && report.architecture() != null) navigation.put("architecture_figures", labels.architectureOverview());
         if (options.includes(DecisionReportOptions.Section.CHAPTERS)) navigation.put("decision_chapters", labels.decisionChapters());
         if (options.includes(DecisionReportOptions.Section.EVIDENCE)) navigation.put("decision_evidence", labels.appendix());
-        if (!nodeEvidence.linkedReasonCodes().isEmpty()) navigation.put("decision_node_reasons", labels.recordedNodeReasons());
+        if (!reasonCodes.isEmpty()) navigation.put("decision_node_reasons", labels.recordedNodeReasons());
         if (options.contents() != DecisionReportOptions.Contents.NONE) {
             html.append("<nav aria-label=\"").append(attr(labels.contents())).append("\"><h2>").append(text(labels.contents())).append("</h2><ul>");
             navigation.forEach((id, title) -> html.append("<li><a href=\"#").append(id).append("\">").append(text(title)).append("</a></li>"));
@@ -115,16 +118,33 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
             if (options.profile() == DecisionReportOptions.Profile.COMPACT) {
                 html.append("<h2>").append(text(labels.executiveSummary())).append("</h2><p>").append(text(report.executiveSummary().conciseConclusion())).append("</p>");
                 DecisionReportPresentation.compactReasons(report).forEach(line -> html.append("<p>").append(text(line)).append("</p>"));
+                var summaryCodes = new java.util.LinkedHashSet<String>();
+                report.scope().decisionTree().rows().stream().filter(row -> row.depth() == 0).forEach(row -> summaryCodes.add(row.code()));
+                report.leadingLeaves().forEach(leaf -> summaryCodes.add(leaf.code()));
+                renderNodeKey(html, summaryCodes, reasonCodes, java.util.Map.of(), labels);
             }
-            else renderExecutiveSummary(html, report, labels);
+            else renderExecutiveSummary(html, report, labels, reasonCodes);
             html.append("</div>");
         }
-        if (options.includes(DecisionReportOptions.Section.TREE)) renderTree(html, report, labels);
+        if (options.includes(DecisionReportOptions.Section.TREE)) renderTree(html, report, labels, reasonCodes, visibleTree);
         if (options.includes(DecisionReportOptions.Section.ARCHITECTURE) && report.architecture() != null) {
+            var architecture = report.architecture();
             html.append("<section id=\"architecture_figures\"><h2>").append(text(labels.architectureOverview())).append("</h2><p>")
-                    .append(text(report.architecture().scope())).append("</p><table><tr><th>").append(text(labels.node())).append("</th><th>").append(text(labels.titleLabel())).append("</th></tr>");
-            report.architecture().elements().forEach(e -> html.append("<tr><td>").append(text(e.id())).append("</td><td>").append(text(e.title())).append("</td></tr>"));
-            html.append("</table><ul>");
+                    .append(text(architecture.scope())).append("</p>");
+            if (architecture.recommendation() != null && !architecture.recommendation().isBlank()) {
+                html.append("<h3>").append(text(labels.recommendation())).append("</h3><p>")
+                        .append(text(architecture.recommendation())).append("</p>");
+            }
+            if (!architecture.unresolvedGaps().isEmpty()) {
+                html.append("<h3>").append(text(labels.gaps())).append("</h3><ul>");
+                architecture.unresolvedGaps().forEach(gap -> html.append("<li>").append(text(gap)).append("</li>"));
+                html.append("</ul>");
+            }
+            html.append("<table><thead><tr><th>").append(text(labels.node())).append("</th><th>")
+                    .append(text(labels.titleLabel())).append("</th><th>").append(text(labels.score())).append("</th></tr></thead><tbody>");
+            architecture.elements().forEach(e -> html.append("<tr><td>").append(text(e.id())).append("</td><td>")
+                    .append(text(e.title())).append("</td><td>").append(percent(e.relevance() * 100)).append("</td></tr>"));
+            html.append("</tbody></table><ul>");
             report.architecture().relations().forEach(e -> html.append("<li>").append(text(e.sourceId())).append(" → ").append(text(e.targetId())).append(" · ").append(text(e.type())).append("</li>"));
             html.append("</ul>");
             if (!report.architecture().nodeReasons().isEmpty()) {
@@ -147,9 +167,29 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
                 });
                 html.append("</div>");
             }
+            var owners = architecture.diagram().nodes().stream().filter(node -> node.responsibility() != null).toList();
+            if (options.showResponsibilities() && !owners.isEmpty()) {
+                html.append("<h3>").append(text(labels.organizationalResponsibilities())).append("</h3><dl class=\"evidence-list\">");
+                owners.forEach(node -> evidence(html, node.id(), node.responsibility().name() + " · "
+                        + labels.responsibilityUnitId() + ": " + node.responsibility().unitId() + " · "
+                        + labels.responsibilitySource() + ": " + node.responsibility().sourceId()));
+                html.append("</dl>");
+            }
+            var saved = architecture.evidence();
+            html.append("<h3>").append(text(labels.provenance())).append("</h3><dl class=\"evidence-list\">");
+            evidence(html, labels.analysisSnapshot(), saved.snapshotId());
+            evidence(html, labels.graphDigest(), saved.graphSha256());
+            evidence(html, labels.repository(), saved.repositoryId());
+            evidence(html, labels.workspace(), saved.workspaceId());
+            evidence(html, labels.branch(), saved.branch());
+            evidence(html, labels.basedOnCommit(), saved.commit());
+            evidence(html, labels.analysisProvider(), saved.provider());
+            evidence(html, labels.analysisModel(), saved.model());
+            evidence(html, labels.recordedTaxonomyDigest(), saved.taxonomyFingerprint());
+            html.append("</dl>");
             html.append("</section>");
         }
-        if (options.includes(DecisionReportOptions.Section.CHAPTERS)) { html.append("<div id=\"decision_chapters\">"); renderChapters(html, report, labels); html.append("</div>"); }
+        if (options.includes(DecisionReportOptions.Section.CHAPTERS)) { html.append("<div id=\"decision_chapters\">"); renderChapters(html, report, labels, visibleTree); html.append("</div>"); }
         renderRecordedReasons(html, nodeEvidence, labels);
         if (options.includes(DecisionReportOptions.Section.EVIDENCE)) { html.append("<div id=\"decision_evidence\">"); renderAppendix(html, report, labels); html.append("</div>"); }
         html.append("</body></html>");
@@ -170,26 +210,75 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
         html.append("</section>");
     }
 
-    private void renderTree(StringBuilder html, DecisionRationaleReport report, DecisionReportLabels labels) {
+    private static DecisionTreeOverview visibleTree(DecisionRationaleReport report) {
+        var tree = report.scope().decisionTree();
+        if (report.scope().options().showResponsibilities() || tree.rows().stream().noneMatch(row -> row.responsibility() != null))
+            return tree;
+        return new DecisionTreeOverview(tree.rows().stream().map(row -> new DecisionTreeOverview.DecisionTreeRow(
+                row.depth(), row.code(), row.title(), row.score(), row.disposition(), row.chapterNumber(), row.bookmark()))
+                .toList(), tree.warnings());
+    }
+
+    private void renderTree(StringBuilder html, DecisionRationaleReport report, DecisionReportLabels labels,
+            java.util.Set<String> reasonCodes, DecisionTreeOverview tree) {
         html.append("<section id=\"decision_tree\"><h2>").append(text(labels.treeOverview())).append("</h2>");
-        if (report.scope().options().showResponsibilities() && report.scope().decisionTree().responsibilitiesByCode().isEmpty())
+        if (report.scope().options().showResponsibilities() && tree.responsibilitiesByCode().isEmpty())
             html.append("<p>").append(text(labels.noResponsibilities())).append("</p>");
+        var chapters = new java.util.LinkedHashMap<String, Integer>();
+        if (report.scope().options().includes(DecisionReportOptions.Section.CHAPTERS))
+            report.chapters().forEach(chapter -> chapters.put(chapter.parentCode(), chapter.number()));
         if (report.scope().options().treeLayout() == DecisionReportOptions.TreeLayout.TABLE) {
-            html.append("<table><thead><tr><th>").append(text(labels.node())).append("</th><th>").append(text(labels.score())).append("</th></tr></thead><tbody>");
-            for (var row : report.scope().decisionTree().rows()) {
-                html.append("<tr><td style=\"padding-left:").append(row.depth() * 12 + 8).append("px\">")
+            html.append("<table><thead><tr><th>").append(text(labels.node())).append("</th><th>").append(text(labels.score()))
+                    .append("</th><th>").append(text(labels.disposition())).append("</th><th>").append(text(labels.chapter()))
+                    .append("</th></tr></thead><tbody>");
+            for (var row : tree.rows()) {
+                html.append("<tr><td style=\"padding-left:").append(Math.min(12, row.depth()) * 12 + 8).append("px\">")
                         .append(text(row.code() + " · " + row.title()));
                 var owner = row.responsibility();
                 if (owner != null) html.append("<br><span style=\"border-left:4px solid ").append(owner.color())
                         .append(";padding-left:6px\">").append(text(labels.responsibility() + ": " + owner.name())).append("</span>");
-                html.append("</td><td>").append(row.score() == null ? text(labels.notEvaluated()) : row.score() + "%").append("</td></tr>");
+                html.append("</td><td>").append(row.score() == null ? text(labels.notEvaluated()) : com.taxonomy.dto.AnalysisPercentages.display(row.score()))
+                        .append("</td><td>").append(text(DecisionNodeEvidence.status(row, labels))).append("</td><td>");
+                renderNodeActions(html, row.code(), reasonCodes, chapters, labels);
+                html.append("</td></tr>");
             }
             html.append("</tbody></table>");
         } else {
-            var panels = new com.taxonomy.reporting.render.document.DecisionTreeFigureRenderer().render(report.scope().decisionTree(), report.languageTag(), report.scope().options().treeLayout());
-            for (var panel : panels) html.append("<figure class=\"tree-figure ").append(panel.a3() ? "a3" : "a4").append("\" style=\"break-inside:avoid\">").append(panel.svg()).append("<figcaption>").append(text(panel.rootCode())).append("</figcaption></figure>");
+            var panels = new DecisionTreeFigureRenderer().render(tree, report.languageTag(), report.scope().options().treeLayout());
+            for (var panel : panels) {
+                html.append("<figure class=\"tree-figure ").append(panel.a3() ? "a3" : "a4")
+                        .append("\" style=\"break-inside:avoid\">").append(panel.svg()).append("<figcaption>")
+                        .append(text(panel.rootCode()));
+                renderNodeKey(html, panel.nodeCodes(), reasonCodes, chapters, labels);
+                html.append("</figcaption></figure>");
+            }
         }
         html.append("</section><style>.tree-figure svg{width:100%;height:auto}.source-notice{overflow-wrap:anywhere} @page treeA4{size:A4 landscape} @page treeA3{size:A3 landscape} @media print{.tree-figure.a4{page:treeA4}.tree-figure.a3{page:treeA3}}</style>");
+    }
+
+    private void renderNodeKey(StringBuilder html, Iterable<String> codes, java.util.Set<String> reasonCodes,
+            java.util.Map<String, Integer> chapters, DecisionReportLabels labels) {
+        var links = new StringBuilder();
+        for (String code : codes) {
+            if (!reasonCodes.contains(code) && !chapters.containsKey(code)) continue;
+            if (!links.isEmpty()) links.append(" · ");
+            renderNodeActions(links, code, reasonCodes, chapters, labels);
+        }
+        if (!links.isEmpty()) html.append("<p class=\"tree-actions\">").append(links).append("</p>");
+    }
+
+    private void renderNodeActions(StringBuilder html, String code, java.util.Set<String> reasonCodes,
+            java.util.Map<String, Integer> chapters, DecisionReportLabels labels) {
+        if (reasonCodes.contains(code)) {
+            html.append("<a href=\"#").append(DecisionNodeEvidence.reasonBookmark(code)).append("\">")
+                    .append(text(code + " · " + labels.rationale())).append("</a>");
+        }
+        var chapter = chapters.get(code);
+        if (chapter != null) {
+            if (reasonCodes.contains(code)) html.append(" · ");
+            html.append("<a href=\"#chapter-").append(chapter).append("\">")
+                    .append(text(labels.chapter() + " " + chapter)).append("</a>");
+        }
     }
 
     private void renderTitlePage(
@@ -236,7 +325,8 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
     private void renderExecutiveSummary(
             StringBuilder html,
             DecisionRationaleReport report,
-            DecisionReportLabels labels) {
+            DecisionReportLabels labels,
+            java.util.Set<String> reasonCodes) {
         html.append("<section class=\"report-section executive\"><div class=\"section-kicker\">01</div><h2>")
                 .append(text(labels.executiveSummary())).append("</h2>")
                 .append("<p class=\"lead\">")
@@ -247,12 +337,14 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
             html.append("<div class=\"leading-leaf\"><div><span class=\"small-label\">")
                     .append(text(labels.leadingLeaf())).append("</span><strong>")
                     .append(text(leading.code())).append(" · ").append(text(leading.title()))
-                    .append("</strong><span>").append(text(leading.taxonomyRoot()))
-                    .append("</span></div><div class=\"score-orb\">")
+                    .append("</strong><span>").append(text(leading.taxonomyRoot())).append("</span>");
+            renderNodeActions(html, leading.code(), reasonCodes, java.util.Map.of(), labels);
+            html.append("</div><div class=\"score-orb\">")
                     .append(leading.score()).append("<small>%</small></div></div>");
         }
 
-        html.append("<h3>").append(text(labels.highestPath())).append("</h3>")
+        html.append("<h3 id=\"decision_highest_path\">").append(text(labels.highestPath())).append("</h3>")
+                .append("<div class=\"decision-table-scroll\" role=\"region\" aria-labelledby=\"decision_highest_path\" tabindex=\"0\">")
                 .append("<table class=\"path-table\"><thead><tr><th>")
                 .append(text(labels.step())).append("</th><th>")
                 .append(text(labels.node())).append("</th><th>")
@@ -266,10 +358,14 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
                     .append(text(step.title())).append("</span></td><td>")
                     .append(score(step.absoluteScore())).append("</td><td>")
                     .append(percent(step.localSharePercent())).append("</td><td>")
-                    .append(text(step.reason())).append("</td><td>")
-                    .append(text(reasonSource(step.reasonSource(), labels))).append("</td></tr>");
+                    .append(text(step.reason()));
+            if (reasonCodes.contains(step.code())) {
+                html.append("<br>");
+                renderNodeActions(html, step.code(), reasonCodes, java.util.Map.of(), labels);
+            }
+            html.append("</td><td>").append(text(reasonSource(step.reasonSource(), labels))).append("</td></tr>");
         }
-        html.append("</tbody></table>");
+        html.append("</tbody></table></div>");
 
         if (!report.warnings().isEmpty()) {
             html.append("<div class=\"warning-box\"><h3>")
@@ -284,7 +380,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
     private void renderChapters(
             StringBuilder html,
             DecisionRationaleReport report,
-            DecisionReportLabels labels) {
+            DecisionReportLabels labels, DecisionTreeOverview tree) {
         html.append("<section class=\"report-section chapter-intro\"><div class=\"section-kicker\">02</div><h2>")
                 .append(text(labels.decisionChapters())).append("</h2><p>")
                 .append(text(labels.german()
@@ -292,7 +388,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
                         : "Each following chapter corresponds to one parent node whose direct children contain at least one non-zero score."))
                 .append("</p></section>");
 
-        var owners = report.scope().decisionTree().responsibilitiesByCode();
+        var owners = tree.responsibilitiesByCode();
         for (DecisionChapter chapter : report.chapters()) {
             html.append("<section id=\"chapter-").append(chapter.number()).append("\" class=\"report-section decision-chapter\"><div class=\"chapter-number\">")
                     .append(chapter.number()).append("</div><div class=\"chapter-heading\"><div><span class=\"small-label\">")
@@ -322,7 +418,10 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
                     .append(text(chapter.decisionSummary())).append("</p></div><div><h3>")
                     .append(text(labels.comparison())).append("</h3><p>")
                     .append(text(chapter.comparativeRationale())).append("</p></div></div>")
-                    .append("<h3>").append(text(labels.alternatives())).append("</h3>")
+                    .append("<h3 id=\"decision_alternatives_").append(chapter.number()).append("\">")
+                    .append(text(labels.alternatives())).append("</h3>")
+                    .append("<div class=\"decision-table-scroll\" role=\"region\" aria-labelledby=\"decision_alternatives_")
+                    .append(chapter.number()).append("\" tabindex=\"0\">")
                     .append("<table><thead><tr><th>").append(text(labels.rank()))
                     .append("</th><th>").append(text(labels.node()))
                     .append("</th><th>").append(text(labels.score()))
@@ -342,7 +441,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
                         .append(text(child.reason())).append("</td><td>")
                         .append(text(reasonSource(child.reasonSource(), labels))).append("</td></tr>");
             }
-            html.append("</tbody></table>");
+            html.append("</tbody></table></div>");
             if (!chapter.complete()) {
                 html.append("<div class=\"warning-box compact\">")
                         .append(text(labels.german()
@@ -402,6 +501,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
         evidence(html, labels.analysisModel(), report.metadata().analysisModel());
         evidence(html, labels.analysisStatus(), report.metadata().analysisStatus());
         evidence(html, labels.analysisDuration(), labels.durationMillis(report.metadata().analysisDurationMillis()));
+        evidence(html, labels.decisionTreeCompleteness(), percent(report.metadata().completenessPercent()));
         html.append("</dl><h3>").append(text(labels.methodology())).append("</h3><p>")
                 .append(text(report.executiveSummary().methodologyNote())).append("</p>");
         if (!report.discrepancies().isEmpty()) {
@@ -436,6 +536,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
                 .evidence-list{display:grid;grid-template-columns:210px 1fr;border-top:1px solid var(--line)}.evidence-list dt,.evidence-list dd{margin:0;padding:8px;border-bottom:1px solid var(--line)}.evidence-list dt{font-weight:700;color:var(--navy)}.evidence-list dd{overflow-wrap:anywhere}pre{white-space:pre-wrap;background:#f6f8fa;padding:12px;border:1px solid var(--line)}
                 .recorded-reasons p{white-space:pre-wrap;overflow-wrap:anywhere;break-inside:auto}.recorded-reasons h3,.recorded-reasons h4{break-after:avoid}td{overflow-wrap:anywhere}
                 @media(max-width:760px){body{box-shadow:none}.title-page,.report-section{padding:28px 20px}.metadata-grid,.rationale-grid{grid-template-columns:1fr}.chapter-heading{display:block}.parent-score{display:inline-block;margin-top:12px}.running-footer{display:none}}
+                @media screen and (max-width:760px){.decision-table-scroll{overflow-x:auto}}
                 @media print{html,body{background:#fff;box-shadow:none;max-width:none}.running-footer{position:fixed}.page-counter:after{content:PAGE_COUNTER}@page{size:A4;margin:14mm 12mm 18mm}.title-page,.report-section{padding:12mm 10mm 18mm}.title-page{min-height:255mm}.classification-note{left:10mm;right:10mm;bottom:16mm}}
                 </style>
                 """.replace("PAGE_COUNTER", pageCounter);

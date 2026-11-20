@@ -309,7 +309,10 @@
     }
 
     function exportMermaid(text) {
-        return diagramDownload('/api/diagram/mermaid', text, 'requirement-architecture.mmd',
+        var recordedLanguage = window.TaxonomyState?.lastAnalysisLanguage;
+        var locale = window.TaxonomyContentLanguage?.documentLanguage?.(recordedLanguage) || recordedLanguage;
+        var query = locale === 'de' || locale === 'en' ? '?locale=' + locale : '';
+        return diagramDownload('/api/diagram/mermaid' + query, text, 'requirement-architecture.mmd',
             'text');
     }
 

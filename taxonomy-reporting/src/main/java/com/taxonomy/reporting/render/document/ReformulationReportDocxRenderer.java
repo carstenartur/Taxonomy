@@ -64,6 +64,7 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
                     w.paragraph(t(de, "Entdeckung: ", "Discovery: ")
                             + discovery.location() + " · " + discovery.rationale());
                     discoveryContext(w, discoveryContexts, discovery.context(), de);
+                    sourceSpans(w, discovery.sourceSpans(), de);
                     references(w, discovery.nodeIds(), graphNodes, de);
                     references(w, discovery.edgeIds(), graphEdges, de);
                 });
@@ -84,15 +85,18 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
                             + origin.dependentQuestionIds());
                     origin.discoveries().forEach(discovery -> {
                         w.paragraph(t(de, "Entdeckt bei: ", "Discovered at: ") + discovery.location()
-                                + " · " + t(de, "Begründung: ", "Rationale: ") + discovery.rationale()
-                                + " · " + t(de, "Quellstellen: ", "Source spans: ") + discovery.sourceSpans());
+                                + " · " + t(de, "Begründung: ", "Rationale: ") + discovery.rationale());
                         discoveryContext(w, discoveryContexts, discovery.context(), de);
+                        sourceSpans(w, discovery.sourceSpans(), de);
                         references(w, discovery.nodeIds(), graphNodes, de);
                         references(w, discovery.edgeIds(), graphEdges, de);
                     });
                 });
-                question.sourceResolutions().forEach(resolution -> w.paragraph(t(de, "Aus Original beantwortet: ", "Resolved from source: ")
-                        + resolution.values() + " · " + resolution.rationale() + " · " + resolution.sourceSpans()));
+                question.sourceResolutions().forEach(resolution -> {
+                    w.paragraph(t(de, "Aus Original beantwortet: ", "Resolved from source: ")
+                            + resolution.values() + " · " + resolution.rationale());
+                    sourceSpans(w, resolution.sourceSpans(), de);
+                });
             }
             w.heading(t(de, "Gespeicherte Antworten und Verlauf", "Saved answers and history"), 2, null);
             var active = com.taxonomy.reformulation.DecisionAnswer.active(report.answers());
@@ -115,16 +119,18 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
                 w.paragraph(statement.reviewState() + " · " + statement.editingOrigin() + " · "
                         + Objects.toString(statement.conditionalValidity(), "") + " · "
                         + t(de, "Architektur ", "architecture ") + statement.architectureLinks()
-                        + " · " + t(de, "Fragen ", "questions ") + statement.questionDependencies()
-                        + " · " + t(de, "Quellstellen ", "source ") + statement.sourceSpans());
+                        + " · " + t(de, "Fragen ", "questions ") + statement.questionDependencies());
+                sourceSpans(w, statement.sourceSpans(), de);
                 references(w, statement.architectureLinks(), graphNodes, graphEdges, de);
             }
             w.heading(t(de, "Prüfung und übernommene Evidenz", "Validation and inherited evidence"), 1, "rf_validation");
             if (report.validation().findings().isEmpty()) w.paragraph(t(de,
                     "Keine Prüfbefunde gespeichert; dies bedeutet keine fachliche Freigabe.",
                     "No validation findings recorded; this does not imply expert approval."));
-            report.validation().findings().forEach(f -> w.paragraph(f.kind() + " · " + f.code() + " · "
-                    + f.message() + " · " + f.statementIds() + " · " + f.sourceSpans()));
+            report.validation().findings().forEach(f -> {
+                w.paragraph(f.kind() + " · " + f.code() + " · " + f.message() + " · " + f.statementIds());
+                sourceSpans(w, f.sourceSpans(), de);
+            });
             // The raw archive remains in JSON export. Word presents the reviewable evidence above.
             w.heading(t(de, "Gespeicherte Architektur — Kontext", "Saved architecture — context"), 1, null);
             architecture.identity().forEach((key, value) -> w.paragraph(label(de, key) + ": " + value));
@@ -196,8 +202,18 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
         } else {
             number = contexts.size() + 1;
             contexts.put(context, number);
-            var paragraph = w.paragraph(t(de, "Kontext ", "Context ") + number + ": " + context);
+            var details = com.taxonomy.export.reformulation.ReformulationDiscoveryPresentation.context(context, de);
+            var paragraph = w.paragraph(t(de, "Kontext ", "Context ") + number + ": " + details.getFirst());
             w.bookmark(paragraph, "rf_context_" + number);
+            details.stream().skip(1).forEach(w::paragraph);
+        }
+    }
+
+    private static void sourceSpans(WordDocumentWriter writer, List<com.taxonomy.reformulation.Statement.SourceSpan> spans, boolean de) {
+        for (var span : spans) {
+            var label = writer.paragraph(t(de, "Originalstelle (UTF-16): ", "Source span (UTF-16): ") + span.start() + "–" + span.end());
+            label.setKeepNext(true);
+            writer.paragraph(span.exactText());
         }
     }
     private static void answerSchema(WordDocumentWriter w, DecisionQuestion.AnswerSchema schema, boolean de) {
