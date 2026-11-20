@@ -1,0 +1,1042 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd" version="3.0.2" name="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="12.813" tests="57" errors="0" skipped="0" failures="0" flakes="0">
+  <properties>
+    <property name="java.specification.version" value="25"/>
+    <property name="sun.jnu.encoding" value="UTF-8"/>
+    <property name="java.class.path" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-interop/target/test-classes:/home/runner/work/Taxonomy/Taxonomy/taxonomy-interop/target/classes:/home/runner/.m2/repository/org/springdoc/springdoc-openapi-starter-common/3.2.0/springdoc-openapi-starter-common-3.2.0.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter/4.1.2/spring-boot-starter-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-logging/4.1.2/spring-boot-starter-logging-4.1.2.jar:/home/runner/.m2/repository/ch/qos/logback/logback-classic/1.5.38/logback-classic-1.5.38.jar:/home/runner/.m2/repository/ch/qos/logback/logback-core/1.5.38/logback-core-1.5.38.jar:/home/runner/.m2/repository/org/apache/logging/log4j/log4j-to-slf4j/2.25.5/log4j-to-slf4j-2.25.5.jar:/home/runner/.m2/repository/org/slf4j/jul-to-slf4j/2.0.20/jul-to-slf4j-2.0.20.jar:/home/runner/.m2/repository/jakarta/annotation/jakarta.annotation-api/3.0.0/jakarta.annotation-api-3.0.0.jar:/home/runner/.m2/repository/org/yaml/snakeyaml/2.6/snakeyaml-2.6.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-autoconfigure/4.1.2/spring-boot-autoconfigure-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot/4.1.2/spring-boot-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-validation/4.1.2/spring-boot-validation-4.1.2.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-el/11.0.27/tomcat-embed-el-11.0.27.jar:/home/runner/.m2/repository/org/hibernate/validator/hibernate-validator/9.1.5.Final/hibernate-validator-9.1.5.Final.jar:/home/runner/.m2/repository/com/fasterxml/classmate/1.7.3/classmate-1.7.3.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-core-jakarta/2.2.55/swagger-core-jakarta-2.2.55.jar:/home/runner/.m2/repository/org/apache/commons/commons-lang3/3.20.0/commons-lang3-3.20.0.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-annotations-jakarta/2.2.55/swagger-annotations-jakarta-2.2.55.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-models-jakarta/2.2.55/swagger-models-jakarta-2.2.55.jar:/home/runner/.m2/repository/jakarta/validation/jakarta.validation-api/3.1.1/jakarta.validation-api-3.1.1.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-databind/2.22.4/jackson-databind-2.22.4.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-core/2.22.4/jackson-core-2.22.4.jar:/home/runner/.m2/repository/com/fasterxml/jackson/dataformat/jackson-dataformat-yaml/2.22.4/jackson-dataformat-yaml-2.22.4.jar:/home/runner/.m2/repository/com/fasterxml/jackson/datatype/jackson-datatype-jsr310/2.22.4/jackson-datatype-jsr310-2.22.4.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jackson/4.1.2/spring-boot-jackson-4.1.2.jar:/home/runner/.m2/repository/tools/jackson/core/jackson-databind/3.1.7/jackson-databind-3.1.7.jar:/home/runner/.m2/repository/tools/jackson/core/jackson-core/3.1.7/jackson-core-3.1.7.jar:/home/runner/.m2/repository/org/apache/httpcomponents/client5/httpclient5/5.6.5/httpclient5-5.6.5.jar:/home/runner/.m2/repository/org/apache/httpcomponents/core5/httpcore5/5.4.4/httpcore5-5.4.4.jar:/home/runner/.m2/repository/org/apache/httpcomponents/core5/httpcore5-h2/5.4.4/httpcore5-h2-5.4.4.jar:/home/runner/.m2/repository/org/slf4j/slf4j-api/2.0.20/slf4j-api-2.0.20.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-domain/target/taxonomy-domain-1.5.4-SNAPSHOT.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-annotations/2.22/jackson-annotations-2.22.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-dsl/target/taxonomy-dsl-1.5.4-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-sparx-mapping/target/taxonomy-sparx-mapping-1.5.4-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-export/target/taxonomy-export-1.5.4-SNAPSHOT.jar:/home/runner/.m2/repository/org/apache/jena/jena-arq/6.2.0/jena-arq-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-core/6.2.0/jena-core-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-base/6.2.0/jena-base-6.2.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-csv/1.14.1/commons-csv-1.14.1.jar:/home/runner/.m2/repository/com/github/ben-manes/caffeine/caffeine/3.2.4/caffeine-3.2.4.jar:/home/runner/.m2/repository/com/github/andrewoma/dexx/collection/0.7/collection-0.7.jar:/home/runner/.m2/repository/org/apache/jena/jena-iri3986/6.2.0/jena-iri3986-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-langtag/6.2.0/jena-langtag-6.2.0.jar:/home/runner/.m2/repository/org/roaringbitmap/RoaringBitmap/1.6.15/RoaringBitmap-1.6.15.jar:/home/runner/.m2/repository/com/google/code/gson/gson/2.13.2/gson-2.13.2.jar:/home/runner/.m2/repository/com/google/errorprone/error_prone_annotations/2.41.0/error_prone_annotations-2.41.0.jar:/home/runner/.m2/repository/org/slf4j/jcl-over-slf4j/2.0.20/jcl-over-slf4j-2.0.20.jar:/home/runner/.m2/repository/com/apicatalog/titanium-json-ld/1.7.0/titanium-json-ld-1.7.0.jar:/home/runner/.m2/repository/com/apicatalog/titanium-jcs/1.1.1/titanium-jcs-1.1.1.jar:/home/runner/.m2/repository/com/apicatalog/titanium-rdf-api/1.0.0/titanium-rdf-api-1.0.0.jar:/home/runner/.m2/repository/com/apicatalog/titanium-rdf-n-quads/1.0.2/titanium-rdf-n-quads-1.0.2.jar:/home/runner/.m2/repository/org/glassfish/jakarta.json/2.0.1/jakarta.json-2.0.1.jar:/home/runner/.m2/repository/com/google/protobuf/protobuf-java/4.36.2/protobuf-java-4.36.2.jar:/home/runner/.m2/repository/org/apache/thrift/libthrift/0.24.0/libthrift-0.24.0.jar:/home/runner/.m2/repository/org/apache/pdfbox/pdfbox/3.0.8/pdfbox-3.0.8.jar:/home/runner/.m2/repository/org/apache/pdfbox/pdfbox-io/3.0.8/pdfbox-io-3.0.8.jar:/home/runner/.m2/repository/org/apache/pdfbox/fontbox/3.0.8/fontbox-3.0.8.jar:/home/runner/.m2/repository/commons-logging/commons-logging/1.3.6/commons-logging-1.3.6.jar:/home/runner/.m2/repository/com/thoughtworks/xstream/xstream/1.4.21/xstream-1.4.21.jar:/home/runner/.m2/repository/io/github/x-stream/mxparser/1.2.2/mxparser-1.2.2.jar:/home/runner/.m2/repository/xmlpull/xmlpull/1.1.3.1/xmlpull-1.1.3.1.jar:/home/runner/.m2/repository/org/apache/poi/poi-ooxml/6.0.0/poi-ooxml-6.0.0.jar:/home/runner/.m2/repository/org/apache/poi/poi/6.0.0/poi-6.0.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-math3/3.6.1/commons-math3-3.6.1.jar:/home/runner/.m2/repository/com/zaxxer/SparseBitSet/1.3/SparseBitSet-1.3.jar:/home/runner/.m2/repository/org/apache/xmlbeans/xmlbeans/5.4.1/xmlbeans-5.4.1.jar:/home/runner/.m2/repository/org/apache/commons/commons-compress/1.28.0/commons-compress-1.28.0.jar:/home/runner/.m2/repository/commons-io/commons-io/2.22.0/commons-io-2.22.0.jar:/home/runner/.m2/repository/com/github/virtuald/curvesapi/1.08/curvesapi-1.08.jar:/home/runner/.m2/repository/org/apache/logging/log4j/log4j-api/2.25.5/log4j-api-2.25.5.jar:/home/runner/.m2/repository/org/apache/commons/commons-collections4/4.6.0/commons-collections4-4.6.0.jar:/home/runner/.m2/repository/org/apache/poi/poi-ooxml-full/6.0.0/poi-ooxml-full-6.0.0.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-api/target/taxonomy-extension-api-1.5.4-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/taxonomy-workspace-1.5.4-SNAPSHOT.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-flyway/4.1.2/spring-boot-starter-flyway-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-flyway/4.1.2/spring-boot-flyway-4.1.2.jar:/home/runner/.m2/repository/org/flywaydb/flyway-core/12.4.0/flyway-core-12.4.0.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-security/4.1.2/spring-boot-starter-security-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-security/4.1.2/spring-boot-security-4.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-config/7.1.2/spring-security-config-7.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-web/7.1.2/spring-security-web-7.1.2.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-mapper-orm/8.4.1.Final/hibernate-search-mapper-orm-8.4.1.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-engine/8.4.1.Final/hibernate-search-engine-8.4.1.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-mapper-pojo-base/8.4.1.Final/hibernate-search-mapper-pojo-base-8.4.1.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-util-common/8.4.1.Final/hibernate-search-util-common-8.4.1.Final.jar:/home/runner/.m2/repository/org/hibernate/orm/hibernate-core/7.4.13.Final/hibernate-core-7.4.13.Final.jar:/home/runner/.m2/repository/org/glassfish/jaxb/jaxb-runtime/4.0.9/jaxb-runtime-4.0.9.jar:/home/runner/.m2/repository/org/glassfish/jaxb/jaxb-core/4.0.9/jaxb-core-4.0.9.jar:/home/runner/.m2/repository/org/eclipse/angus/angus-activation/2.0.3/angus-activation-2.0.3.jar:/home/runner/.m2/repository/org/glassfish/jaxb/txw2/4.0.9/txw2-4.0.9.jar:/home/runner/.m2/repository/com/sun/istack/istack-commons-runtime/4.1.2/istack-commons-runtime-4.1.2.jar:/home/runner/.m2/repository/jakarta/inject/jakarta.inject-api/2.0.1/jakarta.inject-api-2.0.1.jar:/home/runner/.m2/repository/org/antlr/antlr4-runtime/4.13.2/antlr4-runtime-4.13.2.jar:/home/runner/.m2/repository/org/hibernate/models/hibernate-models/1.1.1/hibernate-models-1.1.1.jar:/home/runner/.m2/repository/jakarta/persistence/jakarta.persistence-api/3.2.0/jakarta.persistence-api-3.2.0.jar:/home/runner/.m2/repository/jakarta/transaction/jakarta.transaction-api/2.0.1/jakarta.transaction-api-2.0.1.jar:/home/runner/.m2/repository/io/smallrye/jandex/3.3.2/jandex-3.3.2.jar:/home/runner/.m2/repository/org/jboss/logging/jboss-logging/3.6.3.Final/jboss-logging-3.6.3.Final.jar:/home/runner/.m2/repository/org/eclipse/jgit/org.eclipse.jgit/7.8.1.202611041320-r/org.eclipse.jgit-7.8.1.202611041320-r.jar:/home/runner/.m2/repository/com/googlecode/javaewah/JavaEWAH/1.2.3/JavaEWAH-1.2.3.jar:/home/runner/.m2/repository/commons-codec/commons-codec/1.21.0/commons-codec-1.21.0.jar:/home/runner/.m2/repository/org/eclipse/jgit/org.eclipse.jgit.gpg.bc/7.8.1.202611041320-r/org.eclipse.jgit.gpg.bc-7.8.1.202611041320-r.jar:/home/runner/.m2/repository/org/bouncycastle/bcpg-jdk18on/1.85/bcpg-jdk18on-1.85.jar:/home/runner/.m2/repository/org/bouncycastle/bcprov-jdk18on/1.85.2/bcprov-jdk18on-1.85.2.jar:/home/runner/.m2/repository/org/bouncycastle/bcutil-jdk18on/1.85/bcutil-jdk18on-1.85.jar:/home/runner/.m2/repository/org/bouncycastle/bcpkix-jdk18on/1.85/bcpkix-jdk18on-1.85.jar:/home/runner/.m2/repository/io/github/carstenartur/jgit-storage-hibernate-core/0.12.2/jgit-storage-hibernate-core-0.12.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-web/4.1.2/spring-boot-starter-web-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-jackson/4.1.2/spring-boot-starter-jackson-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-tomcat/4.1.2/spring-boot-starter-tomcat-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-tomcat-runtime/4.1.2/spring-boot-starter-tomcat-runtime-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-web-server/4.1.2/spring-boot-web-server-4.1.2.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-core/11.0.27/tomcat-embed-core-11.0.27.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-websocket/11.0.27/tomcat-embed-websocket-11.0.27.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-tomcat/4.1.2/spring-boot-tomcat-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-http-converter/4.1.2/spring-boot-http-converter-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-web/7.0.10/spring-web-7.0.10.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-webmvc/4.1.2/spring-boot-webmvc-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-servlet/4.1.2/spring-boot-servlet-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-webmvc/7.0.10/spring-webmvc-7.0.10.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-data-jpa/4.1.2/spring-boot-starter-data-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-jdbc/4.1.2/spring-boot-starter-jdbc-4.1.2.jar:/home/runner/.m2/repository/com/zaxxer/HikariCP/7.0.2/HikariCP-7.0.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-data-jpa/4.1.2/spring-boot-data-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-data-commons/4.1.2/spring-boot-data-commons-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-persistence/4.1.2/spring-boot-persistence-4.1.2.jar:/home/runner/.m2/repository/org/springframework/data/spring-data-commons/4.1.2/spring-data-commons-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-hibernate/4.1.2/spring-boot-hibernate-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jpa/4.1.2/spring-boot-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-orm/7.0.10/spring-orm-7.0.10.jar:/home/runner/.m2/repository/org/springframework/data/spring-data-jpa/4.1.2/spring-data-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-tx/7.0.10/spring-tx-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-aspects/7.0.10/spring-aspects-7.0.10.jar:/home/runner/.m2/repository/org/aspectj/aspectjweaver/1.9.25.1/aspectjweaver-1.9.25.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jdbc/4.1.2/spring-boot-jdbc-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-sql/4.1.2/spring-boot-sql-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-transaction/4.1.2/spring-boot-transaction-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-jdbc/7.0.10/spring-jdbc-7.0.10.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-core/7.1.2/spring-security-core-7.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-crypto/7.1.2/spring-security-crypto-7.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-aop/7.0.10/spring-aop-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-beans/7.0.10/spring-beans-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-context/7.0.10/spring-context-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-core/7.0.10/spring-core-7.0.10.jar:/home/runner/.m2/repository/org/jspecify/jspecify/1.0.1/jspecify-1.0.1.jar:/home/runner/.m2/repository/org/springframework/spring-expression/7.0.10/spring-expression-7.0.10.jar:/home/runner/.m2/repository/io/micrometer/micrometer-observation/1.17.2/micrometer-observation-1.17.2.jar:/home/runner/.m2/repository/io/micrometer/micrometer-commons/1.17.2/micrometer-commons-1.17.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-test/4.1.2/spring-boot-starter-test-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-test/4.1.2/spring-boot-test-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-test-autoconfigure/4.1.2/spring-boot-test-autoconfigure-4.1.2.jar:/home/runner/.m2/repository/com/jayway/jsonpath/json-path/2.10.0/json-path-2.10.0.jar:/home/runner/.m2/repository/jakarta/xml/bind/jakarta.xml.bind-api/4.0.5/jakarta.xml.bind-api-4.0.5.jar:/home/runner/.m2/repository/jakarta/activation/jakarta.activation-api/2.1.4/jakarta.activation-api-2.1.4.jar:/home/runner/.m2/repository/net/minidev/json-smart/2.6.0/json-smart-2.6.0.jar:/home/runner/.m2/repository/net/minidev/accessors-smart/2.6.0/accessors-smart-2.6.0.jar:/home/runner/.m2/repository/org/ow2/asm/asm/9.7.1/asm-9.7.1.jar:/home/runner/.m2/repository/org/assertj/assertj-core/3.27.7/assertj-core-3.27.7.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy/1.18.15/byte-buddy-1.18.15.jar:/home/runner/.m2/repository/org/awaitility/awaitility/4.3.0/awaitility-4.3.0.jar:/home/runner/.m2/repository/org/hamcrest/hamcrest/3.0/hamcrest-3.0.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter/6.0.3/junit-jupiter-6.0.3.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-api/6.0.3/junit-jupiter-api-6.0.3.jar:/home/runner/.m2/repository/org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-commons/6.0.3/junit-platform-commons-6.0.3.jar:/home/runner/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-params/6.0.3/junit-jupiter-params-6.0.3.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-engine/6.0.3/junit-jupiter-engine-6.0.3.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-engine/6.0.3/junit-platform-engine-6.0.3.jar:/home/runner/.m2/repository/org/mockito/mockito-core/5.23.0/mockito-core-5.23.0.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy-agent/1.18.15/byte-buddy-agent-1.18.15.jar:/home/runner/.m2/repository/org/objenesis/objenesis/3.3/objenesis-3.3.jar:/home/runner/.m2/repository/org/mockito/mockito-junit-jupiter/5.23.0/mockito-junit-jupiter-5.23.0.jar:/home/runner/.m2/repository/org/skyscreamer/jsonassert/1.5.3/jsonassert-1.5.3.jar:/home/runner/.m2/repository/com/vaadin/external/google/android-json/0.0.20131108.vaadin1/android-json-0.0.20131108.vaadin1.jar:/home/runner/.m2/repository/org/springframework/spring-test/7.0.10/spring-test-7.0.10.jar:/home/runner/.m2/repository/org/xmlunit/xmlunit-core/2.11.0/xmlunit-core-2.11.0.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/taxonomy-workspace-1.5.4-SNAPSHOT-test-fixtures.jar:/home/runner/.m2/repository/org/hsqldb/hsqldb/2.7.3/hsqldb-2.7.3.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-runtime/target/taxonomy-extension-runtime-1.5.4-SNAPSHOT.jar:/home/runner/.m2/repository/org/pf4j/pf4j/3.16.1/pf4j-3.16.1.jar:/home/runner/.m2/repository/com/github/zafarkhaja/java-semver/0.10.2/java-semver-0.10.2.jar:"/>
+    <property name="java.vm.vendor" value="Eclipse Adoptium"/>
+    <property name="sun.arch.data.model" value="64"/>
+    <property name="java.vendor.url" value="https://adoptium.net/"/>
+    <property name="user.timezone" value="Etc/UTC"/>
+    <property name="os.name" value="Linux"/>
+    <property name="java.vm.specification.version" value="25"/>
+    <property name="keycloak.container.image" value="quay.io/keycloak/keycloak:26.7.0"/>
+    <property name="taxonomy.test.browser.offline" value="maven:false"/>
+    <property name="sun.java.launcher" value="SUN_STANDARD"/>
+    <property name="sun.boot.library.path" value="/usr/lib/jvm/temurin-25-jdk-amd64/lib"/>
+    <property name="runKeycloakTests" value="true"/>
+    <property name="sun.java.command" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-interop/target/surefire/surefirebooter-20261120081851981_1143.jar /home/runner/work/Taxonomy/Taxonomy/taxonomy-interop/target/surefire 2026-11-20T08-12-25_583-jvmRun1 surefire-20261120081851981_1141tmp surefire_10-20261120081851981_1142tmp"/>
+    <property name="jdk.debug" value="release"/>
+    <property name="surefire.test.class.path" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-interop/target/test-classes:/home/runner/work/Taxonomy/Taxonomy/taxonomy-interop/target/classes:/home/runner/.m2/repository/org/springdoc/springdoc-openapi-starter-common/3.2.0/springdoc-openapi-starter-common-3.2.0.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter/4.1.2/spring-boot-starter-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-logging/4.1.2/spring-boot-starter-logging-4.1.2.jar:/home/runner/.m2/repository/ch/qos/logback/logback-classic/1.5.38/logback-classic-1.5.38.jar:/home/runner/.m2/repository/ch/qos/logback/logback-core/1.5.38/logback-core-1.5.38.jar:/home/runner/.m2/repository/org/apache/logging/log4j/log4j-to-slf4j/2.25.5/log4j-to-slf4j-2.25.5.jar:/home/runner/.m2/repository/org/slf4j/jul-to-slf4j/2.0.20/jul-to-slf4j-2.0.20.jar:/home/runner/.m2/repository/jakarta/annotation/jakarta.annotation-api/3.0.0/jakarta.annotation-api-3.0.0.jar:/home/runner/.m2/repository/org/yaml/snakeyaml/2.6/snakeyaml-2.6.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-autoconfigure/4.1.2/spring-boot-autoconfigure-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot/4.1.2/spring-boot-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-validation/4.1.2/spring-boot-validation-4.1.2.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-el/11.0.27/tomcat-embed-el-11.0.27.jar:/home/runner/.m2/repository/org/hibernate/validator/hibernate-validator/9.1.5.Final/hibernate-validator-9.1.5.Final.jar:/home/runner/.m2/repository/com/fasterxml/classmate/1.7.3/classmate-1.7.3.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-core-jakarta/2.2.55/swagger-core-jakarta-2.2.55.jar:/home/runner/.m2/repository/org/apache/commons/commons-lang3/3.20.0/commons-lang3-3.20.0.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-annotations-jakarta/2.2.55/swagger-annotations-jakarta-2.2.55.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-models-jakarta/2.2.55/swagger-models-jakarta-2.2.55.jar:/home/runner/.m2/repository/jakarta/validation/jakarta.validation-api/3.1.1/jakarta.validation-api-3.1.1.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-databind/2.22.4/jackson-databind-2.22.4.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-core/2.22.4/jackson-core-2.22.4.jar:/home/runner/.m2/repository/com/fasterxml/jackson/dataformat/jackson-dataformat-yaml/2.22.4/jackson-dataformat-yaml-2.22.4.jar:/home/runner/.m2/repository/com/fasterxml/jackson/datatype/jackson-datatype-jsr310/2.22.4/jackson-datatype-jsr310-2.22.4.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jackson/4.1.2/spring-boot-jackson-4.1.2.jar:/home/runner/.m2/repository/tools/jackson/core/jackson-databind/3.1.7/jackson-databind-3.1.7.jar:/home/runner/.m2/repository/tools/jackson/core/jackson-core/3.1.7/jackson-core-3.1.7.jar:/home/runner/.m2/repository/org/apache/httpcomponents/client5/httpclient5/5.6.5/httpclient5-5.6.5.jar:/home/runner/.m2/repository/org/apache/httpcomponents/core5/httpcore5/5.4.4/httpcore5-5.4.4.jar:/home/runner/.m2/repository/org/apache/httpcomponents/core5/httpcore5-h2/5.4.4/httpcore5-h2-5.4.4.jar:/home/runner/.m2/repository/org/slf4j/slf4j-api/2.0.20/slf4j-api-2.0.20.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-domain/target/taxonomy-domain-1.5.4-SNAPSHOT.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-annotations/2.22/jackson-annotations-2.22.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-dsl/target/taxonomy-dsl-1.5.4-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-sparx-mapping/target/taxonomy-sparx-mapping-1.5.4-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-export/target/taxonomy-export-1.5.4-SNAPSHOT.jar:/home/runner/.m2/repository/org/apache/jena/jena-arq/6.2.0/jena-arq-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-core/6.2.0/jena-core-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-base/6.2.0/jena-base-6.2.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-csv/1.14.1/commons-csv-1.14.1.jar:/home/runner/.m2/repository/com/github/ben-manes/caffeine/caffeine/3.2.4/caffeine-3.2.4.jar:/home/runner/.m2/repository/com/github/andrewoma/dexx/collection/0.7/collection-0.7.jar:/home/runner/.m2/repository/org/apache/jena/jena-iri3986/6.2.0/jena-iri3986-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-langtag/6.2.0/jena-langtag-6.2.0.jar:/home/runner/.m2/repository/org/roaringbitmap/RoaringBitmap/1.6.15/RoaringBitmap-1.6.15.jar:/home/runner/.m2/repository/com/google/code/gson/gson/2.13.2/gson-2.13.2.jar:/home/runner/.m2/repository/com/google/errorprone/error_prone_annotations/2.41.0/error_prone_annotations-2.41.0.jar:/home/runner/.m2/repository/org/slf4j/jcl-over-slf4j/2.0.20/jcl-over-slf4j-2.0.20.jar:/home/runner/.m2/repository/com/apicatalog/titanium-json-ld/1.7.0/titanium-json-ld-1.7.0.jar:/home/runner/.m2/repository/com/apicatalog/titanium-jcs/1.1.1/titanium-jcs-1.1.1.jar:/home/runner/.m2/repository/com/apicatalog/titanium-rdf-api/1.0.0/titanium-rdf-api-1.0.0.jar:/home/runner/.m2/repository/com/apicatalog/titanium-rdf-n-quads/1.0.2/titanium-rdf-n-quads-1.0.2.jar:/home/runner/.m2/repository/org/glassfish/jakarta.json/2.0.1/jakarta.json-2.0.1.jar:/home/runner/.m2/repository/com/google/protobuf/protobuf-java/4.36.2/protobuf-java-4.36.2.jar:/home/runner/.m2/repository/org/apache/thrift/libthrift/0.24.0/libthrift-0.24.0.jar:/home/runner/.m2/repository/org/apache/pdfbox/pdfbox/3.0.8/pdfbox-3.0.8.jar:/home/runner/.m2/repository/org/apache/pdfbox/pdfbox-io/3.0.8/pdfbox-io-3.0.8.jar:/home/runner/.m2/repository/org/apache/pdfbox/fontbox/3.0.8/fontbox-3.0.8.jar:/home/runner/.m2/repository/commons-logging/commons-logging/1.3.6/commons-logging-1.3.6.jar:/home/runner/.m2/repository/com/thoughtworks/xstream/xstream/1.4.21/xstream-1.4.21.jar:/home/runner/.m2/repository/io/github/x-stream/mxparser/1.2.2/mxparser-1.2.2.jar:/home/runner/.m2/repository/xmlpull/xmlpull/1.1.3.1/xmlpull-1.1.3.1.jar:/home/runner/.m2/repository/org/apache/poi/poi-ooxml/6.0.0/poi-ooxml-6.0.0.jar:/home/runner/.m2/repository/org/apache/poi/poi/6.0.0/poi-6.0.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-math3/3.6.1/commons-math3-3.6.1.jar:/home/runner/.m2/repository/com/zaxxer/SparseBitSet/1.3/SparseBitSet-1.3.jar:/home/runner/.m2/repository/org/apache/xmlbeans/xmlbeans/5.4.1/xmlbeans-5.4.1.jar:/home/runner/.m2/repository/org/apache/commons/commons-compress/1.28.0/commons-compress-1.28.0.jar:/home/runner/.m2/repository/commons-io/commons-io/2.22.0/commons-io-2.22.0.jar:/home/runner/.m2/repository/com/github/virtuald/curvesapi/1.08/curvesapi-1.08.jar:/home/runner/.m2/repository/org/apache/logging/log4j/log4j-api/2.25.5/log4j-api-2.25.5.jar:/home/runner/.m2/repository/org/apache/commons/commons-collections4/4.6.0/commons-collections4-4.6.0.jar:/home/runner/.m2/repository/org/apache/poi/poi-ooxml-full/6.0.0/poi-ooxml-full-6.0.0.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-api/target/taxonomy-extension-api-1.5.4-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/taxonomy-workspace-1.5.4-SNAPSHOT.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-flyway/4.1.2/spring-boot-starter-flyway-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-flyway/4.1.2/spring-boot-flyway-4.1.2.jar:/home/runner/.m2/repository/org/flywaydb/flyway-core/12.4.0/flyway-core-12.4.0.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-security/4.1.2/spring-boot-starter-security-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-security/4.1.2/spring-boot-security-4.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-config/7.1.2/spring-security-config-7.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-web/7.1.2/spring-security-web-7.1.2.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-mapper-orm/8.4.1.Final/hibernate-search-mapper-orm-8.4.1.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-engine/8.4.1.Final/hibernate-search-engine-8.4.1.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-mapper-pojo-base/8.4.1.Final/hibernate-search-mapper-pojo-base-8.4.1.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-util-common/8.4.1.Final/hibernate-search-util-common-8.4.1.Final.jar:/home/runner/.m2/repository/org/hibernate/orm/hibernate-core/7.4.13.Final/hibernate-core-7.4.13.Final.jar:/home/runner/.m2/repository/org/glassfish/jaxb/jaxb-runtime/4.0.9/jaxb-runtime-4.0.9.jar:/home/runner/.m2/repository/org/glassfish/jaxb/jaxb-core/4.0.9/jaxb-core-4.0.9.jar:/home/runner/.m2/repository/org/eclipse/angus/angus-activation/2.0.3/angus-activation-2.0.3.jar:/home/runner/.m2/repository/org/glassfish/jaxb/txw2/4.0.9/txw2-4.0.9.jar:/home/runner/.m2/repository/com/sun/istack/istack-commons-runtime/4.1.2/istack-commons-runtime-4.1.2.jar:/home/runner/.m2/repository/jakarta/inject/jakarta.inject-api/2.0.1/jakarta.inject-api-2.0.1.jar:/home/runner/.m2/repository/org/antlr/antlr4-runtime/4.13.2/antlr4-runtime-4.13.2.jar:/home/runner/.m2/repository/org/hibernate/models/hibernate-models/1.1.1/hibernate-models-1.1.1.jar:/home/runner/.m2/repository/jakarta/persistence/jakarta.persistence-api/3.2.0/jakarta.persistence-api-3.2.0.jar:/home/runner/.m2/repository/jakarta/transaction/jakarta.transaction-api/2.0.1/jakarta.transaction-api-2.0.1.jar:/home/runner/.m2/repository/io/smallrye/jandex/3.3.2/jandex-3.3.2.jar:/home/runner/.m2/repository/org/jboss/logging/jboss-logging/3.6.3.Final/jboss-logging-3.6.3.Final.jar:/home/runner/.m2/repository/org/eclipse/jgit/org.eclipse.jgit/7.8.1.202611041320-r/org.eclipse.jgit-7.8.1.202611041320-r.jar:/home/runner/.m2/repository/com/googlecode/javaewah/JavaEWAH/1.2.3/JavaEWAH-1.2.3.jar:/home/runner/.m2/repository/commons-codec/commons-codec/1.21.0/commons-codec-1.21.0.jar:/home/runner/.m2/repository/org/eclipse/jgit/org.eclipse.jgit.gpg.bc/7.8.1.202611041320-r/org.eclipse.jgit.gpg.bc-7.8.1.202611041320-r.jar:/home/runner/.m2/repository/org/bouncycastle/bcpg-jdk18on/1.85/bcpg-jdk18on-1.85.jar:/home/runner/.m2/repository/org/bouncycastle/bcprov-jdk18on/1.85.2/bcprov-jdk18on-1.85.2.jar:/home/runner/.m2/repository/org/bouncycastle/bcutil-jdk18on/1.85/bcutil-jdk18on-1.85.jar:/home/runner/.m2/repository/org/bouncycastle/bcpkix-jdk18on/1.85/bcpkix-jdk18on-1.85.jar:/home/runner/.m2/repository/io/github/carstenartur/jgit-storage-hibernate-core/0.12.2/jgit-storage-hibernate-core-0.12.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-web/4.1.2/spring-boot-starter-web-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-jackson/4.1.2/spring-boot-starter-jackson-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-tomcat/4.1.2/spring-boot-starter-tomcat-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-tomcat-runtime/4.1.2/spring-boot-starter-tomcat-runtime-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-web-server/4.1.2/spring-boot-web-server-4.1.2.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-core/11.0.27/tomcat-embed-core-11.0.27.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-websocket/11.0.27/tomcat-embed-websocket-11.0.27.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-tomcat/4.1.2/spring-boot-tomcat-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-http-converter/4.1.2/spring-boot-http-converter-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-web/7.0.10/spring-web-7.0.10.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-webmvc/4.1.2/spring-boot-webmvc-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-servlet/4.1.2/spring-boot-servlet-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-webmvc/7.0.10/spring-webmvc-7.0.10.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-data-jpa/4.1.2/spring-boot-starter-data-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-jdbc/4.1.2/spring-boot-starter-jdbc-4.1.2.jar:/home/runner/.m2/repository/com/zaxxer/HikariCP/7.0.2/HikariCP-7.0.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-data-jpa/4.1.2/spring-boot-data-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-data-commons/4.1.2/spring-boot-data-commons-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-persistence/4.1.2/spring-boot-persistence-4.1.2.jar:/home/runner/.m2/repository/org/springframework/data/spring-data-commons/4.1.2/spring-data-commons-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-hibernate/4.1.2/spring-boot-hibernate-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jpa/4.1.2/spring-boot-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-orm/7.0.10/spring-orm-7.0.10.jar:/home/runner/.m2/repository/org/springframework/data/spring-data-jpa/4.1.2/spring-data-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-tx/7.0.10/spring-tx-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-aspects/7.0.10/spring-aspects-7.0.10.jar:/home/runner/.m2/repository/org/aspectj/aspectjweaver/1.9.25.1/aspectjweaver-1.9.25.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jdbc/4.1.2/spring-boot-jdbc-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-sql/4.1.2/spring-boot-sql-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-transaction/4.1.2/spring-boot-transaction-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-jdbc/7.0.10/spring-jdbc-7.0.10.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-core/7.1.2/spring-security-core-7.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-crypto/7.1.2/spring-security-crypto-7.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-aop/7.0.10/spring-aop-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-beans/7.0.10/spring-beans-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-context/7.0.10/spring-context-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-core/7.0.10/spring-core-7.0.10.jar:/home/runner/.m2/repository/org/jspecify/jspecify/1.0.1/jspecify-1.0.1.jar:/home/runner/.m2/repository/org/springframework/spring-expression/7.0.10/spring-expression-7.0.10.jar:/home/runner/.m2/repository/io/micrometer/micrometer-observation/1.17.2/micrometer-observation-1.17.2.jar:/home/runner/.m2/repository/io/micrometer/micrometer-commons/1.17.2/micrometer-commons-1.17.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-test/4.1.2/spring-boot-starter-test-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-test/4.1.2/spring-boot-test-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-test-autoconfigure/4.1.2/spring-boot-test-autoconfigure-4.1.2.jar:/home/runner/.m2/repository/com/jayway/jsonpath/json-path/2.10.0/json-path-2.10.0.jar:/home/runner/.m2/repository/jakarta/xml/bind/jakarta.xml.bind-api/4.0.5/jakarta.xml.bind-api-4.0.5.jar:/home/runner/.m2/repository/jakarta/activation/jakarta.activation-api/2.1.4/jakarta.activation-api-2.1.4.jar:/home/runner/.m2/repository/net/minidev/json-smart/2.6.0/json-smart-2.6.0.jar:/home/runner/.m2/repository/net/minidev/accessors-smart/2.6.0/accessors-smart-2.6.0.jar:/home/runner/.m2/repository/org/ow2/asm/asm/9.7.1/asm-9.7.1.jar:/home/runner/.m2/repository/org/assertj/assertj-core/3.27.7/assertj-core-3.27.7.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy/1.18.15/byte-buddy-1.18.15.jar:/home/runner/.m2/repository/org/awaitility/awaitility/4.3.0/awaitility-4.3.0.jar:/home/runner/.m2/repository/org/hamcrest/hamcrest/3.0/hamcrest-3.0.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter/6.0.3/junit-jupiter-6.0.3.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-api/6.0.3/junit-jupiter-api-6.0.3.jar:/home/runner/.m2/repository/org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-commons/6.0.3/junit-platform-commons-6.0.3.jar:/home/runner/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-params/6.0.3/junit-jupiter-params-6.0.3.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-engine/6.0.3/junit-jupiter-engine-6.0.3.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-engine/6.0.3/junit-platform-engine-6.0.3.jar:/home/runner/.m2/repository/org/mockito/mockito-core/5.23.0/mockito-core-5.23.0.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy-agent/1.18.15/byte-buddy-agent-1.18.15.jar:/home/runner/.m2/repository/org/objenesis/objenesis/3.3/objenesis-3.3.jar:/home/runner/.m2/repository/org/mockito/mockito-junit-jupiter/5.23.0/mockito-junit-jupiter-5.23.0.jar:/home/runner/.m2/repository/org/skyscreamer/jsonassert/1.5.3/jsonassert-1.5.3.jar:/home/runner/.m2/repository/com/vaadin/external/google/android-json/0.0.20131108.vaadin1/android-json-0.0.20131108.vaadin1.jar:/home/runner/.m2/repository/org/springframework/spring-test/7.0.10/spring-test-7.0.10.jar:/home/runner/.m2/repository/org/xmlunit/xmlunit-core/2.11.0/xmlunit-core-2.11.0.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/taxonomy-workspace-1.5.4-SNAPSHOT-test-fixtures.jar:/home/runner/.m2/repository/org/hsqldb/hsqldb/2.7.3/hsqldb-2.7.3.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-runtime/target/taxonomy-extension-runtime-1.5.4-SNAPSHOT.jar:/home/runner/.m2/repository/org/pf4j/pf4j/3.16.1/pf4j-3.16.1.jar:/home/runner/.m2/repository/com/github/zafarkhaja/java-semver/0.10.2/java-semver-0.10.2.jar:"/>
+    <property name="sun.cpu.endian" value="little"/>
+    <property name="user.home" value="/home/runner"/>
+    <property name="user.language" value="en"/>
+    <property name="java.specification.vendor" value="Oracle Corporation"/>
+    <property name="java.version.date" value="2026-10-20"/>
+    <property name="java.home" value="/usr/lib/jvm/temurin-25-jdk-amd64"/>
+    <property name="file.separator" value="/"/>
+    <property name="basedir" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-interop"/>
+    <property name="java.vm.compressedOopsMode" value="Zero based"/>
+    <property name="line.separator" value="&#10;"/>
+    <property name="java.vm.specification.vendor" value="Oracle Corporation"/>
+    <property name="java.specification.name" value="Java Platform API Specification"/>
+    <property name="taxonomy.test.browser.cache" value="/home/runner/work/Taxonomy/Taxonomy/target/test-runtime/selenium"/>
+    <property name="surefire.real.class.path" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-interop/target/surefire/surefirebooter-20261120081851981_1143.jar"/>
+    <property name="taxonomy.ui.skip" value="true"/>
+    <property name="sun.management.compiler" value="HotSpot 64-Bit Tiered Compilers"/>
+    <property name="java.runtime.version" value="25.0.5+8-LTS"/>
+    <property name="user.name" value="runner"/>
+    <property name="stdout.encoding" value="UTF-8"/>
+    <property name="path.separator" value=":"/>
+    <property name="os.version" value="7.0.0-1020-azure"/>
+    <property name="java.runtime.name" value="OpenJDK Runtime Environment"/>
+    <property name="file.encoding" value="UTF-8"/>
+    <property name="taxonomy.test.browser.version" value="149.0.7827.55"/>
+    <property name="java.vm.name" value="OpenJDK 64-Bit Server VM"/>
+    <property name="java.vendor.version" value="Temurin-25.0.5+8"/>
+    <property name="localRepository" value="/home/runner/.m2/repository"/>
+    <property name="java.vendor.url.bug" value="https://github.com/adoptium/adoptium-support/issues"/>
+    <property name="java.io.tmpdir" value="/tmp"/>
+    <property name="java.version" value="25.0.5"/>
+    <property name="taxonomy.node.executable" value="/home/runner/work/Taxonomy/Taxonomy/target/test-runtime/frontend/node/node"/>
+    <property name="user.dir" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-interop"/>
+    <property name="os.arch" value="amd64"/>
+    <property name="java.vm.specification.name" value="Java Virtual Machine Specification"/>
+    <property name="native.encoding" value="UTF-8"/>
+    <property name="java.library.path" value="/usr/java/packages/lib:/usr/lib64:/lib64:/lib:/usr/lib"/>
+    <property name="java.vm.info" value="mixed mode, sharing"/>
+    <property name="stderr.encoding" value="UTF-8"/>
+    <property name="java.vendor" value="Eclipse Adoptium"/>
+    <property name="java.vm.version" value="25.0.5+8-LTS"/>
+    <property name="stdin.encoding" value="UTF-8"/>
+    <property name="sun.io.unicode.encoding" value="UnicodeLittle"/>
+    <property name="java.class.version" value="69.0"/>
+    <property name="runOnnxTests" value="true"/>
+  </properties>
+  <testcase name="malformedPayloadInAnotherPrivateWorkspaceIsNeverParsedAndOwnPayloadFailsBeforeOutput" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.448">
+    <system-out><![CDATA[08:19:27.956 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:27.966 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-c39b25c4-1236-4374-825b-037b76f4b0dc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:28.028 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:28.124 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="completionMustCloseOverTheOwnedPublicationItems(String)[1]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.342">
+    <system-out><![CDATA[08:19:28.400 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:28.407 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-d733244d-978c-4b33-ada0-307ffd9023a8]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:28.453 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:28.494 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="completionMustCloseOverTheOwnedPublicationItems(String)[2]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.301">
+    <system-out><![CDATA[08:19:28.744 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:28.751 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-be9feea5-0783-4566-8888-745f94d5feb5]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:28.789 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:28.838 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="completionMustCloseOverTheOwnedPublicationItems(String)[3]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.344">
+    <system-out><![CDATA[08:19:29.051 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:29.058 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-a1aba1de-dcf2-4070-addd-2991e2751845]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:29.117 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:29.168 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="completionMustCloseOverTheOwnedPublicationItems(String)[4]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.292">
+    <system-out><![CDATA[08:19:29.396 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:29.403 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-5f353125-d390-4884-a189-2630a4bc9e3e]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:29.449 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:29.494 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="completionMustCloseOverTheOwnedPublicationItems(String)[5]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.285">
+    <system-out><![CDATA[08:19:29.688 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:29.693 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-1b091133-699a-4e2f-ad88-d58a2ca13114]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:29.728 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:29.773 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="completionMustCloseOverTheOwnedPublicationItems(String)[6]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.249">
+    <system-out><![CDATA[08:19:29.972 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:29.978 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-1e85040f-dc3c-404e-88fa-75d13c19425b]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:30.025 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:30.074 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="rejectsBrokenPublicationParentChainsBeforeOutput(String)[1]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.201">
+    <system-out><![CDATA[08:19:30.223 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:30.227 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-157d3c5d-0e6d-45ed-bc85-0b669524220b]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:30.259 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:30.297 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="rejectsBrokenPublicationParentChainsBeforeOutput(String)[2]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.242">
+    <system-out><![CDATA[08:19:30.426 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:30.444 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-84e10a5e-7161-4ef5-a178-b5246bfc22fe]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:30.477 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:30.511 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="rejectsBrokenPublicationParentChainsBeforeOutput(String)[3]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.266">
+    <system-out><![CDATA[08:19:30.673 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:30.679 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-c32d7a09-fef1-4be2-a290-6f155bf5674f]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:30.725 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:30.793 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="fullHistoryKeepsAllEightDatasetsAndTypedReceiptsButNeverLeases" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.248">
+    <system-out><![CDATA[08:19:30.934 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:30.939 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-8e99536a-2206-495c-9474-e68ebc2b78e5]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:30.968 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:31.003 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="inventoryComparisonCannotExportAnUncapturedObservationReference" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="1.057">
+    <system-out><![CDATA[08:19:31.186 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:31.192 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-d8f1c0d6-7daa-4b9a-bf29-96b9accb941f]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:31.231 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:31.273 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+08:19:31.432 [main] INFO org.springframework.data.jpa.repository.query.QueryEnhancerFactories -- Hibernate is in classpath; If applicable, HQL parser will be used.
+]]></system-out>
+  </testcase>
+  <testcase name="installationRequiresProofForEveryStoredConnectionAndThenCapturesBothScopes" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.262">
+    <system-out><![CDATA[08:19:32.246 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:32.254 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-11ea9891-d2c9-48d8-bf91-babf51a34e62]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:32.290 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:32.344 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="binaryBackupFetchesOneFileAtATimeWithoutLoadingPayloadsForMetadata(String)[1]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.36">
+    <system-out><![CDATA[08:19:32.513 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:32.521 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-b6960cea-d321-4084-b12c-74390caaa67d]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:32.570 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:32.645 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="binaryBackupFetchesOneFileAtATimeWithoutLoadingPayloadsForMetadata(String)[2]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.254">
+    <system-out><![CDATA[08:19:32.874 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:32.881 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-1061092e-f211-40f4-91f5-747425160271]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:32.930 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:32.974 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="inventoryVariantRejectsContradictoryOrMissingInputIdentity(String)[1]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.204">
+    <system-out><![CDATA[08:19:33.127 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:33.131 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-c52b16ab-0e0a-4e8d-8b5c-43489d07f767]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:33.168 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:33.207 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="inventoryVariantRejectsContradictoryOrMissingInputIdentity(String)[2]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.194">
+    <system-out><![CDATA[08:19:33.334 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:33.338 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-4f14ad79-a849-4475-a2e9-7fab65fc511a]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:33.376 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:33.412 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="retainedBasesAndResultsAreBinaryArchiveEntriesWithManualRestoreAuthority" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.195">
+    <system-out><![CDATA[08:19:33.525 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:33.529 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-01fd7d5f-be06-48b9-836b-2c257a12ec58]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:33.555 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:33.585 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="initializedPublicationAndCancelledWorkRetainTheirDistinctProfileSemantics" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.233">
+    <system-out><![CDATA[08:19:33.720 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:33.723 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-6c79c8b8-ab56-45f4-86b5-04145e1e803f]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:33.748 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:33.777 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="inventoryVariantExportsFrozenDecisionEvidenceWithoutGrantingTargetAuthority" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.287">
+    <system-out><![CDATA[08:19:33.958 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:33.965 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-9915b0cd-73a9-4c0c-a613-dca7f4bb202e]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:34.008 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:34.086 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="embeddedContextUsesTheWorkspaceOverlayKeyAndCannotRetargetAnotherBranch" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.202">
+    <system-out><![CDATA[08:19:34.250 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:34.257 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-11708365-a07a-4976-8ef2-8a661b649582]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:34.300 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:34.337 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="selectedVersionAndEmptyScopeDoNotReadLiveData" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.005"/>
+  <testcase name="rejectsForeignAndDuplicateSelectionBeforeDatabaseAccessAndHonorsCancellation" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.002"/>
+  <testcase name="publicationPlanMustAgreeWithStoredChildItems(String)[1]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.198">
+    <system-out><![CDATA[08:19:34.458 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:34.462 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-9822c416-00bb-4fff-a9da-89af82f6a1f3]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:34.492 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:34.522 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="publicationPlanMustAgreeWithStoredChildItems(String)[2]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.176">
+    <system-out><![CDATA[08:19:34.656 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:34.660 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-f50737d5-aede-42a5-96b7-2132ee0faa46]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:34.688 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:34.715 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="publicationPlanMustAgreeWithStoredChildItems(String)[3]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.222">
+    <system-out><![CDATA[08:19:34.835 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:34.842 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-cec6a227-741c-4a91-adf8-82b8abb0e082]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:34.869 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:34.895 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="publicationPlanMustAgreeWithStoredChildItems(String)[4]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.266">
+    <system-out><![CDATA[08:19:35.062 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:35.069 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-9adadf8c-6f0c-4a2f-b693-a5a7bdbd38bc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:35.109 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:35.178 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="publicationPlanMustAgreeWithStoredChildItems(String)[5]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.201">
+    <system-out><![CDATA[08:19:35.327 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:35.332 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-e8d4b98e-3ad4-4855-bdc7-08237c7ce169]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:35.361 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:35.393 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="publicationPlanMustAgreeWithStoredChildItems(String)[6]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.215">
+    <system-out><![CDATA[08:19:35.528 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:35.541 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-47d74fa3-cdf7-4faf-9be2-3ed893223e14]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:35.568 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:35.607 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="pendingPublicationKeepsCandidatesButNeverHistoricalDispatchEvidenceOrWorkerClaims" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.234">
+    <system-out><![CDATA[08:19:35.744 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:35.749 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-ba87aa8d-1ffe-45c9-b606-80c8493be5d4]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:35.786 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:35.821 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="inventoryVariantRejectsMissingOrCrossScopeSolutionReferences(String)[1]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.208">
+    <system-out><![CDATA[08:19:35.982 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:35.986 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-27a4c603-a630-47c9-b71f-632bde062cf2]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:36.024 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:36.064 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="inventoryVariantRejectsMissingOrCrossScopeSolutionReferences(String)[2]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.191">
+    <system-out><![CDATA[08:19:36.190 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:36.195 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-3a701cfe-d606-447c-99e7-53cf4429e2cd]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:36.230 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:36.263 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="inventoryVariantRejectsMissingOrCrossScopeSolutionReferences(String)[3]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.202">
+    <system-out><![CDATA[08:19:36.382 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:36.389 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-93b60f1e-95b7-47db-9f42-6f120d6f65cc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:36.426 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:36.466 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="inventoryVariantRejectsMissingOrCrossScopeSolutionReferences(String)[4]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.163">
+    <system-out><![CDATA[08:19:36.583 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:36.586 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-d4e2707e-dcb4-4626-977f-b0931e1ac088]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:36.614 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:36.642 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="inventoryVariantRejectsMissingOrCrossScopeSolutionReferences(String)[5]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.165">
+    <system-out><![CDATA[08:19:36.746 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:36.750 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-81651348-58ed-4104-a5ef-82c73dc5c93f]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:36.774 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:36.809 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="rejectsScopeHashTamperingAndOrphansWithoutGuessingOwnership" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.207">
+    <system-out><![CDATA[08:19:36.914 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:36.932 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-4357b1f6-9c76-403e-b123-48dc0347fa68]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:36.962 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:36.992 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="completedPublicationKeepsHistoricalCompletionAndCheckpointButNoCurrentPayload" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.284">
+    <system-out><![CDATA[08:19:37.123 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:37.133 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-53973e78-d306-481b-8d87-727021945b8d]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:37.172 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:37.212 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="currentRetainsAllUnreservedPreviewsAndLiveMappingsWithoutHistoricalOrForeignPayload" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.167">
+    <system-out><![CDATA[08:19:37.405 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:37.411 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-41934c3a-7740-471f-8e87-f8745cf04313]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:37.435 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:37.463 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="publicationAndOperationCannotDisagreeAboutWorkToPreserve(String)[1]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.188">
+    <system-out><![CDATA[08:19:37.578 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:37.582 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-eb066496-ef8c-4c28-ae87-bd2bb366c74d]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:37.618 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:37.650 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="publicationAndOperationCannotDisagreeAboutWorkToPreserve(String)[2]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.193">
+    <system-out><![CDATA[08:19:37.766 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:37.778 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-fd6b7727-ffa8-4884-b59c-c758f5b1c3f7]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:37.802 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:37.829 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="publicationAndOperationCannotDisagreeAboutWorkToPreserve(String)[3]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.216">
+    <system-out><![CDATA[08:19:37.961 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:37.972 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-3c087a5c-af18-4385-8a25-f6b595ce3242]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:38.010 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:38.040 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="publicationAndOperationCannotDisagreeAboutWorkToPreserve(String)[4]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.166">
+    <system-out><![CDATA[08:19:38.178 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:38.183 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-fb51c464-3337-4f22-bec1-b1b40f5fb51a]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:38.212 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:38.239 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="historyRetainsAuthorizedEvidenceAndRemovedMappings" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.197">
+    <system-out><![CDATA[08:19:38.341 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:38.346 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-7be9c65c-e957-4cb2-ac9e-147b97a42175]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:38.369 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:38.403 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="declaresEveryOwnedPersistentCategory" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.002"/>
+  <testcase name="invalidTimestampIsRedactedBeforeAnyOutput" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.19">
+    <system-out><![CDATA[08:19:38.544 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:38.549 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-0d4e1d27-fdcb-40e0-bd26-3a5ac0c8dec5]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:38.573 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:38.601 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="inconsistentBinaryEvidenceIsRejectedBeforeAnyArchiveOutput(String)[1]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.165">
+    <system-out><![CDATA[08:19:38.740 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:38.745 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-7c70f67f-0cb1-4343-bb92-fafcff1f250b]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:38.773 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:38.806 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="inconsistentBinaryEvidenceIsRejectedBeforeAnyArchiveOutput(String)[2]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.145">
+    <system-out><![CDATA[08:19:38.903 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:38.907 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-f8c00c11-f932-49c8-8f3c-9de678296181]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:38.933 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:38.962 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="inconsistentBinaryEvidenceIsRejectedBeforeAnyArchiveOutput(String)[3]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.156">
+    <system-out><![CDATA[08:19:39.049 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:39.053 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-ffadde69-1e3c-4cf6-a728-d671949a5ddc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:39.078 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:39.113 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="inconsistentBinaryEvidenceIsRejectedBeforeAnyArchiveOutput(String)[4]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.134">
+    <system-out><![CDATA[08:19:39.205 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:39.209 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-afef57a9-75ae-444c-9e73-d6893bbfd5ba]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:39.233 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:39.257 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="inventoryAssertionsHaveTypedOwnerAndExcludeSiblingScopeAndGrants" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.144">
+    <system-out><![CDATA[08:19:39.340 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:39.343 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-f01c2d1b-3ffb-4c67-a468-e45b32d7cdb3]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:39.365 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:39.387 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="rejectsCrossConnectionOperationEdgesBeforeAnyOutput(String)[1]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.145">
+    <system-out><![CDATA[08:19:39.486 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:39.489 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-988386bb-6cbe-4e56-a366-1260c8bf643c]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:39.513 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:39.536 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="rejectsCrossConnectionOperationEdgesBeforeAnyOutput(String)[2]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.201">
+    <system-out><![CDATA[08:19:39.632 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:39.636 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-f8f813ff-7977-4601-bf67-323e5e133244]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:39.669 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:39.694 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="rejectsCrossConnectionOperationEdgesBeforeAnyOutput(String)[3]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.281">
+    <system-out><![CDATA[08:19:39.839 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:39.847 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-2057bb2c-9ea4-483f-b9c8-0f708a7f8780]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:39.901 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:39.946 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="rejectsConnectionPointersOutsideItsTenantBeforeAnyOutput(String)[1]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.194">
+    <system-out><![CDATA[08:19:40.123 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:40.130 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-d759c41b-4091-48e6-8128-4a8eeefc5046]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:40.167 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:40.204 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="rejectsConnectionPointersOutsideItsTenantBeforeAnyOutput(String)[2]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.144">
+    <system-out><![CDATA[08:19:40.315 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:40.320 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-f84e8580-5b15-403e-96e0-92a9767586ea]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:40.346 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:40.370 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="rejectsConnectionPointersOutsideItsTenantBeforeAnyOutput(String)[3]" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.148">
+    <system-out><![CDATA[08:19:40.457 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:40.461 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-66e3977a-b090-4622-bb62-8dd47b928006]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:40.484 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:40.508 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="historyPreservesFinalFileLossReportAndCreationTime" classname="com.taxonomy.interop.backup.IntegrationBackupExportTest" time="0.154">
+    <system-out><![CDATA[08:19:40.605 [main] WARN org.hibernate.orm.connections.pooling -- HHH10001002: Using built-in connection pool (not intended for production use)
+08:19:40.608 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:interop-backup-e90b0f7c-0ea7-4075-879c-b9b6da798bec]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: false
+	Isolation level: READ_COMMITTED
+	JDBC fetch size: none
+	Pool: DriverManagerConnectionProvider
+	Minimum pool size: 1
+	Maximum pool size: 20
+08:19:40.632 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:19:40.656 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+</testsuite>

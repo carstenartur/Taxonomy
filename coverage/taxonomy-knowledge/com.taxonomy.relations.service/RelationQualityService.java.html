@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationQualityService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.service</a> &gt; <span class="el_source">RelationQualityService.java</span></div><h1>RelationQualityService.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.service;
+
+import com.taxonomy.dto.ProvenanceMetrics;
+import com.taxonomy.dto.RelationQualityMetrics;
+import com.taxonomy.dto.RelationTypeMetrics;
+import com.taxonomy.dto.TopRejectedProposal;
+import com.taxonomy.model.ProposalStatus;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.model.RelationProposal;
+import com.taxonomy.relations.repository.RelationProposalRepository;
+import com.taxonomy.workspace.service.RepositoryContext;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
+
+/**
+ * Computes relation-review quality metrics inside one selected repository
+ * context and provides the same scoped history as a confidence signal.
+ *
+ * &lt;p&gt;A central context sees central reviews in exactly one repository. A
+ * workspace context intentionally inherits those central reviews and adds only
+ * reviews from that exact workspace. Sibling workspaces and other repositories
+ * are never part of the normal product view.&lt;/p&gt;
+ */
+@Service
+public class RelationQualityService {
+
+    private final RelationProposalRepository proposalRepository;
+
+<span class="fc" id="L33">    public RelationQualityService(RelationProposalRepository proposalRepository) {</span>
+<span class="fc" id="L34">        this.proposalRepository = Objects.requireNonNull(</span>
+                proposalRepository, &quot;proposalRepository&quot;);
+<span class="fc" id="L36">    }</span>
+
+    /** Computes the full dashboard from one request-stable visible snapshot. */
+    @Transactional(readOnly = true)
+    public RelationQualityMetrics calculateMetrics(RepositoryContext context) {
+<span class="fc" id="L41">        return summarize(visibleProposals(context));</span>
+    }
+
+<span class="fc" id="L44">    public record Dashboard(RelationQualityMetrics metrics, List&lt;TopRejectedProposal&gt; topRejected) {}</span>
+
+    /** All visible counters and examples for this dashboard come from one query result. */
+    @Transactional(readOnly = true)
+    public Dashboard dashboard(int limit, RepositoryContext context) {
+<span class="fc" id="L49">        var rows = visibleProposals(context);</span>
+<span class="fc" id="L50">        return new Dashboard(summarize(rows), topRejected(rows, limit));</span>
+    }
+
+    private static RelationQualityMetrics summarize(List&lt;RelationProposal&gt; proposals) {
+<span class="fc" id="L54">        long accepted = countByStatus(proposals, ProposalStatus.ACCEPTED);</span>
+<span class="fc" id="L55">        long rejected = countByStatus(proposals, ProposalStatus.REJECTED);</span>
+<span class="fc" id="L56">        long pending = countByStatus(proposals, ProposalStatus.PENDING);</span>
+<span class="fc" id="L57">        long reviewed = accepted + rejected;</span>
+
+<span class="fc" id="L59">        return new RelationQualityMetrics(</span>
+<span class="fc" id="L60">                Math.toIntExact(accepted + rejected + pending),</span>
+<span class="fc" id="L61">                Math.toIntExact(accepted),</span>
+<span class="fc" id="L62">                Math.toIntExact(rejected),</span>
+<span class="fc" id="L63">                Math.toIntExact(pending),</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">                reviewed &gt; 0 ? (double) accepted / reviewed : 0.0,</span>
+<span class="fc" id="L65">                averageConfidence(proposals, ProposalStatus.ACCEPTED),</span>
+<span class="fc" id="L66">                averageConfidence(proposals, ProposalStatus.REJECTED),</span>
+<span class="fc" id="L67">                metricsByRelationType(proposals),</span>
+<span class="fc" id="L68">                metricsByProvenance(proposals));</span>
+    }
+
+    /** Returns metrics by relation type in the exact selected context. */
+    @Transactional(readOnly = true)
+    public List&lt;RelationTypeMetrics&gt; metricsByRelationType(
+            RepositoryContext context) {
+<span class="fc" id="L75">        return metricsByRelationType(visibleProposals(context));</span>
+    }
+
+    /** Returns metrics by provenance in the exact selected context. */
+    @Transactional(readOnly = true)
+    public List&lt;ProvenanceMetrics&gt; metricsByProvenance(
+            RepositoryContext context) {
+<span class="fc" id="L82">        return metricsByProvenance(visibleProposals(context));</span>
+    }
+
+    /**
+     * Returns rejected proposals visible in the selected context, ordered by
+     * descending confidence (the worst false positives first).
+     */
+    @Transactional(readOnly = true)
+    public List&lt;TopRejectedProposal&gt; topRejected(
+            int limit,
+            RepositoryContext context) {
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">        if (limit &lt;= 0) {</span>
+<span class="nc" id="L94">            return List.of();</span>
+        }
+<span class="fc" id="L96">        return topRejected(visibleProposalsByStatus(context, ProposalStatus.REJECTED), limit);</span>
+    }
+
+    private static List&lt;TopRejectedProposal&gt; topRejected(List&lt;RelationProposal&gt; proposals, int limit) {
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        return proposals.stream().filter(proposal -&gt; proposal.getStatus() == ProposalStatus.REJECTED)</span>
+<span class="fc" id="L101">                .sorted(Comparator</span>
+<span class="fc" id="L102">                        .comparingDouble(RelationProposal::getConfidence)</span>
+<span class="fc" id="L103">                        .reversed()</span>
+<span class="fc" id="L104">                        .thenComparing(</span>
+                                RelationProposal::getId,
+<span class="fc" id="L106">                                Comparator.nullsLast(Long::compareTo)))</span>
+<span class="fc" id="L107">                .limit(Math.max(0, limit))</span>
+<span class="fc" id="L108">                .map(proposal -&gt; new TopRejectedProposal(</span>
+<span class="fc" id="L109">                        proposal.getSourceNode().getCode(),</span>
+<span class="fc" id="L110">                        proposal.getSourceNode().getNameEn(),</span>
+<span class="fc" id="L111">                        proposal.getTargetNode().getCode(),</span>
+<span class="fc" id="L112">                        proposal.getTargetNode().getNameEn(),</span>
+<span class="fc" id="L113">                        proposal.getRelationType().name(),</span>
+<span class="fc" id="L114">                        proposal.getConfidence(),</span>
+<span class="fc" id="L115">                        proposal.getRationale()))</span>
+<span class="fc" id="L116">                .toList();</span>
+    }
+
+    /**
+     * Returns a feedback weight in {@code [0.0, 1.0]} from review history
+     * visible in the exact proposal-generation context.
+     *
+     * &lt;p&gt;Returns {@code 0.5} when no reviewed history exists. A workspace
+     * intentionally inherits central review history from the same repository,
+     * but never history from a sibling workspace or another repository.&lt;/p&gt;
+     */
+    @Transactional(readOnly = true)
+    public double acceptanceHistoryWeight(
+            String sourceRoot,
+            String targetRoot,
+            RelationType relationType,
+            RepositoryContext context) {
+<span class="fc" id="L133">        RepositoryContext tenant = requireContext(context);</span>
+<span class="fc" id="L134">        var tally = proposalRepository.visibleReviewHistory(tenant.repositoryId(), tenant.workspaceId(),</span>
+                sourceRoot, targetRoot, relationType, ProposalStatus.ACCEPTED, ProposalStatus.REJECTED);
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        return tally.getReviewed() == 0 ? 0.5 : (double) tally.getAccepted() / tally.getReviewed();</span>
+    }
+
+    private List&lt;RelationProposal&gt; visibleProposals(
+            RepositoryContext context) {
+<span class="fc" id="L141">        RepositoryContext tenant = requireContext(context);</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">        if (tenant.workspaceId() == null) {</span>
+<span class="fc" id="L143">            return proposalRepository.findCentralByRepository(</span>
+<span class="fc" id="L144">                    tenant.repositoryId());</span>
+        }
+<span class="fc" id="L146">        return proposalRepository.findVisibleByRepositoryAndWorkspace(</span>
+<span class="fc" id="L147">                tenant.repositoryId(), tenant.workspaceId());</span>
+    }
+
+    private List&lt;RelationProposal&gt; visibleProposalsByStatus(
+            RepositoryContext context,
+            ProposalStatus status) {
+<span class="fc" id="L153">        RepositoryContext tenant = requireContext(context);</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        if (tenant.workspaceId() == null) {</span>
+<span class="fc" id="L155">            return proposalRepository.findCentralByRepositoryAndStatus(</span>
+<span class="fc" id="L156">                    tenant.repositoryId(), status);</span>
+        }
+<span class="fc" id="L158">        return proposalRepository.findVisibleByRepositoryAndWorkspaceAndStatus(</span>
+<span class="fc" id="L159">                tenant.repositoryId(), tenant.workspaceId(), status);</span>
+    }
+
+    private static List&lt;RelationTypeMetrics&gt; metricsByRelationType(
+            List&lt;RelationProposal&gt; proposals) {
+<span class="fc" id="L164">        return proposals.stream()</span>
+<span class="fc" id="L165">                .map(RelationProposal::getRelationType)</span>
+<span class="fc" id="L166">                .filter(Objects::nonNull)</span>
+<span class="fc" id="L167">                .distinct()</span>
+<span class="fc" id="L168">                .sorted()</span>
+<span class="fc" id="L169">                .map(relationType -&gt; {</span>
+<span class="fc" id="L170">                    long accepted = countByTypeAndStatus(</span>
+                            proposals, relationType, ProposalStatus.ACCEPTED);
+<span class="fc" id="L172">                    long rejected = countByTypeAndStatus(</span>
+                            proposals, relationType, ProposalStatus.REJECTED);
+<span class="fc" id="L174">                    long pending = countByTypeAndStatus(</span>
+                            proposals, relationType, ProposalStatus.PENDING);
+<span class="fc" id="L176">                    long reviewed = accepted + rejected;</span>
+<span class="fc" id="L177">                    return new RelationTypeMetrics(</span>
+<span class="fc" id="L178">                            relationType.name(),</span>
+<span class="fc" id="L179">                            Math.toIntExact(reviewed + pending),</span>
+<span class="fc" id="L180">                            Math.toIntExact(accepted),</span>
+<span class="fc" id="L181">                            Math.toIntExact(rejected),</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">                            reviewed &gt; 0 ? (double) accepted / reviewed : 0.0);</span>
+                })
+<span class="fc" id="L184">                .toList();</span>
+    }
+
+    private static List&lt;ProvenanceMetrics&gt; metricsByProvenance(
+            List&lt;RelationProposal&gt; proposals) {
+<span class="fc" id="L189">        return proposals.stream()</span>
+<span class="fc" id="L190">                .map(RelationProposal::getProvenance)</span>
+<span class="fc" id="L191">                .distinct()</span>
+<span class="fc" id="L192">                .sorted(Comparator.nullsFirst(String::compareTo))</span>
+<span class="fc" id="L193">                .map(provenance -&gt; {</span>
+<span class="fc" id="L194">                    long accepted = countByProvenanceAndStatus(</span>
+                            proposals, provenance, ProposalStatus.ACCEPTED);
+<span class="fc" id="L196">                    long rejected = countByProvenanceAndStatus(</span>
+                            proposals, provenance, ProposalStatus.REJECTED);
+<span class="fc" id="L198">                    long pending = countByProvenanceAndStatus(</span>
+                            proposals, provenance, ProposalStatus.PENDING);
+<span class="fc" id="L200">                    long reviewed = accepted + rejected;</span>
+<span class="fc" id="L201">                    return new ProvenanceMetrics(</span>
+                            provenance,
+<span class="fc" id="L203">                            Math.toIntExact(reviewed + pending),</span>
+<span class="fc" id="L204">                            Math.toIntExact(accepted),</span>
+<span class="fc bfc" id="L205" title="All 2 branches covered.">                            reviewed &gt; 0 ? (double) accepted / reviewed : 0.0);</span>
+                })
+<span class="fc" id="L207">                .toList();</span>
+    }
+
+    private static long countByStatus(
+            List&lt;RelationProposal&gt; proposals,
+            ProposalStatus status) {
+<span class="fc" id="L213">        return proposals.stream()</span>
+<span class="fc bfc" id="L214" title="All 2 branches covered.">                .filter(proposal -&gt; proposal.getStatus() == status)</span>
+<span class="fc" id="L215">                .count();</span>
+    }
+
+    private static long countByTypeAndStatus(
+            List&lt;RelationProposal&gt; proposals,
+            RelationType relationType,
+            ProposalStatus status) {
+<span class="fc" id="L222">        return proposals.stream()</span>
+<span class="fc bfc" id="L223" title="All 2 branches covered.">                .filter(proposal -&gt; proposal.getRelationType() == relationType)</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">                .filter(proposal -&gt; proposal.getStatus() == status)</span>
+<span class="fc" id="L225">                .count();</span>
+    }
+
+    private static long countByProvenanceAndStatus(
+            List&lt;RelationProposal&gt; proposals,
+            String provenance,
+            ProposalStatus status) {
+<span class="fc" id="L232">        return proposals.stream()</span>
+<span class="fc" id="L233">                .filter(proposal -&gt; Objects.equals(</span>
+<span class="fc" id="L234">                        proposal.getProvenance(), provenance))</span>
+<span class="fc bfc" id="L235" title="All 2 branches covered.">                .filter(proposal -&gt; proposal.getStatus() == status)</span>
+<span class="fc" id="L236">                .count();</span>
+    }
+
+    private static double averageConfidence(
+            List&lt;RelationProposal&gt; proposals,
+            ProposalStatus status) {
+<span class="fc" id="L242">        return proposals.stream()</span>
+<span class="fc bfc" id="L243" title="All 2 branches covered.">                .filter(proposal -&gt; proposal.getStatus() == status)</span>
+<span class="fc" id="L244">                .mapToDouble(RelationProposal::getConfidence)</span>
+<span class="fc" id="L245">                .average()</span>
+<span class="fc" id="L246">                .orElse(0.0);</span>
+    }
+
+    private static RepositoryContext requireContext(
+            RepositoryContext context) {
+<span class="fc" id="L251">        return Objects.requireNonNull(</span>
+                context, &quot;RepositoryContext must not be null&quot;);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

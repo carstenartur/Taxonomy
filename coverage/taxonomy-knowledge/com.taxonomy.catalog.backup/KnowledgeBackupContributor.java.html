@@ -1,0 +1,300 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>KnowledgeBackupContributor.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.backup</a> &gt; <span class="el_source">KnowledgeBackupContributor.java</span></div><h1>KnowledgeBackupContributor.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.backup;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.exchange.backup.PortableRows;
+import com.taxonomy.exchange.backup.PortableRows.Query;
+import com.taxonomy.model.HypothesisStatus;
+import com.taxonomy.model.ProposalStatus;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.model.RelationProjectionRecovery.RecoveryStatus;
+import com.taxonomy.workspace.backup.BackupRowScope;
+
+import javax.sql.DataSource;
+import java.io.IOException;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.*;
+
+import static com.taxonomy.exchange.backup.PortableRows.*;
+
+/** Explicit catalogue and review schemas, selected before any payload or archive entry is read. */
+public final class KnowledgeBackupContributor implements BackupDataContributor {
+    /** Complete knowledge owner version, shared by its capture delegates. */
+    public static final int SCHEMA_VERSION = 3;
+    private static final int MAX_IDENTITIES = 100_000;
+    private final DataSource database;
+    private final PortableRows rows;
+    private final BackupAnalysisReference.Selector analyses;
+    private final SelectionReader selections;
+
+    /** The captured Git/working-document owner proves which unlinked hypotheses remain current. */
+    public record Selection(Set&lt;String&gt; catalogueCodes, Set&lt;SourceRecordId&gt; currentHypotheses) {
+<span class="fc" id="L32">        public Selection {</span>
+<span class="fc" id="L33">            catalogueCodes = Set.copyOf(catalogueCodes); currentHypotheses = Set.copyOf(currentHypotheses);</span>
+<span class="pc bpc" id="L34" title="2 of 4 branches missed.">            if (catalogueCodes.size() &gt; MAX_IDENTITIES || currentHypotheses.size() &gt; MAX_IDENTITIES)</span>
+<span class="nc" id="L35">                throw new IllegalArgumentException(&quot;Knowledge selection limit exceeded&quot;);</span>
+<span class="pc bpc" id="L36" title="2 of 6 branches missed.">            for (String code : catalogueCodes) if (code.isBlank() || code.length() &gt; 1024) throw new IllegalArgumentException(&quot;Invalid catalogue code&quot;);</span>
+<span class="pc bpc" id="L37" title="1 of 4 branches missed.">            for (var reference : currentHypotheses) if (!reference.kind().equals(&quot;knowledge.hypothesis&quot;))</span>
+<span class="nc" id="L38">                throw new IllegalArgumentException(&quot;Invalid hypothesis selection kind&quot;);</span>
+<span class="fc" id="L39">        }</span>
+    }
+    @FunctionalInterface public interface SelectionReader { Selection select(SnapshotContext context) throws IOException; }
+<span class="fc" id="L42">    public KnowledgeBackupContributor(DataSource database, BackupAnalysisReference.Selector analyses, SelectionReader selections) {</span>
+<span class="fc" id="L43">        this.database = Objects.requireNonNull(database);</span>
+<span class="fc" id="L44">        rows = new PortableRows(database); this.analyses = Objects.requireNonNull(analyses); this.selections = Objects.requireNonNull(selections);</span>
+<span class="fc" id="L45">    }</span>
+<span class="fc" id="L46">    @Override public BackupComponentId componentId() { return new BackupComponentId(&quot;knowledge&quot;); }</span>
+<span class="fc" id="L47">    @Override public int schemaVersion() { return SCHEMA_VERSION; }</span>
+<span class="fc" id="L48">    @Override public Set&lt;String&gt; categories() { return Set.of(&quot;com.taxonomy.catalog.model.TaxonomyNode&quot;, &quot;com.taxonomy.catalog.model.TaxonomyRelation&quot;,</span>
+            &quot;com.taxonomy.relations.model.RelationHypothesis&quot;, &quot;com.taxonomy.relations.model.RelationEvidence&quot;,
+            &quot;com.taxonomy.relations.model.RelationProposal&quot;, &quot;com.taxonomy.relations.model.RelationProjectionRecovery&quot;,
+            &quot;com.taxonomy.relations.model.RequirementCoverage&quot;); }
+    @Override public List&lt;String&gt; omissions(BackupProfile profile) {
+<span class="fc" id="L53">        var result = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L54">        result.add(&quot;knowledge: search/embedding projections, worker diagnostics and automatic recovery execution are excluded&quot;);</span>
+<span class="fc" id="L55">        result.add(&quot;knowledge: original catalogue input bytes are not inferred from shipped resources; a retained-input adapter is required separately&quot;);</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        if (profile == BackupProfile.SELECTED_VERSION) result.add(&quot;knowledge: unversioned present-day catalogue/review rows are excluded; selected Git is authoritative&quot;);</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        else if (!profile.includesHistory()) result.add(&quot;knowledge: earlier analysis hypotheses/evidence, completed recovery and legacy coverage text are excluded&quot;);</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">        if (profile == BackupProfile.SELECTED_VERSION) result.add(&quot;knowledge: mutable requirement coverage is branch-owned and excluded from immutable Git versions&quot;);</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        if (!profile.isInstallation()) result.add(&quot;knowledge: unattributed global legacy coverage is excluded from scoped exports&quot;);</span>
+<span class="fc" id="L60">        return List.copyOf(result);</span>
+    }
+
+    @Override public void write(SnapshotContext snapshot, ComponentSink sink) throws IOException {
+<span class="fc" id="L64">        var scope = new BackupRowScope(snapshot); var profile = snapshot.authorization().request().profile();</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        Selection selection = scope.selectedVersion() ? new Selection(Set.of(),Set.of()) : Objects.requireNonNull(selections.select(snapshot));</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        Set&lt;String&gt; hypotheses = scope.selectedVersion() ? Set.of() : hypotheses(snapshot,scope,selection);</span>
+<span class="fc" id="L67">        Set&lt;String&gt; codes = new TreeSet&lt;&gt;(selection.catalogueCodes());</span>
+<span class="fc bfc" id="L68" title="All 4 branches covered.">        boolean captureLegacyCoverage = scope.installation() &amp;&amp; hasLegacyCoverageTable();</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        if (!scope.selectedVersion()) {</span>
+<span class="fc" id="L70">            endpoints(scope,&quot;taxonomy_relation&quot;,codes); endpoints(scope,&quot;relation_proposal&quot;,codes);</span>
+<span class="fc" id="L71">            rows.visit(hypothesisQuery(scope), r -&gt; new HypothesisEndpoint(r.getString(&quot;id&quot;),text(r,&quot;source_node_id&quot;),text(r,&quot;target_node_id&quot;)), h -&gt; {</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">                if (hypotheses.contains(h.id())) { addCode(codes,h.source()); addCode(codes,h.target()); }</span>
+<span class="fc" id="L73">            });</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">            if (captureLegacyCoverage) rows.requireEmpty(new Query(&quot;select 1 from requirement_coverage c left join taxonomy_node n on n.code=c.node_code where n.id is null&quot;,List.of()));</span>
+        }
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        Map&lt;String,NodeIdentity&gt; catalogue = scope.selectedVersion() ? Map.of() : catalogueClosure(scope,codes);</span>
+<span class="fc" id="L77">        rows.writeBatches(sink,&quot;knowledge&quot;,&quot;node&quot;,profile,nodeQueries(scope,catalogue.keySet()), r -&gt; new NodeRecord(</span>
+<span class="fc" id="L78">                reference(r,&quot;knowledge.node&quot;,&quot;id&quot;),text(r,&quot;code&quot;),text(r,&quot;uuid&quot;),text(r,&quot;name_en&quot;),text(r,&quot;name_de&quot;),</span>
+<span class="fc" id="L79">                text(r,&quot;description_en&quot;),text(r,&quot;description_de&quot;),text(r,&quot;parent_code&quot;), parentReference(catalogue,text(r,&quot;parent_code&quot;)),</span>
+<span class="fc" id="L80">                text(r,&quot;taxonomy_root&quot;),r.getInt(&quot;node_level&quot;),text(r,&quot;dataset&quot;),text(r,&quot;external_id&quot;),text(r,&quot;source&quot;),text(r,&quot;reference&quot;),</span>
+<span class="fc" id="L81">                number(r,&quot;sort_order&quot;),text(r,&quot;state&quot;)));</span>
+<span class="fc" id="L82">        rows.write(sink,&quot;knowledge&quot;,&quot;relation&quot;,profile,relationQuery(scope,&quot;taxonomy_relation&quot;,&quot;t.description,t.provenance,t.weight,t.bidirectional&quot;), r -&gt; new RelationRecord(</span>
+<span class="fc" id="L83">                reference(r,&quot;knowledge.relation&quot;,&quot;id&quot;),text(r,&quot;repository_id&quot;),text(r,&quot;workspace_id&quot;),text(r,&quot;owner_username&quot;),</span>
+<span class="fc" id="L84">                reference(r,&quot;knowledge.node&quot;,&quot;source_node_id&quot;),reference(r,&quot;knowledge.node&quot;,&quot;target_node_id&quot;),text(r,&quot;source_code&quot;),text(r,&quot;target_code&quot;),</span>
+<span class="fc" id="L85">                enumeration(r,&quot;relation_type&quot;,RelationType.class),text(r,&quot;description&quot;),text(r,&quot;provenance&quot;),number(r,&quot;weight&quot;),r.getBoolean(&quot;bidirectional&quot;)));</span>
+<span class="fc" id="L86">        rows.writeBatches(sink,&quot;knowledge&quot;,&quot;hypothesis&quot;,profile,batches(&quot;select id,repository_id,workspace_id,branch_name,owner_username,source_node_id,target_node_id,&quot;</span>
+                + &quot;relation_type,status,confidence,analysis_session_id,project_id,requirement_id,analysis_snapshot_id,applied_in_current_analysis,created_at &quot;
+<span class="fc" id="L88">                + &quot;from relation_hypothesis where id in &quot;,hypotheses,&quot;id&quot;), r -&gt; new HypothesisRecord(</span>
+<span class="fc" id="L89">                reference(r,&quot;knowledge.hypothesis&quot;,&quot;id&quot;),text(r,&quot;repository_id&quot;),text(r,&quot;workspace_id&quot;),text(r,&quot;branch_name&quot;),text(r,&quot;owner_username&quot;),</span>
+<span class="fc" id="L90">                text(r,&quot;source_node_id&quot;),text(r,&quot;target_node_id&quot;),enumeration(r,&quot;relation_type&quot;,RelationType.class),enumeration(r,&quot;status&quot;,HypothesisStatus.class),</span>
+<span class="fc" id="L91">                decimal(r,&quot;confidence&quot;),text(r,&quot;analysis_session_id&quot;),reference(r,&quot;portfolio.project&quot;,&quot;project_id&quot;),</span>
+<span class="fc" id="L92">                reference(r,&quot;portfolio.requirement&quot;,&quot;requirement_id&quot;),reference(r,&quot;portfolio.analysis-snapshot&quot;,&quot;analysis_snapshot_id&quot;),</span>
+<span class="fc" id="L93">                r.getBoolean(&quot;applied_in_current_analysis&quot;),instant(r,&quot;created_at&quot;)));</span>
+<span class="fc" id="L94">        rows.writeBatches(sink,&quot;knowledge&quot;,&quot;evidence&quot;,profile,batches(&quot;select id,hypothesis_id,evidence_type,summary,full_text,confidence,model_name,model_version,&quot;</span>
+<span class="fc" id="L95">                + &quot;prompt_version,input_snapshot,created_at from relation_evidence where hypothesis_id in &quot;,hypotheses,&quot;id&quot;), r -&gt; new EvidenceRecord(</span>
+<span class="fc" id="L96">                reference(r,&quot;knowledge.evidence&quot;,&quot;id&quot;),reference(r,&quot;knowledge.hypothesis&quot;,&quot;hypothesis_id&quot;),text(r,&quot;evidence_type&quot;),text(r,&quot;summary&quot;),text(r,&quot;full_text&quot;),</span>
+<span class="fc" id="L97">                decimal(r,&quot;confidence&quot;),text(r,&quot;model_name&quot;),text(r,&quot;model_version&quot;),text(r,&quot;prompt_version&quot;),text(r,&quot;input_snapshot&quot;),instant(r,&quot;created_at&quot;)));</span>
+        // A rejected decision is still the current review record, not an earlier revision.
+<span class="fc" id="L99">        rows.write(sink,&quot;knowledge&quot;,&quot;proposal&quot;,profile,relationQuery(scope,&quot;relation_proposal&quot;,&quot;t.status,t.confidence,t.rationale,t.provenance,t.created_at,t.reviewed_at&quot;), r -&gt; new ProposalRecord(</span>
+<span class="fc" id="L100">                reference(r,&quot;knowledge.proposal&quot;,&quot;id&quot;),text(r,&quot;repository_id&quot;),text(r,&quot;workspace_id&quot;),text(r,&quot;owner_username&quot;),</span>
+<span class="fc" id="L101">                reference(r,&quot;knowledge.node&quot;,&quot;source_node_id&quot;),reference(r,&quot;knowledge.node&quot;,&quot;target_node_id&quot;),text(r,&quot;source_code&quot;),text(r,&quot;target_code&quot;),</span>
+<span class="fc" id="L102">                enumeration(r,&quot;relation_type&quot;,RelationType.class),enumeration(r,&quot;status&quot;,ProposalStatus.class),decimal(r,&quot;confidence&quot;),text(r,&quot;rationale&quot;),</span>
+<span class="fc" id="L103">                text(r,&quot;provenance&quot;),instant(r,&quot;created_at&quot;),instant(r,&quot;reviewed_at&quot;)));</span>
+<span class="fc" id="L104">        var recoveryScope = scope.repositories(&quot;t.repository_id&quot;,&quot;t.workspace_id&quot;);</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">        rows.write(sink,&quot;knowledge&quot;,&quot;projection-recovery&quot;,profile,scope.selectedVersion() ? null : new Query(&quot;select t.id,t.repository_id,t.workspace_id,t.branch,&quot;</span>
+                + &quot;t.previous_head_commit,t.authoritative_commit_id,t.causation_id,t.status,t.first_observed_at,t.last_observed_at,t.completed_at &quot;
+<span class="fc bfc" id="L107" title="All 2 branches covered.">                + &quot;from relation_projection_recovery t where &quot; + recoveryScope.sql() + (scope.history() ? &quot;&quot; : &quot; and t.status='PENDING'&quot;) + &quot; order by t.id&quot;, recoveryScope.parameters()),</span>
+<span class="fc" id="L108">                r -&gt; new RecoveryRecord(reference(r,&quot;knowledge.projection-recovery&quot;,&quot;id&quot;),text(r,&quot;repository_id&quot;),text(r,&quot;workspace_id&quot;),text(r,&quot;branch&quot;),</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">                        scope.history() ? text(r,&quot;previous_head_commit&quot;) : null,text(r,&quot;authoritative_commit_id&quot;),text(r,&quot;causation_id&quot;),</span>
+<span class="fc" id="L110">                        enumeration(r,&quot;status&quot;,RecoveryStatus.class),ResumePolicy.REBUILD_FROM_CAPTURE,instant(r,&quot;first_observed_at&quot;),instant(r,&quot;last_observed_at&quot;),instant(r,&quot;completed_at&quot;)));</span>
+<span class="fc" id="L111">        rows.writeBatches(sink, &quot;knowledge&quot;, &quot;requirement-coverage&quot;, profile, coverageQueries(snapshot, scope), r -&gt;</span>
+<span class="fc" id="L112">                new ScopedCoverageRecord(reference(r, &quot;knowledge.requirement-coverage&quot;, &quot;id&quot;),</span>
+<span class="fc" id="L113">                        text(r, &quot;repository_id&quot;), text(r, &quot;workspace_id&quot;), text(r, &quot;branch_name&quot;), text(r, &quot;source_commit&quot;),</span>
+<span class="fc" id="L114">                        text(r, &quot;requirement_id&quot;), text(r, &quot;requirement_text&quot;), text(r, &quot;node_code&quot;),</span>
+<span class="fc" id="L115">                        com.taxonomy.dto.AnalysisPercentages.require((Number) r.getObject(&quot;score&quot;)), text(r, &quot;recorded_by&quot;), instant(r, &quot;analyzed_at&quot;)));</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">        rows.write(sink,&quot;knowledge&quot;,&quot;legacy-coverage&quot;,profile,!captureLegacyCoverage ? null</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">                : new Query(&quot;select id,requirement_id,&quot;+(scope.history()?&quot;requirement_text&quot;:&quot;cast(null as varchar(2000)) as requirement_text&quot;)</span>
+<span class="fc" id="L118">                + &quot;,node_code,score,analyzed_at from requirement_coverage order by id&quot;,List.of()), r -&gt; new CoverageRecord(</span>
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">                reference(r,&quot;knowledge.legacy-coverage&quot;,&quot;id&quot;),text(r,&quot;requirement_id&quot;),text(r,&quot;requirement_text&quot;),text(r,&quot;node_code&quot;),r.getObject(&quot;score&quot;) == null ? null : com.taxonomy.dto.AnalysisPercentages.require((Number) r.getObject(&quot;score&quot;)),instant(r,&quot;analyzed_at&quot;)));</span>
+<span class="fc" id="L120">    }</span>
+
+    private boolean hasLegacyCoverageTable() throws IOException {
+<span class="fc" id="L123">        try (var connection = database.getConnection()) {</span>
+<span class="fc" id="L124">            var metadata = connection.getMetaData();</span>
+<span class="fc" id="L125">            String schema = connection.getSchema();</span>
+<span class="pc bpc" id="L126" title="1 of 2 branches missed.">            String table = metadata.storesUpperCaseIdentifiers() ? &quot;REQUIREMENT_COVERAGE&quot; : &quot;requirement_coverage&quot;;</span>
+<span class="fc" id="L127">            try (var matches = metadata.getTables(connection.getCatalog(), schema, table, new String[]{&quot;TABLE&quot;})) {</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">                while (matches.next()) {</span>
+<span class="pc bpc" id="L129" title="2 of 4 branches missed.">                    if (table.equals(matches.getString(&quot;TABLE_NAME&quot;)) &amp;&amp; Objects.equals(schema, matches.getString(&quot;TABLE_SCHEM&quot;))) return true;</span>
+                }
+<span class="fc" id="L131">                return false;</span>
+<span class="pc bpc" id="L132" title="1 of 2 branches missed.">            }</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">        } catch (SQLException failure) {</span>
+<span class="nc" id="L134">            throw new IOException(&quot;Could not verify legacy coverage storage&quot;, failure);</span>
+        }
+    }
+
+    private List&lt;Query&gt; coverageQueries(SnapshotContext snapshot, BackupRowScope scope) {
+<span class="fc" id="L139">        String select = &quot;select id, repository_id, workspace_id, branch_name, source_commit, requirement_id, &quot;</span>
+                + &quot;requirement_text, node_code, score, recorded_by, analyzed_at from scoped_requirement_coverage where &quot;;
+        // A commit alone does not identify mutable, branch-specific observations at the time of a Git version.
+<span class="fc bfc" id="L142" title="All 2 branches covered.">        if (scope.selectedVersion()) return List.of();</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        if (scope.history()) {</span>
+<span class="fc" id="L144">            var tenant = scope.repositories(&quot;repository_id&quot;, &quot;workspace_id&quot;);</span>
+<span class="fc" id="L145">            return List.of(new Query(select + tenant.sql() + &quot; order by id&quot;, tenant.parameters()));</span>
+        }
+        // The backup owner already captured these refs under its fence. Use only the exact branch tips.
+<span class="fc" id="L148">        var queries = new ArrayList&lt;Query&gt;();</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        for (var entry : snapshot.repositories().entrySet().stream()</span>
+<span class="fc" id="L150">                .sorted(Map.Entry.comparingByKey(Comparator.comparing(BackupRepositoryKey::repositoryId)</span>
+<span class="fc" id="L151">                        .thenComparing(BackupRepositoryKey::workspaceId, Comparator.nullsFirst(Comparator.naturalOrder())))).toList()) {</span>
+<span class="fc" id="L152">            var key = entry.getKey();</span>
+<span class="fc bfc" id="L153" title="All 2 branches covered.">            String owner = &quot;repository_id=? and &quot; + (key.workspaceId() == null ? &quot;workspace_id is null&quot; : &quot;workspace_id=?&quot;);</span>
+<span class="fc" id="L154">            var parameters = new ArrayList&lt;Object&gt;();</span>
+<span class="fc" id="L155">            parameters.add(key.repositoryId());</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">            if (key.workspaceId() != null) parameters.add(key.workspaceId());</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">            for (var ref : new TreeMap&lt;&gt;(entry.getValue().refs()).entrySet()) {</span>
+<span class="pc bpc" id="L158" title="1 of 2 branches missed.">                if (!ref.getKey().startsWith(&quot;refs/heads/&quot;)) continue;</span>
+<span class="fc" id="L159">                var values = new ArrayList&lt;&gt;(parameters);</span>
+<span class="fc" id="L160">                values.add(ref.getKey().substring(&quot;refs/heads/&quot;.length()));</span>
+<span class="fc" id="L161">                values.add(ref.getValue());</span>
+<span class="fc" id="L162">                queries.add(new Query(select + owner + &quot; and branch_name=? and source_commit=? order by id&quot;, values));</span>
+<span class="fc" id="L163">            }</span>
+<span class="fc" id="L164">        }</span>
+<span class="fc" id="L165">        return queries;</span>
+    }
+
+    private Set&lt;String&gt; hypotheses(SnapshotContext snapshot,BackupRowScope scope,Selection selection) throws IOException {
+<span class="fc" id="L169">        var analysesById = new HashMap&lt;SourceRecordId,BackupAnalysisReference&gt;();</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">        for (var reference : analyses.select(snapshot)) {</span>
+<span class="pc bpc" id="L171" title="2 of 4 branches missed.">            if (analysesById.size() &gt;= MAX_IDENTITIES || analysesById.putIfAbsent(reference.snapshot(),reference) != null)</span>
+<span class="nc" id="L172">                throw new IOException(&quot;Invalid analysis identity inventory&quot;);</span>
+<span class="fc" id="L173">        }</span>
+<span class="fc" id="L174">        var included = new TreeSet&lt;String&gt;(); var selected = new HashSet&lt;&gt;(selection.currentHypotheses());</span>
+<span class="fc" id="L175">        rows.visit(hypothesisQuery(scope), r -&gt; new HypothesisIdentity(reference(r,&quot;knowledge.hypothesis&quot;,&quot;id&quot;),text(r,&quot;repository_id&quot;),text(r,&quot;workspace_id&quot;),</span>
+<span class="fc" id="L176">                reference(r,&quot;portfolio.project&quot;,&quot;project_id&quot;),reference(r,&quot;portfolio.requirement&quot;,&quot;requirement_id&quot;),</span>
+<span class="fc" id="L177">                reference(r,&quot;portfolio.analysis-snapshot&quot;,&quot;analysis_snapshot_id&quot;),text(r,&quot;analysis_session_id&quot;)), h -&gt; {</span>
+            boolean retain;
+<span class="fc bfc" id="L179" title="All 2 branches covered.">            if (h.snapshot() != null) {</span>
+<span class="fc" id="L180">                var analysis = analysesById.get(h.snapshot());</span>
+<span class="pc bpc" id="L181" title="2 of 4 branches missed.">                if (analysis == null || !analysis.repository().equals(new BackupRepositoryKey(h.repository(),h.workspace()))</span>
+<span class="pc bpc" id="L182" title="1 of 4 branches missed.">                        || !analysis.project().equals(h.project()) || !analysis.requirement().equals(h.requirement())</span>
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">                        || !analysis.analysisSession().equals(h.session())) throw new IOException(&quot;Missing or foreign hypothesis analysis dependency&quot;);</span>
+<span class="fc" id="L184">                retain = analysis.retained();</span>
+<span class="fc" id="L185">            } else {</span>
+<span class="pc bpc" id="L186" title="2 of 4 branches missed.">                if (h.project() != null || h.requirement() != null) throw new IOException(&quot;Incomplete hypothesis ownership&quot;);</span>
+<span class="fc bfc" id="L187" title="All 4 branches covered.">                retain = scope.history() || selection.currentHypotheses().contains(h.id());</span>
+            }
+<span class="fc bfc" id="L189" title="All 2 branches covered.">            if (retain) {</span>
+<span class="pc bpc" id="L190" title="1 of 2 branches missed.">                if (included.size() &gt;= MAX_IDENTITIES) throw new IOException(&quot;Hypothesis dependency limit exceeded&quot;);</span>
+<span class="fc" id="L191">                included.add(h.id().value()); selected.remove(h.id());</span>
+            }
+<span class="fc" id="L193">        });</span>
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">        if (!selected.isEmpty()) throw new IOException(&quot;Selected hypothesis is missing, stale or outside the scope&quot;);</span>
+<span class="fc" id="L195">        return included;</span>
+    }
+    private Query hypothesisQuery(BackupRowScope scope) {
+<span class="fc" id="L198">        var tenant=scope.repositories(&quot;repository_id&quot;,&quot;workspace_id&quot;);</span>
+<span class="fc" id="L199">        return new Query(&quot;select id,repository_id,workspace_id,project_id,requirement_id,analysis_snapshot_id,analysis_session_id,source_node_id,target_node_id &quot;</span>
+<span class="fc" id="L200">                + &quot;from relation_hypothesis where &quot; + tenant.sql() + &quot; order by id&quot;,tenant.parameters());</span>
+    }
+    private Query relationQuery(BackupRowScope scope,String table,String fields) {
+<span class="fc bfc" id="L203" title="All 2 branches covered.">        if (scope.selectedVersion()) return null;</span>
+<span class="fc" id="L204">        var tenant=scope.repositories(&quot;t.repository_id&quot;,&quot;t.workspace_id&quot;);</span>
+<span class="fc" id="L205">        return new Query(&quot;select t.id,t.repository_id,t.workspace_id,t.owner_username,t.source_node_id,t.target_node_id,t.relation_type,&quot;</span>
+                + &quot;a.code as source_code,b.code as target_code,&quot;+fields+&quot; from &quot;+table+&quot; t left join taxonomy_node a on a.id=t.source_node_id &quot;
+<span class="fc" id="L207">                + &quot;left join taxonomy_node b on b.id=t.target_node_id where &quot;+tenant.sql()+&quot; order by t.id&quot;,tenant.parameters());</span>
+    }
+    private void endpoints(BackupRowScope scope,String table,Set&lt;String&gt; codes) throws IOException {
+<span class="fc" id="L210">        var tenant=scope.repositories(&quot;t.repository_id&quot;,&quot;t.workspace_id&quot;);</span>
+<span class="fc" id="L211">        rows.visit(new Query(&quot;select a.code as source_code,b.code as target_code from &quot;+table+&quot; t left join taxonomy_node a on a.id=t.source_node_id &quot;</span>
+<span class="fc" id="L212">                + &quot;left join taxonomy_node b on b.id=t.target_node_id where &quot;+tenant.sql(),tenant.parameters()),</span>
+<span class="fc" id="L213">                r -&gt; new Endpoint(text(r,&quot;source_code&quot;),text(r,&quot;target_code&quot;)), e -&gt; { addCode(codes,e.source()); addCode(codes,e.target()); });</span>
+<span class="fc" id="L214">    }</span>
+    private Map&lt;String,NodeIdentity&gt; catalogueClosure(BackupRowScope scope,Set&lt;String&gt; codes) throws IOException {
+<span class="fc" id="L216">        var result = new TreeMap&lt;String,NodeIdentity&gt;();</span>
+<span class="fc bfc" id="L217" title="All 2 branches covered.">        if (scope.installation()) rows.visit(nodeIdentityQuery(&quot;1=1&quot;,List.of()),this::nodeIdentity,n -&gt; putNode(result,n));</span>
+<span class="fc" id="L218">        var pending = new TreeSet&lt;&gt;(codes);</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">        while (!pending.isEmpty()) {</span>
+<span class="fc" id="L220">            var expected = new TreeSet&lt;&gt;(pending); pending.clear();</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">            for (var query : batches(&quot;select t.id,t.code,t.parent_code,t.parent_id,p.code as linked_parent_code from taxonomy_node t &quot;</span>
+                    + &quot;left join taxonomy_node p on p.id=t.parent_id where t.code in &quot;,expected,&quot;t.id&quot;)) {
+<span class="fc" id="L223">                rows.visit(query,this::nodeIdentity,n -&gt; { putNode(result,n); expected.remove(n.code()); });</span>
+<span class="fc" id="L224">            }</span>
+<span class="fc bfc" id="L225" title="All 2 branches covered.">            if (!expected.isEmpty()) throw new IOException(&quot;Missing catalogue dependency&quot;);</span>
+<span class="fc bfc" id="L226" title="All 6 branches covered.">            for (var node : result.values()) if (node.parentCode() != null &amp;&amp; !result.containsKey(node.parentCode())) pending.add(node.parentCode());</span>
+<span class="pc bpc" id="L227" title="1 of 2 branches missed.">            if (pending.size() &gt; MAX_IDENTITIES) throw new IOException(&quot;Catalogue dependency limit exceeded&quot;);</span>
+<span class="fc" id="L228">        }</span>
+        // Installation inventory may add parents even when no explicit selected code exists.
+<span class="fc" id="L230">        var finished = new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">        for (var node : result.values()) {</span>
+<span class="fc" id="L232">            var visited = new HashSet&lt;String&gt;(); var cursor = node;</span>
+<span class="pc bpc" id="L233" title="1 of 4 branches missed.">            while (cursor != null &amp;&amp; !finished.contains(cursor.code())) {</span>
+<span class="fc bfc" id="L234" title="All 2 branches covered.">                if (!visited.add(cursor.code())) throw new IOException(&quot;Cyclic catalogue hierarchy&quot;);</span>
+<span class="fc bfc" id="L235" title="All 2 branches covered.">                if (cursor.parentCode() == null) break;</span>
+<span class="fc" id="L236">                cursor = result.get(cursor.parentCode());</span>
+<span class="pc bpc" id="L237" title="1 of 2 branches missed.">                if (cursor == null) throw new IOException(&quot;Missing catalogue parent&quot;);</span>
+            }
+<span class="fc" id="L239">            finished.addAll(visited);</span>
+<span class="fc" id="L240">        }</span>
+<span class="fc" id="L241">        return result;</span>
+    }
+    private Query nodeIdentityQuery(String predicate,List&lt;?&gt; parameters) {
+<span class="fc" id="L244">        return new Query(&quot;select t.id,t.code,t.parent_code,t.parent_id,p.code as linked_parent_code from taxonomy_node t &quot;</span>
+                + &quot;left join taxonomy_node p on p.id=t.parent_id where &quot;+predicate+&quot; order by t.id&quot;,parameters);
+    }
+    private NodeIdentity nodeIdentity(ResultSet r) throws SQLException,IOException {
+<span class="fc" id="L248">        var identity = new NodeIdentity(reference(r,&quot;knowledge.node&quot;,&quot;id&quot;),text(r,&quot;code&quot;),text(r,&quot;parent_code&quot;));</span>
+<span class="pc bpc" id="L249" title="1 of 6 branches missed.">        if (number(r,&quot;parent_id&quot;) != null &amp;&amp; (text(r,&quot;linked_parent_code&quot;) == null || !Objects.equals(identity.parentCode(),text(r,&quot;linked_parent_code&quot;))))</span>
+<span class="fc" id="L250">            throw new IOException(&quot;Inconsistent catalogue parent identities&quot;);</span>
+<span class="fc" id="L251">        return identity;</span>
+    }
+    private void putNode(Map&lt;String,NodeIdentity&gt; nodes,NodeIdentity node) throws IOException {
+<span class="pc bpc" id="L254" title="3 of 4 branches missed.">        if (nodes.size() &gt;= MAX_IDENTITIES &amp;&amp; !nodes.containsKey(node.code())) throw new IOException(&quot;Catalogue dependency limit exceeded&quot;);</span>
+<span class="fc" id="L255">        nodes.put(node.code(),node);</span>
+<span class="fc" id="L256">    }</span>
+    private List&lt;Query&gt; nodeQueries(BackupRowScope scope,Set&lt;String&gt; codes) {
+<span class="fc bfc" id="L258" title="All 2 branches covered.">        return scope.selectedVersion() ? List.of() : batches(&quot;select id,code,uuid,name_en,name_de,description_en,description_de,parent_code,&quot;</span>
+                + &quot;taxonomy_root,node_level,dataset,external_id,source,reference,sort_order,state from taxonomy_node where code in &quot;,codes,&quot;id&quot;);
+    }
+    private static List&lt;Query&gt; batches(String select,Set&lt;String&gt; ids,String order) {
+<span class="fc" id="L262">        var sorted = ids.stream().sorted().toList(); var result = new ArrayList&lt;Query&gt;();</span>
+<span class="fc bfc" id="L263" title="All 2 branches covered.">        for (int start=0; start&lt;sorted.size(); start+=200) {</span>
+<span class="fc" id="L264">            var part = sorted.subList(start,Math.min(start+200,sorted.size()));</span>
+<span class="fc" id="L265">            result.add(new Query(select+&quot;(&quot;+String.join(&quot;,&quot;,Collections.nCopies(part.size(),&quot;?&quot;))+&quot;) order by &quot;+order,part));</span>
+        }
+<span class="fc" id="L267">        return result;</span>
+    }
+    private static void addCode(Set&lt;String&gt; codes,String code) throws IOException {
+<span class="pc bpc" id="L270" title="3 of 6 branches missed.">        if (code == null || code.isBlank() || code.length()&gt;1024) throw new IOException(&quot;Missing catalogue endpoint&quot;);</span>
+<span class="pc bpc" id="L271" title="3 of 4 branches missed.">        if (codes.size() &gt;= MAX_IDENTITIES &amp;&amp; !codes.contains(code)) throw new IOException(&quot;Catalogue dependency limit exceeded&quot;);</span>
+<span class="fc" id="L272">        codes.add(code);</span>
+<span class="fc" id="L273">    }</span>
+<span class="fc bfc" id="L274" title="All 2 branches covered.">    private static SourceRecordId parentReference(Map&lt;String,NodeIdentity&gt; nodes,String code) { return code == null ? null : nodes.get(code).id(); }</span>
+    private static &lt;E extends Enum&lt;E&gt;&gt; E enumeration(ResultSet row,String column,Class&lt;E&gt; type) throws SQLException,IOException {
+<span class="pc" id="L276">        try { return Enum.valueOf(type,text(row,column)); } catch (IllegalArgumentException | NullPointerException invalid) { throw new IOException(&quot;Invalid knowledge enumeration&quot;); }</span>
+    }
+<span class="fc bfc" id="L278" title="All 2 branches covered.">    private static String decimal(ResultSet row,String column) throws SQLException { var value=row.getBigDecimal(column); return value==null?null:value.stripTrailingZeros().toPlainString(); }</span>
+<span class="fc" id="L279">    private record NodeIdentity(SourceRecordId id,String code,String parentCode) { }</span>
+<span class="fc" id="L280">    private record Endpoint(String source,String target) { }</span>
+<span class="fc" id="L281">    private record HypothesisEndpoint(String id,String source,String target) { }</span>
+<span class="fc" id="L282">    private record HypothesisIdentity(SourceRecordId id,String repository,String workspace,SourceRecordId project,SourceRecordId requirement,SourceRecordId snapshot,String session) { }</span>
+<span class="fc" id="L283">    public enum ResumePolicy { REBUILD_FROM_CAPTURE }</span>
+<span class="fc" id="L284">    public record NodeRecord(SourceRecordId sourceId,String code,String uuid,String nameEn,String nameDe,String descriptionEn,String descriptionDe,</span>
+                             String parentCode,SourceRecordId parent,String taxonomyRoot,int level,String dataset,String externalId,String source,String reference,Long sortOrder,String state) { }
+<span class="fc" id="L286">    public record RelationRecord(SourceRecordId sourceId,String repositoryId,String workspaceId,String owner,SourceRecordId sourceNode,SourceRecordId targetNode,</span>
+                                 String sourceCode,String targetCode,RelationType relationType,String description,String provenance,Long weight,boolean bidirectional) { }
+<span class="fc" id="L288">    public record HypothesisRecord(SourceRecordId sourceId,String repositoryId,String workspaceId,String branchName,String owner,String sourceCode,String targetCode,RelationType relationType,</span>
+                                   HypothesisStatus status,String confidence,String analysisSession,SourceRecordId project,SourceRecordId requirement,SourceRecordId analysisSnapshot,boolean appliedInCurrentAnalysis,String createdAt) { }
+<span class="fc" id="L290">    public record EvidenceRecord(SourceRecordId sourceId,SourceRecordId hypothesis,String evidenceType,String summary,String fullText,String confidence,String modelName,String modelVersion,String promptVersion,String inputSnapshot,String createdAt) { }</span>
+<span class="fc" id="L291">    public record ProposalRecord(SourceRecordId sourceId,String repositoryId,String workspaceId,String owner,SourceRecordId sourceNode,SourceRecordId targetNode,String sourceCode,String targetCode,</span>
+                                 RelationType relationType,ProposalStatus status,String confidence,String rationale,String provenance,String createdAt,String reviewedAt) { }
+<span class="fc" id="L293">    public record RecoveryRecord(SourceRecordId sourceId,String repositoryId,String workspaceId,String branch,String previousHead,String authoritativeCommit,String causationId,RecoveryStatus status,</span>
+                                 ResumePolicy resumePolicy,String firstObservedAt,String lastObservedAt,String completedAt) { }
+<span class="fc" id="L295">    public record ScopedCoverageRecord(SourceRecordId sourceId, String repositoryId, String workspaceId, String branch,</span>
+                                       String sourceCommit, String requirementId, String requirementText, String nodeCode,
+                                       double score, String recordedBy, String analyzedAt) {}
+<span class="fc" id="L298">    public record CoverageRecord(SourceRecordId sourceId,String legacyRequirementId,String requirementText,String nodeCode,Double score,String analyzedAt) { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

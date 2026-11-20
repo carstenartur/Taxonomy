@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>VisioPropertyLabels.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.visio.converter</a> &gt; <span class="el_source">VisioPropertyLabels.java</span></div><h1>VisioPropertyLabels.java</h1><pre class="source lang-java linenums">package com.taxonomy.visio.converter;
+
+import java.util.Locale;
+import java.util.ResourceBundle;
+import java.util.regex.Pattern;
+
+/** Localized display labels; the native Property row names identify the canonical keys. */
+final class VisioPropertyLabels {
+<span class="fc" id="L9">    private static final ResourceBundle EN = ResourceBundle.getBundle(&quot;visio.shape-data&quot;, Locale.ROOT);</span>
+<span class="fc" id="L10">    private static final ResourceBundle DE = ResourceBundle.getBundle(&quot;visio.shape-data&quot;, Locale.GERMAN);</span>
+<span class="fc" id="L11">    private static final Pattern EVIDENCE = Pattern.compile(&quot;evidence([0-9]+)([a-zA-Z]+)&quot;);</span>
+
+    private VisioPropertyLabels() { }
+
+    static String label(String key, boolean german) {
+<span class="fc bfc" id="L16" title="All 2 branches covered.">        var labels = german ? DE : EN;</span>
+<span class="fc" id="L17">        String field = key.substring(&quot;taxonomy.&quot;.length());</span>
+<span class="pc bpc" id="L18" title="1 of 2 branches missed.">        if (labels.containsKey(field)) return labels.getString(field);</span>
+<span class="nc" id="L19">        var evidence = EVIDENCE.matcher(field);</span>
+<span class="nc bnc" id="L20" title="All 4 branches missed.">        if (evidence.matches() &amp;&amp; labels.containsKey(evidence.group(2))) {</span>
+<span class="nc" id="L21">            return labels.getString(&quot;evidence&quot;) + &quot; &quot; + evidence.group(1) + &quot; · &quot; + labels.getString(evidence.group(2));</span>
+        }
+<span class="nc" id="L23">        return key;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

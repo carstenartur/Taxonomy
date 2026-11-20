@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>FrozenReformulationArchitectureAssembler.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.reformulation</a> &gt; <span class="el_source">FrozenReformulationArchitectureAssembler.java</span></div><h1>FrozenReformulationArchitectureAssembler.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.reformulation;
+
+import com.taxonomy.diagram.*;
+import com.taxonomy.dto.*;
+import com.taxonomy.export.reformulation.FrozenReformulationArchitecture;
+import com.taxonomy.portfolio.dto.PortfolioDtos.*;
+import com.taxonomy.portfolio.service.PortfolioJsonCodec;
+import com.taxonomy.reformulation.ReformulationBaseline;
+import org.springframework.stereotype.Component;
+
+import java.util.*;
+
+/** Decode and validate ONLY the baseline's captured bytes, never a live catalogue or snapshot. */
+@Component
+final class FrozenReformulationArchitectureAssembler {
+    private final PortfolioJsonCodec json;
+<span class="fc" id="L17">    FrozenReformulationArchitectureAssembler(PortfolioJsonCodec json) { this.json = json; }</span>
+
+    FrozenReformulationArchitecture assemble(ReformulationBaseline baseline) {
+<span class="fc" id="L20">        var frozen = baseline.frozenContext();</span>
+<span class="fc" id="L21">        SnapshotDetail detail = required(frozen, &quot;snapshotDetail&quot;, SnapshotDetail.class);</span>
+<span class="fc" id="L22">        AnalysisResult payload = json.read(baseline.snapshotPayload(), AnalysisResult.class);</span>
+<span class="fc" id="L23">        TaxonomyNodeDto[] catalogue = required(frozen, &quot;catalogue&quot;, TaxonomyNodeDto[].class);</span>
+<span class="fc" id="L24">        ElementMappingView[] elements = required(frozen, &quot;elementMappings&quot;, ElementMappingView[].class);</span>
+<span class="fc" id="L25">        RelationMappingView[] relations = required(frozen, &quot;relationMappings&quot;, RelationMappingView[].class);</span>
+<span class="fc" id="L26">        RequirementVersionView version = required(frozen, &quot;sourceVersion&quot;, RequirementVersionView.class);</span>
+<span class="fc" id="L27">        ProjectView project = required(frozen, &quot;project&quot;, ProjectView.class);</span>
+<span class="fc" id="L28">        var summary = detail.summary();</span>
+<span class="fc" id="L29">        var scope = baseline.scope();</span>
+<span class="fc" id="L30">        check(matchesSnapshotSource(baseline, summary), &quot;Snapshot source identity disagrees with the baseline&quot;);</span>
+<span class="pc bpc" id="L31" title="1 of 2 branches missed.">        check(Objects.equals(version.id(), baseline.sourceVersionId())</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">                &amp;&amp; summary.requirementVersionNumber() == version.versionNumber()</span>
+<span class="pc bpc" id="L33" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(version.text(), baseline.originalText())</span>
+<span class="pc bpc" id="L34" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(version.contentHash(), baseline.originalTextHash())</span>
+<span class="pc bpc" id="L35" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(project.id(), scope.projectId())</span>
+<span class="pc bpc" id="L36" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(project.workspaceId(), scope.workspaceId()), &quot;Frozen source/project disagrees with the baseline&quot;);</span>
+<span class="pc bpc" id="L37" title="3 of 6 branches missed.">        check(payload != null &amp;&amp; detail.analysis() != null &amp;&amp; Objects.equals(json.write(payload), json.write(detail.analysis())),</span>
+                &quot;Snapshot payload disagrees with frozen snapshot detail&quot;);
+<span class="fc" id="L39">        check(Objects.equals(summary.workspaceId(), scope.workspaceId()),</span>
+                &quot;Frozen snapshot workspace disagrees with the baseline&quot;);
+<span class="fc" id="L41">        var viewContext = payload.getViewContext();</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        if (viewContext != null) {</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">            check(Objects.equals(summary.branchName(), viewContext.basedOnBranch())</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">                    &amp;&amp; Objects.equals(summary.commitSha(), viewContext.basedOnCommit()),</span>
+                    &quot;Frozen analysis branch/commit disagrees with the snapshot summary&quot;);
+        }
+<span class="pc bpc" id="L47" title="1 of 2 branches missed.">        check(Objects.equals(json.write(elements), json.write(detail.elementMappings()))</span>
+<span class="pc bpc" id="L48" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(json.write(relations), json.write(detail.relationMappings()))</span>
+<span class="pc bpc" id="L49" title="2 of 4 branches missed.">                &amp;&amp; Objects.equals(json.write(catalogue), json.write(detail.analysis().getTree() == null ? List.of() : detail.analysis().getTree())),</span>
+                &quot;Frozen catalogue or mappings disagree with snapshot detail&quot;);
+
+<span class="fc" id="L52">        var names = new HashMap&lt;String, TaxonomyNodeDto&gt;();</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        for (var root : catalogue) index(root, names);</span>
+<span class="fc" id="L54">        var view = payload.getArchitectureView();</span>
+<span class="fc" id="L55">        var assignments = new HashMap&lt;String, TaxonomyResponsibilityLookup.Assignment&gt;();</span>
+<span class="pc bpc" id="L56" title="1 of 4 branches missed.">        if (view != null &amp;&amp; view.getIncludedElements() != null) {</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">            for (var element : view.getIncludedElements()) {</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">                if (element.getResponsibility() != null) assignments.putIfAbsent(element.getNodeCode(), element.getResponsibility());</span>
+<span class="fc" id="L59">            }</span>
+        }
+<span class="fc" id="L61">        var nodes = new ArrayList&lt;DiagramNode&gt;();</span>
+<span class="fc" id="L62">        var nodeIds = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L63">        var elementDetails = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        for (var element : elements) {</span>
+<span class="pc bpc" id="L65" title="3 of 6 branches missed.">            check(element.id() != null &amp;&amp; element.id() &gt; 0 &amp;&amp; baseline.snapshotId().equals(element.snapshotId())</span>
+<span class="pc bpc" id="L66" title="3 of 6 branches missed.">                    &amp;&amp; present(element.nodeCode()) &amp;&amp; nodeIds.add(element.nodeCode()) &amp;&amp; names.containsKey(element.nodeCode()),</span>
+                    &quot;Invalid frozen element mapping&quot;);
+<span class="fc" id="L68">            var node = names.get(element.nodeCode());</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">            var label = baseline.language().equals(&quot;de&quot;) ? node.getNameDe() : node.getNameEn();</span>
+<span class="pc bpc" id="L70" title="1 of 4 branches missed.">            if (!present(label)) label = present(element.nodeTitle()) ? element.nodeTitle() : element.nodeCode();</span>
+<span class="fc" id="L71">            String parent = node.getParentCode();</span>
+<span class="fc" id="L72">            nodes.add(new DiagramNode(element.nodeCode(), label,</span>
+<span class="fc" id="L73">                    Objects.toString(element.taxonomyRoot(), &quot;Unknown&quot;), element.relevance(),</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">                    element.directScore() &gt; 0, 0, node.getLevel(), element.selectedForImpact(),</span>
+<span class="fc" id="L75">                    parent, false, assignments.get(element.nodeCode())));</span>
+<span class="fc" id="L76">            elementDetails.add(element.nodeCode() + &quot; — &quot; + label + &quot; · &quot; + Objects.toString(element.presenceReason(), &quot;&quot;)</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">                    + &quot; · &quot; + Objects.toString(baseline.language().equals(&quot;de&quot;) ? node.getDescriptionDe() : node.getDescriptionEn(), &quot;&quot;)</span>
+<span class="fc" id="L78">                    + &quot; · &quot; + element.reviewStatus());</span>
+        }
+        // The saved analysis view can contain directed relations even when no mapping row was indexed.
+        // Its identity remains distinct; every occurrence is retained, including parallel edges.
+<span class="fc" id="L82">        var edges = new ArrayList&lt;DiagramEdge&gt;();</span>
+<span class="fc" id="L83">        var edgeIds = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L84">        var relationDetails = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        for (var relation : relations) {</span>
+<span class="pc bpc" id="L86" title="3 of 6 branches missed.">            check(relation.id() != null &amp;&amp; relation.id() &gt; 0 &amp;&amp; baseline.snapshotId().equals(relation.snapshotId()),</span>
+                    &quot;Invalid frozen relation mapping identity&quot;);
+<span class="fc" id="L88">            addEdge(edges, edgeIds, nodeIds, &quot;edge-&quot; + relation.id(), relation.sourceCode(), relation.targetCode(),</span>
+<span class="fc" id="L89">                    relation.relationType(), relation.relevance(), relation.relationCategory());</span>
+<span class="fc" id="L90">            relationDetails.add(&quot;edge-&quot; + relation.id() + &quot; · &quot; + relation.sourceCode() + &quot; → &quot; + relation.targetCode()</span>
+<span class="fc" id="L91">                    + &quot; · &quot; + relation.relationType() + &quot; · &quot; + Objects.toString(relation.presenceReason(), &quot;&quot;)</span>
+<span class="fc" id="L92">                    + &quot; · &quot; + relation.reviewStatus());</span>
+        }
+<span class="pc bpc" id="L94" title="1 of 4 branches missed.">        if (view != null &amp;&amp; view.getIncludedRelationships() != null) {</span>
+<span class="fc" id="L95">            record Direction(String source, String target, String type) {}</span>
+<span class="fc" id="L96">            var represented = new HashMap&lt;Direction, Integer&gt;();</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">            for (var relation : relations) represented.merge(new Direction(relation.sourceCode(),</span>
+<span class="fc" id="L98">                    relation.targetCode(), relation.relationType()), 1, Integer::sum);</span>
+<span class="fc" id="L99">            int ordinal = 0;</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">            for (var relation : view.getIncludedRelationships()) {</span>
+<span class="fc" id="L101">                String id = &quot;view-&quot; + (++ordinal);</span>
+<span class="fc" id="L102">                var direction = new Direction(relation.getSourceCode(), relation.getTargetCode(), relation.getRelationType());</span>
+<span class="fc" id="L103">                int matchingMappings = represented.getOrDefault(direction, 0);</span>
+                // One projection occurrence accounts for one physical mapping occurrence. Do not
+                // erase parallel relations or conflate reverse directions; retain unmatched views.
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">                if (matchingMappings &gt; 0) {</span>
+<span class="fc" id="L107">                    represented.put(direction, matchingMappings - 1);</span>
+<span class="fc" id="L108">                    relationDetails.add(id + &quot; · matching saved mapping projection · &quot;</span>
+<span class="fc" id="L109">                            + Objects.toString(relation.getPresenceReason(), &quot;&quot;));</span>
+<span class="fc" id="L110">                    continue;</span>
+                }
+<span class="nc" id="L112">                addEdge(edges, edgeIds, nodeIds, id, relation.getSourceCode(), relation.getTargetCode(),</span>
+<span class="nc" id="L113">                        relation.getRelationType(), relation.getPropagatedRelevance(), relation.getRelationCategory());</span>
+<span class="nc" id="L114">                relationDetails.add(id + &quot; · &quot; + relation.getSourceCode() + &quot; → &quot; + relation.getTargetCode()</span>
+<span class="nc" id="L115">                        + &quot; · &quot; + relation.getRelationType() + &quot; · &quot; + Objects.toString(relation.getPresenceReason(), &quot;&quot;));</span>
+<span class="nc" id="L116">            }</span>
+        }
+<span class="fc" id="L118">        var gaps = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">        if (detail.gapAnalysis() != null) {</span>
+<span class="fc" id="L120">            var gap = detail.gapAnalysis();</span>
+<span class="pc" id="L121">            gap.getJudgments().forEach(g -&gt; gaps.add(&quot;Obligation: &quot; + g.ruleId() + &quot; · &quot; + g.sourceNodeCode()</span>
+<span class="nc" id="L122">                    + &quot; · &quot; + g.status() + &quot; · &quot; + g.description()));</span>
+<span class="fc" id="L123">            gaps.addAll(gap.getNotes());</span>
+        }
+<span class="fc" id="L125">        var warnings = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L126">        warnings.addAll(payload.getWarnings());</span>
+<span class="fc" id="L127">        warnings.addAll(payload.getScoreSemanticsWarnings());</span>
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">        if (payload.getErrorMessage() != null) warnings.add(payload.getErrorMessage());</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">        if (summary.errorMessage() != null) warnings.add(summary.errorMessage());</span>
+<span class="fc" id="L130">        var identity = new TreeMap&lt;String, String&gt;();</span>
+<span class="fc" id="L131">        identity.put(&quot;Snapshot&quot;, baseline.snapshotId());</span>
+<span class="fc" id="L132">        identity.put(&quot;Repository&quot;, scope.repositoryId());</span>
+<span class="fc" id="L133">        identity.put(&quot;Workspace&quot;, Objects.toString(scope.workspaceId(), &quot;—&quot;));</span>
+<span class="fc" id="L134">        identity.put(&quot;Offer workspace branch&quot;, scope.branch());</span>
+<span class="fc" id="L135">        identity.put(&quot;Snapshot branch&quot;, Objects.toString(summary.branchName(), &quot;—&quot;));</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        identity.put(&quot;Analysis based-on branch&quot;, payload.getViewContext() == null ? &quot;—&quot; : Objects.toString(payload.getViewContext().basedOnBranch(), &quot;—&quot;));</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">        identity.put(&quot;Analysis based-on commit&quot;, payload.getViewContext() == null ? &quot;—&quot; : Objects.toString(payload.getViewContext().basedOnCommit(), &quot;—&quot;));</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        identity.put(&quot;Includes provisional relations&quot;, viewContext == null ? &quot;Unknown&quot; : Boolean.toString(viewContext.includesProvisionalRelations()));</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        identity.put(&quot;Projection stale&quot;, viewContext == null ? &quot;Unknown&quot; : Boolean.toString(viewContext.projectionStale()));</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        identity.put(&quot;Index stale&quot;, viewContext == null ? &quot;Unknown&quot; : Boolean.toString(viewContext.indexStale()));</span>
+<span class="fc" id="L141">        identity.put(&quot;Provider / model&quot;, Objects.toString(summary.provider(), &quot;—&quot;) + &quot; / &quot; + Objects.toString(summary.modelName(), &quot;—&quot;));</span>
+<span class="fc" id="L142">        identity.put(&quot;Status&quot;, Objects.toString(summary.status(), &quot;—&quot;));</span>
+<span class="fc" id="L143">        return new FrozenReformulationArchitecture(new DiagramModel(&quot;Frozen architecture · &quot; + baseline.snapshotId(),</span>
+                nodes, edges, new DiagramLayout(&quot;LR&quot;, true)), identity, gaps, warnings,
+<span class="fc bfc" id="L145" title="All 2 branches covered.">                detail.gapAnalysis() != null, elementDetails, relationDetails,</span>
+<span class="fc" id="L146">                new FrozenReformulationArchitecture.SourceIdentity(scope.projectId(), scope.requirementId(),</span>
+<span class="fc" id="L147">                        version.id(), version.versionNumber(), summary.taxonomyFingerprint(),</span>
+<span class="fc" id="L148">                        summary.provider(), summary.modelName()));</span>
+    }
+
+    static boolean matchesSnapshotSource(ReformulationBaseline baseline, SnapshotSummary summary) {
+<span class="fc" id="L152">        var scope = baseline.scope();</span>
+<span class="pc bpc" id="L153" title="2 of 4 branches missed.">        return summary != null &amp;&amp; Objects.equals(summary.id(), baseline.snapshotId())</span>
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(summary.projectId(), scope.projectId())</span>
+<span class="pc bpc" id="L155" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(summary.requirementId(), scope.requirementId())</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">                &amp;&amp; Objects.equals(summary.requirementVersionId(), baseline.sourceVersionId());</span>
+    }
+
+    private &lt;T&gt; T required(Map&lt;String, String&gt; frozen, String key, Class&lt;T&gt; type) {
+<span class="fc" id="L160">        check(present(frozen.get(key)), &quot;Missing frozen &quot; + key);</span>
+<span class="fc" id="L161">        T value = json.read(frozen.get(key), type);</span>
+<span class="pc bpc" id="L162" title="1 of 2 branches missed.">        check(value != null, &quot;Missing frozen &quot; + key);</span>
+<span class="fc" id="L163">        return value;</span>
+    }
+    private static void index(TaxonomyNodeDto node, Map&lt;String, TaxonomyNodeDto&gt; names) {
+<span class="pc bpc" id="L166" title="3 of 6 branches missed.">        check(node != null &amp;&amp; present(node.getCode()) &amp;&amp; names.putIfAbsent(node.getCode(), node) == null,</span>
+                &quot;Duplicate or invalid frozen catalogue node&quot;);
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">        if (node.getChildren() != null) node.getChildren().forEach(child -&gt; index(child, names));</span>
+<span class="fc" id="L169">    }</span>
+    private static void addEdge(List&lt;DiagramEdge&gt; edges, Set&lt;String&gt; ids, Set&lt;String&gt; nodes, String id,
+            String source, String target, String type, double relevance, String category) {
+<span class="pc bpc" id="L172" title="4 of 10 branches missed.">        check(ids.add(id) &amp;&amp; present(source) &amp;&amp; present(target) &amp;&amp; nodes.contains(source) &amp;&amp; nodes.contains(target)</span>
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">                &amp;&amp; present(type), &quot;Invalid directed frozen relation &quot; + id);</span>
+<span class="fc" id="L174">        edges.add(new DiagramEdge(id, source, target, type, relevance, category));</span>
+<span class="fc" id="L175">    }</span>
+<span class="pc bpc" id="L176" title="1 of 4 branches missed.">    private static boolean present(String value) { return value != null &amp;&amp; !value.isBlank(); }</span>
+    private static void check(boolean valid, String message) {
+<span class="fc bfc" id="L178" title="All 2 branches covered.">        if (!valid) throw new IllegalArgumentException(message);</span>
+<span class="fc" id="L179">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

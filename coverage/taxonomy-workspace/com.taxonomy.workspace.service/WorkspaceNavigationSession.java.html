@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkspaceNavigationSession.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">WorkspaceNavigationSession.java</span></div><h1>WorkspaceNavigationSession.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.util.WebUtils;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.UUID;
+
+/** Navigation state owned by a signed-in browser session, independent of its working copy. */
+<span class="fc" id="L14">public final class WorkspaceNavigationSession {</span>
+<span class="fc" id="L15">    private static final String ATTRIBUTE = WorkspaceNavigationSession.class.getName();</span>
+    private static final int LIMIT = 64;
+<span class="fc" id="L17">    private final Map&lt;Key, WorkspaceNavigation&gt; cursors = new LinkedHashMap&lt;&gt;(16, 0.75f, true);</span>
+
+<span class="fc" id="L19">    private record Key(String username, String repository, String workspace, UUID cursor) {</span>
+        Key(WorkspaceContext scope, UUID cursor) {
+<span class="fc" id="L21">            this(scope.username(), scope.repositoryId(), scope.workspaceId(), cursor);</span>
+<span class="fc" id="L22">        }</span>
+    }
+
+    public static WorkspaceNavigation resolve(HttpServletRequest request, HttpServletResponse response,
+                                              WorkspaceContext scope, boolean initialize, int maxHistory) {
+<span class="fc" id="L27">        String requested = request.getHeader(&quot;X-Taxonomy-Navigation-Cursor&quot;);</span>
+<span class="pc bpc" id="L28" title="1 of 4 branches missed.">        if (requested == null || scope.workspaceId() == null) return null;</span>
+<span class="fc" id="L29">        UUID cursor = uuid(requested);</span>
+<span class="fc" id="L30">        var session = request.getSession(false);</span>
+<span class="pc bpc" id="L31" title="1 of 2 branches missed.">        if (session == null) throw unavailable();</span>
+        WorkspaceNavigationSession state;
+<span class="fc" id="L33">        synchronized (WebUtils.getSessionMutex(session)) {</span>
+<span class="fc" id="L34">            state = (WorkspaceNavigationSession) session.getAttribute(ATTRIBUTE);</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">            if (state == null) {</span>
+<span class="fc" id="L36">                state = new WorkspaceNavigationSession();</span>
+<span class="fc" id="L37">                session.setAttribute(ATTRIBUTE, state);</span>
+            }
+<span class="fc" id="L39">        }</span>
+<span class="fc" id="L40">        return state.resolve(scope, cursor, request.getHeader(&quot;X-Taxonomy-Navigation-Previous&quot;),</span>
+                initialize, maxHistory, response);
+    }
+
+    private synchronized WorkspaceNavigation resolve(WorkspaceContext scope, UUID cursor, String previous,
+                                                     boolean initialize, int maxHistory, HttpServletResponse response) {
+<span class="fc" id="L46">        Key key = new Key(scope, cursor);</span>
+<span class="fc" id="L47">        WorkspaceNavigation existing = cursors.get(key);</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        if (existing != null) return existing;</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        if (!initialize) throw unavailable();</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        WorkspaceNavigation source = previous == null ? null : cursors.get(new Key(scope, uuid(previous)));</span>
+<span class="pc bpc" id="L51" title="1 of 6 branches missed.">        if (previous != null &amp;&amp; source == null &amp;&amp; response != null) {</span>
+<span class="fc" id="L52">            response.setHeader(&quot;X-Taxonomy-Navigation-Reset&quot;, &quot;true&quot;);</span>
+        }
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        WorkspaceNavigation created = source == null</span>
+<span class="fc" id="L55">                ? new WorkspaceNavigation(maxHistory, scope.currentBranch()) : source.copy();</span>
+<span class="fc" id="L56">        cursors.put(key, created);</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">        if (cursors.size() &gt; LIMIT) cursors.remove(cursors.keySet().iterator().next());</span>
+<span class="fc" id="L58">        return created;</span>
+    }
+
+    private static UUID uuid(String value) {
+<span class="fc" id="L62">        try { return UUID.fromString(value); }</span>
+<span class="nc" id="L63">        catch (IllegalArgumentException invalid) {</span>
+<span class="nc" id="L64">            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, &quot;Invalid navigation cursor&quot;);</span>
+        }
+    }
+
+    private static ResponseStatusException unavailable() {
+<span class="fc" id="L69">        return new ResponseStatusException(HttpStatus.CONFLICT, &quot;The workspace navigation is unavailable. Refresh the context and try again.&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

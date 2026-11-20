@@ -1,0 +1,354 @@
+{
+  "schemaVersion": 1,
+  "shard": "browser",
+  "commit": "2774f630a1d507bdc034c1adea3356bf84bf41cb",
+  "sourceTree": "806134021a752b84e6379f29f564100c16cef3fb",
+  "buildId": "44700340521.1.browser",
+  "reports": [
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.DerivedMetadataAndSummaryTests.xml",
+      "className": "com.taxonomy.DerivedMetadataAndSummaryTests",
+      "sha256": "bc0efc1d11e2af7ebadad4c64763c62aaff6f67fb044a701c9cc381fd77fcdcd",
+      "tests": 8,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.acceptance.ReformulationAuthoredScenarioTest.xml",
+      "className": "com.taxonomy.acceptance.ReformulationAuthoredScenarioTest",
+      "sha256": "9a1f734f1af527fc1a2d3fe7ebc64d38ac9b6f57d3460ae11a2d4ae054905013",
+      "tests": 2,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.acceptance.ReformulationScenarioAcceptanceTest.xml",
+      "className": "com.taxonomy.acceptance.ReformulationScenarioAcceptanceTest",
+      "sha256": "b07d91118a07999ac2f92ae73ff8fab175ac6ede80b3408d46c4e4c97a9385b4",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.acceptance.ReformulationScenarioBrowserTest.xml",
+      "className": "com.taxonomy.acceptance.ReformulationScenarioBrowserTest",
+      "sha256": "1cba72166dcfc773ee7adef7ab3c9577799ecd4dbb59371a09066bec3c8d0a37",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationBrowserTest.xml",
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationBrowserTest",
+      "sha256": "f7a11f278363fd907728069e157e2bf180c3841e78f591aac6b9cedf7474e615",
+      "tests": 5,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.ui.DatabaseSetupBrowserTest.xml",
+      "className": "com.taxonomy.ui.DatabaseSetupBrowserTest",
+      "sha256": "75df0402da132fcce939516232e7e27ad2f06a10b60e3030ea66bc64b7eacbb4",
+      "tests": 5,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.AnalysisSnapshotAdoptionUiIT.xml",
+      "className": "com.taxonomy.AnalysisSnapshotAdoptionUiIT",
+      "sha256": "bf1e3dd0b6c7f2cb8244641117dc89b8117e29b915636b6c7851aca4842dad55",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.ArchiMateReturnUiIT.xml",
+      "className": "com.taxonomy.ArchiMateReturnUiIT",
+      "sha256": "d14a22454c4e0b4ef219b827ef9c484b956a35cd98651c2df90f520e732eacea",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.ArchitectureStandSelectionBrowserIT.xml",
+      "className": "com.taxonomy.ArchitectureStandSelectionBrowserIT",
+      "sha256": "f8012222892350f5d7e50039bbe7b474045ff81587004b97183f9ea11b2bd5f4",
+      "tests": 34,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.ArchitectureWorkbenchUiIT.xml",
+      "className": "com.taxonomy.ArchitectureWorkbenchUiIT",
+      "sha256": "f6677888e19ad00b2e35a5e3afd6784e28fcb055e3f175cd46e56381462f8d25",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.ArchitectureWorkspaceBrowserIT.xml",
+      "className": "com.taxonomy.ArchitectureWorkspaceBrowserIT",
+      "sha256": "e3f0c342c72896abe7984b956e639e435722056577588a28fbd73f9f5eeac7f2",
+      "tests": 19,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.CompleteCopilotSessionIT.xml",
+      "className": "com.taxonomy.CompleteCopilotSessionIT",
+      "sha256": "4f6063414cb878870eecbd5d734258c4c1ef9193c8fd50a11d7dd8411d2bc669",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.CoreUiAcceptanceIT.xml",
+      "className": "com.taxonomy.CoreUiAcceptanceIT",
+      "sha256": "de8af4691f8e2a5bbe20f09a79ab138f87e4ddad6ae30ecbfc0b6a7461524713",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.DocumentTemplateNavigationBrowserIT.xml",
+      "className": "com.taxonomy.DocumentTemplateNavigationBrowserIT",
+      "sha256": "23ad6c10cdf5d294ea2d10b61af8c95583dbe74defefdb4c5afb868ea8e78736",
+      "tests": 21,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.OnnxBrowserBootstrapIT.xml",
+      "className": "com.taxonomy.OnnxBrowserBootstrapIT",
+      "sha256": "c5a4ac6c20e761569f81c157d0fe5d19b523c6f4eab5fc9bb63d060abc90dc17",
+      "tests": 16,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.PortfolioClientRoutingIT.xml",
+      "className": "com.taxonomy.PortfolioClientRoutingIT",
+      "sha256": "251d1ed0a782675ed24e66a71a370d7ec05b02e7b9c3a1ccc5b417dc97c21bb5",
+      "tests": 86,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.PortfolioMatrixReviewIT.xml",
+      "className": "com.taxonomy.PortfolioMatrixReviewIT",
+      "sha256": "c97e3f47709032b703de32ab8c84fa0af727991e36a9bf89693b5f3f2dba2b55",
+      "tests": 10,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.PortfolioUiAcceptanceIT.xml",
+      "className": "com.taxonomy.PortfolioUiAcceptanceIT",
+      "sha256": "08f01d0790a8c3ce7273b5e876a180abc99f3ab9adfcf8dad416d52bec0ce8ed",
+      "tests": 4,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.RequirementLifecycleBrowserIT.xml",
+      "className": "com.taxonomy.RequirementLifecycleBrowserIT",
+      "sha256": "61e94a44bdd4ea9d475f34e18814df9c15730c1d078b013e9ef1360af1311e00",
+      "tests": 10,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.SeleniumPostgresContainerIT.xml",
+      "className": "com.taxonomy.SeleniumPostgresContainerIT",
+      "sha256": "4f335c986a8d910934d56d2b30391dad5afa10fa3e2c5ec42f52edcd10c4edff",
+      "tests": 14,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.SharedAdminNavigationBrowserIT.xml",
+      "className": "com.taxonomy.SharedAdminNavigationBrowserIT",
+      "sha256": "b35f057efdecd1095ac8b874bf6d28b0a61c70c3c35038003f4d3e23f1d2f464",
+      "tests": 9,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.SharedApplicationChromeBrowserIT.xml",
+      "className": "com.taxonomy.SharedApplicationChromeBrowserIT",
+      "sha256": "1b54a2d229d9954ea4ffbe85be7fcbc0ebb953432e482003d0d2f6fe47a021ce",
+      "tests": 58,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.portfolio.reformulation.InventoryComparisonUiIT.xml",
+      "className": "com.taxonomy.portfolio.reformulation.InventoryComparisonUiIT",
+      "sha256": "1993209f79408705ba258186bc1fa381db41fb7a51601252618f9e770839d310",
+      "tests": 5,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.relations.controller.ProposalInboxStartupUiIT.xml",
+      "className": "com.taxonomy.relations.controller.ProposalInboxStartupUiIT",
+      "sha256": "726a82e4ff13e808f105432dbe0f5523fb2bba4963c0a02b437bf0326d768afd",
+      "tests": 2,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    }
+  ],
+  "coverage": {
+    "path": "coverage.exec",
+    "sha256": "333262a902bfa110d1086847e8a6f9c8dc3fcb33eca300fbeaf83c1b9bb57e30"
+  },
+  "timing": {
+    "durationSeconds": 1505.902,
+    "suites": [
+      {
+        "className": "com.taxonomy.PortfolioUiAcceptanceIT",
+        "durationSeconds": 255.371
+      },
+      {
+        "className": "com.taxonomy.PortfolioClientRoutingIT",
+        "durationSeconds": 137.022
+      },
+      {
+        "className": "com.taxonomy.portfolio.reformulation.ReformulationBrowserTest",
+        "durationSeconds": 123.874
+      },
+      {
+        "className": "com.taxonomy.acceptance.ReformulationScenarioBrowserTest",
+        "durationSeconds": 116.708
+      },
+      {
+        "className": "com.taxonomy.acceptance.ReformulationScenarioAcceptanceTest",
+        "durationSeconds": 93.266
+      },
+      {
+        "className": "com.taxonomy.CompleteCopilotSessionIT",
+        "durationSeconds": 82.908
+      },
+      {
+        "className": "com.taxonomy.SeleniumPostgresContainerIT",
+        "durationSeconds": 68.754
+      },
+      {
+        "className": "com.taxonomy.acceptance.ReformulationAuthoredScenarioTest",
+        "durationSeconds": 66.885
+      },
+      {
+        "className": "com.taxonomy.ArchitectureStandSelectionBrowserIT",
+        "durationSeconds": 53.693
+      },
+      {
+        "className": "com.taxonomy.SharedApplicationChromeBrowserIT",
+        "durationSeconds": 51.255
+      },
+      {
+        "className": "com.taxonomy.ui.DatabaseSetupBrowserTest",
+        "durationSeconds": 49.426
+      },
+      {
+        "className": "com.taxonomy.ArchitectureWorkbenchUiIT",
+        "durationSeconds": 47.788
+      },
+      {
+        "className": "com.taxonomy.portfolio.reformulation.InventoryComparisonUiIT",
+        "durationSeconds": 47.346
+      },
+      {
+        "className": "com.taxonomy.relations.controller.ProposalInboxStartupUiIT",
+        "durationSeconds": 46.241
+      },
+      {
+        "className": "com.taxonomy.ArchitectureWorkspaceBrowserIT",
+        "durationSeconds": 45.423
+      },
+      {
+        "className": "com.taxonomy.CoreUiAcceptanceIT",
+        "durationSeconds": 39.744
+      },
+      {
+        "className": "com.taxonomy.AnalysisSnapshotAdoptionUiIT",
+        "durationSeconds": 39.549
+      },
+      {
+        "className": "com.taxonomy.ArchiMateReturnUiIT",
+        "durationSeconds": 36.544
+      },
+      {
+        "className": "com.taxonomy.PortfolioMatrixReviewIT",
+        "durationSeconds": 31.754
+      },
+      {
+        "className": "com.taxonomy.DerivedMetadataAndSummaryTests",
+        "durationSeconds": 23.124
+      },
+      {
+        "className": "com.taxonomy.RequirementLifecycleBrowserIT",
+        "durationSeconds": 16.839
+      },
+      {
+        "className": "com.taxonomy.DocumentTemplateNavigationBrowserIT",
+        "durationSeconds": 12.789
+      },
+      {
+        "className": "com.taxonomy.SharedAdminNavigationBrowserIT",
+        "durationSeconds": 11.446
+      },
+      {
+        "className": "com.taxonomy.OnnxBrowserBootstrapIT",
+        "durationSeconds": 8.153
+      }
+    ]
+  }
+}

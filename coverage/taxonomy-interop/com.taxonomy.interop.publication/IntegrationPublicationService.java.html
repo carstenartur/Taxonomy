@@ -1,0 +1,565 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>IntegrationPublicationService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.publication</a> &gt; <span class="el_source">IntegrationPublicationService.java</span></div><h1>IntegrationPublicationService.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.publication;
+
+import com.taxonomy.dsl.command.ArchitectureCommand;
+import com.taxonomy.extension.api.integration.*;
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import com.taxonomy.extension.api.integration.PublicationContracts.*;
+import com.taxonomy.interop.*;
+import com.taxonomy.interop.persistence.*;
+import com.taxonomy.interop.persistence.IntegrationStore.*;
+import com.taxonomy.interop.publication.PublicationEvidence.*;
+import com.taxonomy.workspace.service.*;
+import com.taxonomy.workspace.service.WorkspaceArchitectureIntegrationPort.*;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.concurrent.DelegatingSecurityContextCallable;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Service;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.time.*;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.Supplier;
+import static com.taxonomy.extension.api.integration.PublicationBounds.*;
+
+/**
+ * Conditional publication orchestrator. Every network/Git effect is outside journal/model transactions.
+ */
+@Service
+public class IntegrationPublicationService {
+
+    private final IntegrationStore store;
+
+    private final ExchangeConnectorRegistry connectors;
+
+    private final PublicationLocalAuthority local;
+
+    private final IntegrationJson json;
+
+    private final PublicationDigests digests;
+
+    private final PublicationReceiptValidator validator;
+
+    private final PublicationPolicy policy;
+
+    private final Clock clock;
+
+    @Autowired
+    public IntegrationPublicationService(IntegrationStore store, ExchangeConnectorRegistry connectors, PublicationLocalAuthority local, IntegrationJson json, ObjectProvider&lt;PublicationPolicy&gt; policies, ObjectProvider&lt;Clock&gt; clocks) {
+<span class="fc" id="L51">        this(store, connectors, local, json, policies.getIfAvailable(PublicationPolicy::new), clocks.getIfAvailable(Clock::systemUTC));</span>
+<span class="fc" id="L52">    }</span>
+
+<span class="fc" id="L54">    public IntegrationPublicationService(IntegrationStore store, ExchangeConnectorRegistry connectors, PublicationLocalAuthority local, IntegrationJson json, PublicationPolicy policy, Clock clock) {</span>
+<span class="fc" id="L55">        this.store = store;</span>
+<span class="fc" id="L56">        this.connectors = connectors;</span>
+<span class="fc" id="L57">        this.local = local;</span>
+<span class="fc" id="L58">        this.json = json;</span>
+<span class="fc" id="L59">        this.policy = policy;</span>
+<span class="fc" id="L60">        this.clock = clock;</span>
+<span class="fc" id="L61">        this.digests = new PublicationDigests(json);</span>
+<span class="fc" id="L62">        this.validator = new PublicationReceiptValidator(digests);</span>
+<span class="fc" id="L63">    }</span>
+
+    public PublicationAvailability availability(RepositoryContext context, UUID connectionId, PublicationScope scope) {
+<span class="fc" id="L66">        local.authorize(context, false, null);</span>
+<span class="fc" id="L67">        var connection = store.read(context, connectionId);</span>
+<span class="fc" id="L68">        local.authorize(context, false, connection);</span>
+        LifecycleIntegrationConnector connector;
+        try {
+<span class="fc" id="L71">            connector = connectors.require(connection.connectorId(), connection.profileVersion());</span>
+<span class="nc" id="L72">        } catch (IntegrationProblem problem) {</span>
+<span class="nc bnc" id="L73" title="All 2 branches missed.">            if (!&quot;UNKNOWN_CONNECTOR&quot;.equals(problem.code())) throw problem;</span>
+            // Reading retained connection history does not require its optional plugin.
+<span class="nc" id="L75">            return new PublicationAvailability(false, Set.of(), Set.of(), &quot;PROFILE_VERSION_CHANGED&quot;);</span>
+<span class="fc" id="L76">        }</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        if (!(connector instanceof ConditionalPublicationConnector conditional)) {</span>
+<span class="fc" id="L78">            return new PublicationAvailability(false, Set.of(), Set.of(), &quot;PUBLICATION_GUARANTEES_UNVERIFIED&quot;);</span>
+        }
+<span class="fc bfc" id="L80" title="All 2 branches covered.">        if (scope == null) return new PublicationAvailability(false, Set.of(), Set.of(), &quot;PUBLICATION_SCOPE_REQUIRED&quot;);</span>
+<span class="fc" id="L81">        var state = store.locked(context, connectionId, session -&gt; local.locked(context, d -&gt; local.domain.snapshot(context, connection, session.identities(), d).state()));</span>
+<span class="fc" id="L82">        var authority = authority(context, connection, state);</span>
+<span class="fc" id="L83">        var capabilities = conditional.publicationCapabilities(authority, scope);</span>
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">        if (!scope.equals(capabilities.scope())) return new PublicationAvailability(false, Set.of(), Set.of(), &quot;PUBLICATION_SCOPE_CHANGED&quot;);</span>
+<span class="fc" id="L85">        return policy.availability(authority, connector, capabilities);</span>
+    }
+
+    public PublicationOperation previewPublication(RepositoryContext context, UUID connectionId, PublicationPreviewRequest request) {
+<span class="fc" id="L89">        return preview(context, connectionId, request, null, new InvocationBudget());</span>
+    }
+
+    private PublicationOperation preview(RepositoryContext context, UUID connectionId, PublicationPreviewRequest request, UUID predecessor, InvocationBudget budget) {
+<span class="fc" id="L93">        local.authorize(context, true, null);</span>
+<span class="fc" id="L94">        var connection = store.read(context, connectionId);</span>
+<span class="fc" id="L95">        var authority = authority(context, connection, request.expected());</span>
+<span class="fc" id="L96">        var connector = verified(context, connection, authority, request.scope(), request.mode());</span>
+<span class="fc" id="L97">        var existing = store.locked(context, connectionId, session -&gt; session.publications().find(request.operationId()));</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">        if (existing != null) {</span>
+<span class="fc" id="L99">            var frozen = store.locked(context, connectionId, session -&gt; session.publications().request(request.operationId()));</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">            if (!frozen.equals(request)) {</span>
+<span class="fc" id="L101">                throw IntegrationProblem.conflict(&quot;OPERATION_ID_REUSED&quot;);</span>
+            }
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">            if (existing.preview() != null) {</span>
+<span class="nc" id="L104">                return existing;</span>
+            }
+<span class="fc" id="L106">        } else {</span>
+<span class="fc" id="L107">            store.locked(context, connectionId, session -&gt; local.locked(context, before -&gt; {</span>
+<span class="fc" id="L108">                local.domain.lockProject(context, connection.projectId());</span>
+<span class="fc" id="L109">                expect(request.expected(), local.domain.snapshot(context, connection, session.identities(), before).state());</span>
+<span class="fc" id="L110">                return session.publications().initialize(request, authority, predecessor);</span>
+            }));
+        }
+<span class="pc bpc" id="L113" title="1 of 2 branches missed.">        if (budget.expired()) {</span>
+<span class="nc" id="L114">            return publication(context, connectionId, request.operationId());</span>
+        }
+        try {
+<span class="fc" id="L117">            ScopeSnapshot remote = boundedCall(() -&gt; connector.readPublicationScope(authority, request.scope(), request.expectedExternalRevision()), budget);</span>
+<span class="fc" id="L118">            validator.validateSnapshot(remote);</span>
+<span class="pc bpc" id="L119" title="4 of 8 branches missed.">            if (!remote.provider().equals(connector.publicationCapabilities(authority, request.scope()).provider()) || !remote.scope().equals(request.scope()) || request.expectedExternalRevision() != null &amp;&amp; !request.expectedExternalRevision().equals(remote.revision())) {</span>
+<span class="nc" id="L120">                throw IntegrationProblem.conflict(&quot;PUBLICATION_REMOTE_CHANGED&quot;);</span>
+            }
+<span class="fc" id="L122">            return store.locked(context, connectionId, session -&gt; local.locked(context, before -&gt; {</span>
+<span class="fc" id="L123">                var frozen = session.publications().preview(request.operationId());</span>
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">                if (frozen != null) {</span>
+<span class="nc" id="L125">                    return session.publications().publication(request.operationId());</span>
+                }
+<span class="fc" id="L127">                local.domain.lockProject(context, connection.projectId());</span>
+<span class="fc" id="L128">                var mappings = session.publications().identities(request.operationId());</span>
+<span class="fc" id="L129">                var current = local.domain.snapshot(context, connection, mappings, before);</span>
+<span class="fc" id="L130">                expect(request.expected(), current.state());</span>
+<span class="fc" id="L131">                var projected = local.domain.exportDocument(connection, current, before, mappings, remote.document());</span>
+<span class="fc" id="L132">                var baseline = session.publications().commonBaseline();</span>
+<span class="fc" id="L133">                var changes = new PublicationDiff().compare(baseline, projected, remote);</span>
+<span class="fc" id="L134">                var losses = new ArrayList&lt;&gt;(projected.losses());</span>
+<span class="fc" id="L135">                losses.addAll(remote.document().losses());</span>
+<span class="fc" id="L136">                var unsigned = new PublicationPreviewEnvelope(1, request, authority, session.connection().revision(), session.connection().commonCheckpointId(), baseline, projected, remote, changes, losses, &quot;unsigned&quot;);</span>
+<span class="fc" id="L137">                var envelope = new PublicationPreviewEnvelope(1, request, authority, unsigned.connectionRevision(), unsigned.commonCheckpointId(), baseline, projected, remote, changes, losses, digests.previewFingerprint(unsigned));</span>
+<span class="fc" id="L138">                return session.publications().publicationPreview(request.operationId(), envelope);</span>
+            }));
+<span class="fc" id="L140">        } catch (RuntimeException failure) {</span>
+<span class="fc" id="L141">            store.locked(context, connectionId, session -&gt; {</span>
+<span class="fc" id="L142">                session.fetchFailed(request.operationId(), &quot;PUBLICATION_FETCH_FAILED&quot;);</span>
+<span class="fc" id="L143">                return null;</span>
+            });
+<span class="fc" id="L145">            throw IntegrationProblem.conflict(&quot;PUBLICATION_FETCH_FAILED&quot;);</span>
+        }
+    }
+
+    public PublicationOperation publication(RepositoryContext context, UUID connectionId, UUID operationId) {
+<span class="fc" id="L150">        local.authorize(context, false, store.read(context, connectionId));</span>
+<span class="fc" id="L151">        return store.locked(context, connectionId, session -&gt; session.publications().publication(operationId));</span>
+    }
+
+    public IntegrationDomainAdapter.EndpointIndex endpointOptions(RepositoryContext context, UUID connectionId, UUID operationId) {
+<span class="fc" id="L155">        local.authorize(context, true, null);</span>
+<span class="fc" id="L156">        return store.locked(context, connectionId, session -&gt; local.locked(context, before -&gt; {</span>
+<span class="fc" id="L157">            var preview = session.publications().preview(operationId);</span>
+<span class="fc" id="L158">            expect(preview.request().expected(), local.domain.snapshot(context, session.connection(), session.publications().identities(operationId), before).state());</span>
+<span class="fc" id="L159">            var candidates = new TreeMap&lt;&gt;(PublicationDigests.items(preview.localDocument()));</span>
+<span class="fc" id="L160">            candidates.putAll(PublicationDigests.items(preview.remoteSnapshot().document()));</span>
+<span class="fc" id="L161">            var mappings = exportMappings(session.connection(), local.domain.snapshot(context, session.connection(), session.publications().identities(operationId), before), before, preview.localDocument(), session.publications().identities(operationId));</span>
+<span class="pc bpc" id="L162" title="1 of 2 branches missed.">            var planningDsl = session.connection().projectId() == null ? before.dsl() : local.domain.portfolioContribution(context).apply(before.dsl());</span>
+<span class="fc" id="L163">            var plans = local.domain.planRequirements(context, session.connection(), candidates, mappings, planningDsl);</span>
+<span class="fc" id="L164">            return local.domain.indexEndpoints(session.connection(), candidates, mappings, plans);</span>
+        }));
+    }
+
+    public PublicationOperation publish(RepositoryContext context, UUID connectionId, PublicationReview review) {
+<span class="fc" id="L169">        return publish(context, connectionId, review, new InvocationBudget());</span>
+    }
+
+    private PublicationOperation publish(RepositoryContext context, UUID connectionId, PublicationReview review, InvocationBudget budget) {
+<span class="fc" id="L173">        local.authorize(context, true, null);</span>
+<span class="fc" id="L174">        UUID id = review.review().operationId();</span>
+<span class="fc" id="L175">        var connection = store.read(context, connectionId);</span>
+<span class="fc" id="L176">        var envelope = store.locked(context, connectionId, session -&gt; session.publications().preview(id));</span>
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">        if (envelope == null) {</span>
+<span class="nc" id="L178">            throw IntegrationProblem.conflict(&quot;PUBLICATION_PREVIEW_REQUIRED&quot;);</span>
+        }
+<span class="fc" id="L180">        var connector = verified(context, connection, envelope.context(), envelope.request().scope(), envelope.request().mode());</span>
+<span class="fc" id="L181">        var caps = connector.publicationCapabilities(envelope.context(), envelope.request().scope());</span>
+<span class="fc" id="L182">        store.locked(context, connectionId, session -&gt; {</span>
+<span class="fc" id="L183">            var previous = session.publications().plan(id);</span>
+<span class="fc bfc" id="L184" title="All 2 branches covered.">            if (previous != null) {</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">                if (!previous.reviewFingerprint().equals(digests.fingerprint(review))) {</span>
+<span class="fc" id="L186">                    throw IntegrationProblem.conflict(&quot;REVIEW_ID_REUSED&quot;);</span>
+                }
+<span class="fc bfc" id="L188" title="All 2 branches covered.">                if (session.publications().publication(id).phase() != PublicationPhase.LOCAL_APPLY_PENDING) {</span>
+<span class="fc" id="L189">                    return null;</span>
+                }
+            }
+<span class="fc" id="L192">            return local.locked(context, before -&gt; {</span>
+<span class="fc" id="L193">                local.domain.lockProject(context, connection.projectId());</span>
+<span class="fc" id="L194">                var current = local.domain.snapshot(context, connection, session.publications().identities(id), before);</span>
+<span class="fc" id="L195">                expect(envelope.request().expected(), current.state());</span>
+<span class="fc" id="L196">                var mappings = exportMappings(connection, current, before, envelope.localDocument(), session.publications().identities(id));</span>
+<span class="fc" id="L197">                var candidates = selected(envelope, review);</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">                String planningDsl = connection.projectId() == null ? before.dsl() : local.domain.portfolioContribution(context).apply(before.dsl());</span>
+<span class="fc" id="L199">                var requirementPlans = local.domain.planRequirements(context, connection, candidates, mappings, planningDsl);</span>
+<span class="fc" id="L200">                var endpoints = local.domain.indexEndpoints(connection, candidates, mappings, requirementPlans);</span>
+<span class="fc" id="L201">                var planner = new PublicationPlanner(digests, policy, caps, new PublicationMappings(envelope.context(), envelope.request().scope(), endpoints));</span>
+<span class="fc" id="L202">                var plan = planner.plan(envelope, review);</span>
+<span class="fc" id="L203">                var target = PublicationDigests.items(plan.localTarget());</span>
+<span class="fc bfc" id="L204" title="All 2 branches covered.">                boolean changed = !digests.semantic(plan.localBefore()).equals(digests.semantic(plan.localTarget()));</span>
+<span class="fc bfc" id="L205" title="All 2 branches covered.">                if (changed) {</span>
+<span class="fc" id="L206">                    connector.validateInboundSelection(new OutboundRequest(plan.context(), plan.localTarget(), plan.remoteBefore().revision()));</span>
+                }
+<span class="fc" id="L208">                List&lt;ArchitectureCommand&gt; commands = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L209" title="1 of 4 branches missed.">                if (changed &amp;&amp; local.domain.supportsArchitecture(connection)) {</span>
+<span class="fc" id="L210">                    commands.addAll(local.domain.architectureCommands(connection, planningDsl, PublicationDigests.items(plan.localBefore()), target, mappings, endpoints, Map.of(), review.review().rationale()));</span>
+                }
+<span class="fc bfc" id="L212" title="All 2 branches covered.">                if (changed) {</span>
+<span class="fc" id="L213">                    local.domain.validateCompletePlan(planningDsl, commands, requirementPlans);</span>
+                }
+<span class="fc bfc" id="L215" title="All 2 branches covered.">                if (plan.mode() == PublicationMode.PUSH) {</span>
+<span class="fc" id="L216">                    local.requireExact(context, connection, session.publications().identities(id), current.state(), true);</span>
+                }
+<span class="fc" id="L218">                session.publications().beginPublication(review, plan);</span>
+<span class="fc" id="L219">                var known = new TreeMap&lt;String, Identity&gt;();</span>
+<span class="fc" id="L220">                mappings.forEach(i -&gt; known.put(i.externalId(), i));</span>
+<span class="fc" id="L221">                var staged = new ArrayList&lt;StagedBinding&gt;();</span>
+<span class="fc" id="L222">                var remoteTarget = PublicationDigests.items(plan.remoteTarget());</span>
+<span class="fc" id="L223">                var keys = new TreeSet&lt;&gt;(target.keySet());</span>
+<span class="fc" id="L224">                keys.addAll(known.keySet());</span>
+<span class="fc bfc" id="L225" title="All 2 branches covered.">                for (String key : keys) {</span>
+<span class="fc" id="L226">                    Artifact value = target.get(key);</span>
+<span class="fc" id="L227">                    var prior = known.get(key);</span>
+<span class="fc" id="L228">                    Artifact remote = remoteTarget.get(key);</span>
+<span class="fc bfc" id="L229" title="All 2 branches covered.">                    String business = prior == null ? local.domain.businessId(connection, null, value) : prior.businessIdentity();</span>
+<span class="fc bfc" id="L230" title="All 2 branches covered.">                    Long requirement = prior == null ? null : prior.requirementId();</span>
+<span class="pc bpc" id="L231" title="8 of 14 branches missed.">                    if (changed &amp;&amp; ((value != null &amp;&amp; value.kind() == ArtifactKind.REQUIREMENT) || (value == null &amp;&amp; prior != null &amp;&amp; prior.internal() != null &amp;&amp; prior.internal().kind() == ArtifactKind.REQUIREMENT))) {</span>
+<span class="fc" id="L232">                        var applied = local.domain.applyRequirement(context, connection, value, prior, review.review().rationale());</span>
+<span class="fc" id="L233">                        business = applied.businessIdentity();</span>
+<span class="fc" id="L234">                        requirement = applied.requirementId();</span>
+<span class="fc bfc" id="L235" title="All 4 branches covered.">                    } else if (value != null &amp;&amp; value.kind() == ArtifactKind.RELATION) {</span>
+<span class="fc" id="L236">                        business = local.domain.relationBusinessId(value, endpoints, null);</span>
+                    }
+<span class="pc bpc" id="L238" title="2 of 12 branches missed.">                    staged.add(new StagedBinding(value != null ? value.id() : prior.internal().id(), business, requirement, remote == null &amp;&amp; prior != null ? prior.external() : remote, value == null &amp;&amp; prior != null ? prior.internal() : value, value == null));</span>
+<span class="fc" id="L239">                }</span>
+<span class="fc bfc" id="L240" title="All 2 branches covered.">                if (changed) {</span>
+<span class="fc" id="L241">                    local.domain.refreshIntegrationRequirements(context, connection.projectId());</span>
+                }
+<span class="fc" id="L243">                State accepted = before.state();</span>
+<span class="fc bfc" id="L244" title="All 2 branches covered.">                if (changed) {</span>
+                    try {
+<span class="fc bfc" id="L246" title="All 2 branches covered.">                        accepted = local.editor.acceptIntegration(context, before.state(), metadata(id, review.review().rationale()), plan.reviewFingerprint(), commands, connection.projectId() == null ? null : local.domain.portfolioContribution(context), checkpointMetadata(id, review.review().rationale()));</span>
+<span class="nc" id="L247">                    } catch (IOException failure) {</span>
+<span class="nc" id="L248">                        throw IntegrationProblem.conflict(&quot;PUBLICATION_LOCAL_UNAVAILABLE&quot;);</span>
+<span class="fc" id="L249">                    }</span>
+                }
+<span class="fc" id="L251">                var stagedSnapshot = local.domain.snapshot(context, connection, mappings, before);</span>
+<span class="fc" id="L252">                var state = stagedSnapshot.state();</span>
+<span class="fc" id="L253">                var result = new InternalState(context.repositoryId(), accepted.workspaceScopeKey(), context.branch(), accepted.commitId(), accepted.semanticRevision(), connection.projectId(), state.projectFingerprint());</span>
+<span class="fc" id="L254">                session.publications().stagePublicationLocal(id, result, plan.localTarget(), staged);</span>
+<span class="fc" id="L255">                return null;</span>
+            });
+        });
+<span class="fc" id="L258">        return resume(context, connectionId, id, budget);</span>
+    }
+
+    public PublicationOperation retryPublication(RepositoryContext context, UUID connectionId, UUID id) {
+<span class="fc" id="L262">        return resume(context, connectionId, id, new InvocationBudget());</span>
+    }
+
+    private PublicationOperation resume(RepositoryContext context, UUID connectionId, UUID id, InvocationBudget budget) {
+<span class="fc" id="L266">        local.authorize(context, true, null);</span>
+<span class="fc" id="L267">        var operation = publication(context, connectionId, id);</span>
+<span class="fc bfc" id="L268" title="All 4 branches covered.">        if (operation.phase() == PublicationPhase.COMPLETED || budget.expired()) {</span>
+<span class="fc" id="L269">            return operation;</span>
+        }
+<span class="fc" id="L271">        var plan = store.locked(context, connectionId, session -&gt; session.publications().plan(id));</span>
+<span class="fc bfc" id="L272" title="All 2 branches covered.">        if (plan == null) {</span>
+<span class="fc" id="L273">            var request = store.locked(context, connectionId, session -&gt; session.publications().request(id));</span>
+<span class="fc" id="L274">            return preview(context, connectionId, request, null, budget);</span>
+        }
+<span class="fc" id="L276">        var connection = store.read(context, connectionId);</span>
+<span class="fc" id="L277">        var connector = verified(context, connection, plan.context(), plan.capabilities().scope(), plan.mode());</span>
+<span class="pc bpc" id="L278" title="1 of 2 branches missed.">        if (!plan.capabilities().equals(connector.publicationCapabilities(plan.context(), plan.capabilities().scope()))) {</span>
+<span class="nc" id="L279">            throw IntegrationProblem.conflict(&quot;PUBLICATION_CONFIGURATION_CHANGED&quot;);</span>
+        }
+<span class="fc bfc" id="L281" title="All 2 branches covered.">        if (operation.phase() == PublicationPhase.LOCAL_APPLY_PENDING) {</span>
+<span class="fc" id="L282">            return publish(context, connectionId, store.locked(context, connectionId, session -&gt; session.publications().review(id)), budget);</span>
+        }
+<span class="fc bfc" id="L284" title="All 2 branches covered.">        if (operation.phase() == PublicationPhase.LOCAL_CHECKPOINT_PENDING) {</span>
+<span class="pc bpc" id="L285" title="1 of 2 branches missed.">            if (budget.expired()) {</span>
+<span class="nc" id="L286">                return operation;</span>
+            }
+            try {
+<span class="fc" id="L289">                var state = operation.localCheckpoint();</span>
+<span class="fc" id="L290">                var checkpointCommand = checkpointMetadata(id, store.locked(context, connectionId, session -&gt; session.publications().review(id)).review().rationale());</span>
+                // A timed-out writer keeps its deterministic editor intent. A later invocation
+                // replays that durable result; this caller never cancels or joins the writer.
+<span class="fc" id="L293">                var checkpoint = boundedCall(() -&gt; {</span>
+                    try {
+<span class="fc" id="L295">                        return local.editor.checkpoint(context, new State(state.workspaceScopeKey(), state.commitId(), state.semanticRevision()), checkpointCommand);</span>
+<span class="fc" id="L296">                    } catch (IOException failure) {</span>
+<span class="fc" id="L297">                        throw new UncheckedIOException(failure);</span>
+                    }
+                }, budget);
+<span class="fc" id="L300">                var result = new InternalState(state.repositoryId(), state.workspaceScopeKey(), state.branch(), checkpoint.state().commitId(), checkpoint.state().semanticRevision(), state.projectId(), state.projectFingerprint());</span>
+<span class="fc" id="L301">                store.locked(context, connectionId, session -&gt; {</span>
+<span class="pc bpc" id="L302" title="1 of 2 branches missed.">                    if (session.publications().publication(id).phase() == PublicationPhase.LOCAL_CHECKPOINT_PENDING) {</span>
+<span class="fc" id="L303">                        session.publications().publicationLocalCheckpointed(id, result);</span>
+                    }
+<span class="fc" id="L305">                    return null;</span>
+                });
+<span class="fc" id="L307">            } catch (RuntimeException failure) {</span>
+<span class="pc bpc" id="L308" title="2 of 6 branches missed.">                boolean deferred = failure instanceof UncheckedIOException || failure instanceof IntegrationProblem problem &amp;&amp; &quot;PUBLICATION_DEADLINE&quot;.equals(problem.code());</span>
+<span class="fc" id="L309">                store.locked(context, connectionId, session -&gt; {</span>
+                    // Another retry may already have completed this same deterministic intent.
+<span class="fc bfc" id="L311" title="All 2 branches covered.">                    if (session.publications().publication(id).phase() == PublicationPhase.LOCAL_CHECKPOINT_PENDING) {</span>
+<span class="pc bpc" id="L312" title="1 of 2 branches missed.">                        if (deferred) {</span>
+<span class="fc" id="L313">                            session.publications().checkpointDeferred(id);</span>
+                        } else {
+<span class="nc" id="L315">                            session.publications().requirePublicationReconciliation(id, &quot;PUBLICATION_CHECKPOINT_CONFLICT&quot;);</span>
+                        }
+                    }
+<span class="fc" id="L318">                    return null;</span>
+                });
+<span class="fc" id="L320">                return publication(context, connectionId, id);</span>
+<span class="fc" id="L321">            }</span>
+        }
+<span class="fc bfc" id="L323" title="All 2 branches covered.">        while (!budget.expired()) {</span>
+<span class="fc" id="L324">            operation = publication(context, connectionId, id);</span>
+<span class="fc bfc" id="L325" title="All 2 branches covered.">            if (operation.phase() == PublicationPhase.VERIFY_PENDING) {</span>
+<span class="fc" id="L326">                verify(context, connectionId, id, plan, connector, budget);</span>
+<span class="fc" id="L327">                break;</span>
+            }
+<span class="fc bfc" id="L329" title="All 2 branches covered.">            if (!operation.allowedActions().contains(PublicationAction.RETRY)) {</span>
+<span class="fc" id="L330">                break;</span>
+            }
+<span class="fc" id="L332">            verified(context, store.read(context, connectionId), plan.context(), plan.capabilities().scope(), plan.mode());</span>
+<span class="pc bpc" id="L333" title="1 of 2 branches missed.">            if (budget.expired()) {</span>
+<span class="nc" id="L334">                break;</span>
+            }
+            PublicationClaim claim;
+            try {
+<span class="fc" id="L338">                claim = store.locked(context, connectionId, session -&gt; session.publications().claimPublicationAttempt(id, clock.instant()));</span>
+<span class="fc" id="L339">            } catch (IntegrationProblem moved) {</span>
+<span class="fc" id="L340">                store.locked(context, connectionId, session -&gt; {</span>
+<span class="fc" id="L341">                    session.publications().requirePublicationReconciliation(id, moved.code());</span>
+<span class="fc" id="L342">                    return null;</span>
+                });
+<span class="fc" id="L344">                break;</span>
+<span class="fc" id="L345">            }</span>
+<span class="fc bfc" id="L346" title="All 2 branches covered.">            if (claim == null) {</span>
+<span class="fc" id="L347">                break;</span>
+            }
+            try {
+<span class="fc" id="L350">                Boolean proceed = boundedCall(() -&gt; {</span>
+                    try {
+<span class="fc bfc" id="L352" title="All 2 branches covered.">                        if (claim.attemptKind() == AttemptKind.LOOKUP) {</span>
+<span class="fc" id="L353">                            var r = claim.frozenRequest();</span>
+<span class="fc" id="L354">                            var query = new PublicationReceiptQuery(r.provider(), r.scope(), id, r.item().itemId(), r.item().idempotencyKey(), r.requestFingerprint());</span>
+<span class="fc" id="L355">                            var lookup = connector.lookupPublicationReceipt(plan.context(), query);</span>
+<span class="fc" id="L356">                            return store.locked(context, connectionId, session -&gt; {</span>
+<span class="fc" id="L357">                                session.publications().recordPublicationLookup(claim, lookup);</span>
+<span class="fc bfc" id="L358" title="All 2 branches covered.">                                boolean reconciliation = session.publications().publication(id).phase() == PublicationPhase.RECONCILIATION_REQUIRED;</span>
+                                // A nonterminal FOUND or lookup-only NOT_FOUND ends this invocation.
+                                // Neither fences an older SEND; await later authoritative evidence.
+<span class="fc bfc" id="L361" title="All 4 branches covered.">                                return lookup.state() == LookupState.FOUND &amp;&amp; lookup.receipt().terminal()</span>
+<span class="pc bpc" id="L362" title="1 of 4 branches missed.">                                        || lookup.state() == LookupState.NOT_FOUND &amp;&amp; !reconciliation;</span>
+                            });
+                        }
+<span class="fc" id="L365">                        var receipt = connector.publishItem(plan.context(), claim.frozenRequest());</span>
+<span class="fc" id="L366">                        validator.validate(claim.frozenRequest(), receipt);</span>
+<span class="fc" id="L367">                        store.locked(context, connectionId, session -&gt; {</span>
+<span class="fc" id="L368">                            session.publications().recordPublicationReceipt(claim, receipt);</span>
+<span class="fc" id="L369">                            return null;</span>
+                        });
+<span class="fc bfc" id="L371" title="All 2 branches covered.">                        return receipt.state() == ReceiptState.APPLIED;</span>
+<span class="fc" id="L372">                    } catch (RuntimeException failure) {</span>
+<span class="fc" id="L373">                        store.locked(context, connectionId, session -&gt; {</span>
+<span class="fc bfc" id="L374" title="All 2 branches covered.">                            session.publications().recordPublicationUnknown(claim, failure instanceof IntegrationProblem problem ? problem.code() : &quot;PUBLICATION_OUTCOME_UNKNOWN&quot;);</span>
+<span class="fc" id="L375">                            return null;</span>
+                        });
+<span class="fc" id="L377">                        return false;</span>
+                    }
+                }, budget);
+<span class="fc bfc" id="L380" title="All 2 branches covered.">                if (!proceed) {</span>
+<span class="fc" id="L381">                    break;</span>
+                }
+<span class="nc" id="L383">            } catch (RuntimeException timeout) {</span>
+<span class="nc" id="L384">                store.locked(context, connectionId, session -&gt; {</span>
+<span class="nc" id="L385">                    session.publications().recordPublicationUnknown(claim, &quot;PUBLICATION_DEADLINE&quot;);</span>
+<span class="nc" id="L386">                    return null;</span>
+                });
+<span class="nc" id="L388">                break;</span>
+<span class="fc" id="L389">            }</span>
+<span class="fc" id="L390">        }</span>
+<span class="fc" id="L391">        return publication(context, connectionId, id);</span>
+    }
+
+    public PublicationOperation previewPublicationReconciliation(RepositoryContext context, UUID connectionId, UUID id, ReconciliationPreviewRequest request) {
+<span class="fc" id="L395">        var budget = new InvocationBudget();</span>
+<span class="pc bpc" id="L396" title="1 of 2 branches missed.">        if (!id.equals(request.predecessorOperationId())) {</span>
+<span class="nc" id="L397">            throw IntegrationProblem.conflict(&quot;PUBLICATION_PREDECESSOR_CHANGED&quot;);</span>
+        }
+<span class="fc" id="L399">        var operation = publication(context, connectionId, id);</span>
+<span class="fc bfc" id="L400" title="All 2 branches covered.">        if (!operation.allowedActions().contains(PublicationAction.RECONCILE)) {</span>
+<span class="fc" id="L401">            throw IntegrationProblem.conflict(&quot;PUBLICATION_UNKNOWN_UNRESOLVED&quot;);</span>
+        }
+<span class="fc" id="L403">        return preview(context, connectionId, request.request(), id, budget);</span>
+    }
+
+    private void verify(RepositoryContext context, UUID connectionId, UUID id, PublicationPlan plan, ConditionalPublicationConnector connector, InvocationBudget budget) {
+<span class="fc bfc" id="L407" title="All 2 branches covered.">        if (!digests.converged(plan)) {</span>
+<span class="fc" id="L408">            store.locked(context, connectionId, session -&gt; {</span>
+<span class="fc" id="L409">                session.publications().incomplete(id);</span>
+<span class="fc" id="L410">                return null;</span>
+            });
+<span class="fc" id="L412">            return;</span>
+        }
+<span class="fc" id="L414">        var op = publication(context, connectionId, id);</span>
+<span class="fc bfc" id="L415" title="All 2 branches covered.">        String revision = op.items().isEmpty() ? plan.remoteBefore().revision() : op.items().getLast().receipt().afterScopeRevision();</span>
+        try {
+<span class="fc" id="L417">            var snapshot = boundedCall(() -&gt; connector.readPublicationScope(plan.context(), plan.capabilities().scope(), revision), budget);</span>
+<span class="fc" id="L418">            var receipts = op.items().stream().map(PublicationItemOutcome::receipt).toList();</span>
+<span class="fc" id="L419">            var completion = new PublicationCompletion(1, id, plan.planFingerprint(), receipts, snapshot, op.localCheckpoint(), digests.semantic(plan.localTarget()));</span>
+<span class="fc" id="L420">            validator.validateCompletion(plan, completion);</span>
+<span class="fc" id="L421">            var baseline = new CommonBaseline(1, plan.capabilities().provider(), plan.capabilities().scope(), plan.context().profile(), plan.context().profileVersion(), plan.localTarget(), snapshot.document(), completion.commonSemanticFingerprint());</span>
+<span class="fc" id="L422">            store.locked(context, connectionId, session -&gt; {</span>
+<span class="fc" id="L423">                session.publications().completePublication(id, completion, baseline);</span>
+<span class="fc" id="L424">                return null;</span>
+            });
+<span class="fc" id="L426">        } catch (RuntimeException failure) {</span>
+<span class="fc" id="L427">            store.locked(context, connectionId, session -&gt; {</span>
+<span class="fc" id="L428">                session.publications().requirePublicationReconciliation(id, &quot;PUBLICATION_VERIFICATION_REQUIRED&quot;);</span>
+<span class="fc" id="L429">                return null;</span>
+            });
+<span class="fc" id="L431">        }</span>
+<span class="fc" id="L432">    }</span>
+
+    private ConditionalPublicationConnector verified(RepositoryContext context, Connection connection, IntegrationContext authority, PublicationScope scope, PublicationMode mode) {
+<span class="fc" id="L435">        local.authorize(context, true, connection);</span>
+<span class="fc" id="L436">        policy.requireAuthority(authority, mode);</span>
+<span class="fc" id="L437">        var value = connectors.require(connection.connectorId(), connection.profileVersion());</span>
+<span class="fc bfc" id="L438" title="All 2 branches covered.">        if (!(value instanceof ConditionalPublicationConnector conditional)) {</span>
+<span class="fc" id="L439">            throw IntegrationProblem.conflict(&quot;PUBLICATION_GUARANTEES_UNVERIFIED&quot;);</span>
+        }
+<span class="fc" id="L441">        var capabilities = conditional.publicationCapabilities(authority, scope);</span>
+<span class="fc" id="L442">        policy.requireVerified(authority, conditional, capabilities);</span>
+<span class="fc bfc" id="L443" title="All 2 branches covered.">        if (!capabilities.scope().equals(scope)) {</span>
+<span class="fc" id="L444">            throw IntegrationProblem.conflict(&quot;PUBLICATION_SCOPE_CHANGED&quot;);</span>
+        }
+<span class="fc" id="L446">        return conditional;</span>
+    }
+
+    private Map&lt;String, Artifact&gt; selected(PublicationPreviewEnvelope envelope, PublicationReview review) {
+<span class="fc" id="L450">        var result = new TreeMap&lt;&gt;(PublicationDigests.items(envelope.localDocument()));</span>
+<span class="fc bfc" id="L451" title="All 2 branches covered.">        for (var c : envelope.changes()) {</span>
+<span class="fc" id="L452">            var resolution = review.resolutions().get(c.id());</span>
+<span class="pc bpc" id="L453" title="1 of 2 branches missed.">            if (resolution == null) {</span>
+<span class="nc" id="L454">                continue;</span>
+            }
+<span class="fc bfc" id="L456" title="All 3 branches covered.">            Artifact value = switch(resolution) {</span>
+                case KEEP_LOCAL, SKIP -&gt;
+<span class="fc" id="L458">                    c.local();</span>
+                case TAKE_REMOTE -&gt;
+<span class="fc" id="L460">                    c.remote();</span>
+                case MERGE -&gt;
+<span class="fc" id="L462">                    c.merged();</span>
+            };
+<span class="fc bfc" id="L464" title="All 2 branches covered.">            if (value != null) {</span>
+<span class="fc" id="L465">                value = IntegrationMappingFields.remap(value, review.review().mappings().get(c.id()));</span>
+            }
+<span class="fc bfc" id="L467" title="All 2 branches covered.">            if (value == null) {</span>
+<span class="fc" id="L468">                result.remove(c.id());</span>
+            } else {
+<span class="fc" id="L470">                result.put(c.id(), value);</span>
+            }
+<span class="fc" id="L472">        }</span>
+<span class="fc" id="L473">        return result;</span>
+    }
+
+    private List&lt;Identity&gt; exportMappings(Connection connection, IntegrationDomainAdapter.Snapshot current, WorkspaceDocument document, ExchangeDocument projection, List&lt;Identity&gt; existing) {
+<span class="fc" id="L477">        var values = new TreeMap&lt;String, Identity&gt;();</span>
+<span class="fc" id="L478">        existing.forEach(i -&gt; values.put(i.externalId(), i));</span>
+<span class="fc" id="L479">        var items = PublicationDigests.items(projection);</span>
+<span class="fc" id="L480">        local.domain.exportBindings(connection, current, document, items).forEach((key, b) -&gt; {</span>
+<span class="fc" id="L481">            var artifact = items.get(key);</span>
+<span class="fc bfc" id="L482" title="All 2 branches covered.">            if (artifact != null) {</span>
+<span class="fc" id="L483">                values.putIfAbsent(key, new Identity(key, b.businessIdentity(), b.requirementId(), null, digests.semantic(artifact), artifact, artifact, null, false));</span>
+            }
+<span class="fc" id="L485">        });</span>
+<span class="fc" id="L486">        return List.copyOf(values.values());</span>
+    }
+
+    private static IntegrationContext authority(RepositoryContext context, Connection c, InternalState state) {
+<span class="fc" id="L490">        return new IntegrationContext(c.id(), c.authority(), c.externalScope(), state, context.username(), c.connectorId(), c.profileVersion());</span>
+    }
+
+    private static void expect(InternalState expected, InternalState actual) {
+<span class="pc bpc" id="L494" title="1 of 2 branches missed.">        if (!Objects.equals(expected, actual)) {</span>
+<span class="nc" id="L495">            throw IntegrationProblem.conflict(&quot;PUBLICATION_LOCAL_MOVED&quot;);</span>
+        }
+<span class="fc" id="L497">    }</span>
+
+    private static CommandMetadata metadata(UUID id, String rationale) {
+<span class="fc" id="L500">        return new CommandMetadata(id, id, id, rationale);</span>
+    }
+
+    private static CommandMetadata checkpointMetadata(UUID id, String rationale) {
+<span class="fc" id="L504">        return new CommandMetadata(UUID.nameUUIDFromBytes((id + &quot;:checkpoint&quot;).getBytes(StandardCharsets.UTF_8)), id, id, rationale);</span>
+    }
+
+    /**
+     * One external invocation, including internal delegation and local work.
+     */
+<span class="fc" id="L510">    private final class InvocationBudget {</span>
+
+<span class="fc" id="L512">        private final long startedNanos = System.nanoTime();</span>
+
+<span class="fc" id="L514">        private final Instant deadline = clock.instant().plusSeconds(INVOCATION_SECONDS);</span>
+
+        long remainingNanos() {
+<span class="fc" id="L517">            long wallRemaining = Duration.between(clock.instant(), deadline).toNanos();</span>
+<span class="fc" id="L518">            long monotonicRemaining = TimeUnit.SECONDS.toNanos(INVOCATION_SECONDS) - (System.nanoTime() - startedNanos);</span>
+<span class="fc" id="L519">            return Math.max(0, Math.min(wallRemaining, monotonicRemaining));</span>
+        }
+
+        boolean expired() {
+<span class="fc bfc" id="L523" title="All 2 branches covered.">            return remainingNanos() == 0;</span>
+        }
+    }
+
+    private &lt;T&gt; T boundedCall(Supplier&lt;T&gt; effect, InvocationBudget budget) {
+<span class="fc" id="L528">        long remaining = budget.remainingNanos();</span>
+<span class="pc bpc" id="L529" title="1 of 2 branches missed.">        if (remaining &lt;= 0) {</span>
+<span class="nc" id="L530">            throw IntegrationProblem.conflict(&quot;PUBLICATION_DEADLINE&quot;);</span>
+        }
+        // Workspace and journal operations still verify the caller's current principal in the worker.
+<span class="fc" id="L533">        var workerContext = SecurityContextHolder.createEmptyContext();</span>
+<span class="fc" id="L534">        workerContext.setAuthentication(SecurityContextHolder.getContext().getAuthentication());</span>
+<span class="fc" id="L535">        var securedEffect = new DelegatingSecurityContextCallable&lt;&gt;(effect::get, workerContext);</span>
+<span class="fc" id="L536">        var future = new CompletableFuture&lt;T&gt;();</span>
+<span class="fc" id="L537">        Thread.ofVirtual().start(() -&gt; {</span>
+            try {
+<span class="pc bpc" id="L539" title="1 of 2 branches missed.">                if (budget.expired()) {</span>
+<span class="nc" id="L540">                    throw IntegrationProblem.conflict(&quot;PUBLICATION_DEADLINE&quot;);</span>
+                }
+<span class="fc" id="L542">                future.complete(securedEffect.call());</span>
+<span class="fc" id="L543">            } catch (Throwable failure) {</span>
+<span class="fc" id="L544">                future.completeExceptionally(failure);</span>
+<span class="fc" id="L545">            }</span>
+<span class="fc" id="L546">        });</span>
+        try {
+<span class="fc" id="L548">            return future.get(budget.remainingNanos(), TimeUnit.NANOSECONDS);</span>
+<span class="nc" id="L549">        } catch (InterruptedException failure) {</span>
+<span class="nc" id="L550">            Thread.currentThread().interrupt();</span>
+<span class="nc" id="L551">            throw IntegrationProblem.conflict(&quot;PUBLICATION_DEADLINE&quot;);</span>
+<span class="fc" id="L552">        } catch (TimeoutException failure) {</span>
+<span class="fc" id="L553">            throw IntegrationProblem.conflict(&quot;PUBLICATION_DEADLINE&quot;);</span>
+<span class="fc" id="L554">        } catch (ExecutionException failure) {</span>
+<span class="pc bpc" id="L555" title="1 of 2 branches missed.">            if (failure.getCause() instanceof RuntimeException runtime) {</span>
+<span class="fc" id="L556">                throw runtime;</span>
+            }
+<span class="nc bnc" id="L558" title="All 2 branches missed.">            if (failure.getCause() instanceof Error error) {</span>
+<span class="nc" id="L559">                throw error;</span>
+            }
+<span class="nc" id="L561">            throw IntegrationProblem.conflict(&quot;PUBLICATION_EFFECT_UNAVAILABLE&quot;);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

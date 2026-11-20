@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkspaceUpstreamService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">WorkspaceUpstreamService.java</span></div><h1>WorkspaceUpstreamService.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.GitUpstreamRef;
+import org.eclipse.jgit.lib.ObjectId;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.io.IOException;
+
+/** Fetch an exact upstream commit into a personal working copy without integrating it. */
+@Service
+public class WorkspaceUpstreamService {
+<span class="fc" id="L18">    public record Status(String sourceRepositoryId, String sourceBranch, String sourceCommit,</span>
+                         String trackingRef, String trackedCommit) {}
+<span class="fc" id="L20">    public record TagStatus(String name, String sourceTagObject, String destinationTagObject, String trackedCommit) {}</span>
+    public record TagRequest(String name, String sourceTagObject, String trackedCommit) {
+<span class="fc" id="L22">        public TagRequest {</span>
+<span class="pc bpc" id="L23" title="2 of 4 branches missed.">            if (name == null || !org.eclipse.jgit.lib.Repository.isValidRefName(&quot;refs/tags/&quot; + name)) {</span>
+<span class="nc" id="L24">                throw new IllegalArgumentException(&quot;A valid Git tag name is required&quot;);</span>
+            }
+<span class="fc" id="L26">            sourceTagObject = objectId(sourceTagObject);</span>
+<span class="fc" id="L27">            trackedCommit = objectId(trackedCommit);</span>
+<span class="fc" id="L28">        }</span>
+    }
+    public record Request(String sourceCommit, String expectedTrackedCommit) {
+<span class="fc" id="L31">        public Request {</span>
+<span class="fc" id="L32">            sourceCommit = objectId(sourceCommit);</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">            if (expectedTrackedCommit != null) expectedTrackedCommit = objectId(expectedTrackedCommit);</span>
+<span class="fc" id="L34">        }</span>
+    }
+    private static String objectId(String value) {
+<span class="pc bpc" id="L37" title="2 of 4 branches missed.">        if (value == null || !ObjectId.isId(value)) throw new IllegalArgumentException(&quot;A complete Git object ID is required&quot;);</span>
+<span class="fc" id="L38">        return ObjectId.fromString(value).name();</span>
+    }
+
+<span class="fc" id="L41">    record Capture(Status source, String forkPoint) { }</span>
+
+    @Transactional(readOnly = true)
+    public Capture capture(RepositoryContext context) throws IOException {
+<span class="fc" id="L45">        var transfer = open(context, false).transfer();</span>
+<span class="fc" id="L46">        return new Capture(transfer.inspect(), transfer.forkPoint());</span>
+    }
+
+<span class="fc" id="L49">    record WorkingCopy(UserWorkspace workspace, GitUpstreamTransfer transfer) {}</span>
+
+<span class="fc" id="L51">    private WorkspaceActorAccess actors = WorkspaceActorAccess.unavailable();</span>
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void configureWorkspaceActors(WorkspaceActorAccess actors) {
+<span class="fc" id="L55">        this.actors = java.util.Objects.requireNonNull(actors);</span>
+<span class="fc" id="L56">    }</span>
+
+    private final UserWorkspaceRepository rows;
+    private final SystemRepositoryService catalogue;
+    private final RepositoryMembershipService memberships;
+    private final DslGitRepositoryFactory repositories;
+
+    public WorkspaceUpstreamService(UserWorkspaceRepository rows, SystemRepositoryService catalogue,
+<span class="fc" id="L64">                                    RepositoryMembershipService memberships, DslGitRepositoryFactory repositories) {</span>
+<span class="fc" id="L65">        this.rows = rows;</span>
+<span class="fc" id="L66">        this.catalogue = catalogue;</span>
+<span class="fc" id="L67">        this.memberships = memberships;</span>
+<span class="fc" id="L68">        this.repositories = repositories;</span>
+<span class="fc" id="L69">    }</span>
+
+    @Transactional(readOnly = true)
+    public Status inspect(RepositoryContext selected) throws IOException {
+<span class="fc" id="L73">        return open(selected, false).transfer().inspect();</span>
+    }
+
+    @Transactional(readOnly = true)
+    public UpstreamRebasePlan rebasePlan(RepositoryContext selected) throws IOException {
+<span class="fc" id="L78">        var copy = open(selected, false);</span>
+<span class="fc" id="L79">        var plan = UpstreamRebasePlan.read(copy.transfer(), selected.repositoryId(), selected.workspaceId(), selected.branch());</span>
+<span class="fc" id="L80">        var pending = com.taxonomy.workspace.storage.PersonalRebaseReceipt.read(copy.transfer().target(),</span>
+<span class="fc" id="L81">                selected.repositoryWorkspaceScopeKey());</span>
+<span class="pc bpc" id="L82" title="2 of 6 branches missed.">        if (pending != null &amp;&amp; plan.localCommit() != null &amp;&amp; !pending.replay().originalHead().equals(plan.localCommit())</span>
+<span class="fc bfc" id="L83" title="All 4 branches covered.">                &amp;&amp; (pending.replay().newHead().equals(plan.localCommit()) || !pending.acknowledgedBy(copy.transfer().target(),</span>
+<span class="fc" id="L84">                copy.workspace().getCurrentCommit(), copy.workspace().getLastIntegratedCommit())))</span>
+<span class="fc" id="L85">            return plan.withRecoverableCommit(pending.replay().newHead());</span>
+<span class="fc" id="L86">        return plan;</span>
+    }
+
+    @Transactional(readOnly = true)
+    public String rebasePlanRefTag(RepositoryContext selected) throws IOException {
+<span class="fc" id="L91">        return UpstreamRebasePlan.readRefTag(open(selected, false).transfer(), selected.repositoryId(),</span>
+<span class="fc" id="L92">                selected.workspaceId(), selected.branch());</span>
+    }
+
+    @Transactional(rollbackFor = IOException.class)
+    Status fetch(RepositoryContext selected, Request request) throws IOException {
+<span class="fc" id="L97">        return fetchRecorded(selected, null, null, request, false, () -&gt; { }, null);</span>
+    }
+
+    @Transactional(rollbackFor = IOException.class)
+    public Status fetchRecorded(RepositoryContext selected, String sourceBranch, String forkPoint,
+                                Request request, boolean recovery, Runnable fence) throws IOException {
+<span class="nc" id="L103">        return fetchRecorded(selected, sourceBranch, forkPoint, request, recovery, fence, null);</span>
+    }
+
+    @Transactional(rollbackFor = IOException.class)
+    public Status fetchRecorded(RepositoryContext selected, String sourceBranch, String forkPoint,
+                                Request request, boolean recovery, Runnable fence, String originalActor) throws IOException {
+<span class="fc" id="L109">        fence.run();</span>
+<span class="fc" id="L110">        var copy = open(selected, true, originalActor);</span>
+<span class="pc bpc" id="L111" title="1 of 4 branches missed.">        if (sourceBranch != null &amp;&amp; (!sourceBranch.equals(copy.transfer().upstream().branch())</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">                || !java.util.Objects.equals(forkPoint, copy.transfer().forkPoint()))) {</span>
+<span class="fc" id="L113">            throw new BranchHeadConflictException(sourceBranch, request.sourceCommit(), null, &quot;The working copy upstream changed&quot;);</span>
+        }
+<span class="fc bfc" id="L115" title="All 2 branches covered.">        var status = recovery ? copy.transfer().recover(request, fence) : copy.transfer().fetch(request, fence);</span>
+<span class="fc" id="L116">        copy.workspace().setLastFetchedCommit(status.trackedCommit());</span>
+<span class="fc" id="L117">        rows.save(copy.workspace());</span>
+<span class="fc" id="L118">        return status;</span>
+    }
+
+    @Transactional(readOnly = true)
+    public TagStatus inspectTag(RepositoryContext selected, String name) throws IOException {
+<span class="fc" id="L123">        return open(selected, false).transfer().inspectTag(name);</span>
+    }
+
+    @Transactional(rollbackFor = IOException.class)
+    public TagStatus fetchTag(RepositoryContext selected, TagRequest request) throws IOException {
+<span class="fc" id="L128">        return open(selected, true).transfer().fetchTag(request);</span>
+    }
+
+    @Transactional(rollbackFor = IOException.class)
+    public TagStatus fetchRecordedTag(RepositoryContext selected, String sourceBranch, String forkPoint,
+                                      TagRequest request, boolean recovering, Runnable fence) throws IOException {
+<span class="nc" id="L134">        return fetchRecordedTag(selected, sourceBranch, forkPoint, request, recovering, fence, null);</span>
+    }
+
+    @Transactional(rollbackFor = IOException.class)
+    public TagStatus fetchRecordedTag(RepositoryContext selected, String sourceBranch, String forkPoint,
+                                      TagRequest request, boolean recovering, Runnable fence, String originalActor) throws IOException {
+<span class="fc" id="L140">        fence.run();</span>
+<span class="fc" id="L141">        var transfer = open(selected, true, originalActor).transfer();</span>
+<span class="fc" id="L142">        transfer.requireOrigin(selected.repositoryId(), sourceBranch, forkPoint);</span>
+<span class="fc" id="L143">        return transfer.fetchTag(request, recovering, fence);</span>
+    }
+
+    private WorkingCopy open(RepositoryContext selected, boolean forUpdate) {
+<span class="fc" id="L147">        return open(selected, forUpdate, null);</span>
+    }
+
+    WorkingCopy lockForRebase(RepositoryContext selected) throws IOException {
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">        if (selected.scope() != RepositoryScope.WORKSPACE) throw unavailable();</span>
+<span class="fc" id="L152">        catalogue.lockCurrentPublicationSource(selected.repositoryId());</span>
+<span class="fc" id="L153">        memberships.lockForRefMutation(selected.repositoryId());</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        if (rows.lockSelectedBranch(selected.workspaceId(), selected.branch()) != 1)</span>
+<span class="fc" id="L155">            throw new BranchHeadConflictException(selected.branch(), null, null, &quot;The selected workspace branch changed&quot;);</span>
+<span class="fc" id="L156">        var copy = open(selected, true, null, true);</span>
+<span class="pc bpc" id="L157" title="1 of 2 branches missed.">        if (!selected.branch().equals(copy.workspace().getCurrentBranch()))</span>
+<span class="nc" id="L158">            throw new BranchHeadConflictException(selected.branch(), null, null, &quot;The selected workspace branch changed&quot;);</span>
+<span class="fc" id="L159">        return copy;</span>
+    }
+
+    private WorkingCopy open(RepositoryContext selected, boolean forUpdate, String originalActor) {
+<span class="fc" id="L163">        return open(selected, forUpdate, originalActor, false);</span>
+    }
+
+    private WorkingCopy open(RepositoryContext selected, boolean forUpdate, String originalActor, boolean lockedSource) {
+<span class="pc bpc" id="L167" title="1 of 2 branches missed.">        if (selected.scope() != RepositoryScope.WORKSPACE) throw unavailable();</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">        var workspace = (forUpdate ? rows.findByWorkspaceIdForUpdate(selected.workspaceId())</span>
+<span class="fc" id="L169">                : rows.findByWorkspaceId(selected.workspaceId())).orElseThrow(WorkspaceUpstreamService::unavailable);</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">        boolean owner = originalActor == null ? actors.owns(selected.username(), workspace)</span>
+<span class="fc" id="L171">                : workspace.matchesOwner(selected.username(), originalActor);</span>
+<span class="pc bpc" id="L172" title="1 of 6 branches missed.">        if (!owner || workspace.isArchived() || workspace.isShared()</span>
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">                || workspace.getProvisioningStatus() != WorkspaceProvisioningStatus.READY</span>
+<span class="pc bpc" id="L174" title="1 of 2 branches missed.">                || !selected.repositoryId().equals(workspace.getSourceRepositoryId())) throw unavailable();</span>
+<span class="fc" id="L175">        Runnable authorize = () -&gt; {</span>
+<span class="fc bfc" id="L176" title="All 2 branches covered.">            if (lockedSource) {</span>
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">                if (!actors.owns(selected.username(), workspace) ||</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">                        !memberships.canContribute(catalogue.getRepository(selected.repositoryId()), selected.username()))</span>
+<span class="fc" id="L179">                    throw unavailable();</span>
+<span class="fc" id="L180">            } else requireSource(selected.repositoryId(), selected.username());</span>
+<span class="fc" id="L181">        };</span>
+<span class="fc" id="L182">        authorize.run();</span>
+<span class="fc" id="L183">        var upstream = new GitUpstreamRef(workspace.getSourceRepositoryId(),</span>
+<span class="fc" id="L184">                workspace.resolveUpstreamBranch(catalogue.getRepository(selected.repositoryId())));</span>
+<span class="fc" id="L185">        return new WorkingCopy(workspace, new GitUpstreamTransfer(upstream,</span>
+<span class="fc" id="L186">                repositories.getCentralRepository(upstream.repositoryId()),</span>
+<span class="fc" id="L187">                repositories.openWorkspaceRepository(workspace.getWorkspaceId()), workspace.getBaseCommit(),</span>
+<span class="fc" id="L188">                selected.username(), authorize));</span>
+    }
+
+    private void requireSource(String repository, String actor) {
+<span class="fc" id="L192">        catalogue.readCurrentAuthorization(repository, current -&gt; {</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">            if (!memberships.canContribute(current, actor)) throw unavailable();</span>
+<span class="fc" id="L194">        });</span>
+<span class="fc" id="L195">    }</span>
+
+    private static AccessDeniedException unavailable() {
+<span class="fc" id="L198">        return new AccessDeniedException(&quot;The selected working copy or source is unavailable&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

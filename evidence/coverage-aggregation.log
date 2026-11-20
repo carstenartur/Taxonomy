@@ -1,0 +1,846 @@
+[INFO] Loading cache configuration from /home/runner/work/Taxonomy/Taxonomy/.mvn/maven-build-cache-config.xml
+[INFO] Using XX hash algorithm for cache
+[INFO] Scanning for projects...
+[WARNING] 
+[WARNING] Some problems were encountered while building the effective model for com.taxonomy:taxonomy-mermaid-plugin:jar:1.5.4-SNAPSHOT
+[WARNING] 'build.plugins.plugin.version' for org.apache.maven.plugins:maven-resources-plugin is missing. @ line 57, column 25
+[WARNING] 
+[WARNING] It is highly recommended to fix these problems because they threaten the stability of your build.
+[WARNING] 
+[WARNING] For this reason, future Maven versions might no longer support building such malformed projects.
+[WARNING] 
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] Taxonomy Architecture Analyzer                                     [pom]
+[INFO] Taxonomy Build and Release Tooling                                 [jar]
+[INFO] Taxonomy Domain                                                    [jar]
+[INFO] Taxonomy Reporting API                                             [jar]
+[INFO] Taxonomy Sparx Mapping                                             [jar]
+[INFO] Taxonomy DSL                                                       [jar]
+[INFO] Taxonomy Extension API                                             [jar]
+[INFO] Taxonomy Export                                                    [jar]
+[INFO] Taxonomy Extension Runtime                                         [jar]
+[INFO] Taxonomy Mermaid Plugin                                            [jar]
+[INFO] Taxonomy Workspace                                                 [jar]
+[INFO] Taxonomy Templates API                                             [jar]
+[INFO] Taxonomy Templates                                                 [jar]
+[INFO] Taxonomy Interoperability                                          [jar]
+[INFO] Taxonomy Knowledge                                                 [jar]
+[INFO] Taxonomy Architecture                                              [jar]
+[INFO] Taxonomy Reporting                                                 [jar]
+[INFO] Taxonomy Analysis                                                  [jar]
+[INFO] Taxonomy Portfolio                                                 [jar]
+[INFO] Taxonomy Application                                               [jar]
+[INFO] Taxonomy Aggregate Coverage                                        [pom]
+[INFO] Taxonomy Build Policy                                              [jar]
+[INFO] 
+[INFO] -----------------------< com.taxonomy:taxonomy >------------------------
+[INFO] Building Taxonomy Architecture Analyzer 1.5.4-SNAPSHOT            [1/22]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-packaged-dependency-hygiene) @ taxonomy ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.version.RequireMavenVersion passed
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.16:prepare-agent (prepare-agent) @ taxonomy ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.16/org.jacoco.agent-0.8.16-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/target/jacoco.exec
+[INFO] 
+[INFO] --- exec:3.6.4:exec (download-pinned-embedding-model) @ taxonomy ---
+[INFO] skipping execute as per configuration
+[INFO] 
+[INFO] --- frontend:2.0.2:install-node-and-npm (install-pinned-node) @ taxonomy ---
+[INFO] Skipping execution.
+[INFO] 
+[INFO] -------------------< com.taxonomy:taxonomy-tooling >--------------------
+[INFO] Building Taxonomy Build and Release Tooling 1.5.4-SNAPSHOT        [2/22]
+[INFO]   from taxonomy-tooling/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-tooling
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-tooling ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.16:prepare-agent (prepare-agent) @ taxonomy-tooling ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.16/org.jacoco.agent-0.8.16-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-tooling/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-tooling ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-tooling ---
+[INFO] Not compiling main sources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-tooling ---
+[INFO] Not compiling test sources
+[INFO] 
+[INFO] --------------------< com.taxonomy:taxonomy-domain >--------------------
+[INFO] Building Taxonomy Domain 1.5.4-SNAPSHOT                           [3/22]
+[INFO]   from taxonomy-domain/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-domain
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-domain ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.16:prepare-agent (prepare-agent) @ taxonomy-domain ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.16/org.jacoco.agent-0.8.16-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-domain/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-domain ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-domain ---
+[INFO] Not compiling main sources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-domain ---
+[INFO] Not compiling test sources
+[INFO] 
+[INFO] ----------------< com.taxonomy:taxonomy-reporting-api >-----------------
+[INFO] Building Taxonomy Reporting API 1.5.4-SNAPSHOT                    [4/22]
+[INFO]   from taxonomy-reporting-api/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-reporting-api
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-reporting-api ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-reporting-api-boundaries) @ taxonomy-reporting-api ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.16:prepare-agent (prepare-agent) @ taxonomy-reporting-api ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.16/org.jacoco.agent-0.8.16-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-reporting-api/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-reporting-api ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-reporting-api ---
+[INFO] Not compiling main sources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-reporting-api ---
+[INFO] Not compiling test sources
+[INFO] 
+[INFO] ----------------< com.taxonomy:taxonomy-sparx-mapping >-----------------
+[INFO] Building Taxonomy Sparx Mapping 1.5.4-SNAPSHOT                    [5/22]
+[INFO]   from taxonomy-sparx-mapping/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-sparx-mapping
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-sparx-mapping ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.16:prepare-agent (prepare-agent) @ taxonomy-sparx-mapping ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.16/org.jacoco.agent-0.8.16-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-sparx-mapping/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-sparx-mapping ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-sparx-mapping ---
+[INFO] Not compiling main sources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-sparx-mapping ---
+[INFO] Not compiling test sources
+[INFO] 
+[INFO] ---------------------< com.taxonomy:taxonomy-dsl >----------------------
+[INFO] Building Taxonomy DSL 1.5.4-SNAPSHOT                              [6/22]
+[INFO]   from taxonomy-dsl/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-dsl
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-dsl ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (ban-taxonomy-app-dependency) @ taxonomy-dsl ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.16:prepare-agent (prepare-agent) @ taxonomy-dsl ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.16/org.jacoco.agent-0.8.16-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-dsl/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-dsl ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-dsl ---
+[INFO] Not compiling main sources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-dsl ---
+[INFO] Not compiling test sources
+[INFO] 
+[INFO] ----------------< com.taxonomy:taxonomy-extension-api >-----------------
+[INFO] Building Taxonomy Extension API 1.5.4-SNAPSHOT                    [7/22]
+[INFO]   from taxonomy-extension-api/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-extension-api
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-extension-api ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-extension-api-boundaries) @ taxonomy-extension-api ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.16:prepare-agent (prepare-agent) @ taxonomy-extension-api ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.16/org.jacoco.agent-0.8.16-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-api/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-extension-api ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-extension-api ---
+[INFO] Not compiling main sources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-extension-api ---
+[INFO] Not compiling test sources
+[INFO] 
+[INFO] --------------------< com.taxonomy:taxonomy-export >--------------------
+[INFO] Building Taxonomy Export 1.5.4-SNAPSHOT                           [8/22]
+[INFO]   from taxonomy-export/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-export
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-export ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (ban-taxonomy-app-dependency) @ taxonomy-export ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.16:prepare-agent (prepare-agent) @ taxonomy-export ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.16/org.jacoco.agent-0.8.16-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-export/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-export ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-export ---
+[INFO] Not compiling main sources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-export ---
+[INFO] Not compiling test sources
+[INFO] 
+[INFO] --------------< com.taxonomy:taxonomy-extension-runtime >---------------
+[INFO] Building Taxonomy Extension Runtime 1.5.4-SNAPSHOT                [9/22]
+[INFO]   from taxonomy-extension-runtime/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-extension-runtime
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-extension-runtime ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.16:prepare-agent (prepare-agent) @ taxonomy-extension-runtime ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.16/org.jacoco.agent-0.8.16-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-runtime/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-extension-runtime ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-extension-runtime ---
+[INFO] Not compiling main sources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-extension-runtime ---
+[INFO] Not compiling test sources
+[INFO] 
+[INFO] ----------------< com.taxonomy:taxonomy-mermaid-plugin >----------------
+[INFO] Building Taxonomy Mermaid Plugin 1.5.4-SNAPSHOT                  [10/22]
+[INFO]   from plugins/taxonomy-mermaid-plugin/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-mermaid-plugin
+[INFO] 
+[INFO] --- jacoco:0.8.16:prepare-agent (default) @ taxonomy-mermaid-plugin ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.16/org.jacoco.agent-0.8.16-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/plugins/taxonomy-mermaid-plugin/target/jacoco.exec
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ taxonomy-mermaid-plugin ---
+[INFO] Not compiling main sources
+[INFO] 
+[INFO] --- jar:3.5.1:jar (default-jar) @ taxonomy-mermaid-plugin ---
+[INFO] Building jar: /home/runner/work/Taxonomy/Taxonomy/plugins/taxonomy-mermaid-plugin/target/taxonomy-mermaid-plugin-1.5.4-SNAPSHOT.jar
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ taxonomy-mermaid-plugin ---
+[INFO] Not compiling test sources
+[INFO] 
+[INFO] ------------------< com.taxonomy:taxonomy-workspace >-------------------
+[INFO] Building Taxonomy Workspace 1.5.4-SNAPSHOT                       [11/22]
+[INFO]   from taxonomy-workspace/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-workspace
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-workspace ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-workspace-boundary) @ taxonomy-workspace ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.16:prepare-agent (prepare-agent) @ taxonomy-workspace ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.16/org.jacoco.agent-0.8.16-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-workspace ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-workspace ---
+[INFO] Not compiling main sources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-workspace ---
+[INFO] Not compiling test sources
+[INFO] 
+[INFO] --- jar:3.5.1:test-jar (editor-persistence-test-fixture) @ taxonomy-workspace ---
+[INFO] Building jar: /home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/taxonomy-workspace-1.5.4-SNAPSHOT-test-fixtures.jar
+[INFO] 
+[INFO] ----------------< com.taxonomy:taxonomy-templates-api >-----------------
+[INFO] Building Taxonomy Templates API 1.5.4-SNAPSHOT                   [12/22]
+[INFO]   from taxonomy-templates-api/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-templates-api
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-templates-api ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-templates-api-boundary) @ taxonomy-templates-api ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.16:prepare-agent (prepare-agent) @ taxonomy-templates-api ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.16/org.jacoco.agent-0.8.16-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-templates-api/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-templates-api ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-templates-api ---
+[INFO] Not compiling main sources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-templates-api ---
+[INFO] Not compiling test sources
+[INFO] 
+[INFO] ------------------< com.taxonomy:taxonomy-templates >-------------------
+[INFO] Building Taxonomy Templates 1.5.4-SNAPSHOT                       [13/22]
+[INFO]   from taxonomy-templates/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-templates
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-templates ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-templates-boundary) @ taxonomy-templates ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.16:prepare-agent (prepare-agent) @ taxonomy-templates ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.16/org.jacoco.agent-0.8.16-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-templates/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-templates ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-templates ---
+[INFO] Not compiling main sources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-templates ---
+[INFO] Not compiling test sources
+[INFO] 
+[INFO] -------------------< com.taxonomy:taxonomy-interop >--------------------
+[INFO] Building Taxonomy Interoperability 1.5.4-SNAPSHOT                [14/22]
+[INFO]   from taxonomy-interop/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-interop
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-interop ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-interop-boundary) @ taxonomy-interop ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.16:prepare-agent (prepare-agent) @ taxonomy-interop ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.16/org.jacoco.agent-0.8.16-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-interop/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-interop ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-interop ---
+[INFO] Not compiling main sources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-interop ---
+[INFO] Not compiling test sources
+[INFO] 
+[INFO] ------------------< com.taxonomy:taxonomy-knowledge >-------------------
+[INFO] Building Taxonomy Knowledge 1.5.4-SNAPSHOT                       [15/22]
+[INFO]   from taxonomy-knowledge/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-knowledge
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-knowledge ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-knowledge-boundary) @ taxonomy-knowledge ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.16:prepare-agent (prepare-agent) @ taxonomy-knowledge ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.16/org.jacoco.agent-0.8.16-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-knowledge/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-knowledge ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-knowledge ---
+[INFO] Not compiling main sources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-knowledge ---
+[INFO] Not compiling test sources
+[INFO] 
+[INFO] -----------------< com.taxonomy:taxonomy-architecture >-----------------
+[INFO] Building Taxonomy Architecture 1.5.4-SNAPSHOT                    [16/22]
+[INFO]   from taxonomy-architecture/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-architecture
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-architecture ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-architecture-boundary) @ taxonomy-architecture ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.16:prepare-agent (prepare-agent) @ taxonomy-architecture ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.16/org.jacoco.agent-0.8.16-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-architecture/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-architecture ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-architecture ---
+[INFO] Not compiling main sources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-architecture ---
+[INFO] Not compiling test sources
+[INFO] 
+[INFO] ------------------< com.taxonomy:taxonomy-reporting >-------------------
+[INFO] Building Taxonomy Reporting 1.5.4-SNAPSHOT                       [17/22]
+[INFO]   from taxonomy-reporting/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-reporting
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-reporting ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-reporting-boundary) @ taxonomy-reporting ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.16:prepare-agent (prepare-agent) @ taxonomy-reporting ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.16/org.jacoco.agent-0.8.16-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-reporting/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-reporting ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-reporting ---
+[INFO] Not compiling main sources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-reporting ---
+[INFO] Not compiling test sources
+[INFO] 
+[INFO] -------------------< com.taxonomy:taxonomy-analysis >-------------------
+[INFO] Building Taxonomy Analysis 1.5.4-SNAPSHOT                        [18/22]
+[INFO]   from taxonomy-analysis/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-analysis
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-analysis ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-analysis-boundary) @ taxonomy-analysis ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.16:prepare-agent (prepare-agent) @ taxonomy-analysis ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.16/org.jacoco.agent-0.8.16-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-analysis/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-analysis ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-analysis ---
+[INFO] Not compiling main sources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-analysis ---
+[INFO] Not compiling test sources
+[INFO] 
+[INFO] ------------------< com.taxonomy:taxonomy-portfolio >-------------------
+[INFO] Building Taxonomy Portfolio 1.5.4-SNAPSHOT                       [19/22]
+[INFO]   from taxonomy-portfolio/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-portfolio
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-portfolio ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-portfolio-boundary) @ taxonomy-portfolio ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.16:prepare-agent (prepare-agent) @ taxonomy-portfolio ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.16/org.jacoco.agent-0.8.16-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-portfolio/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-portfolio ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-portfolio ---
+[INFO] Not compiling main sources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-portfolio ---
+[INFO] Not compiling test sources
+[INFO] 
+[INFO] ---------------------< com.taxonomy:taxonomy-app >----------------------
+[INFO] Building Taxonomy Application 1.5.4-SNAPSHOT                     [20/22]
+[INFO]   from taxonomy-app/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-app
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-app ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.16:prepare-agent (prepare-agent) @ taxonomy-app ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.16/org.jacoco.agent-0.8.16-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-app/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-app ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-app ---
+[INFO] Not compiling main sources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-app ---
+[INFO] Not compiling test sources
+[INFO] 
+[INFO] -------------------< com.taxonomy:taxonomy-coverage >-------------------
+[INFO] Building Taxonomy Aggregate Coverage 1.5.4-SNAPSHOT              [21/22]
+[INFO]   from taxonomy-coverage/pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-coverage
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-coverage ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-coverage ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- jacoco:0.8.16:merge (merge-app-test-shard-executions) @ taxonomy-coverage ---
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/target/app-test-shards/browser/coverage.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/target/app-test-shards/scenario/coverage.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/target/app-test-shards/recovery/coverage.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/target/app-test-shards/domain-integration/coverage.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/target/app-test-shards/runtime/coverage.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/target/app-test-shards/core/coverage.exec
+[INFO] Writing merged execution data to /home/runner/work/Taxonomy/Taxonomy/taxonomy-app/target/jacoco-shards-merged.exec
+[INFO] 
+[INFO] --- jacoco:0.8.16:report-aggregate (reactor-report) @ taxonomy-coverage ---
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/plugins/taxonomy-mermaid-plugin/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-runtime/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-reporting/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-reporting-api/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-analysis/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-portfolio/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-architecture/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-knowledge/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-interop/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-templates/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-domain/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-dsl/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-export/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-sparx-mapping/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-api/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-app/target/jacoco-shards-merged.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-app/target/jacoco.exec
+[INFO] Analyzed bundle 'taxonomy-templates-api' with 11 classes
+[INFO] Analyzed bundle 'taxonomy-mermaid-plugin' with 2 classes
+[INFO] Analyzed bundle 'taxonomy-extension-runtime' with 19 classes
+[INFO] Analyzed bundle 'taxonomy-reporting' with 57 classes
+[INFO] Analyzed bundle 'taxonomy-reporting-api' with 28 classes
+[INFO] Analyzed bundle 'taxonomy-analysis' with 440 classes
+[INFO] Analyzed bundle 'taxonomy-portfolio' with 362 classes
+[INFO] Analyzed bundle 'taxonomy-architecture' with 86 classes
+[INFO] Analyzed bundle 'taxonomy-knowledge' with 300 classes
+[INFO] Analyzed bundle 'taxonomy-interop' with 148 classes
+[INFO] Analyzed bundle 'taxonomy-templates' with 52 classes
+[INFO] Analyzed bundle 'taxonomy-workspace' with 449 classes
+[INFO] Analyzed bundle 'taxonomy-domain' with 256 classes
+[INFO] Analyzed bundle 'taxonomy-dsl' with 140 classes
+[INFO] Analyzed bundle 'taxonomy-export' with 163 classes
+[INFO] Analyzed bundle 'taxonomy-sparx-mapping' with 4 classes
+[INFO] Analyzed bundle 'taxonomy-extension-api' with 151 classes
+[INFO] Analyzed bundle 'taxonomy-app' with 680 classes
+[INFO] 
+[INFO] --------------------< com.taxonomy:taxonomy-build >---------------------
+[INFO] Building Taxonomy Build Policy 1.5.4-SNAPSHOT                    [22/22]
+[INFO]   from taxonomy-build/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-build
+[INFO] 
+[INFO] --- enforcer:3.7.0:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-build ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- exec:3.6.4:exec (verify-complete-app-test-shard-inventory) @ taxonomy-build ---
+Application test inventory: Executed inventory: 633 source classes, 633 JUnit suites, 5677 cases in 6 isolated groups; 59 skipped cases and 11 profile-excluded classes.
+  group core: 528 reports, 4821 cases, 59 skipped, 1380.832s
+  group recovery: 23 reports, 110 cases, 0 skipped, 1585.199s
+  group browser: 24 reports, 315 cases, 0 skipped, 1505.902s
+  group scenario: 1 reports, 2 cases, 0 skipped, 1113.749s
+  group runtime: 10 reports, 89 cases, 0 skipped, 837.914s
+  group domain-integration: 48 reports, 340 cases, 0 skipped, 404.715s
+  scenario: com.taxonomy.ScenarioArchitectureAcceptanceTest 1113.749s
+  browser: com.taxonomy.PortfolioUiAcceptanceIT 255.371s
+  recovery: com.taxonomy.interop.publication.IntegrationPublicationBoundaryRestartTest 244.73s
+  recovery: com.taxonomy.composition.analysis.artemis.WorkerRuntimeFootprintTest 144.756s
+  recovery: com.taxonomy.portfolio.reformulation.ReformulationLocalRecoveryTest 139.471s
+  browser: com.taxonomy.PortfolioClientRoutingIT 137.022s
+  runtime: com.taxonomy.backup.recovery.NativeInstallationPostgresRecoveryIT 124.03s
+  browser: com.taxonomy.portfolio.reformulation.ReformulationBrowserTest 123.874s
+  browser: com.taxonomy.acceptance.ReformulationScenarioBrowserTest 116.708s
+  runtime: com.taxonomy.KeycloakSecurityContainerIT 114.065s
+  class scenario: com.taxonomy.ScenarioArchitectureAcceptanceTest 1113.749s
+  class browser: com.taxonomy.PortfolioUiAcceptanceIT 255.371s
+  class recovery: com.taxonomy.interop.publication.IntegrationPublicationBoundaryRestartTest 244.73s
+  class recovery: com.taxonomy.composition.analysis.artemis.WorkerRuntimeFootprintTest 144.756s
+  class recovery: com.taxonomy.portfolio.reformulation.ReformulationLocalRecoveryTest 139.471s
+  class browser: com.taxonomy.PortfolioClientRoutingIT 137.022s
+  class runtime: com.taxonomy.backup.recovery.NativeInstallationPostgresRecoveryIT 124.03s
+  class browser: com.taxonomy.portfolio.reformulation.ReformulationBrowserTest 123.874s
+  class browser: com.taxonomy.acceptance.ReformulationScenarioBrowserTest 116.708s
+  class runtime: com.taxonomy.KeycloakSecurityContainerIT 114.065s
+  timing drift runtime: 10 classes, -76.413s (-8.357%)
+  timing drift domain-integration: 45 classes, -338.767s (-48.394%)
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-build ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-build ---
+[INFO] Not compiling main sources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-build ---
+[INFO] Not compiling test sources
+[INFO] 
+[INFO] --- failsafe:3.5.6:integration-test (coverage-policy-only) @ taxonomy-build ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running com.taxonomy.build.ReactorCoveragePolicyIT
+Taxonomy reactor-wide JaCoCo coverage
+
+Source: /home/runner/work/Taxonomy/Taxonomy/taxonomy-coverage/target/site/jacoco-aggregate/jacoco.xml
+Policy: versioned multi-counter aggregate ratchet
+
+Per-module coverage:
+- taxonomy-analysis
+  - INSTRUCTION: 92.92% (95148/102400)
+  - LINE: 93.83% (14133/15062)
+  - BRANCH: 76.58% (9336/12191)
+  - METHOD: 95.48% (2876/3012)
+  - CLASS: 99.32% (437/440)
+- taxonomy-app
+  - INSTRUCTION: 90.60% (107799/118980)
+  - LINE: 92.64% (16570/17887)
+  - BRANCH: 71.17% (9139/12841)
+  - METHOD: 93.94% (3533/3761)
+  - CLASS: 98.24% (668/680)
+- taxonomy-architecture
+  - INSTRUCTION: 93.21% (17824/19123)
+  - LINE: 94.11% (3339/3548)
+  - BRANCH: 79.14% (1662/2100)
+  - METHOD: 94.30% (563/597)
+  - CLASS: 98.84% (85/86)
+- taxonomy-domain
+  - INSTRUCTION: 95.48% (14923/15630)
+  - LINE: 95.33% (2390/2507)
+  - BRANCH: 80.11% (1039/1297)
+  - METHOD: 94.71% (1254/1324)
+  - CLASS: 99.61% (255/256)
+- taxonomy-dsl
+  - INSTRUCTION: 93.52% (22006/23531)
+  - LINE: 94.73% (3596/3796)
+  - BRANCH: 77.33% (1989/2572)
+  - METHOD: 96.81% (850/878)
+  - CLASS: 99.29% (139/140)
+- taxonomy-export
+  - INSTRUCTION: 94.70% (55617/58729)
+  - LINE: 96.39% (7987/8286)
+  - BRANCH: 81.29% (5328/6554)
+  - METHOD: 97.84% (1223/1250)
+  - CLASS: 100.00% (163/163)
+- taxonomy-extension-api
+  - INSTRUCTION: 93.20% (6293/6752)
+  - LINE: 93.84% (503/536)
+  - BRANCH: 72.67% (327/450)
+  - METHOD: 95.16% (236/248)
+  - CLASS: 97.35% (147/151)
+- taxonomy-extension-runtime
+  - INSTRUCTION: 86.05% (2820/3277)
+  - LINE: 89.77% (474/528)
+  - BRANCH: 74.11% (292/394)
+  - METHOD: 92.16% (94/102)
+  - CLASS: 94.74% (18/19)
+- taxonomy-interop
+  - INSTRUCTION: 90.60% (36463/40247)
+  - LINE: 92.44% (4123/4460)
+  - BRANCH: 74.75% (3484/4661)
+  - METHOD: 90.08% (926/1028)
+  - CLASS: 93.92% (139/148)
+- taxonomy-knowledge
+  - INSTRUCTION: 91.97% (42363/46064)
+  - LINE: 92.74% (8548/9217)
+  - BRANCH: 77.78% (3385/4352)
+  - METHOD: 94.24% (1750/1857)
+  - CLASS: 99.67% (299/300)
+- taxonomy-mermaid-plugin
+  - INSTRUCTION: 100.00% (66/66)
+  - LINE: 100.00% (13/13)
+  - BRANCH: 75.00% (3/4)
+  - METHOD: 100.00% (7/7)
+  - CLASS: 100.00% (2/2)
+- taxonomy-portfolio
+  - INSTRUCTION: 94.60% (61058/64543)
+  - LINE: 95.99% (10327/10758)
+  - BRANCH: 78.17% (4917/6290)
+  - METHOD: 95.08% (2085/2193)
+  - CLASS: 99.45% (360/362)
+- taxonomy-reporting
+  - INSTRUCTION: 91.73% (28408/30970)
+  - LINE: 92.63% (4725/5101)
+  - BRANCH: 78.33% (2310/2949)
+  - METHOD: 93.94% (728/775)
+  - CLASS: 100.00% (57/57)
+- taxonomy-reporting-api
+  - INSTRUCTION: 96.66% (3092/3199)
+  - LINE: 95.92% (400/417)
+  - BRANCH: 79.25% (210/265)
+  - METHOD: 98.75% (79/80)
+  - CLASS: 100.00% (28/28)
+- taxonomy-sparx-mapping
+  - INSTRUCTION: 92.71% (407/439)
+  - LINE: 95.45% (42/44)
+  - BRANCH: 87.50% (21/24)
+  - METHOD: 89.47% (17/19)
+  - CLASS: 75.00% (3/4)
+- taxonomy-templates
+  - INSTRUCTION: 89.61% (9311/10391)
+  - LINE: 89.73% (1991/2219)
+  - BRANCH: 71.64% (854/1192)
+  - METHOD: 96.44% (325/337)
+  - CLASS: 98.08% (51/52)
+- taxonomy-templates-api
+  - INSTRUCTION: 91.41% (298/326)
+  - LINE: 88.46% (46/52)
+  - BRANCH: 70.00% (21/30)
+  - METHOD: 87.50% (14/16)
+  - CLASS: 100.00% (11/11)
+- taxonomy-workspace
+  - INSTRUCTION: 93.09% (81727/87789)
+  - LINE: 94.28% (13947/14793)
+  - BRANCH: 76.94% (6746/8768)
+  - METHOD: 96.43% (2996/3107)
+  - CLASS: 99.55% (447/449)
+
+Aggregate coverage:
+- INSTRUCTION: 92.60% (585623/632456); required 81.00%; PASS
+- LINE: 93.88% (93154/99224); required 82.00%; PASS
+- BRANCH: 76.29% (51063/66934); required 64.00%; PASS
+- METHOD: 94.97% (19556/20591); required 85.00%; PASS
+- CLASS: 98.84% (3309/3348); required 92.00%; PASS
+Additional report groups: taxonomy-extension-runtime, taxonomy-mermaid-plugin, taxonomy-reporting, taxonomy-reporting-api, taxonomy-templates-api
+Result: PASS
+
+Taxonomy release-critical coverage
+
+Source: /home/runner/work/Taxonomy/Taxonomy/taxonomy-coverage/target/site/jacoco-aggregate/jacoco.xml
+Policy: critical package and changed-source ratchets
+
+Critical package coverage:
+- package:taxonomy-app:com/taxonomy/security/config
+  - LINE: 97.21% (663/682); required 79.00%; PASS
+  - BRANCH: 87.92% (364/414); required 66.00%; PASS
+- package:taxonomy-app:com/taxonomy/security/service
+  - LINE: 95.44% (963/1009); required 89.00%; PASS
+  - BRANCH: 76.21% (583/765); required 66.00%; PASS
+- package:taxonomy-app:com/taxonomy/security/controller
+  - LINE: 97.92% (235/240); required 64.00%; PASS
+  - BRANCH: 89.61% (69/77); required 60.00%; PASS
+- package:taxonomy-app:com/taxonomy/security/keycloak
+  - LINE: 99.39% (162/163); required 75.00%; PASS
+  - BRANCH: 91.07% (51/56); required 67.00%; PASS
+- package:taxonomy-app:com/taxonomy/provenance/service
+  - LINE: 88.12% (571/648); required 86.00%; PASS
+  - BRANCH: 73.25% (241/329); required 69.00%; PASS
+- package:taxonomy-app:com/taxonomy/provenance/controller
+  - LINE: 97.30% (144/148); required 37.00%; PASS
+  - BRANCH: 98.15% (53/54); required 37.00%; PASS
+- package:taxonomy-knowledge:com/taxonomy/catalog/service/importer
+  - LINE: 96.55% (336/348); required 84.00%; PASS
+  - BRANCH: 83.27% (219/263); required 58.00%; PASS
+- package:taxonomy-app:com/taxonomy/composition/importer
+  - LINE: 98.02% (99/101); required 84.00%; PASS
+  - BRANCH: 100.00% (2/2); required 58.00%; PASS
+- package:taxonomy-workspace:com/taxonomy/workspace/storage
+  - LINE: 92.31% (1933/2094); required 87.00%; PASS
+  - BRANCH: 74.19% (802/1081); required 71.00%; PASS
+- package:taxonomy-app:com/taxonomy/composition/persistence
+  - LINE: 94.12% (512/544); required 87.00%; PASS
+  - BRANCH: 74.85% (250/334); required 71.00%; PASS
+- package:taxonomy-workspace:com/taxonomy/versioning/controller
+  - LINE: 95.80% (548/572); required 81.00%; PASS
+  - BRANCH: 85.51% (183/214); required 58.00%; PASS
+- package:taxonomy-knowledge:com/taxonomy/relations/controller
+  - LINE: 93.89% (1214/1293); required 81.00%; PASS
+  - BRANCH: 85.54% (420/491); required 58.00%; PASS
+- package:taxonomy-app:com/taxonomy/composition/report
+  - LINE: 98.10% (309/315); required 81.00%; PASS
+  - BRANCH: 77.78% (210/270); required 58.00%; PASS
+- package:taxonomy-app:com/taxonomy/composition/dsl/controller
+  - LINE: 97.35% (184/189); required 81.00%; PASS
+  - BRANCH: 76.79% (43/56); required 58.00%; PASS
+- package:taxonomy-app:com/taxonomy/composition/dsl/service
+  - LINE: 100.00% (67/67); required 77.00%; PASS
+  - BRANCH: 96.43% (27/28); required 59.00%; PASS
+- package:taxonomy-workspace:com/taxonomy/versioning/service
+  - LINE: 93.28% (1623/1740); required 77.00%; PASS
+  - BRANCH: 78.54% (644/820); required 59.00%; PASS
+- package:taxonomy-knowledge:com/taxonomy/relations/service
+  - LINE: 95.33% (2714/2847); required 77.00%; PASS
+  - BRANCH: 80.48% (874/1086); required 59.00%; PASS
+- package:taxonomy-workspace:com/taxonomy/workspace/controller
+  - LINE: 95.23% (739/776); required 77.00%; PASS
+  - BRANCH: 83.70% (226/270); required 70.00%; PASS
+- package:taxonomy-workspace:com/taxonomy/workspace/service
+  - LINE: 94.81% (4515/4762); required 82.00%; PASS
+  - BRANCH: 78.86% (2358/2990); required 58.00%; PASS
+- package:taxonomy-portfolio:com/taxonomy/portfolio/controller
+  - LINE: 97.96% (528/539); required 45.00%; PASS
+  - BRANCH: 90.53% (172/190); required 52.00%; PASS
+- package:taxonomy-portfolio:com/taxonomy/portfolio/service
+  - LINE: 95.26% (5251/5512); required 74.00%; PASS
+  - BRANCH: 78.06% (2345/3004); required 52.00%; PASS
+
+Changed critical source coverage:
+- Discovery: not a pull-request checkout; aggregate and package gates only; 0 file(s) are release-critical
+- No changed critical Java source requires a diff gate.
+Result: PASS
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.550 s -- in com.taxonomy.build.ReactorCoveragePolicyIT
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] --- failsafe:3.5.6:verify (coverage-policy-only) @ taxonomy-build ---
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for Taxonomy Architecture Analyzer 1.5.4-SNAPSHOT:
+[INFO] 
+[INFO] Taxonomy Architecture Analyzer ..................... SUCCESS [  0.422 s]
+[INFO] Taxonomy Build and Release Tooling ................. SUCCESS [  0.272 s]
+[INFO] Taxonomy Domain .................................... SUCCESS [  0.027 s]
+[INFO] Taxonomy Reporting API ............................. SUCCESS [  0.042 s]
+[INFO] Taxonomy Sparx Mapping ............................. SUCCESS [  0.015 s]
+[INFO] Taxonomy DSL ....................................... SUCCESS [  0.022 s]
+[INFO] Taxonomy Extension API ............................. SUCCESS [  0.021 s]
+[INFO] Taxonomy Export .................................... SUCCESS [  0.148 s]
+[INFO] Taxonomy Extension Runtime ......................... SUCCESS [  0.028 s]
+[INFO] Taxonomy Mermaid Plugin ............................ SUCCESS [  0.301 s]
+[INFO] Taxonomy Workspace ................................. SUCCESS [  0.207 s]
+[INFO] Taxonomy Templates API ............................. SUCCESS [  0.010 s]
+[INFO] Taxonomy Templates ................................. SUCCESS [  0.085 s]
+[INFO] Taxonomy Interoperability .......................... SUCCESS [  0.062 s]
+[INFO] Taxonomy Knowledge ................................. SUCCESS [  0.083 s]
+[INFO] Taxonomy Architecture .............................. SUCCESS [  0.081 s]
+[INFO] Taxonomy Reporting ................................. SUCCESS [  0.076 s]
+[INFO] Taxonomy Analysis .................................. SUCCESS [  0.091 s]
+[INFO] Taxonomy Portfolio ................................. SUCCESS [  0.077 s]
+[INFO] Taxonomy Application ............................... SUCCESS [  0.289 s]
+[INFO] Taxonomy Aggregate Coverage ........................ SUCCESS [  3.856 s]
+[INFO] Taxonomy Build Policy .............................. SUCCESS [  5.468 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  11.978 s
+[INFO] Finished at: 2026-11-20T08:52:34Z
+[INFO] ------------------------------------------------------------------------

@@ -1,0 +1,596 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd" version="3.0.2" name="com.taxonomy.workspace.backup.GitHistoryRestoreTest" time="2.144" tests="14" errors="0" skipped="0" failures="0" flakes="0">
+  <properties>
+    <property name="java.specification.version" value="25"/>
+    <property name="sun.jnu.encoding" value="UTF-8"/>
+    <property name="java.class.path" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/test-classes:/home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/classes:/home/runner/work/Taxonomy/Taxonomy/taxonomy-domain/target/taxonomy-domain-1.5.4-SNAPSHOT.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-annotations/2.22/jackson-annotations-2.22.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-dsl/target/taxonomy-dsl-1.5.4-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-sparx-mapping/target/taxonomy-sparx-mapping-1.5.4-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-export/target/taxonomy-export-1.5.4-SNAPSHOT.jar:/home/runner/.m2/repository/org/apache/jena/jena-arq/6.2.0/jena-arq-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-core/6.2.0/jena-core-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-base/6.2.0/jena-base-6.2.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-csv/1.14.1/commons-csv-1.14.1.jar:/home/runner/.m2/repository/com/github/ben-manes/caffeine/caffeine/3.2.4/caffeine-3.2.4.jar:/home/runner/.m2/repository/com/github/andrewoma/dexx/collection/0.7/collection-0.7.jar:/home/runner/.m2/repository/org/apache/jena/jena-iri3986/6.2.0/jena-iri3986-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-langtag/6.2.0/jena-langtag-6.2.0.jar:/home/runner/.m2/repository/org/roaringbitmap/RoaringBitmap/1.6.15/RoaringBitmap-1.6.15.jar:/home/runner/.m2/repository/com/google/code/gson/gson/2.13.2/gson-2.13.2.jar:/home/runner/.m2/repository/com/google/errorprone/error_prone_annotations/2.41.0/error_prone_annotations-2.41.0.jar:/home/runner/.m2/repository/org/slf4j/jcl-over-slf4j/2.0.20/jcl-over-slf4j-2.0.20.jar:/home/runner/.m2/repository/com/apicatalog/titanium-json-ld/1.7.0/titanium-json-ld-1.7.0.jar:/home/runner/.m2/repository/com/apicatalog/titanium-jcs/1.1.1/titanium-jcs-1.1.1.jar:/home/runner/.m2/repository/com/apicatalog/titanium-rdf-api/1.0.0/titanium-rdf-api-1.0.0.jar:/home/runner/.m2/repository/com/apicatalog/titanium-rdf-n-quads/1.0.2/titanium-rdf-n-quads-1.0.2.jar:/home/runner/.m2/repository/org/glassfish/jakarta.json/2.0.1/jakarta.json-2.0.1.jar:/home/runner/.m2/repository/com/google/protobuf/protobuf-java/4.36.2/protobuf-java-4.36.2.jar:/home/runner/.m2/repository/org/apache/thrift/libthrift/0.24.0/libthrift-0.24.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-lang3/3.20.0/commons-lang3-3.20.0.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-api/target/taxonomy-extension-api-1.5.4-SNAPSHOT.jar:/home/runner/.m2/repository/org/apache/pdfbox/pdfbox/3.0.8/pdfbox-3.0.8.jar:/home/runner/.m2/repository/org/apache/pdfbox/pdfbox-io/3.0.8/pdfbox-io-3.0.8.jar:/home/runner/.m2/repository/org/apache/pdfbox/fontbox/3.0.8/fontbox-3.0.8.jar:/home/runner/.m2/repository/commons-logging/commons-logging/1.3.6/commons-logging-1.3.6.jar:/home/runner/.m2/repository/com/thoughtworks/xstream/xstream/1.4.21/xstream-1.4.21.jar:/home/runner/.m2/repository/io/github/x-stream/mxparser/1.2.2/mxparser-1.2.2.jar:/home/runner/.m2/repository/xmlpull/xmlpull/1.1.3.1/xmlpull-1.1.3.1.jar:/home/runner/.m2/repository/org/slf4j/slf4j-api/2.0.20/slf4j-api-2.0.20.jar:/home/runner/.m2/repository/org/apache/poi/poi-ooxml/6.0.0/poi-ooxml-6.0.0.jar:/home/runner/.m2/repository/org/apache/poi/poi/6.0.0/poi-6.0.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-math3/3.6.1/commons-math3-3.6.1.jar:/home/runner/.m2/repository/com/zaxxer/SparseBitSet/1.3/SparseBitSet-1.3.jar:/home/runner/.m2/repository/org/apache/xmlbeans/xmlbeans/5.4.1/xmlbeans-5.4.1.jar:/home/runner/.m2/repository/org/apache/commons/commons-compress/1.28.0/commons-compress-1.28.0.jar:/home/runner/.m2/repository/commons-io/commons-io/2.22.0/commons-io-2.22.0.jar:/home/runner/.m2/repository/com/github/virtuald/curvesapi/1.08/curvesapi-1.08.jar:/home/runner/.m2/repository/org/apache/logging/log4j/log4j-api/2.25.5/log4j-api-2.25.5.jar:/home/runner/.m2/repository/org/apache/commons/commons-collections4/4.6.0/commons-collections4-4.6.0.jar:/home/runner/.m2/repository/org/apache/poi/poi-ooxml-full/6.0.0/poi-ooxml-full-6.0.0.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-databind/2.22.4/jackson-databind-2.22.4.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-core/2.22.4/jackson-core-2.22.4.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-web/4.1.2/spring-boot-starter-web-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-jackson/4.1.2/spring-boot-starter-jackson-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-tomcat/4.1.2/spring-boot-starter-tomcat-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-tomcat-runtime/4.1.2/spring-boot-starter-tomcat-runtime-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-web-server/4.1.2/spring-boot-web-server-4.1.2.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-core/11.0.27/tomcat-embed-core-11.0.27.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-websocket/11.0.27/tomcat-embed-websocket-11.0.27.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-tomcat/4.1.2/spring-boot-tomcat-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-http-converter/4.1.2/spring-boot-http-converter-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot/4.1.2/spring-boot-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-web/7.0.10/spring-web-7.0.10.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-webmvc/4.1.2/spring-boot-webmvc-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-servlet/4.1.2/spring-boot-servlet-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-webmvc/7.0.10/spring-webmvc-7.0.10.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-data-jpa/4.1.2/spring-boot-starter-data-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter/4.1.2/spring-boot-starter-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-logging/4.1.2/spring-boot-starter-logging-4.1.2.jar:/home/runner/.m2/repository/ch/qos/logback/logback-classic/1.5.38/logback-classic-1.5.38.jar:/home/runner/.m2/repository/ch/qos/logback/logback-core/1.5.38/logback-core-1.5.38.jar:/home/runner/.m2/repository/org/apache/logging/log4j/log4j-to-slf4j/2.25.5/log4j-to-slf4j-2.25.5.jar:/home/runner/.m2/repository/org/slf4j/jul-to-slf4j/2.0.20/jul-to-slf4j-2.0.20.jar:/home/runner/.m2/repository/jakarta/annotation/jakarta.annotation-api/3.0.0/jakarta.annotation-api-3.0.0.jar:/home/runner/.m2/repository/org/yaml/snakeyaml/2.6/snakeyaml-2.6.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-jdbc/4.1.2/spring-boot-starter-jdbc-4.1.2.jar:/home/runner/.m2/repository/com/zaxxer/HikariCP/7.0.2/HikariCP-7.0.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-data-jpa/4.1.2/spring-boot-data-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-data-commons/4.1.2/spring-boot-data-commons-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-persistence/4.1.2/spring-boot-persistence-4.1.2.jar:/home/runner/.m2/repository/org/springframework/data/spring-data-commons/4.1.2/spring-data-commons-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-hibernate/4.1.2/spring-boot-hibernate-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jpa/4.1.2/spring-boot-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-orm/7.0.10/spring-orm-7.0.10.jar:/home/runner/.m2/repository/org/springframework/data/spring-data-jpa/4.1.2/spring-data-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-tx/7.0.10/spring-tx-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-aspects/7.0.10/spring-aspects-7.0.10.jar:/home/runner/.m2/repository/org/aspectj/aspectjweaver/1.9.25.1/aspectjweaver-1.9.25.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jdbc/4.1.2/spring-boot-jdbc-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-sql/4.1.2/spring-boot-sql-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-transaction/4.1.2/spring-boot-transaction-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-jdbc/7.0.10/spring-jdbc-7.0.10.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-flyway/4.1.2/spring-boot-starter-flyway-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-flyway/4.1.2/spring-boot-flyway-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-security/4.1.2/spring-boot-starter-security-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-security/4.1.2/spring-boot-security-4.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-config/7.1.2/spring-security-config-7.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-aop/7.0.10/spring-aop-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-beans/7.0.10/spring-beans-7.0.10.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-mapper-orm/8.4.1.Final/hibernate-search-mapper-orm-8.4.1.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-engine/8.4.1.Final/hibernate-search-engine-8.4.1.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-mapper-pojo-base/8.4.1.Final/hibernate-search-mapper-pojo-base-8.4.1.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-util-common/8.4.1.Final/hibernate-search-util-common-8.4.1.Final.jar:/home/runner/.m2/repository/org/hibernate/orm/hibernate-core/7.4.13.Final/hibernate-core-7.4.13.Final.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy/1.18.15/byte-buddy-1.18.15.jar:/home/runner/.m2/repository/org/glassfish/jaxb/jaxb-runtime/4.0.9/jaxb-runtime-4.0.9.jar:/home/runner/.m2/repository/org/glassfish/jaxb/jaxb-core/4.0.9/jaxb-core-4.0.9.jar:/home/runner/.m2/repository/org/eclipse/angus/angus-activation/2.0.3/angus-activation-2.0.3.jar:/home/runner/.m2/repository/org/glassfish/jaxb/txw2/4.0.9/txw2-4.0.9.jar:/home/runner/.m2/repository/com/sun/istack/istack-commons-runtime/4.1.2/istack-commons-runtime-4.1.2.jar:/home/runner/.m2/repository/jakarta/inject/jakarta.inject-api/2.0.1/jakarta.inject-api-2.0.1.jar:/home/runner/.m2/repository/org/antlr/antlr4-runtime/4.13.2/antlr4-runtime-4.13.2.jar:/home/runner/.m2/repository/org/hibernate/models/hibernate-models/1.1.1/hibernate-models-1.1.1.jar:/home/runner/.m2/repository/jakarta/persistence/jakarta.persistence-api/3.2.0/jakarta.persistence-api-3.2.0.jar:/home/runner/.m2/repository/jakarta/transaction/jakarta.transaction-api/2.0.1/jakarta.transaction-api-2.0.1.jar:/home/runner/.m2/repository/io/smallrye/jandex/3.3.2/jandex-3.3.2.jar:/home/runner/.m2/repository/org/jboss/logging/jboss-logging/3.6.3.Final/jboss-logging-3.6.3.Final.jar:/home/runner/.m2/repository/jakarta/xml/bind/jakarta.xml.bind-api/4.0.5/jakarta.xml.bind-api-4.0.5.jar:/home/runner/.m2/repository/jakarta/activation/jakarta.activation-api/2.1.4/jakarta.activation-api-2.1.4.jar:/home/runner/.m2/repository/org/eclipse/jgit/org.eclipse.jgit/7.8.1.202611041320-r/org.eclipse.jgit-7.8.1.202611041320-r.jar:/home/runner/.m2/repository/com/googlecode/javaewah/JavaEWAH/1.2.3/JavaEWAH-1.2.3.jar:/home/runner/.m2/repository/commons-codec/commons-codec/1.21.0/commons-codec-1.21.0.jar:/home/runner/.m2/repository/org/eclipse/jgit/org.eclipse.jgit.gpg.bc/7.8.1.202611041320-r/org.eclipse.jgit.gpg.bc-7.8.1.202611041320-r.jar:/home/runner/.m2/repository/org/bouncycastle/bcpg-jdk18on/1.85/bcpg-jdk18on-1.85.jar:/home/runner/.m2/repository/org/bouncycastle/bcprov-jdk18on/1.85.2/bcprov-jdk18on-1.85.2.jar:/home/runner/.m2/repository/org/bouncycastle/bcutil-jdk18on/1.85/bcutil-jdk18on-1.85.jar:/home/runner/.m2/repository/org/bouncycastle/bcpkix-jdk18on/1.85/bcpkix-jdk18on-1.85.jar:/home/runner/.m2/repository/io/github/carstenartur/jgit-storage-hibernate-core/0.12.2/jgit-storage-hibernate-core-0.12.2.jar:/home/runner/.m2/repository/org/springdoc/springdoc-openapi-starter-common/3.2.0/springdoc-openapi-starter-common-3.2.0.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-autoconfigure/4.1.2/spring-boot-autoconfigure-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-validation/4.1.2/spring-boot-validation-4.1.2.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-el/11.0.27/tomcat-embed-el-11.0.27.jar:/home/runner/.m2/repository/org/hibernate/validator/hibernate-validator/9.1.5.Final/hibernate-validator-9.1.5.Final.jar:/home/runner/.m2/repository/com/fasterxml/classmate/1.7.3/classmate-1.7.3.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-core-jakarta/2.2.55/swagger-core-jakarta-2.2.55.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-annotations-jakarta/2.2.55/swagger-annotations-jakarta-2.2.55.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-models-jakarta/2.2.55/swagger-models-jakarta-2.2.55.jar:/home/runner/.m2/repository/jakarta/validation/jakarta.validation-api/3.1.1/jakarta.validation-api-3.1.1.jar:/home/runner/.m2/repository/com/fasterxml/jackson/dataformat/jackson-dataformat-yaml/2.22.4/jackson-dataformat-yaml-2.22.4.jar:/home/runner/.m2/repository/com/fasterxml/jackson/datatype/jackson-datatype-jsr310/2.22.4/jackson-datatype-jsr310-2.22.4.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jackson/4.1.2/spring-boot-jackson-4.1.2.jar:/home/runner/.m2/repository/tools/jackson/core/jackson-databind/3.1.7/jackson-databind-3.1.7.jar:/home/runner/.m2/repository/tools/jackson/core/jackson-core/3.1.7/jackson-core-3.1.7.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-test/4.1.2/spring-boot-starter-test-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-test/4.1.2/spring-boot-test-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-test-autoconfigure/4.1.2/spring-boot-test-autoconfigure-4.1.2.jar:/home/runner/.m2/repository/com/jayway/jsonpath/json-path/2.10.0/json-path-2.10.0.jar:/home/runner/.m2/repository/net/minidev/json-smart/2.6.0/json-smart-2.6.0.jar:/home/runner/.m2/repository/net/minidev/accessors-smart/2.6.0/accessors-smart-2.6.0.jar:/home/runner/.m2/repository/org/ow2/asm/asm/9.7.1/asm-9.7.1.jar:/home/runner/.m2/repository/org/assertj/assertj-core/3.27.7/assertj-core-3.27.7.jar:/home/runner/.m2/repository/org/awaitility/awaitility/4.3.0/awaitility-4.3.0.jar:/home/runner/.m2/repository/org/hamcrest/hamcrest/3.0/hamcrest-3.0.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter/6.0.3/junit-jupiter-6.0.3.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-api/6.0.3/junit-jupiter-api-6.0.3.jar:/home/runner/.m2/repository/org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-commons/6.0.3/junit-platform-commons-6.0.3.jar:/home/runner/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-params/6.0.3/junit-jupiter-params-6.0.3.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-engine/6.0.3/junit-jupiter-engine-6.0.3.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-engine/6.0.3/junit-platform-engine-6.0.3.jar:/home/runner/.m2/repository/org/mockito/mockito-core/5.23.0/mockito-core-5.23.0.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy-agent/1.18.15/byte-buddy-agent-1.18.15.jar:/home/runner/.m2/repository/org/objenesis/objenesis/3.3/objenesis-3.3.jar:/home/runner/.m2/repository/org/mockito/mockito-junit-jupiter/5.23.0/mockito-junit-jupiter-5.23.0.jar:/home/runner/.m2/repository/org/skyscreamer/jsonassert/1.5.3/jsonassert-1.5.3.jar:/home/runner/.m2/repository/com/vaadin/external/google/android-json/0.0.20131108.vaadin1/android-json-0.0.20131108.vaadin1.jar:/home/runner/.m2/repository/org/springframework/spring-core/7.0.10/spring-core-7.0.10.jar:/home/runner/.m2/repository/org/jspecify/jspecify/1.0.1/jspecify-1.0.1.jar:/home/runner/.m2/repository/org/springframework/spring-test/7.0.10/spring-test-7.0.10.jar:/home/runner/.m2/repository/org/xmlunit/xmlunit-core/2.11.0/xmlunit-core-2.11.0.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-test/7.1.2/spring-security-test-7.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-core/7.1.2/spring-security-core-7.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-crypto/7.1.2/spring-security-crypto-7.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-context/7.0.10/spring-context-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-expression/7.0.10/spring-expression-7.0.10.jar:/home/runner/.m2/repository/io/micrometer/micrometer-observation/1.17.2/micrometer-observation-1.17.2.jar:/home/runner/.m2/repository/io/micrometer/micrometer-commons/1.17.2/micrometer-commons-1.17.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-web/7.1.2/spring-security-web-7.1.2.jar:/home/runner/.m2/repository/org/flywaydb/flyway-database-hsqldb/12.4.0/flyway-database-hsqldb-12.4.0.jar:/home/runner/.m2/repository/org/flywaydb/flyway-core/12.4.0/flyway-core-12.4.0.jar:/home/runner/.m2/repository/org/hsqldb/hsqldb/2.7.3/hsqldb-2.7.3.jar:"/>
+    <property name="java.vm.vendor" value="Eclipse Adoptium"/>
+    <property name="sun.arch.data.model" value="64"/>
+    <property name="java.vendor.url" value="https://adoptium.net/"/>
+    <property name="user.timezone" value="Etc/UTC"/>
+    <property name="os.name" value="Linux"/>
+    <property name="java.vm.specification.version" value="25"/>
+    <property name="keycloak.container.image" value="quay.io/keycloak/keycloak:26.7.0"/>
+    <property name="taxonomy.test.browser.offline" value="maven:false"/>
+    <property name="sun.java.launcher" value="SUN_STANDARD"/>
+    <property name="sun.boot.library.path" value="/usr/lib/jvm/temurin-25-jdk-amd64/lib"/>
+    <property name="runKeycloakTests" value="true"/>
+    <property name="sun.java.command" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/surefire/surefirebooter-20261120081510234_51.jar /home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/surefire 2026-11-20T08-12-25_583-jvmRun1 surefire-20261120081510234_49tmp surefire_8-20261120081510234_50tmp"/>
+    <property name="jdk.debug" value="release"/>
+    <property name="surefire.test.class.path" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/test-classes:/home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/classes:/home/runner/work/Taxonomy/Taxonomy/taxonomy-domain/target/taxonomy-domain-1.5.4-SNAPSHOT.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-annotations/2.22/jackson-annotations-2.22.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-dsl/target/taxonomy-dsl-1.5.4-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-sparx-mapping/target/taxonomy-sparx-mapping-1.5.4-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-export/target/taxonomy-export-1.5.4-SNAPSHOT.jar:/home/runner/.m2/repository/org/apache/jena/jena-arq/6.2.0/jena-arq-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-core/6.2.0/jena-core-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-base/6.2.0/jena-base-6.2.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-csv/1.14.1/commons-csv-1.14.1.jar:/home/runner/.m2/repository/com/github/ben-manes/caffeine/caffeine/3.2.4/caffeine-3.2.4.jar:/home/runner/.m2/repository/com/github/andrewoma/dexx/collection/0.7/collection-0.7.jar:/home/runner/.m2/repository/org/apache/jena/jena-iri3986/6.2.0/jena-iri3986-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-langtag/6.2.0/jena-langtag-6.2.0.jar:/home/runner/.m2/repository/org/roaringbitmap/RoaringBitmap/1.6.15/RoaringBitmap-1.6.15.jar:/home/runner/.m2/repository/com/google/code/gson/gson/2.13.2/gson-2.13.2.jar:/home/runner/.m2/repository/com/google/errorprone/error_prone_annotations/2.41.0/error_prone_annotations-2.41.0.jar:/home/runner/.m2/repository/org/slf4j/jcl-over-slf4j/2.0.20/jcl-over-slf4j-2.0.20.jar:/home/runner/.m2/repository/com/apicatalog/titanium-json-ld/1.7.0/titanium-json-ld-1.7.0.jar:/home/runner/.m2/repository/com/apicatalog/titanium-jcs/1.1.1/titanium-jcs-1.1.1.jar:/home/runner/.m2/repository/com/apicatalog/titanium-rdf-api/1.0.0/titanium-rdf-api-1.0.0.jar:/home/runner/.m2/repository/com/apicatalog/titanium-rdf-n-quads/1.0.2/titanium-rdf-n-quads-1.0.2.jar:/home/runner/.m2/repository/org/glassfish/jakarta.json/2.0.1/jakarta.json-2.0.1.jar:/home/runner/.m2/repository/com/google/protobuf/protobuf-java/4.36.2/protobuf-java-4.36.2.jar:/home/runner/.m2/repository/org/apache/thrift/libthrift/0.24.0/libthrift-0.24.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-lang3/3.20.0/commons-lang3-3.20.0.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-api/target/taxonomy-extension-api-1.5.4-SNAPSHOT.jar:/home/runner/.m2/repository/org/apache/pdfbox/pdfbox/3.0.8/pdfbox-3.0.8.jar:/home/runner/.m2/repository/org/apache/pdfbox/pdfbox-io/3.0.8/pdfbox-io-3.0.8.jar:/home/runner/.m2/repository/org/apache/pdfbox/fontbox/3.0.8/fontbox-3.0.8.jar:/home/runner/.m2/repository/commons-logging/commons-logging/1.3.6/commons-logging-1.3.6.jar:/home/runner/.m2/repository/com/thoughtworks/xstream/xstream/1.4.21/xstream-1.4.21.jar:/home/runner/.m2/repository/io/github/x-stream/mxparser/1.2.2/mxparser-1.2.2.jar:/home/runner/.m2/repository/xmlpull/xmlpull/1.1.3.1/xmlpull-1.1.3.1.jar:/home/runner/.m2/repository/org/slf4j/slf4j-api/2.0.20/slf4j-api-2.0.20.jar:/home/runner/.m2/repository/org/apache/poi/poi-ooxml/6.0.0/poi-ooxml-6.0.0.jar:/home/runner/.m2/repository/org/apache/poi/poi/6.0.0/poi-6.0.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-math3/3.6.1/commons-math3-3.6.1.jar:/home/runner/.m2/repository/com/zaxxer/SparseBitSet/1.3/SparseBitSet-1.3.jar:/home/runner/.m2/repository/org/apache/xmlbeans/xmlbeans/5.4.1/xmlbeans-5.4.1.jar:/home/runner/.m2/repository/org/apache/commons/commons-compress/1.28.0/commons-compress-1.28.0.jar:/home/runner/.m2/repository/commons-io/commons-io/2.22.0/commons-io-2.22.0.jar:/home/runner/.m2/repository/com/github/virtuald/curvesapi/1.08/curvesapi-1.08.jar:/home/runner/.m2/repository/org/apache/logging/log4j/log4j-api/2.25.5/log4j-api-2.25.5.jar:/home/runner/.m2/repository/org/apache/commons/commons-collections4/4.6.0/commons-collections4-4.6.0.jar:/home/runner/.m2/repository/org/apache/poi/poi-ooxml-full/6.0.0/poi-ooxml-full-6.0.0.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-databind/2.22.4/jackson-databind-2.22.4.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-core/2.22.4/jackson-core-2.22.4.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-web/4.1.2/spring-boot-starter-web-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-jackson/4.1.2/spring-boot-starter-jackson-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-tomcat/4.1.2/spring-boot-starter-tomcat-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-tomcat-runtime/4.1.2/spring-boot-starter-tomcat-runtime-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-web-server/4.1.2/spring-boot-web-server-4.1.2.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-core/11.0.27/tomcat-embed-core-11.0.27.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-websocket/11.0.27/tomcat-embed-websocket-11.0.27.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-tomcat/4.1.2/spring-boot-tomcat-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-http-converter/4.1.2/spring-boot-http-converter-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot/4.1.2/spring-boot-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-web/7.0.10/spring-web-7.0.10.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-webmvc/4.1.2/spring-boot-webmvc-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-servlet/4.1.2/spring-boot-servlet-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-webmvc/7.0.10/spring-webmvc-7.0.10.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-data-jpa/4.1.2/spring-boot-starter-data-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter/4.1.2/spring-boot-starter-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-logging/4.1.2/spring-boot-starter-logging-4.1.2.jar:/home/runner/.m2/repository/ch/qos/logback/logback-classic/1.5.38/logback-classic-1.5.38.jar:/home/runner/.m2/repository/ch/qos/logback/logback-core/1.5.38/logback-core-1.5.38.jar:/home/runner/.m2/repository/org/apache/logging/log4j/log4j-to-slf4j/2.25.5/log4j-to-slf4j-2.25.5.jar:/home/runner/.m2/repository/org/slf4j/jul-to-slf4j/2.0.20/jul-to-slf4j-2.0.20.jar:/home/runner/.m2/repository/jakarta/annotation/jakarta.annotation-api/3.0.0/jakarta.annotation-api-3.0.0.jar:/home/runner/.m2/repository/org/yaml/snakeyaml/2.6/snakeyaml-2.6.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-jdbc/4.1.2/spring-boot-starter-jdbc-4.1.2.jar:/home/runner/.m2/repository/com/zaxxer/HikariCP/7.0.2/HikariCP-7.0.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-data-jpa/4.1.2/spring-boot-data-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-data-commons/4.1.2/spring-boot-data-commons-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-persistence/4.1.2/spring-boot-persistence-4.1.2.jar:/home/runner/.m2/repository/org/springframework/data/spring-data-commons/4.1.2/spring-data-commons-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-hibernate/4.1.2/spring-boot-hibernate-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jpa/4.1.2/spring-boot-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-orm/7.0.10/spring-orm-7.0.10.jar:/home/runner/.m2/repository/org/springframework/data/spring-data-jpa/4.1.2/spring-data-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-tx/7.0.10/spring-tx-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-aspects/7.0.10/spring-aspects-7.0.10.jar:/home/runner/.m2/repository/org/aspectj/aspectjweaver/1.9.25.1/aspectjweaver-1.9.25.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jdbc/4.1.2/spring-boot-jdbc-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-sql/4.1.2/spring-boot-sql-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-transaction/4.1.2/spring-boot-transaction-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-jdbc/7.0.10/spring-jdbc-7.0.10.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-flyway/4.1.2/spring-boot-starter-flyway-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-flyway/4.1.2/spring-boot-flyway-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-security/4.1.2/spring-boot-starter-security-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-security/4.1.2/spring-boot-security-4.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-config/7.1.2/spring-security-config-7.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-aop/7.0.10/spring-aop-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-beans/7.0.10/spring-beans-7.0.10.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-mapper-orm/8.4.1.Final/hibernate-search-mapper-orm-8.4.1.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-engine/8.4.1.Final/hibernate-search-engine-8.4.1.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-mapper-pojo-base/8.4.1.Final/hibernate-search-mapper-pojo-base-8.4.1.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-util-common/8.4.1.Final/hibernate-search-util-common-8.4.1.Final.jar:/home/runner/.m2/repository/org/hibernate/orm/hibernate-core/7.4.13.Final/hibernate-core-7.4.13.Final.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy/1.18.15/byte-buddy-1.18.15.jar:/home/runner/.m2/repository/org/glassfish/jaxb/jaxb-runtime/4.0.9/jaxb-runtime-4.0.9.jar:/home/runner/.m2/repository/org/glassfish/jaxb/jaxb-core/4.0.9/jaxb-core-4.0.9.jar:/home/runner/.m2/repository/org/eclipse/angus/angus-activation/2.0.3/angus-activation-2.0.3.jar:/home/runner/.m2/repository/org/glassfish/jaxb/txw2/4.0.9/txw2-4.0.9.jar:/home/runner/.m2/repository/com/sun/istack/istack-commons-runtime/4.1.2/istack-commons-runtime-4.1.2.jar:/home/runner/.m2/repository/jakarta/inject/jakarta.inject-api/2.0.1/jakarta.inject-api-2.0.1.jar:/home/runner/.m2/repository/org/antlr/antlr4-runtime/4.13.2/antlr4-runtime-4.13.2.jar:/home/runner/.m2/repository/org/hibernate/models/hibernate-models/1.1.1/hibernate-models-1.1.1.jar:/home/runner/.m2/repository/jakarta/persistence/jakarta.persistence-api/3.2.0/jakarta.persistence-api-3.2.0.jar:/home/runner/.m2/repository/jakarta/transaction/jakarta.transaction-api/2.0.1/jakarta.transaction-api-2.0.1.jar:/home/runner/.m2/repository/io/smallrye/jandex/3.3.2/jandex-3.3.2.jar:/home/runner/.m2/repository/org/jboss/logging/jboss-logging/3.6.3.Final/jboss-logging-3.6.3.Final.jar:/home/runner/.m2/repository/jakarta/xml/bind/jakarta.xml.bind-api/4.0.5/jakarta.xml.bind-api-4.0.5.jar:/home/runner/.m2/repository/jakarta/activation/jakarta.activation-api/2.1.4/jakarta.activation-api-2.1.4.jar:/home/runner/.m2/repository/org/eclipse/jgit/org.eclipse.jgit/7.8.1.202611041320-r/org.eclipse.jgit-7.8.1.202611041320-r.jar:/home/runner/.m2/repository/com/googlecode/javaewah/JavaEWAH/1.2.3/JavaEWAH-1.2.3.jar:/home/runner/.m2/repository/commons-codec/commons-codec/1.21.0/commons-codec-1.21.0.jar:/home/runner/.m2/repository/org/eclipse/jgit/org.eclipse.jgit.gpg.bc/7.8.1.202611041320-r/org.eclipse.jgit.gpg.bc-7.8.1.202611041320-r.jar:/home/runner/.m2/repository/org/bouncycastle/bcpg-jdk18on/1.85/bcpg-jdk18on-1.85.jar:/home/runner/.m2/repository/org/bouncycastle/bcprov-jdk18on/1.85.2/bcprov-jdk18on-1.85.2.jar:/home/runner/.m2/repository/org/bouncycastle/bcutil-jdk18on/1.85/bcutil-jdk18on-1.85.jar:/home/runner/.m2/repository/org/bouncycastle/bcpkix-jdk18on/1.85/bcpkix-jdk18on-1.85.jar:/home/runner/.m2/repository/io/github/carstenartur/jgit-storage-hibernate-core/0.12.2/jgit-storage-hibernate-core-0.12.2.jar:/home/runner/.m2/repository/org/springdoc/springdoc-openapi-starter-common/3.2.0/springdoc-openapi-starter-common-3.2.0.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-autoconfigure/4.1.2/spring-boot-autoconfigure-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-validation/4.1.2/spring-boot-validation-4.1.2.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-el/11.0.27/tomcat-embed-el-11.0.27.jar:/home/runner/.m2/repository/org/hibernate/validator/hibernate-validator/9.1.5.Final/hibernate-validator-9.1.5.Final.jar:/home/runner/.m2/repository/com/fasterxml/classmate/1.7.3/classmate-1.7.3.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-core-jakarta/2.2.55/swagger-core-jakarta-2.2.55.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-annotations-jakarta/2.2.55/swagger-annotations-jakarta-2.2.55.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-models-jakarta/2.2.55/swagger-models-jakarta-2.2.55.jar:/home/runner/.m2/repository/jakarta/validation/jakarta.validation-api/3.1.1/jakarta.validation-api-3.1.1.jar:/home/runner/.m2/repository/com/fasterxml/jackson/dataformat/jackson-dataformat-yaml/2.22.4/jackson-dataformat-yaml-2.22.4.jar:/home/runner/.m2/repository/com/fasterxml/jackson/datatype/jackson-datatype-jsr310/2.22.4/jackson-datatype-jsr310-2.22.4.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jackson/4.1.2/spring-boot-jackson-4.1.2.jar:/home/runner/.m2/repository/tools/jackson/core/jackson-databind/3.1.7/jackson-databind-3.1.7.jar:/home/runner/.m2/repository/tools/jackson/core/jackson-core/3.1.7/jackson-core-3.1.7.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-test/4.1.2/spring-boot-starter-test-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-test/4.1.2/spring-boot-test-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-test-autoconfigure/4.1.2/spring-boot-test-autoconfigure-4.1.2.jar:/home/runner/.m2/repository/com/jayway/jsonpath/json-path/2.10.0/json-path-2.10.0.jar:/home/runner/.m2/repository/net/minidev/json-smart/2.6.0/json-smart-2.6.0.jar:/home/runner/.m2/repository/net/minidev/accessors-smart/2.6.0/accessors-smart-2.6.0.jar:/home/runner/.m2/repository/org/ow2/asm/asm/9.7.1/asm-9.7.1.jar:/home/runner/.m2/repository/org/assertj/assertj-core/3.27.7/assertj-core-3.27.7.jar:/home/runner/.m2/repository/org/awaitility/awaitility/4.3.0/awaitility-4.3.0.jar:/home/runner/.m2/repository/org/hamcrest/hamcrest/3.0/hamcrest-3.0.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter/6.0.3/junit-jupiter-6.0.3.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-api/6.0.3/junit-jupiter-api-6.0.3.jar:/home/runner/.m2/repository/org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-commons/6.0.3/junit-platform-commons-6.0.3.jar:/home/runner/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-params/6.0.3/junit-jupiter-params-6.0.3.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-engine/6.0.3/junit-jupiter-engine-6.0.3.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-engine/6.0.3/junit-platform-engine-6.0.3.jar:/home/runner/.m2/repository/org/mockito/mockito-core/5.23.0/mockito-core-5.23.0.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy-agent/1.18.15/byte-buddy-agent-1.18.15.jar:/home/runner/.m2/repository/org/objenesis/objenesis/3.3/objenesis-3.3.jar:/home/runner/.m2/repository/org/mockito/mockito-junit-jupiter/5.23.0/mockito-junit-jupiter-5.23.0.jar:/home/runner/.m2/repository/org/skyscreamer/jsonassert/1.5.3/jsonassert-1.5.3.jar:/home/runner/.m2/repository/com/vaadin/external/google/android-json/0.0.20131108.vaadin1/android-json-0.0.20131108.vaadin1.jar:/home/runner/.m2/repository/org/springframework/spring-core/7.0.10/spring-core-7.0.10.jar:/home/runner/.m2/repository/org/jspecify/jspecify/1.0.1/jspecify-1.0.1.jar:/home/runner/.m2/repository/org/springframework/spring-test/7.0.10/spring-test-7.0.10.jar:/home/runner/.m2/repository/org/xmlunit/xmlunit-core/2.11.0/xmlunit-core-2.11.0.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-test/7.1.2/spring-security-test-7.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-core/7.1.2/spring-security-core-7.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-crypto/7.1.2/spring-security-crypto-7.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-context/7.0.10/spring-context-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-expression/7.0.10/spring-expression-7.0.10.jar:/home/runner/.m2/repository/io/micrometer/micrometer-observation/1.17.2/micrometer-observation-1.17.2.jar:/home/runner/.m2/repository/io/micrometer/micrometer-commons/1.17.2/micrometer-commons-1.17.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-web/7.1.2/spring-security-web-7.1.2.jar:/home/runner/.m2/repository/org/flywaydb/flyway-database-hsqldb/12.4.0/flyway-database-hsqldb-12.4.0.jar:/home/runner/.m2/repository/org/flywaydb/flyway-core/12.4.0/flyway-core-12.4.0.jar:/home/runner/.m2/repository/org/hsqldb/hsqldb/2.7.3/hsqldb-2.7.3.jar:"/>
+    <property name="sun.cpu.endian" value="little"/>
+    <property name="user.home" value="/home/runner"/>
+    <property name="user.language" value="en"/>
+    <property name="java.specification.vendor" value="Oracle Corporation"/>
+    <property name="java.version.date" value="2026-10-20"/>
+    <property name="java.home" value="/usr/lib/jvm/temurin-25-jdk-amd64"/>
+    <property name="file.separator" value="/"/>
+    <property name="basedir" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace"/>
+    <property name="java.vm.compressedOopsMode" value="Zero based"/>
+    <property name="line.separator" value="&#10;"/>
+    <property name="java.vm.specification.vendor" value="Oracle Corporation"/>
+    <property name="java.specification.name" value="Java Platform API Specification"/>
+    <property name="taxonomy.test.browser.cache" value="/home/runner/work/Taxonomy/Taxonomy/target/test-runtime/selenium"/>
+    <property name="surefire.real.class.path" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/surefire/surefirebooter-20261120081510234_51.jar"/>
+    <property name="taxonomy.ui.skip" value="true"/>
+    <property name="polyglot.engine.WarnInterpreterOnly" value="false"/>
+    <property name="sun.management.compiler" value="HotSpot 64-Bit Tiered Compilers"/>
+    <property name="java.runtime.version" value="25.0.5+8-LTS"/>
+    <property name="user.name" value="runner"/>
+    <property name="stdout.encoding" value="UTF-8"/>
+    <property name="path.separator" value=":"/>
+    <property name="os.version" value="7.0.0-1020-azure"/>
+    <property name="java.runtime.name" value="OpenJDK Runtime Environment"/>
+    <property name="file.encoding" value="UTF-8"/>
+    <property name="taxonomy.test.browser.version" value="149.0.7827.55"/>
+    <property name="java.vm.name" value="OpenJDK 64-Bit Server VM"/>
+    <property name="java.vendor.version" value="Temurin-25.0.5+8"/>
+    <property name="localRepository" value="/home/runner/.m2/repository"/>
+    <property name="java.vendor.url.bug" value="https://github.com/adoptium/adoptium-support/issues"/>
+    <property name="java.io.tmpdir" value="/tmp"/>
+    <property name="java.version" value="25.0.5"/>
+    <property name="taxonomy.node.executable" value="/home/runner/work/Taxonomy/Taxonomy/target/test-runtime/frontend/node/node"/>
+    <property name="user.dir" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace"/>
+    <property name="os.arch" value="amd64"/>
+    <property name="java.vm.specification.name" value="Java Virtual Machine Specification"/>
+    <property name="native.encoding" value="UTF-8"/>
+    <property name="java.library.path" value="/usr/java/packages/lib:/usr/lib64:/lib64:/lib:/usr/lib"/>
+    <property name="java.vm.info" value="mixed mode, sharing"/>
+    <property name="stderr.encoding" value="UTF-8"/>
+    <property name="java.vendor" value="Eclipse Adoptium"/>
+    <property name="java.vm.version" value="25.0.5+8-LTS"/>
+    <property name="stdin.encoding" value="UTF-8"/>
+    <property name="sun.io.unicode.encoding" value="UnicodeLittle"/>
+    <property name="java.class.version" value="69.0"/>
+    <property name="runOnnxTests" value="true"/>
+  </properties>
+  <testcase name="anInterruptedObjectImportCanResumeWithoutDuplicateRefAudit" classname="com.taxonomy.workspace.backup.GitHistoryRestoreTest" time="0.268">
+    <system-out><![CDATA[08:16:38.266 [main] INFO com.taxonomy.workspace.storage.JgitStorageSchemaMigrationConfig -- Installing JGit Core schema into empty HSQLDB database
+08:16:38.267 [main] INFO org.flywaydb.core.FlywayExecutor -- Database: jdbc:hsqldb:mem:git-restore-8b62d70f-0513-42b1-9429-81ac47cfa32c (HSQL Database Engine 2.7)
+08:16:38.271 [main] INFO org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory -- Schema history table "PUBLIC"."jgit_storage_hibernate_core_schema_history" does not exist yet
+08:16:38.271 [main] INFO org.flywaydb.core.internal.command.DbValidate -- Successfully validated 9 migrations (execution time 00:00.001s)
+08:16:38.271 [main] INFO org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory -- Creating Schema History table "PUBLIC"."jgit_storage_hibernate_core_schema_history" ...
+08:16:38.273 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Current version of schema "PUBLIC": << Empty Schema >>
+08:16:38.275 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.4 - create core schema"
+08:16:38.277 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.5 - establish versioned core schema"
+08:16:38.279 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14 - add repository lock"
+08:16:38.280 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14.1 - add chunked pack storage"
+08:16:38.282 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14.2 - add pack write leases"
+08:16:38.284 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.17 - optimize reverse reflog reads"
+08:16:38.287 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.18 - persist pack description metadata"
+08:16:38.288 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:38.288 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:38.288 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:38.290 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.9.1 - add reflog reference key"
+08:16:38.291 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:38.293 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.9.2 - add reflog delivery id"
+08:16:38.294 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Successfully applied 9 migrations to schema "PUBLIC", now at version v0.9.2 (execution time 00:00.001s)
+08:16:38.308 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:git-restore-8b62d70f-0513-42b1-9429-81ac47cfa32c]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+08:16:38.315 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:16:38.328 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="nativePayloadRestoresOriginalObjectsRefsAliasesAndEventEvidenceToVersionedSql(GitRepresentation)[1]" classname="com.taxonomy.workspace.backup.GitHistoryRestoreTest" time="0.178">
+    <system-out><![CDATA[08:16:38.507 [main] INFO com.taxonomy.workspace.storage.JgitStorageSchemaMigrationConfig -- Installing JGit Core schema into empty HSQLDB database
+08:16:38.507 [main] INFO org.flywaydb.core.FlywayExecutor -- Database: jdbc:hsqldb:mem:git-restore-a8dcefea-6c80-476a-957d-1cb7ec77e11a (HSQL Database Engine 2.7)
+08:16:38.511 [main] INFO org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory -- Schema history table "PUBLIC"."jgit_storage_hibernate_core_schema_history" does not exist yet
+08:16:38.511 [main] INFO org.flywaydb.core.internal.command.DbValidate -- Successfully validated 9 migrations (execution time 00:00.001s)
+08:16:38.511 [main] INFO org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory -- Creating Schema History table "PUBLIC"."jgit_storage_hibernate_core_schema_history" ...
+08:16:38.514 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Current version of schema "PUBLIC": << Empty Schema >>
+08:16:38.515 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.4 - create core schema"
+08:16:38.518 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.5 - establish versioned core schema"
+08:16:38.520 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14 - add repository lock"
+08:16:38.522 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14.1 - add chunked pack storage"
+08:16:38.524 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14.2 - add pack write leases"
+08:16:38.527 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.17 - optimize reverse reflog reads"
+08:16:38.531 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.18 - persist pack description metadata"
+08:16:38.532 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:38.532 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:38.532 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:38.534 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.9.1 - add reflog reference key"
+08:16:38.535 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:38.537 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.9.2 - add reflog delivery id"
+08:16:38.538 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Successfully applied 9 migrations to schema "PUBLIC", now at version v0.9.2 (execution time 00:00.001s)
+08:16:38.559 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:git-restore-a8dcefea-6c80-476a-957d-1cb7ec77e11a]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+08:16:38.566 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:16:38.581 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="nativePayloadRestoresOriginalObjectsRefsAliasesAndEventEvidenceToVersionedSql(GitRepresentation)[2]" classname="com.taxonomy.workspace.backup.GitHistoryRestoreTest" time="0.148">
+    <system-out><![CDATA[08:16:38.678 [main] INFO com.taxonomy.workspace.storage.JgitStorageSchemaMigrationConfig -- Installing JGit Core schema into empty HSQLDB database
+08:16:38.678 [main] INFO org.flywaydb.core.FlywayExecutor -- Database: jdbc:hsqldb:mem:git-restore-38f8f1d5-6774-42fa-ace0-c08fbac37402 (HSQL Database Engine 2.7)
+08:16:38.681 [main] INFO org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory -- Schema history table "PUBLIC"."jgit_storage_hibernate_core_schema_history" does not exist yet
+08:16:38.681 [main] INFO org.flywaydb.core.internal.command.DbValidate -- Successfully validated 9 migrations (execution time 00:00.001s)
+08:16:38.682 [main] INFO org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory -- Creating Schema History table "PUBLIC"."jgit_storage_hibernate_core_schema_history" ...
+08:16:38.683 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Current version of schema "PUBLIC": << Empty Schema >>
+08:16:38.685 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.4 - create core schema"
+08:16:38.686 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.5 - establish versioned core schema"
+08:16:38.687 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14 - add repository lock"
+08:16:38.689 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14.1 - add chunked pack storage"
+08:16:38.690 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14.2 - add pack write leases"
+08:16:38.692 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.17 - optimize reverse reflog reads"
+08:16:38.695 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.18 - persist pack description metadata"
+08:16:38.695 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:38.696 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:38.696 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:38.697 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.9.1 - add reflog reference key"
+08:16:38.698 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:38.699 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.9.2 - add reflog delivery id"
+08:16:38.700 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Successfully applied 9 migrations to schema "PUBLIC", now at version v0.9.2 (execution time 00:00.001s)
+08:16:38.714 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:git-restore-38f8f1d5-6774-42fa-ace0-c08fbac37402]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+08:16:38.722 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:16:38.735 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="nativePayloadRestoresOriginalObjectsRefsAliasesAndEventEvidenceToVersionedSql(GitRepresentation)[3]" classname="com.taxonomy.workspace.backup.GitHistoryRestoreTest" time="0.158">
+    <system-out><![CDATA[08:16:38.826 [main] INFO com.taxonomy.workspace.storage.JgitStorageSchemaMigrationConfig -- Installing JGit Core schema into empty HSQLDB database
+08:16:38.826 [main] INFO org.flywaydb.core.FlywayExecutor -- Database: jdbc:hsqldb:mem:git-restore-560f90f3-6660-4960-9a09-79935469ee99 (HSQL Database Engine 2.7)
+08:16:38.829 [main] INFO org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory -- Schema history table "PUBLIC"."jgit_storage_hibernate_core_schema_history" does not exist yet
+08:16:38.830 [main] INFO org.flywaydb.core.internal.command.DbValidate -- Successfully validated 9 migrations (execution time 00:00.001s)
+08:16:38.830 [main] INFO org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory -- Creating Schema History table "PUBLIC"."jgit_storage_hibernate_core_schema_history" ...
+08:16:38.832 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Current version of schema "PUBLIC": << Empty Schema >>
+08:16:38.834 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.4 - create core schema"
+08:16:38.836 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.5 - establish versioned core schema"
+08:16:38.838 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14 - add repository lock"
+08:16:38.840 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14.1 - add chunked pack storage"
+08:16:38.842 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14.2 - add pack write leases"
+08:16:38.844 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.17 - optimize reverse reflog reads"
+08:16:38.848 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.18 - persist pack description metadata"
+08:16:38.849 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:38.849 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:38.849 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:38.851 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.9.1 - add reflog reference key"
+08:16:38.852 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:38.853 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.9.2 - add reflog delivery id"
+08:16:38.854 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Successfully applied 9 migrations to schema "PUBLIC", now at version v0.9.2 (execution time 00:00.001s)
+08:16:38.869 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:git-restore-560f90f3-6660-4960-9a09-79935469ee99]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+08:16:38.876 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:16:38.891 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="unresolvableAliasDepthIsRejectedBeforeImportWrites" classname="com.taxonomy.workspace.backup.GitHistoryRestoreTest" time="0.107">
+    <system-out><![CDATA[08:16:38.979 [main] INFO com.taxonomy.workspace.storage.JgitStorageSchemaMigrationConfig -- Installing JGit Core schema into empty HSQLDB database
+08:16:38.980 [main] INFO org.flywaydb.core.FlywayExecutor -- Database: jdbc:hsqldb:mem:git-restore-33156868-2433-43b0-a0bc-1e38c90dbce0 (HSQL Database Engine 2.7)
+08:16:38.983 [main] INFO org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory -- Schema history table "PUBLIC"."jgit_storage_hibernate_core_schema_history" does not exist yet
+08:16:38.983 [main] INFO org.flywaydb.core.internal.command.DbValidate -- Successfully validated 9 migrations (execution time 00:00.001s)
+08:16:38.983 [main] INFO org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory -- Creating Schema History table "PUBLIC"."jgit_storage_hibernate_core_schema_history" ...
+08:16:38.985 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Current version of schema "PUBLIC": << Empty Schema >>
+08:16:38.986 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.4 - create core schema"
+08:16:38.988 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.5 - establish versioned core schema"
+08:16:38.990 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14 - add repository lock"
+08:16:38.991 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14.1 - add chunked pack storage"
+08:16:38.993 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14.2 - add pack write leases"
+08:16:38.994 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.17 - optimize reverse reflog reads"
+08:16:38.997 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.18 - persist pack description metadata"
+08:16:38.998 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:38.998 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:38.998 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.000 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.9.1 - add reflog reference key"
+08:16:39.000 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.002 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.9.2 - add reflog delivery id"
+08:16:39.003 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Successfully applied 9 migrations to schema "PUBLIC", now at version v0.9.2 (execution time 00:00.001s)
+08:16:39.015 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:git-restore-33156868-2433-43b0-a0bc-1e38c90dbce0]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+08:16:39.022 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:16:39.036 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="aTargetWithUnapprovedRefsIsRejectedBeforeSourceObjectsAreWritten" classname="com.taxonomy.workspace.backup.GitHistoryRestoreTest" time="0.141">
+    <system-out><![CDATA[08:16:39.095 [main] INFO com.taxonomy.workspace.storage.JgitStorageSchemaMigrationConfig -- Installing JGit Core schema into empty HSQLDB database
+08:16:39.096 [main] INFO org.flywaydb.core.FlywayExecutor -- Database: jdbc:hsqldb:mem:git-restore-cf457d6a-8533-4e74-8dd5-4d4b07ccbf8c (HSQL Database Engine 2.7)
+08:16:39.098 [main] INFO org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory -- Schema history table "PUBLIC"."jgit_storage_hibernate_core_schema_history" does not exist yet
+08:16:39.099 [main] INFO org.flywaydb.core.internal.command.DbValidate -- Successfully validated 9 migrations (execution time 00:00.001s)
+08:16:39.099 [main] INFO org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory -- Creating Schema History table "PUBLIC"."jgit_storage_hibernate_core_schema_history" ...
+08:16:39.101 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Current version of schema "PUBLIC": << Empty Schema >>
+08:16:39.102 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.4 - create core schema"
+08:16:39.103 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.5 - establish versioned core schema"
+08:16:39.104 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14 - add repository lock"
+08:16:39.106 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14.1 - add chunked pack storage"
+08:16:39.107 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14.2 - add pack write leases"
+08:16:39.109 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.17 - optimize reverse reflog reads"
+08:16:39.112 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.18 - persist pack description metadata"
+08:16:39.112 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.112 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.112 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.114 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.9.1 - add reflog reference key"
+08:16:39.114 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.116 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.9.2 - add reflog delivery id"
+08:16:39.117 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Successfully applied 9 migrations to schema "PUBLIC", now at version v0.9.2 (execution time 00:00.001s)
+08:16:39.133 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:git-restore-cf457d6a-8533-4e74-8dd5-4d4b07ccbf8c]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+08:16:39.139 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:16:39.153 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+08:16:39.166 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised database-backed DslGitRepository (HibernateRepository)
+08:16:39.171 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'foreign': 9020fa87500c7203e32a0ab52e72540099c90e52 (ref update: NEW)
+]]></system-out>
+  </testcase>
+  <testcase name="rawPrivatePinInIncomingMetadataIsRejectedBeforeAnyObjectWrites" classname="com.taxonomy.workspace.backup.GitHistoryRestoreTest" time="0.179">
+    <system-out><![CDATA[08:16:39.209 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (FileRepository)
+08:16:39.235 [main] INFO com.taxonomy.workspace.storage.JgitStorageSchemaMigrationConfig -- Installing JGit Core schema into empty HSQLDB database
+08:16:39.236 [main] INFO org.flywaydb.core.FlywayExecutor -- Database: jdbc:hsqldb:mem:git-restore-ec08cf4c-af7f-4da8-a619-b708ba61cd47 (HSQL Database Engine 2.7)
+08:16:39.239 [main] INFO org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory -- Schema history table "PUBLIC"."jgit_storage_hibernate_core_schema_history" does not exist yet
+08:16:39.240 [main] INFO org.flywaydb.core.internal.command.DbValidate -- Successfully validated 9 migrations (execution time 00:00.001s)
+08:16:39.240 [main] INFO org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory -- Creating Schema History table "PUBLIC"."jgit_storage_hibernate_core_schema_history" ...
+08:16:39.242 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Current version of schema "PUBLIC": << Empty Schema >>
+08:16:39.284 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.4 - create core schema"
+08:16:39.286 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.5 - establish versioned core schema"
+08:16:39.288 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14 - add repository lock"
+08:16:39.290 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14.1 - add chunked pack storage"
+08:16:39.292 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14.2 - add pack write leases"
+08:16:39.293 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.17 - optimize reverse reflog reads"
+08:16:39.296 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.18 - persist pack description metadata"
+08:16:39.297 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.297 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.297 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.298 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.9.1 - add reflog reference key"
+08:16:39.299 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.300 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.9.2 - add reflog delivery id"
+08:16:39.302 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Successfully applied 9 migrations to schema "PUBLIC", now at version v0.9.2 (execution time 00:00.001s)
+08:16:39.320 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:git-restore-ec08cf4c-af7f-4da8-a619-b708ba61cd47]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+08:16:39.332 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:16:39.348 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="originalSourceCanBeProvenBeforeAnyTargetIsAllocatedAndRetainsTheFinalDigest" classname="com.taxonomy.workspace.backup.GitHistoryRestoreTest" time="0.177">
+    <system-out><![CDATA[08:16:39.464 [main] INFO com.taxonomy.workspace.storage.JgitStorageSchemaMigrationConfig -- Installing JGit Core schema into empty HSQLDB database
+08:16:39.464 [main] INFO org.flywaydb.core.FlywayExecutor -- Database: jdbc:hsqldb:mem:git-restore-c42a3365-df90-4a6d-9456-565f414b731f (HSQL Database Engine 2.7)
+08:16:39.467 [main] INFO org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory -- Schema history table "PUBLIC"."jgit_storage_hibernate_core_schema_history" does not exist yet
+08:16:39.467 [main] INFO org.flywaydb.core.internal.command.DbValidate -- Successfully validated 9 migrations (execution time 00:00.001s)
+08:16:39.468 [main] INFO org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory -- Creating Schema History table "PUBLIC"."jgit_storage_hibernate_core_schema_history" ...
+08:16:39.469 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Current version of schema "PUBLIC": << Empty Schema >>
+08:16:39.470 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.4 - create core schema"
+08:16:39.472 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.5 - establish versioned core schema"
+08:16:39.473 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14 - add repository lock"
+08:16:39.475 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14.1 - add chunked pack storage"
+08:16:39.476 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14.2 - add pack write leases"
+08:16:39.477 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.17 - optimize reverse reflog reads"
+08:16:39.480 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.18 - persist pack description metadata"
+08:16:39.481 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.481 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.481 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.483 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.9.1 - add reflog reference key"
+08:16:39.483 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.484 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.9.2 - add reflog delivery id"
+08:16:39.485 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Successfully applied 9 migrations to schema "PUBLIC", now at version v0.9.2 (execution time 00:00.001s)
+08:16:39.498 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:git-restore-c42a3365-df90-4a6d-9456-565f414b731f]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+08:16:39.505 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:16:39.517 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="captureRechecksPersistedRefsAcrossIndependentHandlesEvenWithoutNewReflogs" classname="com.taxonomy.workspace.backup.GitHistoryRestoreTest" time="0.084">
+    <system-out><![CDATA[08:16:39.562 [main] INFO com.taxonomy.workspace.storage.JgitStorageSchemaMigrationConfig -- Installing JGit Core schema into empty HSQLDB database
+08:16:39.562 [main] INFO org.flywaydb.core.FlywayExecutor -- Database: jdbc:hsqldb:mem:git-restore-475b865a-372d-490f-bc91-2a663e1313e9 (HSQL Database Engine 2.7)
+08:16:39.565 [main] INFO org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory -- Schema history table "PUBLIC"."jgit_storage_hibernate_core_schema_history" does not exist yet
+08:16:39.565 [main] INFO org.flywaydb.core.internal.command.DbValidate -- Successfully validated 9 migrations (execution time 00:00.001s)
+08:16:39.565 [main] INFO org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory -- Creating Schema History table "PUBLIC"."jgit_storage_hibernate_core_schema_history" ...
+08:16:39.567 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Current version of schema "PUBLIC": << Empty Schema >>
+08:16:39.568 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.4 - create core schema"
+08:16:39.570 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.5 - establish versioned core schema"
+08:16:39.571 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14 - add repository lock"
+08:16:39.573 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14.1 - add chunked pack storage"
+08:16:39.574 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14.2 - add pack write leases"
+08:16:39.575 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.17 - optimize reverse reflog reads"
+08:16:39.578 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.18 - persist pack description metadata"
+08:16:39.578 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.579 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.579 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.580 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.9.1 - add reflog reference key"
+08:16:39.580 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.582 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.9.2 - add reflog delivery id"
+08:16:39.583 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Successfully applied 9 migrations to schema "PUBLIC", now at version v0.9.2 (execution time 00:00.000s)
+08:16:39.595 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:git-restore-475b865a-372d-490f-bc91-2a663e1313e9]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+08:16:39.601 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:16:39.615 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+08:16:39.627 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised database-backed DslGitRepository (HibernateRepository)
+08:16:39.631 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'main': 70461f5cb090479c8e021e665511ec1a4b09e628 (ref update: NEW)
+]]></system-out>
+  </testcase>
+  <testcase name="incompleteObjectEvidenceAndCyclicAliasesFailBeforeAnyRefPublication" classname="com.taxonomy.workspace.backup.GitHistoryRestoreTest" time="0.111">
+    <system-out><![CDATA[08:16:39.668 [main] INFO com.taxonomy.workspace.storage.JgitStorageSchemaMigrationConfig -- Installing JGit Core schema into empty HSQLDB database
+08:16:39.669 [main] INFO org.flywaydb.core.FlywayExecutor -- Database: jdbc:hsqldb:mem:git-restore-35f1e795-f577-4100-ab3c-e106531a0483 (HSQL Database Engine 2.7)
+08:16:39.671 [main] INFO org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory -- Schema history table "PUBLIC"."jgit_storage_hibernate_core_schema_history" does not exist yet
+08:16:39.671 [main] INFO org.flywaydb.core.internal.command.DbValidate -- Successfully validated 9 migrations (execution time 00:00.001s)
+08:16:39.672 [main] INFO org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory -- Creating Schema History table "PUBLIC"."jgit_storage_hibernate_core_schema_history" ...
+08:16:39.673 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Current version of schema "PUBLIC": << Empty Schema >>
+08:16:39.675 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.4 - create core schema"
+08:16:39.676 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.5 - establish versioned core schema"
+08:16:39.677 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14 - add repository lock"
+08:16:39.679 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14.1 - add chunked pack storage"
+08:16:39.680 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14.2 - add pack write leases"
+08:16:39.682 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.17 - optimize reverse reflog reads"
+08:16:39.685 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.18 - persist pack description metadata"
+08:16:39.685 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.685 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.685 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.687 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.9.1 - add reflog reference key"
+08:16:39.687 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.689 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.9.2 - add reflog delivery id"
+08:16:39.689 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Successfully applied 9 migrations to schema "PUBLIC", now at version v0.9.2 (execution time 00:00.001s)
+08:16:39.701 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:git-restore-35f1e795-f577-4100-ab3c-e106531a0483]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+08:16:39.708 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:16:39.720 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="completedOwnerReadbackProvesObjectsAndRefsWithoutRecreatingMissingState" classname="com.taxonomy.workspace.backup.GitHistoryRestoreTest" time="0.142">
+    <system-out><![CDATA[08:16:39.788 [main] INFO com.taxonomy.workspace.storage.JgitStorageSchemaMigrationConfig -- Installing JGit Core schema into empty HSQLDB database
+08:16:39.789 [main] INFO org.flywaydb.core.FlywayExecutor -- Database: jdbc:hsqldb:mem:git-restore-d7ce053f-a2d4-47c5-9113-9923f86e7359 (HSQL Database Engine 2.7)
+08:16:39.792 [main] INFO org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory -- Schema history table "PUBLIC"."jgit_storage_hibernate_core_schema_history" does not exist yet
+08:16:39.792 [main] INFO org.flywaydb.core.internal.command.DbValidate -- Successfully validated 9 migrations (execution time 00:00.001s)
+08:16:39.793 [main] INFO org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory -- Creating Schema History table "PUBLIC"."jgit_storage_hibernate_core_schema_history" ...
+08:16:39.795 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Current version of schema "PUBLIC": << Empty Schema >>
+08:16:39.796 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.4 - create core schema"
+08:16:39.798 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.5 - establish versioned core schema"
+08:16:39.799 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14 - add repository lock"
+08:16:39.800 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14.1 - add chunked pack storage"
+08:16:39.801 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14.2 - add pack write leases"
+08:16:39.803 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.17 - optimize reverse reflog reads"
+08:16:39.805 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.18 - persist pack description metadata"
+08:16:39.806 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.806 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.806 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.808 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.9.1 - add reflog reference key"
+08:16:39.808 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.809 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.9.2 - add reflog delivery id"
+08:16:39.810 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Successfully applied 9 migrations to schema "PUBLIC", now at version v0.9.2 (execution time 00:00.000s)
+08:16:39.822 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:git-restore-d7ce053f-a2d4-47c5-9113-9923f86e7359]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+08:16:39.829 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:16:39.841 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="preparedRevisionIsRetainedWithoutRestoringPublicationAuthority(GitRepresentation)[1]" classname="com.taxonomy.workspace.backup.GitHistoryRestoreTest" time="0.157">
+    <system-out><![CDATA[08:16:39.907 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (FileRepository)
+08:16:39.941 [main] INFO com.taxonomy.workspace.storage.JgitStorageSchemaMigrationConfig -- Installing JGit Core schema into empty HSQLDB database
+08:16:39.942 [main] INFO org.flywaydb.core.FlywayExecutor -- Database: jdbc:hsqldb:mem:git-restore-ff47978d-221a-40e5-b96f-2af6d64dbbe0 (HSQL Database Engine 2.7)
+08:16:39.944 [main] INFO org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory -- Schema history table "PUBLIC"."jgit_storage_hibernate_core_schema_history" does not exist yet
+08:16:39.944 [main] INFO org.flywaydb.core.internal.command.DbValidate -- Successfully validated 9 migrations (execution time 00:00.001s)
+08:16:39.945 [main] INFO org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory -- Creating Schema History table "PUBLIC"."jgit_storage_hibernate_core_schema_history" ...
+08:16:39.946 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Current version of schema "PUBLIC": << Empty Schema >>
+08:16:39.948 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.4 - create core schema"
+08:16:39.950 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.5 - establish versioned core schema"
+08:16:39.951 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14 - add repository lock"
+08:16:39.952 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14.1 - add chunked pack storage"
+08:16:39.954 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14.2 - add pack write leases"
+08:16:39.955 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.17 - optimize reverse reflog reads"
+08:16:39.958 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.18 - persist pack description metadata"
+08:16:39.959 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.959 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.959 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.960 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.9.1 - add reflog reference key"
+08:16:39.961 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:39.962 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.9.2 - add reflog delivery id"
+08:16:39.963 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Successfully applied 9 migrations to schema "PUBLIC", now at version v0.9.2 (execution time 00:00.001s)
+08:16:39.977 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:git-restore-ff47978d-221a-40e5-b96f-2af6d64dbbe0]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+08:16:39.984 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:16:39.997 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+08:16:40.039 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (HibernateRepository)
+]]></system-out>
+  </testcase>
+  <testcase name="preparedRevisionIsRetainedWithoutRestoringPublicationAuthority(GitRepresentation)[2]" classname="com.taxonomy.workspace.backup.GitHistoryRestoreTest" time="0.139">
+    <system-out><![CDATA[08:16:40.063 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (FileRepository)
+08:16:40.083 [main] INFO com.taxonomy.workspace.storage.JgitStorageSchemaMigrationConfig -- Installing JGit Core schema into empty HSQLDB database
+08:16:40.084 [main] INFO org.flywaydb.core.FlywayExecutor -- Database: jdbc:hsqldb:mem:git-restore-95efd4a3-c76b-4684-a285-4a631456d693 (HSQL Database Engine 2.7)
+08:16:40.086 [main] INFO org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory -- Schema history table "PUBLIC"."jgit_storage_hibernate_core_schema_history" does not exist yet
+08:16:40.086 [main] INFO org.flywaydb.core.internal.command.DbValidate -- Successfully validated 9 migrations (execution time 00:00.001s)
+08:16:40.087 [main] INFO org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory -- Creating Schema History table "PUBLIC"."jgit_storage_hibernate_core_schema_history" ...
+08:16:40.089 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Current version of schema "PUBLIC": << Empty Schema >>
+08:16:40.090 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.4 - create core schema"
+08:16:40.091 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.5 - establish versioned core schema"
+08:16:40.092 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14 - add repository lock"
+08:16:40.094 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14.1 - add chunked pack storage"
+08:16:40.095 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14.2 - add pack write leases"
+08:16:40.096 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.17 - optimize reverse reflog reads"
+08:16:40.100 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.18 - persist pack description metadata"
+08:16:40.101 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:40.101 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:40.101 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:40.103 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.9.1 - add reflog reference key"
+08:16:40.104 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:40.105 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.9.2 - add reflog delivery id"
+08:16:40.106 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Successfully applied 9 migrations to schema "PUBLIC", now at version v0.9.2 (execution time 00:00.001s)
+08:16:40.120 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:git-restore-95efd4a3-c76b-4684-a285-4a631456d693]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+08:16:40.127 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:16:40.140 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+08:16:40.181 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (HibernateRepository)
+]]></system-out>
+  </testcase>
+  <testcase name="preparedRevisionIsRetainedWithoutRestoringPublicationAuthority(GitRepresentation)[3]" classname="com.taxonomy.workspace.backup.GitHistoryRestoreTest" time="0.146">
+    <system-out><![CDATA[08:16:40.203 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (FileRepository)
+08:16:40.224 [main] INFO com.taxonomy.workspace.storage.JgitStorageSchemaMigrationConfig -- Installing JGit Core schema into empty HSQLDB database
+08:16:40.225 [main] INFO org.flywaydb.core.FlywayExecutor -- Database: jdbc:hsqldb:mem:git-restore-635f455a-92dc-4483-8ec2-9f8349f464d2 (HSQL Database Engine 2.7)
+08:16:40.228 [main] INFO org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory -- Schema history table "PUBLIC"."jgit_storage_hibernate_core_schema_history" does not exist yet
+08:16:40.228 [main] INFO org.flywaydb.core.internal.command.DbValidate -- Successfully validated 9 migrations (execution time 00:00.001s)
+08:16:40.228 [main] INFO org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory -- Creating Schema History table "PUBLIC"."jgit_storage_hibernate_core_schema_history" ...
+08:16:40.230 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Current version of schema "PUBLIC": << Empty Schema >>
+08:16:40.231 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.4 - create core schema"
+08:16:40.232 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.5 - establish versioned core schema"
+08:16:40.233 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14 - add repository lock"
+08:16:40.235 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14.1 - add chunked pack storage"
+08:16:40.236 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.14.2 - add pack write leases"
+08:16:40.238 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.17 - optimize reverse reflog reads"
+08:16:40.241 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.1.18 - persist pack description metadata"
+08:16:40.241 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:40.241 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:40.241 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:40.243 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.9.1 - add reflog reference key"
+08:16:40.243 [main] WARN org.flywaydb.core.internal.sqlscript.DefaultSqlScriptExecutor -- DB: no data (SQL State: 02000 - Error Code: -1100)
+08:16:40.244 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Migrating schema "PUBLIC" to version "0.9.2 - add reflog delivery id"
+08:16:40.245 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Successfully applied 9 migrations to schema "PUBLIC", now at version v0.9.2 (execution time 00:00.000s)
+08:16:40.260 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:git-restore-635f455a-92dc-4483-8ec2-9f8349f464d2]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+08:16:40.270 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.1.Final
+08:16:40.284 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+08:16:40.328 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (HibernateRepository)
+]]></system-out>
+  </testcase>
+</testsuite>

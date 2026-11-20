@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisAdapterBackup.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.operation</a> &gt; <span class="el_source">AnalysisAdapterBackup.java</span></div><h1>AnalysisAdapterBackup.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.operation;
+
+import com.taxonomy.backup.ComponentSink;
+import com.taxonomy.backup.SnapshotContext;
+import com.taxonomy.backup.SourceRecordId;
+import com.taxonomy.exchange.backup.PortableRows;
+import com.taxonomy.workspace.backup.BackupRowScope;
+import jakarta.persistence.EntityManager;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.databind.ObjectMapper;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Set;
+import java.util.UUID;
+
+import static com.taxonomy.exchange.backup.PortableRows.text;
+
+/** Portable receipts contain stored outcomes and idempotency hashes. They never grant permission to dispatch. */
+public final class AnalysisAdapterBackup {
+    private static final String REFERENCE = &quot;analysis.adapter&quot;;
+<span class="fc" id="L24">    private static final ObjectMapper JSON = new ObjectMapper();</span>
+<span class="fc" id="L25">    private static final Set&lt;String&gt; FAILURES = Set.of(&quot;ANALYSIS_FAILED&quot;, &quot;RESULT_TOO_LARGE&quot;, &quot;STALE_SOURCE&quot;, &quot;OUTCOME_UNKNOWN&quot;, &quot;SOURCE_UNAVAILABLE&quot;);</span>
+    private AnalysisAdapterBackup() {}
+
+<span class="fc" id="L28">    public record Receipt(SourceRecordId sourceId, AnalysisAdapterStore.Scope scope, String kind, String sourceCommit,</span>
+            String requestKey, String fingerprint, String state, String resultJson, String failureCode,
+            long createdAt, long updatedAt, long sequence) {}
+
+    public static void write(PortableRows rows, SnapshotContext snapshot, ComponentSink sink) throws IOException {
+<span class="fc" id="L33">        var scope = new BackupRowScope(snapshot);</span>
+<span class="fc" id="L34">        var selection = scope.repositories(&quot;repository_id&quot;,&quot;workspace_id&quot;);</span>
+<span class="fc" id="L35">        var parameters = new ArrayList&lt;Object&gt;(selection.parameters());</span>
+<span class="fc" id="L36">        String predicate = selection.sql();</span>
+<span class="fc" id="L37">        String principal = snapshot.authorization().principalId().value().toString();</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">        if (!scope.installation()) { predicate += &quot; and actor=?&quot;; parameters.add(principal); }</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        var query = scope.selectedVersion() ? null : new PortableRows.Query(&quot;select id,actor,repository_id,workspace_id,&quot;</span>
+                + &quot;branch_name,kind,source_commit,request_key,fingerprint,state,result_json,failure_code,created_at,updated_at,row_version &quot;
+                + &quot;from analysis_adapter_operation where &quot; + predicate + &quot; order by id&quot;, parameters);
+<span class="fc" id="L42">        rows.write(sink,&quot;analysis&quot;,&quot;adapter-operations&quot;,snapshot.authorization().request().profile(),query, r -&gt; {</span>
+<span class="fc" id="L43">            var owner = new AnalysisAdapterStore.Scope(text(r,&quot;actor&quot;),text(r,&quot;repository_id&quot;),text(r,&quot;workspace_id&quot;),text(r,&quot;branch_name&quot;));</span>
+<span class="pc bpc" id="L44" title="2 of 6 branches missed.">            if (!scope.includesWorkspace(owner.repository(),owner.workspace()) || (!scope.installation() &amp;&amp; !principal.equals(owner.actor())))</span>
+<span class="nc" id="L45">                throw new IOException(&quot;Analysis receipt is outside the selected scope&quot;);</span>
+<span class="fc" id="L46">            var receipt = new Receipt(PortableRows.reference(r,REFERENCE,&quot;id&quot;),owner,text(r,&quot;kind&quot;),text(r,&quot;source_commit&quot;),</span>
+<span class="fc" id="L47">                    text(r,&quot;request_key&quot;),text(r,&quot;fingerprint&quot;),text(r,&quot;state&quot;),text(r,&quot;result_json&quot;),text(r,&quot;failure_code&quot;),</span>
+<span class="fc" id="L48">                    r.getLong(&quot;created_at&quot;),r.getLong(&quot;updated_at&quot;),r.getLong(&quot;row_version&quot;));</span>
+<span class="pc" id="L49">            try { validate(receipt); } catch (RuntimeException invalid) { throw new IOException(&quot;Invalid stored analysis receipt&quot;, invalid); }</span>
+<span class="fc" id="L50">            return receipt;</span>
+        });
+<span class="fc" id="L52">    }</span>
+
+    /** Import only into caller-authorized isolated storage under an explicitly remapped identity. */
+    public static void restore(EntityManager em, PlatformTransactionManager tx, Receipt receipt, String targetId, AnalysisAdapterStore.Scope target) {
+<span class="fc" id="L56">        validate(receipt);</span>
+<span class="pc bpc" id="L57" title="2 of 4 branches missed.">        if (!canonicalId(targetId) || target == null) throw invalid();</span>
+<span class="fc" id="L58">        new TransactionTemplate(tx).executeWithoutResult(status -&gt; {</span>
+<span class="fc" id="L59">            var row = new AnalysisAdapterOperation();</span>
+<span class="fc" id="L60">            row.id = targetId;</span>
+<span class="fc" id="L61">            row.actor = target.actor(); row.repository = target.repository(); row.workspace = target.workspace(); row.branch = target.branch();</span>
+<span class="fc" id="L62">            row.kind = receipt.kind(); row.sourceCommit = receipt.sourceCommit(); row.requestKey = receipt.requestKey();</span>
+<span class="fc" id="L63">            row.commandKey = AnalysisAdapterStore.command(target, row.kind, row.requestKey);</span>
+<span class="fc" id="L64">            row.fingerprint = receipt.fingerprint();</span>
+<span class="fc" id="L65">            String result = receipt.resultJson();</span>
+<span class="fc" id="L66">            boolean interrupted = &quot;RUNNING&quot;.equals(receipt.state());</span>
+<span class="pc bpc" id="L67" title="1 of 4 branches missed.">            if (result != null &amp;&amp; !document(receipt.kind())) {</span>
+<span class="nc" id="L68">                var restored = ChildAnalysisReceipt.restoreResult(receipt.kind(),receipt.sourceId().value(),targetId,JSON.readTree(result));</span>
+<span class="nc bnc" id="L69" title="All 2 branches missed.">                interrupted = restored == null;</span>
+<span class="nc bnc" id="L70" title="All 2 branches missed.">                result = interrupted ? null : JSON.writeValueAsString(restored);</span>
+            }
+<span class="fc bfc" id="L72" title="All 2 branches covered.">            row.state = interrupted ? &quot;FAILED&quot; : receipt.state();</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">            row.failureCode = interrupted ? &quot;OUTCOME_UNKNOWN&quot; : receipt.failureCode();</span>
+<span class="fc" id="L74">            row.resultJson = result; row.createdAt = receipt.createdAt(); row.updatedAt = receipt.updatedAt();</span>
+<span class="fc" id="L75">            em.persist(row); em.flush();</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">            long revision = Math.addExact(receipt.sequence(), interrupted ? 1L : 0L);</span>
+<span class="fc" id="L77">            em.createQuery(&quot;update AnalysisAdapterOperation o set o.revision=:revision where o.id=:id&quot;)</span>
+<span class="fc" id="L78">                    .setParameter(&quot;revision&quot;, revision).setParameter(&quot;id&quot;, targetId).executeUpdate();</span>
+<span class="fc" id="L79">            em.refresh(row);</span>
+<span class="fc" id="L80">        });</span>
+<span class="fc" id="L81">    }</span>
+
+    private static void validate(Receipt r) {
+<span class="pc bpc" id="L84" title="5 of 10 branches missed.">        if (r == null || r.scope() == null || r.sourceId() == null || !REFERENCE.equals(r.sourceId().kind()) || !canonicalId(r.sourceId().value())</span>
+<span class="pc bpc" id="L85" title="3 of 6 branches missed.">                || !AnalysisAdapterStore.kinds().contains(r.kind()) || r.sourceCommit() == null || !r.sourceCommit().matches(&quot;[a-f0-9]{40}|[a-f0-9]{64}&quot;)</span>
+<span class="pc bpc" id="L86" title="2 of 4 branches missed.">                || !AnalysisAdapterStore.hash(r.requestKey()) || !AnalysisAdapterStore.hash(r.fingerprint())</span>
+<span class="pc bpc" id="L87" title="4 of 8 branches missed.">                || r.createdAt() &lt; 0 || r.updatedAt() &lt; r.createdAt() || r.sequence() &lt; 0 || r.sequence() == Long.MAX_VALUE) throw invalid();</span>
+<span class="pc bpc" id="L88" title="2 of 4 branches missed.">        switch (r.state()) {</span>
+            case &quot;COMPLETED&quot; -&gt; {
+<span class="pc bpc" id="L90" title="2 of 4 branches missed.">                if (r.failureCode() != null || r.resultJson() == null</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">                        || r.resultJson().getBytes(StandardCharsets.UTF_8).length &gt; PortableRows.MAX_RECORD_BYTES / 4) throw invalid();</span>
+<span class="fc" id="L92">                var result = JSON.readTree(r.resultJson());</span>
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">                if (document(r.kind())) {</span>
+<span class="fc" id="L94">                    validateDocument(r.kind(), result);</span>
+<span class="nc" id="L95">                } else ChildAnalysisReceipt.validate(r.kind(),r.sourceId().value(),result);</span>
+<span class="fc" id="L96">            }</span>
+<span class="pc bpc" id="L97" title="2 of 4 branches missed.">            case &quot;RUNNING&quot;,&quot;EXPIRED&quot;,&quot;CANCELLED&quot; -&gt; { if (r.resultJson() != null || r.failureCode() != null) throw invalid(); }</span>
+<span class="nc bnc" id="L98" title="All 6 branches missed.">            case &quot;FAILED&quot; -&gt; { if (r.resultJson() != null || r.failureCode() == null || !FAILURES.contains(r.failureCode())) throw invalid(); }</span>
+<span class="nc" id="L99">            default -&gt; throw invalid();</span>
+        }
+<span class="fc" id="L101">    }</span>
+    private static boolean document(String kind) {
+<span class="pc bpc" id="L103" title="2 of 4 branches missed.">        return &quot;DOCUMENT_EXTRACTION&quot;.equals(kind) || &quot;REGULATION_MAPPING&quot;.equals(kind);</span>
+    }
+
+    private static void validateDocument(String kind, tools.jackson.databind.JsonNode result) {
+<span class="fc" id="L107">        boolean extraction = &quot;DOCUMENT_EXTRACTION&quot;.equals(kind);</span>
+<span class="fc" id="L108">        var fields = new java.util.HashSet&lt;&gt;(Set.of(&quot;fileName&quot;,&quot;totalPages&quot;,&quot;inputTruncated&quot;,&quot;inputCharacters&quot;));</span>
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">        fields.add(extraction ? &quot;aiCandidates&quot; : &quot;matches&quot;);</span>
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">        if (extraction) fields.add(&quot;ruleBased&quot;);</span>
+<span class="pc bpc" id="L111" title="2 of 6 branches missed.">        if (!result.isObject() || !Set.copyOf(result.propertyNames()).equals(fields) || !result.path(&quot;fileName&quot;).isString()</span>
+<span class="pc bpc" id="L112" title="2 of 4 branches missed.">                || !result.path(&quot;totalPages&quot;).isIntegralNumber() || !result.path(&quot;inputCharacters&quot;).isIntegralNumber()</span>
+<span class="pc bpc" id="L113" title="2 of 4 branches missed.">                || result.path(&quot;totalPages&quot;).asLong() &lt; 0 || result.path(&quot;inputCharacters&quot;).asLong() &lt; 0</span>
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">                || !result.path(&quot;inputTruncated&quot;).isBoolean()) throw invalid();</span>
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">        if (extraction) {</span>
+<span class="nc" id="L116">            validateRows(result.path(&quot;aiCandidates&quot;), Set.of(&quot;text&quot;,&quot;sectionRef&quot;,&quot;confidence&quot;,&quot;type&quot;),com.taxonomy.dto.AiExtractedCandidate.class);</span>
+<span class="nc" id="L117">            validateRows(result.path(&quot;ruleBased&quot;), Set.of(&quot;index&quot;,&quot;sectionHeading&quot;,&quot;text&quot;,&quot;pageNumber&quot;,&quot;selected&quot;),com.taxonomy.dto.RequirementCandidate.class);</span>
+        } else {
+<span class="fc" id="L119">            validateRows(result.path(&quot;matches&quot;), Set.of(&quot;nodeCode&quot;,&quot;linkType&quot;,&quot;confidence&quot;,&quot;paragraphRef&quot;,&quot;reason&quot;),com.taxonomy.dto.RegulationArchitectureMatch.class);</span>
+        }
+<span class="fc" id="L121">    }</span>
+
+    private static void validateRows(tools.jackson.databind.JsonNode rows, Set&lt;String&gt; fields, Class&lt;?&gt; dto) {
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">        if (!rows.isArray()) throw invalid();</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">        for (var row : rows) {</span>
+<span class="pc bpc" id="L126" title="2 of 4 branches missed.">            if (!row.isObject() || !fields.containsAll(row.propertyNames())) throw invalid();</span>
+<span class="pc bpc" id="L127" title="1 of 4 branches missed.">            for (var field : row) if (field.isContainer()) throw invalid();</span>
+<span class="fc" id="L128">            JSON.treeToValue(row, dto);</span>
+<span class="fc" id="L129">        }</span>
+<span class="fc" id="L130">    }</span>
+
+    private static boolean canonicalId(String id) {
+<span class="pc" id="L133">        try { return UUID.fromString(id).toString().equals(id); } catch (NullPointerException | IllegalArgumentException invalid) { return false; }</span>
+    }
+<span class="fc" id="L135">    private static IllegalArgumentException invalid() { return new IllegalArgumentException(&quot;Invalid portable analysis receipt&quot;); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

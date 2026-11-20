@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PersonalRebaseReceipt.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.storage</a> &gt; <span class="el_source">PersonalRebaseReceipt.java</span></div><h1>PersonalRebaseReceipt.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.storage;
+
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.PersonIdent;
+import org.eclipse.jgit.lib.RefUpdate;
+import org.eclipse.jgit.lib.TagBuilder;
+import org.eclipse.jgit.revwalk.RevWalk;
+import tools.jackson.databind.json.JsonMapper;
+
+import java.io.IOException;
+import java.util.Objects;
+
+/** A retained tag keeps the exact replay reachable across the Git/SQL commit boundary. */
+<span class="fc" id="L15">public record PersonalRebaseReceipt(String repository, String workspace, String branch, String sourceBranch,</span>
+        String forkPoint, String owner, String ownerPrincipal, String tracked, String portfolioDigest,
+        String previousCurrent, String previousIntegrated, DslGitRepository.RebaseReplay replay) {
+<span class="fc" id="L18">    private static final JsonMapper JSON = JsonMapper.builder().build();</span>
+<span class="fc" id="L19">    private static String ref(String scope) { return &quot;refs/taxonomy/personal-rebase/&quot; + scope; }</span>
+
+    public static PersonalRebaseReceipt read(DslGitRepository target, String scope) throws IOException {
+<span class="fc" id="L22">        var stored = target.readFreshRef(ref(scope));</span>
+<span class="fc bfc" id="L23" title="All 2 branches covered.">        if (stored == null) return null;</span>
+<span class="fc" id="L24">        try (var walk = new RevWalk(target.getGitRepository())) {</span>
+<span class="pc bpc" id="L25" title="1 of 2 branches missed.">            if (stored.isSymbolic()) throw new IOException(&quot;Invalid personal rebase receipt&quot;);</span>
+<span class="fc" id="L26">            var tag = walk.parseTag(stored.getObjectId());</span>
+<span class="fc" id="L27">            var value = JSON.readValue(tag.getFullMessage(), PersonalRebaseReceipt.class);</span>
+<span class="pc bpc" id="L28" title="2 of 4 branches missed.">            if (!scope.equals(tag.getTagName()) || !value.replay.completed()</span>
+<span class="pc bpc" id="L29" title="1 of 2 branches missed.">                    || !value.replay.newHead().equals(tag.getObject().name()))</span>
+<span class="nc" id="L30">                throw new IOException(&quot;Invalid personal rebase receipt&quot;);</span>
+<span class="fc" id="L31">            return value;</span>
+        }
+    }
+
+    /** Both persisted workspace pointers cover this result, even if later commits followed it. */
+    public boolean acknowledgedBy(DslGitRepository target, String current, String integrated) throws IOException {
+<span class="pc bpc" id="L37" title="1 of 4 branches missed.">        return contains(target, replay.newHead(), current) &amp;&amp; contains(target, tracked, integrated);</span>
+    }
+
+    private static boolean contains(DslGitRepository target, String ancestor, String commit) throws IOException {
+<span class="pc bpc" id="L41" title="1 of 6 branches missed.">        return commit != null &amp;&amp; (ancestor.equals(commit) || target.isAncestor(ancestor, commit));</span>
+    }
+
+    public void retain(DslGitRepository target, String scope) throws IOException {
+<span class="fc" id="L45">        var repo = target.getGitRepository();</span>
+<span class="fc" id="L46">        try (var insert = repo.newObjectInserter()) {</span>
+<span class="fc" id="L47">            var tag = new TagBuilder();</span>
+<span class="fc" id="L48">            tag.setTag(scope);</span>
+<span class="fc" id="L49">            tag.setTagger(new PersonIdent(owner, owner + &quot;@taxonomy.local&quot;));</span>
+<span class="fc" id="L50">            tag.setObjectId(ObjectId.fromString(replay.newHead()), Constants.OBJ_COMMIT);</span>
+<span class="fc" id="L51">            tag.setMessage(JSON.writeValueAsString(this));</span>
+<span class="fc" id="L52">            var id = insert.insert(tag);</span>
+<span class="fc" id="L53">            insert.flush();</span>
+<span class="fc" id="L54">            var update = repo.updateRef(ref(scope));</span>
+<span class="fc" id="L55">            update.setExpectedOldObjectId(ObjectId.zeroId());</span>
+<span class="fc" id="L56">            update.setNewObjectId(id);</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">            if (update.update() != RefUpdate.Result.NEW) throw new IOException(&quot;Another personal rebase is pending&quot;);</span>
+        }
+<span class="fc" id="L59">    }</span>
+
+    public void publish(DslGitRepository target) throws IOException {
+<span class="fc" id="L62">        ExpectedHeadDslCommitter.replaceBranchHead(target.getGitRepository(), branch, ObjectId.fromString(replay.originalHead()),</span>
+<span class="fc" id="L63">                ObjectId.fromString(replay.newHead()), new PersonIdent(owner, owner + &quot;@taxonomy.local&quot;),</span>
+<span class="fc" id="L64">                &quot;rebase: &quot; + replay.originalHead() + &quot; onto &quot; + tracked);</span>
+<span class="fc" id="L65">    }</span>
+
+    public void release(DslGitRepository target, String scope) throws IOException {
+<span class="fc" id="L68">        var stored = target.readFreshRef(ref(scope));</span>
+<span class="pc bpc" id="L69" title="2 of 4 branches missed.">        if (stored == null || !Objects.equals(this, read(target, scope))) return;</span>
+<span class="fc" id="L70">        var update = target.getGitRepository().updateRef(ref(scope));</span>
+<span class="fc" id="L71">        update.setExpectedOldObjectId(stored.getObjectId());</span>
+<span class="fc" id="L72">        update.setForceUpdate(true);</span>
+<span class="fc" id="L73">        var result = update.delete();</span>
+<span class="pc bpc" id="L74" title="3 of 4 branches missed.">        if (result != RefUpdate.Result.FORCED &amp;&amp; result != RefUpdate.Result.NO_CHANGE)</span>
+<span class="nc" id="L75">            throw new IOException(&quot;Could not release the personal rebase receipt&quot;);</span>
+<span class="fc" id="L76">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

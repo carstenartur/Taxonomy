@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkspaceActorAccess.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">WorkspaceActorAccess.java</span></div><h1>WorkspaceActorAccess.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.workspace.model.UserWorkspace;
+import org.springframework.security.access.AccessDeniedException;
+import java.util.Optional;
+import java.util.UUID;
+
+/** Application identity authority for opt-in collaborative workspaces. */
+@FunctionalInterface
+public interface WorkspaceActorAccess {
+    void requireActive(String username);
+
+    /** Return the verified stable owner, or empty for a verified pre-migration external login. */
+    default Optional&lt;UUID&gt; currentOwnerPrincipal(String username) {
+<span class="fc" id="L15">        throw new AccessDeniedException(&quot;Verified workspace owner required&quot;);</span>
+    }
+
+    /** Implementations with verified actors separate ephemeral state from the legacy scope cache. */
+    default Optional&lt;UUID&gt; currentNavigationPrincipal(String username) {
+<span class="fc" id="L20">        return Optional.empty();</span>
+    }
+
+    /** An explicit stable owner supersedes the historical routing label. */
+    default boolean owns(String username, UserWorkspace workspace) {
+<span class="pc bpc" id="L25" title="2 of 6 branches missed.">        if (workspace == null || username == null || !username.equals(workspace.getUsername())) return false;</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">        if (workspace.getOwnerPrincipalId() == null) return true;</span>
+<span class="fc" id="L27">        return currentOwnerPrincipal(username).map(UUID::toString)</span>
+<span class="fc" id="L28">                .filter(workspace.getOwnerPrincipalId()::equals).isPresent();</span>
+    }
+
+    /** Ownership proof for one queued analysis in the selected personal workspace. */
+    @FunctionalInterface
+    interface AnalysisOwner {
+        boolean owns(String username, UserWorkspace workspace);
+
+        /** Bind the independently verified actor to the route and recheck its authority at use time. */
+        static AnalysisOwner forWorkspace(String username, String workspaceId, UUID principal, Runnable recheck) {
+<span class="fc" id="L38">            java.util.Objects.requireNonNull(username);</span>
+<span class="fc" id="L39">            java.util.Objects.requireNonNull(workspaceId);</span>
+<span class="fc" id="L40">            java.util.Objects.requireNonNull(recheck);</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">            String id = principal == null ? null : principal.toString();</span>
+<span class="fc" id="L42">            return (scope, row) -&gt; {</span>
+<span class="pc bpc" id="L43" title="3 of 6 branches missed.">                if (row == null || !username.equals(scope) || !username.equals(row.getUsername())</span>
+<span class="fc bfc" id="L44" title="All 4 branches covered.">                        || !workspaceId.equals(row.getWorkspaceId()) || !java.util.Objects.equals(id, row.getOwnerPrincipalId())) {</span>
+<span class="fc" id="L45">                    return false;</span>
+                }
+<span class="fc" id="L47">                recheck.run();</span>
+<span class="fc" id="L48">                return true;</span>
+            };
+        }
+    }
+
+    /** Existing unbound rows retain their compatibility scope. A bound owner needs a verified login. */
+    default AnalysisOwner admitAnalysisOwner(String username, UserWorkspace workspace) {
+<span class="pc bpc" id="L55" title="3 of 6 branches missed.">        if (workspace == null || username == null || !username.equals(workspace.getUsername())</span>
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">                || workspace.getOwnerPrincipalId() != null) throw new AccessDeniedException(&quot;Verified workspace owner required&quot;);</span>
+<span class="fc" id="L57">        return AnalysisOwner.forWorkspace(username, workspace.getWorkspaceId(), null, () -&gt; {});</span>
+    }
+
+    static WorkspaceActorAccess unavailable() {
+<span class="fc" id="L61">        return username -&gt; { throw new AccessDeniedException(&quot;Verified active principal required for shared editing&quot;); };</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

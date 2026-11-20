@@ -1,0 +1,252 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureWordSectionRenderer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-reporting</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.reporting.render.document</a> &gt; <span class="el_source">ArchitectureWordSectionRenderer.java</span></div><h1>ArchitectureWordSectionRenderer.java</h1><pre class="source lang-java linenums">package com.taxonomy.reporting.render.document;
+
+import com.taxonomy.diagram.DiagramModel;
+import com.taxonomy.diagram.DiagramNode;
+import com.taxonomy.reporting.api.document.ArchitectureReportDocument;
+
+import com.taxonomy.reporting.render.decision.DecisionReportLabels;
+
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+
+import java.util.*;
+
+/** The same architecture evidence is embedded in both snapshot Word reports. */
+<span class="fc" id="L14">public final class ArchitectureWordSectionRenderer {</span>
+    public void write(XWPFDocument document, ArchitectureReportDocument report) throws Exception {
+<span class="fc" id="L16">        var labels = new DecisionReportLabels(report.languageTag());</span>
+<span class="fc" id="L17">        var writer = new WordDocumentWriter(document, labels);</span>
+<span class="fc" id="L18">        writer.properties(report);</span>
+<span class="fc" id="L19">        writer.heading(labels.requirement(), 1, &quot;architecture_requirement&quot;);</span>
+<span class="fc" id="L20">        writer.paragraph(report.requirement());</span>
+<span class="fc" id="L21">        writer.heading(labels.scope(), 2, null);</span>
+<span class="fc" id="L22">        writer.paragraph(report.scope());</span>
+<span class="fc" id="L23">        ReportInventory.diagram(report.diagram(), labels.german()).forEach(writer::paragraph);</span>
+<span class="fc" id="L24">        writer.heading(labels.recommendation(), 2, null);</span>
+<span class="fc" id="L25">        writer.paragraph(report.recommendation());</span>
+<span class="fc" id="L26">        writer.heading(labels.gaps(), 2, null);</span>
+<span class="fc" id="L27">        writer.table(</span>
+<span class="fc" id="L28">                List.of(labels.gaps()),</span>
+<span class="fc bfc" id="L29" title="All 2 branches covered.">                (report.unresolvedGaps().isEmpty()</span>
+<span class="fc" id="L30">                                ? List.of(labels.noneRecorded())</span>
+<span class="fc" id="L31">                                : report.unresolvedGaps())</span>
+<span class="fc" id="L32">                        .stream().map(List::of).toList());</span>
+<span class="fc" id="L33">        writer.heading(labels.architectureOverview(), 1, &quot;architecture_figures&quot;);</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        if (!report.diagram().title().equals(report.title()))</span>
+<span class="fc" id="L35">            writer.paragraph(report.diagram().title());</span>
+<span class="fc" id="L36">        var plan = new ArchitectureFigurePlanner().plan(report.diagram(), report.scene());</span>
+<span class="fc" id="L37">        var renderer = new ArchitectureFigureRenderer();</span>
+<span class="fc" id="L38">        var panels = new ArrayList&lt;ArchitectureFigurePlanner.Panel&gt;();</span>
+<span class="fc" id="L39">        panels.add(plan.overview());</span>
+<span class="fc" id="L40">        panels.addAll(plan.details());</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">        for (var panel : panels) {</span>
+<span class="fc" id="L42">            var figure = renderer.render(panel, report.languageTag());</span>
+<span class="fc" id="L43">            writer.picture(</span>
+<span class="fc" id="L44">                    figure.png(),</span>
+<span class="fc" id="L45">                    figure.id(),</span>
+<span class="fc" id="L46">                    figure.caption(),</span>
+<span class="fc" id="L47">                    figure.altDescription(),</span>
+<span class="fc" id="L48">                    figure.width(),</span>
+<span class="fc" id="L49">                    figure.height(),</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">                    !panel.overview());</span>
+<span class="fc" id="L51">            writer.caption(figure.caption(), true);</span>
+<span class="fc bfc" id="L52" title="All 4 branches covered.">            if (!panel.overview() &amp;&amp; !panel.diagram().edges().isEmpty()) {</span>
+<span class="fc" id="L53">                var key =</span>
+<span class="fc" id="L54">                        writer.table(</span>
+<span class="fc" id="L55">                                List.of(</span>
+<span class="fc" id="L56">                                        labels.identifier(),</span>
+<span class="fc" id="L57">                                        labels.source() + &quot; → &quot; + labels.target(),</span>
+<span class="fc" id="L58">                                        labels.type(),</span>
+<span class="fc" id="L59">                                        labels.category()),</span>
+<span class="fc" id="L60">                                panel.diagram().edges().stream()</span>
+<span class="fc" id="L61">                                        .map(</span>
+                                                edge -&gt;
+<span class="fc" id="L63">                                                        List.of(</span>
+<span class="fc" id="L64">                                                                edge.id(),</span>
+<span class="fc" id="L65">                                                                edge.sourceId()</span>
+                                                                        + &quot; → &quot;
+<span class="fc" id="L67">                                                                        + edge.targetId(),</span>
+<span class="fc" id="L68">                                                                value(edge.relationType(), labels),</span>
+<span class="fc" id="L69">                                                                value(</span>
+<span class="fc" id="L70">                                                                        edge.relationCategory(),</span>
+                                                                        labels)
+                                                                        + &quot; · &quot; + com.taxonomy.export.DiagramPresentation
+<span class="fc" id="L73">                                                                                .relationshipStatus(edge.metadata(), labels.german())))</span>
+<span class="fc" id="L74">                                        .toList());</span>
+<span class="fc" id="L75">                writer.columnWidths(key, 12, 32, 32, 24);</span>
+            }
+<span class="fc" id="L77">        }</span>
+<span class="fc" id="L78">        writer.heading(labels.legend(), 2, null);</span>
+<span class="fc" id="L79">        writer.paragraph(labels.relationKeyNotice());</span>
+<span class="fc" id="L80">        writer.caption(labels.legend(), false);</span>
+<span class="fc" id="L81">        writer.table(</span>
+<span class="fc" id="L82">                List.of(labels.identifier(), labels.titleLabel()),</span>
+<span class="fc" id="L83">                report.legend().stream().map(e -&gt; List.of(e.symbol(), e.meaning())).toList());</span>
+<span class="fc" id="L84">        writer.heading(labels.elements(), 1, &quot;architecture_elements&quot;);</span>
+<span class="fc" id="L85">        writer.caption(labels.elements(), false);</span>
+<span class="fc" id="L86">        writer.table(</span>
+<span class="fc" id="L87">                List.of(</span>
+<span class="fc" id="L88">                        labels.identifier(),</span>
+<span class="fc" id="L89">                        labels.titleLabel(),</span>
+<span class="fc" id="L90">                        labels.type(),</span>
+<span class="fc" id="L91">                        labels.score(),</span>
+<span class="fc" id="L92">                        labels.parentNode()),</span>
+<span class="fc" id="L93">                report.elements().stream()</span>
+<span class="fc" id="L94">                        .map(</span>
+                                e -&gt;
+<span class="fc" id="L96">                                        List.of(</span>
+<span class="fc" id="L97">                                                e.id(),</span>
+<span class="fc" id="L98">                                                value(e.title(), labels),</span>
+<span class="fc" id="L99">                                                value(e.type(), labels)</span>
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">                                                        + (e.container()</span>
+<span class="nc" id="L101">                                                                ? &quot; · &quot; + labels.container()</span>
+<span class="fc" id="L102">                                                                : &quot;&quot;)</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">                                                        + (e.anchor()</span>
+<span class="fc" id="L104">                                                                ? &quot; · &quot; + labels.anchor()</span>
+<span class="fc" id="L105">                                                                : &quot;&quot;),</span>
+<span class="fc" id="L106">                                                percentage(e.relevance()),</span>
+<span class="fc" id="L107">                                                value(e.parentId(), labels)))</span>
+<span class="fc" id="L108">                        .toList());</span>
+<span class="fc" id="L109">        writeResponsibilities(writer, labels, report.diagram());</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        if (!report.nodeReasons().isEmpty()) {</span>
+<span class="fc" id="L111">            writer.heading(labels.recordedNodeReasons(), 2, null);</span>
+<span class="fc" id="L112">            report.nodeReasons().entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -&gt; {</span>
+<span class="fc" id="L113">                writer.heading(entry.getKey(), 3, null);</span>
+<span class="fc" id="L114">                writer.paragraph(entry.getValue());</span>
+<span class="fc" id="L115">            });</span>
+        }
+<span class="fc" id="L117">        writer.heading(labels.relations(), 1, &quot;architecture_relations&quot;);</span>
+<span class="fc" id="L118">        writer.caption(labels.relations(), false);</span>
+<span class="fc" id="L119">        var metadataById = new HashMap&lt;String, com.taxonomy.diagram.DiagramRelationMetadata&gt;();</span>
+<span class="fc" id="L120">        report.diagram().edges().forEach(edge -&gt; metadataById.put(edge.id(), edge.metadata()));</span>
+<span class="fc" id="L121">        writer.table(</span>
+<span class="fc" id="L122">                List.of(</span>
+<span class="fc" id="L123">                        labels.identifier(),</span>
+<span class="fc" id="L124">                        labels.source(),</span>
+<span class="fc" id="L125">                        labels.target(),</span>
+<span class="fc" id="L126">                        labels.type(),</span>
+<span class="fc" id="L127">                        labels.category(),</span>
+<span class="fc" id="L128">                        labels.score()),</span>
+<span class="fc" id="L129">                report.relations().stream()</span>
+<span class="fc" id="L130">                        .map(</span>
+                                e -&gt;
+<span class="fc" id="L132">                                        List.of(</span>
+<span class="fc" id="L133">                                                e.id(),</span>
+<span class="fc" id="L134">                                                e.sourceId(),</span>
+<span class="fc" id="L135">                                                e.targetId(),</span>
+<span class="fc" id="L136">                                                value(e.type(), labels),</span>
+<span class="fc" id="L137">                                                value(e.category(), labels) + &quot; · &quot;</span>
+<span class="fc" id="L138">                                                        + com.taxonomy.export.DiagramPresentation.relationshipStatus(metadataById.get(e.id()), labels.german()),</span>
+<span class="fc" id="L139">                                                percentage(e.relevance())))</span>
+<span class="fc" id="L140">                        .toList());</span>
+<span class="fc bfc" id="L141" title="All 4 branches covered.">        if (report.diagram().edges().stream().anyMatch(edge -&gt; edge.metadata() != null</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">                || report.relationReasons().containsKey(edge.id()))) {</span>
+<span class="fc" id="L143">            writer.heading(labels.relationshipProvenance(), 2, null);</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">            for (var edge : report.diagram().edges()) {</span>
+<span class="fc" id="L145">                var supplemental = report.relationReasons().get(edge.id());</span>
+<span class="pc bpc" id="L146" title="1 of 4 branches missed.">                if (edge.metadata() == null &amp;&amp; supplemental == null) continue;</span>
+<span class="fc" id="L147">                writer.heading(edge.id() + &quot; · &quot; + edge.sourceId() + &quot; → &quot; + edge.targetId(), 2, null);</span>
+                // One point between evidence fields; body type remains the writer's readable 10pt.
+<span class="fc" id="L149">                relationshipDetails(edge.metadata(), supplemental, labels.german())</span>
+<span class="fc" id="L150">                        .forEach(detail -&gt; writer.paragraph(detail).setSpacingAfter(20));</span>
+<span class="fc" id="L151">            }</span>
+        }
+<span class="fc" id="L153">        writer.heading(labels.provenance(), 1, &quot;architecture_evidence&quot;);</span>
+<span class="fc" id="L154">        var e = report.evidence();</span>
+<span class="fc" id="L155">        writer.table(</span>
+<span class="fc" id="L156">                List.of(labels.titleLabel(), labels.identifier()),</span>
+<span class="fc" id="L157">                List.of(</span>
+<span class="fc" id="L158">                        row(labels.project(), e.projectId()),</span>
+<span class="fc" id="L159">                        row(labels.requirementId(), e.requirementId()),</span>
+<span class="fc" id="L160">                        row(</span>
+<span class="fc" id="L161">                                labels.requirementVersion(),</span>
+<span class="fc" id="L162">                                e.requirementVersionId() + &quot; / v&quot; + e.requirementVersionNumber()),</span>
+<span class="fc" id="L163">                        row(labels.analysisSnapshot(), e.snapshotId()),</span>
+<span class="fc" id="L164">                        row(labels.graphDigest(), e.graphSha256()),</span>
+<span class="fc" id="L165">                        row(labels.repository(), value(e.repositoryId(), labels)),</span>
+<span class="fc" id="L166">                        row(labels.workspace(), value(e.workspaceId(), labels)),</span>
+<span class="fc" id="L167">                        row(labels.branch(), value(e.branch(), labels)),</span>
+<span class="fc" id="L168">                        row(labels.basedOnCommit(), value(e.commit(), labels)),</span>
+<span class="fc" id="L169">                        row(labels.analysisProvider(), value(e.provider(), labels)),</span>
+<span class="fc" id="L170">                        row(labels.analysisModel(), value(e.model(), labels)),</span>
+<span class="fc" id="L171">                        row(</span>
+<span class="fc" id="L172">                                labels.recordedTaxonomyDigest(),</span>
+<span class="fc" id="L173">                                value(e.taxonomyFingerprint(), labels))));</span>
+<span class="fc" id="L174">    }</span>
+
+    static void writeResponsibilities(WordDocumentWriter writer, DecisionReportLabels labels, DiagramModel diagram) {
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        var assigned = diagram.nodes().stream().filter(node -&gt; node.responsibility() != null)</span>
+<span class="fc" id="L178">                .sorted(Comparator.comparing(DiagramNode::id)).toList();</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        if (assigned.isEmpty()) return;</span>
+<span class="fc" id="L180">        writer.heading(labels.organizationalResponsibilities(), 2, null);</span>
+<span class="fc" id="L181">        var table = writer.table(List.of(labels.identifier(), labels.responsibility(),</span>
+<span class="fc" id="L182">                        labels.responsibilityUnitId(), labels.responsibilitySource()),</span>
+<span class="fc" id="L183">                assigned.stream().map(node -&gt; {</span>
+<span class="fc" id="L184">                    var assignment = node.responsibility();</span>
+<span class="fc" id="L185">                    return List.of(node.id(), assignment.name(), assignment.unitId(), assignment.sourceId());</span>
+<span class="fc" id="L186">                }).toList());</span>
+<span class="fc" id="L187">        writer.columnWidths(table, 19, 37, 22, 22);</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">        for (int index = 0; index &lt; assigned.size(); index++) {</span>
+<span class="fc" id="L189">            var paragraph = table.getRow(index + 1).getCell(1).getParagraphs().getFirst();</span>
+<span class="fc" id="L190">            var mark = paragraph.insertNewRun(0);</span>
+<span class="fc" id="L191">            mark.setFontSize(9);</span>
+<span class="fc" id="L192">            mark.setColor(assigned.get(index).responsibility().color().substring(1));</span>
+<span class="fc" id="L193">            mark.setText(&quot;● &quot;);</span>
+        }
+<span class="fc" id="L195">    }</span>
+
+    private List&lt;String&gt; row(String name, Object value) {
+<span class="fc" id="L198">        return List.of(name, String.valueOf(value));</span>
+    }
+
+    /** Equal recorded reasons share their value while retaining every source-field label. */
+    private static List&lt;String&gt; relationshipDetails(com.taxonomy.diagram.DiagramRelationMetadata metadata,
+            Map&lt;String, String&gt; supplemental, boolean german) {
+<span class="fc bfc" id="L204" title="All 2 branches covered.">        var labels = german ? List.of(&quot;Aufgenommen weil&quot;, &quot;Herleitungsbegründung&quot;, &quot;Begründung der Aufnahme&quot;)</span>
+<span class="fc" id="L205">                : List.of(&quot;Included because&quot;, &quot;Derivation reason&quot;, &quot;Presence reason&quot;);</span>
+<span class="fc bfc" id="L206" title="All 2 branches covered.">        var values = metadata == null ? Arrays.&lt;String&gt;asList(null, null, null)</span>
+<span class="fc" id="L207">                : Arrays.asList(metadata.includedBecause(), metadata.derivationReason(), metadata.presenceReason());</span>
+<span class="fc" id="L208">        var grouped = new LinkedHashMap&lt;String, List&lt;String&gt;&gt;();</span>
+<span class="fc bfc" id="L209" title="All 2 branches covered.">        for (int i = 0; i &lt; labels.size(); i++) {</span>
+<span class="fc" id="L210">            String value = values.get(i);</span>
+<span class="fc bfc" id="L211" title="All 2 branches covered.">            if (value != null) grouped.computeIfAbsent(value, ignored -&gt; new ArrayList&lt;&gt;()).add(labels.get(i));</span>
+        }
+        // Group only exactly equal values within this relationship. Keep distinct wording,
+        // every source-field label and the frozen graph metadata unchanged.
+<span class="fc bfc" id="L215" title="All 2 branches covered.">        if (supplemental != null) {</span>
+<span class="fc bfc" id="L216" title="All 2 branches covered.">            for (String key : List.of(&quot;presenceReason&quot;, &quot;decisionComment&quot;)) {</span>
+<span class="fc" id="L217">                String value = supplemental.get(key);</span>
+<span class="pc bpc" id="L218" title="1 of 4 branches missed.">                if (value == null || value.isBlank()) continue;</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">                String label = key.equals(&quot;presenceReason&quot;)</span>
+<span class="fc bfc" id="L220" title="All 2 branches covered.">                        ? (german ? &quot;Gespeicherte Auswahlbegründung&quot; : &quot;Recorded selection reason&quot;)</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">                        : (german ? &quot;Gespeicherter Prüfkommentar&quot; : &quot;Recorded review comment&quot;);</span>
+<span class="fc" id="L222">                grouped.computeIfAbsent(value, ignored -&gt; new ArrayList&lt;&gt;()).add(label);</span>
+<span class="fc" id="L223">            }</span>
+        }
+<span class="fc" id="L225">        var result = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L226">        boolean reasonsWritten = false;</span>
+<span class="fc bfc" id="L227" title="All 2 branches covered.">        var details = metadata == null ? List.&lt;String&gt;of()</span>
+<span class="fc" id="L228">                : com.taxonomy.export.DiagramPresentation.relationshipDetails(metadata, german);</span>
+<span class="fc bfc" id="L229" title="All 2 branches covered.">        for (String detail : details) {</span>
+<span class="fc bfc" id="L230" title="All 2 branches covered.">            if (labels.stream().anyMatch(label -&gt; detail.startsWith(label + &quot;: &quot;))) {</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">                if (!reasonsWritten) {</span>
+<span class="fc" id="L232">                    grouped.forEach((value, fields) -&gt; result.add(String.join(&quot;, &quot;, fields) + &quot;: &quot; + value));</span>
+<span class="fc" id="L233">                    reasonsWritten = true;</span>
+                }
+            } else {
+<span class="fc" id="L236">                result.add(detail);</span>
+            }
+<span class="fc" id="L238">        }</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">        if (!reasonsWritten)</span>
+<span class="fc" id="L240">            grouped.forEach((value, fields) -&gt; result.add(String.join(&quot;, &quot;, fields) + &quot;: &quot; + value));</span>
+<span class="fc" id="L241">        return result;</span>
+    }
+
+    private String value(String text, DecisionReportLabels labels) {
+<span class="fc bfc" id="L245" title="All 2 branches covered.">        return text == null ? labels.unknown() : text;</span>
+    }
+
+    private String percentage(double score) {
+<span class="fc" id="L249">        return com.taxonomy.dto.AnalysisPercentages.display(score * 100);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DerivedProjection.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">DerivedProjection.java</span></div><h1>DerivedProjection.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+/** Durable qualification of a branch-local projection command against its captured Git source. */
+public interface DerivedProjection {
+<span class="fc" id="L5">    enum Kind { RELATION, VECTOR_BUILD, VECTOR_PURGE }</span>
+
+<span class="fc" id="L7">    record Source(String key, String generation) {}</span>
+<span class="fc" id="L8">    record Result(String generation, String model, int nodes, int relations,</span>
+                  Integer recovered, Integer superseded, Integer pending, String state, String currentCommit, String projectedCommit) {
+        public Result(String generation, String model, int nodes, int relations, Integer recovered, Integer superseded, Integer pending) {
+<span class="fc" id="L11">            this(generation, model, nodes, relations, recovered, superseded, pending, null, null, null);</span>
+<span class="fc" id="L12">        }</span>
+    }
+
+    class DecisionRequired extends IllegalStateException {
+        private final String code;
+        private final boolean retryable;
+        private final Result result;
+
+        public DecisionRequired(String code, boolean retryable, Result result, Throwable cause) {
+<span class="fc" id="L21">            super(code, cause);</span>
+<span class="fc" id="L22">            this.code = code;</span>
+<span class="fc" id="L23">            this.retryable = retryable;</span>
+<span class="fc" id="L24">            this.result = result;</span>
+<span class="fc" id="L25">        }</span>
+
+<span class="fc" id="L27">        public String code() { return code; }</span>
+<span class="fc" id="L28">        public boolean retryable() { return retryable; }</span>
+<span class="fc" id="L29">        public Result result() { return result; }</span>
+    }
+
+    Source capture(RepositoryContext scope, Kind kind, String expectedCommit);
+
+    Result apply(RepositoryContext scope, Kind kind, String expectedCommit, Source source,
+                 String operationId, Runnable authorize);
+
+    String describe(Result result);
+    Result readResult(String stored);
+
+    void verifyHead(RepositoryContext scope, String expectedCommit);
+
+    class HeadChanged extends IllegalStateException {
+        private final String actual;
+
+        public HeadChanged(String expected, String actual) {
+<span class="fc" id="L46">            super(&quot;Projection expected Git head &quot; + expected + &quot; but observed &quot; + actual);</span>
+<span class="fc" id="L47">            this.actual = actual;</span>
+<span class="fc" id="L48">        }</span>
+
+<span class="nc" id="L50">        public String actual() { return actual; }</span>
+    }
+
+    class SourceUnavailable extends IllegalStateException {
+<span class="fc" id="L54">        public SourceUnavailable(Throwable cause) { super(&quot;Captured projection source is unavailable&quot;, cause); }</span>
+    }
+
+    class SourceChanged extends IllegalStateException {
+<span class="fc" id="L58">        public SourceChanged(String message) { super(message); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

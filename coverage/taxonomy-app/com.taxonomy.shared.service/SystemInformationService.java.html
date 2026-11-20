@@ -1,0 +1,331 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SystemInformationService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.shared.service</a> &gt; <span class="el_source">SystemInformationService.java</span></div><h1>SystemInformationService.java</h1><pre class="source lang-java linenums">package com.taxonomy.shared.service;
+
+import jakarta.persistence.EntityManagerFactory;
+import org.hibernate.FlushMode;
+import org.hibernate.Session;
+import org.hibernate.SessionFactory;
+import org.hibernate.dialect.Dialect;
+import org.hibernate.dialect.OracleDialect;
+import org.hibernate.dialect.PostgreSQLDialect;
+import org.hibernate.dialect.SQLServerDialect;
+import org.hibernate.engine.spi.SessionFactoryImplementor;
+import org.hibernate.query.sqm.function.SqmFunctionRegistry;
+import org.hibernate.tool.schema.Action;
+import org.springframework.core.env.Environment;
+import org.springframework.stereotype.Service;
+
+import java.lang.management.ManagementFactory;
+import java.nio.file.FileStore;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.sql.SQLException;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+
+/** On-demand, allowlisted diagnostics. No paths, URLs, passwords or exception text leave this service. */
+@Service
+public class SystemInformationService {
+<span class="fc" id="L36">    private static final String INSTANCE_ID = java.util.UUID.randomUUID().toString();</span>
+    private final EntityManagerFactory entityManagerFactory;
+    private final Environment environment;
+
+<span class="fc" id="L40">    public SystemInformationService(EntityManagerFactory entityManagerFactory, Environment environment) {</span>
+<span class="fc" id="L41">        this.entityManagerFactory = entityManagerFactory;</span>
+<span class="fc" id="L42">        this.environment = environment;</span>
+<span class="fc" id="L43">    }</span>
+
+    public Snapshot snapshot() {
+<span class="fc" id="L46">        Runtime runtime = Runtime.getRuntime();</span>
+<span class="fc" id="L47">        var jvm = ManagementFactory.getRuntimeMXBean();</span>
+<span class="fc" id="L48">        String indexStorage = normalizeIndexStorage(environment.getProperty(</span>
+                &quot;spring.jpa.properties.hibernate.search.backend.directory.type&quot;, &quot;unknown&quot;));
+<span class="fc" id="L50">        return new Snapshot(Instant.now(), INSTANCE_ID, environment.getProperty(&quot;app.display-version&quot;, &quot;unknown&quot;),</span>
+<span class="fc" id="L51">                new RuntimeInfo(runtime.availableProcessors(), runtime.totalMemory() - runtime.freeMemory(),</span>
+<span class="fc" id="L52">                        runtime.maxMemory(), jvm.getUptime(), Instant.ofEpochMilli(jvm.getStartTime()),</span>
+<span class="fc" id="L53">                        System.getProperty(&quot;java.version&quot;), System.getProperty(&quot;java.vendor&quot;),</span>
+<span class="fc" id="L54">                        System.getProperty(&quot;os.name&quot;), System.getProperty(&quot;os.arch&quot;)),</span>
+<span class="fc" id="L55">                database(), indexStorage, disks(indexStorage));</span>
+    }
+
+    DatabaseInfo database() {
+<span class="fc" id="L59">        List&lt;String&gt; warnings = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L60">        String schemaAction = &quot;UNKNOWN&quot;;</span>
+<span class="fc" id="L61">        String product = null;</span>
+<span class="fc" id="L62">        String version = null;</span>
+<span class="fc" id="L63">        String driver = null;</span>
+<span class="fc" id="L64">        String driverVersion = null;</span>
+<span class="fc" id="L65">        String versionSource = &quot;UNAVAILABLE&quot;;</span>
+<span class="fc" id="L66">        String storageSource = &quot;UNAVAILABLE&quot;;</span>
+<span class="fc" id="L67">        String storage = &quot;UNKNOWN&quot;;</span>
+<span class="fc" id="L68">        String lifetime = &quot;UNKNOWN&quot;;</span>
+<span class="fc" id="L69">        String status = &quot;UNAVAILABLE&quot;;</span>
+<span class="fc" id="L70">        DatabaseIdentity identity = unavailableIdentity(&quot;UNAVAILABLE&quot;);</span>
+<span class="fc" id="L71">        EngineStartInfo engineStart = unavailableStart(&quot;UNAVAILABLE&quot;);</span>
+        try {
+<span class="fc" id="L73">            SessionFactory factory = entityManagerFactory.unwrap(SessionFactory.class);</span>
+<span class="fc" id="L74">            schemaAction = schemaAction(factory.getProperties());</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">            if (destructive(schemaAction)) {</span>
+<span class="fc" id="L76">                warnings.add(&quot;DESTRUCTIVE_SCHEMA_ACTION&quot;);</span>
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">            } else if (&quot;UNKNOWN&quot;.equals(schemaAction)) {</span>
+<span class="nc" id="L78">                warnings.add(&quot;SCHEMA_ACTION_UNKNOWN&quot;);</span>
+            }
+<span class="fc" id="L80">            try (Session session = factory.openSession()) {</span>
+<span class="fc" id="L81">                session.setDefaultReadOnly(true);</span>
+<span class="fc" id="L82">                session.setHibernateFlushMode(FlushMode.MANUAL);</span>
+<span class="fc" id="L83">                Metadata metadata = session.doReturningWork(connection -&gt; {</span>
+<span class="fc" id="L84">                    var md = connection.getMetaData();</span>
+<span class="fc" id="L85">                    return new Metadata(md.getDatabaseProductName(), md.getDatabaseProductVersion(),</span>
+<span class="fc" id="L86">                            md.getDriverName(), md.getDriverVersion(), md.getURL());</span>
+                });
+<span class="fc" id="L88">                product = metadata.product();</span>
+<span class="fc" id="L89">                version = metadata.version();</span>
+<span class="fc" id="L90">                driver = metadata.driver();</span>
+<span class="fc" id="L91">                driverVersion = metadata.driverVersion();</span>
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">                versionSource = version == null ? &quot;UNAVAILABLE&quot; : &quot;JDBC_METADATA_FALLBACK&quot;;</span>
+<span class="fc" id="L93">                var internal = factory.unwrap(SessionFactoryImplementor.class);</span>
+<span class="fc" id="L94">                var registry = internal.getQueryEngine().getSqmFunctionRegistry();</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">                if (registry.findFunctionDescriptor(DatabaseDiagnosticFunctions.VERSION) != null) {</span>
+<span class="fc" id="L96">                    String queriedVersion = query(session, DatabaseDiagnosticFunctions.VERSION);</span>
+<span class="pc bpc" id="L97" title="1 of 4 branches missed.">                    if (queriedVersion != null &amp;&amp; !queriedVersion.isBlank()) {</span>
+<span class="fc" id="L98">                        version = queriedVersion;</span>
+<span class="fc" id="L99">                        versionSource = &quot;DATABASE_QUERY&quot;;</span>
+                    }
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">                    String queriedStorage = registry.findFunctionDescriptor(DatabaseDiagnosticFunctions.STORAGE) == null</span>
+<span class="pc" id="L102">                            ? null : query(session, DatabaseDiagnosticFunctions.STORAGE);</span>
+<span class="fc" id="L103">                    if (List.of(&quot;IN_MEMORY&quot;, &quot;FILE_BACKED&quot;, &quot;READ_ONLY_RESOURCE&quot;, &quot;SERVER_MANAGED&quot;)</span>
+<span class="pc bpc" id="L104" title="2 of 4 branches missed.">                            .contains(queriedStorage == null ? &quot;&quot; : queriedStorage)) {</span>
+<span class="fc" id="L105">                        storage = queriedStorage;</span>
+<span class="fc" id="L106">                        storageSource = &quot;DATABASE_QUERY&quot;;</span>
+                    }
+                }
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">                if (&quot;UNKNOWN&quot;.equals(storage)) {</span>
+<span class="nc" id="L110">                    storage = connectionStorage(metadata.url());</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">                    if (!&quot;UNKNOWN&quot;.equals(storage)) {</span>
+<span class="nc" id="L112">                        storageSource = &quot;JDBC_CONNECTION&quot;;</span>
+                    }
+                }
+<span class="fc bfc" id="L115" title="All 2 branches covered.">                if (&quot;IN_MEMORY&quot;.equals(storage)) {</span>
+                    // A remote HSQL server may itself run an in-memory database.
+                    // Restarting Taxonomy is not the same as restarting that server.
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">                    lifetime = &quot;IN_MEMORY&quot;.equals(connectionStorage(metadata.url()))</span>
+<span class="pc" id="L119">                            ? &quot;APPLICATION_PROCESS&quot; : &quot;DATABASE_PROCESS&quot;;</span>
+<span class="fc" id="L120">                    warnings.add(&quot;IN_MEMORY_&quot; + lifetime);</span>
+<span class="pc bpc" id="L121" title="3 of 4 branches missed.">                } else if (&quot;FILE_BACKED&quot;.equals(storage) || &quot;SERVER_MANAGED&quot;.equals(storage)) {</span>
+<span class="fc" id="L122">                    lifetime = &quot;STORAGE_DEPENDENT&quot;;</span>
+<span class="fc" id="L123">                    warnings.add(&quot;STORAGE_DURABILITY_UNVERIFIED&quot;);</span>
+                }
+<span class="pc bpc" id="L125" title="1 of 4 branches missed.">                status = &quot;DATABASE_QUERY&quot;.equals(versionSource) &amp;&amp; !&quot;UNKNOWN&quot;.equals(storage)</span>
+<span class="fc" id="L126">                        ? &quot;AVAILABLE&quot; : &quot;PARTIAL&quot;;</span>
+                // Optional probes follow the core diagnostics. A denied engine
+                // start query must not discard measured identity/version/storage.
+<span class="fc" id="L129">                Dialect dialect = internal.getJdbcServices().getDialect();</span>
+<span class="fc" id="L130">                identity = identity(session, registry, dialect);</span>
+<span class="fc" id="L131">                engineStart = engineStart(session, registry, dialect);</span>
+            }
+<span class="fc" id="L133">        } catch (RuntimeException exception) {</span>
+            // A failed diagnostic must not hide the other system information.
+            // Exception text may include a connection URL or secret: never return it.
+<span class="fc" id="L136">            warnings.add(&quot;DATABASE_DIAGNOSTICS_UNAVAILABLE&quot;);</span>
+<span class="fc" id="L137">        }</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        if (&quot;UNKNOWN&quot;.equals(storage)) {</span>
+<span class="fc" id="L139">            warnings.add(&quot;PERSISTENCE_UNKNOWN&quot;);</span>
+        }
+<span class="pc bpc" id="L141" title="1 of 2 branches missed.">        if (environment.getProperty(&quot;taxonomy.init.reload-existing&quot;, Boolean.class, false)) {</span>
+<span class="nc" id="L142">            warnings.add(&quot;CATALOGUE_RELOAD_ENABLED&quot;);</span>
+        }
+<span class="fc" id="L144">        return new DatabaseInfo(status, product, version, versionSource, driver, driverVersion,</span>
+<span class="fc" id="L145">                storage, storageSource, lifetime, schemaAction, List.copyOf(warnings), identity, engineStart);</span>
+    }
+
+    private static DatabaseIdentity identity(Session session, SqmFunctionRegistry registry, Dialect dialect) {
+<span class="fc" id="L149">        if (List.of(DatabaseDiagnosticFunctions.CURRENT_USER, DatabaseDiagnosticFunctions.SESSION_USER,</span>
+                DatabaseDiagnosticFunctions.CURRENT_DATABASE,
+<span class="fc" id="L151">                DatabaseDiagnosticFunctions.CURRENT_SCHEMA).stream()</span>
+<span class="pc bpc" id="L152" title="2 of 4 branches missed.">                .anyMatch(function -&gt; registry.findFunctionDescriptor(function) == null)) {</span>
+<span class="nc" id="L153">            return unavailableIdentity(&quot;NOT_SUPPORTED&quot;);</span>
+        }
+        try {
+<span class="fc" id="L156">            Object[] values = session.createSelectionQuery(&quot;select &quot; + DatabaseDiagnosticFunctions.CURRENT_USER</span>
+                            + &quot;(), &quot; + DatabaseDiagnosticFunctions.SESSION_USER + &quot;(), &quot;
+                            + DatabaseDiagnosticFunctions.CURRENT_DATABASE + &quot;(), &quot;
+                            + DatabaseDiagnosticFunctions.CURRENT_SCHEMA + &quot;()&quot;, Object[].class)
+<span class="fc" id="L160">                    .setTimeout(2).setCacheable(false).getSingleResult();</span>
+            // Preserve quoted identifiers, including case and surrounding spaces.
+<span class="fc" id="L162">            String user = (String) values[0];</span>
+<span class="fc" id="L163">            String sessionUser = (String) values[1];</span>
+<span class="fc" id="L164">            String database = (String) values[2];</span>
+<span class="fc" id="L165">            String schema = (String) values[3];</span>
+<span class="pc bpc" id="L166" title="7 of 8 branches missed.">            if (user == null &amp;&amp; sessionUser == null &amp;&amp; database == null &amp;&amp; schema == null) {</span>
+<span class="nc" id="L167">                return unavailableIdentity(&quot;UNAVAILABLE&quot;);</span>
+            }
+<span class="pc bpc" id="L169" title="3 of 8 branches missed.">            return new DatabaseIdentity(user != null &amp;&amp; sessionUser != null &amp;&amp; database != null &amp;&amp; schema != null</span>
+<span class="fc" id="L170">                    ? &quot;AVAILABLE&quot; : &quot;PARTIAL&quot;, user, sessionUser, database, schema, &quot;DATABASE_QUERY&quot;);</span>
+<span class="fc" id="L171">        } catch (RuntimeException exception) {</span>
+<span class="fc" id="L172">            return unavailableIdentity(diagnosticFailure(exception, dialect));</span>
+        }
+    }
+
+    private static EngineStartInfo engineStart(Session session, SqmFunctionRegistry registry, Dialect dialect) {
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        if (registry.findFunctionDescriptor(DatabaseDiagnosticFunctions.ENGINE_START) == null) {</span>
+<span class="fc" id="L178">            return unavailableStart(&quot;NOT_SUPPORTED&quot;);</span>
+        }
+        try {
+<span class="fc" id="L181">            String value = session.createSelectionQuery(&quot;select &quot; + DatabaseDiagnosticFunctions.ENGINE_START + &quot;()&quot;, String.class)</span>
+<span class="fc" id="L182">                    .setTimeout(2).setCacheable(false).getSingleResult();</span>
+<span class="pc bpc" id="L183" title="2 of 4 branches missed.">            if (value == null || value.isBlank()) {</span>
+<span class="nc" id="L184">                return unavailableStart(&quot;UNAVAILABLE&quot;);</span>
+            }
+            try {
+<span class="fc" id="L187">                return new EngineStartInfo(&quot;AVAILABLE&quot;, OffsetDateTime.parse(value.strip()).toInstant().toString(),</span>
+                        &quot;DATABASE_QUERY&quot;, &quot;UTC&quot;);
+<span class="fc" id="L189">            } catch (DateTimeParseException noOffset) {</span>
+                // SQL Server datetime and Oracle DATE do not carry a timezone.
+                // Keep their clock reading explicit instead of inventing UTC.
+<span class="fc" id="L192">                String local = LocalDateTime.parse(value.strip()).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);</span>
+<span class="fc" id="L193">                return new EngineStartInfo(&quot;AVAILABLE&quot;, local, &quot;DATABASE_QUERY&quot;, &quot;SERVER_LOCAL_TIME&quot;);</span>
+            }
+<span class="fc" id="L195">        } catch (RuntimeException exception) {</span>
+<span class="fc" id="L196">            return unavailableStart(diagnosticFailure(exception, dialect));</span>
+        }
+    }
+
+    private static DatabaseIdentity unavailableIdentity(String status) {
+<span class="fc" id="L201">        return new DatabaseIdentity(status, null, null, null, null, &quot;UNAVAILABLE&quot;);</span>
+    }
+
+    private static EngineStartInfo unavailableStart(String status) {
+<span class="fc" id="L205">        return new EngineStartInfo(status, null, &quot;UNAVAILABLE&quot;, null);</span>
+    }
+
+    static String diagnosticFailure(Throwable failure, Dialect dialect) {
+        // Classify only explicit permission errors. Oracle ORA-00942 and HSQL's
+        // combined missing-object/permission error are deliberately ambiguous.
+<span class="pc bpc" id="L211" title="1 of 4 branches missed.">        for (int depth = 0; failure != null &amp;&amp; depth &lt; 10; depth++, failure = failure.getCause()) {</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">            if (failure instanceof SQLException sql) {</span>
+<span class="fc bfc" id="L213" title="All 6 branches covered.">                boolean denied = dialect instanceof PostgreSQLDialect &amp;&amp; &quot;42501&quot;.equals(sql.getSQLState())</span>
+<span class="pc bpc" id="L214" title="1 of 4 branches missed.">                        || dialect instanceof SQLServerDialect &amp;&amp; List.of(229, 297, 300).contains(sql.getErrorCode())</span>
+<span class="fc bfc" id="L215" title="All 2 branches covered.">                        || dialect instanceof OracleDialect &amp;&amp; sql.getErrorCode() == 1031;</span>
+<span class="fc bfc" id="L216" title="All 2 branches covered.">                if (denied) return &quot;NOT_PERMITTED&quot;;</span>
+            }
+        }
+<span class="fc" id="L219">        return &quot;UNAVAILABLE&quot;;</span>
+    }
+
+    private static String query(Session session, String function) {
+        try {
+<span class="fc" id="L224">            String value = session.createSelectionQuery(&quot;select &quot; + function + &quot;()&quot;, String.class)</span>
+<span class="fc" id="L225">                    .setTimeout(2).setCacheable(false).getSingleResult();</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">            return value == null ? null : value.strip();</span>
+<span class="nc" id="L227">        } catch (RuntimeException exception) {</span>
+<span class="nc" id="L228">            return null; // Visible source flags identify the metadata/unknown fallback.</span>
+        }
+    }
+
+    static String normalizeIndexStorage(String value) {
+<span class="pc bpc" id="L233" title="1 of 2 branches missed.">        String normalized = value == null ? &quot;&quot; : value.strip().toLowerCase(Locale.ROOT);</span>
+<span class="fc bfc" id="L234" title="All 2 branches covered.">        return switch (normalized) {</span>
+<span class="fc" id="L235">            case &quot;local-heap&quot;, &quot;local-filesystem&quot; -&gt; normalized;</span>
+<span class="fc" id="L236">            default -&gt; &quot;unknown&quot;;</span>
+        };
+    }
+
+    static String connectionStorage(String url) {
+<span class="fc bfc" id="L241" title="All 2 branches covered.">        String value = url == null ? &quot;&quot; : url.toLowerCase(Locale.ROOT);</span>
+<span class="pc bpc" id="L242" title="1 of 4 branches missed.">        if (value.startsWith(&quot;jdbc:hsqldb:mem:&quot;) || value.startsWith(&quot;jdbc:h2:mem:&quot;)) {</span>
+<span class="fc" id="L243">            return &quot;IN_MEMORY&quot;;</span>
+        }
+<span class="pc bpc" id="L245" title="2 of 4 branches missed.">        if (value.startsWith(&quot;jdbc:hsqldb:file:&quot;) || value.startsWith(&quot;jdbc:h2:file:&quot;)) {</span>
+<span class="nc" id="L246">            return &quot;FILE_BACKED&quot;;</span>
+        }
+<span class="pc bpc" id="L248" title="1 of 2 branches missed.">        if (value.startsWith(&quot;jdbc:hsqldb:res:&quot;)) {</span>
+<span class="nc" id="L249">            return &quot;READ_ONLY_RESOURCE&quot;;</span>
+        }
+<span class="pc bpc" id="L251" title="1 of 4 branches missed.">        if (value.startsWith(&quot;jdbc:postgresql:&quot;) || value.startsWith(&quot;jdbc:sqlserver:&quot;)</span>
+<span class="pc bpc" id="L252" title="1 of 2 branches missed.">                || value.startsWith(&quot;jdbc:oracle:&quot;)) {</span>
+<span class="fc" id="L253">            return &quot;SERVER_MANAGED&quot;;</span>
+        }
+<span class="fc" id="L255">        return &quot;UNKNOWN&quot;;</span>
+    }
+
+    static String schemaAction(Map&lt;String, Object&gt; settings) {
+        try {
+<span class="fc" id="L260">            Object jpaAction = settings.get(&quot;jakarta.persistence.schema-generation.database.action&quot;);</span>
+<span class="fc bfc" id="L261" title="All 2 branches covered.">            Action action = jpaAction != null</span>
+<span class="fc" id="L262">                    ? Action.interpretJpaSetting(jpaAction)</span>
+<span class="fc" id="L263">                    : Action.interpretHbm2ddlSetting(settings.get(&quot;hibernate.hbm2ddl.auto&quot;));</span>
+<span class="fc" id="L264">            return action.name();</span>
+<span class="fc" id="L265">        } catch (IllegalArgumentException exception) {</span>
+<span class="fc" id="L266">            return &quot;UNKNOWN&quot;;</span>
+        }
+    }
+
+    static boolean destructive(String action) {
+<span class="fc" id="L271">        return List.of(&quot;CREATE&quot;, &quot;CREATE_DROP&quot;, &quot;DROP&quot;, &quot;TRUNCATE&quot;).contains(action);</span>
+    }
+
+    List&lt;DiskInfo&gt; disks(String indexStorage) {
+<span class="fc" id="L275">        Map&lt;Path, DiskInfo&gt; locations = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L276">        List&lt;DiskInfo&gt; unavailable = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L277">        addDisk(&quot;TEMPORARY_FILES&quot;, System.getProperty(&quot;java.io.tmpdir&quot;), locations, unavailable);</span>
+<span class="fc bfc" id="L278" title="All 2 branches covered.">        if (&quot;local-filesystem&quot;.equals(indexStorage)) {</span>
+<span class="fc" id="L279">            addDisk(&quot;SEARCH_INDEX&quot;, environment.getProperty(</span>
+                    &quot;spring.jpa.properties.hibernate.search.backend.directory.root&quot;), locations, unavailable);
+        }
+<span class="fc" id="L282">        List&lt;DiskInfo&gt; result = new ArrayList&lt;&gt;(locations.values());</span>
+<span class="fc" id="L283">        result.addAll(unavailable);</span>
+<span class="fc" id="L284">        return List.copyOf(result);</span>
+    }
+
+    private static void addDisk(String purpose, String path, Map&lt;Path, DiskInfo&gt; locations,
+                                List&lt;DiskInfo&gt; unavailable) {
+        try {
+<span class="pc bpc" id="L290" title="2 of 4 branches missed.">            if (path == null || path.isBlank()) {</span>
+<span class="nc" id="L291">                unavailable.add(new DiskInfo(List.of(purpose), null, null, &quot;UNAVAILABLE&quot;));</span>
+<span class="nc" id="L292">                return;</span>
+            }
+            // FileStore equality/name/type do not portably identify a volume.
+            // Merge only the same resolved directory. Other rows may share space:
+            // the UI states this explicitly and never computes an aggregate total.
+<span class="fc" id="L297">            Path location = Path.of(path).toRealPath();</span>
+<span class="fc" id="L298">            DiskInfo previous = locations.get(location);</span>
+<span class="fc" id="L299">            List&lt;String&gt; purposes = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L300" title="All 2 branches covered.">            if (previous != null) {</span>
+<span class="fc" id="L301">                purposes.addAll(previous.purposes());</span>
+<span class="fc" id="L302">                purposes.add(purpose);</span>
+<span class="fc" id="L303">                locations.put(location, new DiskInfo(List.copyOf(purposes),</span>
+<span class="fc" id="L304">                        previous.totalBytes(), previous.usableBytes(), previous.status()));</span>
+<span class="fc" id="L305">                return;</span>
+            }
+<span class="fc" id="L307">            FileStore store = Files.getFileStore(location);</span>
+<span class="fc" id="L308">            purposes.add(purpose);</span>
+<span class="fc" id="L309">            locations.put(location, new DiskInfo(List.copyOf(purposes), store.getTotalSpace(),</span>
+<span class="fc" id="L310">                    store.getUsableSpace(), &quot;AVAILABLE&quot;));</span>
+<span class="fc" id="L311">        } catch (java.io.IOException | RuntimeException exception) {</span>
+<span class="fc" id="L312">            unavailable.add(new DiskInfo(List.of(purpose), null, null, &quot;UNAVAILABLE&quot;));</span>
+<span class="fc" id="L313">        }</span>
+<span class="fc" id="L314">    }</span>
+
+<span class="fc" id="L316">    private record Metadata(String product, String version, String driver, String driverVersion, String url) { }</span>
+<span class="fc" id="L317">    public record Snapshot(Instant timestamp, String instanceId, String applicationVersion, RuntimeInfo runtime,</span>
+                           DatabaseInfo database, String indexStorage, List&lt;DiskInfo&gt; disks) { }
+<span class="fc" id="L319">    public record RuntimeInfo(int availableProcessors, long heapUsedBytes, long heapMaxBytes,</span>
+                              long uptimeMillis, Instant startTime, String javaVersion, String javaVendor,
+                              String osName, String osArchitecture) { }
+<span class="fc" id="L322">    public record DatabaseInfo(String status, String product, String version, String versionSource,</span>
+                               String driver, String driverVersion, String storage, String storageSource,
+                               String lifetime, String schemaAction, List&lt;String&gt; warnings,
+                               DatabaseIdentity identity, EngineStartInfo engineStart) { }
+<span class="fc" id="L326">    public record DatabaseIdentity(String status, String user, String sessionUser, String database,</span>
+                                   String schema, String source) { }
+<span class="fc" id="L328">    public record EngineStartInfo(String status, String value, String source, String timeBasis) { }</span>
+<span class="fc" id="L329">    public record DiskInfo(List&lt;String&gt; purposes, Long totalBytes, Long usableBytes, String status) { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

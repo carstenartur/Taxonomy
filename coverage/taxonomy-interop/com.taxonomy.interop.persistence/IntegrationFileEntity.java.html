@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>IntegrationFileEntity.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.persistence</a> &gt; <span class="el_source">IntegrationFileEntity.java</span></div><h1>IntegrationFileEntity.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.persistence;
+
+import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+/** Immutable binary evidence; lifecycle and authorization remain owned by IntegrationStore. */
+@Entity
+@Table(name = &quot;interop_file&quot;, indexes = {@Index(name=&quot;ix_interop_file_scope&quot;, columnList=&quot;scope_id,connection_id,actor,kind&quot;)})
+public class IntegrationFileEntity {
+    @Id @Column(name=&quot;id&quot;, length=36) String id;
+    @Column(name=&quot;scope_id&quot;, nullable=false, length=64) String scopeId;
+    @Column(name=&quot;connection_id&quot;, nullable=false, length=36) String connectionId;
+    @Column(name=&quot;operation_id&quot;, nullable=false, length=36) String operationId;
+    @Column(name=&quot;actor&quot;, nullable=false, length=160) String actor;
+    @Column(name=&quot;kind&quot;, nullable=false, length=16) String kind;
+    @Column(name=&quot;profile&quot;, nullable=false, length=64) String profile;
+    @Column(name=&quot;profile_version&quot;, nullable=false, length=32) String profileVersion;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name=&quot;binding_json&quot;, nullable=false) String bindingJson;
+    @Column(name=&quot;sha256&quot;, nullable=false, length=64) String sha256;
+    @Column(name=&quot;byte_count&quot;, nullable=false) long byteCount;
+    @Column(name=&quot;media_type&quot;, nullable=false, length=200) String mediaType;
+    @Column(name=&quot;filename&quot;, nullable=false, length=240) String filename;
+    @Column(name=&quot;model_identifier&quot;, length=2048) String modelIdentifier;
+    @Column(name=&quot;review_fingerprint&quot;, length=64) String reviewFingerprint;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name=&quot;losses_json&quot;, nullable=false) String lossesJson;
+    @JdbcTypeCode(SqlTypes.LONG32VARBINARY) @Column(name=&quot;content&quot;, nullable=false) byte[] content;
+    @Column(name=&quot;created_at&quot;, nullable=false, length=40) String createdAt;
+<span class="fc" id="L29">    protected IntegrationFileEntity() {}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

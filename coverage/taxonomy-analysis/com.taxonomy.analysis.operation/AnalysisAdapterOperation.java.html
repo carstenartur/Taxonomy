@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisAdapterOperation.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.operation</a> &gt; <span class="el_source">AnalysisAdapterOperation.java</span></div><h1>AnalysisAdapterOperation.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.operation;
+
+import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+/** A receipt is committed before invoking a native provider-backed analysis. */
+@Entity
+@Table(name = &quot;analysis_adapter_operation&quot;, indexes = @Index(name = &quot;idx_adapter_retention&quot;, columnList = &quot;state,updated_at&quot;),
+       uniqueConstraints = @UniqueConstraint(name = &quot;uq_adapter_command&quot;, columnNames = &quot;command_key&quot;))
+<span class="fc" id="L11">public class AnalysisAdapterOperation {</span>
+    @Id @Column(length = 36) String id;
+    @Column(nullable = false, length = 36) String actor;
+    @Column(name = &quot;repository_id&quot;, nullable = false, length = 320) String repository;
+    @Column(name = &quot;workspace_id&quot;, length = 320) String workspace;
+    @Column(name = &quot;branch_name&quot;, nullable = false, length = 512) String branch;
+    @Column(nullable = false, length = 48) String kind;
+    @Column(name = &quot;source_commit&quot;, nullable = false, length = 64) String sourceCommit;
+    @Column(name = &quot;command_key&quot;, nullable = false, length = 64) String commandKey;
+    @Column(name = &quot;request_key&quot;, nullable = false, length = 64) String requestKey;
+    @Column(nullable = false, length = 64) String fingerprint;
+    @Column(nullable = false, length = 16) String state;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name = &quot;result_json&quot;) String resultJson;
+    @Column(name = &quot;failure_code&quot;, length = 48) String failureCode;
+    @Column(name = &quot;created_at&quot;, nullable = false) long createdAt;
+    @Column(name = &quot;updated_at&quot;, nullable = false) long updatedAt;
+    // Browser correlations must never advance the provider's compare-and-set revision.
+<span class="fc" id="L28">    @ElementCollection</span>
+    @CollectionTable(name = &quot;analysis_adapter_observer&quot;, joinColumns = @JoinColumn(name = &quot;operation_id&quot;),
+            uniqueConstraints = @UniqueConstraint(name = &quot;uq_adapter_observer&quot;, columnNames = &quot;observer_key&quot;))
+    @MapKeyColumn(name = &quot;observer_key&quot;, nullable = false, length = 64)
+    @Column(name = &quot;observed_at&quot;, nullable = false)
+    @org.hibernate.annotations.OptimisticLock(excluded = true)
+    java.util.Map&lt;String, Long&gt; observers = new java.util.HashMap&lt;&gt;();
+    @Version @Column(name = &quot;row_version&quot;, nullable = false) long revision;
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

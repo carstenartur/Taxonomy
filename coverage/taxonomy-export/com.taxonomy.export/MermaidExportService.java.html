@@ -1,0 +1,470 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>MermaidExportService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export</a> &gt; <span class="el_source">MermaidExportService.java</span></div><h1>MermaidExportService.java</h1><pre class="source lang-java linenums">package com.taxonomy.export;
+
+import com.taxonomy.diagram.DiagramEdge;
+import com.taxonomy.diagram.DiagramModel;
+import com.taxonomy.diagram.DiagramNode;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+/**
+ * Converts a neutral {@link DiagramModel} into Mermaid flowchart syntax.
+ *
+ * &lt;p&gt;The generated output is suitable for embedding in GitHub READMEs, Confluence pages,
+ * and any Markdown renderer that supports Mermaid diagrams.&lt;/p&gt;
+ *
+ * &lt;p&gt;&lt;strong&gt;Selection vs. Rendering:&lt;/strong&gt; Node/edge selection and curation are
+ * handled by {@link DiagramSelectionPolicy} implementations &lt;em&gt;before&lt;/em&gt; this
+ * renderer is called.  This service is responsible only for rendering the curated
+ * result.  The {@link #exportShowcase(DiagramModel, MermaidLabels)} method
+ * internally applies a {@link LeafOnlyDiagramSelectionPolicy} for backward
+ * compatibility.&lt;/p&gt;
+ *
+ * &lt;h3&gt;Containment&lt;/h3&gt;
+ * &lt;p&gt;Nodes flagged with {@link DiagramNode#container()}{@code == true} are rendered
+ * as nested Mermaid sub-graphs that visually contain their child nodes (identified
+ * by {@link DiagramNode#parentId()}).  This produces the &quot;container with children
+ * inside&quot; layout required for clustered impact diagrams.&lt;/p&gt;
+ *
+ * &lt;h3&gt;Internationalization&lt;/h3&gt;
+ * &lt;p&gt;All overloads accept an optional {@link MermaidLabels} parameter.
+ * When provided, display labels (layer titles, relation edge labels, anchor/hotspot
+ * markers) are resolved through localized labels while internal identifiers
+ * (node IDs, classDef names, edge source/target references) remain stable.&lt;/p&gt;
+ */
+<span class="fc" id="L41">public class MermaidExportService {</span>
+
+    private static final String TITLE_GROUP = &quot;taxonomy_diagram_title&quot;;
+<span class="fc" id="L44">    private static final Set&lt;String&gt; RESERVED_IDS = Set.of(TITLE_GROUP, &quot;end&quot;, &quot;subgraph&quot;, &quot;graph&quot;, &quot;flowchart&quot;,</span>
+            &quot;classDef&quot;, &quot;class&quot;, &quot;style&quot;, &quot;click&quot;, &quot;linkStyle&quot;, &quot;interpolate&quot;, &quot;call&quot;, &quot;href&quot;,
+            &quot;_top&quot;, &quot;_self&quot;, &quot;_parent&quot;, &quot;_blank&quot;);
+
+<span class="fc" id="L48">    private static final Map&lt;String, String&gt; LAYER_STYLE = Map.of(</span>
+            &quot;Capabilities&quot;, &quot;cap&quot;,
+            &quot;Business Processes&quot;, &quot;proc&quot;,
+            &quot;Business Roles&quot;, &quot;role&quot;,
+            &quot;Services&quot;, &quot;svc&quot;,
+            &quot;COI Services&quot;, &quot;svc&quot;,
+            &quot;Core Services&quot;, &quot;svc&quot;,
+            &quot;Applications&quot;, &quot;app&quot;,
+            &quot;User Applications&quot;, &quot;app&quot;,
+            &quot;Information Products&quot;, &quot;info&quot;,
+            &quot;Communications Services&quot;, &quot;comm&quot;
+    );
+
+    // ── Standard export ─────────────────────────────────────────────────────
+
+    /**
+     * Exports a {@link DiagramModel} as a Mermaid flowchart string using default English labels.
+     *
+     * @param model the neutral diagram model
+     * @return Mermaid-formatted diagram text
+     */
+    public String export(DiagramModel model) {
+<span class="fc" id="L70">        return export(model, MermaidLabels.english());</span>
+    }
+
+    /**
+     * Exports a {@link DiagramModel} as a Mermaid flowchart string using the given localized labels.
+     *
+     * &lt;p&gt;Container nodes ({@link DiagramNode#container()}) are rendered as nested
+     * sub-graphs whose children appear visually inside them.&lt;/p&gt;
+     *
+     * @param model  the neutral diagram model
+     * @param labels locale-specific display labels
+     * @return Mermaid-formatted diagram text
+     */
+    public String export(DiagramModel model, MermaidLabels labels) {
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        if (model == null) {</span>
+<span class="fc" id="L85">            return &quot;flowchart LR\n    empty[\&quot;No data\&quot;]\n&quot;;</span>
+        }
+
+<span class="fc" id="L88">        StringBuilder sb = new StringBuilder();</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        String direction = model.layout() != null ? model.layout().direction() : &quot;LR&quot;;</span>
+<span class="fc" id="L90">        sb.append(&quot;flowchart &quot;).append(direction).append('\n');</span>
+<span class="pc bpc" id="L91" title="2 of 4 branches missed.">        boolean titled = model.title() != null &amp;&amp; !model.title().isBlank();</span>
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">        if (titled) {</span>
+<span class="fc" id="L93">            sb.append(&quot;    subgraph &quot;).append(TITLE_GROUP).append(&quot;[\&quot;&quot;).append(escapeTitle(model.title())).append(&quot;\&quot;]\n&quot;);</span>
+<span class="fc" id="L94">            sb.append(&quot;        direction &quot;).append(direction).append('\n');</span>
+        }
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        if (model.nodes().isEmpty()) {</span>
+<span class="fc" id="L97">            sb.append(&quot;    empty[\&quot;No data\&quot;]\n&quot;);</span>
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">            if (titled) sb.append(&quot;    end\n&quot;);</span>
+<span class="fc" id="L99">            return sb.toString();</span>
+        }
+
+<span class="fc" id="L102">        MermaidIds ids = MermaidIds.forNodes(model.nodes());</span>
+<span class="fc" id="L103">        renderLayerSubgraphs(sb, model.nodes(), labels, false, ids);</span>
+
+        // Render edges
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        for (DiagramEdge edge : model.edges()) {</span>
+<span class="fc" id="L107">            String src = ids.node(edge.sourceId());</span>
+<span class="fc" id="L108">            String tgt = ids.node(edge.targetId());</span>
+<span class="fc" id="L109">            String relLabel = labels.relationLabel(edge.relationType());</span>
+<span class="fc" id="L110">            sb.append(&quot;    &quot;).append(src).append(&quot; --&gt;|&quot;).append(escape(relLabel)).append(&quot;| &quot;).append(tgt).append('\n');</span>
+<span class="fc" id="L111">        }</span>
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">        if (titled) sb.append(&quot;    end\n&quot;);</span>
+
+<span class="fc" id="L114">        appendStyleDefinitions(sb);</span>
+<span class="fc" id="L115">        appendClassAssignments(sb, model.nodes(), ids);</span>
+
+<span class="fc" id="L117">        return sb.toString();</span>
+    }
+
+    // ── Showcase export ─────────────────────────────────────────────────────
+
+    /**
+     * Exports a {@link DiagramModel} optimized for README/showcase rendering
+     * using default English labels.
+     *
+     * @param model the neutral diagram model
+     * @return Mermaid-formatted diagram text optimized for showcase/README embedding
+     */
+    public String exportShowcase(DiagramModel model) {
+<span class="fc" id="L130">        return exportShowcase(model, MermaidLabels.english());</span>
+    }
+
+    /**
+     * Exports a {@link DiagramModel} optimized for README/showcase rendering
+     * using the given localized labels.
+     *
+     * &lt;p&gt;Selection logic (root/scaffolding suppression, edge re-routing) is
+     * delegated to a {@link LeafOnlyDiagramSelectionPolicy}.  This method
+     * handles only rendering concerns (TD layout, stadium shapes, multi-line
+     * labels, abbreviated subgraph titles, etc.).&lt;/p&gt;
+     *
+     * @param model  the neutral diagram model
+     * @param labels locale-specific display labels
+     * @return Mermaid-formatted diagram text optimized for showcase/README embedding
+     */
+    public String exportShowcase(DiagramModel model, MermaidLabels labels) {
+<span class="pc bpc" id="L147" title="1 of 4 branches missed.">        if (model == null || model.nodes().isEmpty()) {</span>
+<span class="fc" id="L148">            return &quot;flowchart TD\n    empty[\&quot;No data\&quot;]\n&quot;;</span>
+        }
+
+        // Delegate selection to the leaf-only policy
+<span class="fc" id="L152">        DiagramModel curated = new LeafOnlyDiagramSelectionPolicy().apply(model);</span>
+
+<span class="fc" id="L154">        List&lt;DiagramNode&gt; showcaseNodes = curated.nodes();</span>
+<span class="fc" id="L155">        List&lt;DiagramEdge&gt; showcaseEdges = curated.edges();</span>
+<span class="fc" id="L156">        MermaidIds ids = MermaidIds.forNodes(showcaseNodes);</span>
+
+        // ── Render ──────────────────────────────────────────────────────────
+<span class="fc" id="L159">        StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L160">        sb.append(&quot;flowchart TD\n&quot;);</span>
+
+<span class="fc" id="L162">        Map&lt;String, List&lt;DiagramNode&gt;&gt; grouped = showcaseNodes.stream()</span>
+<span class="fc" id="L163">                .collect(Collectors.groupingBy(</span>
+<span class="fc" id="L164">                        DiagramNode::type, LinkedHashMap::new, Collectors.toList()));</span>
+
+<span class="fc" id="L166">        List&lt;Map.Entry&lt;String, List&lt;DiagramNode&gt;&gt;&gt; sortedGroups = grouped.entrySet().stream()</span>
+<span class="fc" id="L167">                .sorted(Comparator.comparingInt(e -&gt; layerOrder(e.getKey())))</span>
+<span class="fc" id="L168">                .toList();</span>
+
+<span class="fc bfc" id="L170" title="All 2 branches covered.">        for (Map.Entry&lt;String, List&lt;DiagramNode&gt;&gt; entry : sortedGroups) {</span>
+<span class="fc" id="L171">            String type = entry.getKey();</span>
+<span class="fc" id="L172">            List&lt;DiagramNode&gt; nodes = entry.getValue();</span>
+<span class="fc" id="L173">            String subId = ids.layers().get(type);</span>
+<span class="fc" id="L174">            String displayType = labels.showcaseLayerLabel(type);</span>
+
+<span class="fc" id="L176">            sb.append(&quot;    subgraph &quot;).append(subId)</span>
+<span class="fc" id="L177">              .append(&quot;[\&quot;&quot;).append(escape(displayType)).append(&quot;\&quot;]\n&quot;);</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">            for (DiagramNode node : nodes) {</span>
+<span class="fc" id="L179">                String nodeId = ids.node(node.id());</span>
+<span class="pc bpc" id="L180" title="1 of 4 branches missed.">                boolean isProminent = node.anchor() || node.relevance() &gt;= MermaidLabels.HOTSPOT_THRESHOLD;</span>
+<span class="fc" id="L181">                String nameLine = truncateLabel(node.label(), MermaidLabels.SHOWCASE_MAX_LABEL_LENGTH);</span>
+<span class="fc" id="L182">                String metaLine = buildShowcaseMetaLine(node, labels);</span>
+<span class="fc" id="L183">                String label = nameLine + &quot;&lt;br/&gt;&quot; + metaLine;</span>
+
+                // Use stadium shape ([&quot;...&quot;]) for prominent nodes, regular [&quot;...&quot;] for others
+<span class="fc bfc" id="L186" title="All 2 branches covered.">                if (isProminent) {</span>
+<span class="fc" id="L187">                    sb.append(&quot;        &quot;).append(nodeId)</span>
+<span class="fc" id="L188">                      .append(&quot;([\&quot;&quot;).append(escape(label)).append(&quot;\&quot;])\n&quot;);</span>
+                } else {
+<span class="fc" id="L190">                    sb.append(&quot;        &quot;).append(nodeId)</span>
+<span class="fc" id="L191">                      .append(&quot;[\&quot;&quot;).append(escape(label)).append(&quot;\&quot;]\n&quot;);</span>
+                }
+<span class="fc" id="L193">            }</span>
+<span class="fc" id="L194">            sb.append(&quot;    end\n&quot;);</span>
+<span class="fc" id="L195">        }</span>
+
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        for (DiagramEdge edge : showcaseEdges) {</span>
+<span class="fc" id="L198">            String src = ids.node(edge.sourceId());</span>
+<span class="fc" id="L199">            String tgt = ids.node(edge.targetId());</span>
+<span class="fc" id="L200">            String relLabel = labels.relationLabel(edge.relationType());</span>
+<span class="fc" id="L201">            sb.append(&quot;    &quot;).append(src).append(&quot; --&gt;|&quot;)</span>
+<span class="fc" id="L202">              .append(escape(relLabel)).append(&quot;| &quot;).append(tgt).append('\n');</span>
+<span class="fc" id="L203">        }</span>
+
+<span class="fc" id="L205">        appendStyleDefinitions(sb);</span>
+        // Pass nodes in subgraph render order for deterministic class assignments
+<span class="fc" id="L207">        List&lt;DiagramNode&gt; renderOrder = sortedGroups.stream()</span>
+<span class="fc" id="L208">                .flatMap(e -&gt; e.getValue().stream()).toList();</span>
+<span class="fc" id="L209">        appendClassAssignments(sb, renderOrder, ids);</span>
+
+<span class="fc" id="L211">        return sb.toString();</span>
+    }
+
+    // ── Layer subgraph rendering with containment support ────────────────────
+
+    /**
+     * Renders nodes grouped by layer as Mermaid sub-graphs, with support for
+     * nested containment when nodes are flagged as containers.
+     */
+    private void renderLayerSubgraphs(StringBuilder sb, List&lt;DiagramNode&gt; allNodes,
+                                       MermaidLabels labels, boolean showcase, MermaidIds ids) {
+        // Index: parentId → children
+<span class="fc" id="L223">        Map&lt;String, List&lt;DiagramNode&gt;&gt; childrenOf = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L224">        Set&lt;String&gt; childIds = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L225" title="All 2 branches covered.">        for (DiagramNode n : allNodes) {</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">            if (n.parentId() != null) {</span>
+                // Only link to parent if the parent is actually a container in the model
+<span class="fc" id="L228">                boolean parentIsContainer = allNodes.stream()</span>
+<span class="fc bfc" id="L229" title="All 4 branches covered.">                        .anyMatch(p -&gt; p.id().equals(n.parentId()) &amp;&amp; p.container());</span>
+<span class="fc bfc" id="L230" title="All 2 branches covered.">                if (parentIsContainer) {</span>
+<span class="fc" id="L231">                    childrenOf.computeIfAbsent(n.parentId(), k -&gt; new ArrayList&lt;&gt;()).add(n);</span>
+<span class="fc" id="L232">                    childIds.add(n.id());</span>
+                }
+            }
+<span class="fc" id="L235">        }</span>
+
+        // Group top-level nodes (non-children) by type
+<span class="fc" id="L238">        Map&lt;String, List&lt;DiagramNode&gt;&gt; grouped = allNodes.stream()</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">                .filter(n -&gt; !childIds.contains(n.id()))</span>
+<span class="fc" id="L240">                .collect(Collectors.groupingBy(</span>
+<span class="fc" id="L241">                        DiagramNode::type, LinkedHashMap::new, Collectors.toList()));</span>
+
+<span class="fc" id="L243">        List&lt;Map.Entry&lt;String, List&lt;DiagramNode&gt;&gt;&gt; sortedGroups = grouped.entrySet().stream()</span>
+<span class="fc" id="L244">                .sorted(Comparator.comparingInt(e -&gt; layerOrder(e.getKey())))</span>
+<span class="fc" id="L245">                .toList();</span>
+
+<span class="fc bfc" id="L247" title="All 2 branches covered.">        for (Map.Entry&lt;String, List&lt;DiagramNode&gt;&gt; entry : sortedGroups) {</span>
+<span class="fc" id="L248">            String type = entry.getKey();</span>
+<span class="fc" id="L249">            List&lt;DiagramNode&gt; nodes = entry.getValue();</span>
+<span class="fc" id="L250">            String subId = ids.layers().get(type);</span>
+<span class="pc bpc" id="L251" title="1 of 2 branches missed.">            String displayType = showcase ? labels.showcaseLayerLabel(type) : labels.layerLabel(type);</span>
+
+<span class="fc" id="L253">            sb.append(&quot;    subgraph &quot;).append(subId)</span>
+<span class="fc" id="L254">              .append(&quot;[\&quot;&quot;).append(escape(displayType)).append(&quot;\&quot;]\n&quot;);</span>
+
+<span class="fc bfc" id="L256" title="All 2 branches covered.">            for (DiagramNode node : nodes) {</span>
+<span class="fc bfc" id="L257" title="All 2 branches covered.">                if (node.container()) {</span>
+                    // Render as nested sub-graph containing its children
+<span class="fc" id="L259">                    renderContainerSubgraph(sb, node, childrenOf, labels, showcase, ids);</span>
+                } else {
+<span class="fc" id="L261">                    renderNode(sb, node, labels, showcase, &quot;        &quot;, ids);</span>
+                }
+<span class="fc" id="L263">            }</span>
+
+<span class="fc" id="L265">            sb.append(&quot;    end\n&quot;);</span>
+<span class="fc" id="L266">        }</span>
+<span class="fc" id="L267">    }</span>
+
+    /**
+     * Renders a container node as a nested Mermaid sub-graph with its children inside.
+     */
+    private void renderContainerSubgraph(StringBuilder sb, DiagramNode container,
+                                          Map&lt;String, List&lt;DiagramNode&gt;&gt; childrenOf,
+                                          MermaidLabels labels, boolean showcase, MermaidIds ids) {
+<span class="fc" id="L275">        String containerId = ids.node(container.id());</span>
+<span class="fc" id="L276">        sb.append(&quot;        subgraph &quot;).append(containerId)</span>
+<span class="fc" id="L277">          .append(&quot;[\&quot;&quot;).append(escape(container.label())).append(&quot;\&quot;]\n&quot;);</span>
+
+<span class="fc" id="L279">        List&lt;DiagramNode&gt; children = childrenOf.getOrDefault(container.id(), List.of());</span>
+<span class="fc bfc" id="L280" title="All 2 branches covered.">        for (DiagramNode child : children) {</span>
+<span class="fc" id="L281">            renderNode(sb, child, labels, showcase, &quot;            &quot;, ids);</span>
+<span class="fc" id="L282">        }</span>
+
+<span class="fc" id="L284">        sb.append(&quot;        end\n&quot;);</span>
+<span class="fc" id="L285">    }</span>
+
+    /**
+     * Renders a single non-container node with the appropriate shape and label.
+     */
+    private void renderNode(StringBuilder sb, DiagramNode node, MermaidLabels labels,
+                             boolean showcase, String indent, MermaidIds ids) {
+<span class="fc" id="L292">        String nodeId = ids.node(node.id());</span>
+<span class="pc bpc" id="L293" title="1 of 2 branches missed.">        if (showcase) {</span>
+<span class="nc bnc" id="L294" title="All 4 branches missed.">            boolean isProminent = node.anchor() || node.relevance() &gt;= MermaidLabels.HOTSPOT_THRESHOLD;</span>
+<span class="nc" id="L295">            String nameLine = truncateLabel(node.label(), MermaidLabels.SHOWCASE_MAX_LABEL_LENGTH);</span>
+<span class="nc" id="L296">            String metaLine = buildShowcaseMetaLine(node, labels);</span>
+<span class="nc" id="L297">            String label = nameLine + &quot;&lt;br/&gt;&quot; + metaLine;</span>
+<span class="nc bnc" id="L298" title="All 2 branches missed.">            if (isProminent) {</span>
+<span class="nc" id="L299">                sb.append(indent).append(nodeId)</span>
+<span class="nc" id="L300">                  .append(&quot;([\&quot;&quot;).append(escape(label)).append(&quot;\&quot;])\n&quot;);</span>
+            } else {
+<span class="nc" id="L302">                sb.append(indent).append(nodeId)</span>
+<span class="nc" id="L303">                  .append(&quot;[\&quot;&quot;).append(escape(label)).append(&quot;\&quot;]\n&quot;);</span>
+            }
+<span class="nc" id="L305">        } else {</span>
+<span class="fc" id="L306">            String label = node.id() + &quot; &quot; + node.label();</span>
+<span class="fc" id="L307">            label += buildSuffix(node, labels);</span>
+<span class="fc" id="L308">            sb.append(indent).append(nodeId).append(&quot;[\&quot;&quot;).append(escape(label)).append(&quot;\&quot;]\n&quot;);</span>
+        }
+<span class="fc" id="L310">    }</span>
+
+    // ── Shared helpers ──────────────────────────────────────────────────────
+
+    /**
+     * Builds the suffix for a node label: anchor marker, hotspot marker, relevance percentage.
+     */
+    private String buildSuffix(DiagramNode node, MermaidLabels labels) {
+<span class="fc" id="L318">        StringBuilder suffix = new StringBuilder();</span>
+<span class="fc bfc" id="L319" title="All 2 branches covered.">        if (node.anchor()) {</span>
+<span class="fc" id="L320">            suffix.append(' ').append(labels.anchorMarker());</span>
+        }
+<span class="fc bfc" id="L322" title="All 2 branches covered.">        if (node.relevance() &gt;= MermaidLabels.HOTSPOT_THRESHOLD) {</span>
+<span class="fc" id="L323">            suffix.append(' ').append(labels.hotspotMarker());</span>
+        }
+<span class="fc" id="L325">        double pct = node.relevance() * 100;</span>
+<span class="fc bfc" id="L326" title="All 2 branches covered.">        if (pct &gt; 0) {</span>
+<span class="fc" id="L327">            suffix.append(&quot; [&quot;).append(com.taxonomy.dto.AnalysisPercentages.display(pct)).append(']');</span>
+        }
+<span class="fc" id="L329">        return suffix.toString();</span>
+    }
+
+    /**
+     * Builds the second line of a showcase node label (metadata line).
+     * Format: &quot;★ ⚠ 85%&quot; or &quot;65%&quot; depending on the node's role.
+     */
+    private String buildShowcaseMetaLine(DiagramNode node, MermaidLabels labels) {
+<span class="fc" id="L337">        StringBuilder meta = new StringBuilder();</span>
+<span class="fc bfc" id="L338" title="All 2 branches covered.">        if (node.anchor()) {</span>
+<span class="fc" id="L339">            meta.append(labels.anchorMarker());</span>
+        }
+<span class="fc bfc" id="L341" title="All 2 branches covered.">        if (node.relevance() &gt;= MermaidLabels.HOTSPOT_THRESHOLD) {</span>
+<span class="pc bpc" id="L342" title="1 of 2 branches missed.">            if (!meta.isEmpty()) meta.append(' ');</span>
+<span class="fc" id="L343">            meta.append(labels.hotspotMarker());</span>
+        }
+<span class="fc" id="L345">        double pct = node.relevance() * 100;</span>
+<span class="pc bpc" id="L346" title="1 of 2 branches missed.">        if (pct &gt; 0) {</span>
+<span class="fc bfc" id="L347" title="All 2 branches covered.">            if (!meta.isEmpty()) meta.append(' ');</span>
+<span class="fc" id="L348">            meta.append(com.taxonomy.dto.AnalysisPercentages.display(pct));</span>
+        }
+<span class="fc" id="L350">        return meta.toString();</span>
+    }
+
+    /**
+     * Truncates a label to the given max length, appending &quot;…&quot; if truncated.
+     */
+    static String truncateLabel(String label, int maxLength) {
+<span class="fc bfc" id="L357" title="All 2 branches covered.">        if (label == null) return &quot;&quot;;</span>
+<span class="fc bfc" id="L358" title="All 2 branches covered.">        if (label.length() &lt;= maxLength) return label;</span>
+<span class="fc" id="L359">        return label.substring(0, maxLength - 1) + &quot;\u2026&quot;;</span>
+    }
+
+    private void appendStyleDefinitions(StringBuilder sb) {
+<span class="fc" id="L363">        sb.append(&quot;    classDef cap fill:#4A90D9,color:#fff,stroke:#2171B5\n&quot;);</span>
+<span class="fc" id="L364">        sb.append(&quot;    classDef proc fill:#27AE60,color:#fff,stroke:#1E8449\n&quot;);</span>
+<span class="fc" id="L365">        sb.append(&quot;    classDef role fill:#27AE60,color:#fff,stroke:#1E8449\n&quot;);</span>
+<span class="fc" id="L366">        sb.append(&quot;    classDef svc fill:#F39C12,color:#fff,stroke:#D68910\n&quot;);</span>
+<span class="fc" id="L367">        sb.append(&quot;    classDef app fill:#8E44AD,color:#fff,stroke:#6C3483\n&quot;);</span>
+<span class="fc" id="L368">        sb.append(&quot;    classDef info fill:#3498DB,color:#fff,stroke:#2980B9\n&quot;);</span>
+<span class="fc" id="L369">        sb.append(&quot;    classDef comm fill:#E74C3C,color:#fff,stroke:#C0392B\n&quot;);</span>
+<span class="fc" id="L370">        sb.append(&quot;    classDef hotspot fill:#D32F2F,color:#fff,stroke:#B71C1C,stroke-width:3px\n&quot;);</span>
+<span class="fc" id="L371">    }</span>
+
+    private void appendClassAssignments(StringBuilder sb, List&lt;DiagramNode&gt; nodes, MermaidIds ids) {
+<span class="fc bfc" id="L374" title="All 2 branches covered.">        for (DiagramNode node : nodes) {</span>
+<span class="fc bfc" id="L375" title="All 2 branches covered.">            if (node.container()) continue; // containers are sub-graphs, not styled nodes</span>
+<span class="fc" id="L376">            String cls = LAYER_STYLE.getOrDefault(node.type(), &quot;&quot;);</span>
+<span class="fc bfc" id="L377" title="All 2 branches covered.">            if (!cls.isEmpty()) {</span>
+<span class="fc" id="L378">                sb.append(&quot;    class &quot;).append(ids.node(node.id())).append(' ').append(cls).append('\n');</span>
+            }
+<span class="fc bfc" id="L380" title="All 2 branches covered.">            if (node.relevance() &gt;= MermaidLabels.HOTSPOT_THRESHOLD) {</span>
+<span class="fc" id="L381">                sb.append(&quot;    class &quot;).append(ids.node(node.id())).append(&quot; hotspot\n&quot;);</span>
+            }
+<span class="fc" id="L383">        }</span>
+<span class="fc" id="L384">    }</span>
+
+    private int layerOrder(String type) {
+<span class="fc bfc" id="L387" title="All 7 branches covered.">        return switch (type) {</span>
+<span class="fc" id="L388">            case &quot;Capabilities&quot; -&gt; 1;</span>
+<span class="fc" id="L389">            case &quot;Business Processes&quot;, &quot;Business Roles&quot; -&gt; 2;</span>
+<span class="fc" id="L390">            case &quot;Services&quot;, &quot;COI Services&quot;, &quot;Core Services&quot; -&gt; 3;</span>
+<span class="fc" id="L391">            case &quot;Applications&quot;, &quot;User Applications&quot; -&gt; 4;</span>
+<span class="fc" id="L392">            case &quot;Information Products&quot; -&gt; 5;</span>
+<span class="fc" id="L393">            case &quot;Communications Services&quot; -&gt; 6;</span>
+<span class="fc" id="L394">            default -&gt; 99;</span>
+        };
+    }
+
+    /**
+     * Sanitize a node/subgraph ID for Mermaid (alphanumeric + underscores only).
+     */
+    static String sanitizeId(String id) {
+<span class="fc bfc" id="L402" title="All 2 branches covered.">        if (id == null) return &quot;unknown&quot;;</span>
+<span class="fc" id="L403">        return id.replaceAll(&quot;[^a-zA-Z0-9_]&quot;, &quot;_&quot;);</span>
+    }
+
+<span class="fc" id="L406">    private record MermaidIds(Map&lt;String, String&gt; nodes, Map&lt;String, String&gt; layers) {</span>
+        private static MermaidIds forNodes(List&lt;DiagramNode&gt; items) {
+<span class="fc" id="L408">            Set&lt;String&gt; used = new LinkedHashSet&lt;&gt;(RESERVED_IDS);</span>
+<span class="fc" id="L409">            Map&lt;String, Integer&gt; suffixes = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L410">            Map&lt;String, String&gt; layerIds = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L411">            items.stream().map(DiagramNode::type).distinct().sorted()</span>
+<span class="fc" id="L412">                    .forEach(type -&gt; layerIds.put(type, claim(type, used, suffixes)));</span>
+<span class="fc" id="L413">            Map&lt;String, String&gt; nodeIds = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L414">            items.stream().map(DiagramNode::id).distinct().sorted()</span>
+<span class="fc" id="L415">                    .forEach(id -&gt; nodeIds.put(id, claim(id, used, suffixes)));</span>
+<span class="fc" id="L416">            return new MermaidIds(nodeIds, layerIds);</span>
+        }
+
+        private static String claim(String id, Set&lt;String&gt; used, Map&lt;String, Integer&gt; suffixes) {
+<span class="fc" id="L420">            String base = sanitizeId(id);</span>
+<span class="fc" id="L421">            String candidate = base;</span>
+<span class="fc bfc" id="L422" title="All 2 branches covered.">            while (!used.add(candidate)) {</span>
+<span class="fc" id="L423">                int suffix = suffixes.merge(base, 2, (previous, first) -&gt; previous + 1);</span>
+<span class="fc" id="L424">                candidate = base + '_' + suffix;</span>
+<span class="fc" id="L425">            }</span>
+<span class="fc" id="L426">            return candidate;</span>
+        }
+
+        private String node(String id) {
+<span class="fc" id="L430">            String alias = nodes.get(id);</span>
+<span class="pc bpc" id="L431" title="1 of 2 branches missed.">            return alias == null ? sanitizeId(id) : alias;</span>
+        }
+    }
+
+    private static String escapeTitle(String title) {
+<span class="fc" id="L436">        return escape(title.replace(&quot;&amp;&quot;, &quot;&amp;amp;&quot;).replace(&quot;&lt;&quot;, &quot;&amp;lt;&quot;).replace(&quot;&gt;&quot;, &quot;&amp;gt;&quot;)</span>
+<span class="fc" id="L437">                .replace(&quot;\r\n&quot;, &quot; &quot;).replace('\r', ' ').replace('\n', ' '));</span>
+    }
+
+    /**
+     * Escape special characters for Mermaid labels.
+     */
+    static String escape(String text) {
+<span class="fc bfc" id="L444" title="All 2 branches covered.">        if (text == null) return &quot;&quot;;</span>
+<span class="fc" id="L445">        return text.replace(&quot;\&quot;&quot;, &quot;&amp;quot;&quot;).replace(&quot;#&quot;, &quot;&amp;num;&quot;);</span>
+    }
+
+    /**
+     * Returns {@code true} if the node ID matches the taxonomy scaffolding pattern
+     * {@code XX-1000} (two uppercase letters, dash, 1000). These first-level
+     * container nodes are semantically redundant with their root and should be
+     * suppressed in showcase/impact views when concrete leaf nodes are available.
+     */
+    static boolean isScaffoldingId(String id) {
+<span class="fc bfc" id="L455" title="All 4 branches covered.">        if (id == null || id.length() != 7) {</span>
+<span class="fc" id="L456">            return false;</span>
+        }
+        // Expect pattern [A-Z]{2}-1000
+<span class="pc bpc" id="L459" title="1 of 2 branches missed.">        if (id.charAt(2) != '-') {</span>
+<span class="nc" id="L460">            return false;</span>
+        }
+<span class="fc" id="L462">        char c0 = id.charAt(0);</span>
+<span class="fc" id="L463">        char c1 = id.charAt(1);</span>
+<span class="pc bpc" id="L464" title="4 of 8 branches missed.">        if (c0 &lt; 'A' || c0 &gt; 'Z' || c1 &lt; 'A' || c1 &gt; 'Z') {</span>
+<span class="nc" id="L465">            return false;</span>
+        }
+<span class="fc" id="L467">        return id.endsWith(&quot;-1000&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

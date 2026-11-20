@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RetainedCatalogueDefinitions.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.definition</a> &gt; <span class="el_source">RetainedCatalogueDefinitions.java</span></div><h1>RetainedCatalogueDefinitions.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.definition;
+
+import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
+import com.taxonomy.dsl.model.CatalogueDefinition;
+import com.taxonomy.dsl.model.CanonicalArchitectureModel;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import java.util.NoSuchElementException;
+
+/** A descriptor belongs to the bytes of one recorded workbook, including after an import or restart. */
+@Service
+public class RetainedCatalogueDefinitions implements com.taxonomy.dsl.model.CatalogueDefinitionResolver {
+    private final CatalogueSourceJournal sources;
+    private String lastWorkbook;
+    private CatalogueDefinition lastDefinition;
+
+    private final CatalogueParentIndex hierarchy;
+
+<span class="fc" id="L24">    public RetainedCatalogueDefinitions(CatalogueSourceJournal sources) { this(sources, null); }</span>
+
+    @org.springframework.beans.factory.annotation.Autowired
+<span class="fc" id="L27">    public RetainedCatalogueDefinitions(CatalogueSourceJournal sources, @Lazy CatalogueParentIndex hierarchy) {</span>
+<span class="fc" id="L28">        this.sources = sources;</span>
+<span class="fc" id="L29">        this.hierarchy = hierarchy;</span>
+<span class="fc" id="L30">    }</span>
+
+    @Override
+    public java.util.Map&lt;String, String&gt; parentsForModel(com.taxonomy.dsl.model.CanonicalArchitectureModel model) {
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        if (hierarchy == null) return Map.of();</span>
+<span class="pc bpc" id="L35" title="1 of 2 branches missed.">        if (!model.getCatalogueResponsibilities().isEmpty()) {</span>
+<span class="nc" id="L36">            return appliedGeneration(model.responsibilityCatalogueRevision()).map(generation -&gt;</span>
+<span class="nc" id="L37">                    analysisParents(model, generation.revision())).orElseGet(Map::of);</span>
+        }
+<span class="fc" id="L39">        return hierarchy.parentsFor(model);</span>
+    }
+
+    public Map&lt;String, String&gt; analysisParents(CanonicalArchitectureModel model, String revision) {
+<span class="nc bnc" id="L43" title="All 4 branches missed.">        if (revision == null || hierarchy == null) return Map.of();</span>
+<span class="nc" id="L44">        return hierarchy.parentsFor(model, revision, forGeneration(archivedHierarchy(revision)));</span>
+    }
+
+    private CatalogueSourceJournal.Snapshot archivedHierarchy(String revision) {
+<span class="nc" id="L48">        var snapshot = sources.findRevision(revision).orElseThrow();</span>
+<span class="nc bnc" id="L49" title="All 2 branches missed.">        if (snapshot.workbook().use() != CatalogueSourceJournal.Use.APPLIED</span>
+<span class="nc bnc" id="L50" title="All 2 branches missed.">                || snapshot.overlay().use() != CatalogueSourceJournal.Use.APPLIED</span>
+<span class="nc bnc" id="L51" title="All 2 branches missed.">                &amp;&amp; snapshot.overlay().use() != CatalogueSourceJournal.Use.NOT_USED)</span>
+<span class="nc" id="L52">            throw new NoSuchElementException(&quot;The archived catalogue hierarchy was not retained&quot;);</span>
+<span class="nc" id="L53">        return snapshot;</span>
+    }
+
+    @Override
+    public List&lt;Node&gt; analysisNodes(String revision) {
+<span class="nc bnc" id="L58" title="All 4 branches missed.">        if (revision == null || hierarchy == null) return List.of();</span>
+<span class="nc" id="L59">        archivedHierarchy(revision);</span>
+<span class="nc" id="L60">        return hierarchy.catalogueNodes(revision);</span>
+    }
+
+    @Override
+    public AssignmentTarget assignmentTarget(CanonicalArchitectureModel model, String code) {
+<span class="nc bnc" id="L65" title="All 2 branches missed.">        return hierarchy == null ? new AssignmentTarget(false, null)</span>
+<span class="nc" id="L66">                : appliedGeneration(model.responsibilityCatalogueRevision()).map(generation -&gt; new AssignmentTarget(</span>
+<span class="nc bnc" id="L67" title="All 2 branches missed.">                        hierarchy.contains(generation.revision(), code), model.getCatalogueRevision() == null</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">                                || model.getCatalogueRevision().isBlank() ? generation.revision() : null))</span>
+<span class="nc" id="L69">                .orElseGet(() -&gt; new AssignmentTarget(false, null));</span>
+    }
+
+    @Override
+    public List&lt;Node&gt; catalogueNodes(CanonicalArchitectureModel model) {
+<span class="nc bnc" id="L74" title="All 2 branches missed.">        if (hierarchy == null) return List.of();</span>
+<span class="nc" id="L75">        return appliedGeneration(model.responsibilityCatalogueRevision())</span>
+<span class="nc" id="L76">                .map(generation -&gt; analysisNodes(generation.revision())).orElseGet(List::of);</span>
+    }
+
+    @Override
+    public CatalogueDefinition forModel(com.taxonomy.dsl.model.CanonicalArchitectureModel model) {
+<span class="fc" id="L81">        String revision = model.responsibilityCatalogueRevision();</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">        if (revision == null) return CatalogueDefinition.standard();</span>
+<span class="fc" id="L83">        return forGeneration(generation(revision));</span>
+    }
+
+    @Override
+    public CatalogueDefinition forRevision(String revision) {
+<span class="fc" id="L88">        var retained = generation(revision);</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        if (retained.workbook().use() != CatalogueSourceJournal.Use.APPLIED)</span>
+<span class="fc" id="L90">            throw new IllegalStateException(&quot;The recorded catalogue workbook was not retained as applied&quot;);</span>
+<span class="fc" id="L91">        return forGeneration(retained);</span>
+    }
+
+    private CatalogueSourceJournal.Snapshot generation(String revision) {
+<span class="fc" id="L95">        return sources.findRevision(revision)</span>
+<span class="pc" id="L96">                .orElseThrow(() -&gt; new IllegalStateException(&quot;The project's catalogue revision is unavailable&quot;));</span>
+    }
+
+<span class="fc" id="L99">    public record AppliedGeneration(String revision, CatalogueDefinition definition) { }</span>
+
+    /** Resolve a project pin, or capture the current pointer once when the project has no pin. */
+    public java.util.Optional&lt;AppliedGeneration&gt; appliedGeneration(String projectRevision) {
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        var selected = projectRevision == null ? sources.current() : sources.findRevision(projectRevision).orElse(null);</span>
+<span class="fc bfc" id="L104" title="All 4 branches covered.">        if (selected == null || selected.workbook().use() != CatalogueSourceJournal.Use.APPLIED)</span>
+<span class="fc" id="L105">            return java.util.Optional.empty();</span>
+<span class="fc" id="L106">        return java.util.Optional.of(new AppliedGeneration(selected.id(), forGeneration(selected)));</span>
+    }
+
+    public CatalogueDefinition current() {
+<span class="fc" id="L110">        return com.taxonomy.catalog.snapshot.FrozenCatalogueContext.definition()</span>
+<span class="fc" id="L111">                .orElseGet(() -&gt; forGeneration(sources.current()));</span>
+    }
+
+    public synchronized CatalogueDefinition forGeneration(CatalogueSourceJournal.Snapshot generation) {
+<span class="fc bfc" id="L115" title="All 4 branches covered.">        if (generation == null || generation.workbook().use() == CatalogueSourceJournal.Use.NOT_RETAINED)</span>
+<span class="fc" id="L116">            return CatalogueDefinition.standard();</span>
+<span class="fc" id="L117">        var ref = generation.workbook();</span>
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">        if (ref.use() != CatalogueSourceJournal.Use.APPLIED)</span>
+<span class="nc" id="L119">            throw new IllegalStateException(&quot;Catalogue definition has no applied workbook&quot;);</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        if (ref.sha256().equals(lastWorkbook)) return lastDefinition;</span>
+<span class="fc" id="L121">        try (var input = sources.retainedWorkbook(ref).openStream(); var book = new XSSFWorkbook(input)) {</span>
+<span class="fc" id="L122">            var definition = WorkbookCatalogueDefinition.read(book);</span>
+<span class="fc" id="L123">            lastDefinition = definition;</span>
+<span class="fc" id="L124">            lastWorkbook = ref.sha256();</span>
+<span class="fc" id="L125">            return definition;</span>
+<span class="nc" id="L126">        } catch (IOException failure) {</span>
+<span class="nc" id="L127">            throw new IllegalStateException(&quot;Cannot read the retained catalogue definition&quot;, failure);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>VisioPageLayout.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.visio</a> &gt; <span class="el_source">VisioPageLayout.java</span></div><h1>VisioPageLayout.java</h1><pre class="source lang-java linenums">package com.taxonomy.visio;
+
+import com.taxonomy.diagram.VisioDrawingOptions;
+
+import java.awt.geom.Rectangle2D;
+import java.util.HashMap;
+import java.util.Map;
+
+/** Physical inches in Visio's page coordinate system. All lengths on a poster share one scale. */
+<span class="fc" id="L10">public record VisioPageLayout(double width, double height, double scale, double left, double bottom) {</span>
+<span class="fc" id="L11">    public static final VisioPageLayout NATURAL = new VisioPageLayout(11, 8.5, 1, 0, 0);</span>
+
+    public static VisioPageLayout of(VisioPage page, VisioDrawingOptions options) {
+<span class="fc bfc" id="L14" title="All 4 branches covered.">        boolean wall = options != null &amp;&amp; options.mode() == VisioDrawingOptions.Mode.WALL;</span>
+<span class="fc" id="L15">        Rectangle2D bounds = null;</span>
+<span class="fc bfc" id="L16" title="All 2 branches covered.">        for (var shape : page.getShapes()) {</span>
+<span class="fc" id="L17">            bounds = include(bounds, shape.getX(), shape.getY(), shape.getWidth(), shape.getHeight());</span>
+<span class="fc" id="L18">        }</span>
+<span class="fc bfc" id="L19" title="All 2 branches covered.">        if (page.getLegend() != null) bounds = include(bounds, page.getLegend());</span>
+<span class="fc" id="L20">        Map&lt;String, VisioShape&gt; shapes = null;</span>
+<span class="fc" id="L21">        VisioConnectionPoints.Columns columns = null;</span>
+<span class="fc bfc" id="L22" title="All 2 branches covered.">        for (var connect : page.getConnects()) {</span>
+<span class="fc" id="L23">            var box = connect.getTextBox();</span>
+<span class="fc bfc" id="L24" title="All 6 branches covered.">            if (box == null &amp;&amp; wall &amp;&amp; !connect.getRelationType().isBlank()) {</span>
+                // A relationship without an explicit caption falls back to its type at the midpoint.
+<span class="pc bpc" id="L26" title="1 of 2 branches missed.">                if (shapes == null) {</span>
+<span class="fc" id="L27">                    shapes = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L28" title="All 2 branches covered.">                    for (var shape : page.getShapes()) shapes.put(shape.getId(), shape);</span>
+<span class="fc" id="L29">                    columns = new VisioConnectionPoints.Columns(page.getShapes());</span>
+                }
+<span class="fc" id="L31">                var endpoints = columns.route(connect, shapes.get(connect.getFromShape()), shapes.get(connect.getToShape())).endpoints();</span>
+<span class="fc" id="L32">                box = connect.textBoxOrDefault(endpoints);</span>
+            }
+<span class="pc bpc" id="L34" title="1 of 6 branches missed.">            if (box != null &amp;&amp; (!wall || !box.text().isBlank())) bounds = include(bounds, box);</span>
+<span class="fc" id="L35">        }</span>
+<span class="fc bfc" id="L36" title="All 2 branches covered.">        if (!wall) {</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">            if (page.isEvidencePage()) return new VisioPageLayout(8.3, 11.7, 1, 0, 0);</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">            if (bounds == null) return NATURAL;</span>
+<span class="fc" id="L39">            return new VisioPageLayout(Math.max(11, bounds.getMaxX() + 1), Math.max(8.5, bounds.getMaxY() + 1), 1, 0, 0);</span>
+        }
+
+        // ISO 216 landscape; expressed in inches only at the ShapeSheet boundary.
+<span class="fc bfc" id="L43" title="All 5 branches covered.">        double width = switch (options.paper()) {</span>
+<span class="fc" id="L44">            case A4 -&gt; 297; case A3 -&gt; 420; case A2 -&gt; 594; case A1 -&gt; 841; case A0 -&gt; 1189;</span>
+        } / 25.4;
+<span class="fc bfc" id="L46" title="All 5 branches covered.">        double height = switch (options.paper()) {</span>
+<span class="fc" id="L47">            case A4 -&gt; 210; case A3 -&gt; 297; case A2 -&gt; 420; case A1 -&gt; 594; case A0 -&gt; 841;</span>
+        } / 25.4;
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">        if (bounds == null) return new VisioPageLayout(width, height, 1, 0, 0);</span>
+<span class="fc" id="L50">        double margin = height * .03;</span>
+        // Native labels are 10–12 pt. Sparse sheets stay at or below 30–36 pt.
+<span class="fc" id="L52">        double fit = Math.min((width - 2 * margin) / bounds.getWidth(), (height - 2 * margin) / bounds.getHeight());</span>
+<span class="fc" id="L53">        double scale = Math.min(3, fit);</span>
+<span class="fc" id="L54">        return new VisioPageLayout(width, height, scale, width / 2 - bounds.getCenterX() * scale,</span>
+<span class="fc" id="L55">                height / 2 - bounds.getCenterY() * scale);</span>
+    }
+
+<span class="fc" id="L58">    public double x(double x) { return left + x * scale; }</span>
+<span class="fc" id="L59">    public double y(double y) { return bottom + y * scale; }</span>
+<span class="fc" id="L60">    public double length(double length) { return length * scale; }</span>
+
+    private static Rectangle2D include(Rectangle2D bounds, VisioTextBox box) {
+<span class="fc" id="L63">        return include(bounds, box.x(), box.y(), box.width(), box.height());</span>
+    }
+
+    private static Rectangle2D include(Rectangle2D bounds, double x, double y, double width, double height) {
+<span class="fc" id="L67">        var rectangle = new Rectangle2D.Double(x - width / 2, y - height / 2, width, height);</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        if (bounds == null) return rectangle;</span>
+<span class="fc" id="L69">        bounds.add(rectangle);</span>
+<span class="fc" id="L70">        return bounds;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,547 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ClusterAnalysisBackupRestorer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.cluster</a> &gt; <span class="el_source">ClusterAnalysisBackupRestorer.java</span></div><h1>ClusterAnalysisBackupRestorer.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.cluster;
+
+import com.taxonomy.analysis.dag.*;
+import com.taxonomy.analysis.dag.json.AnalysisMessageCodec;
+import com.taxonomy.analysis.relations.RelationSearchDistribution;
+import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
+import com.taxonomy.backup.SourceRecordId;
+import com.taxonomy.catalog.snapshot.RootCatalogueSnapshot;
+import com.taxonomy.dto.*;
+import jakarta.persistence.EntityManager;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.databind.ObjectMapper;
+
+import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.util.*;
+
+import static com.taxonomy.analysis.cluster.ClusterAnalysisBackupRecords.*;
+import com.taxonomy.dsl.model.CatalogueDefinition;
+
+/**
+ * Restores one already authorized/verified archive aggregate under caller-remapped identities.
+ * This is an internal persistence API, not an archive upload or authorization endpoint.
+ * It has no transport, dispatcher or provider dependency and never resumes external work.
+ */
+public final class ClusterAnalysisBackupRestorer {
+    private static final String INTERRUPTED = &quot;RESTORE_INTERRUPTED&quot;;
+    private final EntityManager em;
+    private final TransactionTemplate transactions;
+    private final ObjectMapper json;
+    private final java.util.function.Predicate&lt;com.taxonomy.extension.api.plugin.PluginInvocation&gt; plugins;
+<span class="fc" id="L33">    private final AnalysisMessageCodec codec = new AnalysisMessageCodec();</span>
+
+    public ClusterAnalysisBackupRestorer(EntityManager em, PlatformTransactionManager transactions, ObjectMapper json) {
+<span class="fc" id="L36">        this(em, transactions, json, binding -&gt; false);</span>
+<span class="fc" id="L37">    }</span>
+    /** Caller supplies its verified installation; no provider is invoked or resumed during restore. */
+    public ClusterAnalysisBackupRestorer(EntityManager em, PlatformTransactionManager transactions, ObjectMapper json,
+<span class="fc" id="L40">            java.util.function.Predicate&lt;com.taxonomy.extension.api.plugin.PluginInvocation&gt; plugins) {</span>
+<span class="fc" id="L41">        this.em = Objects.requireNonNull(em); this.transactions = new TransactionTemplate(transactions); this.json = Objects.requireNonNull(json);</span>
+<span class="fc" id="L42">        this.plugins = Objects.requireNonNull(plugins);</span>
+<span class="fc" id="L43">    }</span>
+
+    public void restore(Archive archive, AnalysisOperationContext target, AnalyzeRequirementCommand command) {
+<span class="fc" id="L46">        restore(archive, target, command, Map.of());</span>
+<span class="fc" id="L47">    }</span>
+
+    /** The target portfolio owner supplies its already allocated immutable version identities. */
+    public void restore(Archive archive, AnalysisOperationContext target, AnalyzeRequirementCommand command,
+            Map&lt;SourceRecordId, Long&gt; requirementVersions) {
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">        if (ClusterAnalysisState.EXPIRED.name().equals(archive.run().sourceState())) {</span>
+<span class="nc" id="L53">            try { ClusterAnalysisBackupExport.validateCommand(target, command.username(), command); }</span>
+<span class="nc" id="L54">            catch (java.io.IOException invalid) { throw new IllegalArgumentException(&quot;Invalid restore authority&quot;, invalid); }</span>
+<span class="nc" id="L55">            restoreExpired(archive, target, command.workspaceContext(), requirementVersions);</span>
+<span class="nc" id="L56">            return;</span>
+        }
+<span class="fc" id="L58">        validate(archive, target, command, Map.copyOf(requirementVersions));</span>
+<span class="fc bfc" id="L59" title="All 4 branches covered.">        if (command.providerBinding() != null &amp;&amp; !plugins.test(command.providerBinding()))</span>
+<span class="fc" id="L60">            throw new IllegalArgumentException(&quot;Required provider artifact or configuration is unavailable for restore&quot;);</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        boolean interrupted = !ClusterAnalysisState.valueOf(archive.run().sourceState()).terminal();</span>
+        // Validate/aggregate committed evidence before writing anything. Missing work is explicit,
+        // never a fabricated zero score or an exhausted relation search.
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        String resultJson = interrupted ? json.writeValueAsString(interruptedResult(archive)) : archive.run().resultJson();</span>
+<span class="fc" id="L65">        transactions.executeWithoutResult(status -&gt; {</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">            if (em.find(ClusterAnalysisRun.class, target.operationId()) != null) throw new IllegalStateException(&quot;Restore target operation already exists&quot;);</span>
+<span class="fc" id="L67">            long now = System.currentTimeMillis(); var source = archive.run();</span>
+<span class="fc" id="L68">            var run = new ClusterAnalysisRun(); run.id = target.operationId(); run.username = command.username();</span>
+<span class="fc" id="L69">            run.scopeKey = ClusterAnalysisStore.scopeKey(command.workspaceContext());</span>
+<span class="fc" id="L70">            run.projectId = target.requirement().projectId(); run.requirementId = target.requirement().requirementId();</span>
+<span class="fc" id="L71">            run.contextJson = json.writeValueAsString(target); run.commandJson = json.writeValueAsString(command.withContinuationBinding(null));</span>
+<span class="fc" id="L72">            run.viewJson = source.viewJson(); run.resultJson = resultJson;</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">            run.relationPlanJson = source.relationPlanJson() == null ? null : json.writeValueAsString(remapPlan(read(source.relationPlanJson(), RelationSearchDistribution.Plan.class), target.operationId()));</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">            run.state = interrupted ? ClusterAnalysisState.CANCELLED : ClusterAnalysisState.valueOf(source.sourceState());</span>
+<span class="fc" id="L75">            run.totalRoots = source.totalRoots(); run.completedRoots = source.completedRoots();</span>
+<span class="fc" id="L76">            run.revision = source.revision(); run.createdAt = source.createdAt(); run.updatedAt = now; em.persist(run);</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">            for (var input : archive.inputs()) {</span>
+<span class="fc" id="L78">                var restored = new ClusterAnalysisInput(); restored.id = key(run.id + &quot;:input:&quot; + input.root());</span>
+<span class="fc" id="L79">                restored.operationId = run.id; restored.root = input.root(); restored.inputJson = input.inputJson(); em.persist(restored);</span>
+<span class="fc" id="L80">            }</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">            for (var work : archive.work()) {</span>
+<span class="fc" id="L82">                var task = (AnalysisTaskMessage) decode(work.messageJson()); var remapped = remapTask(task, source.context(), target);</span>
+<span class="fc" id="L83">                var restored = new ClusterAnalysisWork(); restored.id = key(remapped.taskId().value());</span>
+<span class="fc" id="L84">                restored.operationId = run.id; restored.taskId = remapped.taskId().value(); restored.taskType = work.taskType();</span>
+<span class="fc" id="L85">                restored.root = work.root(); restored.ordinal = work.ordinal(); restored.messageJson = encode(remapped);</span>
+<span class="fc" id="L86">                restored.inputJson = work.inputJson(); restored.resultJson = work.resultJson();</span>
+<span class="fc" id="L87">                var progress = ClusterAnalysisProgress.read(work.progressJson(), json);</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">                if (progress != null) restored.progressJson = json.writeValueAsString(new ClusterAnalysisProgress.Worker(</span>
+<span class="fc" id="L89">                        UUID.randomUUID().toString(), progress.delivery(), progress.revision(), progress.phase(), progress.node(),</span>
+<span class="fc" id="L90">                        progress.scores(), progress.relations()));</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">                if (task.taskType() == AnalysisTaskType.RELATION_ANALYSIS) {</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">                    if (work.inputJson() != null) {</span>
+<span class="fc" id="L93">                        restored.inputJson = json.writeValueAsString(remapGrant(read(work.inputJson(), RelationSearchDistribution.Work.class), run.id));</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">                        if (work.resultJson() != null) {</span>
+<span class="fc" id="L95">                            var effect = read(work.resultJson(), RelationSearchDistribution.WorkResult.class);</span>
+<span class="fc" id="L96">                            restored.resultJson = json.writeValueAsString(new RelationSearchDistribution.WorkResult(remapGrant(effect.work(), run.id), effect.result(), effect.calls(), effect.stopReason()));</span>
+<span class="fc" id="L97">                        }</span>
+<span class="fc bfc" id="L98" title="All 4 branches covered.">                    } else if (work.resultJson() != null &amp;&amp; source.relationPlanJson() != null) restored.resultJson = run.relationPlanJson;</span>
+                }
+<span class="fc" id="L100">                boolean unfinished = Set.of(&quot;WAITING_PREDECESSOR&quot;, &quot;QUEUED&quot;, &quot;RUNNING&quot;).contains(work.sourceState());</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">                restored.state = unfinished ? &quot;STOPPED&quot; : work.sourceState(); restored.settled = work.settled();</span>
+<span class="pc bpc" id="L102" title="1 of 6 branches missed.">                restored.failureReason = interrupted &amp;&amp; work.failureReason() == null &amp;&amp; work.resultJson() == null</span>
+<span class="fc" id="L103">                        ? INTERRUPTED : work.failureReason();</span>
+                // Historical attempts remain in the archive DTO, never become a new live attempt.
+<span class="fc bfc" id="L105" title="All 2 branches covered.">                restored.attempts = 0; restored.startedAt = null; restored.finishedAt = unfinished ? Long.valueOf(now) : work.finishedAt(); em.persist(restored);</span>
+<span class="fc" id="L106">            }</span>
+<span class="fc" id="L107">            var callIds = new HashMap&lt;SourceRecordId, String&gt;();</span>
+<span class="fc" id="L108">            var executions = new HashMap&lt;String, String&gt;(); var invocations = new HashMap&lt;String, String&gt;();</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">            for (var call : archive.calls()) {</span>
+<span class="fc" id="L110">                var restored = new ClusterAnalysisCall(); restored.id = ClusterAnalysisDiagnostics.callKey(run.id, call.callNumber());</span>
+<span class="fc" id="L111">                restored.operationId = run.id; restored.callNumber = call.callNumber();</span>
+<span class="fc" id="L112">                var originalTask = archive.work().stream().filter(work -&gt; work.taskId().equals(call.taskId())).findFirst().orElseThrow();</span>
+<span class="fc" id="L113">                restored.taskId = remapTask((AnalysisTaskMessage) decode(originalTask.messageJson()), source.context(), target).taskId().value();</span>
+<span class="fc" id="L114">                restored.executionId = executions.computeIfAbsent(call.executionId(), ignored -&gt; UUID.randomUUID().toString());</span>
+<span class="fc" id="L115">                restored.logicalOrdinal = call.logicalOrdinal(); restored.deliveryAttempt = call.deliveryAttempt(); restored.provider = call.provider(); restored.node = call.node();</span>
+<span class="fc" id="L116">                restored.state = call.state(); restored.startedAt = call.startedAt(); restored.durationMillis = call.durationMillis(); restored.eventRevision = call.eventRevision();</span>
+<span class="fc" id="L117">                restored.prompt = call.prompt(); restored.response = call.response(); restored.error = call.error(); restored.promptLength = call.promptLength(); restored.responseLength = call.responseLength();</span>
+<span class="fc" id="L118">                callIds.put(call.sourceId(), restored.id); em.persist(restored);</span>
+<span class="fc" id="L119">            }</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">            for (var attempt : archive.attempts()) {</span>
+<span class="fc" id="L121">                var restored = new ClusterAnalysisAttempt(); restored.id = UUID.randomUUID().toString(); restored.operationId = run.id; restored.callId = callIds.get(attempt.call());</span>
+<span class="fc" id="L122">                restored.invocationId = invocations.computeIfAbsent(attempt.invocationId(), ignored -&gt; UUID.randomUUID().toString());</span>
+<span class="fc" id="L123">                restored.provider = attempt.provider(); restored.source = attempt.source(); restored.retryIndex = attempt.retryIndex(); restored.startedAt = attempt.startedAt();</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">                if (attempt.observationJson() != null) {</span>
+<span class="fc" id="L125">                    var observation = read(attempt.observationJson(), com.taxonomy.analysis.service.LlmTransportMeter.Observation.class);</span>
+<span class="fc" id="L126">                    restored.observationJson = json.writeValueAsString(new com.taxonomy.analysis.service.LlmTransportMeter.Observation(restored.invocationId, observation.provider(), observation.source(),</span>
+<span class="fc" id="L127">                            observation.retryIndex(), observation.statusCode(), observation.outcome(), observation.durationMillis(), observation.usage()));</span>
+                }
+<span class="fc" id="L129">                em.persist(restored);</span>
+<span class="fc" id="L130">            }</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">            long firstRetained = ClusterAnalysisEvent.firstRetainedRevision(run.revision + (interrupted ? 1 : 0));</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">            for (var event : archive.events()) {</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">                if (event.revision() &lt; firstRetained) continue;</span>
+<span class="fc" id="L134">                var original = (AnalysisProgressEvent) decode(event.eventJson());</span>
+<span class="fc" id="L135">                persistEvent(new AnalysisProgressEvent(remapEnvelope(original.envelope(), source.context(), target),</span>
+<span class="fc" id="L136">                        original.sequence(), original.phase(), original.completedTasks(), original.totalTasks()));</span>
+<span class="fc" id="L137">            }</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">            if (interrupted) {</span>
+<span class="fc" id="L139">                run.revision++;</span>
+<span class="fc" id="L140">                persistEvent(new AnalysisMessageFactory(target, Clock.systemUTC()).progress(run.revision,</span>
+                        AnalysisProgressPhase.OPERATION_STOPPED, null, run.completedRoots, run.totalRoots));
+            }
+<span class="fc" id="L143">            em.flush();</span>
+<span class="fc" id="L144">        });</span>
+<span class="fc" id="L145">    }</span>
+
+    /** Restores a scoped idempotency marker without reconstructing or dispatching its expired command. */
+    public void restoreExpired(Archive archive, AnalysisOperationContext target,
+            com.taxonomy.workspace.service.WorkspaceContext workspace, Map&lt;SourceRecordId, Long&gt; requirementVersions) {
+<span class="fc" id="L150">        var marker = archive.run();</span>
+<span class="fc" id="L151">        var source = marker.context();</span>
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">        require(ClusterAnalysisState.EXPIRED.name().equals(marker.sourceState())</span>
+<span class="pc bpc" id="L153" title="1 of 2 branches missed.">                &amp;&amp; marker.resumePolicy() == com.taxonomy.analysis.backup.AnalysisBackupContributor.ResumePolicy.REVIEW_REQUIRED</span>
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">                &amp;&amp; marker.sourceId().equals(new SourceRecordId(&quot;analysis.cluster-run&quot;, source.operationId()))</span>
+<span class="pc bpc" id="L155" title="2 of 4 branches missed.">                &amp;&amp; marker.principalScope() != null &amp;&amp; !marker.principalScope().isBlank()</span>
+<span class="pc bpc" id="L156" title="2 of 4 branches missed.">                &amp;&amp; marker.revision() &gt; 0 &amp;&amp; marker.revision() &lt; Long.MAX_VALUE</span>
+<span class="pc bpc" id="L157" title="2 of 4 branches missed.">                &amp;&amp; marker.createdAt() &gt; 0 &amp;&amp; marker.updatedAt() &gt;= marker.createdAt()</span>
+<span class="pc bpc" id="L158" title="3 of 6 branches missed.">                &amp;&amp; marker.commandJson() == null &amp;&amp; marker.resultJson() == null &amp;&amp; marker.viewJson() == null</span>
+<span class="pc bpc" id="L159" title="3 of 6 branches missed.">                &amp;&amp; marker.relationPlanJson() == null &amp;&amp; marker.totalRoots() == 0 &amp;&amp; marker.completedRoots() == 0</span>
+<span class="pc bpc" id="L160" title="3 of 6 branches missed.">                &amp;&amp; archive.work().isEmpty() &amp;&amp; archive.events().isEmpty() &amp;&amp; archive.inputs().isEmpty()</span>
+<span class="pc bpc" id="L161" title="2 of 4 branches missed.">                &amp;&amp; archive.calls().isEmpty() &amp;&amp; archive.attempts().isEmpty(), &quot;Invalid expired analysis marker&quot;);</span>
+<span class="fc" id="L162">        var version = source.requirement().requirementVersionId();</span>
+<span class="pc bpc" id="L163" title="1 of 2 branches missed.">        var targetVersion = version == null ? null : requirementVersions.get(new SourceRecordId(&quot;portfolio.requirement-version&quot;, version.toString()));</span>
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">        require(!target.operationId().equals(source.operationId())</span>
+<span class="pc bpc" id="L165" title="4 of 6 branches missed.">                &amp;&amp; source.requirement().textSha256().equals(target.requirement().textSha256())</span>
+<span class="pc bpc" id="L166" title="1 of 2 branches missed.">                &amp;&amp; (version == null || targetVersion != null) &amp;&amp; Objects.equals(targetVersion, target.requirement().requirementVersionId())</span>
+<span class="pc bpc" id="L167" title="2 of 4 branches missed.">                &amp;&amp; workspace.username() != null &amp;&amp; !workspace.username().isBlank()</span>
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(target.authority().workspaceId(), workspace.workspaceId())</span>
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(target.authority().repositoryId(), workspace.repositoryId())</span>
+<span class="pc bpc" id="L170" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(target.authority().branch(), workspace.currentBranch()), &quot;Invalid target for expired operation&quot;);</span>
+<span class="fc" id="L171">        transactions.executeWithoutResult(status -&gt; {</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">            if (em.find(ClusterAnalysisRun.class, target.operationId()) != null) throw new IllegalStateException(&quot;Restore target operation already exists&quot;);</span>
+<span class="fc" id="L173">            var run = new ClusterAnalysisRun();</span>
+<span class="fc" id="L174">            run.id = target.operationId(); run.username = workspace.username(); run.scopeKey = ClusterAnalysisStore.scopeKey(workspace);</span>
+<span class="fc" id="L175">            run.contextJson = json.writeValueAsString(target); run.projectId = target.requirement().projectId();</span>
+<span class="fc" id="L176">            run.requirementId = target.requirement().requirementId(); run.commandJson = &quot;{}&quot;; run.state = ClusterAnalysisState.CANCELLED;</span>
+<span class="fc" id="L177">            run.revision = marker.revision(); run.createdAt = marker.createdAt(); run.updatedAt = marker.updatedAt();</span>
+<span class="fc" id="L178">            em.persist(run);</span>
+<span class="fc" id="L179">        });</span>
+<span class="fc" id="L180">    }</span>
+
+    private void validate(Archive archive, AnalysisOperationContext target, AnalyzeRequirementCommand command,
+            Map&lt;SourceRecordId, Long&gt; requirementVersions) {
+<span class="fc" id="L184">        Objects.requireNonNull(archive); Objects.requireNonNull(target); Objects.requireNonNull(command);</span>
+<span class="fc" id="L185">        var run = Objects.requireNonNull(archive.run()); var source = Objects.requireNonNull(run.context());</span>
+<span class="fc" id="L186">        require(run.sourceId().equals(new SourceRecordId(&quot;analysis.cluster-run&quot;, source.operationId())), &quot;Invalid archived operation reference&quot;);</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">        require(!source.operationId().equals(target.operationId()), &quot;Restore must allocate a new operation identity&quot;);</span>
+<span class="pc bpc" id="L188" title="4 of 8 branches missed.">        require(run.totalRoots() &gt; 0 &amp;&amp; run.totalRoots() &lt;= AnalysisTaskId.MAX_ROUTED_ROOTS &amp;&amp; run.completedRoots() &gt;= 0 &amp;&amp; run.completedRoots() &lt;= run.totalRoots()</span>
+<span class="pc bpc" id="L189" title="4 of 8 branches missed.">                &amp;&amp; run.revision() &gt; 0 &amp;&amp; run.revision() &lt; Long.MAX_VALUE &amp;&amp; archive.work().size() &lt;= 100_001 + run.totalRoots() &amp;&amp; archive.inputs().size() &lt;= AnalysisTaskId.MAX_ROUTED_ROOTS</span>
+<span class="pc bpc" id="L190" title="1 of 2 branches missed.">                &amp;&amp; archive.events().size() &lt;= 100_000, &quot;Invalid archived aggregate bounds&quot;);</span>
+<span class="fc" id="L191">        var sourceCommand = read(run.commandJson(), AnalyzeRequirementCommand.class);</span>
+        try {
+<span class="fc" id="L193">            ClusterAnalysisBackupExport.validateCommand(source, run.principalScope(), sourceCommand);</span>
+<span class="fc" id="L194">            ClusterAnalysisBackupExport.validateCommand(target, command.username(), command);</span>
+<span class="fc" id="L195">        } catch (java.io.IOException invalid) { throw new IllegalArgumentException(&quot;Invalid restore authority&quot;); }</span>
+<span class="fc" id="L196">        var sourceVersion = source.requirement().requirementVersionId();</span>
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        Long targetVersion = sourceVersion == null ? null</span>
+<span class="fc" id="L198">                : requirementVersions.get(new SourceRecordId(&quot;portfolio.requirement-version&quot;, sourceVersion.toString()));</span>
+<span class="fc bfc" id="L199" title="All 4 branches covered.">        require((sourceVersion == null || targetVersion != null)</span>
+<span class="fc bfc" id="L200" title="All 2 branches covered.">                &amp;&amp; Objects.equals(targetVersion, target.requirement().requirementVersionId()),</span>
+                &quot;An archived requirement version requires an explicit target version mapping&quot;);
+<span class="pc bpc" id="L202" title="1 of 2 branches missed.">        require(source.requirement().textSha256().equals(target.requirement().textSha256())</span>
+<span class="pc bpc" id="L203" title="2 of 4 branches missed.">                &amp;&amp; sourceCommand.businessText().equals(command.businessText()) &amp;&amp; sourceCommand.analysisScope().equals(command.analysisScope())</span>
+<span class="pc bpc" id="L204" title="1 of 2 branches missed.">                &amp;&amp; sourceCommand.includeArchitectureView() == command.includeArchitectureView()</span>
+<span class="pc bpc" id="L205" title="2 of 4 branches missed.">                &amp;&amp; sourceCommand.maxArchitectureNodes() == command.maxArchitectureNodes() &amp;&amp; Objects.equals(sourceCommand.provider(), command.provider())</span>
+<span class="pc bpc" id="L206" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(sourceCommand.providerBinding(), command.providerBinding())</span>
+<span class="fc bfc" id="L207" title="All 2 branches covered.">                &amp;&amp; Objects.equals(sourceCommand.analysisReasonLength(), command.analysisReasonLength())</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">                &amp;&amp; Objects.equals(sourceCommand.analysisLanguage(), command.analysisLanguage())</span>
+<span class="fc bfc" id="L209" title="All 2 branches covered.">                &amp;&amp; Objects.equals(sourceCommand.modelBinding(), command.modelBinding())</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">                &amp;&amp; Objects.equals(json.valueToTree(sourceCommand.retainedAnalysis()), json.valueToTree(command.retainedAnalysis())),</span>
+                &quot;Restore cannot change the captured analysis request&quot;);
+<span class="fc" id="L212">        var state = ClusterAnalysisState.valueOf(run.sourceState());</span>
+<span class="fc bfc" id="L213" title="All 2 branches covered.">        if (state.terminal()) {</span>
+<span class="pc bpc" id="L214" title="1 of 2 branches missed.">            require(run.resultJson() != null, &quot;Terminal archived result is missing&quot;);</span>
+<span class="fc" id="L215">            var result = read(run.resultJson(), AnalysisResult.class);</span>
+<span class="fc" id="L216">            require(Objects.equals(result.getModelBinding(), sourceCommand.modelBinding()),</span>
+                    &quot;Archived result differs from its admitted model evidence&quot;);
+        }
+<span class="fc" id="L219">        var taskIds = new HashSet&lt;String&gt;(); var ordinals = new HashSet&lt;Integer&gt;(); var roots = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L220">        var inputRoots = new HashSet&lt;String&gt;(); var sourceIds = new HashSet&lt;SourceRecordId&gt;(); int completed = 0;</span>
+<span class="fc" id="L221">        long characters = bounded(run.commandJson()) + bounded(run.viewJson()) + bounded(run.resultJson()) + bounded(run.relationPlanJson());</span>
+<span class="fc" id="L222">        CatalogueDefinition.Spec definition = null;</span>
+<span class="pc bpc" id="L223" title="1 of 8 branches missed.">        var restored = state.terminal() &amp;&amp; archive.work().stream().allMatch(work -&gt; work.attempts() == 0 &amp;&amp; work.startedAt() == null);</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">        for (var input : archive.inputs()) {</span>
+<span class="fc" id="L225">            requireReference(input.sourceId(), &quot;analysis.cluster-input&quot;, input.run(), run, sourceIds);</span>
+<span class="pc bpc" id="L226" title="2 of 4 branches missed.">            require(TaxonomyShardRoot.of(input.root()).catalogueIdentifier() &amp;&amp; inputRoots.add(input.root()), &quot;Invalid frozen root reference&quot;);</span>
+<span class="pc bpc" id="L227" title="2 of 4 branches missed.">            require(input.inputJson() != null &amp;&amp; !input.inputJson().isBlank(), &quot;Missing frozen root input&quot;); characters += bounded(input.inputJson());</span>
+<span class="fc bfc" id="L228" title="All 2 branches covered.">            if (!TaxonomyShardRoot.of(input.root()).defaultCatalogueRoot()) {</span>
+<span class="fc" id="L229">                var snapshot = ClusterAnalysisProgress.frozen(input.inputJson(), json, source, input.root(), restored);</span>
+<span class="pc bpc" id="L230" title="2 of 4 branches missed.">                require(snapshot != null &amp;&amp; snapshot.catalogueDefinition() != null, &quot;Configured root is missing its frozen definition&quot;);</span>
+<span class="pc bpc" id="L231" title="3 of 4 branches missed.">                require(definition == null || definition.equals(snapshot.catalogueDefinition()), &quot;Conflicting archived catalogue definitions&quot;);</span>
+<span class="fc" id="L232">                definition = snapshot.catalogueDefinition();</span>
+            }
+<span class="fc" id="L234">        }</span>
+<span class="pc bpc" id="L235" title="1 of 4 branches missed.">        if (definition != null &amp;&amp; run.relationPlanJson() != null) {</span>
+<span class="nc" id="L236">            var plan = read(run.relationPlanJson(), RelationSearchDistribution.Plan.class);</span>
+<span class="nc" id="L237">            require(definition.equals(plan.catalogueDefinition()), &quot;Archived relation plan differs from its frozen catalogue&quot;);</span>
+        }
+<span class="fc bfc" id="L239" title="All 2 branches covered.">        for (var work : archive.work()) {</span>
+<span class="fc" id="L240">            requireReference(work.sourceId(), &quot;analysis.cluster-work&quot;, work.run(), run, sourceIds);</span>
+<span class="pc bpc" id="L241" title="4 of 8 branches missed.">            require(taskIds.add(work.taskId()) &amp;&amp; ordinals.add(work.ordinal()) &amp;&amp; work.ordinal() &gt;= 0 &amp;&amp; work.attempts() &gt;= 0, &quot;Invalid archived task identity&quot;);</span>
+<span class="fc" id="L242">            require(Set.of(&quot;WAITING_PREDECESSOR&quot;, &quot;QUEUED&quot;, &quot;RUNNING&quot;, &quot;COMPLETED&quot;, &quot;PARTIAL&quot;, &quot;FAILED&quot;, &quot;STOPPED&quot;).contains(work.sourceState()), &quot;Invalid archived task state&quot;);</span>
+<span class="fc" id="L243">            var message = decode(work.messageJson());</span>
+<span class="fc" id="L244">            require(message instanceof AnalysisTaskMessage, &quot;Expected archived task message&quot;); var task = (AnalysisTaskMessage) message;</span>
+<span class="pc bpc" id="L245" title="2 of 4 branches missed.">            require(ClusterAnalysisBackupExport.sameContext(task.envelope(), source) &amp;&amp; task.taskId().value().equals(work.taskId())</span>
+<span class="pc bpc" id="L246" title="2 of 6 branches missed.">                    &amp;&amp; task.taskType().name().equals(work.taskType()) &amp;&amp; Objects.equals(task.routingRoot() == null ? null : task.routingRoot().code(), work.root()), &quot;Archived task authority mismatch&quot;);</span>
+<span class="pc bpc" id="L247" title="1 of 4 branches missed.">            require(work.failureReason() == null || work.failureReason().matches(&quot;[A-Z_]{1,64}&quot;), &quot;Invalid archived failure code&quot;);</span>
+<span class="pc bpc" id="L248" title="1 of 4 branches missed.">            require(work.failureReason() == null || work.resultJson() == null, &quot;Conflicting archived task effect&quot;);</span>
+<span class="fc bfc" id="L249" title="All 2 branches covered.">            if (task.taskType() == AnalysisTaskType.SUBTAXONOMY_ANALYSIS) {</span>
+<span class="fc" id="L250">                require(roots.add(work.root()), &quot;Duplicate archived root work&quot;);</span>
+<span class="fc bfc" id="L251" title="All 2 branches covered.">                if (work.settled()) completed++;</span>
+<span class="fc bfc" id="L252" title="All 2 branches covered.">                if (work.resultJson() != null) read(work.resultJson(), AnalysisResult.class);</span>
+            }
+<span class="fc" id="L254">            var progress = ClusterAnalysisProgress.read(work.progressJson(), json);</span>
+<span class="fc" id="L255">            validateProgress(progress, run.revision(), work.attempts(), work.sourceState(), task);</span>
+<span class="fc" id="L256">            validateProgressCatalogue(progress, task, archive);</span>
+<span class="fc" id="L257">            characters += bounded(work.messageJson()) + bounded(work.inputJson()) + bounded(work.resultJson()) + bounded(work.progressJson());</span>
+<span class="fc" id="L258">        }</span>
+<span class="pc bpc" id="L259" title="3 of 6 branches missed.">        require(roots.size() == run.totalRoots() &amp;&amp; completed == run.completedRoots() &amp;&amp; inputRoots.containsAll(roots), &quot;Incomplete archived root closure&quot;);</span>
+<span class="fc bfc" id="L260" title="All 4 branches covered.">        for (var work : archive.work()) if (decode(work.messageJson()) instanceof RelationAnalysisTask relation)</span>
+<span class="fc" id="L261">            require(taskIds.containsAll(relation.prerequisiteTasks().stream().map(AnalysisTaskId::value).toList()), &quot;Missing archived relation prerequisite&quot;);</span>
+<span class="fc bfc" id="L262" title="All 2 branches covered.">        if (run.relationPlanJson() != null) {</span>
+<span class="fc" id="L263">            var plan = read(run.relationPlanJson(), RelationSearchDistribution.Plan.class);</span>
+<span class="pc bpc" id="L264" title="2 of 4 branches missed.">            require(plan.preparationId().equals(source.operationId() + &quot;:relations&quot;) &amp;&amp; plan.originalSha256().equals(source.requirement().textSha256())</span>
+<span class="pc bpc" id="L265" title="1 of 2 branches missed.">                    &amp;&amp; taskIds.containsAll(plan.sourceResultIds()), &quot;Invalid archived relation preparation&quot;);</span>
+<span class="fc bfc" id="L266" title="All 4 branches covered.">            for (var work : archive.work()) if (work.taskType().equals(AnalysisTaskType.RELATION_ANALYSIS.name())</span>
+<span class="pc bpc" id="L267" title="1 of 4 branches missed.">                    &amp;&amp; work.inputJson() == null &amp;&amp; work.resultJson() != null)</span>
+<span class="fc" id="L268">                require(read(work.resultJson(), RelationSearchDistribution.Plan.class).equals(plan), &quot;Archived preparation differs from relation plan&quot;);</span>
+<span class="fc" id="L269">            var effects = relationEffects(archive);</span>
+<span class="fc" id="L270">            RelationSearchDistribution.combine(plan, effects);</span>
+<span class="fc" id="L271">        } else scoreOnlyRelations(archive);</span>
+<span class="pc bpc" id="L272" title="2 of 4 branches missed.">        require(archive.calls().size() &lt;= ClusterAnalysisDiagnostics.MAX_CALLS &amp;&amp; archive.attempts().size() &lt;= ClusterAnalysisDiagnostics.MAX_ATTEMPTS, &quot;Oversized archived diagnostics&quot;);</span>
+<span class="fc" id="L273">        var calls = new HashMap&lt;SourceRecordId, Call&gt;(); var numbers = new HashSet&lt;Long&gt;(); var logicalKeys = new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L274" title="All 2 branches covered.">        for (var call : archive.calls()) {</span>
+<span class="fc" id="L275">            requireReference(call.sourceId(), &quot;analysis.cluster-call&quot;, call.run(), run, sourceIds);</span>
+<span class="fc" id="L276">            validateCall(call, run.revision(), taskIds);</span>
+<span class="pc bpc" id="L277" title="2 of 4 branches missed.">            require(numbers.add(call.callNumber()) &amp;&amp; logicalKeys.add(call.executionId() + &quot;:&quot; + call.logicalOrdinal()), &quot;Duplicate archived logical call&quot;);</span>
+<span class="fc" id="L278">            calls.put(call.sourceId(), call); characters += bounded(call.prompt()) + bounded(call.response());</span>
+<span class="fc" id="L279">        }</span>
+<span class="fc" id="L280">        var attemptCounts = new HashMap&lt;SourceRecordId, Integer&gt;(); var attemptIds = new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L281" title="All 2 branches covered.">        for (var attempt : archive.attempts()) {</span>
+<span class="fc" id="L282">            requireReference(attempt.sourceId(), &quot;analysis.cluster-attempt&quot;, attempt.run(), run, sourceIds);</span>
+<span class="fc" id="L283">            validateAttempt(attempt, calls, json);</span>
+<span class="pc bpc" id="L284" title="2 of 4 branches missed.">            require(attemptIds.add(attempt.attemptId()) &amp;&amp; attemptCounts.merge(attempt.call(), 1, Integer::sum) &lt;= ClusterAnalysisDiagnostics.MAX_ATTEMPTS_PER_CALL, &quot;Duplicate or oversized archived attempt&quot;);</span>
+<span class="fc" id="L285">            characters += bounded(attempt.observationJson());</span>
+<span class="fc" id="L286">        }</span>
+<span class="fc" id="L287">        long revision = 0;</span>
+<span class="fc bfc" id="L288" title="All 2 branches covered.">        for (var event : archive.events()) {</span>
+<span class="fc" id="L289">            requireReference(event.sourceId(), &quot;analysis.cluster-event&quot;, event.run(), run, sourceIds);</span>
+<span class="fc" id="L290">            var message = decode(event.eventJson());</span>
+<span class="fc" id="L291">            require(message instanceof AnalysisProgressEvent, &quot;Expected archived progress event&quot;); var progress = (AnalysisProgressEvent) message;</span>
+<span class="fc bfc" id="L292" title="All 2 branches covered.">            require(ClusterAnalysisEvent.follows(revision, event.revision(), run.revision())</span>
+<span class="pc bpc" id="L293" title="2 of 4 branches missed.">                    &amp;&amp; progress.sequence() == event.revision() &amp;&amp; ClusterAnalysisBackupExport.sameContext(progress.envelope(), source),</span>
+                    &quot;Invalid archived progress sequence&quot;);
+<span class="fc" id="L295">            revision = event.revision();</span>
+<span class="fc" id="L296">            characters += bounded(event.eventJson());</span>
+<span class="fc" id="L297">        }</span>
+<span class="pc bpc" id="L298" title="2 of 4 branches missed.">        require(revision == run.revision() &amp;&amp; characters &lt;= 64_000_000L, &quot;Incomplete or oversized archived aggregate&quot;);</span>
+<span class="fc" id="L299">    }</span>
+
+    static void validateProgress(ClusterAnalysisProgress.Worker progress, long revision, int attempts,
+                                 String state, AnalysisTaskMessage task) {
+<span class="fc bfc" id="L303" title="All 2 branches covered.">        if (progress == null) return;</span>
+<span class="fc bfc" id="L304" title="All 6 branches covered.">        require(progress.revision() &lt;= revision &amp;&amp; (progress.delivery() &lt;= attempts</span>
+<span class="pc bpc" id="L305" title="1 of 2 branches missed.">                || attempts == 0 &amp;&amp; !Set.of(&quot;WAITING_PREDECESSOR&quot;, &quot;QUEUED&quot;, &quot;RUNNING&quot;).contains(state)), &quot;Invalid archived worker progress delivery&quot;);</span>
+<span class="pc bpc" id="L306" title="1 of 4 branches missed.">        require(task.taskType() == AnalysisTaskType.SUBTAXONOMY_ANALYSIS || progress.scores().isEmpty(), &quot;Foreign worker coverage&quot;);</span>
+<span class="fc bfc" id="L307" title="All 4 branches covered.">        require(task.taskType() == AnalysisTaskType.RELATION_ANALYSIS || progress.relations() == null, &quot;Foreign relation progress&quot;);</span>
+<span class="fc" id="L308">    }</span>
+
+    private void validateProgressCatalogue(ClusterAnalysisProgress.Worker progress, AnalysisTaskMessage task, Archive archive) {
+<span class="fc bfc" id="L311" title="All 6 branches covered.">        if (progress == null || progress.scores().isEmpty() &amp;&amp; progress.relations() == null) return;</span>
+<span class="fc" id="L312">        var roots = new HashMap&lt;String, RootCatalogueSnapshot&gt;();</span>
+<span class="fc bfc" id="L313" title="All 2 branches covered.">        boolean restored = ClusterAnalysisState.valueOf(archive.run().sourceState()).terminal()</span>
+<span class="pc bpc" id="L314" title="4 of 6 branches missed.">                &amp;&amp; archive.work().stream().allMatch(work -&gt; work.attempts() == 0 &amp;&amp; work.startedAt() == null);</span>
+<span class="fc" id="L315">        com.taxonomy.catalog.snapshot.CatalogueSourceIdentity original = null;</span>
+<span class="fc bfc" id="L316" title="All 2 branches covered.">        for (var input : archive.inputs()) {</span>
+<span class="fc" id="L317">            var root = ClusterAnalysisProgress.frozen(input.inputJson(), json, archive.run().context(), input.root(), restored);</span>
+<span class="pc bpc" id="L318" title="1 of 2 branches missed.">            if (root == null) continue;</span>
+<span class="pc bpc" id="L319" title="1 of 4 branches missed.">            require(original == null || original.equals(root.source()), &quot;Conflicting archived progress sources&quot;);</span>
+<span class="fc" id="L320">            original = root.source(); roots.put(input.root(), root);</span>
+<span class="fc" id="L321">        }</span>
+<span class="fc bfc" id="L322" title="All 2 branches covered.">        if (task.taskType() == AnalysisTaskType.SUBTAXONOMY_ANALYSIS) {</span>
+<span class="fc" id="L323">            var root = roots.get(task.routingRoot().code());</span>
+<span class="pc bpc" id="L324" title="1 of 2 branches missed.">            require(root != null &amp;&amp; root.nodes().stream().map(RootCatalogueSnapshot.Node::code).collect(java.util.stream.Collectors.toSet())</span>
+<span class="fc bfc" id="L325" title="All 2 branches covered.">                    .containsAll(progress.scores().keySet()), &quot;Worker coverage differs from frozen catalogue&quot;);</span>
+<span class="fc" id="L326">            return;</span>
+        }
+<span class="pc bpc" id="L328" title="1 of 2 branches missed.">        var p = progress.relations(); if (p == null) return;</span>
+<span class="fc" id="L329">        int sources = archive.work().stream().filter(work -&gt; work.taskType().equals(AnalysisTaskType.SUBTAXONOMY_ANALYSIS.name()))</span>
+<span class="fc" id="L330">                .map(work -&gt; roots.get(work.root())).filter(Objects::nonNull).mapToInt(root -&gt; root.nodes().size()).sum();</span>
+<span class="pc bpc" id="L331" title="3 of 6 branches missed.">        require(p.totalSources() &lt;= sources &amp;&amp; p.taxonomies().stream().allMatch(part -&gt; roots.containsKey(part.root())</span>
+<span class="pc bpc" id="L332" title="1 of 2 branches missed.">                &amp;&amp; part.total() &lt;= p.totalSources()), &quot;Relation progress differs from frozen catalogue&quot;);</span>
+<span class="pc bpc" id="L333" title="1 of 2 branches missed.">        if (task.taskId().relationWorkOrdinal().isPresent()) {</span>
+<span class="nc" id="L334">            var work = archive.work().stream().filter(value -&gt; value.taskId().equals(task.taskId().value())).findFirst().orElseThrow();</span>
+<span class="nc" id="L335">            var grant = read(work.inputJson(), RelationSearchDistribution.Work.class);</span>
+<span class="nc" id="L336">            var plan = read(archive.run().relationPlanJson(), RelationSearchDistribution.Plan.class);</span>
+<span class="nc" id="L337">            var item = plan.items().get(grant.ordinal());</span>
+<span class="nc bnc" id="L338" title="All 6 branches missed.">            require(p.maxCalls() == grant.maxCalls() &amp;&amp; p.totalSources() == 1 &amp;&amp; p.totalSearches() &lt;= 1</span>
+<span class="nc bnc" id="L339" title="All 2 branches missed.">                    &amp;&amp; p.taxonomies().stream().allMatch(part -&gt; part.root().equals(grant.targetRoot().code())), &quot;Progress differs from admitted relation grant&quot;);</span>
+<span class="nc" id="L340">            var current = p.current();</span>
+<span class="nc bnc" id="L341" title="All 2 branches missed.">            if (current != null) {</span>
+<span class="nc" id="L342">                var root = roots.get(grant.targetRoot().code());</span>
+<span class="nc bnc" id="L343" title="All 2 branches missed.">                require(root != null &amp;&amp; root.nodes().stream().map(RootCatalogueSnapshot.Node::code).collect(java.util.stream.Collectors.toSet())</span>
+<span class="nc bnc" id="L344" title="All 4 branches missed.">                        .containsAll(current.candidates()) &amp;&amp; current.sourceId().equals(plan.sources().get(item.sourceIndex()).node().id())</span>
+<span class="nc bnc" id="L345" title="All 4 branches missed.">                        &amp;&amp; current.targetRoot().equals(grant.targetRoot().code()) &amp;&amp; current.type().equals(item.type())</span>
+<span class="nc bnc" id="L346" title="All 2 branches missed.">                        &amp;&amp; current.direction() == item.direction(), &quot;Foreign archived current relation search&quot;);</span>
+            }
+<span class="nc" id="L348">        } else {</span>
+<span class="fc bfc" id="L349" title="All 2 branches covered.">            var admitted = archive.run().relationPlanJson() == null ? null</span>
+<span class="fc" id="L350">                    : read(archive.run().relationPlanJson(), RelationSearchDistribution.Plan.class);</span>
+<span class="fc bfc" id="L351" title="All 4 branches covered.">            if (admitted != null &amp;&amp; admitted.options().budget() != null) {</span>
+<span class="fc" id="L352">                var policy = admitted.options().budget(); var usage = p.budget();</span>
+<span class="pc bpc" id="L353" title="2 of 4 branches missed.">                require(usage != null &amp;&amp; p.maxCalls() == admitted.options().limits().maxCalls()</span>
+<span class="pc bpc" id="L354" title="2 of 4 branches missed.">                        &amp;&amp; usage.callsPerSlice() == policy.callsPerSlice() &amp;&amp; usage.maxTotalCalls() == policy.maxTotalCalls()</span>
+<span class="pc bpc" id="L355" title="1 of 4 branches missed.">                        &amp;&amp; usage.automatic() == policy.automatic() &amp;&amp; usage.sourcesPerSlice() == policy.sourcesPerSlice()</span>
+<span class="pc bpc" id="L356" title="2 of 4 branches missed.">                        &amp;&amp; usage.workItemsPerSlice() == policy.workItemsPerSlice() &amp;&amp; usage.sourceCohortSize() == policy.sourceCohortSize()</span>
+<span class="pc bpc" id="L357" title="2 of 4 branches missed.">                        &amp;&amp; usage.newCalls() == p.calls() &amp;&amp; usage.spentCalls() == (long) policy.callsBeforeExecution() + p.calls()</span>
+<span class="pc bpc" id="L358" title="1 of 4 branches missed.">                        &amp;&amp; (admitted.inlineReport() == null || p.calls() &lt;= admitted.inlineReport().totalCalls()),</span>
+                        &quot;Progress differs from admitted preparation budget&quot;);
+            }
+<span class="pc bpc" id="L361" title="1 of 2 branches missed.">            if (p.current() == null) return;</span>
+<span class="fc" id="L362">            var sourceRoots = new HashMap&lt;String, String&gt;();</span>
+<span class="fc bfc" id="L363" title="All 4 branches covered.">            for (var work : archive.work()) if (work.taskType().equals(AnalysisTaskType.SUBTAXONOMY_ANALYSIS.name())) {</span>
+<span class="pc bpc" id="L364" title="1 of 2 branches missed.">                var root = roots.get(work.root()); if (root != null) root.nodes().forEach(node -&gt; sourceRoots.put(node.code(), root.rootCode()));</span>
+            }
+<span class="fc" id="L366">            var current = p.current();</span>
+<span class="fc bfc" id="L367" title="All 2 branches covered.">            if (current.targetRoot().isEmpty()) {</span>
+<span class="pc bpc" id="L368" title="2 of 4 branches missed.">                require(p.step() == RelationSearchProgress.Step.SOURCES &amp;&amp; current.type().isEmpty()</span>
+<span class="pc bpc" id="L369" title="3 of 6 branches missed.">                        &amp;&amp; current.direction() == null &amp;&amp; current.depth() == 0 &amp;&amp; sourceRoots.keySet().containsAll(current.candidates())</span>
+<span class="pc bpc" id="L370" title="1 of 2 branches missed.">                        &amp;&amp; current.sourceId().equals(String.join(&quot;, &quot;, current.candidates())), &quot;Foreign archived source assessment progress&quot;);</span>
+            } else {
+                // Automatic source overflow or cache-only reconstruction may
+                // continue target work before an immutable final plan exists.
+<span class="fc" id="L374">                var root = roots.get(current.targetRoot());</span>
+<span class="fc" id="L375">                String sourceRoot = sourceRoots.get(current.sourceId());</span>
+<span class="pc bpc" id="L376" title="1 of 8 branches missed.">                require(p.budget() != null &amp;&amp; (p.budget().automatic() || p.calls() == p.maxCalls())</span>
+<span class="fc bfc" id="L377" title="All 2 branches covered.">                        &amp;&amp; (admitted == null || admitted.inlineReport() != null)</span>
+<span class="fc" id="L378">                        &amp;&amp; Set.of(RelationSearchProgress.Step.NAVIGATE, RelationSearchProgress.Step.VERIFY,</span>
+<span class="pc bpc" id="L379" title="2 of 4 branches missed.">                                RelationSearchProgress.Step.PAUSED).contains(p.step())</span>
+<span class="fc" id="L380">                        &amp;&amp; task instanceof RelationAnalysisTask relation &amp;&amp; relation.targetRoots().stream()</span>
+<span class="pc bpc" id="L381" title="2 of 6 branches missed.">                                .anyMatch(target -&gt; target.code().equals(current.targetRoot()))</span>
+<span class="pc bpc" id="L382" title="1 of 2 branches missed.">                        &amp;&amp; sourceRoot != null &amp;&amp; root != null &amp;&amp; current.direction() != null</span>
+<span class="pc bpc" id="L383" title="1 of 2 branches missed.">                        &amp;&amp; !current.candidates().isEmpty() &amp;&amp; root.nodes().stream().map(RootCatalogueSnapshot.Node::code)</span>
+<span class="fc bfc" id="L384" title="All 2 branches covered.">                                .collect(java.util.stream.Collectors.toSet()).containsAll(current.candidates()),</span>
+                        &quot;Foreign archived automatic relation progress&quot;);
+<span class="fc" id="L386">                var type = com.taxonomy.model.RelationType.valueOf(current.type());</span>
+<span class="pc bpc" id="L387" title="1 of 2 branches missed.">                String origin = current.direction() == RelationSearchModel.Direction.OUTGOING ? sourceRoot : current.targetRoot();</span>
+<span class="pc bpc" id="L388" title="1 of 2 branches missed.">                String destination = current.direction() == RelationSearchModel.Direction.OUTGOING ? current.targetRoot() : sourceRoot;</span>
+<span class="pc bpc" id="L389" title="1 of 2 branches missed.">                var definition = root.catalogueDefinition() == null ? com.taxonomy.dsl.model.CatalogueDefinition.standard()</span>
+<span class="pc" id="L390">                        : root.catalogueDefinition().definition();</span>
+<span class="pc bpc" id="L391" title="1 of 2 branches missed.">                require(com.taxonomy.analysis.relations.RelationDiscoveryPolicy.automatic(type)</span>
+<span class="pc bpc" id="L392" title="1 of 2 branches missed.">                        &amp;&amp; definition.allows(origin, type.name(), destination), &quot;Foreign archived automatic relation route&quot;);</span>
+            }
+        }
+<span class="fc" id="L395">    }</span>
+
+    static void validateCall(Call call, long revision, Set&lt;String&gt; taskIds) {
+<span class="fc" id="L398">        ClusterAnalysisDiagnostics.uuid(call.executionId());</span>
+<span class="pc bpc" id="L399" title="3 of 6 branches missed.">        require(taskIds.contains(call.taskId()) &amp;&amp; call.callNumber() &gt; 0 &amp;&amp; call.callNumber() &lt;= ClusterAnalysisDiagnostics.MAX_CALLS</span>
+<span class="pc bpc" id="L400" title="4 of 8 branches missed.">                &amp;&amp; call.logicalOrdinal() &gt; 0 &amp;&amp; call.deliveryAttempt() &gt; 0 &amp;&amp; call.startedAt() &gt;= 0 &amp;&amp; call.durationMillis() &gt;= 0</span>
+<span class="pc bpc" id="L401" title="2 of 4 branches missed.">                &amp;&amp; call.eventRevision() &gt; 0 &amp;&amp; call.eventRevision() &lt;= revision</span>
+<span class="pc bpc" id="L402" title="1 of 2 branches missed.">                &amp;&amp; Set.of(&quot;STARTED&quot;, &quot;COMPLETED&quot;, &quot;CLARIFICATION&quot;, &quot;FAILED&quot;, &quot;STOPPED&quot;).contains(call.state())</span>
+<span class="pc bpc" id="L403" title="3 of 6 branches missed.">                &amp;&amp; call.provider() != null &amp;&amp; !call.provider().isBlank() &amp;&amp; call.provider().length() &lt;= 128</span>
+<span class="pc bpc" id="L404" title="2 of 4 branches missed.">                &amp;&amp; ClusterAnalysisDiagnostics.length(call.node()) &lt;= 512 &amp;&amp; ClusterAnalysisDiagnostics.length(call.error()) &lt;= 1024</span>
+<span class="pc bpc" id="L405" title="2 of 4 branches missed.">                &amp;&amp; ClusterAnalysisDiagnostics.length(call.prompt()) &lt;= ClusterAnalysisDiagnostics.MAX_TEXT &amp;&amp; ClusterAnalysisDiagnostics.length(call.response()) &lt;= ClusterAnalysisDiagnostics.MAX_TEXT</span>
+<span class="pc bpc" id="L406" title="2 of 4 branches missed.">                &amp;&amp; call.promptLength() &gt;= ClusterAnalysisDiagnostics.length(call.prompt()) &amp;&amp; call.responseLength() &gt;= ClusterAnalysisDiagnostics.length(call.response()), &quot;Invalid archived logical call&quot;);</span>
+<span class="fc" id="L407">        require(call.sourceId().equals(new SourceRecordId(&quot;analysis.cluster-call&quot;, ClusterAnalysisDiagnostics.callKey(call.run().value(), call.callNumber()))), &quot;Invalid archived logical call key&quot;);</span>
+<span class="fc" id="L408">    }</span>
+    static void validateAttempt(Attempt attempt, Map&lt;SourceRecordId, Call&gt; calls, ObjectMapper json) {
+<span class="fc" id="L410">        var call = calls.get(attempt.call());</span>
+<span class="pc bpc" id="L411" title="1 of 2 branches missed.">        require(call != null, &quot;Missing archived logical call&quot;);</span>
+<span class="fc" id="L412">        validateAttempt(attempt, call.run(), call.startedAt(), json);</span>
+<span class="fc" id="L413">    }</span>
+    static void validateAttempt(Attempt attempt, SourceRecordId callRun, long callStartedAt, ObjectMapper json) {
+<span class="pc bpc" id="L415" title="2 of 4 branches missed.">        require(callRun.equals(attempt.run()) &amp;&amp; attempt.startedAt() &gt;= callStartedAt</span>
+<span class="pc bpc" id="L416" title="1 of 2 branches missed.">                &amp;&amp; attempt.sourceId().equals(new SourceRecordId(&quot;analysis.cluster-attempt&quot;, attempt.attemptId())), &quot;Invalid archived transport ownership&quot;);</span>
+<span class="fc" id="L417">        var start = new com.taxonomy.analysis.service.LlmTransportMeter.Attempt(attempt.attemptId(), attempt.invocationId(), attempt.provider(),</span>
+<span class="fc" id="L418">                com.taxonomy.analysis.service.LlmTransportMeter.Source.valueOf(attempt.source()), attempt.retryIndex());</span>
+<span class="fc" id="L419">        ClusterAnalysisDiagnostics.validate(start);</span>
+<span class="fc bfc" id="L420" title="All 2 branches covered.">        if (attempt.observationJson() != null) {</span>
+<span class="pc bpc" id="L421" title="1 of 2 branches missed.">            require(attempt.observationJson().length() &lt;= 8192, &quot;Oversized transport observation&quot;);</span>
+<span class="fc" id="L422">            ClusterAnalysisDiagnostics.validateResult(start, json.readValue(attempt.observationJson(), com.taxonomy.analysis.service.LlmTransportMeter.Observation.class));</span>
+        }
+<span class="fc" id="L424">    }</span>
+
+    private AnalysisResult interruptedResult(Archive archive) {
+<span class="fc" id="L427">        var command = read(archive.run().commandJson(), AnalyzeRequirementCommand.class);</span>
+<span class="fc" id="L428">        var retained = command.retainedAnalysis();</span>
+<span class="fc" id="L429">        var scores = new LinkedHashMap&lt;String, Double&gt;(); var reasons = new LinkedHashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L430">        var contexts = new LinkedHashMap&lt;String, AnalysisScoreSemantics.NodeContext&gt;(); var tree = new ArrayList&lt;TaxonomyNodeDto&gt;();</span>
+<span class="fc bfc" id="L431" title="All 2 branches covered.">        var warnings = new ArrayList&lt;String&gt;(retained == null ? List.of() : retained.getWarnings());</span>
+<span class="fc" id="L432">        var discrepancies = new ArrayList&lt;TaxonomyDiscrepancy&gt;(); var gaps = new ArrayList&lt;ProductCoverageGap&gt;();</span>
+<span class="fc" id="L433">        var coverage = new ClusterAnalysisCoverage();</span>
+<span class="fc" id="L434">        String provider = null;</span>
+<span class="fc bfc" id="L435" title="All 6 branches covered.">        for (var work : archive.work()) if (retained == null &amp;&amp; work.taskType().equals(AnalysisTaskType.SUBTAXONOMY_ANALYSIS.name())) {</span>
+<span class="fc bfc" id="L436" title="All 2 branches covered.">            var result = work.resultJson() == null ? null : read(work.resultJson(), AnalysisResult.class);</span>
+<span class="fc" id="L437">            coverage.add(work.root(), result);</span>
+<span class="fc bfc" id="L438" title="All 2 branches covered.">            if (result == null) { warnings.add(work.root() + &quot;: &quot; + Objects.toString(work.failureReason(), INTERRUPTED) + &quot;; no negative finding&quot;); continue; }</span>
+<span class="pc bpc" id="L439" title="1 of 4 branches missed.">            for (var score : result.getRawScores().entrySet()) require(scores.putIfAbsent(score.getKey(), score.getValue()) == null, &quot;Conflicting archived root evidence&quot;);</span>
+<span class="fc" id="L440">            reasons.putAll(result.getReasons()); contexts.putAll(result.getScoreSemanticsContext());</span>
+<span class="pc bpc" id="L441" title="1 of 2 branches missed.">            if (result.getTree() != null) tree.addAll(result.getTree());</span>
+<span class="fc" id="L442">            warnings.addAll(result.getWarnings()); discrepancies.addAll(result.getDiscrepancies()); gaps.addAll(result.getProductCoverageGaps()); provider = result.getProvider();</span>
+<span class="fc bfc" id="L443" title="All 2 branches covered.">            if (!&quot;SUCCESS&quot;.equals(result.getStatus())) warnings.add(work.root() + &quot;: &quot; + Objects.toString(result.getErrorMessage(), &quot;partial assessment&quot;));</span>
+        }
+        // Retained source evidence is canonical for an extension. Partitioned root
+        // work records authorize prerequisites; they cannot reconstruct all node notes.
+<span class="fc bfc" id="L447" title="All 2 branches covered.">        var result = retained == null ? new AnalysisResult(scores, tree) : read(json.writeValueAsString(retained), AnalysisResult.class);</span>
+<span class="fc bfc" id="L448" title="All 2 branches covered.">        if (retained == null) {</span>
+<span class="fc" id="L449">            result.setReasons(reasons); result.setScoreSemanticsContext(contexts);</span>
+            // Inputs retain their archived identity; target authority is remapped only after aggregation.
+<span class="fc" id="L451">            result.setAnalysisCoverage(coverage.combine(archive.run().context().authority(), root -&gt; read(</span>
+<span class="fc" id="L452">                    archive.inputs().stream().filter(input -&gt; input.root().equals(root)).findFirst().orElseThrow().inputJson(),</span>
+                    RootCatalogueSnapshot.class)));
+<span class="fc" id="L454">            result.setDiscrepancies(discrepancies); result.setProductCoverageGaps(gaps); result.setProvider(provider);</span>
+        }
+<span class="fc bfc" id="L456" title="All 2 branches covered.">        if (archive.run().relationPlanJson() != null) {</span>
+<span class="fc" id="L457">            var report = RelationSearchDistribution.combine(read(archive.run().relationPlanJson(), RelationSearchDistribution.Plan.class), relationEffects(archive));</span>
+<span class="fc" id="L458">            result.setRelationSearchReport(RelationSearchDistribution.retainAcceptedRelations(report,</span>
+<span class="fc bfc" id="L459" title="All 2 branches covered.">                    retained == null ? null : retained.getRelationSearchReport()));</span>
+<span class="fc" id="L460">            result.setProvisionalRelations(List.of());</span>
+<span class="fc" id="L461">        } else result.setProvisionalRelations(scoreOnlyRelations(archive));</span>
+<span class="fc" id="L462">        warnings.add(INTERRUPTED + &quot;: restored committed evidence; unfinished work requires a new explicit analysis request.&quot;);</span>
+<span class="fc" id="L463">        result.setWarnings(warnings); result.setStatus(&quot;PARTIAL&quot;); result.setErrorMessage(INTERRUPTED);</span>
+<span class="fc" id="L464">        result.setAnalysisScope(command.analysisScope());</span>
+<span class="fc" id="L465">        result.setAnalysisReasonLength(command.analysisReasonLength());</span>
+<span class="fc" id="L466">        result.setAnalysisLanguage(command.analysisLanguage());</span>
+<span class="fc" id="L467">        result.setModelBinding(command.modelBinding());</span>
+<span class="pc bpc" id="L468" title="1 of 2 branches missed.">        if (archive.run().viewJson() != null) result.setViewContext(read(archive.run().viewJson(), ViewContext.class));</span>
+<span class="fc" id="L469">        result.setAnalysisDurationMillis(Math.max(0, archive.run().updatedAt() - archive.run().createdAt()));</span>
+<span class="fc bfc" id="L470" title="All 2 branches covered.">        if (result.getArchitectureView() != null) {</span>
+<span class="fc" id="L471">            result.getArchitectureView().setRelationSearchReport(result.getRelationSearchReport());</span>
+<span class="fc" id="L472">            result.getArchitectureView().setAnalysisStatus(result.getStatus());</span>
+        }
+<span class="fc" id="L474">        return result;</span>
+    }
+
+    private List&lt;RelationHypothesisDto&gt; scoreOnlyRelations(Archive archive) {
+<span class="fc" id="L478">        var hypotheses = new ArrayList&lt;RelationHypothesisDto&gt;(); boolean preparationSeen = false;</span>
+<span class="fc bfc" id="L479" title="All 4 branches covered.">        for (var work : archive.work()) if (work.taskType().equals(AnalysisTaskType.RELATION_ANALYSIS.name())) {</span>
+<span class="pc bpc" id="L480" title="2 of 4 branches missed.">            require(work.inputJson() == null &amp;&amp; new AnalysisTaskId(work.taskId()).relationWorkOrdinal().isEmpty(), &quot;Missing archived relation preparation&quot;);</span>
+<span class="pc bpc" id="L481" title="1 of 2 branches missed.">            require(!preparationSeen, &quot;Duplicate archived relation preparation&quot;); preparationSeen = true;</span>
+<span class="fc bfc" id="L482" title="All 2 branches covered.">            if (work.resultJson() != null) {</span>
+<span class="fc" id="L483">                var evidence = read(work.resultJson(), ClusterRelationComputation.ScoreOnly.class);</span>
+<span class="pc bpc" id="L484" title="1 of 2 branches missed.">                require(evidence.hypotheses().stream().allMatch(value -&gt; value.getHypothesisId() == null), &quot;Score-only evidence cannot reference persisted review records&quot;);</span>
+<span class="fc" id="L485">                hypotheses.addAll(evidence.hypotheses());</span>
+            }
+        }
+<span class="fc" id="L488">        return List.copyOf(hypotheses);</span>
+    }
+
+    private List&lt;RelationSearchDistribution.WorkResult&gt; relationEffects(Archive archive) {
+<span class="fc" id="L492">        var results = new ArrayList&lt;RelationSearchDistribution.WorkResult&gt;();</span>
+<span class="fc bfc" id="L493" title="All 6 branches covered.">        for (var work : archive.work()) if (work.taskType().equals(AnalysisTaskType.RELATION_ANALYSIS.name()) &amp;&amp; work.inputJson() != null) {</span>
+<span class="fc" id="L494">            var grant = read(work.inputJson(), RelationSearchDistribution.Work.class);</span>
+<span class="fc" id="L495">            require(grant.preparationId().equals(archive.run().context().operationId() + &quot;:relations&quot;), &quot;Foreign archived relation grant&quot;);</span>
+<span class="fc bfc" id="L496" title="All 2 branches covered.">            if (work.resultJson() != null) {</span>
+<span class="fc" id="L497">                var effect = read(work.resultJson(), RelationSearchDistribution.WorkResult.class);</span>
+<span class="fc" id="L498">                require(grant.equals(effect.work()), &quot;Archived relation effect mismatches grant&quot;); results.add(effect);</span>
+            }
+        }
+<span class="fc" id="L501">        return results;</span>
+    }
+    private RelationSearchDistribution.Plan remapPlan(RelationSearchDistribution.Plan plan, String operation) {
+<span class="fc" id="L504">        return new RelationSearchDistribution.Plan(plan.schemaVersion(), operation + &quot;:relations&quot;, plan.originalSha256(),</span>
+<span class="fc" id="L505">                plan.sourceResultIds().stream().map(id -&gt; remapTaskId(new AnalysisTaskId(id), operation).value()).toList(), plan.options(),</span>
+<span class="fc" id="L506">                plan.sourceNodes(), plan.targetRoots(), plan.sources(), plan.items(), plan.sourceCalls(), plan.durationMillis(), plan.warnings(), plan.stopReason(), plan.included(), plan.inlineReport());</span>
+    }
+    private static RelationSearchDistribution.Work remapGrant(RelationSearchDistribution.Work grant, String operation) {
+<span class="fc" id="L509">        return new RelationSearchDistribution.Work(operation + &quot;:relations&quot;, grant.ordinal(), grant.targetRoot(), grant.maxCalls(), grant.maxWorkItems());</span>
+    }
+    private AnalysisTaskMessage remapTask(AnalysisTaskMessage task, AnalysisOperationContext source, AnalysisOperationContext target) {
+<span class="fc" id="L512">        var envelope = remapEnvelope(task.envelope(), source, target);</span>
+<span class="fc bfc" id="L513" title="All 2 branches covered.">        if (task instanceof SubtaxonomyAnalysisTask root) return new SubtaxonomyAnalysisTask(envelope, root.root());</span>
+<span class="fc" id="L514">        var relation = (RelationAnalysisTask) task;</span>
+<span class="fc" id="L515">        return new RelationAnalysisTask(envelope, relation.targetRoots(), relation.prerequisiteTasks().stream().map(id -&gt; remapTaskId(id, target.operationId())).toList());</span>
+    }
+    private AnalysisEnvelope remapEnvelope(AnalysisEnvelope old, AnalysisOperationContext source, AnalysisOperationContext target) {
+<span class="fc" id="L518">        String causation = old.causationId();</span>
+<span class="pc bpc" id="L519" title="1 of 2 branches missed.">        if (Objects.equals(causation, source.correlationId())) causation = target.correlationId();</span>
+<span class="pc bpc" id="L520" title="1 of 4 branches missed.">        else if (causation != null &amp;&amp; causation.startsWith(source.operationId() + &quot;:&quot;)) causation = target.operationId() + causation.substring(source.operationId().length());</span>
+<span class="fc bfc" id="L521" title="All 2 branches covered.">        return new AnalysisEnvelope(old.schemaVersion(), old.messageType(), target.operationId(), old.taskId() == null ? null : remapTaskId(old.taskId(), target.operationId()),</span>
+<span class="fc" id="L522">                old.taskType(), target.authority(), target.requirement(), old.roots(), 1, causation, target.correlationId(), old.createdAt(), old.deadline());</span>
+    }
+<span class="fc" id="L524">    private static AnalysisTaskId remapTaskId(AnalysisTaskId old, String operation) { return new AnalysisTaskId(operation + old.value().substring(old.operationId().length())); }</span>
+    private void persistEvent(AnalysisProgressEvent event) {
+<span class="fc" id="L526">        var restored = new ClusterAnalysisEvent(); restored.id = key(event.envelope().operationId() + &quot;:event:&quot; + event.sequence());</span>
+<span class="fc" id="L527">        restored.operationId = event.envelope().operationId(); restored.revision = event.sequence(); restored.eventJson = encode(event); em.persist(restored);</span>
+<span class="fc" id="L528">    }</span>
+    private static void requireReference(SourceRecordId sourceId, String kind, SourceRecordId parent, Run run, Set&lt;SourceRecordId&gt; seen) {
+<span class="pc bpc" id="L530" title="3 of 8 branches missed.">        require(sourceId != null &amp;&amp; kind.equals(sourceId.kind()) &amp;&amp; seen.add(sourceId) &amp;&amp; run.sourceId().equals(parent), &quot;Invalid archived child reference&quot;);</span>
+<span class="fc" id="L531">    }</span>
+<span class="pc bpc" id="L532" title="1 of 6 branches missed.">    private static int bounded(String text) { require(text == null || text.length() &lt;= 8 * 1024 * 1024, &quot;Oversized archived value&quot;); return text == null ? 0 : text.length(); }</span>
+<span class="fc bfc" id="L533" title="All 2 branches covered.">    private static void require(boolean valid, String message) { if (!valid) throw new IllegalArgumentException(message); }</span>
+<span class="fc" id="L534">    private static String key(String identity) { return RequirementReference.sha256(identity); }</span>
+    private &lt;T&gt; T read(String source, Class&lt;T&gt; type) {
+<span class="fc" id="L536">        bounded(source);</span>
+<span class="fc" id="L537">        try { return json.readValue(source, type); }</span>
+<span class="nc" id="L538">        catch (RuntimeException invalid) { throw new IllegalArgumentException(&quot;Invalid archived analysis document&quot;); }</span>
+    }
+    private AnalysisMessage decode(String source) {
+<span class="fc" id="L541">        bounded(source);</span>
+<span class="fc" id="L542">        try { return codec.decode(source.getBytes(StandardCharsets.UTF_8)); }</span>
+<span class="nc" id="L543">        catch (RuntimeException invalid) { throw new IllegalArgumentException(&quot;Invalid archived analysis message&quot;); }</span>
+    }
+<span class="fc" id="L545">    private String encode(AnalysisMessage message) { return new String(codec.encode(message), StandardCharsets.UTF_8); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

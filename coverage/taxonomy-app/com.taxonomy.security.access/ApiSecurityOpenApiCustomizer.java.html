@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ApiSecurityOpenApiCustomizer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.access</a> &gt; <span class="el_source">ApiSecurityOpenApiCustomizer.java</span></div><h1>ApiSecurityOpenApiCustomizer.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.access;
+
+import io.swagger.v3.oas.models.Components;
+import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.Operation;
+import io.swagger.v3.oas.models.responses.ApiResponse;
+import io.swagger.v3.oas.models.responses.ApiResponses;
+import io.swagger.v3.oas.models.security.SecurityRequirement;
+import io.swagger.v3.oas.models.security.SecurityScheme;
+import org.springdoc.core.customizers.OpenApiCustomizer;
+import org.springframework.core.Ordered;
+import org.springframework.core.env.Environment;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.stream.Collectors;
+
+/** Renders the enforced REST policy as visible Swagger descriptions and OpenAPI requirements. */
+public final class ApiSecurityOpenApiCustomizer implements OpenApiCustomizer, Ordered {
+    private static final String ACCESS_HEADER = &quot;\n\n### Access requirements\n\n&quot;;
+    private final boolean keycloak;
+    private final String cookieName;
+
+<span class="fc" id="L25">    public ApiSecurityOpenApiCustomizer(Environment environment) {</span>
+<span class="fc" id="L26">        keycloak = environment.matchesProfiles(&quot;keycloak&quot;);</span>
+<span class="fc" id="L27">        cookieName = environment.getProperty(&quot;server.servlet.session.cookie.name&quot;, &quot;JSESSIONID&quot;);</span>
+<span class="fc" id="L28">    }</span>
+
+<span class="fc" id="L30">    @Override public int getOrder() { return Ordered.LOWEST_PRECEDENCE; }</span>
+
+    @Override
+    public void customise(OpenAPI api) {
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        if (api.getComponents() == null) api.setComponents(new Components());</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">        if (!keycloak) {</span>
+<span class="fc" id="L36">            api.getComponents()</span>
+<span class="fc" id="L37">                    .addSecuritySchemes(&quot;basicAuth&quot;, new SecurityScheme().type(SecurityScheme.Type.HTTP).scheme(&quot;basic&quot;)</span>
+<span class="fc" id="L38">                            .description(&quot;Local REST credentials over HTTPS. Select Authorize to use HTTP Basic.&quot;));</span>
+        }
+<span class="fc" id="L40">        api.getComponents().addSecuritySchemes(&quot;sessionCookie&quot;, new SecurityScheme().type(SecurityScheme.Type.APIKEY)</span>
+<span class="fc" id="L41">                .in(SecurityScheme.In.COOKIE).name(cookieName)</span>
+<span class="fc" id="L42">                .description(&quot;Existing browser session after local or OIDC login. Uses roles; state-changing session requests additionally need the page's CSRF token.&quot;));</span>
+<span class="pc bpc" id="L43" title="2 of 4 branches missed.">        if (api.getInfo() != null &amp;&amp; !api.getInfo().getDescription().contains(&quot;### Application roles&quot;)) {</span>
+<span class="fc" id="L44">            api.getInfo().setDescription(api.getInfo().getDescription() + &quot;&quot;&quot;</span>
+
+
+                    ### Application roles
+
+                    | Role | Capability |
+                    | --- | --- |
+                    | Reader (`ROLE_READER`) | Read permitted data and export existing results. |
+                    | Analyst (`ROLE_USER`) | Additionally execute analyses and manage personal drafts. |
+                    | Architect (`ROLE_ARCHITECT`) | Additionally change, delete and publish architecture data. |
+                    | Administrator (`ROLE_ADMIN`) | Manage technical configuration, accounts and access. Business editing requires an explicit ARCHITECT role. |
+
+                    Any listed role can satisfy a single role group. When multiple role groups are listed, every group
+                    is required. Capability alternatives are joined by OR; each alternative requires its own role
+                    groups and, for bearer JWT calls, every scope in that alternative. Conditional requirements also
+                    apply when their stated condition is met. A scope never grants a role or access to another repository/workspace.
+                    Organizational groups are assigned roles at the identity provider. Repository group grants and stored
+                    memberships remain additional resource restrictions. Local Basic and browser sessions use roles;
+                    browser writes retain CSRF protection. Unclassified write operations are denied by default.
+                    &quot;&quot;&quot;);
+        }
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        if (api.getPaths() == null) return;</span>
+<span class="fc" id="L66">        api.getPaths().forEach((path, item) -&gt; {</span>
+<span class="fc bfc" id="L67" title="All 4 branches covered.">            if (!path.startsWith(&quot;/api/&quot;) &amp;&amp; !path.startsWith(&quot;/oslc/&quot;)) return;</span>
+<span class="fc" id="L68">            item.readOperationsMap().forEach((method, operation) -&gt;</span>
+<span class="fc" id="L69">                    describe(operation, ApiAccessPolicy.resolve(method.name(), path)));</span>
+<span class="fc" id="L70">        });</span>
+<span class="fc" id="L71">    }</span>
+
+    private void describe(Operation operation, ApiAccessPolicy.Rule rule) {
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        boolean permissionRequired = rule.access() == ApiAccessPolicy.Access.PERMISSION;</span>
+<span class="fc" id="L75">        var alternatives = rule.permissionAlternatives();</span>
+<span class="fc" id="L76">        var scopeAlternatives = alternatives.stream()</span>
+<span class="fc" id="L77">                .map(permissions -&gt; permissions.stream().map(ApiPermission::scope).distinct().toList()).toList();</span>
+<span class="fc" id="L78">        var roleAlternatives = alternatives.stream()</span>
+<span class="fc" id="L79">                .map(permissions -&gt; permissions.stream().map(ApiPermission::roles).toList()).toList();</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">        var commonPermissions = alternatives.isEmpty() ? List.&lt;ApiPermission&gt;of() : alternatives.getFirst().stream()</span>
+<span class="fc" id="L81">                .filter(permission -&gt; alternatives.stream().allMatch(permissions -&gt; permissions.contains(permission))).toList();</span>
+<span class="fc" id="L82">        List&lt;String&gt; scopes = commonPermissions.stream().map(ApiPermission::scope).distinct().toList();</span>
+<span class="fc" id="L83">        List&lt;List&lt;String&gt;&gt; roleGroups = commonPermissions.stream().map(ApiPermission::roles).toList();</span>
+<span class="fc" id="L84">        List&lt;String&gt; roles = roleAlternatives.stream().flatMap(List::stream).flatMap(List::stream).distinct().toList();</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        if (rule.access() == ApiAccessPolicy.Access.PUBLIC) {</span>
+<span class="fc" id="L86">            operation.setSecurity(List.of());</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        } else if (keycloak) {</span>
+<span class="fc" id="L88">            var security = new ArrayList&lt;SecurityRequirement&gt;();</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">            if (scopeAlternatives.isEmpty()) security.add(new SecurityRequirement().addList(&quot;keycloak&quot;));</span>
+<span class="fc" id="L90">            else scopeAlternatives.forEach(alternative -&gt; security.add(new SecurityRequirement().addList(&quot;keycloak&quot;, alternative)));</span>
+<span class="fc" id="L91">            security.add(new SecurityRequirement().addList(&quot;sessionCookie&quot;));</span>
+<span class="fc" id="L92">            operation.setSecurity(security);</span>
+<span class="fc" id="L93">        } else {</span>
+            // Separate requirement objects are alternatives (Basic OR browser session).
+<span class="fc" id="L95">            operation.setSecurity(List.of(new SecurityRequirement().addList(&quot;basicAuth&quot;),</span>
+<span class="fc" id="L96">                    new SecurityRequirement().addList(&quot;sessionCookie&quot;)));</span>
+        }
+<span class="fc" id="L98">        operation.addExtension(&quot;x-required-roles&quot;, roles);</span>
+<span class="fc" id="L99">        operation.addExtension(&quot;x-required-role-groups&quot;, roleGroups);</span>
+<span class="fc" id="L100">        operation.addExtension(&quot;x-required-scopes&quot;, scopes);</span>
+<span class="fc" id="L101">        operation.addExtension(&quot;x-required-role-alternatives&quot;, roleAlternatives);</span>
+<span class="fc" id="L102">        operation.addExtension(&quot;x-required-permission-alternatives&quot;, scopeAlternatives);</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        if (!rule.conditionalPermissions().isEmpty()) {</span>
+<span class="fc" id="L104">            var conditionalScopes = new LinkedHashMap&lt;String, List&lt;String&gt;&gt;();</span>
+<span class="fc" id="L105">            var conditionalRoles = new LinkedHashMap&lt;String, List&lt;List&lt;String&gt;&gt;&gt;();</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">            for (var conditional : rule.conditionalPermissions()) {</span>
+<span class="fc" id="L107">                conditionalScopes.computeIfAbsent(conditional.condition(), ignored -&gt; new ArrayList&lt;&gt;())</span>
+<span class="fc" id="L108">                        .add(conditional.permission().scope());</span>
+<span class="fc" id="L109">                conditionalRoles.computeIfAbsent(conditional.condition(), ignored -&gt; new ArrayList&lt;&gt;())</span>
+<span class="fc" id="L110">                        .add(conditional.permission().roles());</span>
+<span class="fc" id="L111">            }</span>
+<span class="fc" id="L112">            operation.addExtension(&quot;x-conditional-required-scopes&quot;, conditionalScopes);</span>
+<span class="fc" id="L113">            operation.addExtension(&quot;x-conditional-required-role-groups&quot;, conditionalRoles);</span>
+        }
+<span class="fc" id="L115">        operation.addExtension(&quot;x-access-policy&quot;, rule.access().name());</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">        if (operation.getResponses() == null) operation.setResponses(new ApiResponses());</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        if (rule.access() != ApiAccessPolicy.Access.PUBLIC) {</span>
+<span class="fc" id="L118">            operation.getResponses().putIfAbsent(&quot;401&quot;, new ApiResponse().description(&quot;Authentication is missing or invalid.&quot;));</span>
+<span class="fc" id="L119">            operation.getResponses().putIfAbsent(&quot;403&quot;, new ApiResponse().description(</span>
+                    &quot;Required role, bearer scope or resource permission is missing; browser writes also require CSRF protection.&quot;));
+        }
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        String current = operation.getDescription() == null ? &quot;&quot; : operation.getDescription();</span>
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">        if (current.contains(ACCESS_HEADER)) return;</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        boolean alternativeAccess = alternatives.size() &gt; 1;</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">        String effect = permissionRequired ? alternatives.stream()</span>
+<span class="fc" id="L126">                .map(permissions -&gt; permissions.stream().map(permission -&gt; permission.effect().name()).distinct()</span>
+<span class="fc" id="L127">                        .collect(Collectors.joining(&quot; AND &quot;))).distinct().collect(Collectors.joining(&quot; OR &quot;))</span>
+<span class="fc" id="L128">                : rule.access().name();</span>
+<span class="fc bfc" id="L129" title="All 4 branches covered.">        String roleText = permissionRequired ? alternativeAccess ? alternatives.stream()</span>
+<span class="fc" id="L130">                .map(permissions -&gt; &quot;(&quot; + roleGroups(permissions.stream().map(ApiPermission::roles).toList())</span>
+<span class="fc" id="L131">                        + &quot; with &quot; + scopes(permissions.stream().map(ApiPermission::scope).toList()) + &quot;)&quot;)</span>
+<span class="pc bpc" id="L132" title="1 of 4 branches missed.">                .collect(Collectors.joining(&quot; OR &quot;)) : roleGroups(roleGroups) : switch (rule.access()) {</span>
+<span class="fc" id="L133">            case PUBLIC -&gt; &quot;Public&quot;;</span>
+<span class="fc" id="L134">            case AUTHENTICATED -&gt; &quot;Authenticated account&quot;;</span>
+<span class="fc" id="L135">            case DENIED -&gt; &quot;None — Denied by default&quot;;</span>
+<span class="nc" id="L136">            default -&gt; throw new IllegalStateException(&quot;Unresolved permission&quot;);</span>
+        };
+<span class="fc" id="L138">        operation.setDescription(current + ACCESS_HEADER</span>
+                + &quot;| Requirement | Value |\n| --- | --- |\n&quot;
+                + &quot;| Effect | &quot; + effect + &quot; |\n&quot;
+<span class="fc bfc" id="L141" title="All 2 branches covered.">                + &quot;| &quot; + (alternativeAccess ? &quot;Capability alternatives (role groups and scopes)&quot;</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">                        : roleGroups.size() &gt; 1 ? &quot;Required application role groups&quot; : &quot;Any application role&quot;) + &quot; | &quot; + roleText + &quot; |\n&quot;</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">                + &quot;| Permission / bearer OAuth scope | &quot; + (scopeAlternatives.isEmpty() ? &quot;None&quot; : scopeAlternatives.stream()</span>
+<span class="fc" id="L144">                        .map(ApiSecurityOpenApiCustomizer::scopes).collect(Collectors.joining(&quot; OR &quot;))) + &quot; |\n&quot;</span>
+<span class="fc" id="L145">                + rule.conditionalPermissions().stream().map(conditional -&gt; &quot;| Conditional permission | `&quot;</span>
+<span class="fc" id="L146">                        + conditional.condition() + &quot;` requires `&quot; + conditional.permission().scope() + &quot;` (&quot;</span>
+<span class="fc" id="L147">                        + String.join(&quot; OR &quot;, conditional.permission().roles()) + &quot;) |\n&quot;).collect(Collectors.joining())</span>
+<span class="fc" id="L148">                + &quot;| Resource restriction | &quot; + rule.resourceRequirement() + &quot; |\n&quot;</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">                + (keycloak ? &quot;\nBearer access requires one listed capability alternative, including its role groups and every scope. An existing OIDC browser session uses roles; session writes additionally require the CSRF token.&quot;</span>
+<span class="fc" id="L150">                : &quot;\nLocal Basic and browser sessions use roles; session writes also require the CSRF token.&quot;));</span>
+<span class="pc bpc" id="L151" title="1 of 4 branches missed.">        if (operation.getTags() == null || operation.getTags().isEmpty()) {</span>
+<span class="fc bfc" id="L152" title="All 6 branches covered.">            operation.addTagsItem(permissionRequired ? switch (rule.permission().effect()) {</span>
+<span class="fc" id="L153">                case ANALYSIS -&gt; &quot;Analysis&quot;;</span>
+<span class="fc" id="L154">                case EXPORT -&gt; &quot;Export&quot;;</span>
+<span class="fc" id="L155">                case ADMINISTRATION -&gt; &quot;Administration&quot;;</span>
+<span class="fc" id="L156">                default -&gt; &quot;Architecture&quot;;</span>
+<span class="fc" id="L157">            } : &quot;Account and access&quot;);</span>
+        }
+<span class="fc" id="L159">    }</span>
+
+    private static String scopes(List&lt;String&gt; scopes) {
+<span class="fc" id="L162">        return scopes.stream().map(scope -&gt; &quot;`&quot; + scope + &quot;`&quot;).collect(Collectors.joining(&quot; AND &quot;));</span>
+    }
+
+    private static String roleGroups(List&lt;List&lt;String&gt;&gt; groups) {
+<span class="fc" id="L166">        return groups.stream().map(group -&gt; {</span>
+<span class="fc" id="L167">            String roles = String.join(&quot; OR &quot;, group);</span>
+<span class="fc bfc" id="L168" title="All 4 branches covered.">            return groups.size() &gt; 1 &amp;&amp; group.size() &gt; 1 ? &quot;(&quot; + roles + &quot;)&quot; : roles;</span>
+<span class="fc" id="L169">        }).collect(Collectors.joining(&quot; AND &quot;));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

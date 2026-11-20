@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RepositoryMembershipIdentity.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">RepositoryMembershipIdentity.java</span></div><h1>RepositoryMembershipIdentity.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.workspace.model.RepositoryMembership;
+import com.taxonomy.workspace.model.RepositoryRole;
+
+import java.util.Optional;
+import java.util.UUID;
+
+/** Stable identities available for a newly authorized direct repository grant. */
+public interface RepositoryMembershipIdentity {
+    /** Bound only inside a journal callback, after the journal validates its original login and lease. */
+<span class="fc" id="L12">    record RecordedActor(String scope, WorkspaceFetchAuthority.Grant grant) {</span>
+<span class="fc" id="L13">        private static final ScopedValue&lt;RecordedActor&gt; CURRENT = ScopedValue.newInstance();</span>
+
+        public static &lt;T, E extends Exception&gt; T during(String scope, WorkspaceFetchAuthority.Grant grant,
+                                                        ScopedValue.CallableOp&lt;T, E&gt; action) throws E {
+<span class="fc" id="L17">            return ScopedValue.where(CURRENT, new RecordedActor(scope, grant)).call(action);</span>
+        }
+
+        static Optional&lt;String&gt; currentPrincipal(String scope) {
+<span class="fc bfc" id="L21" title="All 2 branches covered.">            if (!CURRENT.isBound()) return Optional.empty();</span>
+<span class="fc" id="L22">            var actor = CURRENT.get();</span>
+<span class="fc bfc" id="L23" title="All 6 branches covered.">            return actor.scope.equals(scope) &amp;&amp; (&quot;LOCAL&quot;.equals(actor.grant.loginKind()) || &quot;OIDC&quot;.equals(actor.grant.loginKind()))</span>
+<span class="fc" id="L24">                    ? Optional.of(actor.grant.principalId()) : Optional.empty();</span>
+        }
+    }
+
+<span class="fc" id="L28">    record State(boolean active, RepositoryRole role, long version) {</span>
+        static State of(RepositoryMembership membership) {
+<span class="fc bfc" id="L30" title="All 2 branches covered.">            return membership == null ? new State(false, null, -1)</span>
+<span class="fc" id="L31">                    : new State(membership.isActive(), membership.getRole(), membership.getVersion());</span>
+        }
+    }
+
+<span class="fc" id="L35">    record RoleDecision(String repositoryId, long membershipId, String holderPrincipalId, State before,</span>
+                        State after, String rationale, String outcome, String subject) { }
+
+    void recordRoleDecision(String actor, RoleDecision decision);
+
+    Optional&lt;UUID&gt; currentActor(String scope);
+    Optional&lt;UUID&gt; activeHolder(String scope);
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

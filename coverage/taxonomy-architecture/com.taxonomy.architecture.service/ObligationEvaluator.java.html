@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ObligationEvaluator.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-architecture</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.service</a> &gt; <span class="el_source">ObligationEvaluator.java</span></div><h1>ObligationEvaluator.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.service;
+
+import com.taxonomy.dto.*;
+import java.util.*;
+
+/** Pure evaluation over already-scoped evidence. Scores are deliberately absent from this contract. */
+<span class="fc" id="L7">public final class ObligationEvaluator {</span>
+<span class="fc" id="L8">    public record Relation(String sourceId, String targetId, String type, String status) {}</span>
+    public List&lt;ObligationJudgment&gt; evaluate(ObligationProfile profile, Map&lt;String, String&gt; elementRoots,
+            List&lt;Relation&gt; relations, EvidenceCompleteness completeness) {
+<span class="fc" id="L11">        Objects.requireNonNull(profile); Objects.requireNonNull(completeness);</span>
+<span class="fc" id="L12">        List&lt;ObligationJudgment&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L13" title="All 4 branches covered.">        for (var source : new TreeMap&lt;&gt;(elementRoots).entrySet()) for (var rule : profile.rules()) {</span>
+<span class="fc bfc" id="L14" title="All 2 branches covered.">            if (!rule.sourceRoots().contains(source.getValue())) continue;</span>
+<span class="fc" id="L15">            int count = (int) relations.stream()</span>
+<span class="pc bpc" id="L16" title="2 of 4 branches missed.">                    .filter(r -&gt; source.getKey().equals(r.sourceId()) &amp;&amp; rule.relationType().equals(r.type()))</span>
+<span class="fc" id="L17">                    .filter(r -&gt; &quot;accepted&quot;.equals(r.status()))</span>
+<span class="fc bfc" id="L18" title="All 4 branches covered.">                    .filter(r -&gt; elementRoots.containsKey(r.targetId()) &amp;&amp; rule.targetRoots().contains(elementRoots.get(r.targetId())))</span>
+<span class="fc" id="L19">                    .map(Relation::targetId).distinct().count();</span>
+            ObligationJudgment.Status status;
+<span class="fc bfc" id="L21" title="All 2 branches covered.">            if (completeness == EvidenceCompleteness.INCOMPLETE) status = ObligationJudgment.Status.INCONCLUSIVE;</span>
+<span class="fc bfc" id="L22" title="All 6 branches covered.">            else if (count &lt; rule.minCount() || rule.maxCount() != null &amp;&amp; count &gt; rule.maxCount()) status = ObligationJudgment.Status.VIOLATED;</span>
+<span class="fc" id="L23">            else status = ObligationJudgment.Status.SATISFIED;</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">            String description = status == ObligationJudgment.Status.INCONCLUSIVE</span>
+<span class="fc" id="L25">                    ? &quot;Evidence is incomplete for this profile and revision; absence is not established.&quot;</span>
+<span class="fc" id="L26">                    : &quot;Observed &quot; + count + &quot; distinct accepted target elements across alternatives &quot; + new TreeSet&lt;&gt;(rule.targetRoots())</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">                      + &quot;; required cardinality &quot; + rule.minCount() + &quot;..&quot; + (rule.maxCount() == null ? &quot;*&quot; : rule.maxCount()) + &quot;.&quot;;</span>
+<span class="fc" id="L28">            result.add(new ObligationJudgment(rule.id(), source.getKey(), source.getValue(), rule.relationType(), rule.targetRoots(),</span>
+<span class="fc" id="L29">                    rule.minCount(), rule.maxCount(), count, rule.severity(), status, description));</span>
+<span class="fc" id="L30">        }</span>
+<span class="fc" id="L31">        return List.copyOf(result);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

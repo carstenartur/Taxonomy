@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AdmittedCatalogue.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.usecase</a> &gt; <span class="el_source">AdmittedCatalogue.java</span></div><h1>AdmittedCatalogue.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.usecase;
+
+import com.taxonomy.catalog.snapshot.CatalogueSnapshotService;
+import com.taxonomy.catalog.snapshot.CatalogueSourceIdentity;
+import com.taxonomy.catalog.snapshot.FrozenCatalogueContext;
+import com.taxonomy.catalog.snapshot.RootCatalogueSnapshot;
+import com.taxonomy.dto.AnalysisModelBinding;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+/** Binds the archived catalogue to the thread doing the work, then restores the enclosing scope. */
+public final class AdmittedCatalogue {
+    private AdmittedCatalogue() { }
+
+    public static FrozenCatalogueContext.Scope open(CatalogueSnapshotService snapshots, AnalysisModelBinding binding,
+                                                    WorkspaceContext workspace) {
+<span class="fc bfc" id="L21" title="All 2 branches covered.">        if (binding == null) return null;</span>
+<span class="fc" id="L22">        requireWorkspace(binding, workspace);</span>
+<span class="fc" id="L23">        var identity = new CatalogueSourceIdentity(binding.repositoryId(), workspace.workspaceId(),</span>
+<span class="pc bpc" id="L24" title="1 of 2 branches missed.">                binding.branch(), binding.commit(), binding.commit() == null ? binding.modelSha256() : null);</span>
+<span class="fc" id="L25">        String revision = revision(binding);</span>
+<span class="fc" id="L26">        var archived = Objects.requireNonNull(snapshots, &quot;Archived catalogue service&quot;)</span>
+<span class="fc" id="L27">                .captureRevision(identity, revision, Set.of());</span>
+<span class="fc" id="L28">        var roots = archived.stream().map(RootCatalogueSnapshot::rootCode).collect(Collectors.toSet());</span>
+<span class="fc" id="L29">        binding.scope().validateRoots(roots);</span>
+<span class="pc bpc" id="L30" title="1 of 2 branches missed.">        if (!roots.containsAll(binding.rootCodes())) {</span>
+<span class="nc" id="L31">            throw new IllegalStateException(&quot;The archived catalogue does not contain the admitted roots&quot;);</span>
+        }
+<span class="fc" id="L33">        return snapshots.bind(identity, roots, archived);</span>
+    }
+
+    public static String revision(AnalysisModelBinding binding) {
+<span class="fc" id="L37">        String revision = binding.analysisCatalogueRevision();</span>
+<span class="pc bpc" id="L38" title="1 of 4 branches missed.">        if (revision == null || binding.catalogueDefinitionVersion() == null) {</span>
+<span class="fc" id="L39">            throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;No retained catalogue generation is available for this analysis&quot;);</span>
+        }
+<span class="fc" id="L41">        return revision;</span>
+    }
+
+    public static void requireWorkspace(AnalysisModelBinding binding, WorkspaceContext workspace) {
+<span class="fc" id="L45">        String workspaceKey = com.taxonomy.model.WorkspaceOverlayScope.keyFor(workspace.workspaceId());</span>
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">        if (!binding.repositoryId().equals(workspace.repositoryId())</span>
+<span class="pc bpc" id="L47" title="1 of 2 branches missed.">                || !binding.workspaceScopeKey().equals(workspaceKey)</span>
+<span class="pc bpc" id="L48" title="1 of 2 branches missed.">                || !binding.branch().equals(workspace.currentBranch())) {</span>
+<span class="nc" id="L49">            throw new IllegalStateException(&quot;The recorded analysis model belongs to a different workspace or branch&quot;);</span>
+        }
+<span class="fc" id="L51">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

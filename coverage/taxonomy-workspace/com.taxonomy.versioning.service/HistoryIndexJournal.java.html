@@ -1,0 +1,304 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>HistoryIndexJournal.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.versioning.service</a> &gt; <span class="el_source">HistoryIndexJournal.java</span></div><h1>HistoryIndexJournal.java</h1><pre class="source lang-java linenums">package com.taxonomy.versioning.service;
+
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryScope;
+import com.taxonomy.workspace.service.WorkspaceFetchAuthority.Grant;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.time.Clock;
+import java.time.Duration;
+import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.function.Supplier;
+
+@Service
+public class HistoryIndexJournal {
+<span class="fc" id="L27">    public enum Kind {</span>
+<span class="fc" id="L28">        INDEX, REBUILD, PURGE, RELATION, VECTOR_BUILD, VECTOR_PURGE;</span>
+
+<span class="fc bfc" id="L30" title="All 4 branches covered.">        boolean destructive() { return this == PURGE || this == VECTOR_PURGE; }</span>
+<span class="pc bpc" id="L31" title="1 of 6 branches missed.">        boolean relationProjection() { return this == RELATION || this == VECTOR_BUILD || this == VECTOR_PURGE; }</span>
+    }
+
+<span class="fc" id="L34">    public record Receipt(String operationId, String causationId, Kind kind, String repositoryId,</span>
+                          String workspaceId, String branch, String sourceCommit, String actor,
+                          String phase, int attempts, Integer count, String executor, String reason,
+                          long createdAt, Long attemptedAt, Long completedAt, Long archivedAt) {}
+
+<span class="fc" id="L39">    record Capture(String commit, String owner, String sourceKey, String generation) {</span>
+<span class="fc" id="L40">        Capture(String commit, String owner) { this(commit, owner, null, null); }</span>
+    }
+<span class="fc" id="L42">    record Claim(String id, String lease) {}</span>
+<span class="fc" id="L43">    record Operation(Receipt receipt, String username, String owner, RepositoryScope scope,</span>
+                     boolean collaborative, Grant grant, String sourceKey, String generation, String result) {
+        RepositoryContext context() {
+<span class="fc" id="L46">            return new RepositoryContext(receipt.repositoryId(), receipt.workspaceId(),</span>
+<span class="fc" id="L47">                    receipt.branch(), username, scope, collaborative);</span>
+        }
+    }
+
+<span class="fc" id="L51">    private static final long LEASE = Duration.ofMinutes(5).toMillis();</span>
+    private static final int MAX_ATTEMPTS = 6;
+    private final JdbcTemplate jdbc;
+    private final TransactionTemplate transaction;
+    private final Clock clock;
+
+    @Autowired
+    public HistoryIndexJournal(JdbcTemplate jdbc, PlatformTransactionManager manager) {
+<span class="fc" id="L59">        this(jdbc, manager, Clock.systemUTC());</span>
+<span class="fc" id="L60">    }</span>
+
+<span class="fc" id="L62">    HistoryIndexJournal(JdbcTemplate jdbc, PlatformTransactionManager manager, Clock clock) {</span>
+<span class="fc" id="L63">        this.jdbc = jdbc;</span>
+<span class="fc" id="L64">        transaction = new TransactionTemplate(manager);</span>
+<span class="fc" id="L65">        transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);</span>
+<span class="fc" id="L66">        this.clock = clock;</span>
+<span class="fc" id="L67">    }</span>
+
+<span class="fc" id="L69">    private static final RowMapper&lt;Operation&gt; ROW = (r, n) -&gt; {</span>
+<span class="fc" id="L70">        String actor = r.getString(&quot;actor_id&quot;);</span>
+<span class="fc" id="L71">        var receipt = new Receipt(r.getString(&quot;operation_id&quot;), r.getString(&quot;cause_id&quot;), Kind.valueOf(r.getString(&quot;command_kind&quot;)),</span>
+<span class="fc" id="L72">                r.getString(&quot;repository_id&quot;), r.getString(&quot;workspace_id&quot;), r.getString(&quot;branch_name&quot;), r.getString(&quot;captured_commit&quot;),</span>
+<span class="fc" id="L73">                actor, r.getString(&quot;phase&quot;), r.getInt(&quot;attempts&quot;), r.getObject(&quot;result_count&quot;, Integer.class),</span>
+<span class="fc" id="L74">                r.getString(&quot;executor_id&quot;), r.getString(&quot;reason_code&quot;), r.getLong(&quot;created_at&quot;),</span>
+<span class="fc" id="L75">                r.getObject(&quot;attempted_at&quot;, Long.class), r.getObject(&quot;completed_at&quot;, Long.class), r.getObject(&quot;archived_at&quot;, Long.class));</span>
+<span class="fc" id="L76">        return new Operation(receipt, r.getString(&quot;actor_scope&quot;), r.getString(&quot;workspace_owner&quot;),</span>
+<span class="fc" id="L77">                RepositoryScope.valueOf(r.getString(&quot;repository_scope&quot;)), r.getBoolean(&quot;collaborative&quot;),</span>
+<span class="fc" id="L78">                new Grant(actor, r.getString(&quot;login_kind&quot;), r.getString(&quot;binding_key&quot;)),</span>
+<span class="fc" id="L79">                r.getString(&quot;projection_source_key&quot;), r.getString(&quot;captured_generation&quot;), r.getString(&quot;projection_result&quot;));</span>
+    };
+
+    Operation admit(RepositoryContext selected, String branch, Kind kind, Grant grant, String key, String cause,
+                    Supplier&lt;Capture&gt; source) {
+<span class="pc bpc" id="L84" title="1 of 4 branches missed.">        if (key != null &amp;&amp; !key.matches(&quot;[a-zA-Z0-9._~:-]{1,128}&quot;)) throw bad(&quot;Invalid history index idempotency key&quot;);</span>
+<span class="pc bpc" id="L85" title="1 of 4 branches missed.">        if (cause != null &amp;&amp; !cause.matches(&quot;[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}&quot;)) throw bad(&quot;Invalid causation ID&quot;);</span>
+<span class="fc" id="L86">        String id = StableIdentityHash.sha256(String.join(&quot;\u0000&quot;, selected.repositoryId(),</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">                selected.workspaceId() == null ? &quot;C&quot; : &quot;W:&quot; + selected.workspaceId(), grant.principalId(),</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">                key == null ? UUID.randomUUID().toString() : &quot;key:&quot; + key));</span>
+        try {
+<span class="fc" id="L90">            return transaction.execute(status -&gt; {</span>
+<span class="fc" id="L91">                var existing = lookup(id);</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">                if (existing != null) return replay(existing, selected, branch, kind, grant, cause);</span>
+<span class="fc" id="L93">                var capture = source.get();</span>
+<span class="fc" id="L94">                long now = clock.millis();</span>
+<span class="fc" id="L95">                jdbc.update(&quot;&quot;&quot;</span>
+                        insert into history_index_operation(operation_id,command_kind,cause_id,actor_id,actor_scope,login_kind,
+                        binding_key,repository_id,workspace_id,workspace_owner,repository_scope,collaborative,branch_name,
+                        captured_commit,projection_source_key,captured_generation,phase,attempts,created_at,due_at) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'ADMITTED',0,?,?)
+<span class="fc bfc" id="L99" title="All 2 branches covered.">                        &quot;&quot;&quot;, id, kind.name(), cause == null ? id : cause, grant.principalId(), selected.username(), grant.loginKind(),</span>
+<span class="fc" id="L100">                        grant.bindingKey(), selected.repositoryId(), selected.workspaceId(), capture.owner(), selected.scope().name(),</span>
+<span class="fc" id="L101">                        selected.collaborative(), branch, capture.commit(), capture.sourceKey(), capture.generation(), now, now);</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">                if (kind == Kind.PURGE) {</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">                    String tenant = selected.workspaceId() == null ? &quot;workspace_id is null&quot; : &quot;workspace_id = ?&quot;;</span>
+<span class="fc" id="L104">                    String sql = &quot;insert into history_index_purge_target(operation_id,projection_id) select ?,id from architecture_commit_index where repository_id=? and &quot; + tenant;</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">                    if (selected.workspaceId() == null) jdbc.update(sql, id, selected.repositoryId());</span>
+<span class="fc" id="L106">                    else jdbc.update(sql, id, selected.repositoryId(), selected.workspaceId());</span>
+                }
+<span class="fc" id="L108">                event(id, grant.principalId(), &quot;ADMITTED&quot;, now);</span>
+<span class="fc" id="L109">                return lookup(id);</span>
+            });
+<span class="nc" id="L111">        } catch (DuplicateKeyException conflict) {</span>
+<span class="nc" id="L112">            var winner = lookup(id);</span>
+<span class="nc bnc" id="L113" title="All 2 branches missed.">            if (winner == null) throw conflict;</span>
+<span class="nc" id="L114">            return replay(winner, selected, branch, kind, grant, cause);</span>
+        }
+    }
+
+    private Operation replay(Operation row, RepositoryContext selected, String branch, Kind kind, Grant grant, String cause) {
+<span class="fc" id="L119">        checkOwner(row, selected, grant.principalId());</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        if (row.receipt.archivedAt() != null) throw new ResponseStatusException(HttpStatus.GONE);</span>
+<span class="pc bpc" id="L121" title="2 of 8 branches missed.">        if (row.receipt.kind() != kind || !row.receipt.branch().equals(branch) || !row.grant.equals(grant)</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">                || (cause != null &amp;&amp; !cause.equalsIgnoreCase(row.receipt.causationId()))) {</span>
+<span class="fc" id="L123">            throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;History index command differs from the original&quot;);</span>
+        }
+<span class="fc" id="L125">        return row;</span>
+    }
+
+    void saveProjectionResult(String id, String result) {
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">        if (result.length() &gt; 2048) throw new IllegalArgumentException(&quot;Projection result exceeds its fixed receipt&quot;);</span>
+<span class="fc" id="L130">        jdbc.update(&quot;update history_index_operation set projection_result=? where operation_id=? and phase='RUNNING'&quot;, result, id);</span>
+<span class="fc" id="L131">    }</span>
+
+    Operation get(RepositoryContext selected, String actor, String id) {
+<span class="fc" id="L134">        Operation row = lookup(id);</span>
+<span class="fc" id="L135">        checkOwner(row, selected, actor);</span>
+<span class="fc" id="L136">        return row;</span>
+    }
+
+    Receipt inspect(RepositoryContext selected, String actor, String id, java.util.function.Consumer&lt;Operation&gt; authorize) {
+<span class="fc" id="L140">        return inspectOperation(selected, actor, id, authorize).receipt();</span>
+    }
+
+    Operation inspectOperation(RepositoryContext selected, String actor, String id, java.util.function.Consumer&lt;Operation&gt; authorize) {
+<span class="fc" id="L144">        return transaction.execute(status -&gt; {</span>
+<span class="fc" id="L145">            Operation row = get(selected, actor, id);</span>
+<span class="fc" id="L146">            authorize.accept(row);</span>
+<span class="fc" id="L147">            return row;</span>
+        });
+    }
+
+    private Operation lookup(String id) {
+<span class="fc" id="L152">        return jdbc.query(&quot;select * from history_index_operation where operation_id=?&quot;, ROW, id).stream().findFirst().orElse(null);</span>
+    }
+
+    private static void checkOwner(Operation row, RepositoryContext selected, String actor) {
+<span class="pc bpc" id="L156" title="3 of 6 branches missed.">        if (row == null || !row.receipt.actor().equals(actor) || !row.username.equals(selected.username())</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">                || !row.receipt.repositoryId().equals(selected.repositoryId())</span>
+<span class="pc bpc" id="L158" title="1 of 2 branches missed.">                || !Objects.equals(row.receipt.workspaceId(), selected.workspaceId())</span>
+<span class="pc bpc" id="L159" title="2 of 4 branches missed.">                || row.scope != selected.scope() || row.collaborative != selected.collaborative()</span>
+<span class="fc bfc" id="L160" title="All 4 branches covered.">                || (row.receipt.kind().relationProjection() &amp;&amp; !row.receipt.branch().equals(selected.branch()))) throw new ResponseStatusException(HttpStatus.NOT_FOUND);</span>
+<span class="fc" id="L161">    }</span>
+
+    Claim claim(String id, String executor, boolean explicit) {
+<span class="fc" id="L164">        long now = clock.millis();</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">        String eligible = explicit</span>
+<span class="fc" id="L166">                ? &quot;(phase in ('ADMITTED','RETRYABLE','AWAITING_AUTHORIZATION') or (phase='RUNNING' and due_at&lt;=?))&quot;</span>
+<span class="fc" id="L167">                : &quot;(phase in ('ADMITTED','RETRYABLE','RUNNING') and due_at&lt;=?)&quot;;</span>
+<span class="fc" id="L168">        return transaction.execute(status -&gt; {</span>
+<span class="fc" id="L169">            String lease = UUID.randomUUID().toString();</span>
+<span class="fc" id="L170">            int won = jdbc.update(&quot;&quot;&quot;</span>
+                    update history_index_operation set phase='RUNNING',attempts=attempts+1,executor_id=?,lease_id=?,attempted_at=?,due_at=?,projection_result=null
+                    where operation_id=? and archived_at is null and attempts &lt; ? and
+<span class="fc" id="L173">                    &quot;&quot;&quot; + eligible, executor, lease, now, now + LEASE, id, MAX_ATTEMPTS, now);</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">            if (won == 1) {</span>
+<span class="fc" id="L175">                event(id, executor, &quot;CLAIMED&quot;, now);</span>
+<span class="fc" id="L176">                return new Claim(id, lease);</span>
+            }
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">            if (jdbc.update(&quot;&quot;&quot;</span>
+                    update history_index_operation set phase='MANUAL_REVIEW',reason_code='ATTEMPTS_EXHAUSTED',completed_at=?,due_at=null,lease_id=null
+                    where operation_id=? and archived_at is null and attempts&gt;=? and
+<span class="pc" id="L181">                    &quot;&quot;&quot; + eligible, now, id, MAX_ATTEMPTS, now) == 1) event(id, executor, &quot;ATTEMPTS_EXHAUSTED&quot;, now);</span>
+<span class="fc" id="L182">            return null;</span>
+        });
+    }
+
+    @FunctionalInterface interface Projection { int apply(Operation row); }
+
+    Receipt execute(Claim token, Projection projection) {
+<span class="fc" id="L189">        return transaction.execute(status -&gt; {</span>
+<span class="fc" id="L190">            Operation row = lock(token);</span>
+<span class="fc" id="L191">            int count = projection.apply(row);</span>
+<span class="fc" id="L192">            long now = clock.millis();</span>
+<span class="pc bpc" id="L193" title="1 of 2 branches missed.">            if (jdbc.update(&quot;&quot;&quot;</span>
+                    update history_index_operation set phase='COMPLETED',result_count=?,reason_code='APPLIED',
+                    completed_at=?,due_at=null,lease_id=null where operation_id=? and lease_id=? and due_at&gt;?
+<span class="pc" id="L196">                    &quot;&quot;&quot;, count, now, token.id, token.lease, now) != 1) throw lost();</span>
+<span class="fc" id="L197">            event(token.id, row.receipt.executor(), &quot;COMPLETED&quot;, now);</span>
+<span class="fc" id="L198">            return lookup(token.id).receipt;</span>
+        });
+    }
+
+    Receipt failed(Claim token, String phase, String reason) {
+<span class="fc" id="L203">        return failed(token, phase, reason, null);</span>
+    }
+
+    Receipt failed(Claim token, String phase, String reason, String result) {
+<span class="fc" id="L207">        return transaction.execute(status -&gt; {</span>
+<span class="fc" id="L208">            Operation row = lock(token);</span>
+<span class="fc bfc" id="L209" title="All 2 branches covered.">            if (result != null) saveProjectionResult(token.id(), result);</span>
+<span class="fc" id="L210">            long now = clock.millis();</span>
+<span class="fc" id="L211">            boolean retry = phase.equals(&quot;RETRYABLE&quot;);</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">            Long due = retry ? now + Duration.ofSeconds(15L &lt;&lt; (row.receipt.attempts() - 1)).toMillis() : null;</span>
+<span class="fc bfc" id="L213" title="All 4 branches covered.">            Long finished = retry || phase.equals(&quot;AWAITING_AUTHORIZATION&quot;) ? null : now;</span>
+<span class="fc" id="L214">            jdbc.update(&quot;update history_index_operation set phase=?,reason_code=?,due_at=?,completed_at=?,lease_id=null where operation_id=? and lease_id=?&quot;,</span>
+                    phase, reason, due, finished, token.id, token.lease);
+<span class="fc" id="L216">            event(token.id, row.receipt.executor(), reason, now);</span>
+<span class="fc" id="L217">            return lookup(token.id).receipt;</span>
+        });
+    }
+
+    Operation claimed(Claim claim) {
+<span class="fc" id="L222">        return transaction.execute(status -&gt; lock(claim));</span>
+    }
+
+    private Operation lock(Claim claim) {
+<span class="fc bfc" id="L226" title="All 2 branches covered.">        if (jdbc.update(&quot;update history_index_operation set lease_id=? where operation_id=? and phase='RUNNING' and lease_id=? and due_at&gt;?&quot;,</span>
+<span class="fc" id="L227">                claim.lease, claim.id, claim.lease, clock.millis()) != 1) throw lost();</span>
+<span class="fc" id="L228">        return lookup(claim.id);</span>
+    }
+
+    Receipt archive(RepositoryContext context, String actor, String id, java.util.function.Consumer&lt;Operation&gt; authorize) {
+<span class="fc" id="L232">        return transaction.execute(status -&gt; {</span>
+<span class="fc" id="L233">            Operation operation = get(context, actor, id);</span>
+<span class="fc" id="L234">            authorize.accept(operation);</span>
+<span class="fc" id="L235">            Receipt row = operation.receipt;</span>
+<span class="pc bpc" id="L236" title="1 of 2 branches missed.">            if (row.archivedAt() != null) return row;</span>
+<span class="fc" id="L237">            long now = clock.millis();</span>
+<span class="fc" id="L238">            int changed = jdbc.update(&quot;update history_index_operation set archived_at=? where operation_id=? and completed_at is not null and archived_at is null&quot;, now, id);</span>
+<span class="pc bpc" id="L239" title="3 of 4 branches missed.">            if (changed == 0 &amp;&amp; lookup(id).receipt.archivedAt() == null) throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;History index operation is active&quot;);</span>
+<span class="pc bpc" id="L240" title="1 of 2 branches missed.">            if (changed == 1) {</span>
+<span class="fc" id="L241">                jdbc.update(&quot;delete from history_index_purge_target where operation_id=?&quot;, id);</span>
+<span class="fc" id="L242">                event(id, actor, &quot;ARCHIVED&quot;, now);</span>
+            }
+<span class="fc" id="L244">            return lookup(id).receipt;</span>
+        });
+    }
+
+    /** Retain a compact idempotency tombstone and append-only decisions after executable evidence expires. */
+    void expire() {
+<span class="fc" id="L250">        long now = clock.millis();</span>
+<span class="fc" id="L251">        long cutoff = now - Duration.ofDays(30).toMillis();</span>
+<span class="fc" id="L252">        long archiveCutoff = now - Duration.ofDays(90).toMillis();</span>
+<span class="fc" id="L253">        var selected = bounded().queryForList(&quot;&quot;&quot;</span>
+                select operation_id from history_index_operation
+                where (archived_at is null and (completed_at&lt;=? or (phase='AWAITING_AUTHORIZATION' and attempted_at&lt;=?)))
+                   or (archived_at&lt;=? and phase&lt;&gt;'EXPIRED') order by operation_id
+<span class="fc" id="L257">                &quot;&quot;&quot;, String.class, cutoff, cutoff, archiveCutoff);</span>
+<span class="fc bfc" id="L258" title="All 2 branches covered.">        for (String id : selected) {</span>
+<span class="fc" id="L259">            transaction.executeWithoutResult(status -&gt; {</span>
+<span class="fc" id="L260">                int expired = jdbc.update(&quot;&quot;&quot;</span>
+                        update history_index_operation set phase='EXPIRED',reason_code='RETENTION_EXPIRED',login_kind='RETIRED',
+                        binding_key='retired',captured_commit=null,projection_source_key=null,captured_generation=null,projection_result=null,result_count=null,due_at=null,lease_id=null
+                        where operation_id=? and archived_at&lt;=? and phase&lt;&gt;'EXPIRED'
+<span class="fc" id="L264">                        &quot;&quot;&quot;, id, archiveCutoff);</span>
+<span class="fc bfc" id="L265" title="All 2 branches covered.">                if (expired == 1) {</span>
+<span class="fc" id="L266">                    jdbc.update(&quot;delete from history_index_purge_target where operation_id=?&quot;, id);</span>
+<span class="fc" id="L267">                    event(id, &quot;system:history-index&quot;, &quot;RETENTION_EXPIRED&quot;, now);</span>
+<span class="fc" id="L268">                    return;</span>
+                }
+<span class="pc bpc" id="L270" title="1 of 2 branches missed.">                if (jdbc.update(&quot;&quot;&quot;</span>
+                        update history_index_operation set completed_at=?,phase='MANUAL_REVIEW',reason_code='AUTHORIZATION_EXPIRED'
+                        where operation_id=? and phase='AWAITING_AUTHORIZATION' and archived_at is null and attempted_at&lt;=?
+<span class="pc" id="L273">                        &quot;&quot;&quot;, now, id, cutoff) == 1) event(id, &quot;system:history-index&quot;, &quot;AUTHORIZATION_EXPIRED&quot;, now);</span>
+<span class="pc bpc" id="L274" title="1 of 2 branches missed.">                if (jdbc.update(&quot;&quot;&quot;</span>
+                        update history_index_operation set archived_at=? where operation_id=? and archived_at is null
+                        and (completed_at&lt;=? or reason_code='AUTHORIZATION_EXPIRED')
+<span class="fc" id="L277">                        &quot;&quot;&quot;, now, id, cutoff) == 1) {</span>
+<span class="fc" id="L278">                    jdbc.update(&quot;delete from history_index_purge_target where operation_id=?&quot;, id);</span>
+<span class="fc" id="L279">                    event(id, &quot;system:history-index&quot;, &quot;RETENTION_ARCHIVED&quot;, now);</span>
+                }
+<span class="fc" id="L281">            });</span>
+<span class="fc" id="L282">        }</span>
+<span class="fc" id="L283">    }</span>
+
+    List&lt;String&gt; due() {
+<span class="fc" id="L286">        return bounded().queryForList(&quot;select operation_id from history_index_operation where phase in ('ADMITTED','RETRYABLE','RUNNING') and due_at&lt;=? order by due_at,operation_id&quot;,</span>
+<span class="fc" id="L287">                String.class, clock.millis());</span>
+    }
+
+    private JdbcTemplate bounded() {
+<span class="fc" id="L291">        var query = new JdbcTemplate(Objects.requireNonNull(jdbc.getDataSource()));</span>
+<span class="fc" id="L292">        query.setMaxRows(20);</span>
+<span class="fc" id="L293">        return query;</span>
+    }
+
+    private void event(String id, String actor, String reason, long now) {
+<span class="fc" id="L297">        jdbc.update(&quot;insert into history_index_decision(decision_id,operation_id,actor_id,decision_code,occurred_at) values(?,?,?,?,?)&quot;,</span>
+<span class="fc" id="L298">                UUID.randomUUID().toString(), id, actor, reason, now);</span>
+<span class="fc" id="L299">    }</span>
+
+<span class="nc" id="L301">    private static ResponseStatusException bad(String message) { return new ResponseStatusException(HttpStatus.BAD_REQUEST, message); }</span>
+<span class="fc" id="L302">    private static ResponseStatusException lost() { return new ResponseStatusException(HttpStatus.CONFLICT, &quot;History index claim changed or expired&quot;); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

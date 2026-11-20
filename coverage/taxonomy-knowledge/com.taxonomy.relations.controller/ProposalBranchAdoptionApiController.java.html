@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProposalBranchAdoptionApiController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.controller</a> &gt; <span class="el_source">ProposalBranchAdoptionApiController.java</span></div><h1>ProposalBranchAdoptionApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.controller;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.taxonomy.editor.ArchitectureEditPermission;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandMetadata;
+import com.taxonomy.relations.service.GitAuthoritativeRelationMutationService.ProjectionPendingException;
+import com.taxonomy.relations.service.ProposalBranchAdoptionService;
+import com.taxonomy.relations.service.ProposalBranchAdoptionService.Preview;
+import com.taxonomy.versioning.service.ContextNavigationService;
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.service.BranchHeadConflictException;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryMembershipService;
+import com.taxonomy.workspace.service.RepositoryScope;
+import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.io.IOException;
+import java.util.Objects;
+import java.util.Optional;
+
+/** Previews and explicitly adopts one accepted proposal from the repository's default branch. */
+@RestController
+@RequestMapping(&quot;/api/proposals/{proposalId}/adoption&quot;)
+@Tag(name = &quot;Proposals&quot;)
+public class ProposalBranchAdoptionApiController {
+    private final ProposalBranchAdoptionService adoption;
+    private final WorkspaceResolver resolver;
+    private final SystemRepositoryService repositories;
+    private final RepositoryMembershipService memberships;
+    private final ContextNavigationService navigation;
+    private final Optional&lt;ArchitectureEditPermission&gt; editPermission;
+
+    public ProposalBranchAdoptionApiController(ProposalBranchAdoptionService adoption, WorkspaceResolver resolver,
+            SystemRepositoryService repositories, RepositoryMembershipService memberships,
+<span class="fc" id="L58">            ContextNavigationService navigation, Optional&lt;ArchitectureEditPermission&gt; editPermission) {</span>
+<span class="fc" id="L59">        this.adoption = adoption;</span>
+<span class="fc" id="L60">        this.resolver = resolver;</span>
+<span class="fc" id="L61">        this.repositories = repositories;</span>
+<span class="fc" id="L62">        this.memberships = memberships;</span>
+<span class="fc" id="L63">        this.navigation = navigation;</span>
+<span class="fc" id="L64">        this.editPermission = editPermission;</span>
+<span class="fc" id="L65">    }</span>
+
+    @Operation(summary = &quot;Preview a proposal's adoption into the selected branch&quot;,
+            description = &quot;Reads the accepted proposal on the repository default branch and compares it to the selected target. Returns both exact Git heads, the available source evidence and the caller's current target write capability.&quot;)
+    @GetMapping
+    public ResponseEntity&lt;AdoptionView&gt; preview(@PathVariable Long proposalId,
+            @RequestParam(required = false) String commitId) throws IOException {
+<span class="fc" id="L72">        RepositoryContext target = selectedTarget(commitId);</span>
+<span class="fc" id="L73">        SystemRepository repository = readableRepository(target);</span>
+<span class="fc" id="L74">        Preview preview = adoption.preview(proposalId, source(repository, target), target);</span>
+<span class="fc" id="L75">        return ResponseEntity.ok().cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L76">                .body(new AdoptionView(preview, mayWrite(repository, target)));</span>
+    }
+
+    @Operation(summary = &quot;Adopt a reviewed proposal into its displayed target&quot;,
+            description = &quot;Applies the single accepted relation after checking the current source branch and commit, selected repository and workspace, write access, and the target If-Match commit. Idempotency-Key identifies the operation. HTTP 202 reports a committed Git change whose projection still needs recovery.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;The relation is present in the selected target&quot;,
+            content = @Content(schema = @Schema(implementation = AdoptionView.class)))
+    @ApiResponse(responseCode = &quot;202&quot;, description = &quot;Git committed the relation and its projection requires recovery&quot;,
+            content = @Content(schema = @Schema(implementation = PendingProjection.class)))
+    @ApiResponse(responseCode = &quot;409&quot;, description = &quot;The selected context changed or the target has a conflicting relation&quot;)
+    @ApiResponse(responseCode = &quot;412&quot;, description = &quot;The source or target commit has moved since the preview&quot;)
+    @ApiResponse(responseCode = &quot;428&quot;, description = &quot;The target commit precondition is missing&quot;)
+    @PostMapping
+    public ResponseEntity&lt;AdoptionView&gt; adopt(@PathVariable Long proposalId, @RequestBody AdoptionRequest request,
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+            @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch,
+            @RequestHeader(&quot;Idempotency-Key&quot;) String idempotencyKey,
+            @RequestParam(required = false) String commitId) throws IOException {
+<span class="fc" id="L94">        RepositoryContext target = selectedTarget(commitId);</span>
+<span class="fc" id="L95">        SystemRepository repository = readableRepository(target);</span>
+<span class="fc" id="L96">        RepositoryContext source = source(repository, target);</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        if (!request.matches(source, target)) {</span>
+<span class="fc" id="L98">            throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;The source or target selection has changed&quot;);</span>
+        }
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        if (!mayWrite(repository, target)) {</span>
+<span class="fc" id="L101">            throw new ResponseStatusException(HttpStatus.FORBIDDEN, &quot;The selected target is not writable&quot;);</span>
+        }
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        if (ifNoneMatch != null) {</span>
+<span class="fc" id="L104">            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, &quot;Adoption requires an existing target branch&quot;);</span>
+        }
+        String expectedTarget;
+        String expectedSource;
+        CommandMetadata metadata;
+        try {
+<span class="fc" id="L110">            expectedTarget = GitHttpPrecondition.expectedHead(ifMatch, null);</span>
+<span class="fc" id="L111">            expectedSource = GitHttpPrecondition.commitId(request.sourceCommit());</span>
+<span class="fc" id="L112">            metadata = new CommandMetadata(GitHttpIdempotencyKey.require(idempotencyKey));</span>
+<span class="fc" id="L113">        } catch (GitHttpPrecondition.PreconditionRequiredException missing) {</span>
+<span class="fc" id="L114">            throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED, &quot;Supply the previewed target If-Match&quot;);</span>
+<span class="fc" id="L115">        } catch (IllegalArgumentException invalid) {</span>
+<span class="fc" id="L116">            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, &quot;Invalid commit precondition or Idempotency-Key&quot;);</span>
+<span class="fc" id="L117">        }</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        RepositoryContext writable = target.scope() == RepositoryScope.CENTRAL_READ</span>
+<span class="fc" id="L119">                ? RepositoryContext.centralWrite(target.repositoryId(), target.branch(), target.username()) : target;</span>
+<span class="fc" id="L120">        Preview applied = adoption.adopt(proposalId, source, expectedSource, writable, expectedTarget, metadata);</span>
+<span class="fc" id="L121">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new AdoptionView(applied, true));</span>
+    }
+
+    private RepositoryContext selectedTarget(String historicalCommit) {
+<span class="fc bfc" id="L125" title="All 2 branches covered.">        if (historicalCommit != null) {</span>
+<span class="fc" id="L126">            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, &quot;Adoption requires a current branch selection&quot;);</span>
+        }
+<span class="fc" id="L128">        return resolver.resolveUnambiguousRepositoryForRead();</span>
+    }
+
+    private SystemRepository readableRepository(RepositoryContext target) {
+        SystemRepository repository;
+        try {
+<span class="fc" id="L134">            repository = repositories.getRepository(target.repositoryId());</span>
+<span class="fc" id="L135">        } catch (IllegalArgumentException missing) {</span>
+<span class="fc" id="L136">            throw new ResponseStatusException(HttpStatus.NOT_FOUND);</span>
+<span class="fc" id="L137">        }</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        if (!memberships.canRead(repository, target.username())) {</span>
+<span class="fc" id="L139">            throw new ResponseStatusException(HttpStatus.NOT_FOUND);</span>
+        }
+<span class="fc" id="L141">        return repository;</span>
+    }
+
+    private static RepositoryContext source(SystemRepository repository, RepositoryContext target) {
+<span class="fc" id="L145">        return RepositoryContext.centralRead(repository.getRepositoryId(), repository.getDefaultBranch(), target.username());</span>
+    }
+
+    private boolean mayWrite(SystemRepository repository, RepositoryContext target) {
+<span class="fc" id="L149">        var auth = SecurityContextHolder.getContext().getAuthentication();</span>
+<span class="fc bfc" id="L150" title="All 2 branches covered.">        if (!ArchitectureEditPermission.allowed(auth, editPermission)) return false;</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">        if (target.scope() == RepositoryScope.WORKSPACE) {</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">            boolean allowed = target.collaborative() ? memberships.canCollaborate(repository, target.username())</span>
+<span class="fc" id="L153">                    : memberships.canContribute(repository, target.username());</span>
+<span class="fc bfc" id="L154" title="All 4 branches covered.">            return allowed &amp;&amp; !navigation.isReadOnlyInScope(new WorkspaceContext(</span>
+<span class="fc" id="L155">                    target.username(), target.workspaceId(), target.branch(), target.repositoryId()));</span>
+        }
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        return memberships.canMaintain(repository, target.username())</span>
+<span class="pc bpc" id="L158" title="1 of 2 branches missed.">                || auth.getAuthorities().stream().anyMatch(role -&gt; &quot;ROLE_ADMIN&quot;.equals(role.getAuthority()));</span>
+    }
+
+    @ExceptionHandler(ProjectionPendingException.class)
+    ResponseEntity&lt;PendingProjection&gt; recoveryPending(ProjectionPendingException pending) {
+<span class="fc" id="L163">        String commit = pending.getAuthority().authoritativeCommitId();</span>
+<span class="fc" id="L164">        return ResponseEntity.accepted().cacheControl(CacheControl.noStore()).eTag(GitHttpPrecondition.etag(commit))</span>
+<span class="fc" id="L165">                .body(new PendingProjection(commit, &quot;PENDING_RECOVERY&quot;));</span>
+    }
+
+    @ExceptionHandler(BranchHeadConflictException.class)
+    @ResponseStatus(HttpStatus.PRECONDITION_FAILED)
+<span class="fc" id="L170">    void staleCommit() { }</span>
+
+    @ExceptionHandler(ProposalBranchAdoptionService.AdoptionConflictException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+<span class="fc" id="L174">    void relationConflict() { }</span>
+
+    @ExceptionHandler(ProposalBranchAdoptionService.ProposalNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+<span class="fc" id="L178">    void missingProposal() { }</span>
+
+    @ExceptionHandler(IOException.class)
+    @ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
+<span class="fc" id="L182">    void unavailableGit() { }</span>
+
+<span class="fc" id="L184">    public record AdoptionRequest(String sourceBranch, String sourceCommit, String targetRepositoryId,</span>
+                                 @JsonProperty(value = &quot;targetWorkspaceId&quot;, required = true) String targetWorkspaceId,
+                                 String targetBranch) {
+        boolean matches(RepositoryContext source, RepositoryContext target) {
+<span class="pc bpc" id="L188" title="1 of 4 branches missed.">            return source.branch().equals(sourceBranch) &amp;&amp; target.repositoryId().equals(targetRepositoryId)</span>
+<span class="fc bfc" id="L189" title="All 4 branches covered.">                    &amp;&amp; target.branch().equals(targetBranch) &amp;&amp; Objects.equals(target.workspaceId(), targetWorkspaceId);</span>
+        }
+    }
+
+<span class="fc" id="L193">    public record AdoptionView(long proposalId, String sourceBranch, String sourceCommit, String targetRepositoryId,</span>
+                               String targetWorkspaceId, String targetBranch, String targetCommit,
+                               ProposalBranchAdoptionService.State state, boolean writable, boolean reviewedOnSourceBranch) {
+        AdoptionView(Preview preview, boolean writable) {
+<span class="fc" id="L197">            this(preview.proposalId(), preview.sourceBranch(), preview.sourceCommit(), preview.repositoryId(),</span>
+<span class="fc" id="L198">                    preview.targetWorkspaceId(), preview.targetBranch(), preview.targetCommit(), preview.state(),</span>
+<span class="fc" id="L199">                    writable, preview.reviewedOnSourceBranch());</span>
+<span class="fc" id="L200">        }</span>
+    }
+
+<span class="fc" id="L203">    public record PendingProjection(String authoritativeCommitId, String projectionStatus) { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

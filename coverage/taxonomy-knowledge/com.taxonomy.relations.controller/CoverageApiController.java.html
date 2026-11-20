@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CoverageApiController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.controller</a> &gt; <span class="el_source">CoverageApiController.java</span></div><h1>CoverageApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.controller;
+
+import com.taxonomy.relations.service.CoverageSourceUnavailable;
+import com.taxonomy.relations.service.RequirementCoverageService;
+import com.taxonomy.workspace.service.BranchHeadConflictException;
+import com.taxonomy.workspace.service.RepositoryScope;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.io.IOException;
+import java.util.Map;
+import java.util.List;
+import tools.jackson.databind.ObjectMapper;
+import com.taxonomy.identity.StableIdentityHash;
+import java.util.Objects;
+import java.util.function.BiFunction;
+import com.taxonomy.workspace.service.RepositoryContext;
+import static com.taxonomy.relations.service.CoverageSourceUnavailable.State.*;
+
+/** User-recorded coverage is owned by the repository/workspace, branch and Git revision observed at record time. */
+@RestController
+@RequestMapping(&quot;/api/coverage&quot;)
+@Tag(name = &quot;Requirement Coverage&quot;)
+public class CoverageApiController {
+    private final RequirementCoverageService coverage;
+    private final WorkspaceResolver workspaces;
+    private final WorkspaceDslReadPort git;
+
+    private final ObjectMapper json;
+
+<span class="fc" id="L37">    public CoverageApiController(RequirementCoverageService coverage, WorkspaceResolver workspaces, WorkspaceDslReadPort git, ObjectMapper json) {</span>
+<span class="fc" id="L38">        this.json = json;</span>
+<span class="fc" id="L39">        this.coverage = coverage;</span>
+<span class="fc" id="L40">        this.workspaces = workspaces;</span>
+<span class="fc" id="L41">        this.git = git;</span>
+<span class="fc" id="L42">    }</span>
+
+<span class="fc" id="L44">    public record RecordCoverageRequest(String requirementId, String requirementText, Map&lt;String, Double&gt; scores, int minScore) {}</span>
+
+    @Operation(summary = &quot;Record requirement coverage at the selected workspace revision&quot;,
+            description = &quot;Records qualifying node scores for a requirement at the supplied commitId. A moved branch returns a stale-source response before it can receive the scores.&quot;)
+    @PostMapping(&quot;/record&quot;)
+    public ResponseEntity&lt;?&gt; recordCoverage(@RequestBody RecordCoverageRequest request, @RequestParam String commitId) {
+<span class="pc bpc" id="L50" title="3 of 6 branches missed.">        if (request.requirementId() == null || request.requirementId().isBlank() || request.requirementId().length() &gt; 255</span>
+<span class="pc bpc" id="L51" title="2 of 4 branches missed.">                || request.requirementText() != null &amp;&amp; request.requirementText().length() &gt; 2000) return ResponseEntity.badRequest().build();</span>
+<span class="pc bpc" id="L52" title="1 of 4 branches missed.">        if (request.scores() != null &amp;&amp; request.scores().entrySet().stream().anyMatch(entry -&gt;</span>
+<span class="pc bpc" id="L53" title="3 of 6 branches missed.">                entry.getKey() == null || entry.getKey().isBlank() || entry.getKey().length() &gt; 255 ||</span>
+<span class="pc bpc" id="L54" title="2 of 4 branches missed.">                entry.getValue() != null &amp;&amp; !com.taxonomy.dto.AnalysisPercentages.valid(entry.getValue()))) {</span>
+<span class="nc" id="L55">            return ResponseEntity.badRequest().build();</span>
+        }
+<span class="fc" id="L57">        return atSource(commitId, &quot;record&quot;, true, (context, head) -&gt; {</span>
+<span class="fc" id="L58">            coverage.analyzeCoverage(context, head, Objects.requireNonNullElse(request.scores(), Map.of()),</span>
+<span class="fc" id="L59">                    request.requirementId(), request.requirementText(), request.minScore());</span>
+<span class="fc" id="L60">            return null;</span>
+        });
+    }
+
+    @Operation(summary = &quot;Coverage for a node&quot;,
+            description = &quot;Returns requirements recorded against the node in the selected repository, workspace, branch and revision. An optional commitId pins the observed head.&quot;)
+    @GetMapping(&quot;/node/{code}&quot;)
+    public ResponseEntity&lt;?&gt; forNode(@PathVariable String code, @RequestParam(required = false) String commitId) {
+<span class="fc" id="L68">        return atSource(commitId, &quot;node/&quot; + code, false, (context, head) -&gt; coverage.getCoverageForNode(context, head, code));</span>
+    }
+
+    @Operation(summary = &quot;Coverage for a requirement&quot;,
+            description = &quot;Returns node scores recorded for the requirement at the selected branch head. The response identifies its repository, workspace and immutable commit.&quot;)
+    @GetMapping(&quot;/requirement/{id}&quot;)
+    public ResponseEntity&lt;?&gt; forRequirement(@PathVariable String id, @RequestParam(required = false) String commitId) {
+<span class="fc" id="L75">        return atSource(commitId, &quot;requirement/&quot; + id, false, (context, head) -&gt; coverage.getCoverageForRequirement(context, head, id));</span>
+    }
+
+    @Operation(summary = &quot;Requirement coverage statistics&quot;,
+            description = &quot;Returns totals, percentages, top-covered nodes and gap candidates for the selected source. A stale commit pin prevents reading another revision.&quot;)
+    @GetMapping(&quot;/statistics&quot;)
+    public ResponseEntity&lt;?&gt; statistics(@RequestParam(required = false) String commitId) {
+<span class="fc" id="L82">        return atSource(commitId, &quot;statistics&quot;, false, coverage::getCoverageStatistics);</span>
+    }
+
+    @Operation(summary = &quot;Requirement density by node&quot;,
+            description = &quot;Returns the number of recorded requirements per node for the selected repository, workspace, branch and revision.&quot;)
+    @GetMapping(&quot;/density&quot;)
+    public ResponseEntity&lt;?&gt; density(@RequestParam(required = false) String commitId) {
+<span class="fc" id="L89">        return atSource(commitId, &quot;density&quot;, false, coverage::getRequirementDensityMap);</span>
+    }
+
+    @Operation(summary = &quot;Delete requirement coverage at the selected workspace revision&quot;,
+            description = &quot;Removes this requirement’s coverage from the selected working copy at the supplied commitId. Other sources and revisions retain their rows.&quot;)
+    @DeleteMapping(&quot;/requirement/{id}&quot;)
+    public ResponseEntity&lt;?&gt; delete(@PathVariable String id, @RequestParam String commitId) {
+<span class="fc" id="L96">        var response = atSource(commitId, &quot;delete&quot;, true, (context, head) -&gt; {</span>
+<span class="fc" id="L97">            coverage.deleteCoverageForRequirement(context, head, id);</span>
+<span class="fc" id="L98">            return null;</span>
+        });
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        return response.getStatusCode().is2xxSuccessful()</span>
+<span class="fc" id="L101">                ? ResponseEntity.noContent().headers(response.getHeaders()).build() : response;</span>
+    }
+
+    private ResponseEntity&lt;?&gt; atSource(String pin, String view, boolean write, BiFunction&lt;RepositoryContext, String, Object&gt; operation) {
+<span class="fc" id="L105">        var context = workspaces.resolveUnambiguousRepositoryForRead();</span>
+<span class="fc bfc" id="L106" title="All 4 branches covered.">        if (write &amp;&amp; context.scope() != RepositoryScope.WORKSPACE) return ResponseEntity.status(HttpStatus.FORBIDDEN).build();</span>
+        String expected;
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        try { expected = pin == null ? null : WorkspaceDslReadPort.normalizeCommitId(pin); }</span>
+<span class="pc" id="L109">        catch (IllegalArgumentException invalid) { return ResponseEntity.badRequest().build(); }</span>
+        try {
+<span class="fc" id="L111">            var read = git.openRead(context);</span>
+<span class="fc" id="L112">            String head = read.currentHead();</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">            if (head == null) throw new CoverageSourceUnavailable(MISSING, null);</span>
+<span class="fc bfc" id="L114" title="All 4 branches covered.">            if (expected != null &amp;&amp; !expected.equals(head)) throw new CoverageSourceUnavailable(STALE, head);</span>
+<span class="fc" id="L115">            var result = operation.apply(context, head);</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">            if (!write) read.verifyExpectedHead(head);</span>
+<span class="fc" id="L117">            var response = ResponseEntity.ok().cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L118">                    .header(&quot;X-Taxonomy-Source-State&quot;, &quot;READY&quot;).header(&quot;X-Taxonomy-Commit&quot;, head)</span>
+<span class="fc" id="L119">                    .header(&quot;X-Taxonomy-Repository&quot;, context.repositoryId()).header(&quot;X-Taxonomy-Workspace-Id&quot;, Objects.toString(context.workspaceId(), &quot;&quot;))</span>
+<span class="fc" id="L120">                    .header(&quot;X-Taxonomy-Branch&quot;, context.branch());</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">            if (!write) {</span>
+<span class="fc" id="L122">                var identity = List.of(&quot;requirement-coverage-v1&quot;, context.repositoryId(), Objects.toString(context.workspaceId(), &quot;&quot;),</span>
+<span class="fc" id="L123">                        context.branch(), head, view, result);</span>
+<span class="fc" id="L124">                response.eTag(&quot;W/\&quot;&quot; + StableIdentityHash.sha256(json.writeValueAsString(identity)) + &quot;\&quot;&quot;);</span>
+            }
+<span class="fc" id="L126">            return response.body(result);</span>
+<span class="nc" id="L127">        } catch (BranchHeadConflictException moved) {</span>
+<span class="nc" id="L128">            throw new CoverageSourceUnavailable(STALE, moved.getActualHeadCommit());</span>
+<span class="fc" id="L129">        } catch (IOException failure) {</span>
+<span class="fc" id="L130">            throw new CoverageSourceUnavailable(FAILED, null);</span>
+        }
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

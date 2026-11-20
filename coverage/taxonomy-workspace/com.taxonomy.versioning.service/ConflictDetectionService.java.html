@@ -1,0 +1,350 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ConflictDetectionService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.versioning.service</a> &gt; <span class="el_source">ConflictDetectionService.java</span></div><h1>ConflictDetectionService.java</h1><pre class="source lang-java linenums">package com.taxonomy.versioning.service;
+
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.Ref;
+import org.eclipse.jgit.merge.MergeStrategy;
+import org.eclipse.jgit.merge.ThreeWayMerger;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.revwalk.RevWalk;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.util.List;
+
+/**
+ * Detects potential conflicts before merge or cherry-pick operations.
+ *
+ * &lt;p&gt;Provides preview functionality so the UI can warn the user before
+ * they start an operation that would fail.
+ */
+@Service
+public class ConflictDetectionService {
+
+<span class="fc" id="L28">    private static final Logger log = LoggerFactory.getLogger(ConflictDetectionService.class);</span>
+
+    private final DslGitRepositoryFactory repositoryFactory;
+
+<span class="fc" id="L32">    public ConflictDetectionService(DslGitRepositoryFactory repositoryFactory) {</span>
+<span class="fc" id="L33">        this.repositoryFactory = repositoryFactory;</span>
+<span class="fc" id="L34">    }</span>
+
+    /**
+     * Resolve the Git repository for the given workspace context.
+     *
+     * @param ctx the workspace context (use {@link WorkspaceContext#SHARED}
+     *            for the system repository)
+     * @return the resolved DslGitRepository
+     */
+    private DslGitRepository resolveRepository(WorkspaceContext ctx) {
+<span class="fc" id="L44">        return repositoryFactory.resolveRepository(ctx);</span>
+    }
+
+    /**
+     * Result of a merge preview.
+     *
+     * @param canMerge         whether the merge would succeed without conflicts
+     * @param fromBranch       the source branch
+     * @param intoBranch       the target branch
+     * @param fromCommit       HEAD commit of source branch
+     * @param intoCommit       HEAD commit of target branch
+     * @param alreadyMerged    true if source is already merged into target
+     * @param fastForwardable  true if a fast-forward merge is possible
+     * @param warnings         any warnings about the merge
+     */
+<span class="fc" id="L59">    public record MergePreview(</span>
+            boolean canMerge,
+            String fromBranch,
+            String intoBranch,
+            String fromCommit,
+            String intoCommit,
+            boolean alreadyMerged,
+            boolean fastForwardable,
+            List&lt;String&gt; warnings
+    ) {}
+
+    /**
+     * Result of a cherry-pick preview.
+     *
+     * @param canCherryPick  whether the cherry-pick would succeed without conflicts
+     * @param commitId       the commit to cherry-pick
+     * @param targetBranch   the target branch
+     * @param targetCommit   HEAD commit of target branch
+     * @param baseCommit     first parent of the picked commit, or null for a root
+     * @param conflictingPaths paths that need a resolution
+     * @param canResolveDsl whether editing the architecture DSL can resolve the complete conflict
+     * @param warnings       any warnings about the cherry-pick
+     */
+<span class="fc" id="L82">    public record CherryPickPreview(</span>
+            boolean canCherryPick,
+            String commitId,
+            String targetBranch,
+            String targetCommit,
+            List&lt;String&gt; warnings,
+            String baseCommit,
+            List&lt;String&gt; conflictingPaths,
+            boolean canResolveDsl
+    ) {
+        public CherryPickPreview(boolean canCherryPick, String commitId, String targetBranch,
+                                String targetCommit, List&lt;String&gt; warnings) {
+<span class="fc" id="L94">            this(canCherryPick, commitId, targetBranch, targetCommit, warnings, null, List.of(), false);</span>
+<span class="fc" id="L95">        }</span>
+    }
+
+    /**
+     * Preview a merge to check for conflicts.
+     *
+     * &lt;p&gt;Uses the system repository (SHARED context). Use
+     * {@link #previewMerge(String, String, WorkspaceContext)} for workspace-aware resolution.
+     *
+     * @param fromBranch the source branch
+     * @param intoBranch the target branch
+     * @return the merge preview result
+     */
+    public MergePreview previewMerge(String fromBranch, String intoBranch) {
+<span class="fc" id="L109">        return previewMerge(fromBranch, intoBranch, WorkspaceContext.SHARED);</span>
+    }
+
+    /**
+     * Preview a merge to check for conflicts.
+     *
+     * @param fromBranch the source branch
+     * @param intoBranch the target branch
+     * @param ctx        the workspace context for repository resolution
+     * @return the merge preview result
+     */
+    public MergePreview previewMerge(String fromBranch, String intoBranch, WorkspaceContext ctx) {
+        try {
+<span class="fc" id="L122">            var repo = resolveRepository(ctx).getGitRepository();</span>
+<span class="fc" id="L123">            String fromRefName = Constants.R_HEADS + fromBranch;</span>
+<span class="fc" id="L124">            String intoRefName = Constants.R_HEADS + intoBranch;</span>
+
+<span class="fc" id="L126">            Ref fromRef = repo.getRefDatabase().exactRef(fromRefName);</span>
+<span class="fc" id="L127">            Ref intoRef = repo.getRefDatabase().exactRef(intoRefName);</span>
+
+<span class="fc bfc" id="L129" title="All 2 branches covered.">            if (fromRef == null) {</span>
+<span class="fc" id="L130">                return new MergePreview(false, fromBranch, intoBranch, null, null,</span>
+<span class="fc" id="L131">                        false, false, List.of(&quot;Source branch '&quot; + fromBranch + &quot;' not found&quot;));</span>
+            }
+<span class="fc bfc" id="L133" title="All 2 branches covered.">            if (intoRef == null) {</span>
+<span class="fc" id="L134">                return new MergePreview(false, fromBranch, intoBranch, null, null,</span>
+<span class="fc" id="L135">                        false, false, List.of(&quot;Target branch '&quot; + intoBranch + &quot;' not found&quot;));</span>
+            }
+
+<span class="fc" id="L138">            String fromCommit = fromRef.getObjectId().name();</span>
+<span class="fc" id="L139">            String intoCommit = intoRef.getObjectId().name();</span>
+
+<span class="fc" id="L141">            try (RevWalk walk = new RevWalk(repo)) {</span>
+<span class="fc" id="L142">                RevCommit fromRev = walk.parseCommit(fromRef.getObjectId());</span>
+<span class="fc" id="L143">                RevCommit intoRev = walk.parseCommit(intoRef.getObjectId());</span>
+
+                // Check if already merged
+<span class="fc bfc" id="L146" title="All 2 branches covered.">                if (walk.isMergedInto(fromRev, intoRev)) {</span>
+<span class="fc" id="L147">                    return new MergePreview(true, fromBranch, intoBranch, fromCommit, intoCommit,</span>
+<span class="fc" id="L148">                            true, false, List.of(&quot;Already merged: '&quot; + fromBranch + &quot;' is ancestor of '&quot; + intoBranch + &quot;'&quot;));</span>
+                }
+
+                // Check fast-forward
+<span class="fc bfc" id="L152" title="All 2 branches covered.">                if (walk.isMergedInto(intoRev, fromRev)) {</span>
+<span class="fc" id="L153">                    return new MergePreview(true, fromBranch, intoBranch, fromCommit, intoCommit,</span>
+<span class="fc" id="L154">                            false, true, List.of());</span>
+                }
+
+                // Try three-way merge (dry run)
+<span class="fc" id="L158">                ThreeWayMerger merger = MergeStrategy.RECURSIVE.newMerger(repo, true);</span>
+<span class="fc" id="L159">                boolean success = merger.merge(intoRev, fromRev);</span>
+
+<span class="fc bfc" id="L161" title="All 2 branches covered.">                if (success) {</span>
+<span class="fc" id="L162">                    return new MergePreview(true, fromBranch, intoBranch, fromCommit, intoCommit,</span>
+<span class="fc" id="L163">                            false, false, List.of());</span>
+                } else {
+<span class="fc" id="L165">                    return new MergePreview(false, fromBranch, intoBranch, fromCommit, intoCommit,</span>
+<span class="fc" id="L166">                            false, false, List.of(&quot;Merge would result in conflicts&quot;));</span>
+                }
+<span class="fc" id="L168">            }</span>
+<span class="nc" id="L169">        } catch (IOException e) {</span>
+<span class="nc" id="L170">            log.error(&quot;Failed to preview merge '{}' → '{}'&quot;, fromBranch, intoBranch, e);</span>
+<span class="nc" id="L171">            return new MergePreview(false, fromBranch, intoBranch, null, null,</span>
+<span class="nc" id="L172">                    false, false, List.of(&quot;Error: &quot; + e.getMessage()));</span>
+        }
+    }
+
+    /**
+     * Details about a merge or cherry-pick conflict, including the content
+     * from both sides so the UI can display a side-by-side resolution view.
+     *
+     * @param conflictType  &quot;merge&quot; or &quot;cherry-pick&quot;
+     * @param oursLabel     label for &quot;our&quot; side (e.g. target branch name)
+     * @param theirsLabel   label for &quot;their&quot; side (e.g. source branch name)
+     * @param oursContent   DSL content from the target branch HEAD
+     * @param theirsContent DSL content from the source branch HEAD (or cherry-pick commit)
+     * @param baseContent   DSL content from the patch base when available
+     * @param targetCommit  immutable target whose DSL is displayed
+     */
+<span class="fc" id="L188">    public record ConflictDetails(</span>
+            String conflictType,
+            String oursLabel,
+            String theirsLabel,
+            String oursContent,
+            String theirsContent,
+            String baseContent,
+            String targetCommit
+    ) {
+        public ConflictDetails(String conflictType, String oursLabel, String theirsLabel, String oursContent,
+                               String theirsContent, String baseContent) {
+<span class="nc" id="L199">            this(conflictType, oursLabel, theirsLabel, oursContent, theirsContent, baseContent, null);</span>
+<span class="nc" id="L200">        }</span>
+    }
+
+    /**
+     * Get conflict details for a merge that would conflict.
+     *
+     * &lt;p&gt;Uses the system repository (SHARED context). Use
+     * {@link #getMergeConflictDetails(String, String, WorkspaceContext)} for workspace-aware resolution.
+     *
+     * @param fromBranch the source branch
+     * @param intoBranch the target branch
+     * @return conflict details, or null if no conflict detected
+     */
+    public ConflictDetails getMergeConflictDetails(String fromBranch, String intoBranch) {
+<span class="fc" id="L214">        return getMergeConflictDetails(fromBranch, intoBranch, WorkspaceContext.SHARED);</span>
+    }
+
+    /**
+     * Get conflict details for a merge that would conflict.
+     *
+     * &lt;p&gt;Returns the DSL content from both sides so the UI can display
+     * a side-by-side comparison for manual resolution.
+     *
+     * @param fromBranch the source branch
+     * @param intoBranch the target branch
+     * @param ctx        the workspace context for repository resolution
+     * @return conflict details, or null if no conflict detected
+     */
+    public ConflictDetails getMergeConflictDetails(String fromBranch, String intoBranch, WorkspaceContext ctx) {
+        try {
+<span class="fc" id="L230">            MergePreview preview = previewMerge(fromBranch, intoBranch, ctx);</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">            if (preview.canMerge()) {</span>
+<span class="fc" id="L232">                return null; // No conflict</span>
+            }
+
+            // Non-conflict failures (branch not found, errors) should not
+            // be presented as conflicts — return null so the controller
+            // responds with conflict:false and the UI shows a warning toast.
+<span class="pc bpc" id="L238" title="1 of 4 branches missed.">            if (preview.fromCommit() == null || preview.intoCommit() == null) {</span>
+<span class="fc" id="L239">                return null;</span>
+            }
+
+<span class="fc" id="L242">            DslGitRepository repo = resolveRepository(ctx);</span>
+<span class="fc" id="L243">            String oursContent = repo.getDslAtCommit(preview.intoCommit());</span>
+<span class="fc" id="L244">            String theirsContent = repo.getDslAtCommit(preview.fromCommit());</span>
+
+<span class="fc" id="L246">            return new ConflictDetails(</span>
+                    &quot;merge&quot;,
+                    intoBranch,
+                    fromBranch,
+<span class="pc bpc" id="L250" title="1 of 2 branches missed.">                    oursContent != null ? oursContent : &quot;&quot;,</span>
+<span class="pc bpc" id="L251" title="1 of 2 branches missed.">                    theirsContent != null ? theirsContent : &quot;&quot;,</span>
+<span class="fc" id="L252">                    null, preview.intoCommit()</span>
+            );
+<span class="nc" id="L254">        } catch (Exception e) {</span>
+<span class="nc" id="L255">            log.error(&quot;Failed to get merge conflict details '{}' → '{}'&quot;, fromBranch, intoBranch, e);</span>
+<span class="nc" id="L256">            return null;</span>
+        }
+    }
+
+    /**
+     * Get conflict details for a cherry-pick that would conflict.
+     *
+     * &lt;p&gt;Uses the system repository (SHARED context). Use
+     * {@link #getCherryPickConflictDetails(String, String, WorkspaceContext)} for workspace-aware resolution.
+     *
+     * @param commitId     the commit to cherry-pick
+     * @param targetBranch the target branch
+     * @return conflict details, or null if no conflict detected
+     */
+    public ConflictDetails getCherryPickConflictDetails(String commitId, String targetBranch) {
+<span class="fc" id="L271">        return getCherryPickConflictDetails(commitId, targetBranch, WorkspaceContext.SHARED);</span>
+    }
+
+    /**
+     * Get conflict details for a cherry-pick that would conflict.
+     *
+     * @param commitId     the commit to cherry-pick
+     * @param targetBranch the target branch
+     * @param ctx          the workspace context for repository resolution
+     * @return conflict details, or null if no conflict detected
+     */
+    public ConflictDetails getCherryPickConflictDetails(String commitId, String targetBranch, WorkspaceContext ctx) {
+        try {
+<span class="fc" id="L284">            CherryPickPreview preview = previewCherryPick(commitId, targetBranch, ctx);</span>
+<span class="fc bfc" id="L285" title="All 2 branches covered.">            if (!preview.canResolveDsl()) return null;</span>
+
+<span class="fc" id="L287">            DslGitRepository repo = resolveRepository(ctx);</span>
+<span class="fc" id="L288">            String oursContent = repo.getDslAtCommit(preview.targetCommit());</span>
+<span class="fc" id="L289">            String theirsContent = repo.getDslAtCommit(commitId);</span>
+<span class="pc bpc" id="L290" title="1 of 2 branches missed.">            String baseContent = preview.baseCommit() == null ? &quot;&quot; : repo.getDslAtCommit(preview.baseCommit());</span>
+
+<span class="fc" id="L292">            return new ConflictDetails(</span>
+                    &quot;cherry-pick&quot;,
+                    targetBranch,
+<span class="fc" id="L295">                    &quot;commit &quot; + commitId.substring(0, Math.min(7, commitId.length())),</span>
+<span class="pc bpc" id="L296" title="1 of 2 branches missed.">                    oursContent != null ? oursContent : &quot;&quot;,</span>
+<span class="pc bpc" id="L297" title="1 of 2 branches missed.">                    theirsContent != null ? theirsContent : &quot;&quot;,</span>
+<span class="fc" id="L298">                    baseContent, preview.targetCommit()</span>
+            );
+<span class="nc" id="L300">        } catch (Exception e) {</span>
+<span class="nc" id="L301">            log.error(&quot;Failed to get cherry-pick conflict details {} → '{}'&quot;, commitId, targetBranch, e);</span>
+<span class="nc" id="L302">            return null;</span>
+        }
+    }
+
+    /**
+     * Preview a cherry-pick to check for conflicts.
+     *
+     * &lt;p&gt;Uses the system repository (SHARED context). Use
+     * {@link #previewCherryPick(String, String, WorkspaceContext)} for workspace-aware resolution.
+     *
+     * @param commitId     the commit to cherry-pick
+     * @param targetBranch the target branch
+     * @return the cherry-pick preview result
+     */
+    public CherryPickPreview previewCherryPick(String commitId, String targetBranch) {
+<span class="fc" id="L317">        return previewCherryPick(commitId, targetBranch, WorkspaceContext.SHARED);</span>
+    }
+
+    /**
+     * Preview a cherry-pick to check for conflicts.
+     *
+     * @param commitId     the commit to cherry-pick
+     * @param targetBranch the target branch
+     * @param ctx          the workspace context for repository resolution
+     * @return the cherry-pick preview result
+     */
+    public CherryPickPreview previewCherryPick(String commitId, String targetBranch, WorkspaceContext ctx) {
+        try {
+<span class="fc" id="L330">            var storage = resolveRepository(ctx);</span>
+<span class="fc" id="L331">            String targetCommit = storage.getHeadCommit(targetBranch);</span>
+<span class="fc bfc" id="L332" title="All 2 branches covered.">            if (targetCommit == null) {</span>
+<span class="fc" id="L333">                return new CherryPickPreview(false, commitId, targetBranch, null,</span>
+<span class="fc" id="L334">                        List.of(&quot;Target branch '&quot; + targetBranch + &quot;' not found&quot;));</span>
+            }
+<span class="fc" id="L336">            var change = storage.inspectCherryPick(commitId, targetCommit);</span>
+<span class="fc bfc" id="L337" title="All 2 branches covered.">            boolean clean = change.resultTree() != null;</span>
+<span class="fc" id="L338">            return new CherryPickPreview(clean, commitId, targetBranch, targetCommit,</span>
+<span class="fc bfc" id="L339" title="All 2 branches covered.">                    clean ? List.of() : List.of(&quot;Cherry-pick would result in conflicts&quot;),</span>
+<span class="fc" id="L340">                    change.baseCommit(), change.conflictingPaths(), change.canResolveDsl());</span>
+<span class="fc" id="L341">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L342">            return new CherryPickPreview(false, commitId, targetBranch, null, List.of(e.getMessage()));</span>
+<span class="nc" id="L343">        } catch (Exception e) {</span>
+<span class="nc" id="L344">            log.error(&quot;Failed to preview cherry-pick {} → '{}'&quot;, commitId, targetBranch, e);</span>
+<span class="nc" id="L345">            return new CherryPickPreview(false, commitId, targetBranch, null,</span>
+<span class="nc" id="L346">                    List.of(&quot;Error: &quot; + e.getMessage()));</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

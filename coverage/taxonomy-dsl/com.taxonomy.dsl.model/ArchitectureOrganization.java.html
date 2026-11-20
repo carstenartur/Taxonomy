@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureOrganization.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.model</a> &gt; <span class="el_source">ArchitectureOrganization.java</span></div><h1>ArchitectureOrganization.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.model;
+
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.BiConsumer;
+import java.util.regex.Pattern;
+
+/** A named organizational unit in one versioned architecture directory. */
+public record ArchitectureOrganization(String id, String title, String parentId) {
+    public static final String RESPONSIBLE_ID = &quot;x-responsible-organization-id&quot;;
+    public static final String CAPTURED_UNIT = &quot;x-captured-responsibility-unit&quot;;
+    public static final String CAPTURED_NAME = &quot;x-captured-responsibility-name&quot;;
+    public static final String CAPTURED_SOURCE = &quot;x-captured-responsibility-source&quot;;
+<span class="fc" id="L16">    private static final Pattern IDENTIFIER = Pattern.compile(&quot;[A-Za-z0-9][A-Za-z0-9_.-]{0,127}&quot;);</span>
+
+<span class="fc" id="L18">    public ArchitectureOrganization {</span>
+<span class="pc bpc" id="L19" title="1 of 2 branches missed.">        if (&quot;&quot;.equals(parentId)) parentId = null;</span>
+<span class="fc" id="L20">    }</span>
+
+    /** The same checks guard source import, commands, reconciliation and undo. */
+    public static void validate(CanonicalArchitectureModel model, BiConsumer&lt;String, String&gt; error) {
+<span class="fc" id="L24">        Map&lt;String, ArchitectureOrganization&gt; units = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L25" title="All 2 branches covered.">        for (var unit : model.getOrganizations()) {</span>
+<span class="pc bpc" id="L26" title="2 of 4 branches missed.">            if (unit.id() == null || !IDENTIFIER.matcher(unit.id()).matches()) {</span>
+<span class="nc" id="L27">                error.accept(&quot;INVALID_ORGANIZATION_ID&quot;, &quot;An organization requires a stable DSL identifier&quot;);</span>
+<span class="nc" id="L28">                continue;</span>
+            }
+<span class="pc bpc" id="L30" title="1 of 2 branches missed.">            if (units.putIfAbsent(unit.id(), unit) != null)</span>
+<span class="nc" id="L31">                error.accept(&quot;DUPLICATE_ORGANIZATION&quot;, &quot;Duplicate organization: &quot; + unit.id());</span>
+<span class="pc bpc" id="L32" title="3 of 6 branches missed.">            if (unit.title() == null || unit.title().isBlank() || unit.title().length() &gt; 8000</span>
+<span class="pc bpc" id="L33" title="10 of 14 branches missed.">                    || unit.title().chars().anyMatch(c -&gt; (c &lt; 32 &amp;&amp; c != '\t' &amp;&amp; c != '\n' &amp;&amp; c != '\r')</span>
+                            || c == 0xfffe || c == 0xffff))
+<span class="nc" id="L35">                error.accept(&quot;INVALID_ORGANIZATION_TITLE&quot;, &quot;Organization &quot; + unit.id() + &quot; needs a valid title&quot;);</span>
+<span class="fc" id="L36">        }</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">        for (var unit : units.values()) {</span>
+<span class="fc bfc" id="L38" title="All 4 branches covered.">            if (unit.parentId() != null &amp;&amp; !units.containsKey(unit.parentId()))</span>
+<span class="nc" id="L39">                error.accept(&quot;UNKNOWN_ORGANIZATION&quot;, &quot;Unknown parent &quot; + unit.parentId() + &quot; on &quot; + unit.id());</span>
+<span class="fc" id="L40">        }</span>
+<span class="fc" id="L41">        Set&lt;String&gt; checked = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        for (var unit : units.values()) {</span>
+<span class="pc bpc" id="L43" title="1 of 2 branches missed.">            if (checked.contains(unit.id())) continue;</span>
+<span class="fc" id="L44">            Set&lt;String&gt; path = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L45">            var current = unit;</span>
+<span class="fc bfc" id="L46" title="All 4 branches covered.">            while (current != null &amp;&amp; !checked.contains(current.id())) {</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">                if (!path.add(current.id())) {</span>
+<span class="nc" id="L48">                    error.accept(&quot;ORGANIZATION_CYCLE&quot;, &quot;Organization hierarchy contains a cycle at &quot; + current.id());</span>
+<span class="nc" id="L49">                    break;</span>
+                }
+<span class="fc" id="L51">                current = units.get(current.parentId());</span>
+            }
+<span class="fc" id="L53">            checked.addAll(path);</span>
+<span class="fc" id="L54">        }</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        for (var element : model.getElements()) {</span>
+<span class="fc" id="L56">            String id = element.getExtensions().get(RESPONSIBLE_ID);</span>
+<span class="pc bpc" id="L57" title="1 of 6 branches missed.">            if (id != null &amp;&amp; !id.isEmpty() &amp;&amp; !units.containsKey(id))</span>
+<span class="fc" id="L58">                error.accept(&quot;UNKNOWN_ORGANIZATION&quot;, &quot;Element &quot; + element.getId() + &quot; references unknown organization &quot; + id);</span>
+<span class="fc" id="L59">        }</span>
+<span class="fc" id="L60">        Set&lt;String&gt; assignedCodes = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L61">        String revision = model.responsibilityCatalogueRevision();</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        for (var assignment : model.getCatalogueResponsibilities()) {</span>
+<span class="fc" id="L63">            String code = assignment.code();</span>
+<span class="pc bpc" id="L64" title="2 of 4 branches missed.">            if (code == null || !IDENTIFIER.matcher(code).matches())</span>
+<span class="nc" id="L65">                error.accept(&quot;INVALID_CATALOGUE_CODE&quot;, &quot;A catalogue responsibility requires one catalogue code&quot;);</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">            else if (!assignedCodes.add(code))</span>
+<span class="nc" id="L67">                error.accept(&quot;DUPLICATE_CATALOGUE_RESPONSIBILITY&quot;, &quot;Duplicate catalogue responsibility: &quot; + code);</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">            if (!units.containsKey(assignment.organizationId()))</span>
+<span class="nc" id="L69">                error.accept(&quot;UNKNOWN_ORGANIZATION&quot;, &quot;Catalogue code &quot; + code + &quot; references unknown organization &quot; + assignment.organizationId());</span>
+<span class="pc bpc" id="L70" title="1 of 4 branches missed.">            if (assignment.catalogueRevision() != null &amp;&amp; (!assignment.catalogueRevision().equals(revision)</span>
+<span class="pc bpc" id="L71" title="2 of 4 branches missed.">                    || revision.isBlank() || revision.length() &gt; 128))</span>
+<span class="nc" id="L72">                error.accept(&quot;INVALID_CATALOGUE_REVISION&quot;, &quot;Catalogue assignments must refer to one retained revision&quot;);</span>
+<span class="fc" id="L73">        }</span>
+<span class="fc" id="L74">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

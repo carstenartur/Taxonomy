@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProposalBranchAdoptionService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.service</a> &gt; <span class="el_source">ProposalBranchAdoptionService.java</span></div><h1>ProposalBranchAdoptionService.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.service;
+
+import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.dsl.ast.PropertyAst;
+import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
+import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer;
+import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationIdentity;
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.model.ProposalStatus;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.AdoptRelation;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandMetadata;
+import com.taxonomy.relations.service.ProposalReviewStateStore.ProposalSnapshot;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryScope;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+@Service
+public class ProposalBranchAdoptionService {
+    private static final String PROPOSAL = &quot;x-proposal-id&quot;;
+    private static final String REVIEW_SCOPE = &quot;x-proposal-review-scope&quot;;
+    private static final String REVIEW_BRANCH = &quot;x-proposal-review-branch&quot;;
+    private static final String SOURCE_BRANCH = &quot;x-proposal-adopted-from-branch&quot;;
+    private static final String SOURCE_SCOPE = &quot;x-proposal-adopted-from-scope&quot;;
+    private static final String SOURCE_COMMIT = &quot;x-proposal-adopted-from-commit&quot;;
+    private static final String REVIEW = &quot;proposal-review&quot;;
+    private static final String ADOPTION = &quot;proposal-adoption&quot;;
+
+    private final ProposalReviewStateStore store;
+    private final WorkspaceDslReadPort reads;
+    private final GitAuthoritativeRelationMutationService mutations;
+<span class="fc" id="L39">    private final ArchitectureRelationDslTransformer relations = new ArchitectureRelationDslTransformer();</span>
+
+    public ProposalBranchAdoptionService(ProposalReviewStateStore store, WorkspaceDslReadPort reads,
+<span class="fc" id="L42">                                         GitAuthoritativeRelationMutationService mutations) {</span>
+<span class="fc" id="L43">        this.store = store;</span>
+<span class="fc" id="L44">        this.reads = reads;</span>
+<span class="fc" id="L45">        this.mutations = mutations;</span>
+<span class="fc" id="L46">    }</span>
+
+<span class="fc" id="L48">    public enum State { AVAILABLE, ALREADY_PRESENT, CONFLICT, UNVERIFIED_SOURCE }</span>
+
+<span class="fc" id="L50">    public record Preview(long proposalId, String repositoryId, String sourceBranch, String sourceCommit,</span>
+                          String targetWorkspaceId, String targetBranch, String targetCommit, State state,
+                          boolean reviewedOnSourceBranch) {}
+
+    public static final class ProposalNotFoundException extends RuntimeException {
+<span class="fc" id="L55">        public ProposalNotFoundException() { super(&quot;No central proposal in the selected repository&quot;); }</span>
+    }
+    public static final class AdoptionConflictException extends RuntimeException {
+<span class="fc" id="L58">        public AdoptionConflictException() { super(&quot;The selected decision cannot be adopted at the reviewed revisions&quot;); }</span>
+    }
+
+    /** Only a server-observed review can label a branch as the place of the original decision. */
+    static Map&lt;String, String&gt; reviewProperties(Long id, RepositoryContext context) {
+<span class="fc" id="L63">        var properties = new HashMap&lt;&gt;(reviewOrigin(context));</span>
+<span class="fc" id="L64">        properties.put(PROPOSAL, id.toString());</span>
+<span class="fc" id="L65">        return Map.copyOf(properties);</span>
+    }
+
+    static Map&lt;String, String&gt; reviewOrigin(RepositoryContext context) {
+<span class="fc" id="L69">        return Map.of(REVIEW_SCOPE, scopeKey(context), REVIEW_BRANCH, context.branch());</span>
+    }
+
+    private static String scopeKey(RepositoryContext context) {
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        String routing = context.workspaceId() == null ? &quot;central&quot; : &quot;workspace\0&quot; + context.workspaceId();</span>
+<span class="fc" id="L74">        return StableIdentityHash.sha256(routing + &quot;\0&quot; + context.repositoryId() + &quot;\0&quot; + context.branch());</span>
+    }
+
+    public Preview preview(Long id, RepositoryContext source, RepositoryContext target) throws IOException {
+<span class="fc" id="L78">        ProposalSnapshot row = requireCentralRow(id, source, target);</span>
+<span class="fc" id="L79">        var from = reads.openRead(source);</span>
+<span class="fc" id="L80">        var into = reads.openRead(target);</span>
+<span class="fc" id="L81">        String sourceCommit = from.currentHead();</span>
+<span class="fc" id="L82">        String targetCommit = into.currentHead();</span>
+<span class="fc" id="L83">        var selection = inspect(row, source, sourceCommit, from, targetCommit, into);</span>
+<span class="fc" id="L84">        return previewOf(id, source, sourceCommit, target, targetCommit, selection);</span>
+    }
+
+    public Preview adopt(Long id, RepositoryContext source, String sourceCommit, RepositoryContext target,
+                         String targetCommit, CommandMetadata metadata) throws IOException {
+<span class="fc" id="L89">        ProposalReviewStateStore.requireWritableContext(target);</span>
+<span class="fc" id="L90">        ProposalSnapshot row = requireCentralRow(id, source, target);</span>
+<span class="fc" id="L91">        var from = reads.openRead(source);</span>
+<span class="fc" id="L92">        var into = reads.openRead(target);</span>
+<span class="fc" id="L93">        String sourcePin = WorkspaceDslReadPort.normalizeCommitId(sourceCommit);</span>
+<span class="fc" id="L94">        String targetPin = WorkspaceDslReadPort.normalizeCommitId(targetCommit);</span>
+<span class="fc" id="L95">        var selection = inspect(row, source, sourcePin, from, targetPin, into);</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        if (selection.state() == State.ALREADY_PRESENT) {</span>
+<span class="fc" id="L97">            return previewOf(id, source, sourcePin, target, targetPin, selection);</span>
+        }
+<span class="fc bfc" id="L99" title="All 2 branches covered.">        if (selection.state() != State.AVAILABLE) throw new AdoptionConflictException();</span>
+        // The source is immutable. The target ref is compared atomically again when the commit is written.
+<span class="fc" id="L101">        from.verifyExpectedHead(sourcePin);</span>
+<span class="fc" id="L102">        var command = new AdoptRelation(identity(row), selection.adoption(), metadata);</span>
+<span class="fc" id="L103">        var result = mutations.adopt(target, targetPin, command);</span>
+<span class="fc" id="L104">        return new Preview(id, source.repositoryId(), source.branch(), sourcePin, target.workspaceId(), target.branch(),</span>
+<span class="fc" id="L105">                result.authority().authoritativeCommitId(), State.ALREADY_PRESENT, selection.reviewedOnSourceBranch());</span>
+    }
+
+    private ProposalSnapshot requireCentralRow(Long id, RepositoryContext source, RepositoryContext target) {
+<span class="pc bpc" id="L109" title="1 of 4 branches missed.">        if (source.scope() != RepositoryScope.CENTRAL_READ || !source.repositoryId().equals(target.repositoryId())</span>
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">                || !source.username().equals(target.username())) {</span>
+<span class="fc" id="L111">            throw new IllegalArgumentException(&quot;Proposal source and target must belong to the same authorized repository and actor&quot;);</span>
+        }
+<span class="fc" id="L113">        return store.centralProposal(id, source.repositoryId()).orElseThrow(ProposalNotFoundException::new);</span>
+    }
+
+    private static RelationIdentity identity(ProposalSnapshot row) {
+<span class="fc" id="L117">        return new RelationIdentity(row.sourceCode(), row.relationType().name(), row.targetCode());</span>
+    }
+
+<span class="fc" id="L120">    private record Selection(State state, BlockAst adoption, boolean reviewedOnSourceBranch) {}</span>
+
+    private Preview previewOf(long id, RepositoryContext source, String sourceCommit, RepositoryContext target,
+                              String targetCommit, Selection selection) {
+<span class="fc" id="L124">        return new Preview(id, source.repositoryId(), source.branch(), sourceCommit, target.workspaceId(),</span>
+<span class="fc" id="L125">                target.branch(), targetCommit, selection.state(), selection.reviewedOnSourceBranch());</span>
+    }
+
+    private Selection inspect(ProposalSnapshot row, RepositoryContext source, String sourceCommit,
+                              WorkspaceDslReadPort.RepositoryRead from, String targetCommit,
+                              WorkspaceDslReadPort.RepositoryRead into) throws IOException {
+<span class="fc" id="L131">        from.verifyExpectedHead(sourceCommit);</span>
+<span class="fc" id="L132">        into.verifyExpectedHead(targetCommit);</span>
+<span class="pc bpc" id="L133" title="1 of 4 branches missed.">        if (row.status() != ProposalStatus.ACCEPTED || sourceCommit == null) {</span>
+<span class="fc" id="L134">            return new Selection(State.UNVERIFIED_SOURCE, null, false);</span>
+        }
+<span class="fc" id="L136">        RelationIdentity identity = identity(row);</span>
+        Optional&lt;BlockAst&gt; proof;
+        try {
+<span class="fc" id="L139">            proof = relations.findProposalRelation(from.dslAtCommit(sourceCommit).orElse(&quot;&quot;), identity, row.id().toString());</span>
+<span class="fc" id="L140">        } catch (CommandProblem | ArchitectureRelationDslTransformer.AmbiguousRelationException</span>
+                 | ArchitectureRelationDslTransformer.InvalidRelationBlockException malformed) {
+<span class="fc" id="L142">            return new Selection(State.UNVERIFIED_SOURCE, null, false);</span>
+<span class="fc" id="L143">        }</span>
+<span class="pc bpc" id="L144" title="1 of 4 branches missed.">        if (proof.isEmpty() || !accepted(proof.get(), row.id())) {</span>
+<span class="fc" id="L145">            return new Selection(State.UNVERIFIED_SOURCE, null, false);</span>
+        }
+<span class="fc" id="L147">        BlockAst accepted = proof.get();</span>
+<span class="pc bpc" id="L148" title="1 of 4 branches missed.">        boolean original = has(accepted, REVIEW_BRANCH, source.branch()) &amp;&amp; has(accepted, REVIEW_SCOPE, scopeKey(source));</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        if (targetCommit == null) return new Selection(State.CONFLICT, null, original);</span>
+<span class="fc" id="L150">        Optional&lt;String&gt; targetDsl = into.dslAtCommit(targetCommit);</span>
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">        if (targetDsl.isEmpty()) return new Selection(State.CONFLICT, null, original);</span>
+<span class="fc" id="L152">        BlockAst adoption = adoptionBlock(accepted, source, sourceCommit);</span>
+        try {
+<span class="fc" id="L154">            Optional&lt;BlockAst&gt; existing = relations.findProposalRelation(targetDsl.get(), identity, row.id().toString());</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">            if (existing.isEmpty()) {</span>
+                // Verify that a parser-tolerated, unterminated target cannot swallow the inserted decision.
+<span class="fc" id="L157">                relations.insertAbsent(targetDsl.get(), identity, adoption);</span>
+<span class="fc" id="L158">                return new Selection(State.AVAILABLE, adoption, original);</span>
+            }
+<span class="fc" id="L160">            BlockAst present = existing.get();</span>
+<span class="fc" id="L161">            boolean inherited = properties(present).equals(properties(accepted));</span>
+<span class="fc" id="L162">            boolean adopted = matchesAdoption(present, adoption, from, sourceCommit, identity, accepted);</span>
+<span class="fc bfc" id="L163" title="All 4 branches covered.">            return new Selection(inherited || adopted ? State.ALREADY_PRESENT : State.CONFLICT, null, original);</span>
+<span class="fc" id="L164">        } catch (CommandProblem | ArchitectureRelationDslTransformer.AmbiguousRelationException</span>
+                 | ArchitectureRelationDslTransformer.InvalidRelationBlockException malformed) {
+<span class="fc" id="L166">            return new Selection(State.CONFLICT, null, original);</span>
+        }
+    }
+
+    private static boolean accepted(BlockAst block, Long id) {
+<span class="pc bpc" id="L171" title="2 of 6 branches missed.">        return has(block, &quot;status&quot;, &quot;accepted&quot;) &amp;&amp; has(block, &quot;provenance&quot;, REVIEW) &amp;&amp; has(block, PROPOSAL, id.toString())</span>
+<span class="pc bpc" id="L172" title="2 of 4 branches missed.">                &amp;&amp; block.propertyValues(SOURCE_BRANCH).isEmpty() &amp;&amp; block.propertyValues(SOURCE_SCOPE).isEmpty()</span>
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">                &amp;&amp; block.propertyValues(SOURCE_COMMIT).isEmpty();</span>
+    }
+
+    private static boolean has(BlockAst block, String key, String value) {
+<span class="fc" id="L177">        return block.propertyValues(key).equals(List.of(value));</span>
+    }
+
+    private static Map&lt;String, List&lt;String&gt;&gt; properties(BlockAst block) {
+<span class="fc" id="L181">        Map&lt;String, List&lt;String&gt;&gt; properties = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">        for (PropertyAst property : block.getProperties()) {</span>
+<span class="fc" id="L183">            properties.computeIfAbsent(property.key(), ignored -&gt; new ArrayList&lt;&gt;()).add(property.value());</span>
+<span class="fc" id="L184">        }</span>
+<span class="fc" id="L185">        return properties;</span>
+    }
+
+    private static BlockAst adoptionBlock(BlockAst accepted, RepositoryContext source, String commit) {
+<span class="fc" id="L189">        var properties = new ArrayList&lt;&gt;(accepted.getProperties());</span>
+<span class="fc" id="L190">        properties.removeIf(p -&gt; p.key().equals(&quot;provenance&quot;));</span>
+<span class="fc" id="L191">        properties.add(new PropertyAst(&quot;provenance&quot;, ADOPTION, null));</span>
+<span class="fc" id="L192">        properties.add(new PropertyAst(SOURCE_SCOPE, scopeKey(source), null));</span>
+<span class="fc" id="L193">        properties.add(new PropertyAst(SOURCE_BRANCH, source.branch(), null));</span>
+<span class="fc" id="L194">        properties.add(new PropertyAst(SOURCE_COMMIT, commit, null));</span>
+<span class="fc" id="L195">        Map&lt;String, String&gt; extensions = new HashMap&lt;&gt;(accepted.getExtensions());</span>
+<span class="fc" id="L196">        extensions.put(SOURCE_SCOPE, scopeKey(source));</span>
+<span class="fc" id="L197">        extensions.put(SOURCE_BRANCH, source.branch());</span>
+<span class="fc" id="L198">        extensions.put(SOURCE_COMMIT, commit);</span>
+<span class="fc" id="L199">        return new BlockAst(accepted.getKind(), accepted.getHeaderTokens(), properties, List.of(), extensions, null);</span>
+    }
+
+    private boolean matchesAdoption(BlockAst target, BlockAst adoption, WorkspaceDslReadPort.RepositoryRead from,
+                                    String current, RelationIdentity identity, BlockAst accepted) throws IOException {
+<span class="fc" id="L204">        var actual = properties(target);</span>
+<span class="fc" id="L205">        var expected = properties(adoption);</span>
+        // A later unrelated source commit leaves the already adopted decision valid.
+<span class="fc" id="L207">        List&lt;String&gt; recorded = actual.remove(SOURCE_COMMIT);</span>
+<span class="fc" id="L208">        expected.remove(SOURCE_COMMIT);</span>
+<span class="pc bpc" id="L209" title="1 of 6 branches missed.">        if (recorded == null || recorded.size() != 1 || !expected.equals(actual)) return false;</span>
+<span class="fc" id="L210">        String adoptedFrom = recorded.getFirst();</span>
+<span class="fc bfc" id="L211" title="All 2 branches covered.">        if (current.equals(adoptedFrom)) return true;</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">        if (!from.relationshipsTo(current, List.of(adoptedFrom)).equals(List.of(</span>
+<span class="fc" id="L213">                WorkspaceDslReadPort.CommitRelationship.ANCESTOR))) return false;</span>
+<span class="fc" id="L214">        var prior = from.dslAtCommit(adoptedFrom);</span>
+<span class="pc bpc" id="L215" title="1 of 2 branches missed.">        return prior.isPresent() &amp;&amp; relations.findProposalRelation(prior.get(), identity, accepted.property(PROPOSAL))</span>
+<span class="fc bfc" id="L216" title="All 2 branches covered.">                .map(original -&gt; properties(original).equals(properties(accepted))).orElse(false);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

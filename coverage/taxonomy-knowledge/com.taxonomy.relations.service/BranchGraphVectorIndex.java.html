@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BranchGraphVectorIndex.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.service</a> &gt; <span class="el_source">BranchGraphVectorIndex.java</span></div><h1>BranchGraphVectorIndex.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.service;
+
+import com.taxonomy.identity.StableIdentityHash;
+import org.apache.lucene.document.Document;
+import org.apache.lucene.document.KnnFloatVectorField;
+import org.apache.lucene.document.StoredField;
+import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.VectorSimilarityFunction;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.KnnFloatVectorQuery;
+import org.apache.lucene.store.ByteBuffersDirectory;
+import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.IOContext;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.Closeable;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
+
+/** One immutable Lucene generation. Its node payloads and relation facets belong to the same source. */
+<span class="nc" id="L31">final class BranchGraphVectorIndex {</span>
+    static final String FORMAT = &quot;lucene9-cosine384-v1&quot;;
+    private static final String NODE = &quot;nodeVector&quot;;
+    private static final String RELATION = &quot;relationVector&quot;;
+    private static final int DIMENSION = 384;
+    private static final long MAX_BYTES = 128L * 1024 * 1024;
+
+<span class="fc" id="L38">    record Archive(byte[] bytes, int nodeCount, int relationCount, String sourceKey) { }</span>
+<span class="fc" id="L39">    record RelationHit(String root, String type) { }</span>
+<span class="fc" id="L40">    record Hits(List&lt;String&gt; nodes, List&lt;RelationHit&gt; relations) { }</span>
+
+    static final class Builder implements Closeable {
+<span class="fc" id="L43">        private final Directory directory = new ByteBuffersDirectory();</span>
+        private final IndexWriter writer;
+        private final String sourceKey;
+        private int nodes;
+        private int relations;
+
+<span class="fc" id="L49">        Builder(String sourceKey) throws IOException {</span>
+<span class="fc" id="L50">            this.sourceKey = sourceKey;</span>
+<span class="fc" id="L51">            writer = new IndexWriter(directory, new IndexWriterConfig());</span>
+<span class="fc" id="L52">            writer.setLiveCommitData(Map.of(&quot;source&quot;, sourceKey, &quot;format&quot;, FORMAT).entrySet());</span>
+<span class="fc" id="L53">        }</span>
+
+        void node(String nodeJson, String text, float[] vector) throws IOException {
+<span class="fc" id="L56">            var document = new Document();</span>
+<span class="fc" id="L57">            document.add(new StoredField(&quot;node&quot;, nodeJson));</span>
+<span class="fc" id="L58">            add(document, NODE, text, vector);</span>
+<span class="fc" id="L59">            nodes++;</span>
+<span class="fc" id="L60">        }</span>
+
+        void relation(String sourceCode, String targetCode, String sourceRoot, String type, String text, float[] vector) throws IOException {
+<span class="fc" id="L63">            var document = new Document();</span>
+<span class="fc" id="L64">            document.add(new StoredField(&quot;source&quot;, sourceCode));</span>
+<span class="fc" id="L65">            document.add(new StoredField(&quot;target&quot;, targetCode));</span>
+<span class="fc" id="L66">            document.add(new StoredField(&quot;root&quot;, sourceRoot));</span>
+<span class="fc" id="L67">            document.add(new StoredField(&quot;type&quot;, type));</span>
+<span class="fc" id="L68">            add(document, RELATION, text, vector);</span>
+<span class="fc" id="L69">            relations++;</span>
+<span class="fc" id="L70">        }</span>
+
+        private void add(Document document, String kind, String text, float[] vector) throws IOException {
+<span class="fc" id="L73">            checkVector(vector);</span>
+<span class="fc" id="L74">            document.add(new StoredField(&quot;textSha256&quot;, StableIdentityHash.sha256(text)));</span>
+<span class="fc" id="L75">            document.add(new KnnFloatVectorField(kind, vector, VectorSimilarityFunction.COSINE));</span>
+<span class="fc" id="L76">            writer.addDocument(document);</span>
+<span class="fc" id="L77">        }</span>
+
+        Archive finish() throws IOException {
+<span class="pc bpc" id="L80" title="1 of 4 branches missed.">            if (nodes == 0 || relations == 0) throw new IllegalStateException(&quot;A branch generation requires both vector types&quot;);</span>
+<span class="fc" id="L81">            writer.commit();</span>
+<span class="fc" id="L82">            try (var reader = DirectoryReader.open(directory)) {</span>
+<span class="fc" id="L83">                verify(reader, nodes, relations, sourceKey);</span>
+            }
+<span class="fc" id="L85">            var bytes = new ByteArrayOutputStream();</span>
+<span class="fc" id="L86">            long total = 0;</span>
+<span class="fc" id="L87">            byte[] buffer = new byte[16384];</span>
+<span class="fc" id="L88">            try (var archive = new ZipOutputStream(bytes)) {</span>
+                // Store only files reachable from the committed reader; omit transient Lucene locks.
+<span class="fc" id="L90">                var commit = DirectoryReader.listCommits(directory).getLast();</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">                for (var name : commit.getFileNames().stream().sorted().toList()) {</span>
+<span class="fc" id="L92">                    try (var input = directory.openInput(name, IOContext.READONCE)) {</span>
+<span class="fc" id="L93">                        total += input.length();</span>
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">                        if (total &gt; MAX_BYTES) throw new IOException(&quot;Branch generation exceeds its storage budget&quot;);</span>
+<span class="fc" id="L95">                        var entry = new ZipEntry(name);</span>
+<span class="fc" id="L96">                        archive.putNextEntry(entry);</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">                        while (input.getFilePointer() &lt; input.length()) {</span>
+<span class="fc" id="L98">                            int count = (int) Math.min(buffer.length, input.length() - input.getFilePointer());</span>
+<span class="fc" id="L99">                            input.readBytes(buffer, 0, count);</span>
+<span class="fc" id="L100">                            archive.write(buffer, 0, count);</span>
+<span class="fc" id="L101">                        }</span>
+<span class="fc" id="L102">                        archive.closeEntry();</span>
+                    }
+<span class="fc" id="L104">                }</span>
+            }
+<span class="fc" id="L106">            var result = new Archive(bytes.toByteArray(), nodes, relations, sourceKey);</span>
+<span class="fc" id="L107">            verifyArchive(result);</span>
+<span class="fc" id="L108">            return result;</span>
+        }
+
+        @Override public void close() throws IOException {
+<span class="fc" id="L112">            try { writer.close(); } finally { directory.close(); }</span>
+<span class="fc" id="L113">        }</span>
+    }
+
+    static void verifyArchive(Archive archive) throws IOException {
+<span class="fc" id="L117">        try (Directory directory = new ByteBuffersDirectory()) {</span>
+<span class="fc" id="L118">            restore(directory, archive.bytes());</span>
+<span class="fc" id="L119">            try (var reader = DirectoryReader.open(directory)) {</span>
+<span class="fc" id="L120">                verify(reader, archive.nodeCount(), archive.relationCount(), archive.sourceKey());</span>
+            }
+        }
+<span class="fc" id="L123">    }</span>
+
+    static Hits search(Archive archive, float[] query, int nodeLimit, int relationLimit) throws IOException {
+<span class="fc" id="L126">        checkVector(query);</span>
+<span class="fc" id="L127">        try (Directory directory = new ByteBuffersDirectory()) {</span>
+<span class="fc" id="L128">            restore(directory, archive.bytes());</span>
+<span class="fc" id="L129">            try (var reader = DirectoryReader.open(directory)) {</span>
+<span class="fc" id="L130">                verify(reader, archive.nodeCount(), archive.relationCount(), archive.sourceKey());</span>
+<span class="fc" id="L131">                var searcher = new IndexSearcher(reader);</span>
+<span class="fc" id="L132">                var fields = searcher.storedFields();</span>
+<span class="fc" id="L133">                var nodes = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">                for (var hit : searcher.search(new KnnFloatVectorQuery(NODE, query, nodeLimit), nodeLimit).scoreDocs) {</span>
+<span class="fc" id="L135">                    nodes.add(fields.document(hit.doc).get(&quot;node&quot;));</span>
+                }
+<span class="fc" id="L137">                var relations = new ArrayList&lt;RelationHit&gt;();</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">                for (var hit : searcher.search(new KnnFloatVectorQuery(RELATION, query, relationLimit), relationLimit).scoreDocs) {</span>
+<span class="fc" id="L139">                    var document = fields.document(hit.doc);</span>
+<span class="fc" id="L140">                    relations.add(new RelationHit(document.get(&quot;root&quot;), document.get(&quot;type&quot;)));</span>
+                }
+<span class="fc" id="L142">                return new Hits(List.copyOf(nodes), List.copyOf(relations));</span>
+            }
+        }
+    }
+
+    private static void restore(Directory directory, byte[] bytes) throws IOException {
+<span class="pc bpc" id="L148" title="3 of 6 branches missed.">        if (bytes == null || bytes.length == 0 || bytes.length &gt; MAX_BYTES) throw new IOException(&quot;Invalid branch generation length&quot;);</span>
+<span class="fc" id="L149">        Set&lt;String&gt; files = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L150">        long total = 0;</span>
+<span class="fc" id="L151">        byte[] buffer = new byte[16384];</span>
+<span class="fc" id="L152">        try (var archive = new ZipInputStream(new ByteArrayInputStream(bytes))) {</span>
+<span class="fc bfc" id="L153" title="All 2 branches covered.">            for (ZipEntry entry; (entry = archive.getNextEntry()) != null;) {</span>
+<span class="fc" id="L154">                String name = entry.getName();</span>
+<span class="pc bpc" id="L155" title="3 of 6 branches missed.">                if (!name.matches(&quot;[A-Za-z0-9_.-]{1,120}&quot;) || !files.add(name) || files.size() &gt; 8192) {</span>
+<span class="nc" id="L156">                    throw new IOException(&quot;Invalid branch index file&quot;);</span>
+                }
+<span class="fc" id="L158">                try (var output = directory.createOutput(name, IOContext.DEFAULT)) {</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">                    for (int count; (count = archive.read(buffer)) != -1;) {</span>
+<span class="fc" id="L160">                        total += count;</span>
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">                        if (total &gt; MAX_BYTES) throw new IOException(&quot;Branch generation exceeds its storage budget&quot;);</span>
+<span class="fc" id="L162">                        output.writeBytes(buffer, 0, count);</span>
+                    }
+                }
+<span class="fc" id="L165">            }</span>
+        }
+<span class="fc" id="L167">    }</span>
+
+    private static void verify(DirectoryReader reader, int nodes, int relations, String sourceKey) throws IOException {
+<span class="fc" id="L170">        var manifest = reader.getIndexCommit().getUserData();</span>
+<span class="pc bpc" id="L171" title="2 of 4 branches missed.">        if (!FORMAT.equals(manifest.get(&quot;format&quot;)) || !sourceKey.equals(manifest.get(&quot;source&quot;))) {</span>
+<span class="nc" id="L172">            throw new IOException(&quot;Branch vector manifest points to another source&quot;);</span>
+        }
+<span class="fc" id="L174">        int visibleNodes = 0;</span>
+<span class="fc" id="L175">        int visibleRelations = 0;</span>
+<span class="fc bfc" id="L176" title="All 2 branches covered.">        for (var leaf : reader.leaves()) {</span>
+<span class="fc" id="L177">            var nodeVectors = leaf.reader().getFloatVectorValues(NODE);</span>
+<span class="fc" id="L178">            var relationVectors = leaf.reader().getFloatVectorValues(RELATION);</span>
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">            if (nodeVectors != null) visibleNodes += nodeVectors.size();</span>
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">            if (relationVectors != null) visibleRelations += relationVectors.size();</span>
+<span class="fc" id="L181">        }</span>
+<span class="pc bpc" id="L182" title="4 of 10 branches missed.">        if (nodes &lt; 1 || relations &lt; 1 || reader.numDocs() != (long) nodes + relations</span>
+                || visibleNodes != nodes || visibleRelations != relations) {
+<span class="fc" id="L184">            throw new IOException(&quot;Persisted branch vector coverage is incomplete&quot;);</span>
+        }
+<span class="fc" id="L186">    }</span>
+
+    private static void checkVector(float[] vector) {
+<span class="pc bpc" id="L189" title="2 of 4 branches missed.">        if (vector == null || vector.length != DIMENSION) throw new IllegalArgumentException(&quot;Unexpected model vector dimensions&quot;);</span>
+<span class="fc" id="L190">        double squaredNorm = 0;</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">        for (float value : vector) {</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">            if (!Float.isFinite(value)) throw new IllegalArgumentException(&quot;Non-finite model vector&quot;);</span>
+<span class="fc" id="L193">            squaredNorm += (double) value * value;</span>
+        }
+<span class="fc bfc" id="L195" title="All 2 branches covered.">        if (squaredNorm == 0) throw new IllegalArgumentException(&quot;Empty model vector&quot;);</span>
+<span class="fc" id="L196">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

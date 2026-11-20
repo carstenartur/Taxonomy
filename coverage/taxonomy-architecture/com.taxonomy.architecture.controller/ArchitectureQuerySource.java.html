@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureQuerySource.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-architecture</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.controller</a> &gt; <span class="el_source">ArchitectureQuerySource.java</span></div><h1>ArchitectureQuerySource.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.controller;
+
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.workspace.controller.ExplicitRepositoryReadSelection;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
+import tools.jackson.databind.json.JsonMapper;
+
+import java.util.List;
+import java.util.Objects;
+
+/** The authorized, immutable revision used by an architecture query and its HTTP response. */
+<span class="fc" id="L16">record ArchitectureQuerySource(RepositoryContext context, String commit) {</span>
+<span class="fc" id="L17">    private static final JsonMapper JSON = JsonMapper.builder().build();</span>
+
+    static ArchitectureQuerySource resolve(ExplicitRepositoryReadSelection selection, String repositoryId,
+                                           String branch, String commit, HttpServletRequest request) {
+<span class="fc" id="L21">        return new ArchitectureQuerySource(selection.resolve(repositoryId, branch, commit, request),</span>
+<span class="fc" id="L22">                WorkspaceDslReadPort.normalizeCommitId(commit));</span>
+    }
+
+    ResponseEntity.BodyBuilder headers(ResponseEntity.BodyBuilder response) {
+<span class="fc" id="L26">        response.cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L27">                .header(&quot;X-Taxonomy-Repository&quot;, context.repositoryId())</span>
+<span class="fc" id="L28">                .header(&quot;X-Taxonomy-Workspace-Id&quot;, Objects.toString(context.workspaceId(), &quot;&quot;))</span>
+<span class="fc" id="L29">                .header(&quot;X-Taxonomy-Branch&quot;, context.branch());</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">        if (commit != null) response.header(&quot;X-Taxonomy-Commit&quot;, commit);</span>
+<span class="fc" id="L31">        return response;</span>
+    }
+
+    &lt;T&gt; ResponseEntity&lt;T&gt; response(T body) {
+<span class="fc" id="L35">        var identity = List.of(&quot;architecture-query-v1&quot;, context.repositoryId(), Objects.toString(context.workspaceId(), &quot;&quot;),</span>
+<span class="fc" id="L36">                context.branch(), commit, body);</span>
+<span class="fc" id="L37">        String tag = StableIdentityHash.sha256(JSON.writeValueAsString(identity));</span>
+<span class="fc" id="L38">        return headers(ResponseEntity.ok()).header(&quot;X-Taxonomy-Source-State&quot;, &quot;READY&quot;)</span>
+<span class="fc" id="L39">                .eTag(&quot;W/\&quot;&quot; + tag + &quot;\&quot;&quot;).body(body);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>TaxonomyExtensionEvidence.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.recovery</a> &gt; <span class="el_source">TaxonomyExtensionEvidence.java</span></div><h1>TaxonomyExtensionEvidence.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.recovery;
+
+import com.taxonomy.dto.*;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+import tools.jackson.databind.ObjectMapper;
+
+import java.util.*;
+
+/** Exact retained evidence and work membership; never a second assessment algorithm. */
+final class TaxonomyExtensionEvidence {
+    private TaxonomyExtensionEvidence() { }
+
+    static AnalysisScope union(AnalysisScope source, AnalysisScope requested, List&lt;TaxonomyNodeDto&gt; tree) {
+<span class="fc" id="L15">        var roots = new TreeSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L16" title="All 4 branches covered.">        tree.forEach(root -&gt; { if (source.selects(root.getCode()) || requested.selects(root.getCode())) roots.add(root.getCode()); });</span>
+<span class="fc" id="L17">        requested.validateRoots(tree.stream().map(TaxonomyNodeDto::getCode).collect(java.util.stream.Collectors.toSet()));</span>
+<span class="fc" id="L18">        return new AnalysisScope(roots, requested.mode());</span>
+    }
+
+    static Map&lt;String, String&gt; membership(List&lt;TaxonomyNodeDto&gt; tree) {
+<span class="fc" id="L22">        var result = new LinkedHashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L23">        tree.forEach(root -&gt; collect(root, root.getCode(), result));</span>
+<span class="fc" id="L24">        return Map.copyOf(result);</span>
+    }
+
+    private static void collect(TaxonomyNodeDto node, String root, Map&lt;String, String&gt; result) {
+<span class="pc bpc" id="L28" title="1 of 2 branches missed.">        if (result.putIfAbsent(node.getCode(), root) != null) throw conflict(&quot;Ambiguous retained catalogue membership&quot;);</span>
+<span class="pc bpc" id="L29" title="1 of 2 branches missed.">        if (node.getChildren() != null) node.getChildren().forEach(child -&gt; collect(child, root, result));</span>
+<span class="fc" id="L30">    }</span>
+
+    static boolean requested(AnalysisScope scope, Map&lt;String, String&gt; membership, List&lt;String&gt; nodes) {
+<span class="pc bpc" id="L33" title="1 of 2 branches missed.">        if (scope == null) return true;</span>
+<span class="pc bpc" id="L34" title="1 of 2 branches missed.">        if (nodes.isEmpty()) throw conflict(&quot;A node assessment requires catalogue identities&quot;);</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">        for (String node : nodes) {</span>
+<span class="fc" id="L36">            String root = membership.get(node);</span>
+<span class="pc bpc" id="L37" title="1 of 2 branches missed.">            if (root == null) throw conflict(&quot;A retained question is outside its catalogue&quot;);</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">            if (!scope.selects(root)) return false;</span>
+<span class="fc" id="L39">        }</span>
+<span class="fc" id="L40">        return true;</span>
+    }
+
+    static AnalysisResult seed(ObjectMapper mapper, AnalysisResult source, AnalysisRequest request) {
+<span class="fc" id="L44">        var result = mapper.readValue(mapper.writeValueAsString(source), AnalysisResult.class);</span>
+<span class="fc" id="L45">        var report = result.getRelationSearchReport();</span>
+<span class="fc" id="L46">        var relationWarnings = new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">        if (report != null) {</span>
+<span class="fc" id="L48">            relationWarnings.addAll(report.warnings());</span>
+<span class="pc bnc" id="L49" title="All 2 branches missed.">            report.result().unfinished().stream().filter(item -&gt; !item.question().isBlank())</span>
+<span class="pc" id="L50">                    .map(item -&gt; item.sourceId() + &quot;: &quot; + item.question()).forEach(relationWarnings::add);</span>
+        }
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        result.setWarnings(result.getWarnings().stream().filter(warning -&gt; !relationWarnings.contains(warning)</span>
+<span class="pc bpc" id="L53" title="1 of 4 branches missed.">                &amp;&amp; !warning.startsWith(&quot;RELATION_SEARCH_PARTIAL:&quot;) &amp;&amp; !warning.startsWith(&quot;RELATION_EVALUATION_FAILED:&quot;)).toList());</span>
+<span class="fc" id="L54">        result.setRelationSearchReport(null);</span>
+<span class="fc" id="L55">        result.setArchitectureView(null);</span>
+<span class="fc" id="L56">        result.setProvisionalRelations(List.of());</span>
+<span class="fc" id="L57">        result.setCopilot(null);</span>
+<span class="fc" id="L58">        result.setErrorMessage(null);</span>
+<span class="fc" id="L59">        result.setRecovery(null);</span>
+<span class="fc" id="L60">        result.setAnalysisOperationId(null);</span>
+<span class="fc" id="L61">        result.setAnalysisDurationMillis(null);</span>
+<span class="fc" id="L62">        result.setStatus(&quot;IN_PROGRESS&quot;);</span>
+<span class="fc" id="L63">        result.setAnalysisScope(request.getAnalysisScope());</span>
+<span class="fc" id="L64">        result.setModelBinding(request.getModelBinding());</span>
+<span class="fc" id="L65">        return result;</span>
+    }
+
+    static boolean noWork(String state, AnalysisRequest source, AnalysisRequest target, AnalysisResult result,
+            List&lt;TaxonomyNodeDto&gt; tree) {
+<span class="pc bpc" id="L70" title="1 of 4 branches missed.">        if (!&quot;COMPLETED&quot;.equals(state) || !&quot;SUCCESS&quot;.equals(result.getStatus())</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">                || source.getAnalysisScope().mode() != target.getAnalysisScope().mode()</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">                || source.isIncludeArchitectureView() != target.isIncludeArchitectureView()</span>
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">                || !Objects.equals(source.getMaxArchitectureNodes(), target.getMaxArchitectureNodes())</span>
+<span class="pc bpc" id="L74" title="2 of 4 branches missed.">                || result.getAnalysisCoverage() == null || result.getAnalysisCoverage().hasOpenEvaluations()) return false;</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">        if (source.getAnalysisScope().includesRelations()</span>
+<span class="pc bpc" id="L76" title="2 of 4 branches missed.">                &amp;&amp; (result.getRelationSearchReport() == null || !result.getRelationSearchReport().isSearchExhausted())) return false;</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        for (var root : tree) {</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">            if (source.getAnalysisScope().selects(root.getCode()) != target.getAnalysisScope().selects(root.getCode())) return false;</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">            if (source.getAnalysisScope().selects(root.getCode())) {</span>
+<span class="fc" id="L80">                var assessed = result.getAnalysisCoverage().nodes().get(root.getCode());</span>
+<span class="pc bpc" id="L81" title="2 of 4 branches missed.">                if (assessed == null || assessed.state() == AnalysisCoverage.State.UNKNOWN</span>
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">                        || assessed.descendants() != AnalysisCoverage.Descendants.COMPLETE) return false;</span>
+            }
+<span class="fc" id="L84">        }</span>
+<span class="fc" id="L85">        return true;</span>
+    }
+
+    static AnalysisResult completedCopy(ObjectMapper mapper, AnalysisResult source, AnalysisRequest target) {
+<span class="fc" id="L89">        var result = mapper.readValue(mapper.writeValueAsString(source), AnalysisResult.class);</span>
+<span class="fc" id="L90">        result.setRecovery(null); result.setAnalysisOperationId(null); result.setAnalysisDurationMillis(0L);</span>
+<span class="fc" id="L91">        result.setAnalysisScope(target.getAnalysisScope()); result.setModelBinding(target.getModelBinding());</span>
+<span class="fc" id="L92">        return result;</span>
+    }
+
+    static void preserve(AnalysisResult previous, AnalysisResult result) {
+<span class="fc" id="L96">        var raw = new LinkedHashMap&lt;&gt;(previous.getRawScores());</span>
+<span class="fc" id="L97">        result.getRawScores().forEach((code, value) -&gt; {</span>
+<span class="fc" id="L98">            Double accepted = raw.putIfAbsent(code, value);</span>
+<span class="pc bpc" id="L99" title="1 of 4 branches missed.">            if (accepted != null &amp;&amp; !accepted.equals(value)) throw conflict(&quot;An extension changed an accepted node assessment&quot;);</span>
+<span class="fc" id="L100">        });</span>
+<span class="fc" id="L101">        var reasons = new LinkedHashMap&lt;&gt;(previous.getReasons());</span>
+<span class="fc" id="L102">        result.getReasons().forEach((code, value) -&gt; {</span>
+<span class="fc" id="L103">            String accepted = reasons.putIfAbsent(code, value);</span>
+<span class="pc bpc" id="L104" title="1 of 4 branches missed.">            if (accepted != null &amp;&amp; !accepted.equals(value)) throw conflict(&quot;An extension changed an accepted node explanation&quot;);</span>
+<span class="fc" id="L105">        });</span>
+<span class="fc" id="L106">        result.setRawScores(raw);</span>
+<span class="fc" id="L107">        result.setReasons(reasons);</span>
+<span class="fc" id="L108">    }</span>
+
+    static ResponseStatusException conflict(String reason) {
+<span class="fc" id="L111">        return new ResponseStatusException(HttpStatus.CONFLICT, reason);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

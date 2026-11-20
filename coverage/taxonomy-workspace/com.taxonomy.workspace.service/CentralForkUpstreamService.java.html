@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CentralForkUpstreamService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">CentralForkUpstreamService.java</span></div><h1>CentralForkUpstreamService.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.GitUpstreamRef;
+import org.eclipse.jgit.lib.ObjectId;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+
+/** Fetches only the upstream recorded by the central fork's provisioning operation. */
+@Service
+public class CentralForkUpstreamService {
+    private final SystemRepositoryService catalogue;
+    private final RepositoryMembershipService memberships;
+    private final DslGitRepositoryFactory repositories;
+
+    public CentralForkUpstreamService(SystemRepositoryService catalogue, RepositoryMembershipService memberships,
+<span class="fc" id="L20">                                      DslGitRepositoryFactory repositories) {</span>
+<span class="fc" id="L21">        this.catalogue = catalogue;</span>
+<span class="fc" id="L22">        this.memberships = memberships;</span>
+<span class="fc" id="L23">        this.repositories = repositories;</span>
+<span class="fc" id="L24">    }</span>
+
+    public WorkspaceUpstreamService.Status inspect(String forkId, String actor) throws IOException {
+<span class="fc" id="L27">        return open(forkId, actor).inspect();</span>
+    }
+
+    public UpstreamRebasePlan rebasePlan(String forkId, String actor, String branch) throws IOException {
+<span class="fc" id="L31">        return UpstreamRebasePlan.read(open(forkId, actor), forkId, null, branch);</span>
+    }
+
+    public String rebasePlanRefTag(String forkId, String actor, String branch) throws IOException {
+<span class="fc" id="L35">        return UpstreamRebasePlan.readRefTag(open(forkId, actor), forkId, null, branch);</span>
+    }
+
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = IOException.class)
+    public DslGitRepository.RebaseReplay rebase(String forkId, String actor, String branch,
+                                                UpstreamRebasePlan.ApplyRequest request) throws IOException {
+<span class="fc" id="L41">        return UpstreamRebasePlan.apply(open(forkId, actor, branch), forkId, null, branch, request);</span>
+    }
+
+    public WorkspaceUpstreamService.Status fetch(String forkId, String actor, WorkspaceUpstreamService.Request request)
+            throws IOException {
+<span class="fc" id="L46">        return open(forkId, actor).fetch(request);</span>
+    }
+
+    public WorkspaceUpstreamService.TagStatus inspectTag(String forkId, String actor, String name) throws IOException {
+<span class="fc" id="L50">        return open(forkId, actor).inspectTag(name);</span>
+    }
+
+    public WorkspaceUpstreamService.TagStatus fetchTag(String forkId, String actor, WorkspaceUpstreamService.TagRequest request)
+            throws IOException {
+<span class="fc" id="L55">        return open(forkId, actor).fetchTag(request);</span>
+    }
+
+    public RepositoryContext context(String forkId, String actor) {
+<span class="fc" id="L59">        var origin = authorizedBinding(forkId, actor);</span>
+<span class="fc" id="L60">        return RepositoryContext.centralWrite(forkId, origin.upstream().branch(), actor);</span>
+    }
+
+    WorkspaceUpstreamService.Capture capture(RepositoryContext selected) throws IOException {
+<span class="fc" id="L64">        var transfer = open(selected.repositoryId(), selected.username());</span>
+<span class="fc" id="L65">        return new WorkspaceUpstreamService.Capture(transfer.inspect(), transfer.forkPoint());</span>
+    }
+
+    GitUpstreamTransfer recorded(RepositoryFetchOperation operation) throws IOException {
+<span class="fc" id="L69">        var selected = operation.context();</span>
+<span class="fc" id="L70">        var transfer = open(selected.repositoryId(), selected.username());</span>
+<span class="fc" id="L71">        transfer.requireOrigin(operation.sourceRepositoryId(), operation.sourceBranch, operation.forkPoint);</span>
+<span class="fc" id="L72">        return transfer;</span>
+    }
+
+<span class="fc" id="L75">    private record Binding(GitUpstreamRef upstream, String forkPoint, String defaultBranch) {}</span>
+
+    private GitUpstreamTransfer open(String forkId, String actor) {
+<span class="fc" id="L78">        return open(forkId, actor, null);</span>
+    }
+
+    private GitUpstreamTransfer open(String forkId, String actor, String branchToRewrite) {
+<span class="fc" id="L82">        Binding binding = authorizedBinding(forkId, actor);</span>
+        // A reviewed replay is for a working branch, never the fork's configured default.
+        // Include the default in the binding so a concurrent policy change invalidates
+        // the authorization callback before the final Git compare-and-set.
+<span class="pc bpc" id="L86" title="1 of 4 branches missed.">        if (branchToRewrite != null &amp;&amp; (binding.defaultBranch() == null</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">                || branchToRewrite.equals(binding.defaultBranch()))) {</span>
+<span class="fc" id="L88">            throw new IllegalArgumentException(&quot;The configured fork default branch cannot be rebased&quot;);</span>
+        }
+<span class="fc" id="L90">        return new GitUpstreamTransfer(binding.upstream(),</span>
+<span class="fc" id="L91">                repositories.getCentralRepository(binding.upstream().repositoryId()), repositories.getCentralRepository(forkId),</span>
+<span class="fc" id="L92">                binding.forkPoint(), actor, () -&gt; {</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">                    if (!binding.equals(authorizedBinding(forkId, actor))) throw unavailable();</span>
+<span class="fc" id="L94">                });</span>
+    }
+
+    private Binding authorizedBinding(String forkId, String actor) {
+        try {
+<span class="fc" id="L99">            return catalogue.readCurrentForkAuthorization(forkId, (fork, source) -&gt; {</span>
+<span class="fc" id="L100">                String forkPoint = fork.getForkPointCommit();</span>
+<span class="fc bfc" id="L101" title="All 4 branches covered.">                if (!memberships.canContribute(fork, actor) || !memberships.canContribute(source, actor)</span>
+<span class="pc bpc" id="L102" title="3 of 6 branches missed.">                        || fork.getVisibility() == null || forkPoint == null || !ObjectId.isId(forkPoint)) throw unavailable();</span>
+<span class="fc" id="L103">                SystemRepositoryService.requirePermittedForkVisibility(source, fork.getVisibility());</span>
+<span class="fc" id="L104">                return new Binding(new GitUpstreamRef(fork.getUpstreamRepositoryId(), fork.getUpstreamBranch()),</span>
+<span class="fc" id="L105">                        forkPoint, fork.getDefaultBranch());</span>
+            });
+<span class="fc" id="L107">        } catch (IllegalArgumentException unavailableOrRestricted) {</span>
+<span class="fc" id="L108">            throw unavailable();</span>
+        }
+    }
+
+    private static AccessDeniedException unavailable() {
+<span class="fc" id="L113">        return new AccessDeniedException(&quot;The selected central fork or its upstream is unavailable&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

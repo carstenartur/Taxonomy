@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GitUpstreamRef.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.storage</a> &gt; <span class="el_source">GitUpstreamRef.java</span></div><h1>GitUpstreamRef.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.storage;
+
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.workspace.service.BranchHeadConflictException;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.PersonIdent;
+import org.eclipse.jgit.lib.Ref;
+import org.eclipse.jgit.lib.RefUpdate;
+import org.eclipse.jgit.lib.ReflogReader;
+import org.eclipse.jgit.lib.Repository;
+
+import java.io.IOException;
+import java.util.Objects;
+
+/** A source tracking ref inside the destination repository, separate from all user branches. */
+public record GitUpstreamRef(String repositoryId, String branch) {
+<span class="fc" id="L18">    public GitUpstreamRef {</span>
+<span class="pc bpc" id="L19" title="4 of 8 branches missed.">        if (repositoryId == null || repositoryId.isBlank() || repositoryId.indexOf(0) &gt;= 0</span>
+<span class="pc bpc" id="L20" title="1 of 2 branches missed.">                || branch == null || !Repository.isValidRefName(Constants.R_HEADS + branch)) {</span>
+<span class="nc" id="L21">            throw new IllegalArgumentException(&quot;A source repository and valid branch are required&quot;);</span>
+        }
+<span class="fc" id="L23">    }</span>
+
+    public String name() {
+<span class="fc" id="L26">        return Constants.R_REMOTES + &quot;taxonomy/&quot; + StableIdentityHash.sha256(repositoryId + &quot;\u0000&quot; + branch);</span>
+    }
+
+    public String head(DslGitRepository destination) throws IOException {
+<span class="fc" id="L30">        Ref ref = destination.readFreshRef(name());</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        if (ref == null) return null;</span>
+<span class="pc bpc" id="L32" title="2 of 4 branches missed.">        if (ref.isSymbolic() || ref.getObjectId() == null) {</span>
+<span class="nc" id="L33">            throw new IOException(&quot;Invalid Git upstream tracking ref&quot;);</span>
+        }
+<span class="fc" id="L35">        return ref.getObjectId().name();</span>
+    }
+
+    /** Only publish a previously copied and verified commit closure. */
+    public void advance(DslGitRepository destination, String expected, String incoming, String actor) throws IOException {
+<span class="fc" id="L40">        advance(destination, expected, incoming, actor, null, null);</span>
+<span class="fc" id="L41">    }</span>
+
+    /** Bind a journalled transfer to the native ref update, including its expected old commit. */
+    public void advance(DslGitRepository destination, String expected, String incoming, String actor,
+                        String publicationIdentity, String observedSourceHead) throws IOException {
+<span class="fc" id="L46">        var repository = destination.getGitRepository();</span>
+<span class="fc" id="L47">        synchronized (repository) {</span>
+<span class="fc" id="L48">            String actual = head(destination);</span>
+<span class="fc bfc" id="L49" title="All 4 branches covered.">            if (!Objects.equals(actual, expected)</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">                    || (expected != null &amp;&amp; !destination.isAncestor(expected, incoming))) {</span>
+<span class="fc" id="L51">                throw new BranchHeadConflictException(name(), expected, actual, &quot;Upstream tracking ref has changed&quot;);</span>
+            }
+            // Detaching prevents an unexpected symbolic ref from moving a working branch.
+<span class="fc" id="L54">            RefUpdate update = repository.updateRef(name(), true);</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">            update.setExpectedOldObjectId(expected == null ? ObjectId.zeroId() : ObjectId.fromString(expected));</span>
+<span class="fc" id="L56">            update.setNewObjectId(ObjectId.fromString(incoming));</span>
+<span class="fc" id="L57">            update.setForceUpdate(false);</span>
+<span class="fc" id="L58">            update.setRefLogIdent(new PersonIdent(actor, &quot;taxonomy@localhost&quot;));</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">            if (publicationIdentity == null) {</span>
+<span class="fc" id="L60">                update.setRefLogMessage(&quot;fetch: record verified upstream commit&quot;, true);</span>
+            } else {
+<span class="fc" id="L62">                update.setForceRefLog(true);</span>
+<span class="fc" id="L63">                update.setRefLogMessage(publicationPrefix(publicationIdentity) + ObjectId.fromString(observedSourceHead).name(), false);</span>
+            }
+<span class="pc bpc" id="L65" title="1 of 3 branches missed.">            switch (update.update()) {</span>
+<span class="fc" id="L66">                case NEW, FAST_FORWARD, NO_CHANGE -&gt; { }</span>
+                case LOCK_FAILURE, REJECTED, REJECTED_CURRENT_BRANCH -&gt;
+<span class="fc" id="L68">                        throw new BranchHeadConflictException(name(), expected, head(destination), &quot;Upstream tracking ref has changed&quot;);</span>
+<span class="nc" id="L69">                default -&gt; throw new IOException(&quot;Could not publish Git upstream tracking ref&quot;);</span>
+            }
+<span class="fc" id="L71">        }</span>
+<span class="fc" id="L72">    }</span>
+
+    /** Read the source head verified when this receipt's exact tracking update was published. */
+    public String publishedSourceHead(DslGitRepository destination, String expected, String incoming,
+                                      String publicationIdentity) throws IOException {
+        ReflogReader reader;
+        try {
+<span class="fc" id="L79">            reader = destination.getGitRepository().getReflogReader(name());</span>
+<span class="fc" id="L80">        } catch (UnsupportedOperationException unavailable) {</span>
+<span class="fc" id="L81">            return null;</span>
+<span class="fc" id="L82">        }</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">        if (reader == null) return null;</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        ObjectId previous = expected == null ? ObjectId.zeroId() : ObjectId.fromString(expected);</span>
+<span class="fc" id="L85">        ObjectId candidate = ObjectId.fromString(incoming);</span>
+<span class="fc" id="L86">        String prefix = publicationPrefix(publicationIdentity);</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        for (var entry : reader.getReverseEntries(64)) {</span>
+<span class="fc" id="L88">            String comment = entry.getComment();</span>
+<span class="pc bpc" id="L89" title="2 of 6 branches missed.">            if (previous.equals(entry.getOldId()) &amp;&amp; candidate.equals(entry.getNewId())</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">                    &amp;&amp; comment != null &amp;&amp; comment.startsWith(prefix)) {</span>
+<span class="fc" id="L91">                String observed = comment.substring(prefix.length());</span>
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">                if (ObjectId.isId(observed)) return ObjectId.fromString(observed).name();</span>
+            }
+<span class="fc" id="L94">        }</span>
+<span class="fc" id="L95">        return null;</span>
+    }
+
+    private static String publicationPrefix(String publicationIdentity) {
+<span class="fc" id="L99">        return &quot;fetch: publish verified upstream operation &quot; + StableIdentityHash.sha256(publicationIdentity) + &quot; source &quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

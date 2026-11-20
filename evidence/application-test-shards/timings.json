@@ -1,0 +1,270 @@
+{
+  "commit": "2774f630a1d507bdc034c1adea3356bf84bf41cb",
+  "sourceTree": "806134021a752b84e6379f29f564100c16cef3fb",
+  "tests": {
+    "classes": 633,
+    "suites": 633,
+    "reports": 634,
+    "cases": 5677,
+    "skipped": 59,
+    "excludedClasses": 11
+  },
+  "coverage": [
+    "core",
+    "recovery",
+    "browser",
+    "scenario",
+    "runtime",
+    "domain-integration"
+  ],
+  "durationSeconds": 6828.311,
+  "slowSuites": [
+    {
+      "className": "com.taxonomy.ScenarioArchitectureAcceptanceTest",
+      "group": "scenario",
+      "durationSeconds": 1113.749
+    },
+    {
+      "className": "com.taxonomy.PortfolioUiAcceptanceIT",
+      "group": "browser",
+      "durationSeconds": 255.371
+    },
+    {
+      "className": "com.taxonomy.interop.publication.IntegrationPublicationBoundaryRestartTest",
+      "group": "recovery",
+      "durationSeconds": 244.73
+    },
+    {
+      "className": "com.taxonomy.composition.analysis.artemis.WorkerRuntimeFootprintTest",
+      "group": "recovery",
+      "durationSeconds": 144.756
+    },
+    {
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationLocalRecoveryTest",
+      "group": "recovery",
+      "durationSeconds": 139.471
+    },
+    {
+      "className": "com.taxonomy.PortfolioClientRoutingIT",
+      "group": "browser",
+      "durationSeconds": 137.022
+    },
+    {
+      "className": "com.taxonomy.backup.recovery.NativeInstallationPostgresRecoveryIT",
+      "group": "runtime",
+      "durationSeconds": 124.03
+    },
+    {
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationBrowserTest",
+      "group": "browser",
+      "durationSeconds": 123.874
+    },
+    {
+      "className": "com.taxonomy.acceptance.ReformulationScenarioBrowserTest",
+      "group": "browser",
+      "durationSeconds": 116.708
+    },
+    {
+      "className": "com.taxonomy.KeycloakSecurityContainerIT",
+      "group": "runtime",
+      "durationSeconds": 114.065
+    }
+  ],
+  "groupDurations": {
+    "core": 1380.832,
+    "recovery": 1585.199,
+    "browser": 1505.902,
+    "scenario": 1113.749,
+    "runtime": 837.914,
+    "domain-integration": 404.715
+  },
+  "groupStatistics": {
+    "core": {
+      "reports": 528,
+      "cases": 4821,
+      "skipped": 59
+    },
+    "recovery": {
+      "reports": 23,
+      "cases": 110,
+      "skipped": 0
+    },
+    "browser": {
+      "reports": 24,
+      "cases": 315,
+      "skipped": 0
+    },
+    "scenario": {
+      "reports": 1,
+      "cases": 2,
+      "skipped": 0
+    },
+    "runtime": {
+      "reports": 10,
+      "cases": 89,
+      "skipped": 0
+    },
+    "domain-integration": {
+      "reports": 48,
+      "cases": 340,
+      "skipped": 0
+    }
+  },
+  "slowClasses": [
+    {
+      "className": "com.taxonomy.ScenarioArchitectureAcceptanceTest",
+      "group": "scenario",
+      "durationSeconds": 1113.749
+    },
+    {
+      "className": "com.taxonomy.PortfolioUiAcceptanceIT",
+      "group": "browser",
+      "durationSeconds": 255.371
+    },
+    {
+      "className": "com.taxonomy.interop.publication.IntegrationPublicationBoundaryRestartTest",
+      "group": "recovery",
+      "durationSeconds": 244.73
+    },
+    {
+      "className": "com.taxonomy.composition.analysis.artemis.WorkerRuntimeFootprintTest",
+      "group": "recovery",
+      "durationSeconds": 144.756
+    },
+    {
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationLocalRecoveryTest",
+      "group": "recovery",
+      "durationSeconds": 139.471
+    },
+    {
+      "className": "com.taxonomy.PortfolioClientRoutingIT",
+      "group": "browser",
+      "durationSeconds": 137.022
+    },
+    {
+      "className": "com.taxonomy.backup.recovery.NativeInstallationPostgresRecoveryIT",
+      "group": "runtime",
+      "durationSeconds": 124.03,
+      "baselineSeconds": 139.924,
+      "changeSeconds": -15.894,
+      "changePercent": -11.359
+    },
+    {
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationBrowserTest",
+      "group": "browser",
+      "durationSeconds": 123.874
+    },
+    {
+      "className": "com.taxonomy.acceptance.ReformulationScenarioBrowserTest",
+      "group": "browser",
+      "durationSeconds": 116.708
+    },
+    {
+      "className": "com.taxonomy.KeycloakSecurityContainerIT",
+      "group": "runtime",
+      "durationSeconds": 114.065,
+      "baselineSeconds": 136.409,
+      "changeSeconds": -22.344,
+      "changePercent": -16.38
+    }
+  ],
+  "timingBaselineSourceCommit": "04d2a2d275c0b003fd86378ab29d4557fadcacd1",
+  "timingDrift": {
+    "runtime": {
+      "comparedClasses": 10,
+      "baselineSeconds": 914.327,
+      "durationSeconds": 837.914,
+      "changeSeconds": -76.413,
+      "changePercent": -8.357
+    },
+    "domain-integration": {
+      "comparedClasses": 45,
+      "baselineSeconds": 700.018,
+      "durationSeconds": 361.251,
+      "changeSeconds": -338.767,
+      "changePercent": -48.394
+    }
+  },
+  "classTimingChanges": [
+    {
+      "className": "com.taxonomy.PortfolioAnalysisUiDiagnosticIT",
+      "group": "runtime",
+      "durationSeconds": 111.931,
+      "baselineSeconds": 48.139,
+      "changeSeconds": 63.792,
+      "changePercent": 132.516
+    },
+    {
+      "className": "com.taxonomy.portfolio.reformulation.AdoptedLineageRealReanalysisTest",
+      "group": "domain-integration",
+      "durationSeconds": 29.836,
+      "baselineSeconds": 90.273,
+      "changeSeconds": -60.437,
+      "changePercent": -66.949
+    },
+    {
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationEncodingTest",
+      "group": "domain-integration",
+      "durationSeconds": 24.521,
+      "baselineSeconds": 63.806,
+      "changeSeconds": -39.285,
+      "changePercent": -61.569
+    },
+    {
+      "className": "com.taxonomy.DiagnosticsContainerIT",
+      "group": "runtime",
+      "durationSeconds": 48.226,
+      "baselineSeconds": 85.673,
+      "changeSeconds": -37.447,
+      "changePercent": -43.709
+    },
+    {
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationDispatchClaimTest",
+      "group": "domain-integration",
+      "durationSeconds": 24.287,
+      "baselineSeconds": 57.969,
+      "changeSeconds": -33.682,
+      "changePercent": -58.103
+    },
+    {
+      "className": "com.taxonomy.ObservabilityContainerIT",
+      "group": "runtime",
+      "durationSeconds": 83.691,
+      "baselineSeconds": 115.408,
+      "changeSeconds": -31.717,
+      "changePercent": -27.482
+    },
+    {
+      "className": "com.taxonomy.KeycloakSecurityContainerIT",
+      "group": "runtime",
+      "durationSeconds": 114.065,
+      "baselineSeconds": 136.409,
+      "changeSeconds": -22.344,
+      "changePercent": -16.38
+    },
+    {
+      "className": "com.taxonomy.interop.ScenarioArchiMateImportTest",
+      "group": "domain-integration",
+      "durationSeconds": 21.803,
+      "baselineSeconds": 40.38,
+      "changeSeconds": -18.577,
+      "changePercent": -46.005
+    },
+    {
+      "className": "com.taxonomy.workspace.controller.WorkspaceControllerTest",
+      "group": "domain-integration",
+      "durationSeconds": 6.232,
+      "baselineSeconds": 24.041,
+      "changeSeconds": -17.809,
+      "changePercent": -74.078
+    },
+    {
+      "className": "com.taxonomy.OnnxSeleniumIT",
+      "group": "runtime",
+      "durationSeconds": 93.8,
+      "baselineSeconds": 111.267,
+      "changeSeconds": -17.467,
+      "changePercent": -15.698
+    }
+  ]
+}

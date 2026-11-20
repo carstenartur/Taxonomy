@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>VariantDeletionAuthority.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.access</a> &gt; <span class="el_source">VariantDeletionAuthority.java</span></div><h1>VariantDeletionAuthority.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.access;
+
+import com.taxonomy.workspace.service.WorkspaceBranchDeletion;
+import com.taxonomy.workspace.service.WorkspaceFetchAuthority;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
+import org.springframework.security.oauth2.core.oidc.user.OidcUser;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.stereotype.Component;
+
+import java.time.Instant;
+
+/** Recheck the same application permission and verified actor at the destructive effect. */
+@Component
+public class VariantDeletionAuthority implements WorkspaceBranchDeletion.Actor {
+    private final WorkspaceFetchAuthority identities;
+
+<span class="fc" id="L19">    public VariantDeletionAuthority(WorkspaceFetchAuthority identities) { this.identities = identities; }</span>
+
+    @Override public String require(String username) {
+<span class="fc" id="L22">        var auth = SecurityContextHolder.getContext().getAuthentication();</span>
+<span class="fc bfc" id="L23" title="All 2 branches covered.">        if (!ApiAccessPolicy.hasPermission(auth, ApiPermission.ARCHITECTURE_DELETE)) throw denied();</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">        if (auth instanceof JwtAuthenticationToken jwt) requireLive(jwt.getToken().getExpiresAt());</span>
+<span class="pc bpc" id="L25" title="3 of 4 branches missed.">        if (auth instanceof OAuth2AuthenticationToken &amp;&amp; auth.getPrincipal() instanceof OidcUser oidc) {</span>
+<span class="nc" id="L26">            requireLive(oidc.getIdToken().getExpiresAt());</span>
+        }
+<span class="fc" id="L28">        return identities.currentActor(username);</span>
+    }
+
+    private static void requireLive(Instant expiry) {
+<span class="pc bpc" id="L32" title="1 of 4 branches missed.">        if (expiry == null || !expiry.isAfter(Instant.now())) throw denied();</span>
+<span class="fc" id="L33">    }</span>
+
+    private static AccessDeniedException denied() {
+<span class="fc" id="L36">        return new AccessDeniedException(&quot;Current variant delete permission required&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

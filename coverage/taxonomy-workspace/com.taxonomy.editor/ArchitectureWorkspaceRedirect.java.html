@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureWorkspaceRedirect.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.editor</a> &gt; <span class="el_source">ArchitectureWorkspaceRedirect.java</span></div><h1>ArchitectureWorkspaceRedirect.java</h1><pre class="source lang-java linenums">package com.taxonomy.editor;
+
+import org.springframework.util.MultiValueMap;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+
+/** Compatibility links retain decoded query coordinates inside the application's fixed shell. */
+public final class ArchitectureWorkspaceRedirect {
+    private ArchitectureWorkspaceRedirect() { }
+
+<span class="fc" id="L11">    public static String working(MultiValueMap&lt;String,String&gt; coordinates) { return target(&quot;working&quot;,coordinates); }</span>
+<span class="fc" id="L12">    public static String snapshot(MultiValueMap&lt;String,String&gt; coordinates) { return target(&quot;snapshot&quot;,coordinates); }</span>
+
+    private static String target(String source, MultiValueMap&lt;String,String&gt; coordinates) {
+<span class="fc" id="L15">        var target = new StringBuilder(&quot;redirect:/?architectureSource=&quot;).append(source);</span>
+<span class="fc" id="L16">        coordinates.forEach((name,values) -&gt; {</span>
+<span class="fc bfc" id="L17" title="All 2 branches covered.">            if (&quot;architectureSource&quot;.equals(name)) return;</span>
+<span class="pc bpc" id="L18" title="2 of 4 branches missed.">            if (values == null || values.isEmpty()) target.append('&amp;').append(encode(name));</span>
+<span class="fc bfc" id="L19" title="All 2 branches covered.">            else for (String value : values) {</span>
+<span class="fc" id="L20">                target.append('&amp;').append(encode(name));</span>
+<span class="pc bpc" id="L21" title="1 of 2 branches missed.">                if (value != null) target.append('=').append(encode(value));</span>
+<span class="fc" id="L22">            }</span>
+<span class="fc" id="L23">        });</span>
+<span class="fc" id="L24">        return target.append(&quot;#architecture&quot;).toString();</span>
+    }
+
+    // Encode decoded parameter data, including literal '+' and reserved delimiters, exactly once.
+    // The fixed redirect:/ prefix remains context-relative under Spring's RedirectView.
+<span class="fc" id="L29">    private static String encode(String value) { return URLEncoder.encode(value,StandardCharsets.UTF_8).replace(&quot;+&quot;,&quot;%20&quot;); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DefaultCommitAdoption.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.storage</a> &gt; <span class="el_source">DefaultCommitAdoption.java</span></div><h1>DefaultCommitAdoption.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.storage;
+
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.treewalk.TreeWalk;
+import org.eclipse.jgit.treewalk.filter.TreeFilter;
+import java.io.IOException;
+
+/** One ordered parent-to-commit change, prepared without moving the user's branch. */
+<span class="fc" id="L10">public record DefaultCommitAdoption(String result, String candidate, String detail) {</span>
+    /** Find the first new first-parent commit. Never infer a cursor following a force push. */
+    public static String next(DslGitRepository git, String cursor, String tip) throws IOException {
+<span class="pc bpc" id="L13" title="2 of 4 branches missed.">        if (tip == null || cursor == null)</span>
+<span class="nc" id="L14">            throw new IllegalArgumentException(&quot;Source branch or cursor unavailable&quot;);</span>
+<span class="fc bfc" id="L15" title="All 2 branches covered.">        if (tip.equals(cursor))</span>
+<span class="fc" id="L16">            return null;</span>
+<span class="fc" id="L17">        try (var walk = new RevWalk(git.getGitRepository())) {</span>
+<span class="fc" id="L18">            var commit = walk.parseCommit(ObjectId.fromString(tip));</span>
+<span class="pc bpc" id="L19" title="2 of 4 branches missed.">            for (int count = 0; count &lt; 4096 &amp;&amp; commit.getParentCount() &gt; 0; count++) {</span>
+<span class="fc bfc" id="L20" title="All 2 branches covered.">                if (cursor.equals(commit.getParent(0).name()))</span>
+<span class="fc" id="L21">                    return commit.name();</span>
+<span class="fc" id="L22">                commit = walk.parseCommit(commit.getParent(0));</span>
+            }
+<span class="nc" id="L24">            throw new IllegalArgumentException(&quot;Source history moved or exceeds the inspection limit&quot;);</span>
+        }
+    }
+
+    public static boolean related(DslGitRepository git, String target, String source) throws IOException {
+<span class="fc" id="L29">        try (var walk = new RevWalk(git.getGitRepository())) {</span>
+<span class="fc" id="L30">            walk.setRevFilter(org.eclipse.jgit.revwalk.filter.RevFilter.MERGE_BASE);</span>
+<span class="fc" id="L31">            walk.markStart(walk.parseCommit(ObjectId.fromString(target)));</span>
+<span class="fc" id="L32">            walk.markStart(walk.parseCommit(ObjectId.fromString(source)));</span>
+<span class="pc bpc" id="L33" title="2 of 4 branches missed.">            return walk.next() != null &amp;&amp; walk.next() == null;</span>
+        }
+    }
+
+    /** One retention ref per rule keeps a prepared result reachable across SQL rollback, restart and Git GC. */
+    public static void retain(DslGitRepository git, String ruleId, String candidate) throws IOException {
+<span class="pc bpc" id="L39" title="1 of 2 branches missed.">        if (!ruleId.matches(&quot;[a-f0-9]{64}&quot;))</span>
+<span class="nc" id="L40">            throw new IllegalArgumentException(&quot;Invalid adoption rule identity&quot;);</span>
+<span class="fc" id="L41">        String ref = &quot;refs/taxonomy/branch-adoption/&quot; + ruleId;</span>
+<span class="fc" id="L42">        var old = git.readFreshRef(ref);</span>
+<span class="pc bpc" id="L43" title="1 of 4 branches missed.">        if (old != null &amp;&amp; old.isSymbolic())</span>
+<span class="nc" id="L44">            throw new IOException(&quot;Invalid adoption retention ref&quot;);</span>
+<span class="fc" id="L45">        var update = git.getGitRepository().updateRef(ref);</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">        update.setExpectedOldObjectId(old == null ? ObjectId.zeroId() : old.getObjectId());</span>
+<span class="fc" id="L47">        update.setNewObjectId(ObjectId.fromString(candidate));</span>
+<span class="fc" id="L48">        update.setForceUpdate(true);</span>
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">        switch (update.update()) {</span>
+        case NEW, FAST_FORWARD, FORCED, NO_CHANGE -&gt; {
+<span class="fc" id="L51">        }</span>
+<span class="nc" id="L52">        default -&gt; throw new IOException(&quot;Could not retain the prepared adoption&quot;);</span>
+        }
+<span class="fc" id="L54">    }</span>
+
+    static boolean sameContent(DslGitRepository git, ObjectId left, ObjectId right) throws IOException {
+<span class="fc" id="L57">        try (var diff = new TreeWalk(git.getGitRepository())) {</span>
+<span class="fc" id="L58">            diff.addTree(left);</span>
+<span class="fc" id="L59">            diff.addTree(right);</span>
+<span class="fc" id="L60">            diff.setRecursive(true);</span>
+<span class="fc" id="L61">            diff.setFilter(TreeFilter.ANY_DIFF);</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">            while (diff.next())</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">                if (!CommitProvenance.FILENAME.equals(diff.getPathString()))</span>
+<span class="fc" id="L64">                    return false;</span>
+<span class="fc" id="L65">            return true;</span>
+<span class="fc" id="L66">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

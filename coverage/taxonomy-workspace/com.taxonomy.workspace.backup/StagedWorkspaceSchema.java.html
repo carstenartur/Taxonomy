@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>StagedWorkspaceSchema.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.backup</a> &gt; <span class="el_source">StagedWorkspaceSchema.java</span></div><h1>StagedWorkspaceSchema.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.backup;
+
+import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.MigrationState;
+import org.flywaydb.core.api.MigrationVersion;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
+
+import javax.sql.DataSource;
+import java.io.IOException;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Set;
+
+/** Allows a read of an older staged source to omit only data that its installed schema predates. */
+final class StagedWorkspaceSchema {
+<span class="fc" id="L18">    private static final Set&lt;String&gt; PUBLICATION = Set.of(&quot;workspace_publication_operation&quot;, &quot;workspace_publication_decision&quot;);</span>
+<span class="fc" id="L19">    private static final Set&lt;String&gt; HISTORY_INDEX = Set.of(&quot;history_index_operation&quot;, &quot;history_index_decision&quot;, &quot;history_index_purge_target&quot;);</span>
+    private static final String HISTORY = &quot;restore_business_schema_history&quot;;
+
+    private StagedWorkspaceSchema() { }
+
+    static boolean predatesPublications(DataSource database) throws IOException {
+<span class="fc" id="L25">        return missingTablesBefore(database, PUBLICATION, &quot;32.1&quot;);</span>
+    }
+
+    static boolean predatesRefPolicy(DataSource database) throws IOException {
+<span class="fc" id="L29">        return missingTablesBefore(database, Set.of(&quot;repository_ref_rule&quot;), &quot;36&quot;);</span>
+    }
+
+    static boolean predatesAdoption(DataSource database) throws IOException {
+<span class="fc" id="L33">        return missingTablesBefore(database, Set.of(&quot;branch_adoption_rule&quot;, &quot;branch_adoption_event&quot;), &quot;35&quot;);</span>
+    }
+
+    static boolean predatesHistoryIndex(DataSource database) throws IOException {
+<span class="fc" id="L37">        return missingTablesBefore(database, HISTORY_INDEX, &quot;32.3&quot;);</span>
+    }
+
+    private static boolean missingTablesBefore(DataSource database, Set&lt;String&gt; required, String introduced) throws IOException {
+<span class="fc" id="L41">        try (var connection = database.getConnection()) {</span>
+<span class="pc bpc" id="L42" title="1 of 2 branches missed.">            if (!isStagedDatabaseType(connection)) return false;</span>
+<span class="fc" id="L43">            var tables = tableNames(connection);</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">            if (tables.containsAll(required)) return false;</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">            if (required.stream().anyMatch(tables::contains)) throw new IOException(&quot;Workspace journal schema is incomplete&quot;);</span>
+<span class="fc bfc" id="L46" title="All 4 branches covered.">            return tables.contains(HISTORY) &amp;&amp; historyPredates(connection, introduced);</span>
+<span class="pc bpc" id="L47" title="3 of 4 branches missed.">        } catch (SQLException failed) {</span>
+<span class="nc" id="L48">            throw new IOException(&quot;Workspace source schema could not be verified&quot;, failed);</span>
+        }
+    }
+
+    static boolean missingColumnBefore(DataSource database, String table, String column, String introduced) throws IOException {
+<span class="fc" id="L53">        try (var connection = database.getConnection()) {</span>
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">            if (!isStagedDatabaseType(connection)) return false;</span>
+<span class="fc" id="L55">            var tables = tableNames(connection);</span>
+<span class="fc bfc" id="L56" title="All 4 branches covered.">            if (!tables.contains(HISTORY) || !tables.contains(table)) return false;</span>
+<span class="fc" id="L57">            boolean foundTableColumns = false;</span>
+<span class="fc" id="L58">            try (var columns = connection.getMetaData().getColumns(connection.getCatalog(), connection.getSchema(),</span>
+<span class="fc" id="L59">                    table.toUpperCase(Locale.ROOT), null)) {</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">                while (columns.next()) {</span>
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">                    if (!table.equalsIgnoreCase(columns.getString(&quot;TABLE_NAME&quot;))) continue;</span>
+<span class="fc" id="L62">                    foundTableColumns = true;</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">                    if (column.equalsIgnoreCase(columns.getString(&quot;COLUMN_NAME&quot;))) return false;</span>
+                }
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">            }</span>
+<span class="pc bpc" id="L66" title="1 of 4 branches missed.">            return foundTableColumns &amp;&amp; historyPredates(connection, introduced);</span>
+<span class="pc bpc" id="L67" title="4 of 6 branches missed.">        } catch (SQLException failed) {</span>
+<span class="nc" id="L68">            throw new IOException(&quot;Workspace source column could not be verified&quot;, failed);</span>
+        }
+    }
+
+    private static boolean isStagedDatabaseType(Connection connection) throws SQLException {
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">        return &quot;HSQL Database Engine&quot;.equals(connection.getMetaData().getDatabaseProductName())</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">                &amp;&amp; &quot;PUBLIC&quot;.equals(connection.getSchema());</span>
+    }
+
+    private static Set&lt;String&gt; tableNames(Connection connection) throws SQLException {
+<span class="fc" id="L78">        var names = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L79">        try (var tables = connection.getMetaData().getTables(connection.getCatalog(), connection.getSchema(), &quot;%&quot;, new String[]{&quot;TABLE&quot;})) {</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">            while (tables.next()) names.add(tables.getString(&quot;TABLE_NAME&quot;).toLowerCase(Locale.ROOT));</span>
+        }
+<span class="fc" id="L82">        return names;</span>
+    }
+
+    private static boolean historyPredates(Connection connection, String introduced) throws SQLException {
+<span class="fc" id="L86">        var bound = new SingleConnectionDataSource(connection, true);</span>
+<span class="fc" id="L87">        var settings = Flyway.configure().dataSource(bound).locations(&quot;classpath:db/restore/hsqldb&quot;).table(HISTORY);</span>
+<span class="fc" id="L88">        var current = settings.load().info().current();</span>
+<span class="pc bpc" id="L89" title="2 of 4 branches missed.">        if (current == null || current.getVersion() == null) return false;</span>
+<span class="fc" id="L90">        var installed = current.getVersion();</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        if (installed.compareTo(MigrationVersion.fromVersion(&quot;25&quot;)) &lt; 0</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">                || installed.compareTo(MigrationVersion.fromVersion(introduced)) &gt;= 0) return false;</span>
+<span class="fc" id="L93">        var source = settings.target(installed).load();</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">        if (!source.validateWithResult().validationSuccessful) return false;</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        for (var migration : source.info().all()) {</span>
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">            if (migration.getVersion() == null) return false;</span>
+<span class="pc bpc" id="L97" title="1 of 4 branches missed.">            if (migration.getVersion().compareTo(installed) &lt;= 0 &amp;&amp; migration.getState() != MigrationState.SUCCESS) return false;</span>
+        }
+<span class="fc" id="L99">        return true;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BranchAdoptionWorker.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">BranchAdoptionWorker.java</span></div><h1>BranchAdoptionWorker.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import org.slf4j.LoggerFactory;
+import org.springframework.core.NestedExceptionUtils;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Component;
+import java.io.IOException;
+
+/** Separate transactions make prepared Git identities recoverable after process or database failure. */
+@Component
+public class BranchAdoptionWorker {
+    private final BranchAdoptionService rules;
+
+<span class="fc" id="L15">    public BranchAdoptionWorker(BranchAdoptionService rules) {</span>
+<span class="fc" id="L16">        this.rules = rules;</span>
+<span class="fc" id="L17">    }</span>
+
+    /** An explicit retry can use a fresh interactive grant that an unattended worker cannot renew. */
+    public BranchAdoptionRule.View retryReviewed(RepositoryContext target, BranchAdoptionRule.View admitted,
+            String source) {
+<span class="fc" id="L22">        var current = admitted;</span>
+<span class="pc bpc" id="L23" title="1 of 4 branches missed.">        for (int phase = 0; phase &lt; 3 &amp;&amp; current.enabled(); phase++) {</span>
+<span class="pc bpc" id="L24" title="1 of 2 branches missed.">            if (!java.util.Set.of(&quot;ENABLED&quot;, &quot;SELECTED&quot;, &quot;PREPARED&quot;).contains(current.status())</span>
+<span class="pc bpc" id="L25" title="1 of 2 branches missed.">                    || !source.equals(current.sourceCommit()))</span>
+<span class="nc" id="L26">                break;</span>
+<span class="fc" id="L27">            var due = new BranchAdoptionService.Due(BranchAdoptionRule.key(target), current.revision());</span>
+            try {
+<span class="fc" id="L29">                rules.advance(due, false, source);</span>
+<span class="nc" id="L30">            } catch (AccessDeniedException | WorkspaceFetchAuthority.FreshLoginRequired denied) {</span>
+<span class="nc" id="L31">                rules.failed(due, true);</span>
+<span class="fc" id="L32">            } catch (IOException | RuntimeException failed) {</span>
+<span class="fc" id="L33">                rules.failed(due, NestedExceptionUtils.getMostSpecificCause(failed) instanceof AccessDeniedException);</span>
+<span class="pc" id="L34">            }</span>
+<span class="fc" id="L35">            var next = rules.inspect(target);</span>
+<span class="fc bfc" id="L36" title="All 2 branches covered.">            if (next.revision() == current.revision())</span>
+<span class="fc" id="L37">                break;</span>
+<span class="fc" id="L38">            current = next;</span>
+        }
+<span class="fc" id="L40">        return current;</span>
+    }
+
+    @Scheduled(fixedDelayString = &quot;${taxonomy.workspace.adoption-poll:15000}&quot;)
+    public void checkEnabledRules() {
+<span class="fc bfc" id="L45" title="All 2 branches covered.">        for (var due : rules.due()) {</span>
+            try {
+<span class="fc" id="L47">                rules.advance(due);</span>
+<span class="nc" id="L48">            } catch (AccessDeniedException | WorkspaceFetchAuthority.FreshLoginRequired denied) {</span>
+<span class="nc" id="L49">                rules.failed(due, true);</span>
+<span class="fc" id="L50">            } catch (IOException | RuntimeException failure) {</span>
+<span class="fc" id="L51">                LoggerFactory.getLogger(BranchAdoptionWorker.class).info(&quot;Branch adoption paused for rule {}&quot;,</span>
+<span class="fc" id="L52">                        due.id());</span>
+<span class="fc" id="L53">                rules.failed(due, NestedExceptionUtils.getMostSpecificCause(failure) instanceof AccessDeniedException);</span>
+<span class="pc" id="L54">            }</span>
+<span class="fc" id="L55">        }</span>
+<span class="fc" id="L56">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

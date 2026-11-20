@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ChildAnalysisReceipt.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.operation</a> &gt; <span class="el_source">ChildAnalysisReceipt.java</span></div><h1>ChildAnalysisReceipt.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.operation;
+
+import com.taxonomy.analysis.service.AnalysisFollowUpProviders.Binding;
+import com.taxonomy.analysis.usecase.AnalyzeNodeChildrenResult;
+import com.taxonomy.analysis.usecase.JustifyLeafResult;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import java.util.Set;
+
+/** Restricts archive restoration and public projection to the concrete validated child-result contract. */
+public final class ChildAnalysisReceipt {
+<span class="fc" id="L12">    private static final ObjectMapper JSON = new ObjectMapper();</span>
+    private ChildAnalysisReceipt() { }
+
+    public static JsonNode publicResult(String kind, JsonNode stored) {
+<span class="fc bfc" id="L16" title="All 2 branches covered.">        return switch (kind) {</span>
+<span class="fc" id="L17">            case &quot;NODE_CHILDREN&quot;, &quot;LEAF_JUSTIFICATION&quot; -&gt; stored.path(&quot;result&quot;);</span>
+<span class="fc" id="L18">            default -&gt; stored;</span>
+        };
+    }
+
+    /** Returns null when an independent parent or retained architecture source needs a separate authorized remapping. */
+    public static JsonNode restoreResult(String kind, String sourceId, String targetId, JsonNode stored) {
+<span class="fc" id="L24">        validate(kind, sourceId, stored);</span>
+<span class="pc bpc" id="L25" title="1 of 4 branches missed.">        if (&quot;FOCUS_INVESTIGATION&quot;.equals(kind) || stored.path(&quot;source&quot;).hasNonNull(&quot;parentId&quot;)) return null;</span>
+<span class="pc bpc" id="L26" title="1 of 2 branches missed.">        if (&quot;LEAF_JUSTIFICATION&quot;.equals(kind)) return stored;</span>
+<span class="fc" id="L27">        var restored = (tools.jackson.databind.node.ObjectNode) stored.deepCopy();</span>
+<span class="fc" id="L28">        ((tools.jackson.databind.node.ObjectNode) restored.get(&quot;result&quot;)).put(&quot;analysisOperationId&quot;, targetId);</span>
+<span class="fc" id="L29">        validate(kind, targetId, restored);</span>
+<span class="fc" id="L30">        return restored;</span>
+    }
+
+    public static void validate(String kind, String operationId, JsonNode stored) {
+<span class="pc bpc" id="L34" title="2 of 4 branches missed.">        if (stored == null || !stored.isObject()) throw invalid();</span>
+<span class="pc bpc" id="L35" title="1 of 4 branches missed.">        switch (kind) {</span>
+            case &quot;NODE_CHILDREN&quot; -&gt; {
+<span class="fc" id="L37">                allowed(stored, Set.of(&quot;result&quot;, &quot;parentBinding&quot;, &quot;source&quot;));</span>
+<span class="fc" id="L38">                var source = source(stored, operationId);</span>
+<span class="fc" id="L39">                JsonNode result = stored.path(&quot;result&quot;);</span>
+<span class="fc" id="L40">                allowed(result, Set.of(&quot;scores&quot;, &quot;reasons&quot;, &quot;prompt&quot;, &quot;rawResponse&quot;, &quot;provider&quot;, &quot;durationMs&quot;, &quot;error&quot;,</span>
+                        &quot;analysisOperationId&quot;, &quot;analysisProviderId&quot;, &quot;analysisReasonLength&quot;, &quot;analysisLanguage&quot;));
+<span class="pc bpc" id="L42" title="2 of 4 branches missed.">                if (!result.path(&quot;scores&quot;).isObject() || !result.path(&quot;reasons&quot;).isObject()</span>
+<span class="pc bpc" id="L43" title="2 of 4 branches missed.">                        || !result.path(&quot;durationMs&quot;).isIntegralNumber() || !result.path(&quot;prompt&quot;).isString()</span>
+<span class="pc bpc" id="L44" title="2 of 4 branches missed.">                        || !result.path(&quot;rawResponse&quot;).isString() || !result.path(&quot;prompt&quot;).asString().isEmpty()</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">                        || !result.path(&quot;rawResponse&quot;).asString().isEmpty()) throw invalid();</span>
+<span class="fc" id="L46">                var node = JSON.treeToValue(result, AnalyzeNodeChildrenResult.class);</span>
+<span class="pc bpc" id="L47" title="2 of 4 branches missed.">                if (node.scores().values().stream().anyMatch(score -&gt; !com.taxonomy.dto.AnalysisPercentages.valid(score))</span>
+<span class="pc bpc" id="L48" title="3 of 6 branches missed.">                        || node.durationMs() &lt; 0 || node.analysisOperationId() == null || node.analysisProviderId() == null</span>
+<span class="pc bpc" id="L49" title="1 of 6 branches missed.">                        || (source.parentId() == null &amp;&amp; node.analysisLanguage() == null) || node.analysisReasonLength() == null</span>
+<span class="pc bpc" id="L50" title="3 of 4 branches missed.">                        || node.error() != null &amp;&amp; !&quot;ANALYSIS_FAILED&quot;.equals(node.error())) throw invalid();</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">                if (stored.hasNonNull(&quot;parentBinding&quot;)) {</span>
+<span class="fc" id="L52">                    var pin = stored.path(&quot;parentBinding&quot;);</span>
+<span class="fc" id="L53">                    allowed(pin, Set.of(&quot;provider&quot;, &quot;binding&quot;, &quot;reasonLength&quot;, &quot;analysisLanguage&quot;, &quot;requirement&quot;));</span>
+<span class="fc" id="L54">                    allowed(pin.path(&quot;requirement&quot;), Set.of(&quot;projectId&quot;, &quot;requirementId&quot;, &quot;snapshotId&quot;, &quot;textSha256&quot;, &quot;requirementVersionId&quot;));</span>
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">                    if (pin.hasNonNull(&quot;binding&quot;)) {</span>
+<span class="nc" id="L56">                        allowed(pin.path(&quot;binding&quot;), Set.of(&quot;plugin&quot;, &quot;configurationRevision&quot;));</span>
+<span class="nc" id="L57">                        allowed(pin.path(&quot;binding&quot;).path(&quot;plugin&quot;), Set.of(&quot;id&quot;, &quot;version&quot;, &quot;artifactSha256&quot;));</span>
+                    }
+<span class="fc" id="L59">                    Binding parent = JSON.treeToValue(pin, Binding.class);</span>
+<span class="pc bpc" id="L60" title="2 of 4 branches missed.">                    if (parent.requirement().projectId() != null || parent.requirement().requirementId() != null</span>
+<span class="pc bpc" id="L61" title="2 of 4 branches missed.">                            || parent.requirement().snapshotId() != null || parent.requirement().requirementVersionId() != null)</span>
+<span class="nc" id="L62">                        throw invalid();</span>
+<span class="pc bpc" id="L63" title="2 of 6 branches missed.">                    if (source.parentId() != null || !operationId.equals(node.analysisOperationId()) || !parent.provider().equals(node.analysisProviderId())</span>
+<span class="pc bpc" id="L64" title="2 of 4 branches missed.">                            || parent.analysisLanguage() != node.analysisLanguage() || parent.reasonLength() != node.analysisReasonLength())</span>
+<span class="fc" id="L65">                        throw invalid();</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">                } else if (!node.analysisOperationId().equals(source.parentId())) throw invalid();</span>
+<span class="fc" id="L67">            }</span>
+            case &quot;LEAF_JUSTIFICATION&quot; -&gt; {
+<span class="fc" id="L69">                allowed(stored, Set.of(&quot;result&quot;, &quot;source&quot;));</span>
+<span class="fc" id="L70">                var source = source(stored, operationId);</span>
+<span class="fc" id="L71">                allowed(stored.path(&quot;result&quot;), Set.of(&quot;nodeCode&quot;, &quot;justification&quot;));</span>
+<span class="fc" id="L72">                var leaf = JSON.treeToValue(stored.path(&quot;result&quot;), JustifyLeafResult.class);</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">                if (!source.nodeCode().equals(leaf.nodeCode())) throw invalid();</span>
+<span class="fc" id="L74">            }</span>
+            case &quot;FOCUS_INVESTIGATION&quot; -&gt; {
+<span class="fc" id="L76">                allowed(stored, Set.of(&quot;source&quot;, &quot;context&quot;, &quot;sourceId&quot;, &quot;sourceHash&quot;, &quot;method&quot;, &quot;outcome&quot;, &quot;modelCalls&quot;,</span>
+                        &quot;candidateCount&quot;, &quot;suggestions&quot;));
+<span class="pc bpc" id="L78" title="2 of 4 branches missed.">                if (stored.hasNonNull(&quot;context&quot;) == stored.hasNonNull(&quot;source&quot;) || !stored.path(&quot;sourceId&quot;).isString()</span>
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">                        || !stored.path(&quot;sourceHash&quot;).asString(&quot;&quot;).matches(&quot;[a-f0-9]{64}&quot;)</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">                        || !Set.of(&quot;ASSESSED&quot;, &quot;FAILED&quot;).contains(stored.path(&quot;outcome&quot;).asString(&quot;&quot;))</span>
+<span class="pc bpc" id="L81" title="2 of 4 branches missed.">                        || !stored.path(&quot;method&quot;).isString() || stored.path(&quot;modelCalls&quot;).asInt(-1) != 1</span>
+<span class="pc bpc" id="L82" title="2 of 4 branches missed.">                        || !stored.path(&quot;candidateCount&quot;).isIntegralNumber() || stored.path(&quot;candidateCount&quot;).asInt(-1) &lt; 1</span>
+<span class="pc bpc" id="L83" title="2 of 4 branches missed.">                        || stored.path(&quot;candidateCount&quot;).asInt() &gt; 24 || !stored.path(&quot;suggestions&quot;).isArray()</span>
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">                        || stored.path(&quot;suggestions&quot;).size() &gt; stored.path(&quot;candidateCount&quot;).asInt()) throw invalid();</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">                if (stored.hasNonNull(&quot;context&quot;))</span>
+<span class="fc" id="L86">                    allowed(stored.get(&quot;context&quot;), Set.of(&quot;repositoryId&quot;, &quot;workspaceScopeKey&quot;, &quot;branch&quot;, &quot;commit&quot;, &quot;revision&quot;, &quot;actor&quot;, &quot;writeMode&quot;));</span>
+<span class="nc" id="L87">                else allowed(stored.get(&quot;source&quot;), Set.of(&quot;kind&quot;, &quot;repositoryId&quot;, &quot;workspaceScopeKey&quot;, &quot;branch&quot;, &quot;version&quot;,</span>
+                        &quot;projectId&quot;, &quot;requirementId&quot;, &quot;requirementVersionId&quot;, &quot;snapshotId&quot;));
+<span class="fc bfc" id="L89" title="All 2 branches covered.">                for (var item : stored.path(&quot;suggestions&quot;)) {</span>
+<span class="fc" id="L90">                    allowed(item, Set.of(&quot;id&quot;, &quot;sourceId&quot;, &quot;targetId&quot;, &quot;relationType&quot;, &quot;rationale&quot;, &quot;evidence&quot;, &quot;properties&quot;));</span>
+<span class="pc bpc" id="L91" title="2 of 4 branches missed.">                    if (!item.path(&quot;evidence&quot;).isArray() || !item.path(&quot;properties&quot;).isObject()) throw invalid();</span>
+<span class="fc" id="L92">                    allowed(item.get(&quot;properties&quot;), Set.of(&quot;provenance&quot;,&quot;x-focus-rationale&quot;,&quot;x-focus-evidence&quot;,&quot;x-focus-method&quot;,</span>
+                            &quot;x-focus-source-hash&quot;,&quot;x-focus-revision&quot;,&quot;x-focus-continuation-id&quot;,&quot;x-focus-continuation-version&quot;,
+                            &quot;x-focus-execution-catalogue&quot;,&quot;x-focus-operation-id&quot;,&quot;x-focus-source-kind&quot;,&quot;x-focus-source-version&quot;,
+                            &quot;x-analysis-branch&quot;,&quot;x-analysis-catalogue-fingerprint&quot;,&quot;x-analysis-commit&quot;,&quot;x-analysis-created-at&quot;,
+                            &quot;x-analysis-model&quot;,&quot;x-analysis-project-id&quot;,&quot;x-analysis-provider&quot;,&quot;x-analysis-repository-id&quot;,
+                            &quot;x-analysis-requirement-id&quot;,&quot;x-analysis-requirement-version-id&quot;,&quot;x-analysis-snapshot-id&quot;,
+                            &quot;x-analysis-status&quot;,&quot;x-analysis-workspace-scope&quot;));
+<span class="fc bfc" id="L99" title="All 2 branches covered.">                    for (var evidence : item.path(&quot;evidence&quot;)) allowed(evidence, Set.of(&quot;elementId&quot;,&quot;field&quot;,&quot;quote&quot;));</span>
+<span class="fc" id="L100">                }</span>
+<span class="fc" id="L101">            }</span>
+<span class="nc" id="L102">            default -&gt; throw invalid();</span>
+        }
+<span class="fc" id="L104">    }</span>
+
+    private static AnalysisNodeReceipts.Source source(JsonNode stored, String operationId) {
+<span class="fc" id="L107">        var value = stored.path(&quot;source&quot;);</span>
+<span class="fc" id="L108">        allowed(value, Set.of(&quot;nodeCode&quot;, &quot;fingerprint&quot;, &quot;parentId&quot;));</span>
+<span class="fc" id="L109">        var source = JSON.treeToValue(value, AnalysisNodeReceipts.Source.class);</span>
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">        if (operationId.equals(source.parentId())) throw invalid();</span>
+<span class="fc" id="L111">        return source;</span>
+    }
+
+    private static void allowed(JsonNode value, Set&lt;String&gt; fields) {
+<span class="pc bpc" id="L115" title="1 of 4 branches missed.">        if (!value.isObject() || !fields.containsAll(value.propertyNames())) throw invalid();</span>
+<span class="fc" id="L116">    }</span>
+<span class="fc" id="L117">    private static IllegalArgumentException invalid() { return new IllegalArgumentException(&quot;Invalid child analysis receipt&quot;); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RepositoryGrantIdentity.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.architecture</a> &gt; <span class="el_source">RepositoryGrantIdentity.java</span></div><h1>RepositoryGrantIdentity.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.architecture;
+
+import com.taxonomy.security.keycloak.KeycloakPrincipalMode;
+import com.taxonomy.security.model.StablePrincipal;
+import com.taxonomy.security.service.PrincipalIdentityService;
+import com.taxonomy.workspace.service.RepositoryMembershipIdentity;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Component;
+
+import com.taxonomy.workspace.service.WorkspaceFetchAuthority;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.access.AccessDeniedException;
+import tools.jackson.databind.json.JsonMapper;
+
+import java.time.Instant;
+import java.util.Optional;
+import java.util.UUID;
+
+/** Records authorized role decisions without assigning registry IDs to legacy identities. */
+@Component
+public final class RepositoryGrantIdentity implements RepositoryMembershipIdentity {
+    private final PrincipalIdentityService identities;
+    private final Optional&lt;KeycloakPrincipalMode&gt; mode;
+    private final WorkspaceFetchAuthority authority;
+    private final JdbcTemplate jdbc;
+<span class="fc" id="L26">    private static final JsonMapper JSON = JsonMapper.builder().build();</span>
+
+    public RepositoryGrantIdentity(PrincipalIdentityService identities, Optional&lt;KeycloakPrincipalMode&gt; mode,
+<span class="fc" id="L29">                                   WorkspaceFetchAuthority authority, JdbcTemplate jdbc) {</span>
+<span class="fc" id="L30">        this.authority = authority;</span>
+<span class="fc" id="L31">        this.jdbc = jdbc;</span>
+<span class="fc" id="L32">        this.identities = identities;</span>
+<span class="fc" id="L33">        this.mode = mode;</span>
+<span class="fc" id="L34">    }</span>
+
+    @Override public Optional&lt;UUID&gt; currentActor(String scope) {
+<span class="fc" id="L37">        var auth = SecurityContextHolder.getContext().getAuthentication();</span>
+<span class="pc bpc" id="L38" title="1 of 6 branches missed.">        if (auth == null || !auth.isAuthenticated()</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">                || !(auth instanceof StablePrincipal || auth.getPrincipal() instanceof StablePrincipal)) {</span>
+<span class="fc" id="L40">            return Optional.empty();</span>
+        }
+<span class="pc bpc" id="L42" title="1 of 2 branches missed.">        if (!scope.equals(auth.getName())) return Optional.empty();</span>
+<span class="fc" id="L43">        return Optional.of(identities.requireCurrent(auth).value());</span>
+    }
+
+    @Override public void recordRoleDecision(String scope, RoleDecision decision) {
+<span class="fc" id="L47">        var principal = currentActor(scope);</span>
+<span class="fc" id="L48">        String detail = JSON.writeValueAsString(decision);</span>
+<span class="fc" id="L49">        String id = UUID.randomUUID().toString();</span>
+<span class="fc" id="L50">        long time = Instant.now().toEpochMilli();</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        if (principal.isPresent()) {</span>
+<span class="fc" id="L52">            String authorizer = principal.orElseThrow().toString();</span>
+<span class="fc" id="L53">            jdbc.update(&quot;insert into principal_access_audit(audit_id,actor_principal,target_principal,decision_kind,detail,occurred_at) values (?,?,?,'REPOSITORY_MEMBERSHIP',?,?)&quot;,</span>
+<span class="fc" id="L54">                    id, authorizer, authorizer, detail, time);</span>
+<span class="fc" id="L55">        } else {</span>
+<span class="fc" id="L56">            String binding = authority.currentActor(scope);</span>
+<span class="pc bpc" id="L57" title="2 of 4 branches missed.">            if (binding == null || !binding.matches(&quot;[0-9a-f]{64}&quot;)) throw new AccessDeniedException(&quot;Verified OIDC binding required&quot;);</span>
+<span class="fc" id="L58">            jdbc.update(&quot;insert into legacy_repository_role_audit(audit_id,actor_binding,detail,occurred_at) values (?,?,?,?)&quot;,</span>
+<span class="fc" id="L59">                    id, binding, detail, time);</span>
+        }
+<span class="fc" id="L61">    }</span>
+
+    @Override public Optional&lt;UUID&gt; activeHolder(String scope) {
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">        if (mode.orElse(null) == KeycloakPrincipalMode.LEGACY) return Optional.empty();</span>
+<span class="fc" id="L65">        return identities.findActiveForScope(scope).map(principal -&gt; principal.id().value());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

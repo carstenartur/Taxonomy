@@ -1,0 +1,586 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>VisioPageContentsConverter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.visio.converter</a> &gt; <span class="el_source">VisioPageContentsConverter.java</span></div><h1>VisioPageContentsConverter.java</h1><pre class="source lang-java linenums">package com.taxonomy.visio.converter;
+
+import com.taxonomy.diagram.VisioDrawingOptions;
+import com.taxonomy.visio.VisioPageLayout;
+import com.taxonomy.visio.VisioConnect;
+import com.taxonomy.visio.VisioTextBox;
+import com.taxonomy.visio.VisioPage;
+import com.taxonomy.visio.VisioShape;
+import com.taxonomy.visio.VisioProperty;
+import com.taxonomy.visio.VisioNativeShape;
+import com.taxonomy.visio.VisioConnectionPoints;
+import com.taxonomy.visio.VisioContainers;
+import com.thoughtworks.xstream.converters.Converter;
+import com.thoughtworks.xstream.converters.MarshallingContext;
+import com.thoughtworks.xstream.converters.UnmarshallingContext;
+import com.thoughtworks.xstream.io.HierarchicalStreamReader;
+import com.thoughtworks.xstream.io.HierarchicalStreamWriter;
+
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import com.taxonomy.export.ExportTheme;
+
+/**
+ * Marshals native master instances with cached geometry and explicit point-glue
+ * dependencies. Connection records and endpoint formulas describe the same ports.
+ */
+public class VisioPageContentsConverter implements Converter {
+
+    private static final String VISIO_NS =
+            &quot;http://schemas.microsoft.com/office/visio/2012/main&quot;;
+    private static final String REL_NS =
+            &quot;http://schemas.openxmlformats.org/officeDocument/2006/relationships&quot;;
+    private static final String LINE_COLOR = &quot;#44546A&quot;;
+    private final VisioNativeShape masterDefinition;
+    private final ExportTheme theme;
+    private final VisioPageLayout layout;
+    private final VisioDrawingOptions options;
+
+<span class="fc" id="L41">    public VisioPageContentsConverter() { this(null, ExportTheme.defaults()); }</span>
+
+    /** Uses the same geometry policy to emit an original document master. */
+    public VisioPageContentsConverter(VisioNativeShape masterDefinition) {
+<span class="fc" id="L45">        this(masterDefinition, ExportTheme.defaults());</span>
+<span class="fc" id="L46">    }</span>
+
+    public VisioPageContentsConverter(VisioNativeShape masterDefinition, ExportTheme theme) {
+<span class="fc" id="L49">        this(masterDefinition, theme, VisioPageLayout.NATURAL, null);</span>
+<span class="fc" id="L50">    }</span>
+
+    public VisioPageContentsConverter(ExportTheme theme, VisioPageLayout layout, VisioDrawingOptions options) {
+<span class="fc" id="L53">        this(null, theme, layout, options);</span>
+<span class="fc" id="L54">    }</span>
+
+    private VisioPageContentsConverter(VisioNativeShape masterDefinition, ExportTheme theme, VisioPageLayout layout,
+<span class="fc" id="L57">                                       VisioDrawingOptions options) {</span>
+<span class="fc" id="L58">        this.layout = layout;</span>
+<span class="fc" id="L59">        this.options = options;</span>
+<span class="fc" id="L60">        this.masterDefinition = masterDefinition;</span>
+<span class="fc" id="L61">        this.theme = java.util.Objects.requireNonNull(theme, &quot;theme&quot;);</span>
+<span class="fc" id="L62">    }</span>
+
+    @Override
+    public boolean canConvert(Class type) {
+<span class="fc" id="L66">        return VisioPage.class.equals(type);</span>
+    }
+
+    @Override
+    public void marshal(
+            Object source,
+            HierarchicalStreamWriter writer,
+            MarshallingContext context) {
+<span class="fc" id="L74">        VisioPage page = (VisioPage) source;</span>
+<span class="fc" id="L75">        Map&lt;String, VisioShape&gt; shapesById = indexShapes(page);</span>
+
+<span class="fc" id="L77">        writer.addAttribute(&quot;xmlns&quot;, VISIO_NS);</span>
+<span class="fc" id="L78">        writer.addAttribute(&quot;xmlns:r&quot;, REL_NS);</span>
+
+<span class="fc bfc" id="L80" title="All 2 branches covered.">        if (masterDefinition != null) {</span>
+<span class="fc" id="L81">            writer.startNode(&quot;Shapes&quot;);</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">            if (masterDefinition == VisioNativeShape.CONNECTOR) {</span>
+<span class="fc" id="L83">                var endpoints = VisioConnectionPoints.between(new VisioShape(&quot;1&quot;, &quot;&quot;, 0, 0, 0, 0, &quot;&quot;, false),</span>
+                        new VisioShape(&quot;2&quot;, &quot;&quot;, 2, 0, 0, 0, &quot;&quot;, false));
+<span class="fc" id="L85">                writeConnectorShape(writer, 1, new VisioConnect(&quot;1&quot;, &quot;2&quot;, &quot;&quot;),</span>
+                        new VisioConnectionPoints.Route(endpoints, null));
+<span class="fc" id="L87">            } else {</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">                double width = masterDefinition == VisioNativeShape.CONTAINER ? 4 : 2;</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">                double height = masterDefinition == VisioNativeShape.CONTAINER ? 3 : 1;</span>
+<span class="fc" id="L90">                writeRegularShape(writer, new VisioShape(&quot;1&quot;, masterDefinition.label(), width / 2, height / 2, width, height,</span>
+<span class="fc" id="L91">                        masterDefinition.label(), false), masterDefinition, null);</span>
+            }
+<span class="fc" id="L93">            writer.endNode();</span>
+<span class="fc" id="L94">            return;</span>
+        }
+
+<span class="fc" id="L97">        var columns = new VisioConnectionPoints.Columns(page.getShapes());</span>
+<span class="fc" id="L98">        var routes = new ArrayList&lt;VisioConnectionPoints.Route&gt;(page.getConnects().size());</span>
+<span class="fc" id="L99">        VisioContainers.Membership membership = VisioContainers.membership(page);</span>
+
+<span class="pc bpc" id="L101" title="2 of 6 branches missed.">        if (!page.getShapes().isEmpty() || !page.getConnects().isEmpty() || page.getLegend() != null) {</span>
+<span class="fc" id="L102">            writer.startNode(&quot;Shapes&quot;);</span>
+            // Container outlines are behind both members and their connectors.
+<span class="fc bfc" id="L104" title="All 4 branches covered.">            for (VisioShape shape : page.getShapes()) if (VisioNativeShape.isContainer(shape))</span>
+<span class="fc" id="L105">                writeRegularShape(writer, shape, VisioNativeShape.CONTAINER, membership.formula(shape.getId()));</span>
+<span class="fc" id="L106">            long connectorId = maximumShapeId(page);</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">            for (VisioConnect connect : page.getConnects()) {</span>
+<span class="fc" id="L108">                connectorId++;</span>
+<span class="fc" id="L109">                var route = columns.route(connect, requireShape(shapesById, connect.getFromShape(), &quot;source&quot;),</span>
+<span class="fc" id="L110">                        requireShape(shapesById, connect.getToShape(), &quot;target&quot;));</span>
+<span class="fc" id="L111">                routes.add(route);</span>
+<span class="fc" id="L112">                writeConnectorShape(writer, connectorId, connect, route);</span>
+<span class="fc" id="L113">            }</span>
+            // Shape order is drawing order: opaque nodes cover crossing strokes.
+<span class="fc bfc" id="L115" title="All 4 branches covered.">            for (VisioShape shape : page.getShapes()) if (!VisioNativeShape.isContainer(shape))</span>
+<span class="fc" id="L116">                writeRegularShape(writer, shape, VisioNativeShape.of(shape), membership.formula(shape.getId()));</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">            if (page.getLegend() != null) {</span>
+<span class="fc" id="L118">                var box = page.getLegend();</span>
+<span class="fc" id="L119">                var legend = new VisioShape(Long.toString(connectorId + 1), box.text(), box.x(), box.y(), box.width(), box.height(), &quot;Legend&quot;, false);</span>
+<span class="fc" id="L120">                legend.getProperties().put(&quot;taxonomy.presentationOnly&quot;, VisioProperty.bool(true));</span>
+<span class="fc" id="L121">                writeRegularShape(writer, legend, null, null);</span>
+            }
+<span class="fc" id="L123">            writer.endNode();</span>
+        }
+
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        if (!page.getConnects().isEmpty()) {</span>
+<span class="fc" id="L127">            writer.startNode(&quot;Connects&quot;);</span>
+<span class="fc" id="L128">            long connectorId = maximumShapeId(page);</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">            for (int index = 0; index &lt; routes.size(); index++) {</span>
+<span class="fc" id="L130">                connectorId++;</span>
+<span class="fc" id="L131">                var connect = page.getConnects().get(index);</span>
+<span class="fc" id="L132">                var endpoints = routes.get(index).endpoints();</span>
+<span class="fc" id="L133">                writeGlue(writer, connectorId, &quot;BeginX&quot;, connect.getFromShape(), endpoints.source().side());</span>
+<span class="fc" id="L134">                writeGlue(writer, connectorId, &quot;EndX&quot;, connect.getToShape(), endpoints.target().side());</span>
+            }
+<span class="fc" id="L136">            writer.endNode();</span>
+        }
+<span class="fc" id="L138">    }</span>
+
+    @Override
+    public Object unmarshal(
+            HierarchicalStreamReader reader,
+            UnmarshallingContext context) {
+<span class="fc" id="L144">        throw new UnsupportedOperationException(</span>
+                &quot;VisioPageContentsConverter does not support unmarshaling&quot;);
+    }
+
+    private void writeRegularShape(
+            HierarchicalStreamWriter writer,
+            VisioShape shape, VisioNativeShape kind, String relationships) {
+<span class="fc bfc" id="L151" title="All 4 branches covered.">        boolean evidence = VisioNativeShape.isPresentationOnly(shape) &amp;&amp; &quot;Evidence&quot;.equals(shape.getType());</span>
+<span class="fc" id="L152">        writer.startNode(&quot;Shape&quot;);</span>
+<span class="fc" id="L153">        writer.addAttribute(&quot;ID&quot;, shape.getId());</span>
+<span class="fc" id="L154">        writer.addAttribute(&quot;NameU&quot;, &quot;TaxonomyShape.&quot; + shape.getId());</span>
+<span class="fc" id="L155">        writer.addAttribute(&quot;IsCustomNameU&quot;, &quot;1&quot;);</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">        writer.addAttribute(&quot;Name&quot;, evidence ? translated(&quot;Full recorded evidence&quot;, &quot;Vollständige Nachweise&quot;) : shape.getText());</span>
+<span class="fc" id="L157">        writer.addAttribute(&quot;IsCustomName&quot;, &quot;1&quot;);</span>
+<span class="fc" id="L158">        writer.addAttribute(&quot;Type&quot;, &quot;Shape&quot;);</span>
+<span class="fc bfc" id="L159" title="All 4 branches covered.">        if (kind != null &amp;&amp; masterDefinition == null) writer.addAttribute(&quot;Master&quot;, Integer.toString(kind.id()));</span>
+<span class="fc" id="L160">        writeStyleReferences(writer);</span>
+
+<span class="fc" id="L162">        double width = layout.length(shape.getWidth());</span>
+<span class="fc" id="L163">        double height = layout.length(shape.getHeight());</span>
+<span class="fc" id="L164">        writeCell(writer, &quot;PinX&quot;, decimal(layout.x(shape.getX())));</span>
+<span class="fc" id="L165">        writeCell(writer, &quot;PinY&quot;, decimal(layout.y(shape.getY())));</span>
+<span class="fc" id="L166">        writeCell(writer, &quot;Width&quot;, decimal(width));</span>
+<span class="fc" id="L167">        writeCell(writer, &quot;Height&quot;, decimal(height));</span>
+<span class="fc" id="L168">        writeCell(writer, &quot;LocPinX&quot;, decimal(width / 2.0), &quot;Width*0.5&quot;);</span>
+<span class="fc" id="L169">        writeCell(writer, &quot;LocPinY&quot;, decimal(height / 2.0), &quot;Height*0.5&quot;);</span>
+<span class="fc" id="L170">        writeCell(writer, &quot;Angle&quot;, &quot;0&quot;);</span>
+<span class="fc bfc" id="L171" title="All 2 branches covered.">        boolean container = kind == VisioNativeShape.CONTAINER;</span>
+<span class="fc bfc" id="L172" title="All 4 branches covered.">        boolean nativePresentation = container || VisioNativeShape.isPresentationOnly(shape);</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">        String fill = nativePresentation ? com.taxonomy.export.DiagramPresentation.fill(shape.getType()) : theme.nodeFill(shape.getType());</span>
+<span class="fc" id="L174">        var assignmentColor = shape.getProperties().get(&quot;taxonomy.responsibilityColor&quot;);</span>
+<span class="fc" id="L175">        writeCell(writer, &quot;FillForegnd&quot;, fill);</span>
+<span class="fc bfc" id="L176" title="All 2 branches covered.">        writeCell(writer, &quot;FillPattern&quot;, container ? &quot;0&quot; : &quot;1&quot;);</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        String border = nativePresentation ? LINE_COLOR : theme.nodeBorder(shape.getType(), shape.isAnchor(), LINE_COLOR, fill);</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">        writeCell(writer, &quot;LineColor&quot;, assignmentColor == null ? border : assignmentColor.value());</span>
+<span class="fc" id="L179">        writeCell(writer, &quot;LinePattern&quot;, &quot;1&quot;);</span>
+<span class="fc bfc" id="L180" title="All 4 branches covered.">        writeCell(writer, &quot;LineWeight&quot;, decimal(layout.length(shape.isAnchor() || assignmentColor != null ? 0.02777777777777778 : 0.01388888888888889)));</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">        if (kind == VisioNativeShape.SERVICE) writeCell(writer, &quot;Rounding&quot;, decimal(Math.min(width, height) * .15), &quot;MIN(Width,Height)*0.15&quot;);</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">        if (kind == VisioNativeShape.APPLICATION) writeCell(writer, &quot;RightMargin&quot;, decimal(width * .2), &quot;Width*0.2&quot;);</span>
+<span class="fc bfc" id="L183" title="All 4 branches covered.">        writeCell(writer, &quot;VerticalAlign&quot;, evidence || container ? &quot;0&quot; : &quot;1&quot;);</span>
+<span class="fc bfc" id="L184" title="All 2 branches covered.">        if (kind != null) {</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">            writeCell(writer, &quot;ObjType&quot;, container ? &quot;4&quot; : &quot;1&quot;);</span>
+<span class="fc" id="L186">            writeConnectionPoints(writer, width, height);</span>
+        }
+<span class="fc bfc" id="L188" title="All 2 branches covered.">        if (relationships != null) writeCell(writer, &quot;Relationships&quot;, &quot;0&quot;, relationships);</span>
+<span class="fc bfc" id="L189" title="All 2 branches covered.">        if (container) {</span>
+<span class="fc" id="L190">            writer.startNode(&quot;Section&quot;); writer.addAttribute(&quot;N&quot;, &quot;User&quot;);</span>
+<span class="fc" id="L191">            writer.startNode(&quot;Row&quot;); writer.addAttribute(&quot;N&quot;, &quot;msvStructureType&quot;);</span>
+<span class="fc" id="L192">            writeStringCell(writer, &quot;Value&quot;, &quot;Container&quot;);</span>
+<span class="fc" id="L193">            writer.endNode(); writer.endNode();</span>
+<span class="fc" id="L194">            double header = Math.min(height, layout.length(VisioContainers.HEADER_HEIGHT));</span>
+<span class="fc" id="L195">            writeCell(writer, &quot;TxtPinX&quot;, decimal(width / 2), &quot;Width*0.5&quot;);</span>
+<span class="fc" id="L196">            writeCell(writer, &quot;TxtPinY&quot;, decimal(height - header / 2), &quot;Height-TxtHeight*0.5&quot;);</span>
+<span class="fc" id="L197">            writeCell(writer, &quot;TxtWidth&quot;, decimal(width), &quot;Width&quot;);</span>
+<span class="fc" id="L198">            writeCell(writer, &quot;TxtHeight&quot;, decimal(header), &quot;MIN(Height,&quot; + containerHeaderHeight() + &quot;)&quot;);</span>
+<span class="fc" id="L199">            writeCell(writer, &quot;TxtLocPinX&quot;, decimal(width / 2), &quot;TxtWidth*0.5&quot;);</span>
+<span class="fc" id="L200">            writeCell(writer, &quot;TxtLocPinY&quot;, decimal(header / 2), &quot;TxtHeight*0.5&quot;);</span>
+        }
+<span class="fc bfc" id="L202" title="All 4 branches covered.">        boolean decisionCard = poster() &amp;&amp; shape.getProperties().containsKey(&quot;taxonomy.evaluationStatus&quot;);</span>
+<span class="fc bfc" id="L203" title="All 6 branches covered.">        boolean screenOwner = options != null &amp;&amp; !poster() &amp;&amp; shape.getProperties().containsKey(&quot;taxonomy.responsibilityName&quot;);</span>
+<span class="fc bfc" id="L204" title="All 6 branches covered.">        if (evidence || poster() || screenOwner) {</span>
+<span class="fc bfc" id="L205" title="All 2 branches covered.">            double inset = layout.length(evidence ? .1 : 4d / 72);</span>
+<span class="fc" id="L206">            String margin = decimal(inset);</span>
+<span class="fc" id="L207">            writeCell(writer, &quot;LeftMargin&quot;, margin);</span>
+<span class="fc bfc" id="L208" title="All 4 branches covered.">            if (decisionCard &amp;&amp; kind == VisioNativeShape.INFORMATION) {</span>
+<span class="fc" id="L209">                double fold = VisioNativeShape.INFORMATION_FOLD_WIDTH;</span>
+<span class="fc" id="L210">                writeCell(writer, &quot;RightMargin&quot;, decimal(width * fold + inset), &quot;Width*&quot; + decimal(fold) + &quot;+&quot; + margin);</span>
+<span class="pc bpc" id="L211" title="1 of 2 branches missed.">            } else if (kind != VisioNativeShape.APPLICATION) {</span>
+<span class="fc" id="L212">                writeCell(writer, &quot;RightMargin&quot;, margin);</span>
+            }
+<span class="fc" id="L214">            writeCell(writer, &quot;TopMargin&quot;, margin);</span>
+<span class="fc" id="L215">            writeCell(writer, &quot;BottomMargin&quot;, margin);</span>
+        }
+<span class="fc bfc" id="L217" title="All 8 branches covered.">        int points = !evidence &amp;&amp; !container &amp;&amp; (shape.getHeight() &gt;= 1 || decisionCard) ? 12 : 10;</span>
+<span class="fc" id="L218">        writeCharacterStyle(writer, points,</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">                nativePresentation ? &quot;#172B4D&quot; : theme.nodeText(shape.getType(), &quot;#172B4D&quot;));</span>
+<span class="fc bfc" id="L220" title="All 2 branches covered.">        if (evidence) {</span>
+<span class="fc" id="L221">            writer.startNode(&quot;Section&quot;); writer.addAttribute(&quot;N&quot;, &quot;Paragraph&quot;);</span>
+<span class="fc" id="L222">            writer.startNode(&quot;Row&quot;); writer.addAttribute(&quot;IX&quot;, &quot;0&quot;);</span>
+<span class="fc" id="L223">            writeCell(writer, &quot;HorzAlign&quot;, &quot;0&quot;);</span>
+<span class="fc" id="L224">            writeCell(writer, &quot;SpLine&quot;, &quot;-1.2&quot;);</span>
+<span class="fc" id="L225">            writer.endNode(); writer.endNode();</span>
+        }
+<span class="fc bfc" id="L227" title="All 4 branches covered.">        writeNativeGeometry(writer, kind, width, height, kind != null &amp;&amp; masterDefinition == null);</span>
+<span class="fc" id="L228">        writeProperties(writer, shape.getProperties());</span>
+
+<span class="fc" id="L230">        writer.startNode(&quot;Text&quot;);</span>
+<span class="fc" id="L231">        writer.setValue(shape.getText());</span>
+<span class="fc" id="L232">        writer.endNode();</span>
+<span class="fc" id="L233">        writer.endNode();</span>
+<span class="fc" id="L234">    }</span>
+
+    private void writeConnectorShape(
+            HierarchicalStreamWriter writer,
+            long connectorId,
+            VisioConnect connect,
+            VisioConnectionPoints.Route route) {
+<span class="fc" id="L241">        var endpoints = route.endpoints();</span>
+<span class="fc" id="L242">        double beginX = layout.x(endpoints.source().x());</span>
+<span class="fc" id="L243">        double beginY = layout.y(endpoints.source().y());</span>
+<span class="fc" id="L244">        double endX = layout.x(endpoints.target().x());</span>
+<span class="fc" id="L245">        double endY = layout.y(endpoints.target().y());</span>
+<span class="fc" id="L246">        double width = Math.hypot(endX - beginX, endY - beginY);</span>
+<span class="fc" id="L247">        double angle = Math.atan2(endY - beginY, endX - beginX);</span>
+
+<span class="fc" id="L249">        writer.startNode(&quot;Shape&quot;);</span>
+<span class="fc" id="L250">        writer.addAttribute(&quot;ID&quot;, String.valueOf(connectorId));</span>
+<span class="fc" id="L251">        writer.addAttribute(&quot;NameU&quot;, &quot;TaxonomyConnector.&quot; + connectorId);</span>
+<span class="fc" id="L252">        writer.addAttribute(&quot;IsCustomNameU&quot;, &quot;1&quot;);</span>
+<span class="fc" id="L253">        writer.addAttribute(&quot;Type&quot;, &quot;Shape&quot;);</span>
+<span class="fc bfc" id="L254" title="All 2 branches covered.">        if (masterDefinition == null) writer.addAttribute(&quot;Master&quot;, Integer.toString(VisioNativeShape.CONNECTOR.id()));</span>
+<span class="fc" id="L255">        writeStyleReferences(writer);</span>
+
+<span class="fc" id="L257">        writeCell(writer, &quot;OneD&quot;, &quot;1&quot;);</span>
+        // Routable native connector. Current attachments are explicit static
+        // point glue; GlueType permits a person to reattach dynamically in Visio.
+<span class="fc" id="L260">        writeCell(writer, &quot;ObjType&quot;, &quot;2&quot;);</span>
+<span class="fc" id="L261">        writeCell(writer, &quot;GlueType&quot;, &quot;2&quot;);</span>
+
+        // Persist meaningful calculated values as well as formulas. Consumers
+        // that do not immediately recalculate the ShapeSheet still render the
+        // connector between the selected source and target positions.
+<span class="fc bfc" id="L266" title="All 2 branches covered.">        String fromFormula = masterDefinition == null ? endpoints.source().formula(connect.getFromShape()) : null;</span>
+<span class="fc bfc" id="L267" title="All 2 branches covered.">        String toFormula = masterDefinition == null ? endpoints.target().formula(connect.getToShape()) : null;</span>
+<span class="fc" id="L268">        writeCell(writer, &quot;BeginX&quot;, decimal(beginX), fromFormula);</span>
+<span class="fc" id="L269">        writeCell(writer, &quot;BeginY&quot;, decimal(beginY), fromFormula);</span>
+<span class="fc" id="L270">        writeCell(writer, &quot;EndX&quot;, decimal(endX), toFormula);</span>
+<span class="fc" id="L271">        writeCell(writer, &quot;EndY&quot;, decimal(endY), toFormula);</span>
+
+        // Use Visio's normal rotating 1-D transform. The local geometry is a
+        // horizontal line of Width; the endpoint-derived Pin/Width/Angle cells
+        // position and rotate it when glue moves either endpoint.
+<span class="fc" id="L276">        writeCell(writer, &quot;PinX&quot;, decimal((beginX + endX) / 2.0),</span>
+                &quot;(BeginX+EndX)*0.5&quot;);
+<span class="fc" id="L278">        writeCell(writer, &quot;PinY&quot;, decimal((beginY + endY) / 2.0),</span>
+                &quot;(BeginY+EndY)*0.5&quot;);
+<span class="fc" id="L280">        writeCell(writer, &quot;Width&quot;, decimal(width),</span>
+                &quot;SQRT((EndX-BeginX)^2+(EndY-BeginY)^2)&quot;);
+<span class="fc" id="L282">        writeCell(writer, &quot;Height&quot;, &quot;0&quot;);</span>
+<span class="fc" id="L283">        writeCell(writer, &quot;LocPinX&quot;, decimal(width / 2.0), &quot;Width*0.5&quot;);</span>
+<span class="fc" id="L284">        writeCell(writer, &quot;LocPinY&quot;, &quot;0&quot;);</span>
+<span class="fc" id="L285">        writeCell(writer, &quot;Angle&quot;, decimal(angle),</span>
+                &quot;ATAN2(EndY-BeginY,EndX-BeginX)&quot;);
+<span class="fc bfc" id="L287" title="All 2 branches covered.">        boolean proposed = connect.getProperties().containsKey(&quot;taxonomy.proposed&quot;)</span>
+<span class="fc bfc" id="L288" title="All 2 branches covered.">                &amp;&amp; &quot;true&quot;.equals(connect.getProperties().get(&quot;taxonomy.proposed&quot;).value());</span>
+<span class="fc bfc" id="L289" title="All 2 branches covered.">        writeCell(writer, &quot;LineColor&quot;, theme.relationshipStroke(connect.getRelationType(), proposed ? &quot;#9333EA&quot; : LINE_COLOR, &quot;#FFFFFF&quot;));</span>
+<span class="fc bfc" id="L290" title="All 2 branches covered.">        writeCell(writer, &quot;LinePattern&quot;, proposed ? &quot;2&quot; : &quot;1&quot;);</span>
+<span class="fc" id="L291">        writeCell(writer, &quot;LineWeight&quot;, decimal(layout.length(0.01388888888888889)));</span>
+<span class="fc" id="L292">        writeCell(writer, &quot;EndArrow&quot;, &quot;13&quot;);</span>
+<span class="fc" id="L293">        writeCell(writer, &quot;EndArrowSize&quot;, &quot;2&quot;);</span>
+<span class="fc" id="L294">        VisioTextBox box = connect.textBoxOrDefault(endpoints);</span>
+        // Invert the rotating shape transform. Constant page-axis offsets from
+        // the midpoint stay upright and attached when Visio recalculates glue.
+<span class="fc" id="L297">        double dx = layout.x(box.x()) - (beginX + endX) / 2;</span>
+<span class="fc" id="L298">        double dy = layout.y(box.y()) - (beginY + endY) / 2;</span>
+<span class="fc" id="L299">        writeCell(writer, &quot;TxtPinX&quot;, decimal(width / 2 + dx * Math.cos(angle) + dy * Math.sin(angle)),</span>
+<span class="fc" id="L300">                &quot;Width*0.5+(&quot; + decimal(dx) + &quot;)*COS(Angle)+(&quot; + decimal(dy) + &quot;)*SIN(Angle)&quot;);</span>
+<span class="fc" id="L301">        writeCell(writer, &quot;TxtPinY&quot;, decimal(-dx * Math.sin(angle) + dy * Math.cos(angle)),</span>
+<span class="fc" id="L302">                &quot;-(&quot; + decimal(dx) + &quot;)*SIN(Angle)+(&quot; + decimal(dy) + &quot;)*COS(Angle)&quot;);</span>
+<span class="fc" id="L303">        writeCell(writer, &quot;TxtWidth&quot;, decimal(layout.length(box.width())));</span>
+<span class="fc" id="L304">        writeCell(writer, &quot;TxtHeight&quot;, decimal(layout.length(box.height())));</span>
+<span class="fc" id="L305">        writeCell(writer, &quot;TxtLocPinX&quot;, decimal(layout.length(box.width()) / 2), &quot;TxtWidth*0.5&quot;);</span>
+<span class="fc" id="L306">        writeCell(writer, &quot;TxtLocPinY&quot;, decimal(layout.length(box.height()) / 2), &quot;TxtHeight*0.5&quot;);</span>
+<span class="fc" id="L307">        writeCell(writer, &quot;TxtAngle&quot;, decimal(-angle), &quot;-Angle&quot;);</span>
+<span class="fc" id="L308">        writeCell(writer, &quot;TextBkgnd&quot;, &quot;#FFFFFF&quot;);</span>
+<span class="fc" id="L309">        writeCell(writer, &quot;TextBkgndTrans&quot;, &quot;0&quot;);</span>
+<span class="fc" id="L310">        writeCell(writer, &quot;VerticalAlign&quot;, &quot;1&quot;);</span>
+<span class="fc bfc" id="L311" title="All 2 branches covered.">        if (poster()) {</span>
+<span class="fc" id="L312">            String margin = decimal(layout.length(4d / 72));</span>
+<span class="fc bfc" id="L313" title="All 2 branches covered.">            for (String side : java.util.List.of(&quot;LeftMargin&quot;, &quot;RightMargin&quot;, &quot;TopMargin&quot;, &quot;BottomMargin&quot;)) {</span>
+<span class="fc" id="L314">                writeCell(writer, side, margin);</span>
+<span class="fc" id="L315">            }</span>
+        }
+<span class="fc bfc" id="L317" title="All 2 branches covered.">        writeCharacterStyle(writer, box.height() &gt;= 1 ? 12 : 10, &quot;#172B4D&quot;);</span>
+<span class="fc" id="L318">        writeLineGeometry(writer, width, angle, route.gutterFraction());</span>
+<span class="fc" id="L319">        writeProperties(writer, connect.getProperties());</span>
+
+<span class="fc" id="L321">        writer.startNode(&quot;Text&quot;);</span>
+<span class="fc" id="L322">        writer.setValue(box.text());</span>
+<span class="fc" id="L323">        writer.endNode();</span>
+<span class="fc" id="L324">        writer.endNode();</span>
+<span class="fc" id="L325">    }</span>
+
+    private String containerHeaderHeight() {
+        // Preserve the original master formula literal on standard exports.
+<span class="pc bpc" id="L329" title="1 of 2 branches missed.">        return poster() ? decimal(layout.length(VisioContainers.HEADER_HEIGHT)) : Double.toString(VisioContainers.HEADER_HEIGHT);</span>
+    }
+
+    private String translated(String english, String german) {
+<span class="pc bpc" id="L333" title="3 of 4 branches missed.">        return options != null &amp;&amp; options.german() ? german : english;</span>
+    }
+
+    private boolean poster() {
+<span class="fc bfc" id="L337" title="All 4 branches covered.">        return options != null &amp;&amp; options.mode() == VisioDrawingOptions.Mode.WALL;</span>
+    }
+
+    private void writeCharacterStyle(HierarchicalStreamWriter writer, int points, String color) {
+<span class="fc" id="L341">        writer.startNode(&quot;Section&quot;);</span>
+<span class="fc" id="L342">        writer.addAttribute(&quot;N&quot;, &quot;Character&quot;);</span>
+<span class="fc" id="L343">        writer.startNode(&quot;Row&quot;);</span>
+<span class="fc" id="L344">        writer.addAttribute(&quot;IX&quot;, &quot;0&quot;);</span>
+<span class="fc" id="L345">        writeCell(writer, &quot;Size&quot;, decimal(layout.length(points / 72.0)));</span>
+<span class="fc" id="L346">        writeCell(writer, &quot;Color&quot;, color);</span>
+<span class="fc" id="L347">        writer.endNode();</span>
+<span class="fc" id="L348">        writer.endNode();</span>
+<span class="fc" id="L349">    }</span>
+
+    private static void writeGlue(
+            HierarchicalStreamWriter writer,
+            long connectorId,
+            String fromCell,
+            String endpointShapeId, VisioConnectionPoints.Side side) {
+<span class="fc" id="L356">        writer.startNode(&quot;Connect&quot;);</span>
+<span class="fc" id="L357">        writer.addAttribute(&quot;FromSheet&quot;, String.valueOf(connectorId));</span>
+<span class="fc" id="L358">        writer.addAttribute(&quot;FromCell&quot;, fromCell);</span>
+<span class="fc bfc" id="L359" title="All 2 branches covered.">        writer.addAttribute(&quot;FromPart&quot;, fromCell.equals(&quot;BeginX&quot;) ? &quot;9&quot; : &quot;12&quot;);</span>
+<span class="fc" id="L360">        writer.addAttribute(&quot;ToSheet&quot;, endpointShapeId);</span>
+<span class="fc" id="L361">        writer.addAttribute(&quot;ToCell&quot;, &quot;Connections.X&quot; + side.number());</span>
+<span class="fc" id="L362">        writer.addAttribute(&quot;ToPart&quot;, Integer.toString(99 + side.number()));</span>
+<span class="fc" id="L363">        writer.endNode();</span>
+<span class="fc" id="L364">    }</span>
+
+    private static void writeStyleReferences(HierarchicalStreamWriter writer) {
+<span class="fc" id="L367">        writer.addAttribute(&quot;LineStyle&quot;, &quot;0&quot;);</span>
+<span class="fc" id="L368">        writer.addAttribute(&quot;FillStyle&quot;, &quot;0&quot;);</span>
+<span class="fc" id="L369">        writer.addAttribute(&quot;TextStyle&quot;, &quot;0&quot;);</span>
+<span class="fc" id="L370">    }</span>
+
+    private void writeProperties(HierarchicalStreamWriter writer, Map&lt;String, VisioProperty&gt; properties) {
+<span class="fc bfc" id="L373" title="All 2 branches covered.">        if (properties.isEmpty()) return;</span>
+<span class="fc" id="L374">        writer.startNode(&quot;Section&quot;);</span>
+<span class="fc" id="L375">        writer.addAttribute(&quot;N&quot;, &quot;Property&quot;);</span>
+<span class="fc bfc" id="L376" title="All 2 branches covered.">        for (var entry : new java.util.TreeMap&lt;&gt;(properties).entrySet()) {</span>
+<span class="fc" id="L377">            writer.startNode(&quot;Row&quot;);</span>
+            // Hex encoding is injective and uses only portable ShapeSheet row-name characters.
+<span class="fc" id="L379">            writer.addAttribute(&quot;N&quot;, &quot;t&quot; + java.util.HexFormat.of().formatHex(entry.getKey().getBytes(java.nio.charset.StandardCharsets.UTF_8)));</span>
+<span class="fc bfc" id="L380" title="All 2 branches covered.">            writeCell(writer, &quot;Label&quot;, options == null ? entry.getKey() : VisioPropertyLabels.label(entry.getKey(), options.german()));</span>
+<span class="fc" id="L381">            writeCell(writer, &quot;Type&quot;, entry.getValue().shapeType());</span>
+<span class="fc" id="L382">            writer.startNode(&quot;Cell&quot;);</span>
+<span class="fc" id="L383">            writer.addAttribute(&quot;N&quot;, &quot;Value&quot;);</span>
+<span class="fc" id="L384">            writer.addAttribute(&quot;V&quot;, entry.getValue().shapeValue());</span>
+<span class="fc bfc" id="L385" title="All 2 branches covered.">            if (entry.getValue().kind() == VisioProperty.Kind.STRING) writer.addAttribute(&quot;U&quot;, &quot;STR&quot;);</span>
+<span class="fc" id="L386">            writer.endNode();</span>
+<span class="fc" id="L387">            writer.endNode();</span>
+<span class="fc" id="L388">        }</span>
+<span class="fc" id="L389">        writer.endNode();</span>
+<span class="fc" id="L390">        var evidencePage = properties.get(&quot;taxonomy.evidencePage&quot;);</span>
+<span class="fc" id="L391">        var requirementUrl = properties.get(&quot;taxonomy.requirementUrl&quot;);</span>
+<span class="fc bfc" id="L392" title="All 4 branches covered.">        if (evidencePage != null || requirementUrl != null) {</span>
+<span class="fc" id="L393">            writer.startNode(&quot;Section&quot;); writer.addAttribute(&quot;N&quot;, &quot;Hyperlink&quot;);</span>
+<span class="fc bfc" id="L394" title="All 2 branches covered.">            if (evidencePage != null) {</span>
+<span class="fc" id="L395">                writer.startNode(&quot;Row&quot;); writer.addAttribute(&quot;N&quot;, &quot;FullEvidence&quot;);</span>
+<span class="fc" id="L396">                writeStringCell(writer, &quot;Description&quot;, translated(&quot;Full recorded evidence&quot;, &quot;Vollständige Nachweise&quot;));</span>
+<span class="fc" id="L397">                writeStringCell(writer, &quot;Address&quot;, &quot;&quot;);</span>
+<span class="fc" id="L398">                writeStringCell(writer, &quot;SubAddress&quot;, evidencePage.value());</span>
+<span class="fc" id="L399">                writeCell(writer, &quot;Default&quot;, &quot;1&quot;);</span>
+<span class="fc" id="L400">                writer.endNode();</span>
+            }
+<span class="fc bfc" id="L402" title="All 2 branches covered.">            if (requirementUrl != null) {</span>
+<span class="fc" id="L403">                com.taxonomy.visio.VisioHyperlinks.validateRequirementUrl(requirementUrl);</span>
+<span class="fc" id="L404">                writer.startNode(&quot;Row&quot;); writer.addAttribute(&quot;N&quot;, &quot;Requirement&quot;);</span>
+<span class="fc" id="L405">                writeStringCell(writer, &quot;Description&quot;, translated(&quot;Open requirement in Taxonomy&quot;, &quot;Anforderung in Taxonomy öffnen&quot;));</span>
+<span class="fc" id="L406">                writeStringCell(writer, &quot;Address&quot;, requirementUrl.value());</span>
+<span class="fc bfc" id="L407" title="All 2 branches covered.">                writeCell(writer, &quot;Default&quot;, evidencePage == null ? &quot;1&quot; : &quot;0&quot;);</span>
+<span class="fc" id="L408">                writer.endNode();</span>
+            }
+<span class="fc" id="L410">            writer.endNode();</span>
+        }
+<span class="fc" id="L412">    }</span>
+
+    private static void writeConnectionPoints(HierarchicalStreamWriter writer, double width, double height) {
+<span class="fc" id="L415">        writer.startNode(&quot;Section&quot;); writer.addAttribute(&quot;N&quot;, &quot;Connection&quot;);</span>
+<span class="fc bfc" id="L416" title="All 2 branches covered.">        for (var side : VisioConnectionPoints.Side.values()) {</span>
+<span class="fc" id="L417">            writer.startNode(&quot;Row&quot;); writer.addAttribute(&quot;IX&quot;, Integer.toString(side.number() - 1));</span>
+<span class="fc" id="L418">            writeCell(writer, &quot;X&quot;, decimal(width * side.xFraction()), &quot;Width*&quot; + decimal(side.xFraction()));</span>
+<span class="fc" id="L419">            writeCell(writer, &quot;Y&quot;, decimal(height * side.yFraction()), &quot;Height*&quot; + decimal(side.yFraction()));</span>
+<span class="fc" id="L420">            writeCell(writer, &quot;DirX&quot;, &quot;0&quot;);</span>
+<span class="fc" id="L421">            writeCell(writer, &quot;DirY&quot;, &quot;0&quot;);</span>
+<span class="fc" id="L422">            writeCell(writer, &quot;Type&quot;, &quot;0&quot;);</span>
+<span class="fc" id="L423">            writer.endNode();</span>
+        }
+<span class="fc" id="L425">        writer.endNode();</span>
+<span class="fc" id="L426">    }</span>
+
+    private void writeNativeGeometry(HierarchicalStreamWriter writer, VisioNativeShape kind,
+            double width, double height, boolean inherited) {
+<span class="fc bfc" id="L430" title="All 2 branches covered.">        if (kind == null) {</span>
+<span class="fc" id="L431">            writeRectangleGeometry(writer, width, height);</span>
+<span class="fc" id="L432">            return;</span>
+        }
+<span class="fc" id="L434">        double foldStart = 1 - VisioNativeShape.INFORMATION_FOLD_WIDTH;</span>
+<span class="fc bfc" id="L435" title="All 3 branches covered.">        double[][] outline = switch (kind) {</span>
+<span class="fc" id="L436">            case INFORMATION -&gt; new double[][]{{0, 0}, {1, 0}, {1, .75}, {foldStart, 1}, {0, 1}, {0, 0}};</span>
+<span class="fc" id="L437">            case ROLE -&gt; new double[][]{{.08, 0}, {.92, 0}, {1, .5}, {.92, 1}, {.08, 1}, {0, .5}, {.08, 0}};</span>
+<span class="fc" id="L438">            default -&gt; new double[][]{{0, 0}, {1, 0}, {1, 1}, {0, 1}, {0, 0}};</span>
+        };
+<span class="fc bfc" id="L440" title="All 2 branches covered.">        writePolygon(writer, 0, width, height, outline, kind == VisioNativeShape.CONTAINER, inherited);</span>
+<span class="fc bfc" id="L441" title="All 2 branches covered.">        if (kind == VisioNativeShape.INFORMATION)</span>
+<span class="fc" id="L442">            writePolygon(writer, 1, width, height, new double[][]{{foldStart, 1}, {foldStart, .75}, {1, .75}}, true, inherited);</span>
+<span class="fc bfc" id="L443" title="All 2 branches covered.">        if (kind == VisioNativeShape.APPLICATION) {</span>
+<span class="fc" id="L444">            writePolygon(writer, 1, width, height, new double[][]{{.82, .72}, {.97, .72}, {.97, .95}, {.82, .95}, {.82, .72}}, true, inherited);</span>
+<span class="fc" id="L445">            writePolygon(writer, 2, width, height, new double[][]{{.78, .76}, {.86, .76}, {.86, .81}, {.78, .81}, {.78, .76}}, true, inherited);</span>
+<span class="fc" id="L446">            writePolygon(writer, 3, width, height, new double[][]{{.78, .86}, {.86, .86}, {.86, .91}, {.78, .91}, {.78, .86}}, true, inherited);</span>
+        }
+<span class="fc bfc" id="L448" title="All 2 branches covered.">        if (kind == VisioNativeShape.CONTAINER) {</span>
+<span class="fc" id="L449">            writer.startNode(&quot;Section&quot;); writer.addAttribute(&quot;N&quot;, &quot;Geometry&quot;); writer.addAttribute(&quot;IX&quot;, &quot;1&quot;);</span>
+<span class="fc" id="L450">            writeCell(writer, &quot;NoFill&quot;, &quot;1&quot;);</span>
+<span class="fc" id="L451">            double header = layout.length(VisioContainers.HEADER_HEIGHT);</span>
+<span class="fc" id="L452">            double bottom = height - Math.min(height, header);</span>
+<span class="pc bpc" id="L453" title="1 of 4 branches missed.">            String y = inherited &amp;&amp; !poster() ? &quot;Inh&quot; : &quot;Height-MIN(Height,&quot; + containerHeaderHeight() + &quot;)&quot;;</span>
+<span class="fc bfc" id="L454" title="All 2 branches covered.">            writeGeometryRow(writer, &quot;MoveTo&quot;, 1, 0, bottom, inherited ? &quot;Inh&quot; : null, y);</span>
+<span class="fc bfc" id="L455" title="All 2 branches covered.">            writeGeometryRow(writer, &quot;LineTo&quot;, 2, width, bottom, inherited ? &quot;Inh&quot; : &quot;Width&quot;, y);</span>
+<span class="fc" id="L456">            writer.endNode();</span>
+        }
+<span class="fc" id="L458">    }</span>
+
+    private static void writePolygon(HierarchicalStreamWriter writer, int section, double width, double height,
+            double[][] points, boolean noFill, boolean inherited) {
+<span class="fc" id="L462">        writer.startNode(&quot;Section&quot;); writer.addAttribute(&quot;N&quot;, &quot;Geometry&quot;); writer.addAttribute(&quot;IX&quot;, Integer.toString(section));</span>
+<span class="fc bfc" id="L463" title="All 2 branches covered.">        if (noFill) writeCell(writer, &quot;NoFill&quot;, &quot;1&quot;);</span>
+<span class="fc bfc" id="L464" title="All 2 branches covered.">        for (int index = 0; index &lt; points.length; index++) {</span>
+<span class="fc" id="L465">            double x = points[index][0], y = points[index][1];</span>
+<span class="fc bfc" id="L466" title="All 2 branches covered.">            writeGeometryRow(writer, index == 0 ? &quot;MoveTo&quot; : &quot;LineTo&quot;, index + 1, width * x, height * y,</span>
+<span class="fc bfc" id="L467" title="All 4 branches covered.">                    inherited ? &quot;Inh&quot; : &quot;Width*&quot; + decimal(x), inherited ? &quot;Inh&quot; : &quot;Height*&quot; + decimal(y));</span>
+        }
+<span class="fc" id="L469">        writer.endNode();</span>
+<span class="fc" id="L470">    }</span>
+
+    private static void writeStringCell(HierarchicalStreamWriter writer, String name, String value) {
+<span class="fc" id="L473">        writer.startNode(&quot;Cell&quot;); writer.addAttribute(&quot;N&quot;, name); writer.addAttribute(&quot;V&quot;, value); writer.addAttribute(&quot;U&quot;, &quot;STR&quot;); writer.endNode();</span>
+<span class="fc" id="L474">    }</span>
+
+    private static void writeRectangleGeometry(
+            HierarchicalStreamWriter writer,
+            double width,
+            double height) {
+<span class="fc" id="L480">        writer.startNode(&quot;Section&quot;);</span>
+<span class="fc" id="L481">        writer.addAttribute(&quot;N&quot;, &quot;Geometry&quot;);</span>
+<span class="fc" id="L482">        writer.addAttribute(&quot;IX&quot;, &quot;0&quot;);</span>
+<span class="fc" id="L483">        writeGeometryRow(writer, &quot;MoveTo&quot;, 1, 0, 0, null, null);</span>
+<span class="fc" id="L484">        writeGeometryRow(writer, &quot;LineTo&quot;, 2, width, 0, &quot;Width&quot;, null);</span>
+<span class="fc" id="L485">        writeGeometryRow(writer, &quot;LineTo&quot;, 3, width, height, &quot;Width&quot;, &quot;Height&quot;);</span>
+<span class="fc" id="L486">        writeGeometryRow(writer, &quot;LineTo&quot;, 4, 0, height, null, &quot;Height&quot;);</span>
+<span class="fc" id="L487">        writeGeometryRow(writer, &quot;LineTo&quot;, 5, 0, 0, null, null);</span>
+<span class="fc" id="L488">        writer.endNode();</span>
+<span class="fc" id="L489">    }</span>
+
+    private static void writeLineGeometry(
+            HierarchicalStreamWriter writer,
+            double width, double angle, Double gutter) {
+<span class="fc" id="L494">        writer.startNode(&quot;Section&quot;);</span>
+<span class="fc" id="L495">        writer.addAttribute(&quot;N&quot;, &quot;Geometry&quot;);</span>
+<span class="fc" id="L496">        writer.addAttribute(&quot;IX&quot;, &quot;0&quot;);</span>
+<span class="fc bfc" id="L497" title="All 2 branches covered.">        if (gutter != null) writeCell(writer, &quot;NoFill&quot;, &quot;1&quot;);</span>
+<span class="fc" id="L498">        writeGeometryRow(writer, &quot;MoveTo&quot;, 1, 0, 0, null, null);</span>
+<span class="fc bfc" id="L499" title="All 2 branches covered.">        if (gutter == null) {</span>
+<span class="fc" id="L500">            writeGeometryRow(writer, &quot;LineTo&quot;, 2, width, 0, &quot;Width&quot;, null);</span>
+        } else {
+            // Convert the two horizontal page-axis legs to the rotating 1-D shape's coordinates.
+            // Formula dependencies keep the elbows attached when a reader moves either node.
+<span class="fc" id="L504">            double across = width * Math.cos(angle) * Math.cos(angle);</span>
+<span class="fc" id="L505">            double normal = width * Math.cos(angle) * Math.sin(angle);</span>
+<span class="fc" id="L506">            String x = &quot;Width*COS(Angle)*COS(Angle)*&quot;;</span>
+<span class="fc" id="L507">            String y = &quot;Width*COS(Angle)*SIN(Angle)*&quot;;</span>
+<span class="fc" id="L508">            writeGeometryRow(writer, &quot;LineTo&quot;, 2, across * gutter, -normal * gutter,</span>
+<span class="fc" id="L509">                    x + decimal(gutter), &quot;-&quot; + y + decimal(gutter));</span>
+<span class="fc" id="L510">            double remaining = 1 - gutter;</span>
+<span class="fc" id="L511">            writeGeometryRow(writer, &quot;LineTo&quot;, 3, width - across * remaining, normal * remaining,</span>
+<span class="fc" id="L512">                    &quot;Width-&quot; + x + decimal(remaining), y + decimal(remaining));</span>
+<span class="fc" id="L513">            writeGeometryRow(writer, &quot;LineTo&quot;, 4, width, 0, &quot;Width&quot;, null);</span>
+        }
+<span class="fc" id="L515">        writer.endNode();</span>
+<span class="fc" id="L516">    }</span>
+
+    private static void writeGeometryRow(
+            HierarchicalStreamWriter writer,
+            String type,
+            int index,
+            double x,
+            double y,
+            String xFormula,
+            String yFormula) {
+<span class="fc" id="L526">        writer.startNode(&quot;Row&quot;);</span>
+<span class="fc" id="L527">        writer.addAttribute(&quot;T&quot;, type);</span>
+<span class="fc" id="L528">        writer.addAttribute(&quot;IX&quot;, String.valueOf(index));</span>
+<span class="fc" id="L529">        writeCell(writer, &quot;X&quot;, decimal(x), xFormula);</span>
+<span class="fc" id="L530">        writeCell(writer, &quot;Y&quot;, decimal(y), yFormula);</span>
+<span class="fc" id="L531">        writer.endNode();</span>
+<span class="fc" id="L532">    }</span>
+
+    private static void writeCell(
+            HierarchicalStreamWriter writer,
+            String name,
+            String value) {
+<span class="fc" id="L538">        writeCell(writer, name, value, null);</span>
+<span class="fc" id="L539">    }</span>
+
+    private static void writeCell(
+            HierarchicalStreamWriter writer,
+            String name,
+            String value,
+            String formula) {
+<span class="fc" id="L546">        writer.startNode(&quot;Cell&quot;);</span>
+<span class="fc" id="L547">        writer.addAttribute(&quot;N&quot;, name);</span>
+<span class="fc" id="L548">        writer.addAttribute(&quot;V&quot;, value);</span>
+<span class="fc bfc" id="L549" title="All 2 branches covered.">        if (formula != null) {</span>
+<span class="fc" id="L550">            writer.addAttribute(&quot;F&quot;, formula);</span>
+        }
+<span class="fc" id="L552">        writer.endNode();</span>
+<span class="fc" id="L553">    }</span>
+
+    private static Map&lt;String, VisioShape&gt; indexShapes(VisioPage page) {
+<span class="fc" id="L556">        Map&lt;String, VisioShape&gt; shapes = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L557" title="All 2 branches covered.">        for (VisioShape shape : page.getShapes()) {</span>
+<span class="fc" id="L558">            shapes.put(shape.getId(), shape);</span>
+<span class="fc" id="L559">        }</span>
+<span class="fc" id="L560">        return shapes;</span>
+    }
+
+    private static VisioShape requireShape(
+            Map&lt;String, VisioShape&gt; shapes,
+            String shapeId,
+            String role) {
+<span class="fc" id="L567">        VisioShape shape = shapes.get(shapeId);</span>
+<span class="pc bpc" id="L568" title="1 of 2 branches missed.">        if (shape == null) {</span>
+<span class="nc" id="L569">            throw new IllegalArgumentException(</span>
+                    &quot;Connector references missing &quot; + role + &quot; shape &quot; + shapeId);
+        }
+<span class="fc" id="L572">        return shape;</span>
+    }
+
+    private static long maximumShapeId(VisioPage page) {
+<span class="fc" id="L576">        return page.getShapes().stream()</span>
+<span class="fc" id="L577">                .mapToLong(shape -&gt; Long.parseLong(shape.getId()))</span>
+<span class="fc" id="L578">                .max()</span>
+<span class="fc" id="L579">                .orElse(0);</span>
+    }
+
+    private static String decimal(double value) {
+<span class="fc" id="L583">        return BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

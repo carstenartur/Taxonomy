@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BrowserSessionConfiguration.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.config</a> &gt; <span class="el_source">BrowserSessionConfiguration.java</span></div><h1>BrowserSessionConfiguration.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.config;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.core.session.SessionRegistry;
+import org.springframework.security.core.session.SessionRegistryImpl;
+import org.springframework.security.web.savedrequest.RequestCache;
+import org.springframework.security.web.savedrequest.SavedRequest;
+import org.springframework.security.web.session.HttpSessionEventPublisher;
+
+/** Reuse Spring Security's local session lifecycle; do not impose a login limit. */
+@Configuration(proxyBeanMethods = false)
+<span class="fc" id="L18">public class BrowserSessionConfiguration {</span>
+    @Bean
+    SessionRegistry browserSessionRegistry() {
+<span class="fc" id="L21">        return new SessionRegistryImpl();</span>
+    }
+
+    @Bean
+    HttpSessionEventPublisher browserSessionEvents() {
+<span class="fc" id="L26">        return new HttpSessionEventPublisher();</span>
+    }
+
+    static void configure(HttpSecurity http, SessionRegistry registry) throws Exception {
+<span class="fc" id="L30">        http.with(new BrowserNavigationCacheConfigurer(), Customizer.withDefaults());</span>
+        // Register through the form/OIDC authentication filters, not the implicit
+        // SessionManagementFilter, which would also persist HTTP Basic and bearer-token logins.
+        // The concurrency DSL retains fixation protection, last-request updates
+        // and unlimited browser sessions without opting into implicit authentication.
+<span class="fc" id="L35">        http.sessionManagement(session -&gt; session.requireExplicitAuthenticationStrategy(true)</span>
+<span class="fc" id="L36">                .sessionConcurrency(concurrency -&gt; concurrency.maximumSessions(-1).sessionRegistry(registry)));</span>
+<span class="fc" id="L37">    }</span>
+
+    private static class BrowserNavigationCacheConfigurer
+            extends AbstractHttpConfigurer&lt;BrowserNavigationCacheConfigurer, HttpSecurity&gt; {
+        @Override
+        public void init(HttpSecurity http) {
+<span class="fc" id="L43">            var configuredCache = http.getSharedObject(RequestCache.class);</span>
+<span class="fc" id="L44">            http.setSharedObject(RequestCache.class, new BrowserNavigationCache(configuredCache));</span>
+<span class="fc" id="L45">        }</span>
+    }
+
+    /** Keep Spring's normal saved navigation while parallel API challenges leave the login session alone. */
+<span class="fc" id="L49">    private record BrowserNavigationCache(RequestCache delegate) implements RequestCache {</span>
+        @Override
+        public void saveRequest(HttpServletRequest request, HttpServletResponse response) {
+<span class="fc bfc" id="L52" title="All 2 branches covered.">            if (!SecurityConfig.isRestClient(request)) {</span>
+<span class="fc" id="L53">                delegate.saveRequest(request, response);</span>
+            }
+<span class="fc" id="L55">        }</span>
+
+        @Override
+        public SavedRequest getRequest(HttpServletRequest request, HttpServletResponse response) {
+<span class="fc" id="L59">            return delegate.getRequest(request, response);</span>
+        }
+
+        @Override
+        public HttpServletRequest getMatchingRequest(HttpServletRequest request, HttpServletResponse response) {
+<span class="fc" id="L64">            return delegate.getMatchingRequest(request, response);</span>
+        }
+
+        @Override
+        public void removeRequest(HttpServletRequest request, HttpServletResponse response) {
+<span class="nc" id="L69">            delegate.removeRequest(request, response);</span>
+<span class="nc" id="L70">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

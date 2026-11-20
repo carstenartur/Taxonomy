@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DocumentTemplateCandidateStore.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-templates</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.templates</a> &gt; <span class="el_source">DocumentTemplateCandidateStore.java</span></div><h1>DocumentTemplateCandidateStore.java</h1><pre class="source lang-java linenums">package com.taxonomy.templates;
+
+import com.taxonomy.templates.api.TemplateNotFoundException;
+import io.github.carstenartur.jgit.storage.hibernate.HibernateGitStorage;
+import io.github.carstenartur.jgit.storage.hibernate.HibernateRepositoryFactory;
+import io.github.carstenartur.jgit.storage.hibernate.RepositoryName;
+import org.eclipse.jgit.lib.CommitBuilder;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.FileMode;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.PersonIdent;
+import org.eclipse.jgit.lib.RefUpdate;
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.lib.TreeFormatter;
+import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.treewalk.TreeWalk;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+import tools.jackson.databind.json.JsonMapper;
+
+import java.io.IOException;
+
+/** Immutable submitted originals and sample outcomes, outside the published templates repository. */
+@Component
+final class DocumentTemplateCandidateStore implements AutoCloseable {
+<span class="fc" id="L26">    private static final JsonMapper JSON = JsonMapper.builder().build();</span>
+    private final Repository repository;
+    private final HibernateGitStorage storage;
+
+    @Autowired
+<span class="fc" id="L31">    DocumentTemplateCandidateStore(HibernateRepositoryFactory factory) {</span>
+<span class="fc" id="L32">        storage = factory.open(new RepositoryName(&quot;taxonomy-document-template-candidates&quot;));</span>
+<span class="fc" id="L33">        repository = storage.repository();</span>
+<span class="fc" id="L34">    }</span>
+
+<span class="fc" id="L36">    DocumentTemplateCandidateStore(Repository repository) {</span>
+<span class="fc" id="L37">        this.repository = repository;</span>
+<span class="fc" id="L38">        storage = null;</span>
+<span class="fc" id="L39">    }</span>
+
+<span class="fc" id="L41">    record Metadata(String templateId, String displayName, String baseVersion, String originalSha256,</span>
+                    String packageSha256) { }
+
+    String save(Metadata metadata, byte[] original) throws IOException {
+<span class="fc" id="L45">        synchronized (repository) {</span>
+<span class="fc" id="L46">            try (var inserter = repository.newObjectInserter()) {</span>
+<span class="fc" id="L47">                var tree = new TreeFormatter();</span>
+<span class="fc" id="L48">                tree.append(&quot;candidate.json&quot;, FileMode.REGULAR_FILE, inserter.insert(Constants.OBJ_BLOB, JSON.writeValueAsBytes(metadata)));</span>
+<span class="fc" id="L49">                tree.append(&quot;original.dotx&quot;, FileMode.REGULAR_FILE, inserter.insert(Constants.OBJ_BLOB, original));</span>
+<span class="fc" id="L50">                var commit = new CommitBuilder();</span>
+<span class="fc" id="L51">                commit.setTreeId(inserter.insert(tree));</span>
+<span class="fc" id="L52">                var author = new PersonIdent(&quot;Template preflight&quot;, &quot;template-preflight@taxonomy.local&quot;);</span>
+<span class="fc" id="L53">                commit.setAuthor(author);</span>
+<span class="fc" id="L54">                commit.setCommitter(author);</span>
+<span class="fc" id="L55">                commit.setMessage(&quot;Preflight &quot; + metadata.templateId() + &quot; &quot; + java.util.UUID.randomUUID());</span>
+<span class="fc" id="L56">                var version = inserter.insert(commit);</span>
+<span class="fc" id="L57">                inserter.flush();</span>
+<span class="fc" id="L58">                publish(ref(metadata.templateId(), version.name()), version);</span>
+<span class="fc" id="L59">                return version.name();</span>
+<span class="fc" id="L60">            }</span>
+        }
+    }
+
+    Metadata metadata(String templateId, String version) throws IOException {
+<span class="fc" id="L65">        return JSON.readValue(read(templateId, version, &quot;candidate.json&quot;, 8192), Metadata.class);</span>
+    }
+
+    byte[] original(String templateId, String version) throws IOException {
+<span class="fc" id="L69">        return read(templateId, version, &quot;original.dotx&quot;, OoxmlTemplatePackageCodec.MAX_ARCHIVE_BYTES);</span>
+    }
+
+    void certify(String templateId, String version, byte[] sample) throws IOException {
+<span class="fc" id="L73">        synchronized (repository) {</span>
+<span class="fc" id="L74">            try (var inserter = repository.newObjectInserter()) {</span>
+<span class="fc" id="L75">                var blob = inserter.insert(Constants.OBJ_BLOB, sample);</span>
+<span class="fc" id="L76">                inserter.flush();</span>
+<span class="fc" id="L77">                publish(sampleRef(templateId, version), blob);</span>
+            }
+<span class="fc" id="L79">        }</span>
+<span class="fc" id="L80">    }</span>
+
+    boolean certified(String templateId, String version) throws IOException {
+<span class="fc" id="L83">        var sample = repository.exactRef(sampleRef(templateId, version));</span>
+<span class="pc bpc" id="L84" title="1 of 4 branches missed.">        return sample != null &amp;&amp; repository.getObjectDatabase().has(sample.getObjectId());</span>
+    }
+
+    byte[] sample(String templateId, String version) throws IOException {
+<span class="fc" id="L88">        metadata(templateId, version);</span>
+<span class="fc" id="L89">        var sample = repository.exactRef(sampleRef(templateId, version));</span>
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">        if (sample == null) throw new TemplateNotFoundException(templateId, version);</span>
+<span class="fc" id="L91">        return repository.open(sample.getObjectId(), Constants.OBJ_BLOB).getBytes(OoxmlTemplatePackageCodec.MAX_ARCHIVE_BYTES);</span>
+    }
+
+    private void publish(String name, ObjectId object) throws IOException {
+<span class="fc" id="L95">        var update = repository.updateRef(name);</span>
+<span class="fc" id="L96">        update.setExpectedOldObjectId(ObjectId.zeroId());</span>
+<span class="fc" id="L97">        update.setNewObjectId(object);</span>
+<span class="fc" id="L98">        var result = update.update();</span>
+<span class="pc bpc" id="L99" title="3 of 4 branches missed.">        if (result == RefUpdate.Result.NEW || result == RefUpdate.Result.NO_CHANGE) return;</span>
+<span class="nc" id="L100">        var current = repository.exactRef(name);</span>
+<span class="nc bnc" id="L101" title="All 4 branches missed.">        if (current == null || !object.equals(current.getObjectId())) throw new IOException(&quot;Could not retain the candidate revision&quot;);</span>
+<span class="nc" id="L102">    }</span>
+
+    private static String sampleRef(String templateId, String version) {
+<span class="fc" id="L105">        return Constants.R_TAGS + &quot;preflight/&quot; + templateId + &quot;/&quot; + version;</span>
+    }
+
+    private byte[] read(String templateId, String version, String part, int maximum) throws IOException {
+<span class="fc" id="L109">        DocumentTemplateGitRepository.validateTemplateId(templateId);</span>
+<span class="pc bpc" id="L110" title="2 of 4 branches missed.">        if (version == null || !ObjectId.isId(version)) throw new IllegalArgumentException(&quot;Choose a complete candidate revision&quot;);</span>
+<span class="fc" id="L111">        var ref = repository.exactRef(ref(templateId, version));</span>
+<span class="pc bpc" id="L112" title="1 of 4 branches missed.">        if (ref == null || !version.equals(ref.getObjectId().name())) throw new TemplateNotFoundException(templateId, version);</span>
+<span class="fc" id="L113">        try (var walk = new RevWalk(repository);</span>
+<span class="fc" id="L114">             var path = TreeWalk.forPath(repository, part, walk.parseCommit(ref.getObjectId()).getTree())) {</span>
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">            if (path == null) throw new TemplateNotFoundException(templateId, version);</span>
+<span class="fc" id="L116">            return repository.open(path.getObjectId(0), Constants.OBJ_BLOB).getBytes(maximum);</span>
+        }
+    }
+
+    private static String ref(String templateId, String version) {
+<span class="fc" id="L121">        return Constants.R_HEADS + templateId + &quot;/&quot; + version;</span>
+    }
+
+    @Override
+    public void close() {
+<span class="pc bpc" id="L126" title="1 of 2 branches missed.">        if (storage != null) storage.close();</span>
+<span class="fc" id="L127">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

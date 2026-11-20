@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureBrief.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.planning</a> &gt; <span class="el_source">ArchitectureBrief.java</span></div><h1>ArchitectureBrief.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.planning;
+
+import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.dsl.ast.PropertyAst;
+import com.taxonomy.dsl.command.ArchitectureDslCommands;
+import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
+import com.taxonomy.dsl.model.CanonicalArchitectureModel;
+import com.taxonomy.dsl.validation.RelationMetamodel;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
+
+/** The commission is an authored canonical source in the selected architecture's version history. */
+public final class ArchitectureBrief {
+    public static final String ID = &quot;architecture-brief&quot;;
+<span class="fc" id="L21">    private static final String ALTERNATE_ID = PlanningBlocks.identity(&quot;architecture-brief-&quot;, &quot;canonical-architecture-brief&quot;);</span>
+    public static final String VERSION = &quot;1&quot;;
+    public static final String RULE = &quot;exclude-relation-v1&quot;;
+    private static final String PREFIX = &quot;x-brief.&quot;;
+    private static final String FIELD = PREFIX + &quot;field.&quot;;
+    private static final String REF = PREFIX + &quot;ref.&quot;;
+<span class="fc" id="L27">    public static final List&lt;String&gt; FIELDS = List.of(&quot;objective&quot;, &quot;decision&quot;, &quot;stakeholders&quot;, &quot;boundary&quot;, &quot;stage&quot;,</span>
+            &quot;referenceArchitecture&quot;, &quot;views&quot;, &quot;deliverables&quot;, &quot;context&quot;);
+<span class="fc" id="L29">    private static final Set&lt;String&gt; LOCATOR = Set.of(&quot;identifier&quot;, &quot;edition&quot;, &quot;section&quot;);</span>
+<span class="fc" id="L30">    private static final Set&lt;String&gt; APPLICATION = Set.of(&quot;role&quot;, &quot;scope&quot;, &quot;appliesTo&quot;, &quot;purpose&quot;, &quot;derivation&quot;, &quot;rule&quot;, &quot;relation&quot;);</span>
+    private ArchitectureBrief() {}
+
+    public record Reference(String id, Map&lt;String, String&gt; values, String sourceId, String sourceVersionId, String sourceFragmentId) {
+<span class="fc" id="L34">        public Reference { values = Map.copyOf(values); }</span>
+    }
+
+    public record Snapshot(boolean present, String version, Map&lt;String, String&gt; fields, List&lt;Reference&gt; references, String problem) {
+<span class="fc" id="L38">        public Snapshot { fields = Map.copyOf(fields); references = List.copyOf(references); }</span>
+
+        /** Only explicit rules with a binding source and whole-architecture scope affect generation. */
+        public Set&lt;String&gt; excludedRelationTypes() {
+<span class="fc bfc" id="L42" title="All 2 branches covered.">            if (problem != null) throw new IllegalArgumentException(problem);</span>
+<span class="fc" id="L43">            var excluded = new TreeSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">            for (var reference : references) {</span>
+<span class="fc" id="L45">                var values = reference.values();</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">                if (RULE.equals(values.get(&quot;rule&quot;))) excluded.add(values.get(&quot;relation&quot;));</span>
+<span class="fc" id="L47">            }</span>
+<span class="fc" id="L48">            return Set.copyOf(excluded);</span>
+        }
+    }
+
+    public static Snapshot read(CanonicalArchitectureModel model) {
+<span class="fc bfc" id="L53" title="All 4 branches covered.">        var sources = model.getSources().stream().filter(s -&gt; reservedId(s.getId()) &amp;&amp; ID.equals(s.getSourceType())).toList();</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        if (sources.isEmpty()) return new Snapshot(false, null, Map.of(), List.of(), null);</span>
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">        if (sources.size() != 1) return new Snapshot(true, null, Map.of(), List.of(), &quot;AMBIGUOUS_ARCHITECTURE_BRIEF&quot;);</span>
+<span class="fc" id="L56">        var properties = sources.getFirst().getExtensions();</span>
+<span class="fc" id="L57">        var version = properties.get(PREFIX + &quot;version&quot;);</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">        if (!VERSION.equals(version)) return new Snapshot(true, version, Map.of(), List.of(), &quot;UNSUPPORTED_ARCHITECTURE_BRIEF&quot;);</span>
+        try {
+<span class="fc" id="L60">            return decode(model, properties);</span>
+<span class="fc" id="L61">        } catch (IllegalArgumentException invalid) {</span>
+<span class="fc" id="L62">            return new Snapshot(true, version, Map.of(), List.of(), &quot;INVALID_ARCHITECTURE_BRIEF&quot;);</span>
+        }
+    }
+
+    private static Snapshot decode(CanonicalArchitectureModel model, Map&lt;String, String&gt; properties) {
+<span class="fc" id="L67">        Map&lt;String, String&gt; fields = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L68">        Map&lt;String, Map&lt;String, String&gt;&gt; groups = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        for (var entry : properties.entrySet()) {</span>
+<span class="fc" id="L70">            var key = entry.getKey();</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">            if (key.startsWith(FIELD)) fields.put(key.substring(FIELD.length()), entry.getValue());</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">            if (key.startsWith(REF)) {</span>
+<span class="fc" id="L73">                var path = key.substring(REF.length()).split(&quot;\\.&quot;, 2);</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">                if (path.length != 2) throw new IllegalArgumentException(&quot;Malformed architecture reference&quot;);</span>
+<span class="fc" id="L75">                PlanningEntry.token(path[0], &quot;reference id&quot;);</span>
+<span class="fc" id="L76">                groups.computeIfAbsent(path[0], id -&gt; new TreeMap&lt;&gt;()).put(path[1], entry.getValue());</span>
+            }
+<span class="fc" id="L78">        }</span>
+<span class="fc" id="L79">        validateFields(fields);</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">        if (groups.size() &gt; PlanningInformation.MAX_ENTRIES) throw new IllegalArgumentException(&quot;Too many architecture references&quot;);</span>
+<span class="fc" id="L81">        List&lt;Reference&gt; references = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">        for (var group : groups.entrySet()) {</span>
+<span class="fc" id="L83">            var stored = group.getValue();</span>
+<span class="fc" id="L84">            var values = new TreeMap&lt;&gt;(StandardReferenceProfile.describe(model, stored.get(&quot;source&quot;),</span>
+<span class="fc" id="L85">                    stored.get(&quot;sourceVersion&quot;), stored.get(&quot;sourceFragment&quot;), stored.get(&quot;x-unversioned-section&quot;)));</span>
+<span class="fc bfc" id="L86" title="All 4 branches covered.">            for (String key : APPLICATION) if (stored.containsKey(key)) values.put(key, stored.get(key));</span>
+<span class="fc" id="L87">            validateReference(values);</span>
+<span class="fc" id="L88">            references.add(new Reference(group.getKey(), values, stored.get(&quot;source&quot;), stored.get(&quot;sourceVersion&quot;), stored.get(&quot;sourceFragment&quot;)));</span>
+<span class="fc" id="L89">        }</span>
+<span class="fc" id="L90">        return new Snapshot(true, VERSION, fields, references, null);</span>
+    }
+
+    public static String store(String dsl, Map&lt;String, String&gt; fields) {
+<span class="fc" id="L94">        validateFields(fields);</span>
+<span class="fc" id="L95">        var previous = read(new ArchitectureDslCommands().model(dsl));</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        if (previous.problem() != null) throw new IllegalArgumentException(previous.problem());</span>
+<span class="fc" id="L97">        Map&lt;String, String&gt; updated = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L98">        fields.forEach((key, value) -&gt; updated.put(FIELD + key, value));</span>
+<span class="fc" id="L99">        return replace(dsl, FIELD, updated, true);</span>
+    }
+
+    public static String putReference(String dsl, String id, Map&lt;String, String&gt; values) {
+<span class="fc" id="L103">        PlanningEntry.token(id, &quot;reference id&quot;);</span>
+<span class="fc" id="L104">        validateReference(values);</span>
+<span class="fc" id="L105">        var current = read(new ArchitectureDslCommands().model(dsl));</span>
+<span class="pc bpc" id="L106" title="2 of 4 branches missed.">        if (!current.present() || current.problem() != null) throw new IllegalArgumentException(&quot;A supported architecture brief is required&quot;);</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">        if (current.references().size() == PlanningInformation.MAX_ENTRIES</span>
+<span class="nc bnc" id="L108" title="All 2 branches missed.">                &amp;&amp; current.references().stream().noneMatch(r -&gt; r.id().equals(id)))</span>
+<span class="nc" id="L109">            throw new IllegalArgumentException(&quot;Too many architecture references&quot;);</span>
+<span class="fc" id="L110">        Map&lt;String, String&gt; locator = new LinkedHashMap&lt;&gt;(values);</span>
+<span class="fc" id="L111">        locator.keySet().retainAll(LOCATOR);</span>
+<span class="fc" id="L112">        var canonical = StandardReferenceProfile.locate(dsl, locator);</span>
+<span class="pc bpc" id="L113" title="3 of 4 branches missed.">        if (reservedId(canonical.values().get(&quot;source&quot;)) &amp;&amp; ID.equals(ArchitectureSemanticPatch.index(canonical.dsl())</span>
+<span class="nc" id="L114">                .get(&quot;source:&quot; + canonical.values().get(&quot;source&quot;)).property(&quot;type&quot;)))</span>
+<span class="nc" id="L115">            throw new IllegalArgumentException(&quot;A brief cannot cite itself&quot;);</span>
+<span class="fc" id="L116">        var prefix = REF + id + &quot;.&quot;;</span>
+<span class="fc" id="L117">        var updated = new LinkedHashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L118">        canonical.values().forEach((key, value) -&gt; updated.put(prefix + key, value));</span>
+<span class="fc bfc" id="L119" title="All 4 branches covered.">        for (String key : APPLICATION) if (values.containsKey(key)) updated.put(prefix + key, values.get(key));</span>
+<span class="fc" id="L120">        return replace(canonical.dsl(), prefix, updated, false);</span>
+    }
+
+    public static String removeReference(String dsl, String id) {
+<span class="fc" id="L124">        PlanningEntry.token(id, &quot;reference id&quot;);</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">        if (read(new ArchitectureDslCommands().model(dsl)).references().stream().noneMatch(r -&gt; r.id().equals(id)))</span>
+<span class="nc" id="L126">            throw new IllegalArgumentException(&quot;Unknown architecture reference&quot;);</span>
+<span class="fc" id="L127">        return replace(dsl, REF + id + &quot;.&quot;, Map.of(), false);</span>
+    }
+
+    private static String replace(String dsl, String prefix, Map&lt;String, String&gt; updated, boolean create) {
+<span class="fc" id="L131">        var blocks = ArchitectureSemanticPatch.index(dsl);</span>
+<span class="fc" id="L132">        var preferred = blocks.get(&quot;source:&quot; + ID);</span>
+<span class="fc" id="L133">        var alternate = blocks.get(&quot;source:&quot; + ALTERNATE_ID);</span>
+<span class="pc bpc" id="L134" title="1 of 4 branches missed.">        var id = alternate != null &amp;&amp; ID.equals(alternate.property(&quot;type&quot;))</span>
+<span class="fc bfc" id="L135" title="All 4 branches covered.">                || preferred != null &amp;&amp; !ID.equals(preferred.property(&quot;type&quot;)) ? ALTERNATE_ID : ID;</span>
+<span class="fc" id="L136">        var before = blocks.get(&quot;source:&quot; + id);</span>
+<span class="fc" id="L137">        Map&lt;String, String&gt; properties = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        if (before == null) {</span>
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">            if (!create) throw new IllegalArgumentException(&quot;Architecture brief missing&quot;);</span>
+<span class="fc" id="L140">            properties.put(&quot;type&quot;, ID);</span>
+<span class="fc" id="L141">            properties.put(&quot;title&quot;, &quot;Architecture brief&quot;);</span>
+<span class="fc" id="L142">            properties.put(PREFIX + &quot;version&quot;, VERSION);</span>
+        } else {
+<span class="pc bpc" id="L144" title="2 of 4 branches missed.">            if (!ID.equals(before.property(&quot;type&quot;)) || !VERSION.equals(before.property(PREFIX + &quot;version&quot;)))</span>
+<span class="nc" id="L145">                throw new IllegalArgumentException(&quot;Foreign source or unsupported architecture brief&quot;);</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">            for (PropertyAst p : before.getProperties()) {</span>
+<span class="pc bpc" id="L147" title="1 of 2 branches missed.">                if (properties.putIfAbsent(p.key(), p.value()) != null)</span>
+<span class="nc" id="L148">                    throw new IllegalArgumentException(&quot;Duplicate architecture brief property&quot;);</span>
+<span class="fc" id="L149">            }</span>
+        }
+<span class="fc" id="L151">        properties.keySet().removeIf(key -&gt; key.startsWith(prefix));</span>
+<span class="fc" id="L152">        properties.putAll(updated);</span>
+<span class="fc" id="L153">        long size = properties.entrySet().stream().filter(entry -&gt; entry.getKey().startsWith(PREFIX))</span>
+<span class="fc" id="L154">                .mapToLong(entry -&gt; entry.getKey().length() + entry.getValue().length()).sum();</span>
+<span class="pc bpc" id="L155" title="1 of 2 branches missed.">        if (size &gt; PlanningInformation.MAX_CHARACTERS) throw new IllegalArgumentException(&quot;Architecture brief exceeds the metadata budget&quot;);</span>
+<span class="fc" id="L156">        var after = PlanningBlocks.block(&quot;source&quot;, id, properties);</span>
+<span class="fc" id="L157">        return ArchitectureSemanticPatch.replace(dsl, before, after);</span>
+    }
+
+<span class="fc bfc" id="L160" title="All 4 branches covered.">    private static boolean reservedId(String id) { return ID.equals(id) || ALTERNATE_ID.equals(id); }</span>
+
+    public static boolean presentIn(Map&lt;String, BlockAst&gt; blocks) {
+<span class="pc bpc" id="L163" title="1 of 4 branches missed.">        return isBrief(blocks.get(&quot;source:&quot; + ID)) || isBrief(blocks.get(&quot;source:&quot; + ALTERNATE_ID));</span>
+    }
+
+<span class="pc bpc" id="L166" title="1 of 4 branches missed.">    private static boolean isBrief(BlockAst block) { return block != null &amp;&amp; ID.equals(block.property(&quot;type&quot;)); }</span>
+
+    public static boolean ownsChange(String before, String after, String blockId) {
+<span class="pc bpc" id="L169" title="1 of 4 branches missed.">        if (!blockId.equals(&quot;source:&quot; + ID) &amp;&amp; !blockId.equals(&quot;source:&quot; + ALTERNATE_ID)) return false;</span>
+<span class="fc" id="L170">        var old = ArchitectureSemanticPatch.index(before).get(blockId);</span>
+<span class="fc" id="L171">        var updated = ArchitectureSemanticPatch.index(after).get(blockId);</span>
+<span class="pc bpc" id="L172" title="4 of 8 branches missed.">        return (old == null || isBrief(old)) &amp;&amp; (updated == null || isBrief(updated));</span>
+    }
+
+    private static void validateFields(Map&lt;String, String&gt; fields) {
+<span class="pc bpc" id="L176" title="2 of 4 branches missed.">        if (!FIELDS.containsAll(fields.keySet()) || fields.getOrDefault(&quot;objective&quot;, &quot;&quot;).isBlank())</span>
+<span class="nc" id="L177">            throw new IllegalArgumentException(&quot;An architecture objective and supported fields are required&quot;);</span>
+<span class="fc" id="L178">        fields.forEach((k, v) -&gt; PlanningEntry.text(v, 4096, k));</span>
+<span class="pc bpc" id="L179" title="1 of 4 branches missed.">        if (fields.containsKey(&quot;context&quot;) &amp;&amp; !Set.of(&quot;public-services&quot;, &quot;federal&quot;, &quot;european&quot;, &quot;admbw&quot;, &quot;custom&quot;).contains(fields.get(&quot;context&quot;)))</span>
+<span class="nc" id="L180">            throw new IllegalArgumentException(&quot;Unknown architecture reference context&quot;);</span>
+<span class="pc bpc" id="L181" title="1 of 4 branches missed.">        if (fields.containsKey(&quot;stage&quot;) &amp;&amp; !Set.of(&quot;current&quot;, &quot;target&quot;, &quot;transition&quot;).contains(fields.get(&quot;stage&quot;)))</span>
+<span class="nc" id="L182">            throw new IllegalArgumentException(&quot;Unknown architecture stage&quot;);</span>
+<span class="fc" id="L183">    }</span>
+
+    private static void validateReference(Map&lt;String, String&gt; values) {
+<span class="fc" id="L186">        values.forEach((key, value) -&gt; {</span>
+<span class="pc bpc" id="L187" title="1 of 4 branches missed.">            if (!LOCATOR.contains(key) &amp;&amp; !APPLICATION.contains(key)) throw new IllegalArgumentException(&quot;Unknown reference field&quot;);</span>
+<span class="fc" id="L188">            PlanningEntry.text(value, 4096, key);</span>
+<span class="fc" id="L189">        });</span>
+<span class="pc bpc" id="L190" title="1 of 2 branches missed.">        if (values.getOrDefault(&quot;identifier&quot;, &quot;&quot;).isBlank()</span>
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">                || !Set.of(&quot;binding&quot;, &quot;guidance&quot;, &quot;open&quot;).contains(values.getOrDefault(&quot;role&quot;, &quot;&quot;))</span>
+<span class="pc bpc" id="L192" title="1 of 2 branches missed.">                || !Set.of(&quot;architecture&quot;, &quot;deliverable&quot;, &quot;background&quot;).contains(values.getOrDefault(&quot;scope&quot;, &quot;&quot;)))</span>
+<span class="nc" id="L193">            throw new IllegalArgumentException(&quot;Reference identifier, role and scope are required&quot;);</span>
+<span class="pc bpc" id="L194" title="1 of 4 branches missed.">        if (&quot;deliverable&quot;.equals(values.get(&quot;scope&quot;)) &amp;&amp; values.getOrDefault(&quot;appliesTo&quot;, &quot;&quot;).isBlank())</span>
+<span class="nc" id="L195">            throw new IllegalArgumentException(&quot;A deliverable reference needs its named scope&quot;);</span>
+<span class="pc bpc" id="L196" title="1 of 4 branches missed.">        if (values.containsKey(&quot;rule&quot;) || values.containsKey(&quot;relation&quot;)) {</span>
+<span class="pc bpc" id="L197" title="2 of 4 branches missed.">            if (!RULE.equals(values.get(&quot;rule&quot;)) || !RelationMetamodel.relationTypes().contains(values.getOrDefault(&quot;relation&quot;, &quot;&quot;))</span>
+<span class="pc bpc" id="L198" title="1 of 4 branches missed.">                    || !&quot;binding&quot;.equals(values.get(&quot;role&quot;)) || !&quot;architecture&quot;.equals(values.get(&quot;scope&quot;))</span>
+<span class="pc bpc" id="L199" title="1 of 4 branches missed.">                    || values.getOrDefault(&quot;edition&quot;, &quot;&quot;).isBlank() || values.getOrDefault(&quot;section&quot;, &quot;&quot;).isBlank())</span>
+<span class="fc" id="L200">                throw new IllegalArgumentException(&quot;A typed rule requires a binding architecture-wide source, edition and section&quot;);</span>
+        }
+<span class="fc" id="L202">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

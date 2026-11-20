@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ObligationApiErrors.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-architecture</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.controller</a> &gt; <span class="el_source">ObligationApiErrors.java</span></div><h1>ObligationApiErrors.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.controller;
+
+import com.taxonomy.relations.controller.RelationApiController;
+import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.ReadinessState;
+import com.taxonomy.relations.service.RelationProjectionReadService.RelationProjectionUnavailableException;
+import com.taxonomy.workspace.service.BranchHeadConflictException;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+import java.io.IOException;
+import java.util.Map;
+
+/** Unavailable evidence fails closed, never as an empty successful assessment. */
+@RestControllerAdvice(assignableTypes = {GapAnalysisApiController.class, RecommendationApiController.class,
+        PatternDetectionApiController.class, GraphQueryApiController.class})
+<span class="fc" id="L18">public class ObligationApiErrors {</span>
+<span class="fc" id="L19">    private static final Map&lt;String, String&gt; UNAVAILABLE = Map.of(&quot;status&quot;, &quot;UNAVAILABLE&quot;, &quot;message&quot;,</span>
+            &quot;Selected model evidence is unavailable. Refresh the selected source and its projection status.&quot;);
+
+    @ExceptionHandler(RelationProjectionUnavailableException.class)
+    public ResponseEntity&lt;Map&lt;String,String&gt;&gt; projection(RelationProjectionUnavailableException error) {
+<span class="fc" id="L24">        ReadinessState projection = error.getReadinessState();</span>
+<span class="fc bfc" id="L25" title="All 3 branches covered.">        String state = switch (projection) {</span>
+<span class="fc" id="L26">            case NOT_BUILT, BRANCH_MISSING -&gt; &quot;MISSING&quot;;</span>
+<span class="fc" id="L27">            case STALE -&gt; &quot;STALE&quot;;</span>
+<span class="fc" id="L28">            case CORRUPT, READY -&gt; &quot;FAILED&quot;;</span>
+        };
+<span class="fc" id="L30">        var source = new ArchitectureQuerySource(error.getContext(), error.getCurrentHeadCommit());</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        var response = source.headers(ResponseEntity.status(projection == ReadinessState.BRANCH_MISSING ? 404 : 409))</span>
+<span class="fc" id="L32">                .header(&quot;X-Taxonomy-Source-State&quot;, state)</span>
+<span class="fc" id="L33">                .header(RelationApiController.PROJECTION_STATE_HEADER, projection.name());</span>
+<span class="pc bpc" id="L34" title="1 of 2 branches missed.">        if (error.getPendingRecoveryCount() &gt; 0) {</span>
+<span class="fc" id="L35">            response.header(RelationApiController.PENDING_RECOVERY_HEADER, Long.toString(error.getPendingRecoveryCount()));</span>
+        }
+<span class="fc" id="L37">        return response.body(UNAVAILABLE);</span>
+    }
+
+    @ExceptionHandler(BranchHeadConflictException.class)
+    public ResponseEntity&lt;Map&lt;String,String&gt;&gt; moved(BranchHeadConflictException error) {
+<span class="fc" id="L42">        var head = error.getActualHeadCommit();</span>
+<span class="fc" id="L43">        var response = ResponseEntity.status(409).cacheControl(CacheControl.noStore())</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">                .header(&quot;X-Taxonomy-Source-State&quot;, head == null ? &quot;MISSING&quot; : &quot;STALE&quot;);</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">        if (head != null) response.header(&quot;X-Taxonomy-Commit&quot;, head);</span>
+<span class="fc" id="L46">        return response.body(UNAVAILABLE);</span>
+    }
+
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity&lt;Map&lt;String,String&gt;&gt; conflict(IllegalStateException error) {
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        if (error.getCause() instanceof BranchHeadConflictException moved) return moved(moved);</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        if (error.getCause() instanceof IOException failure) return unavailable(failure);</span>
+<span class="fc" id="L53">        return ResponseEntity.status(409).cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L54">                .header(&quot;X-Taxonomy-Source-State&quot;, &quot;FAILED&quot;).body(UNAVAILABLE);</span>
+    }
+
+    @ExceptionHandler(IOException.class)
+    public ResponseEntity&lt;Map&lt;String,String&gt;&gt; unavailable(IOException error) {
+<span class="fc" id="L59">        return ResponseEntity.status(503).cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L60">                .header(&quot;X-Taxonomy-Source-State&quot;, &quot;FAILED&quot;).body(UNAVAILABLE);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

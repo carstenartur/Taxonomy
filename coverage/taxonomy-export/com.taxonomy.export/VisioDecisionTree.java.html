@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>VisioDecisionTree.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export</a> &gt; <span class="el_source">VisioDecisionTree.java</span></div><h1>VisioDecisionTree.java</h1><pre class="source lang-java linenums">package com.taxonomy.export;
+
+import com.taxonomy.diagram.VisioDrawingOptions;
+import com.taxonomy.dto.TaxonomyResponsibilityLookup.Assignment;
+import com.taxonomy.visio.VisioConnect;
+import com.taxonomy.visio.VisioDocument;
+import com.taxonomy.visio.VisioPage;
+import com.taxonomy.visio.VisioProperty;
+import com.taxonomy.visio.VisioShape;
+
+import java.math.BigDecimal;
+import java.util.ArrayDeque;
+import java.util.Arrays;
+import java.util.List;
+
+/** Ordered decision evidence rendered as native nodes and glued hierarchy connectors. */
+public record VisioDecisionTree(List&lt;Node&gt; nodes, boolean german) {
+<span class="fc" id="L18">    public VisioDecisionTree {</span>
+<span class="fc" id="L19">        nodes = List.copyOf(nodes);</span>
+<span class="fc" id="L20">    }</span>
+
+<span class="fc" id="L22">    public record Node(int depth, String code, String title, Double score, String reason, Assignment responsibility) { }</span>
+
+    void appendTo(VisioDocument document, VisioDrawingOptions options) {
+<span class="fc" id="L25">        int firstPage = document.getPages().size();</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">        int drawingPages = (int) document.getPages().stream().filter(page -&gt; !page.isEvidencePage()).count();</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">        for (int start = 0; start &lt; nodes.size();) {</span>
+<span class="pc bpc" id="L28" title="1 of 2 branches missed.">            if (++drawingPages &gt; VisioPackageValidator.MAX_DIAGRAM_PAGES) {</span>
+<span class="nc" id="L29">                throw new IllegalArgumentException(&quot;Too many Visio decision pages. Select fewer subtaxonomies.&quot;);</span>
+            }
+<span class="fc" id="L31">            int end = start + 1;</span>
+<span class="fc bfc" id="L32" title="All 4 branches covered.">            while (end &lt; nodes.size() &amp;&amp; nodes.get(end).depth() != 0) end++;</span>
+<span class="fc" id="L33">            document.getPages().add(layout(nodes.subList(start, end), document.getPages().size(), options));</span>
+<span class="fc" id="L34">            start = end;</span>
+<span class="fc" id="L35">        }</span>
+<span class="fc bfc" id="L36" title="All 4 branches covered.">        if (options != null &amp;&amp; options.appendix()) {</span>
+<span class="fc" id="L37">            VisioEvidencePages.appendTreeReasons(document, firstPage, options.german());</span>
+        }
+<span class="fc" id="L39">    }</span>
+
+    private VisioPage layout(List&lt;Node&gt; section, int pageId, VisioDrawingOptions options) {
+<span class="fc" id="L42">        String code = section.getFirst().code();</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        boolean germanLabels = options == null ? german : options.german();</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">        var page = new VisioPage(Integer.toString(pageId), (germanLabels ? &quot;Entscheidungsbaum – &quot; : &quot;Decision tree – &quot;) + code);</span>
+<span class="fc" id="L45">        var parents = new int[section.size()];</span>
+<span class="fc" id="L46">        var firstChild = new int[section.size()];</span>
+<span class="fc" id="L47">        var lastChild = new int[section.size()];</span>
+<span class="fc" id="L48">        Arrays.fill(firstChild, -1);</span>
+<span class="fc" id="L49">        var stack = new ArrayDeque&lt;Integer&gt;();</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        for (int index = 0; index &lt; section.size(); index++) {</span>
+<span class="fc" id="L51">            int depth = section.get(index).depth();</span>
+<span class="pc bpc" id="L52" title="2 of 4 branches missed.">            if (depth &lt; 0 || depth &gt; stack.size()) throw new IllegalArgumentException(&quot;Invalid decision tree depth&quot;);</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">            while (stack.size() &gt; depth) stack.removeLast();</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">            parents[index] = stack.isEmpty() ? -1 : stack.getLast();</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">            if (parents[index] &gt;= 0) {</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">                if (firstChild[parents[index]] == -1) firstChild[parents[index]] = index;</span>
+<span class="fc" id="L57">                lastChild[parents[index]] = index;</span>
+            }
+<span class="fc" id="L59">            stack.addLast(index);</span>
+        }
+<span class="fc bfc" id="L61" title="All 4 branches covered.">        var wall = options != null &amp;&amp; options.mode() == VisioDrawingOptions.Mode.WALL</span>
+<span class="fc" id="L62">                ? VisioWallTree.layout(section, parents, options) : List.&lt;VisioWallTree.Card&gt;of();</span>
+<span class="fc bfc" id="L63" title="All 4 branches covered.">        double screenHeight = VisioPresentation.screenCardHeight(options != null &amp;&amp; wall.isEmpty()</span>
+<span class="fc bfc" id="L64" title="All 4 branches covered.">                &amp;&amp; section.stream().anyMatch(node -&gt; node.responsibility() != null));</span>
+<span class="fc" id="L65">        double[] rows = new double[section.size()];</span>
+<span class="fc" id="L66">        int leafRow = 0;</span>
+        // Reverse preorder visits the last leaf first, at the bottom of the Visio page.
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        for (int index = section.size() - 1; index &gt;= 0; index--) {</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">            rows[index] = firstChild[index] == -1 ? leafRow++ : (rows[firstChild[index]] + rows[lastChild[index]]) / 2;</span>
+        }
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        for (int index = 0; index &lt; section.size(); index++) {</span>
+<span class="fc" id="L72">            Node node = section.get(index);</span>
+<span class="fc" id="L73">            String shapeId = Integer.toString(index + 1);</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">            var card = wall.isEmpty() ? null : wall.get(index);</span>
+<span class="fc" id="L75">            var shape = shape(node, code, shapeId, rows[index], screenHeight, options, card);</span>
+<span class="fc" id="L76">            page.getShapes().add(shape);</span>
+<span class="fc" id="L77">            int parent = parents[index];</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">            if (parent &gt;= 0) {</span>
+<span class="fc" id="L79">                var link = new VisioConnect(Integer.toString(parent + 1), shapeId, &quot;&quot;);</span>
+<span class="fc" id="L80">                link.getProperties().put(&quot;taxonomy.type&quot;, VisioProperty.text(&quot;DECISION_HIERARCHY&quot;));</span>
+<span class="fc" id="L81">                link.getProperties().put(&quot;taxonomy.sourceId&quot;, VisioProperty.text(section.get(parent).code()));</span>
+<span class="fc" id="L82">                link.getProperties().put(&quot;taxonomy.targetId&quot;, VisioProperty.text(node.code()));</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">                if (options != null) {</span>
+<span class="fc" id="L84">                    Node parentNode = section.get(parent);</span>
+<span class="fc" id="L85">                    link.getProperties().put(&quot;taxonomy.sourceLabel&quot;, VisioProperty.text(parentNode.title()));</span>
+<span class="fc" id="L86">                    link.getProperties().put(&quot;taxonomy.targetLabel&quot;, VisioProperty.text(node.title()));</span>
+<span class="fc" id="L87">                    shape.getProperties().put(&quot;taxonomy.parentId&quot;, VisioProperty.text(parentNode.code()));</span>
+                }
+<span class="fc" id="L89">                page.getConnects().add(link);</span>
+            }
+        }
+<span class="fc" id="L92">        return page;</span>
+    }
+
+    static String rating(Double score, boolean german) {
+<span class="pc bpc" id="L96" title="3 of 8 branches missed.">        if (score != null &amp;&amp; (!Double.isFinite(score) || score &lt; 0 || score &gt; 100)) {</span>
+<span class="nc" id="L97">            throw new IllegalArgumentException(&quot;Decision scores must be percentages between 0 and 100&quot;);</span>
+        }
+<span class="fc bfc" id="L99" title="All 4 branches covered.">        return score == null ? (german ? &quot;Nicht bewertet&quot; : &quot;Not evaluated&quot;)</span>
+<span class="fc" id="L100">                : BigDecimal.valueOf(score).stripTrailingZeros().toPlainString() + &quot;%&quot;;</span>
+    }
+
+    private VisioShape shape(Node node, String type, String shapeId, double row, double screenHeight,
+                             VisioDrawingOptions options, VisioWallTree.Card card) {
+<span class="fc" id="L105">        Double score = node.score();</span>
+        VisioShape shape;
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        if (card == null) {</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">            String text = node.code() + &quot; · &quot; + rating(score, options == null ? german : options.german())</span>
+<span class="fc" id="L109">                    + &quot;\n&quot; + VisioPresentation.display(node.title(), 46, 3);</span>
+<span class="fc bfc" id="L110" title="All 4 branches covered.">            if (options != null &amp;&amp; node.responsibility() != null) {</span>
+<span class="fc" id="L111">                text += VisioPresentation.drawingOwnerCaption(node.responsibility().name(), options);</span>
+            }
+<span class="fc" id="L113">            shape = new VisioShape(shapeId, text, 2.2 + node.depth() * 4.2,</span>
+                    1.25 + row * (screenHeight + .25), 3.3, screenHeight, type, false);
+<span class="fc" id="L115">        } else {</span>
+<span class="fc" id="L116">            shape = new VisioShape(shapeId, card.text(), card.x(), card.y(), card.width(), card.height(), type, false);</span>
+        }
+<span class="fc" id="L118">        var properties = shape.getProperties();</span>
+<span class="fc" id="L119">        properties.put(&quot;taxonomy.id&quot;, VisioProperty.text(node.code()));</span>
+<span class="fc" id="L120">        properties.put(&quot;taxonomy.label&quot;, VisioProperty.text(node.title()));</span>
+<span class="fc" id="L121">        properties.put(&quot;taxonomy.depth&quot;, VisioProperty.number(node.depth()));</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        if (options != null) {</span>
+<span class="fc" id="L123">            properties.put(&quot;taxonomy.type&quot;, VisioProperty.text(type));</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">            properties.put(&quot;taxonomy.evaluationStatus&quot;, VisioProperty.text(score == null ? &quot;NOT_EVALUATED&quot; : &quot;EVALUATED&quot;));</span>
+        }
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        if (score != null) properties.put(&quot;taxonomy.relevance&quot;, VisioProperty.number(score / 100));</span>
+<span class="pc bpc" id="L127" title="1 of 4 branches missed.">        if (node.reason() != null &amp;&amp; !node.reason().isBlank()) {</span>
+<span class="fc" id="L128">            properties.put(&quot;taxonomy.presenceReason&quot;, VisioProperty.text(node.reason()));</span>
+        }
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        if (node.responsibility() != null) {</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">            if (options != null) properties.put(&quot;taxonomy.responsibilitySourceId&quot;, VisioProperty.text(node.responsibility().sourceId()));</span>
+<span class="fc" id="L132">            properties.put(&quot;taxonomy.responsibilityUnitId&quot;, VisioProperty.text(node.responsibility().unitId()));</span>
+<span class="fc" id="L133">            properties.put(&quot;taxonomy.responsibilityName&quot;, VisioProperty.text(node.responsibility().name()));</span>
+<span class="fc" id="L134">            properties.put(&quot;taxonomy.responsibilityColor&quot;, VisioProperty.text(node.responsibility().color()));</span>
+        }
+<span class="fc" id="L136">        return shape;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

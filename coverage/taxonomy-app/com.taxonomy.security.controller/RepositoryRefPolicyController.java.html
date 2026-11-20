@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RepositoryRefPolicyController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.controller</a> &gt; <span class="el_source">RepositoryRefPolicyController.java</span></div><h1>RepositoryRefPolicyController.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.controller;
+
+import com.taxonomy.security.service.VersionedRepositoryRefPolicy;
+import com.taxonomy.workspace.model.RepositoryRefRule;
+import io.swagger.v3.oas.annotations.Operation;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
+
+@RestController
+@RequestMapping(&quot;/api/repositories/{repositoryId}/ref-policy&quot;)
+@ConditionalOnProperty(prefix = &quot;taxonomy.features.multi-repository-api&quot;, name = &quot;enabled&quot;, havingValue = &quot;true&quot;)
+public class RepositoryRefPolicyController {
+    private final VersionedRepositoryRefPolicy policies;
+
+<span class="fc" id="L20">    public RepositoryRefPolicyController(VersionedRepositoryRefPolicy policies) { this.policies = policies; }</span>
+
+<span class="fc" id="L22">    public record Request(Long expectedRevision, Boolean preventUpdates, Boolean preventForce,</span>
+                          Boolean preventDelete, Boolean adminOverride, String rationale) { }
+
+    @GetMapping
+    @Operation(summary = &quot;Read the selected branch protection policy&quot;,
+            description = &quot;Returns the revision and update, force-update and deletion protections for the exact branch in an accessible active repository. Supply workspaceId to inspect an accessible working copy; otherwise the central repository is selected. Unconfigured branches return revision zero with all protection flags disabled.&quot;)
+    public ResponseEntity&lt;RepositoryRefRule.View&gt; read(@PathVariable String repositoryId,
+            @RequestParam(required = false) String workspaceId, @RequestParam String branch, Authentication authentication) {
+<span class="fc" id="L30">        return ResponseEntity.ok().cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L31">                .body(policies.inspect(authentication, repositoryId, workspaceId, branch));</span>
+    }
+
+    @PutMapping
+    @Operation(summary = &quot;Change the exact branch protection policy&quot;,
+            description = &quot;The owner supplies the displayed policy revision, three explicit protection flags and a rationale. An explicitly requested administrator override is audited and retains private working-copy visibility and active-repository checks. The policy applies atomically to native ref writes, force updates and deletion in the selected physical repository.&quot;)
+    public ResponseEntity&lt;VersionedRepositoryRefPolicy.Change&gt; update(@PathVariable String repositoryId,
+            @RequestParam(required = false) String workspaceId, @RequestParam String branch,
+            @RequestBody Request request, Authentication authentication) {
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        if (request.expectedRevision() == null) throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED);</span>
+<span class="pc bpc" id="L41" title="2 of 6 branches missed.">        if (request.preventUpdates() == null || request.preventForce() == null || request.preventDelete() == null)</span>
+<span class="fc" id="L42">            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, &quot;Explicit protection flags are required&quot;);</span>
+<span class="fc" id="L43">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(policies.change(authentication,</span>
+<span class="fc" id="L44">                repositoryId, workspaceId, branch, request.expectedRevision(), request.preventUpdates(),</span>
+<span class="fc" id="L45">                request.preventForce(), request.preventDelete(), Boolean.TRUE.equals(request.adminOverride()), request.rationale()));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkspacePublicationRecovery.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">WorkspacePublicationRecovery.java</span></div><h1>WorkspacePublicationRecovery.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import org.springframework.dao.TransientDataAccessException;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.io.IOException;
+
+import static com.taxonomy.workspace.service.WorkspacePublicationOperation.Status.*;
+
+@Service
+public class WorkspacePublicationRecovery {
+    static final String WORKER = &quot;system:workspace-publication&quot;;
+    private final WorkspacePublicationJournal journal;
+    private final WorkspacePublicationAuthority actors;
+
+<span class="fc" id="L19">    public WorkspacePublicationRecovery(WorkspacePublicationJournal journal,WorkspacePublicationAuthority actors) {</span>
+<span class="fc" id="L20">        this.journal=journal;this.actors=actors;</span>
+<span class="fc" id="L21">    }</span>
+
+    @FunctionalInterface interface PhaseExecutor {
+        void execute(WorkspacePublicationOperation row,Runnable currentGrant) throws IOException;
+    }
+
+    WorkspacePublicationJournal.View submit(RepositoryContext context, boolean keepWorkspace, String key, String cause,
+            WorkspacePublicationJournal.Snapshot snapshot, PhaseExecutor executor) throws IOException {
+<span class="fc" id="L29">        return submit(context, keepWorkspace, key, cause, snapshot, executor, false);</span>
+    }
+
+    WorkspacePublicationJournal.View submit(RepositoryContext context,boolean keepWorkspace,String key,String cause,
+            WorkspacePublicationJournal.Snapshot snapshot, PhaseExecutor executor, boolean commandErrors) throws IOException {
+<span class="fc" id="L34">        var grant=actors.authorizePublication(context.username());</span>
+<span class="fc" id="L35">        var row=journal.admit(context,grant,keepWorkspace,key,cause,snapshot);</span>
+<span class="fc" id="L36">        return resume(context,grant.principalId(),row,false,executor,commandErrors);</span>
+    }
+
+    WorkspacePublicationJournal.View submitPull(RepositoryContext context,boolean takeSource,String key,String cause,
+            WorkspacePublicationJournal.Snapshot snapshot,PhaseExecutor executor) throws IOException {
+<span class="fc" id="L41">        return submitPull(context, takeSource, key, cause, snapshot, executor, false);</span>
+    }
+
+    WorkspacePublicationJournal.View submitPull(RepositoryContext context,boolean takeSource,String key,String cause,
+            WorkspacePublicationJournal.Snapshot snapshot,PhaseExecutor executor, boolean commandErrors) throws IOException {
+<span class="fc" id="L46">        var grant=actors.authorizePublication(context.username());</span>
+<span class="fc" id="L47">        var row=journal.admit(context,grant,takeSource,key,cause,snapshot,true);</span>
+<span class="fc" id="L48">        return resume(context,grant.principalId(),row,false,executor,commandErrors);</span>
+    }
+
+    WorkspacePublicationJournal.View get(RepositoryContext context,String id) {
+<span class="fc" id="L52">        return journal.get(context,actors.currentActor(context.username()),id);</span>
+    }
+
+    WorkspacePublicationJournal.View archive(RepositoryContext context,String id) {
+<span class="fc" id="L56">        return journal.archive(context,actors.authorizePublication(context.username()).principalId(),id);</span>
+    }
+
+    WorkspacePublicationJournal.View retry(RepositoryContext context,String id,PhaseExecutor executor) {
+<span class="fc" id="L60">        var grant=actors.authorizePublication(context.username());</span>
+<span class="fc" id="L61">        return resume(context,grant.principalId(),journal.get(context,grant.principalId(),id),true,executor,false);</span>
+    }
+
+    void recoverDue(PhaseExecutor executor) {
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        for (String id:journal.due()) {</span>
+<span class="fc" id="L66">            var claim=journal.claim(id,WORKER,false);</span>
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">            if (claim!=null) {</span>
+<span class="fc" id="L68">                try { run(claim,executor,false); }</span>
+<span class="nc" id="L69">                catch (ResponseStatusException failure) {</span>
+<span class="nc bnc" id="L70" title="All 2 branches missed.">                    if (failure.getStatusCode()!=HttpStatus.CONFLICT) throw failure;</span>
+<span class="fc" id="L71">                }</span>
+            }
+<span class="fc" id="L73">        }</span>
+<span class="fc" id="L74">    }</span>
+
+    @FunctionalInterface interface PinCleaner {
+        void release(WorkspacePublicationOperation row,Runnable grant) throws IOException;
+    }
+
+    void cleanDue(PinCleaner cleaner) {
+<span class="fc bfc" id="L81" title="All 2 branches covered.">        for (String id : journal.dueForCleanup()) clean(id,WORKER,false,cleaner);</span>
+<span class="fc" id="L82">        journal.expireDue();</span>
+<span class="fc" id="L83">    }</span>
+
+    void cleanArchived(RepositoryContext selected, String id, PinCleaner cleaner) {
+<span class="fc" id="L86">        var actor=actors.authorizePublication(selected.username());</span>
+<span class="fc" id="L87">        journal.get(selected,actor.principalId(),id);</span>
+<span class="fc" id="L88">        clean(id,actor.principalId(),true,cleaner);</span>
+<span class="fc" id="L89">    }</span>
+
+    private void clean(String id,String executor,boolean requested,PinCleaner cleaner) {
+<span class="fc" id="L92">        journal.cleanup(id,executor,requested,row -&gt; {</span>
+<span class="fc" id="L93">            var original=new WorkspaceFetchAuthority.Grant(row.actor,row.loginKind,row.binding);</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">            Runnable grant=() -&gt; actors.checkPublicationGrant(original,row.username,!requested);</span>
+<span class="fc" id="L95">            grant.run();</span>
+<span class="fc" id="L96">            RepositoryMembershipIdentity.RecordedActor.during(row.username, original, () -&gt; {</span>
+<span class="fc" id="L97">                cleaner.release(row, grant);</span>
+<span class="fc" id="L98">                return null;</span>
+            });
+<span class="fc" id="L100">        });</span>
+<span class="fc" id="L101">    }</span>
+
+    private WorkspacePublicationJournal.View resume(RepositoryContext context,String actor,WorkspacePublicationJournal.View row,
+            boolean explicit,PhaseExecutor executor,boolean commandErrors) {
+<span class="fc bfc" id="L105" title="All 2 branches covered.">        if (row.archivedAt()!=null) throw new ResponseStatusException(HttpStatus.GONE,&quot;Publication archived&quot;);</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        if (row.completedAt()!=null) return row;</span>
+<span class="fc" id="L107">        var claim=journal.claim(row.operationId(),actor,explicit);</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        return claim==null ? journal.get(context,actor,row.operationId()) : run(claim,executor,commandErrors);</span>
+    }
+
+    private WorkspacePublicationJournal.View run(WorkspacePublicationJournal.Claim claim,PhaseExecutor executor,boolean commandErrors) {
+        while (true) {
+            try {
+<span class="fc" id="L114">                var state=journal.step(claim,(row,checkLease) -&gt; {</span>
+<span class="fc" id="L115">                    var original=new WorkspaceFetchAuthority.Grant(row.actor,row.loginKind,row.binding);</span>
+<span class="fc" id="L116">                    Runnable authorize=() -&gt; {</span>
+<span class="fc" id="L117">                        checkLease.run();</span>
+<span class="fc" id="L118">                        actors.checkPublicationGrant(original,row.username,WORKER.equals(claim.executor()));</span>
+<span class="fc" id="L119">                    };</span>
+                    try {
+<span class="fc" id="L121">                        authorize.run();</span>
+<span class="fc" id="L122">                    } catch (WorkspaceFetchAuthority.FreshLoginRequired failure) {</span>
+<span class="fc" id="L123">                        throw new FreshLoginRequiredBeforePhase();</span>
+<span class="fc" id="L124">                    }</span>
+<span class="fc" id="L125">                    RepositoryMembershipIdentity.RecordedActor.during(row.username, original, () -&gt; {</span>
+<span class="fc" id="L126">                        executor.execute(row, authorize);</span>
+<span class="fc" id="L127">                        return null;</span>
+                    });
+<span class="fc" id="L129">                });</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">                if (state.completedAt()!=null) return state;</span>
+<span class="fc" id="L131">            } catch (WorkspaceFetchAuthority.FreshLoginRequired failure) {</span>
+<span class="fc" id="L132">                return journal.awaitAuthorization(claim, failure instanceof FreshLoginRequiredBeforePhase);</span>
+<span class="fc" id="L133">            } catch (AccessDeniedException failure) {</span>
+<span class="fc" id="L134">                return journal.decide(claim,DENIED,&quot;AUTHORIZATION_REVOKED&quot;);</span>
+<span class="fc" id="L135">            } catch (Superseded failure) {</span>
+<span class="fc" id="L136">                return journal.decide(claim,SUPERSEDED,&quot;RETAINED_DESCENDANT&quot;,failure.source,failure.sourceTime);</span>
+<span class="fc" id="L137">            } catch (SemanticConflict failure) {</span>
+<span class="fc" id="L138">                return journal.decide(claim,MANUAL_REVIEW,&quot;SEMANTIC_CONFLICT&quot;);</span>
+<span class="fc" id="L139">            } catch (com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem failure) {</span>
+<span class="fc" id="L140">                var decision = journal.decide(claim, MANUAL_REVIEW, &quot;RECONCILIATION_REQUIRED&quot;);</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">                if (commandErrors) throw failure;</span>
+<span class="fc" id="L142">                return decision;</span>
+<span class="fc" id="L143">            } catch (BranchHeadConflictException failure) {</span>
+<span class="fc" id="L144">                return journal.decide(claim,MANUAL_REVIEW,&quot;AUTHORITY_CHANGED&quot;);</span>
+<span class="fc" id="L145">            } catch (ResponseStatusException failure) {</span>
+<span class="pc bpc" id="L146" title="1 of 2 branches missed.">                if (!failure.getStatusCode().is5xxServerError()) throw failure;</span>
+<span class="fc" id="L147">                return journal.decide(claim,RETRYABLE,&quot;DEPENDENCY_UNAVAILABLE&quot;);</span>
+<span class="nc" id="L148">            } catch (org.eclipse.jgit.errors.MissingObjectException | org.eclipse.jgit.errors.IncorrectObjectTypeException failure) {</span>
+<span class="nc" id="L149">                return journal.decide(claim,MANUAL_REVIEW,&quot;RECORDED_GIT_OBJECT_UNAVAILABLE&quot;);</span>
+<span class="fc" id="L150">            } catch (IOException | TransientDataAccessException failure) {</span>
+<span class="fc" id="L151">                return journal.decide(claim,RETRYABLE,&quot;PUBLICATION_INTERRUPTED&quot;);</span>
+<span class="fc" id="L152">            }</span>
+        }
+    }
+
+    private static final class FreshLoginRequiredBeforePhase extends WorkspaceFetchAuthority.FreshLoginRequired { }
+
+    static final class SemanticConflict extends IOException {
+<span class="fc" id="L159">        SemanticConflict(String message) { super(message); }</span>
+    }
+
+    static final class Superseded extends IOException {
+        final boolean source;
+        final java.time.Instant sourceTime;
+<span class="fc" id="L165">        Superseded(boolean source) { this(source,null); }</span>
+        Superseded(boolean source,java.time.Instant sourceTime) {
+<span class="fc" id="L167">            super(&quot;A retained branch already descends from the recorded publication&quot;);</span>
+<span class="fc" id="L168">            this.source=source;</span>
+<span class="fc" id="L169">            this.sourceTime=sourceTime;</span>
+<span class="fc" id="L170">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

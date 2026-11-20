@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SearchApiController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.search.controller</a> &gt; <span class="el_source">SearchApiController.java</span></div><h1>SearchApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.search.controller;
+
+import com.taxonomy.dto.GraphSearchResult;
+import com.taxonomy.dto.TaxonomyNodeDto;
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.relations.service.GraphSearchService;
+import com.taxonomy.relations.controller.GitHttpPrecondition;
+import com.taxonomy.search.service.SearchFacade;
+import com.taxonomy.error.SearchUnavailableException;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.MessageSource;
+import org.springframework.context.i18n.LocaleContextHolder;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import tools.jackson.databind.ObjectMapper;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequestMapping(&quot;/api&quot;)
+@Tag(name = &quot;Search&quot;)
+public class SearchApiController {
+
+<span class="fc" id="L40">    private static final Logger log = LoggerFactory.getLogger(SearchApiController.class);</span>
+
+    private final SearchFacade searchFacade;
+    private final MessageSource messageSource;
+    private final WorkspaceResolver workspaceResolver;
+
+    private final ObjectMapper json;
+
+    public SearchApiController(SearchFacade searchFacade,
+                               MessageSource messageSource,
+<span class="fc" id="L50">                               WorkspaceResolver workspaceResolver, ObjectMapper json) {</span>
+<span class="fc" id="L51">        this.searchFacade = searchFacade;</span>
+<span class="fc" id="L52">        this.messageSource = messageSource;</span>
+<span class="fc" id="L53">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L54">        this.json = json;</span>
+<span class="fc" id="L55">    }</span>
+
+    @Operation(summary = &quot;Full-text search&quot;, description = &quot;Search taxonomy nodes using full-text Lucene search&quot;, tags = {&quot;Search&quot;})
+    @GetMapping(&quot;/search&quot;)
+    public ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; search(
+            @Parameter(description = &quot;Search query&quot;) @RequestParam String q,
+            @Parameter(description = &quot;Maximum number of results&quot;) @RequestParam(defaultValue = &quot;50&quot;) int maxResults) {
+<span class="fc" id="L62">        ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="pc bpc" id="L64" title="1 of 4 branches missed.">        if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L65">        return referenceResults(searchFacade.fullTextSearch(q, maxResults));</span>
+    }
+
+    @Operation(summary = &quot;Semantic search&quot;, description = &quot;Search taxonomy nodes using embedding similarity (KNN). Requires a ready local embedding index.&quot;, tags = {&quot;Search&quot;})
+    @GetMapping(&quot;/search/semantic&quot;)
+    public ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; semanticSearch(
+            @Parameter(description = &quot;Natural-language query&quot;) @RequestParam String q,
+            @Parameter(description = &quot;Maximum number of results&quot;) @RequestParam(defaultValue = &quot;20&quot;) int maxResults) {
+<span class="fc" id="L73">        ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="pc bpc" id="L75" title="1 of 4 branches missed.">        if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L76">        guard = checkSemanticReady();</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        if (guard != null) return guard;</span>
+<span class="fc" id="L78">        return referenceResults(searchFacade.semanticSearch(q, maxResults));</span>
+    }
+
+    @Operation(summary = &quot;Hybrid search&quot;, description = &quot;Combines full-text Lucene and semantic KNN results via Reciprocal Rank Fusion. Falls back to full-text only when embedding is unavailable.&quot;, tags = {&quot;Search&quot;})
+    @GetMapping(&quot;/search/hybrid&quot;)
+    public ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; hybridSearch(
+            @Parameter(description = &quot;Natural-language query&quot;) @RequestParam String q,
+            @Parameter(description = &quot;Maximum number of results&quot;) @RequestParam(defaultValue = &quot;20&quot;) int maxResults) {
+<span class="fc" id="L86">        ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="pc bpc" id="L88" title="1 of 4 branches missed.">        if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L89">        return referenceResults(searchFacade.hybridSearch(q, maxResults));</span>
+    }
+
+    @Operation(summary = &quot;Find similar nodes&quot;, description = &quot;Find taxonomy nodes semantically similar to a given node&quot;, tags = {&quot;Search&quot;})
+    @GetMapping(&quot;/search/similar/{code}&quot;)
+    public ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; findSimilar(
+            @Parameter(description = &quot;Taxonomy node code&quot;) @PathVariable String code,
+            @Parameter(description = &quot;Maximum number of similar nodes&quot;) @RequestParam(defaultValue = &quot;10&quot;) int topK) {
+<span class="fc" id="L97">        ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="fc" id="L99">        guard = checkSemanticReady();</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        if (guard != null) return guard;</span>
+<span class="fc" id="L101">        return referenceResults(searchFacade.findSimilarNodes(code, topK));</span>
+    }
+
+    private ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; referenceResults(List&lt;TaxonomyNodeDto&gt; rows) {
+<span class="fc" id="L105">        return ResponseEntity.ok().cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L106">                .header(&quot;X-Taxonomy-Source-Scope&quot;, &quot;GLOBAL_REFERENCE&quot;)</span>
+<span class="fc" id="L107">                .header(&quot;X-Taxonomy-Source-State&quot;, &quot;READY&quot;)</span>
+<span class="fc" id="L108">                .eTag(&quot;W/\&quot;&quot; + StableIdentityHash.sha256(json.writeValueAsString(rows)) + &quot;\&quot;&quot;).body(rows);</span>
+    }
+
+    @Operation(summary = &quot;Embedding model status&quot;, description = &quot;Returns model and semantic-index readiness independently&quot;, tags = {&quot;Embedding&quot;})
+    @GetMapping(&quot;/embedding/status&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; embeddingStatus() {
+<span class="fc" id="L114">        return ResponseEntity.ok(searchFacade.getEmbeddingStatus());</span>
+    }
+
+    @Operation(summary = &quot;Selected graph search readiness&quot;, description = &quot;Checks the index used by the selected repository and branch.&quot;)
+    @GetMapping(&quot;/search/graph/readiness&quot;)
+    public ResponseEntity&lt;GraphSearchService.Readiness&gt; graphReadiness() {
+<span class="fc" id="L120">        var status = searchFacade.graphReadiness(currentRepositoryContext());</span>
+<span class="fc" id="L121">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(status);</span>
+    }
+
+    @Operation(summary = &quot;Graph-semantic search&quot;, description = &quot;Returns the selected repository, branch, commit, and vector provenance. An ambiguous selection or stale commit pin returns 409. Unavailable search authority returns 503. graphReady reports global prerequisites only.&quot;, tags = {&quot;Search&quot;})
+    @GetMapping(&quot;/search/graph&quot;)
+    public ResponseEntity&lt;GraphSearchResult&gt; graphSearch(
+            @Parameter(description = &quot;Natural-language query&quot;) @RequestParam String q,
+            @Parameter(description = &quot;Maximum number of node results&quot;) @RequestParam(defaultValue = &quot;20&quot;) int maxResults,
+            @Parameter(description = &quot;Expected current branch commit&quot;) @RequestParam(required = false) String commitId) {
+<span class="fc" id="L130">        ResponseEntity&lt;GraphSearchResult&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="pc bpc" id="L132" title="1 of 4 branches missed.">        if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();</span>
+        String expected;
+        try {
+<span class="fc bfc" id="L135" title="All 2 branches covered.">            expected = commitId == null ? null : GitHttpPrecondition.commitId(commitId);</span>
+<span class="nc" id="L136">        } catch (IllegalArgumentException invalid) {</span>
+<span class="nc" id="L137">            return ResponseEntity.badRequest().cacheControl(CacheControl.noStore()).build();</span>
+<span class="fc" id="L138">        }</span>
+<span class="fc" id="L139">        GraphSearchResult result = searchFacade.graphSearch(q, maxResults, currentRepositoryContext());</span>
+<span class="fc" id="L140">        String actual = result.getSource().sourceCommit();</span>
+<span class="pc bpc" id="L141" title="1 of 4 branches missed.">        if (expected != null &amp;&amp; !expected.equals(actual)) {</span>
+<span class="fc" id="L142">            return ResponseEntity.status(HttpStatus.CONFLICT).cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L143">                    .header(&quot;X-Taxonomy-Source-State&quot;, &quot;STALE&quot;).header(&quot;X-Taxonomy-Commit&quot;, actual).build();</span>
+        }
+<span class="fc" id="L145">        String tag = StableIdentityHash.sha256(json.writeValueAsString(result));</span>
+<span class="fc" id="L146">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).eTag(&quot;W/\&quot;&quot; + tag + &quot;\&quot;&quot;)</span>
+<span class="fc" id="L147">                .header(&quot;X-Taxonomy-Source-State&quot;, &quot;READY&quot;).header(&quot;X-Taxonomy-Commit&quot;, actual).body(result);</span>
+    }
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    private &lt;T&gt; ResponseEntity&lt;T&gt; checkInitialized() {
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">        if (!searchFacade.isInitialized()) {</span>
+<span class="nc" id="L153">            Map&lt;String, Object&gt; body = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L154">            body.put(&quot;error&quot;, messageSource.getMessage(&quot;error.loading&quot;, null,</span>
+<span class="nc" id="L155">                    &quot;Taxonomy data is still loading. Please wait.&quot;, LocaleContextHolder.getLocale()));</span>
+<span class="nc" id="L156">            body.put(&quot;status&quot;, searchFacade.getInitStatus());</span>
+<span class="nc" id="L157">            return (ResponseEntity&lt;T&gt;) ResponseEntity.status(503).body(body);</span>
+        }
+<span class="fc" id="L159">        return null;</span>
+    }
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    private &lt;T&gt; ResponseEntity&lt;T&gt; checkSemanticReady() {
+<span class="fc bfc" id="L164" title="All 2 branches covered.">        if (!searchFacade.isSemanticSearchReady()) {</span>
+<span class="fc" id="L165">            Map&lt;String, Object&gt; body = new LinkedHashMap&lt;&gt;(searchFacade.getEmbeddingStatus());</span>
+<span class="fc" id="L166">            body.put(&quot;error&quot;, messageSource.getMessage(&quot;error.semantic.notReady&quot;, null,</span>
+<span class="fc" id="L167">                    &quot;Semantic search is not ready yet&quot;, LocaleContextHolder.getLocale()));</span>
+<span class="fc" id="L168">            return (ResponseEntity&lt;T&gt;) ResponseEntity.status(503).body(body);</span>
+        }
+<span class="fc" id="L170">        return null;</span>
+    }
+
+    private RepositoryContext currentRepositoryContext() {
+        try {
+<span class="fc" id="L175">            RepositoryContext context = workspaceResolver.resolveUnambiguousRepositoryForRead();</span>
+<span class="fc bfc" id="L176" title="All 2 branches covered.">            if (context == null) throw new SearchUnavailableException();</span>
+<span class="fc" id="L177">            return context;</span>
+<span class="fc" id="L178">        } catch (AccessDeniedException | ResponseStatusException error) {</span>
+<span class="fc" id="L179">            throw error;</span>
+<span class="fc" id="L180">        } catch (Exception error) {</span>
+<span class="fc" id="L181">            log.warn(&quot;Search workspace resolution failed (code=SEARCH_CONTEXT_UNAVAILABLE)&quot;);</span>
+<span class="fc" id="L182">            throw new SearchUnavailableException();</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

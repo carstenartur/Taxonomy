@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CatalogueSnapshotService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.snapshot</a> &gt; <span class="el_source">CatalogueSnapshotService.java</span></div><h1>CatalogueSnapshotService.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.snapshot;
+
+import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.catalog.definition.RetainedCatalogueDefinitions;
+import com.taxonomy.dsl.model.CatalogueDefinition;
+import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
+import com.taxonomy.catalog.service.CatalogueOverlayService;
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.catalog.provenance.CatalogueSourceBytes;
+import com.taxonomy.catalog.provenance.CatalogueSourceJournal.Use;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import java.io.IOException;
+import java.util.Comparator;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
+
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.Objects;
+import java.util.Set;
+
+/** Admission captures evidence once; workers bind only authoritative persisted root records. */
+@Service
+public class CatalogueSnapshotService {
+    private final TaxonomyNodeRepository repository;
+    private final CatalogueOverlayService overlay;
+    private final CatalogueRuntimePolicy policy;
+    private final CatalogueSourceJournal sources;
+    private final RetainedCatalogueDefinitions definitions;
+
+    private RetainedHierarchy lastHierarchy;
+
+    public CatalogueSnapshotService(TaxonomyNodeRepository repository, CatalogueOverlayService overlay,
+                                    CatalogueRuntimePolicy policy, CatalogueSourceJournal sources) {
+<span class="fc" id="L39">        this(repository, overlay, policy, sources, null);</span>
+<span class="fc" id="L40">    }</span>
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public CatalogueSnapshotService(TaxonomyNodeRepository repository, CatalogueOverlayService overlay,
+<span class="fc" id="L44">            CatalogueRuntimePolicy policy, CatalogueSourceJournal sources, RetainedCatalogueDefinitions definitions) {</span>
+<span class="fc" id="L45">        this.definitions = definitions;</span>
+<span class="fc" id="L46">        this.repository = repository;</span>
+<span class="fc" id="L47">        this.overlay = overlay;</span>
+<span class="fc" id="L48">        this.policy = policy;</span>
+<span class="fc" id="L49">        this.sources = sources;</span>
+<span class="fc" id="L50">    }</span>
+
+    /** The coordinator selects from this definition before captureRoots verifies the locked generation. */
+    public CatalogueDefinition currentDefinition() {
+<span class="fc" id="L54">        policy.requireCurrentCatalogueAllowed();</span>
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">        return definitions == null ? CatalogueDefinition.standard() : definitions.current();</span>
+    }
+
+    /** Singleton convenience; callers needing multiple roots must use one captureRoots call. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW, isolation = Isolation.READ_COMMITTED)
+    public RootCatalogueSnapshot captureRoot(CatalogueSourceIdentity source, String rootCode) {
+<span class="fc" id="L61">        return captureRoots(source, Set.of(rootCode)).getFirst();</span>
+    }
+
+    /**
+     * Freeze all requested roots under one import gate. The caller authorizes the architecture
+     * operation identity; the independently retained catalogue provenance identifies the shared
+     * official dataset actually read, never a fictitious mapping from an architecture Git commit.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW, isolation = Isolation.READ_COMMITTED)
+    public List&lt;RootCatalogueSnapshot&gt; captureRoots(CatalogueSourceIdentity source, Set&lt;String&gt; rootCodes) {
+<span class="fc" id="L71">        policy.requireCurrentCatalogueAllowed();</span>
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">        if (FrozenCatalogueContext.current() != null) {</span>
+<span class="nc" id="L73">            throw new IllegalStateException(&quot;Cannot capture current catalogue inside a frozen snapshot scope&quot;);</span>
+        }
+<span class="fc" id="L75">        Objects.requireNonNull(source, &quot;source&quot;);</span>
+<span class="pc bpc" id="L76" title="2 of 4 branches missed.">        if (rootCodes == null || rootCodes.isEmpty()) throw new IllegalArgumentException(&quot;Required roots are empty&quot;);</span>
+<span class="fc" id="L77">        var provenance = sources.lockForCapture();</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">        var definition = definitions == null ? CatalogueDefinition.standard() : definitions.forGeneration(provenance);</span>
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">        if (!definition.rootCodes().containsAll(rootCodes))</span>
+<span class="nc" id="L80">            throw new IllegalArgumentException(&quot;Unknown root in the retained catalogue definition&quot;);</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">        var spec = definition.spec().equals(CatalogueDefinition.standard().spec()) ? null : definition.spec();</span>
+<span class="fc" id="L82">        var metadata = overlay.getOverlayMetadata();</span>
+<span class="fc" id="L83">        RootCatalogueSnapshot.requireMatchingOverlay(provenance, metadata);</span>
+<span class="fc" id="L84">        return rootCodes.stream().sorted().map(root -&gt; {</span>
+<span class="fc" id="L85">            var nodes = repository.findByTaxonomyRootOrderByLevelAscNameEnAsc(root).stream()</span>
+<span class="fc" id="L86">                    .map(node -&gt; RootCatalogueSnapshot.Node.capture(node, overlay.getNodeMetadata(node.getCode()),</span>
+<span class="fc" id="L87">                            overlay.hasParentPatch(node.getCode()))).toList();</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">            return new RootCatalogueSnapshot(spec == null ? RootCatalogueSnapshot.SCHEMA_VERSION</span>
+<span class="pc" id="L89">                    : RootCatalogueSnapshot.CONFIGURED_SCHEMA_VERSION, source, root, nodes, metadata, provenance, null, spec);</span>
+<span class="fc" id="L90">        }).toList();</span>
+    }
+
+    /**
+     * Rebuild the given journal revision from its verified workbook and overlay bytes.
+     * An empty selection includes all roots in that revision. Historical database row IDs are unavailable.
+     */
+    @Transactional(readOnly = true)
+    public List&lt;RootCatalogueSnapshot&gt; captureRevision(CatalogueSourceIdentity source, String catalogueRevision,
+                                                      Set&lt;String&gt; rootCodes) {
+<span class="fc" id="L100">        policy.requireCurrentCatalogueAllowed();</span>
+<span class="fc" id="L101">        Objects.requireNonNull(source, &quot;source&quot;);</span>
+<span class="fc" id="L102">        Objects.requireNonNull(rootCodes, &quot;rootCodes&quot;);</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">        if (FrozenCatalogueContext.current() != null) throw new IllegalStateException(&quot;Catalogue capture is already bound&quot;);</span>
+<span class="fc" id="L104">        var generation = sources.findRevision(catalogueRevision)</span>
+<span class="pc" id="L105">                .orElseThrow(() -&gt; new IllegalStateException(&quot;The requested catalogue revision is unavailable&quot;));</span>
+        // Even a warm hierarchy must fail if this revision or its retained blobs are unavailable or damaged.
+        try {
+<span class="fc" id="L108">            var workbook = sources.retainedWorkbook(generation.workbook());</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">            var overlayBytes = generation.overlay().use() == Use.NOT_USED ? null : sources.retainedInput(generation.overlay());</span>
+<span class="fc" id="L110">            var hierarchy = retainedHierarchy(workbook, overlayBytes);</span>
+<span class="fc" id="L111">            var definition = hierarchy.definition();</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">            var selected = rootCodes.isEmpty() ? definition.rootCodes() : rootCodes;</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">            if (!definition.rootCodes().containsAll(selected))</span>
+<span class="fc" id="L114">                throw new IllegalArgumentException(&quot;Unknown root in the requested catalogue revision&quot;);</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">            var spec = definition.spec().equals(CatalogueDefinition.standard().spec()) ? null : definition.spec();</span>
+<span class="fc" id="L116">            return selected.stream().sorted().map(root -&gt; new RootCatalogueSnapshot(</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">                    spec == null ? RootCatalogueSnapshot.SCHEMA_VERSION : RootCatalogueSnapshot.CONFIGURED_SCHEMA_VERSION,</span>
+<span class="fc" id="L118">                    source, root, hierarchy.nodes().get(root), hierarchy.metadata(), generation, null, spec)).toList();</span>
+<span class="fc" id="L119">        } catch (IOException failure) {</span>
+<span class="fc" id="L120">            throw new IllegalStateException(&quot;The requested catalogue inputs are unavailable&quot;, failure);</span>
+        }
+    }
+
+    /** Only the content-derived data are shared. Each caller binds its own source, generation and selected roots. */
+<span class="fc" id="L125">    private record RetainedHierarchy(String workbookSha256, String overlaySha256, CatalogueDefinition definition,</span>
+            CatalogueOverlayService.OverlayMetadata metadata, Map&lt;String, List&lt;RootCatalogueSnapshot.Node&gt;&gt; nodes) { }
+
+    private synchronized RetainedHierarchy retainedHierarchy(CatalogueSourceBytes workbook, CatalogueSourceBytes overlayBytes)
+            throws IOException {
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        String overlaySha256 = overlayBytes == null ? null : overlayBytes.sha256();</span>
+<span class="fc bfc" id="L131" title="All 4 branches covered.">        if (lastHierarchy != null &amp;&amp; lastHierarchy.workbookSha256().equals(workbook.sha256())</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">                &amp;&amp; Objects.equals(lastHierarchy.overlaySha256(), overlaySha256)) return lastHierarchy;</span>
+
+<span class="fc" id="L134">        try (var input = workbook.openStream(); var book = new XSSFWorkbook(input)) {</span>
+<span class="fc" id="L135">            var hierarchy = TaxonomyService.readWorkbookNodes(book);</span>
+<span class="fc" id="L136">            var retained = overlay.applyRetainedHierarchy(hierarchy.nodes(), hierarchy.uuidToCode(), overlayBytes);</span>
+<span class="fc" id="L137">            var nodes = hierarchy.nodes().values().stream()</span>
+<span class="fc" id="L138">                    .map(node -&gt; RootCatalogueSnapshot.Node.capture(node, retained.getNodeMetadata(node.getCode()),</span>
+<span class="fc" id="L139">                            retained.hasParentPatch(node.getCode())))</span>
+<span class="fc" id="L140">                    .sorted(Comparator.comparingInt(RootCatalogueSnapshot.Node::level).thenComparing(RootCatalogueSnapshot.Node::nameEn)</span>
+<span class="fc" id="L141">                            .thenComparing(RootCatalogueSnapshot.Node::code))</span>
+<span class="fc" id="L142">                    .collect(Collectors.groupingBy(RootCatalogueSnapshot.Node::taxonomyRoot, Collectors.toUnmodifiableList()));</span>
+<span class="fc" id="L143">            lastHierarchy = new RetainedHierarchy(workbook.sha256(), overlaySha256, hierarchy.definition(),</span>
+<span class="fc" id="L144">                    retained.getOverlayMetadata(), Map.copyOf(nodes));</span>
+<span class="fc" id="L145">            return lastHierarchy;</span>
+        }
+    }
+
+    public FrozenCatalogueContext.Scope bind(CatalogueSourceIdentity expectedSource, Set&lt;String&gt; requiredRoots,
+                                             Collection&lt;RootCatalogueSnapshot&gt; snapshots) {
+<span class="fc" id="L151">        policy.requireConfiguredRoots(requiredRoots);</span>
+<span class="fc" id="L152">        return FrozenCatalogueContext.bind(new FrozenCatalogueView(expectedSource, requiredRoots, snapshots));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

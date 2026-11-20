@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AuthorizationRulesConfigurer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.config</a> &gt; <span class="el_source">AuthorizationRulesConfigurer.java</span></div><h1>AuthorizationRulesConfigurer.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.config;
+
+import com.taxonomy.security.access.ApiAccessPolicy;
+import com.taxonomy.security.keycloak.KeycloakPrincipalMode;
+import com.taxonomy.security.model.StablePrincipal;
+import com.taxonomy.security.service.PrincipalIdentityService;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataAccessException;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.AuthenticationTrustResolverImpl;
+import org.springframework.security.authorization.AuthorizationDecision;
+import org.springframework.security.config.annotation.web.configurers.AuthorizeHttpRequestsConfigurer;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
+import org.springframework.security.oauth2.core.oidc.user.OidcUser;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.security.web.access.intercept.RequestAuthorizationContext;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
+import org.springframework.stereotype.Component;
+
+import java.util.function.Supplier;
+
+/** Shared page rules and the single REST policy used by local and OIDC authentication. */
+@Component
+<span class="fc" id="L30">public class AuthorizationRulesConfigurer {</span>
+    @Value(&quot;${taxonomy.security.swagger-public:true}&quot;)
+    private boolean swaggerPublic;
+<span class="fc" id="L33">    @Autowired(required = false)</span>
+    private KeycloakPrincipalMode principalMode = KeycloakPrincipalMode.LEGACY;
+
+    // MVC slices without identity persistence retain their existing composition seam.
+    // The production identity configuration always supplies this registry service.
+    @Autowired(required = false)
+    private PrincipalIdentityService identities;
+
+<span class="fc" id="L41">    private static final AuthenticationTrustResolverImpl TRUST = new AuthenticationTrustResolverImpl();</span>
+
+    public void configure(
+            AuthorizeHttpRequestsConfigurer&lt;org.springframework.security.config.annotation.web.builders.HttpSecurity&gt;
+                    .AuthorizationManagerRequestMatcherRegistry auth) {
+<span class="fc" id="L46">        auth.requestMatchers(&quot;/login&quot;, &quot;/error&quot;, &quot;/css/**&quot;, &quot;/js/**&quot;, &quot;/images/**&quot;, &quot;/webjars/**&quot;,</span>
+                        &quot;/login/oauth2/**&quot;, &quot;/oauth2/**&quot;)
+<span class="fc" id="L48">                .permitAll();</span>
+<span class="fc" id="L49">        auth.requestMatchers(&quot;/actuator/health&quot;, &quot;/actuator/health/**&quot;, &quot;/actuator/info&quot;).permitAll();</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        if (swaggerPublic) {</span>
+<span class="fc" id="L51">            auth.requestMatchers(&quot;/v3/api-docs/**&quot;, &quot;/swagger-ui/**&quot;, &quot;/swagger-ui.html&quot;).permitAll();</span>
+        } else {
+<span class="fc" id="L53">            auth.requestMatchers(&quot;/v3/api-docs/**&quot;, &quot;/swagger-ui/**&quot;, &quot;/swagger-ui.html&quot;).access(this::authenticated);</span>
+        }
+<span class="fc" id="L55">        auth.requestMatchers(&quot;/api/**&quot;, &quot;/oslc/**&quot;).access((authentication, context) -&gt; {</span>
+<span class="fc" id="L56">            var request = context.getRequest();</span>
+<span class="fc" id="L57">            String path = request.getRequestURI().substring(request.getContextPath().length());</span>
+<span class="fc" id="L58">            var rule = ApiAccessPolicy.resolve(request.getMethod(), path);</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">            if (rule.access() == ApiAccessPolicy.Access.PUBLIC) return new AuthorizationDecision(true);</span>
+<span class="fc" id="L60">            var current = authentication.get();</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">            return new AuthorizationDecision(ApiAccessPolicy.authorize(current, rule)</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">                    &amp;&amp; currentIdentity(current, request));</span>
+        });
+<span class="fc" id="L64">        auth.requestMatchers(&quot;/admin/**&quot;).access((authentication, context) -&gt; {</span>
+<span class="fc" id="L65">            var current = authentication.get();</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">            return new AuthorizationDecision(TRUST.isAuthenticated(current)</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">                    &amp;&amp; current.getAuthorities().stream().anyMatch(authority -&gt; &quot;ROLE_ADMIN&quot;.equals(authority.getAuthority()))</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">                    &amp;&amp; currentIdentity(current, context.getRequest()));</span>
+        });
+<span class="fc" id="L70">        auth.requestMatchers(HttpMethod.GET, &quot;/backup-jobs&quot;).access(this::authenticated);</span>
+<span class="fc" id="L71">        auth.requestMatchers(&quot;/**&quot;).access(this::authenticated);</span>
+<span class="fc" id="L72">    }</span>
+
+    private AuthorizationDecision authenticated(Supplier&lt;? extends Authentication&gt; authentication, RequestAuthorizationContext context) {
+<span class="fc" id="L75">        var current = authentication.get();</span>
+<span class="fc bfc" id="L76" title="All 4 branches covered.">        return new AuthorizationDecision(TRUST.isAuthenticated(current) &amp;&amp; currentIdentity(current, context.getRequest()));</span>
+    }
+
+    private boolean currentIdentity(Authentication authentication, HttpServletRequest request) {
+<span class="fc bfc" id="L80" title="All 2 branches covered.">        if (identities == null) return true;</span>
+<span class="fc bfc" id="L81" title="All 4 branches covered.">        if (authentication instanceof StablePrincipal || authentication.getPrincipal() instanceof StablePrincipal) {</span>
+            try {
+<span class="fc" id="L83">                identities.requireCurrent(authentication);</span>
+<span class="fc" id="L84">                return true;</span>
+<span class="fc" id="L85">            } catch (AccessDeniedException | DataAccessException | IllegalArgumentException unavailable) {</span>
+                // Neither credentials nor database exception details belong in an HTTP denial or log.
+<span class="fc" id="L87">                return false;</span>
+            }
+        }
+<span class="fc bfc" id="L90" title="All 4 branches covered.">        if (authentication instanceof JwtAuthenticationToken</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">                || (authentication instanceof OAuth2AuthenticationToken oauth2 &amp;&amp; oauth2.getPrincipal() instanceof OidcUser)) {</span>
+            // Existing external ownership cannot change identity mode without verified migration.
+<span class="fc bfc" id="L93" title="All 2 branches covered.">            return principalMode == KeycloakPrincipalMode.LEGACY;</span>
+        }
+<span class="fc" id="L95">        var session = request.getSession(false);</span>
+<span class="pc bpc" id="L96" title="1 of 4 branches missed.">        if (session != null &amp;&amp; session.getAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY)</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">                instanceof SecurityContext retained &amp;&amp; retained.getAuthentication() == authentication) {</span>
+            // A server-side save for this request is separate from a session read.
+            // Restoring a retained-only context does not populate the request repository.
+<span class="fc bfc" id="L100" title="All 2 branches covered.">            return request.getAttribute(RequestAttributeSecurityContextRepository.DEFAULT_REQUEST_ATTR_NAME)</span>
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">                    instanceof SecurityContext fresh &amp;&amp; fresh.getAuthentication() == authentication;</span>
+        }
+        // Fresh stateless adapters (notably WebDAV application credentials) retain their own
+        // current credential checks. They cannot make an unknown retained session authoritative.
+<span class="fc" id="L105">        return true;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

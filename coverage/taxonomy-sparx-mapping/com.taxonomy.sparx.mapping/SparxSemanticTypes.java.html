@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SparxSemanticTypes.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-sparx-mapping</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.sparx.mapping</a> &gt; <span class="el_source">SparxSemanticTypes.java</span></div><h1>SparxSemanticTypes.java</h1><pre class="source lang-java linenums">package com.taxonomy.sparx.mapping;
+
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * Canonical meanings shared by the Sparx XMI and native-file adapters.
+ * Association transports require an explicit Taxonomy declaration; they do not
+ * make the corresponding concept a native UML Association or Realization.
+ */
+public final class SparxSemanticTypes {
+<span class="fc" id="L12">    private static final Map&lt;String, String&gt; ELEMENTS = Map.of(</span>
+            &quot;Capability&quot;, &quot;UseCase&quot;, &quot;Process&quot;, &quot;Activity&quot;, &quot;CoreService&quot;, &quot;Interface&quot;, &quot;COIService&quot;, &quot;Interface&quot;,
+            &quot;CommunicationsService&quot;, &quot;Interface&quot;, &quot;UserApplication&quot;, &quot;Component&quot;, &quot;InformationProduct&quot;, &quot;Artifact&quot;,
+            &quot;BusinessRole&quot;, &quot;Actor&quot;, &quot;System&quot;, &quot;Component&quot;, &quot;Component&quot;, &quot;Component&quot;);
+<span class="fc" id="L16">    private static final Map&lt;String, String&gt; RELATIONS = Map.ofEntries(</span>
+<span class="fc" id="L17">            Map.entry(&quot;DEPENDS_ON&quot;, &quot;Dependency&quot;), Map.entry(&quot;REALIZES&quot;, &quot;Association&quot;),</span>
+<span class="fc" id="L18">            Map.entry(&quot;COMMUNICATES_WITH&quot;, &quot;InformationFlow&quot;), Map.entry(&quot;RELATED_TO&quot;, &quot;Association&quot;),</span>
+<span class="fc" id="L19">            Map.entry(&quot;CONSUMES&quot;, &quot;Usage&quot;), Map.entry(&quot;CONTAINS&quot;, &quot;Composition&quot;),</span>
+<span class="fc" id="L20">            Map.entry(&quot;SUPPORTS&quot;, &quot;Association&quot;), Map.entry(&quot;USES&quot;, &quot;Association&quot;),</span>
+<span class="fc" id="L21">            Map.entry(&quot;FULFILLS&quot;, &quot;Association&quot;), Map.entry(&quot;ASSIGNED_TO&quot;, &quot;Association&quot;),</span>
+<span class="fc" id="L22">            Map.entry(&quot;PRODUCES&quot;, &quot;Association&quot;), Map.entry(&quot;REQUIRES&quot;, &quot;Association&quot;));</span>
+<span class="fc" id="L23">    private static final Set&lt;String&gt; ASSOCIATIONS = Set.of(</span>
+            &quot;REALIZES&quot;, &quot;SUPPORTS&quot;, &quot;USES&quot;, &quot;FULFILLS&quot;, &quot;ASSIGNED_TO&quot;, &quot;PRODUCES&quot;, &quot;REQUIRES&quot;);
+
+    private SparxSemanticTypes() { }
+
+<span class="fc" id="L28">    public static Set&lt;String&gt; canonicalTypes() { return ELEMENTS.keySet(); }</span>
+<span class="fc" id="L29">    public static Map&lt;String, String&gt; elementTypes() { return ELEMENTS; }</span>
+<span class="fc" id="L30">    public static Map&lt;String, String&gt; relationTypes() { return RELATIONS; }</span>
+<span class="fc" id="L31">    public static Set&lt;String&gt; associationTypes() { return ASSOCIATIONS; }</span>
+<span class="fc" id="L32">    public static String umlType(String canonical) { return required(ELEMENTS, canonical, &quot;element&quot;); }</span>
+<span class="fc" id="L33">    public static String relationTransport(String canonical) { return required(RELATIONS, canonical, &quot;relation&quot;); }</span>
+
+    /** The seven explicit Association projections; RELATED_TO retains its generic Association meaning. */
+    public static boolean associationTransport(String canonical) {
+<span class="pc bpc" id="L37" title="1 of 4 branches missed.">        return canonical != null &amp;&amp; ASSOCIATIONS.contains(canonical);</span>
+    }
+
+    public static String taxonomyStereotype(String canonical) {
+<span class="fc bfc" id="L41" title="All 6 branches covered.">        if (canonical == null || !ELEMENTS.containsKey(canonical) &amp;&amp; !RELATIONS.containsKey(canonical))</span>
+<span class="fc" id="L42">            throw new IllegalArgumentException(&quot;Unsupported Taxonomy stereotype&quot;);</span>
+<span class="fc" id="L43">        return &quot;Taxonomy::&quot; + canonical;</span>
+    }
+
+    private static String required(Map&lt;String, String&gt; mappings, String canonical, String kind) {
+<span class="fc bfc" id="L47" title="All 2 branches covered.">        String transport = canonical == null ? null : mappings.get(canonical);</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        if (transport == null) throw new IllegalArgumentException(&quot;Unsupported Taxonomy &quot; + kind + &quot; type&quot;);</span>
+<span class="fc" id="L49">        return transport;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

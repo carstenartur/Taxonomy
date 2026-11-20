@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkspaceBranchDeletion.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">WorkspaceBranchDeletion.java</span></div><h1>WorkspaceBranchDeletion.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.Repository;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.io.IOException;
+import java.util.regex.Pattern;
+
+/** Confirmation of a destructive variant operation belongs to one working copy, ref and exact Git object. */
+@Service
+public class WorkspaceBranchDeletion {
+    public interface Actor {
+        String require(String username);
+    }
+<span class="fc" id="L25">    public record Preview(String branch, String head, String etag) {}</span>
+
+<span class="fc" id="L27">    private static final Pattern ETAG = Pattern.compile(&quot;\&quot;variant-([0-9a-f]{64})-([0-9a-f]{40})\&quot;&quot;);</span>
+    private final UserWorkspaceRepository workspaces;
+    private final SystemRepositoryService repositories;
+    private final RepositoryMembershipService memberships;
+    private final DslGitRepositoryFactory stores;
+    private final Actor actor;
+
+    public WorkspaceBranchDeletion(UserWorkspaceRepository workspaces, SystemRepositoryService repositories,
+<span class="fc" id="L35">            RepositoryMembershipService memberships, DslGitRepositoryFactory stores, Actor actor) {</span>
+<span class="fc" id="L36">        this.workspaces = workspaces;</span>
+<span class="fc" id="L37">        this.repositories = repositories;</span>
+<span class="fc" id="L38">        this.memberships = memberships;</span>
+<span class="fc" id="L39">        this.stores = stores;</span>
+<span class="fc" id="L40">        this.actor = actor;</span>
+<span class="fc" id="L41">    }</span>
+
+    @Transactional(readOnly = true)
+    public Preview preview(RepositoryContext selection, String name) throws IOException {
+<span class="fc" id="L45">        authorize(selection, name, false);</span>
+<span class="fc" id="L46">        String head = stores.readWorkspaceVariantHead(selection.workspaceId(), name);</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">        if (head == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, &quot;Variant unavailable&quot;);</span>
+<span class="fc" id="L48">        return new Preview(name, head, etag(selection, name, head));</span>
+    }
+
+    @Transactional(rollbackFor = IOException.class)
+    public void delete(RepositoryContext selection, String name, String ifMatch) throws IOException {
+<span class="fc" id="L53">        String actorId = authorize(selection, name, true);</span>
+<span class="pc bpc" id="L54" title="1 of 4 branches missed.">        if (ifMatch == null || ifMatch.isBlank()) {</span>
+<span class="fc" id="L55">            throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED, &quot;Review the variant before deleting it&quot;);</span>
+        }
+<span class="fc" id="L57">        var match = ETAG.matcher(ifMatch);</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">        if (!match.matches()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, &quot;One exact variant ETag is required&quot;);</span>
+<span class="fc" id="L59">        String head = match.group(2);</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        if (!ifMatch.equals(etag(selection, name, head))) {</span>
+<span class="fc" id="L61">            throw new ResponseStatusException(HttpStatus.PRECONDITION_FAILED, &quot;The selected variant changed&quot;);</span>
+        }
+<span class="fc" id="L63">        stores.deleteWorkspaceVariant(selection.workspaceId(), name, head, actorId, () -&gt; {</span>
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">            if (!actorId.equals(authorize(selection, name, false))) throw denied();</span>
+<span class="fc" id="L65">        });</span>
+<span class="fc" id="L66">    }</span>
+
+    private String authorize(RepositoryContext selection, String name, boolean mutation) {
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        if (selection.scope() != RepositoryScope.WORKSPACE) throw denied();</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">        if (mutation) {</span>
+<span class="fc" id="L71">            repositories.lock(selection.repositoryId());</span>
+<span class="fc" id="L72">            memberships.lockForRefMutation(selection.repositoryId());</span>
+        }
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        var workspace = (mutation ? workspaces.findByWorkspaceIdForUpdate(selection.workspaceId())</span>
+<span class="fc" id="L75">                : workspaces.findByWorkspaceId(selection.workspaceId())).orElseThrow(WorkspaceBranchDeletion::denied);</span>
+<span class="fc" id="L76">        var repository = repositories.getRepository(selection.repositoryId());</span>
+<span class="fc" id="L77">        String user = selection.username();</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">        if (workspace.getProvisioningStatus() != WorkspaceProvisioningStatus.READY</span>
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">                || !selection.branch().equals(workspace.getCurrentBranch())</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">                || !memberships.canUseWorkspace(repository, workspace, user)</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">                || !memberships.canCollaborate(repository, user)) throw denied();</span>
+<span class="fc" id="L82">        String actorId = actor.require(user);</span>
+<span class="fc bfc" id="L83" title="All 4 branches covered.">        if (!workspace.matchesOwner(user, actorId) &amp;&amp; !memberships.canMaintain(repository, user)) throw denied();</span>
+<span class="pc bpc" id="L84" title="2 of 4 branches missed.">        if (name == null || !Repository.isValidRefName(Constants.R_HEADS + name)) throw new IllegalArgumentException(&quot;Invalid branch&quot;);</span>
+<span class="pc bpc" id="L85" title="1 of 4 branches missed.">        if (DslGitRepository.isProtectedVariant(name) || name.equals(selection.branch())) {</span>
+<span class="fc" id="L86">            throw new IllegalArgumentException(&quot;Cannot delete protected branch: &quot; + name);</span>
+        }
+<span class="fc" id="L88">        return actorId;</span>
+    }
+
+    private static String etag(RepositoryContext selection, String name, String head) {
+<span class="fc" id="L92">        String ref = StableIdentityHash.sha256(selection.repositoryWorkspaceScopeKey() + &quot;:&quot; + name);</span>
+<span class="fc" id="L93">        return &quot;\&quot;variant-&quot; + ref + &quot;-&quot; + head + &quot;\&quot;&quot;;</span>
+    }
+
+    private static AccessDeniedException denied() {
+<span class="fc" id="L97">        return new AccessDeniedException(&quot;Variant deletion is unavailable in this working copy&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CustomerStylesheetController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.shared.controller</a> &gt; <span class="el_source">CustomerStylesheetController.java</span></div><h1>CustomerStylesheetController.java</h1><pre class="source lang-java linenums">package com.taxonomy.shared.controller;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.ResponseBody;
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
+
+/** An operator-owned stylesheet supplements the application's bundled styles. */
+@Controller
+@ControllerAdvice
+public class CustomerStylesheetController implements com.taxonomy.export.ExportThemeProvider {
+    static final int MAX_STYLESHEET_BYTES = 512 * 1024;
+<span class="fc" id="L29">    private static final Logger log = LoggerFactory.getLogger(CustomerStylesheetController.class);</span>
+<span class="fc" id="L30">    private static final MediaType CSS = new MediaType(&quot;text&quot;, &quot;css&quot;, StandardCharsets.UTF_8);</span>
+    private final String configuredFile;
+
+<span class="fc" id="L33">    public CustomerStylesheetController(@Value(&quot;${taxonomy.ui.custom-stylesheet:${TAXONOMY_UI_CUSTOM_STYLESHEET:}}&quot;) String configuredFile) {</span>
+<span class="pc bpc" id="L34" title="1 of 2 branches missed.">        this.configuredFile = configuredFile == null ? &quot;&quot; : configuredFile.trim();</span>
+<span class="fc" id="L35">    }</span>
+
+    @ModelAttribute(&quot;customerStylesheetEnabled&quot;)
+    public boolean customerStylesheetEnabled() {
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        return !configuredFile.isEmpty();</span>
+    }
+
+    /** Reuses the bounded UTF-8 read and failure policy used by application pages. */
+    @Override
+    public com.taxonomy.export.ExportTheme current() {
+<span class="fc" id="L45">        var response = stylesheet();</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">        return response.getStatusCode().is2xxSuccessful()</span>
+<span class="fc" id="L47">                ? com.taxonomy.export.ExportTheme.fromStylesheet(response.getBody())</span>
+<span class="fc" id="L48">                : com.taxonomy.export.ExportTheme.defaults();</span>
+    }
+
+    @GetMapping(value = &quot;/css/customer-theme.css&quot;, produces = &quot;text/css&quot;)
+    @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = &quot;Read the optional customer stylesheet&quot;,
+            description = &quot;Returns the configured operator-owned UTF-8 CSS without caching, or an empty stylesheet when unconfigured. A missing, unreadable, oversized or invalid file returns 503 while bundled application styles remain available.&quot;)
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;200&quot;, description = &quot;Configured stylesheet or empty CSS when unconfigured&quot;)
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;503&quot;, description = &quot;Configured stylesheet is unavailable or invalid&quot;)
+    public ResponseEntity&lt;String&gt; stylesheet() {
+<span class="fc bfc" id="L58" title="All 2 branches covered.">        if (!customerStylesheetEnabled()) return css(HttpStatus.OK, &quot;&quot;);</span>
+<span class="fc" id="L59">        try (var input = Files.newInputStream(Path.of(configuredFile))) {</span>
+<span class="fc" id="L60">            byte[] bytes = input.readNBytes(MAX_STYLESHEET_BYTES + 1);</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">            if (bytes.length &gt; MAX_STYLESHEET_BYTES) throw new IOException(&quot;Stylesheet exceeds the size limit&quot;);</span>
+<span class="fc" id="L62">            String content = StandardCharsets.UTF_8.newDecoder()</span>
+<span class="fc" id="L63">                    .onMalformedInput(CodingErrorAction.REPORT)</span>
+<span class="fc" id="L64">                    .onUnmappableCharacter(CodingErrorAction.REPORT)</span>
+<span class="fc" id="L65">                    .decode(ByteBuffer.wrap(bytes)).toString();</span>
+<span class="fc" id="L66">            return css(HttpStatus.OK, content);</span>
+<span class="fc" id="L67">        } catch (IOException | InvalidPathException error) {</span>
+<span class="fc" id="L68">            log.warn(&quot;Customer stylesheet could not be read: {}&quot;, error.getMessage());</span>
+<span class="fc" id="L69">            return css(HttpStatus.SERVICE_UNAVAILABLE, &quot;/* Customer stylesheet unavailable. */&quot;);</span>
+        }
+    }
+
+    private static ResponseEntity&lt;String&gt; css(HttpStatus status, String body) {
+<span class="fc" id="L74">        return ResponseEntity.status(status).contentType(CSS).cacheControl(CacheControl.noStore()).body(body);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

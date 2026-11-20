@@ -1,0 +1,193 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>UpstreamRebasePlan.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">UpstreamRebasePlan.java</span></div><h1>UpstreamRebasePlan.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.RebaseDslConflict;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.revwalk.filter.RevFilter;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+/** A read-only ancestry plan against the last fetched upstream commit. Content conflicts are not evaluated. */
+<span class="fc" id="L20">public record UpstreamRebasePlan(String repositoryId, String workspaceId, String branch, String localCommit,</span>
+                                 WorkspaceUpstreamService.Status upstream, State status, String mergeBase,
+                                 List&lt;Commit&gt; commits, String recoverableCommit) {
+    UpstreamRebasePlan(String repositoryId, String workspaceId, String branch, String localCommit,
+                       WorkspaceUpstreamService.Status upstream, State status, String mergeBase, List&lt;Commit&gt; commits) {
+<span class="fc" id="L25">        this(repositoryId, workspaceId, branch, localCommit, upstream, status, mergeBase, commits, null);</span>
+<span class="fc" id="L26">    }</span>
+
+    UpstreamRebasePlan withRecoverableCommit(String commit) {
+<span class="fc" id="L29">        return new UpstreamRebasePlan(repositoryId, workspaceId, branch, localCommit, upstream, status, mergeBase, commits, commit);</span>
+    }
+
+<span class="fc" id="L32">    public enum State { NO_LOCAL_BRANCH, NO_TRACKING, UNRELATED, AMBIGUOUS_BASE, NON_LINEAR, TOO_LONG,</span>
+<span class="fc" id="L33">                        UP_TO_DATE, FAST_FORWARD, REPLAY }</span>
+<span class="fc" id="L34">    public record Commit(String id, String subject) {}</span>
+
+    private static final int MAX_REPLAY_COMMITS = 200;
+
+<span class="fc" id="L38">    private record Refs(String localCommit, WorkspaceUpstreamService.Status upstream) {}</span>
+
+    static UpstreamRebasePlan read(GitUpstreamTransfer transfer, String repositoryId, String workspaceId,
+                                  String branch) throws IOException {
+<span class="fc" id="L42">        var reauthorize = transfer.reauthorize();</span>
+<span class="fc" id="L43">        reauthorize.run();</span>
+        try {
+<span class="fc" id="L45">            var refs = readRefs(transfer, branch);</span>
+<span class="fc" id="L46">            var plan = new UpstreamRebasePlan(repositoryId, workspaceId, branch, refs.localCommit(), refs.upstream(),</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">                    refs.localCommit() == null ? State.NO_LOCAL_BRANCH : State.NO_TRACKING, null, List.of());</span>
+<span class="fc bfc" id="L48" title="All 4 branches covered.">            if (refs.localCommit() != null &amp;&amp; refs.upstream().trackedCommit() != null) {</span>
+<span class="fc" id="L49">                return plan.inspectHistory(transfer.target().getGitRepository());</span>
+            }
+<span class="fc" id="L51">            return plan;</span>
+        } finally {
+            // Recheck authority before releasing either the plan or an inspection error.
+<span class="fc" id="L54">            reauthorize.run();</span>
+        }
+    }
+
+    static String readRefTag(GitUpstreamTransfer transfer, String repositoryId, String workspaceId,
+                             String branch) throws IOException {
+<span class="fc" id="L60">        var reauthorize = transfer.reauthorize();</span>
+<span class="fc" id="L61">        reauthorize.run();</span>
+        try {
+<span class="fc" id="L63">            return refTag(repositoryId, workspaceId, branch, readRefs(transfer, branch));</span>
+        } finally {
+<span class="fc" id="L65">            reauthorize.run();</span>
+        }
+    }
+
+    /** Exact ref, commit and ordered replay identities supplied by an explicit user action. */
+    public record ApplyRequest(String expectedRefTag, String expectedLocalCommit,
+                               String expectedTrackedCommit, List&lt;String&gt; orderedCommits,
+                               Map&lt;String, RebaseDslConflict.Resolution&gt; resolutions) {
+        public ApplyRequest(String expectedRefTag, String expectedLocalCommit, String expectedTrackedCommit,
+                            List&lt;String&gt; orderedCommits) {
+<span class="fc" id="L75">            this(expectedRefTag, expectedLocalCommit, expectedTrackedCommit, orderedCommits, Map.of());</span>
+<span class="fc" id="L76">        }</span>
+
+<span class="fc" id="L78">        public ApplyRequest {</span>
+<span class="fc" id="L79">            Objects.requireNonNull(expectedRefTag, &quot;expectedRefTag&quot;);</span>
+<span class="fc" id="L80">            Objects.requireNonNull(expectedLocalCommit, &quot;expectedLocalCommit&quot;);</span>
+<span class="fc" id="L81">            Objects.requireNonNull(expectedTrackedCommit, &quot;expectedTrackedCommit&quot;);</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">            resolutions = resolutions == null ? Map.of() : Map.copyOf(resolutions);</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">            if (resolutions.size() &gt; MAX_REPLAY_COMMITS || resolutions.values().stream()</span>
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">                    .mapToLong(value -&gt; value.text().length()).sum() &gt; 4L * 1024 * 1024) {</span>
+<span class="nc" id="L85">                throw new IllegalArgumentException(&quot;The conflict resolutions exceed the replay limit&quot;);</span>
+            }
+<span class="fc" id="L87">            orderedCommits = List.copyOf(Objects.requireNonNull(orderedCommits, &quot;orderedCommits&quot;));</span>
+<span class="fc" id="L88">        }</span>
+    }
+
+    static DslGitRepository.RebaseReplay apply(GitUpstreamTransfer transfer, String repositoryId,
+                                               String workspaceId, String branch, ApplyRequest request)
+            throws IOException {
+<span class="fc" id="L94">        return replay(transfer, repositoryId, workspaceId, branch, request, true);</span>
+    }
+
+    static DslGitRepository.RebaseReplay replay(GitUpstreamTransfer transfer, String repositoryId, String workspaceId,
+                                                String branch, ApplyRequest request, boolean publish) throws IOException {
+<span class="fc" id="L99">        Objects.requireNonNull(request, &quot;request&quot;);</span>
+        // Invalid request syntax is a 400, but an otherwise valid plan whose refs moved is a 409,
+        // even when that movement changed the current plan state from REPLAY to UP_TO_DATE.
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">        if (!request.expectedRefTag().matches(&quot;W/\\\&quot;[0-9a-f]{64}\\\&quot;&quot;)</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">                || !ObjectId.isId(request.expectedLocalCommit())</span>
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">                || !ObjectId.isId(request.expectedTrackedCommit())</span>
+<span class="pc bpc" id="L105" title="2 of 4 branches missed.">                || request.orderedCommits().isEmpty() || request.orderedCommits().size() &gt; MAX_REPLAY_COMMITS</span>
+<span class="pc bpc" id="L106" title="2 of 4 branches missed.">                || request.orderedCommits().stream().anyMatch(id -&gt; !ObjectId.isId(id))) {</span>
+<span class="nc" id="L107">            throw new IllegalArgumentException(&quot;A complete, bounded and reviewed replay is required&quot;);</span>
+        }
+<span class="fc" id="L109">        var reviewed = read(transfer, repositoryId, workspaceId, branch);</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        if (!reviewed.refTag().equals(request.expectedRefTag())</span>
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">                || !Objects.equals(reviewed.localCommit(), request.expectedLocalCommit())</span>
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">                || !Objects.equals(reviewed.upstream().trackedCommit(), request.expectedTrackedCommit())</span>
+<span class="pc bpc" id="L113" title="1 of 2 branches missed.">                || !reviewed.commits().stream().map(Commit::id).toList().equals(request.orderedCommits())) {</span>
+<span class="fc" id="L114">            throw new BranchHeadConflictException(branch, request.expectedLocalCommit(), reviewed.localCommit(),</span>
+                    &quot;The reviewed rebase plan changed&quot;);
+        }
+<span class="pc bpc" id="L117" title="1 of 2 branches missed.">        if (reviewed.status() != State.REPLAY) {</span>
+<span class="nc" id="L118">            throw new IllegalArgumentException(&quot;Only a divergent, linear and reviewed replay may be applied&quot;);</span>
+        }
+        // A reviewed replay must be based on the current default-branch tip. Do not silently
+        // rewrite onto an older fetch when the source has advanced since that fetch.
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        if (!Objects.equals(reviewed.upstream().sourceCommit(), reviewed.upstream().trackedCommit())) {</span>
+<span class="fc" id="L123">            throw new BranchHeadConflictException(branch, reviewed.upstream().trackedCommit(),</span>
+<span class="fc" id="L124">                    reviewed.upstream().sourceCommit(), &quot;Fetch the current upstream before replaying the branch&quot;);</span>
+        }
+<span class="fc" id="L126">        return transfer.target().replayLinearHistory(branch, reviewed.localCommit(), reviewed.mergeBase(),</span>
+<span class="fc" id="L127">                reviewed.upstream().trackedCommit(), request.orderedCommits(), request.resolutions(), transfer.actor(), () -&gt; {</span>
+<span class="fc" id="L128">                    var current = readRefTag(transfer, repositoryId, workspaceId, branch);</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">                    if (!reviewed.refTag().equals(current)) {</span>
+<span class="nc" id="L130">                        throw new BranchHeadConflictException(branch, reviewed.localCommit(), null,</span>
+                                &quot;A source, target or tracking Git ref changed during the reviewed rebase&quot;);
+                    }
+<span class="fc" id="L133">                }, publish);</span>
+    }
+
+    private static Refs readRefs(GitUpstreamTransfer transfer, String branch) throws IOException {
+<span class="fc bfc" id="L137" title="All 4 branches covered.">        if (branch == null || !Repository.isValidRefName(Constants.R_HEADS + branch)</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">                || branch.startsWith(DslGitRepository.EXTERNAL_SYNC_BRANCH_PREFIX)) {</span>
+<span class="fc" id="L139">            throw new IllegalArgumentException(&quot;An exact local branch is required&quot;);</span>
+        }
+<span class="fc" id="L141">        var upstream = transfer.inspect();</span>
+<span class="fc" id="L142">        var local = transfer.target().readFreshRef(Constants.R_HEADS + branch);</span>
+<span class="pc bpc" id="L143" title="2 of 6 branches missed.">        String head = local == null || local.isSymbolic() || local.getObjectId() == null</span>
+<span class="fc" id="L144">                ? null : local.getObjectId().name();</span>
+<span class="fc" id="L145">        return new Refs(head, upstream);</span>
+    }
+
+    public String refTag() {
+<span class="fc" id="L149">        return refTag(repositoryId, workspaceId, branch, new Refs(localCommit, upstream));</span>
+    }
+
+    private static String refTag(String repositoryId, String workspaceId, String branch, Refs refs) {
+<span class="fc" id="L153">        var upstream = refs.upstream();</span>
+<span class="fc" id="L154">        var identity = new StringBuilder();</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">        for (String value : new String[]{repositoryId, workspaceId, branch, refs.localCommit(),</span>
+<span class="fc" id="L156">                upstream.sourceRepositoryId(), upstream.sourceBranch(), upstream.sourceCommit(),</span>
+<span class="fc" id="L157">                upstream.trackingRef(), upstream.trackedCommit()}) {</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">            if (value == null) identity.append(&quot;-:&quot;);</span>
+<span class="fc" id="L159">            else identity.append(value.length()).append(':').append(value);</span>
+        }
+<span class="fc" id="L161">        return &quot;W/\&quot;&quot; + StableIdentityHash.sha256(identity.toString()) + &quot;\&quot;&quot;;</span>
+    }
+
+    private UpstreamRebasePlan inspectHistory(Repository repository) throws IOException {
+<span class="fc" id="L165">        try (var walk = new RevWalk(repository)) {</span>
+<span class="fc" id="L166">            var local = walk.parseCommit(ObjectId.fromString(localCommit));</span>
+<span class="fc" id="L167">            var tracked = walk.parseCommit(ObjectId.fromString(upstream.trackedCommit()));</span>
+<span class="fc" id="L168">            walk.setRevFilter(RevFilter.MERGE_BASE);</span>
+<span class="fc" id="L169">            walk.markStart(local);</span>
+<span class="fc" id="L170">            walk.markStart(tracked);</span>
+<span class="fc" id="L171">            var base = walk.next();</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">            if (base == null) return result(State.UNRELATED, null, List.of());</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">            if (walk.next() != null) return result(State.AMBIGUOUS_BASE, null, List.of());</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">            if (tracked.equals(base)) return result(State.UP_TO_DATE, base, List.of());</span>
+<span class="fc bfc" id="L175" title="All 2 branches covered.">            if (local.equals(base)) return result(State.FAST_FORWARD, base, List.of());</span>
+<span class="fc" id="L176">            var candidates = new ArrayList&lt;Commit&gt;();</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">            for (var current = local; !current.equals(base); current = walk.parseCommit(current.getParent(0))) {</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">                if (current.getParentCount() != 1) return result(State.NON_LINEAR, base, List.of());</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">                if (candidates.size() == MAX_REPLAY_COMMITS) return result(State.TOO_LONG, base, List.of());</span>
+<span class="fc" id="L180">                walk.parseBody(current);</span>
+<span class="fc" id="L181">                String subject = current.getShortMessage();</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">                candidates.add(new Commit(current.name(), subject.length() &lt;= 160 ? subject : subject.substring(0, 160) + &quot;…&quot;));</span>
+            }
+<span class="fc" id="L184">            return result(State.REPLAY, base, List.copyOf(candidates.reversed()));</span>
+<span class="fc" id="L185">        }</span>
+    }
+
+    private UpstreamRebasePlan result(State state, RevCommit base, List&lt;Commit&gt; commits) {
+<span class="fc" id="L189">        return new UpstreamRebasePlan(repositoryId, workspaceId, branch, localCommit, upstream,</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">                state, base == null ? null : base.name(), commits);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>
