@@ -132,6 +132,17 @@ nativer Visio-Prüfungen ohne Fehler oder Skips. Zusätzliche Deutsch-/Englisch-
 prüfen tatsächliche HTML-/Word-Ausgaben; die gerenderten Mustertabellen zeigen
 die passende Überschrift sowie korrekt begrenzte 100-%- und 0-%-Werte.
 
+Die vollständige Kernprüfung deckte außerdem eine reihenfolgeabhängige
+Testvorbereitung auf: Nach einem früheren Spring-Kontext fehlte dem
+`DefaultArchitectureAnalysisTest` der initiale Projektstand mit gespeicherter
+Kataloggeneration. Alle vier Fälle erhielten deshalb bereits vor der Analyse
+HTTP 409. Die Klasse bestand isoliert; mit `LlmMockScoringTests` als Vorgänger
+in derselben JVM waren die vier Fehler gezielt reproduzierbar. Die vorhandene
+`RetainedPortfolioCatalogue`-Fixture stellt nun eine eigene Testdatenbank und
+den real erzeugten, an ihren Katalog gebundenen Projektstand bereit. Derselbe
+Reihenfolgelauf bestand danach alle sechs Tests ohne Fehler oder Skips.
+Produktionscode, HTTP-Erwartungen und fachliche Assertions bleiben unverändert.
+
 Die Regressionen liegen in den bestehenden Eigentümern, unter anderem
 `MermaidExportServiceTest`, `StructurizrInteroperabilityTest`,
 `CurrentDiagramMermaidControllerTest`, `SavedAnalysisReportControllerTest`,

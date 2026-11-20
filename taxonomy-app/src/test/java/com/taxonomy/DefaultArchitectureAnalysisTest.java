@@ -4,6 +4,7 @@ import com.taxonomy.testsupport.WithLocalTestUser;
 import com.taxonomy.analysis.relations.RequirementRelationSearchService;
 import com.taxonomy.analysis.service.AnalysisMemoryGuard;
 import com.taxonomy.analysis.service.LlmService;
+import com.taxonomy.portfolio.RetainedPortfolioCatalogue;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -36,7 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = "llm.mock=true")
 @AutoConfigureMockMvc
 @WithLocalTestUser(username = "architecture-analysis-actor", roles = {"USER", "ARCHITECT", "ADMIN"})
-class DefaultArchitectureAnalysisTest {
+class DefaultArchitectureAnalysisTest extends RetainedPortfolioCatalogue {
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final String ORIGINAL = "Provide secure voice communications";
     @Autowired private MockMvc mvc;
