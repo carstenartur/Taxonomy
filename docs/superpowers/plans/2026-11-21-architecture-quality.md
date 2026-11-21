@@ -84,7 +84,7 @@ objects; existing C1-S1/R7 checks retain their meanings.
 ## Task 5: Integrated verification and delivery
 
 - [x] Run the focused union and broader Maven-owned gate attempts; retain commands/results.
-  The final complete gate is being repeated after the provider-clock follow-up;
+  The final hosted gate is being repeated after the continuation-fixture follow-up;
   focused passing lanes do not substitute for it. See the QA report.
 - [x] Re-run the retained coarse-response regression through production components.
 - [x] Record outstanding real-model, external-database, browser and native-EA limits.
@@ -112,6 +112,9 @@ objects; existing C1-S1/R7 checks retain their meanings.
 - [x] Make provider-admission deadline tests independent of host scheduling with
   a shared controlled clock/waiter, unchanged production defaults and unchanged
   deadlines; retain refund, consumed-RPM and expiry negative checks.
+- [x] Repair the portfolio continuation fixture's missing child hierarchy and
+  contradictory negative replies; preserve every assertion and call limit and
+  pass all 831 portfolio tests under Maven.
 - [x] Obtain independent reviews and observed red/green evidence for the added fixes.
 - [x] Recompile the final scheduling delta under Maven and resume the same persisted
   application data, preserving version and snapshot identities and the total request cap.

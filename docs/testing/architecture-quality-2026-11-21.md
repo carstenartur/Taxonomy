@@ -1,6 +1,6 @@
 # Architekturqualität: Prüfung am Ausbildungsportal
 
-Berichtsstand: 21. November 2026, 20:24 Uhr MEZ. Laufende Abschlussprüfungen
+Berichtsstand: 21. November 2026, 20:43 Uhr MEZ. Laufende Abschlussprüfungen
 und deren jeweils neueste Ergebnisse sind im
 [Pull Request 1584](https://github.com/carstenartur/Taxonomy/pull/1584) dokumentiert.
 
@@ -333,6 +333,7 @@ nicht zu einer Anzahl unterschiedlicher Tests addiert werden:
 | Letzte Korrektur der Verifikations- und Geschwisterreihenfolge, erneut kompiliert | 176 Tests in acht Klassen; keine Fehler oder übersprungenen Tests | `final-schedule-maven.log` |
 | Gemeinsamer Reaktor nach den Export- und Quellschutzkorrekturen | 3.571 Tests in 24 Klassen, darunter fünf Selenium-Tests; keine Fehler oder übersprungenen Tests | `final-integrated-regressions.log` |
 | Provider-Zulassung, Transportmessung, Konfiguration und Gateway-Verträge nach der deterministischen Zeitprüfung | 324 Tests in 54 Klassen; keine Fehler oder übersprungenen Tests | `provider-admission-clock/maven-confirmation.log` |
+| Sämtliche 112 Portfolio-Klassen des vorangegangenen Gesamtversuchs nach der Korrektur ihres gemeinsamen Fortsetzungs-Testaufbaus | 831 Tests; keine Fehler oder übersprungenen Tests | `portfolio-continuation-fixture/maven-portfolio.log` |
 | Native Signaturprüfung mit isoliertem öffentlichem Schlüsselring | 47 Tests, keine Fehler oder übersprungenen Tests | `native-gpg-public-keyring-confirmation.log` |
 | Kompakter Entwurf, normale/gezielte Synthese und tatsächlicher Browser im isolierten `test-local`-Reaktor | 111 Tests, darunter fünf Selenium-Tests; keine Fehler oder übersprungenen Tests | `../taxonomy-reformulation-ux/target/quality-compact-draft/maven-strict-shell.log` |
 
@@ -401,10 +402,31 @@ Tests; die Änderung wurde unabhängig geprüft.
 
 Die sieben übersprungenen Fälle waren fünf Helm-Prüfungen ohne vorhandenes Helm
 und zwei optionale Visio-PDF-Prüfungen ohne Aktivierung. Sie gelten nicht als
-bestandene Tests. Der erneute vollständige Reaktor nach der Zeitkorrektur wird
-unter `canonical-ci-final-clock.log` aufgezeichnet. Ein erfolgreicher Abschluss
-des vollständigen Gates ist zu diesem Zwischenstand noch nicht festgestellt;
-die fokussierten Erfolge gelten nicht als Ersatz.
+bestandene Tests.
+
+Der erneute vollständige Reaktor `canonical-ci-final-clock.log` schloss sämtliche
+1.960 Tests des Analysemoduls erfolgreich ab, einschließlich aller drei zuvor
+gefundenen Regressionen. Er erreichte insgesamt 11.851 Tests in 1.041 Klassen.
+Im anschließenden Portfoliomodul scheiterten alle 21 Fälle einer gemeinsamen
+Fortsetzungs-Testklasse. Die isolierte Wiederholung zeigte zwei veraltete
+Annahmen des Testaufbaus: Der künstliche Katalog lieferte die jetzt für die
+Quellprüfung benötigten Kindknoten nicht, und seine negativen Modellantworten
+enthielten gleichzeitig positive Behauptungen. Die reale Hierarchieabfrage
+stoppte deshalb vor dem ersten Relationsaufruf; nach alleiniger Reparatur des
+Katalogs wies der strengere Relationsvertrag die widersprüchlichen Antworten ab.
+
+Der Testaufbau liefert nun für beide Katalogzugriffe dieselben gespeicherten
+Eltern-Kind-Beziehungen und neutrale Ablehnungs-/Navigationsantworten. Die 33
+Quellen, der Zielkatalog, alle Originalzitate, Aufrufgrenzen und Assertions
+bleiben erhalten. Produktionscode wurde hierfür nicht geändert. Die gesamte
+Klasse besteht mit 21 Fällen, anschließend bestand die frische Maven-Ausführung
+aller zuvor ausgeführten Portfolio-Klassen mit 831 Tests. Der Diff und weitere
+vergleichbare Testaufbauten wurden unabhängig geprüft.
+
+Ein erfolgreicher Abschluss des vollständigen Gates ist zu diesem
+Berichtsstand noch nicht festgestellt. Der lokale Rechner hat weder Docker
+noch Helm; die unveränderte gehostete Matrix führt die dafür erforderlichen
+Prüfungen aus. Die bestandenen Teilauswahlen gelten nicht als Ersatz.
 
 ## Veröffentlichter Prüfstand
 

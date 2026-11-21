@@ -727,12 +727,12 @@ class ProjectAnalysisBudgetContinuationTest {
             when(catalogue.getFullTree()).thenReturn(tree);
             when(catalogue.getNodeByCode(anyString())).thenAnswer(call -> nodes.get(call.getArgument(0)));
             when(catalogue.getRootNodes()).thenReturn(List.of(nodes.get("IP")));
-            when(catalogue.getChildrenOf(anyString())).thenAnswer(call -> call.getArgument(0).equals("IP")
-                    ? List.of(nodes.get("IP-record")) : List.of());
+            when(catalogue.getChildrenOf(anyString())).thenAnswer(call -> childrenOf(call.getArgument(0)));
             // Keep production context capture around the fixture's explicit scalar catalogue.
-            // A missing capture must not be made acceptable by a production fallback.
+            // Both catalogue views use the same children when determining endpoint specificity.
             TaxonomyService relationCatalogue = new TaxonomyService(null, null, null) {
                 @Override public TaxonomyNode getNodeByCode(String code) { return nodes.get(code); }
+                @Override public List<TaxonomyNode> getChildrenOf(String parentCode) { return childrenOf(parentCode); }
             };
             when(catalogue.getRelationAssessmentDescriptions(anyList())).thenAnswer(call ->
                     relationCatalogue.getRelationAssessmentDescriptions(call.getArgument(0)));
@@ -883,8 +883,8 @@ class ProjectAnalysisBudgetContinuationTest {
                 var selections = new ArrayList<Map<String, Object>>();
                 for (var node : input.get("nodes")) {
                     String id = node.path("id").asString();
-                    boolean explicit = explicitSources.contains(id);
                     boolean clarify = clarifySource && id.equals("BP-001");
+                    boolean explicit = !clarify && explicitSources.contains(id);
                     selections.add(Map.of("nodeId", id, "outcome", clarify ? "UNRESOLVED" : explicit ? "EXPLICIT" : "REJECT",
                             "contributions", explicit ? List.of(Map.of("text", "read existing evidence", "quote", original, "condition", "")) : List.of(),
                             "rationale", explicit ? "This process reads the requested evidence" : "No distinct function is assigned to this context",
@@ -899,8 +899,13 @@ class ProjectAnalysisBudgetContinuationTest {
                         && query.type().equals("CONSUMES") && !node.container())
                     return new Decision(node.id(), Outcome.UNRESOLVED, "", "", null, "", "",
                             "The requirement does not define the evidence product's scope", OPEN_QUESTION);
-                return new Decision(node.id(), !query.type().equals("CONSUMES") ? Outcome.REJECT
-                            : query.phase() == Phase.VERIFY ? Outcome.VERIFIED : node.container() ? Outcome.DESCEND : Outcome.MATCH,
+                if (!query.type().equals("CONSUMES"))
+                    return new Decision(node.id(), Outcome.REJECT, "", "", null, "", "",
+                            "Reading existing evidence does not establish this relation", "");
+                if (node.container())
+                    return new Decision(node.id(), Outcome.DESCEND, "", "", null, "", "",
+                            "Look for the existing evidence record within this category", "");
+                return new Decision(node.id(), query.phase() == Phase.VERIFY ? Outcome.VERIFIED : Outcome.MATCH,
                             "existing evidence access", original, Necessity.REQUIRED, "", "", "Only existing evidence is read", "");
             }).toList()));
         }
@@ -935,6 +940,9 @@ class ProjectAnalysisBudgetContinuationTest {
             var proxy = new ProxyFactory(target); proxy.setProxyTargetClass(true);
             proxy.addAdvice(new TransactionInterceptor(transactions, new AnnotationTransactionAttributeSource()));
             return (T) proxy.getProxy();
+        }
+        private List<TaxonomyNode> childrenOf(String parentCode) {
+            return nodes.values().stream().filter(node -> Objects.equals(node.getParentCode(), parentCode)).toList();
         }
         void node(String id, String root, String parent) {
             var node = new TaxonomyNode(); node.setCode(id); node.setNameEn(id); node.setDescriptionEn("Reference evidence function " + id);
