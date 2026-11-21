@@ -90,6 +90,8 @@ class ArchitectureSourceFocusServiceTest {
         verifyNoInteractions(editor,llm,budget,drafts);
     }
     @Test void explicitWorkspaceIdsPreserveExistingEvidenceHashesAndDistinguishTheOwnedSharedNamedCopy() {
+        // The legacy hash was recorded with numeric zero, distinct from unrecorded relevance.
+        retained.getArchitectureView().getIncludedElements().forEach(element -> element.setRelevance(0d));
         String id = "__shared__";
         var central = RepositoryContext.centralRead("repo","old","alice");
         var centralSource = new ArchitectureSourceFocusDtos.Source("ANALYSIS_SNAPSHOT","repo",id,"old",null,1L,2L,3L,"saved","");

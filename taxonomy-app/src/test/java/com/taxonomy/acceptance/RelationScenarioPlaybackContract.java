@@ -32,9 +32,9 @@ public final class RelationScenarioPlaybackContract {
         var playback = ScenarioLlmPlayback.flood();
         String original = original(playback);
         var selected = protocol(playback).contributions(original, List.of(APPLICATION,
-                new Node("UA-1000", "UA", "User Applications", "", false)));
+                new Node("UA-1226", "UA", "Environmental Applications", "", false)));
         var leaf = selected.stream().filter(s -> s.node().id().equals(APPLICATION.id())).findFirst().orElseThrow();
-        var ancestor = selected.stream().filter(s -> s.node().id().equals("UA-1000")).findFirst().orElseThrow();
+        var ancestor = selected.stream().filter(s -> s.node().id().equals("UA-1226")).findFirst().orElseThrow();
         check(leaf.contributions().size() == 4,
                 "Presentation, scope disclosure, freshness and the supplementary boundary retain distinct quoted contributions");
         check(leaf.contributions().getFirst().quote().startsWith("F1:"), "The public-reading contribution remains first");
@@ -42,7 +42,16 @@ public final class RelationScenarioPlaybackContract {
             check(original.contains(contribution.quote()) && !original.equals(contribution.quote()),
                     "Each local quote occurs in the unchanged original without claiming every unrelated clause");
         }
-        check(ancestor.contributions().isEmpty(), "An ancestor is a navigation context, not another required application");
+        check(ancestor.contributions().isEmpty() && ancestor.rationale().contains("does not request other analysis"),
+                "The assessed environmental application heading adds no separate application");
+    }
+
+    public static void testNavigationOnlyUmbrellaCannotBeOfferedForSourceExtraction() throws Exception {
+        var playback = ScenarioLlmPlayback.flood();
+        expectFailure(() -> protocol(playback).contributions(original(playback),
+                List.of(new Node("UA-1000", "UA", "User Applications", "", false))));
+        check(playback.failures().equals(List.of("Navigation-only node offered as a source: UA-1000")),
+                "The fixture rejects the umbrella even if the sender marks it as an ordinary node");
     }
 
     public static void testNavigationAndSeparateVerificationPreserveApplicationReadSemantics() throws Exception {

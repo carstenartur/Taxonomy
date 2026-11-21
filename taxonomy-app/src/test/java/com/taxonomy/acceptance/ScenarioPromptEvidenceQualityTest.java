@@ -43,6 +43,34 @@ class ScenarioPromptEvidenceQualityTest {
         assertThat(report.get("classificationCandidateAssessments")).isEqualTo(2);
     }
 
+    @Test void originalUmbrellaNavigatesWithoutBecomingAnEndpoint() {
+        var calls = calls();
+        var leafNavigation = calls.get(3);
+        changeInput(calls, 3, input -> ((ObjectNode) input.at("/candidates/0"))
+                .put("id", "CR-1000").put("name", "Core Services").put("container", true)
+                .put("description", "Shared service functions." + FULL_CONTEXT + "  CR: Core Services - Service taxonomy.\n"));
+        var navigation = calls.get(3);
+        var decision = Map.of("targetId", "CR-1000", "outcome", "DESCEND",
+                "rationale", "Search the shared services below this heading.", "question", "");
+        String content = JSON.writeValueAsString(Map.of("decisions", List.of(decision)));
+        String response = JSON.writeValueAsString(Map.of("choices", List.of(Map.of("message", Map.of("content", content)))));
+        calls.set(3, call(navigation.ruleId(), navigation.prompt(), response));
+        calls.add(4, leafNavigation);
+        assertThat(verify(catalogue(), calls, snapshots()).get("outcome")).isEqualTo("PASS");
+        changeInput(calls, 3, input -> ((ObjectNode) input.at("/candidates/0")).put("container", false));
+        assertThatThrownBy(() -> verify(catalogue(), calls, snapshots()))
+                .isInstanceOf(AssertionError.class).hasMessageContaining("relation navigation flag for CR-1000");
+    }
+
+    @Test void correctlyFlaggedUmbrellaStillCannotEnterSourceExtraction() {
+        var calls = calls();
+        changeInput(calls, 2, input -> ((ObjectNode) input.at("/nodes/0"))
+                .put("id", "BP-1000").put("name", "Business Processes").put("container", true)
+                .put("description", "Enterprise process functions." + FULL_CONTEXT + "  BP: Business Processes - Process taxonomy.\n"));
+        assertThatThrownBy(() -> verify(catalogue(), calls, snapshots()))
+                .isInstanceOf(AssertionError.class).hasMessageContaining("Only concrete nodes enter source extraction: BP-1000");
+    }
+
     @Test void changedCandidateNameCannotKeepItsStoredPerfectAnswer() {
         var calls = calls();
         changeInput(calls, 3, input -> ((ObjectNode) input.at("/candidates/0")).put("name", "Unrelated service"));

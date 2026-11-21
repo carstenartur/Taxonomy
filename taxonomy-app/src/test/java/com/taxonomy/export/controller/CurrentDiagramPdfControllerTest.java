@@ -4,12 +4,15 @@ import com.taxonomy.dto.*;
 import com.taxonomy.export.*;
 import com.taxonomy.export.service.*;
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
+import java.io.IOException;
 import java.util.*;
+import java.util.regex.Pattern;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -29,12 +32,19 @@ class CurrentDiagramPdfControllerTest {
         assertThat(new String(bytes, 0, 5, java.nio.charset.StandardCharsets.US_ASCII)).isEqualTo("%PDF-");
         try (var pdf = Loader.loadPDF(bytes)) {
             var text = new PDFTextStripper().getText(pdf);
-            assertThat(text).contains("Client-provided working view", "Elements: 500", "Cross-page relationships: 1", "D1 -> D2",
+            assertThat(text).contains("Client-provided working view", "Elements: 500",
                     "Relation ID: 9223372036854775807", "LLM_SUPPORTED", "Confidence: 0.125", "FRAMEWORK_SEED",
                     "HTTP-INCLUSION-END", "HTTP-DERIVATION-END", "HTTP-PRESENCE-END", "HTTP-CONTRIBUTION-END",
                     "HTTP-ORIGINAL-QUOTE-END", "HTTP-CONTRIBUTION-CONDITION-END", "HTTP-DECISION-CONTRIBUTION-END",
                     "HTTP-DECISION-QUOTE-END", "HTTP-DECISION-CONDITION-END", "HTTP-ALTERNATIVE-GROUP-END",
                     "HTTP-RATIONALE-END", "HTTP-QUESTION-END");
+            int sourcePage = inventoryDiagram(text, "NODE-0");
+            int targetPage = inventoryDiagram(text, "NODE-499");
+            assertThat(sourcePage).isNotEqualTo(targetPage);
+            assertThat(text).contains("e1 | NODE-0 -> NODE-499 | SUPPORTS | impact | 80% | D"
+                    + sourcePage + " -> D" + targetPage);
+            assertThat(diagramText(pdf, sourcePage)).contains("NODE-0 80%", "Cross-page relationships: 1");
+            assertThat(diagramText(pdf, targetPage)).contains("NODE-499 80%", "Cross-page relationships: 1");
             for (int index = 0; index < 500; index++) assertThat(text).contains(String.format("HTTP-LABEL-%04d-END", index));
             pdf.getPages().forEach(page -> {
                 assertThat(page.getMediaBox().getWidth()).isLessThanOrEqualTo(14_400);
@@ -43,6 +53,20 @@ class CurrentDiagramPdfControllerTest {
             assertThat(text).doesNotContain("Git-authoritative", "Generated from persisted architecture snapshot");
         }
         assertThat(JSON.writeValueAsBytes(view)).isEqualTo(before);
+    }
+
+    private static int inventoryDiagram(String inventory, String nodeId) {
+        var pages = Pattern.compile("(?m)^" + Pattern.quote(nodeId) + " \\| D([1-9][0-9]*) \\|")
+                .matcher(inventory).results().map(match -> Integer.parseInt(match.group(1))).toList();
+        assertThat(pages).as("One diagram reference for endpoint %s", nodeId).hasSize(1);
+        return pages.getFirst();
+    }
+
+    private static String diagramText(PDDocument pdf, int page) throws IOException {
+        var stripper = new PDFTextStripper();
+        stripper.setStartPage(page);
+        stripper.setEndPage(page);
+        return stripper.getText(pdf);
     }
 
     @Test void malformedAndOversizedBodiesReturn400ThroughSpringMappings() throws Exception {
