@@ -181,6 +181,31 @@ test('reciprocal and parallel snapshot links remain individually traceable', () 
     assert.equal(new Set(edges.map(edge => edge.path)).size, links.length);
 });
 
+test('crowded parallel snapshot captions stay readable and every directed relation keeps its details', () => {
+    const source = card('CI-1151', 1168, 400, 2), target = card('BP-2125', 576, 400);
+    const nodes = [source, target, card('CI-1047', 906, 400, 2), card('above', 906, 284, 2)];
+    const links = ['SUPPORTS', 'USES', 'DEPENDS_ON'].map((label, index) => {
+        const detail = source.id + ' → ' + target.id + ' · ' + label;
+        return {...link('parallel-' + index, source, target), label, ariaLabel: detail, tooltip: detail};
+    });
+    const layout = snapshotLayout()({nodes, edges: links});
+    const occupied = [];
+    for (const edge of links) {
+        const rendered = assertDirectedClearRoute(layout, edge);
+        assert.equal(rendered.label, edge.label);
+        assert.equal(rendered.ariaLabel, edge.ariaLabel);
+        assert.equal(rendered.tooltip, edge.tooltip);
+        if (rendered.showLabel === false) continue;
+        const halfWidth = edge.label.length * 3 + 3;
+        const box = {left: rendered.labelX - halfWidth, right: rendered.labelX + halfWidth,
+            top: rendered.labelY - 12, bottom: rendered.labelY + 5};
+        assert.ok(occupied.every(other => box.right <= other.left || box.left >= other.right
+            || box.bottom <= other.top || box.top >= other.bottom), 'visible relation captions overlap');
+        occupied.push(box);
+    }
+    assert.ok(occupied.length > 0, 'keep a visible caption when space is available');
+});
+
 test('an unobstructed snapshot link preserves the existing smooth path', () => {
     const source = card('source', 52, 52), target = card('target', 382, 168, 2);
     const edge = link('clear', source, target);

@@ -168,15 +168,22 @@
         const frame = calculateBounds(model.nodes, groups);
         const nodeById = new Map(model.nodes.map(function (node) { return [node.id, node]; }));
         const lanes = common.relationshipLanes(model.edges, true);
+        const occupiedCaptions = [];
         let left = frame.x, top = frame.y, right = frame.x + frame.width, bottom = frame.y + frame.height;
         const edges = model.edges.map(function (edge) {
             const route = common.routeEdge(nodeById.get(edge.sourceId), nodeById.get(edge.targetId),
                 lanes.get(edge.id) || 0, edge, model.nodes);
+            const caption = common.placeEdgeCaption(route, model.nodes, occupiedCaptions);
             left = Math.min(left, route.bounds.left - 8);
             top = Math.min(top, route.bounds.top - 8);
             right = Math.max(right, route.bounds.right + 8);
             bottom = Math.max(bottom, route.bounds.bottom + 8);
-            return Object.assign({}, edge, {path: route.path, labelX: route.labelX, labelY: route.labelY});
+            if (caption) {
+                top = Math.min(top, caption.bounds.top - 8);
+                bottom = Math.max(bottom, caption.bounds.bottom + 8);
+            }
+            return Object.assign({}, edge, {path: route.path, labelX: route.labelX,
+                labelY: caption ? caption.y : route.labelY, showLabel: Boolean(caption)});
         });
         return {
             nodes: model.nodes,

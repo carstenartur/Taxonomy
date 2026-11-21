@@ -11,6 +11,35 @@ import java.util.List;
 
 class ArchitectureFigureRendererTest {
     @Test
+    void savedA1OverviewKeepsVisibleInkAcrossTheIntermediateCardsColumn() throws Exception {
+        var cards = List.of(
+                a1Card("CI-1151", 1168, 400), a1Card("BP-2125", 576, 400), a1Card("CI-1047", 906, 400),
+                a1Card("first-card", 52, 52), a1Card("last-card", 52, 516));
+        var modelEdge = new DiagramEdge("e1", "CI-1151", "BP-2125", "SUPPORTS", .7, "impact");
+        var edge = new DiagramSceneEdge("e1", "CI-1151", "BP-2125", "SUPPORTS", .7, "impact", 1168, 441, 814, 441);
+        var graph = new DiagramModel("Retained A1", cards.stream()
+                .map(card -> new DiagramNode(card.id(), card.label(), card.type(), .7, false, 2)).toList(),
+                List.of(modelEdge), null);
+        var scene = new DiagramScene(graph.title(), 1458, 650, "LR", cards, List.of(edge));
+        var fixture = new ArchitectureFigurePlanner.Panel("architecture-overview", graph, scene,
+                cards.stream().map(DiagramSceneNode::id).toList(), List.of(edge.id()), true);
+        var figure = new ArchitectureFigureRenderer().render(fixture, "de");
+        var image = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(figure.png()));
+        int x = (int) Math.round((1030 - 28) * figure.rasterScale());
+        long connectorPixels = java.util.stream.IntStream.range(0, image.getHeight())
+                .filter(y -> (image.getRGB(x, y) & 0xffffff) == 0x64748b).count();
+        assertThat(connectorPixels).as("connector remains visible across the center of CI-1047's column").isPositive();
+        int centerY = (int) Math.round((441 - 28) * figure.rasterScale());
+        assertThat(image.getRGB(x, centerY) & 0xffffff).isEqualTo(0xFEF3C7);
+        assertThat(figure.altDescription()).contains("CI-1151 → BP-2125");
+    }
+
+    private static DiagramSceneNode a1Card(String id, double x, double y) {
+        return new DiagramSceneNode(id, id, "COI Services", .7, false, 2, 0, false, null,
+                false, x, y, 238, 82);
+    }
+
+    @Test
     void readingScaleDetailsTrimUnusedCanvasAndExposeVisibleRelationKeys() throws Exception {
         var graph =
                 new DiagramModel(

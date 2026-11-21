@@ -75,7 +75,8 @@
         group.appendChild(path); group.appendChild(hit);
         if (edge.label !== undefined) {
             var label = text(group, prefix + '-edge-label', edge.labelX, edge.labelY, edge.label, edge.color);
-            label.setAttribute('text-anchor', 'middle'); label.style.display = edge.showLabel === false ? 'none' : ''; group._label = label;
+            group._labelAllowed = edge.showLabel !== false;
+            label.setAttribute('text-anchor', 'middle'); label.style.display = group._labelAllowed ? '' : 'none'; group._label = label;
         }
         parent.appendChild(group); return group;
     }
@@ -178,9 +179,22 @@
     }
     function routeResult(path, points, labelX, labelY, halfWidth) {
         var pathBox = pointBounds(points), labelBox = labelBounds(labelX, labelY, halfWidth);
-        return { path: path, labelX: labelX, labelY: labelY,
+        return { path: path, labelX: labelX, labelY: labelY, labelBounds: labelBox,
             bounds: { left: Math.min(pathBox.left, labelBox.left), right: Math.max(pathBox.right, labelBox.right),
                 top: Math.min(pathBox.top, labelBox.top), bottom: Math.max(pathBox.bottom, labelBox.bottom) } };
+    }
+    function placeEdgeCaption(route, nodes, occupied) {
+        var original = route.labelBounds;
+        for (var offset of [0, 20, -20]) {
+            var box = {left: original.left, right: original.right, top: original.top + offset, bottom: original.bottom + offset};
+            if (occupied.some(function (caption) { return intersects(box, caption); })
+                    || nodes.some(function (node) {
+                        return intersects(box, {left: node.x, right: node.x + node.width, top: node.y, bottom: node.y + node.height});
+                    })) continue;
+            occupied.push(box);
+            return {y: route.labelY + offset, bounds: box};
+        }
+        return null;
     }
     function routeEdge(source, target, lane, edge, nodes) {
         var curve = edgeCurve(source, target, lane, edge);
@@ -335,7 +349,7 @@
     }
     window.TaxonomyArchitectureDiagram = { element: element, text: text, activate: activate, renderNode: renderNode, renderEdge: renderEdge,
         visibleModel: visibleModel, calculateFitTransform: calculateFitTransform, relationshipLanes: relationshipLanes,
-        edgePath: edgePath, routeEdge: routeEdge, regionNodeIds: regionNodeIds, suggestionPath: suggestionPath,
+        edgePath: edgePath, routeEdge: routeEdge, placeEdgeCaption: placeEdgeCaption, regionNodeIds: regionNodeIds, suggestionPath: suggestionPath,
         sourceId: source, targetId: target, isContext: isContext,
         wrapLabel: wrapLabel, parseColor: parseColor, rgba: rgba, readableTextColor: readableTextColor,
         taxonomyPalette: taxonomyPalette,
@@ -537,8 +551,8 @@ window.TaxonomyArchitectureDiagram.create = function (svg, options) {
                 selectedNodeId: selected, connected: connected, hasSearch: hasSearch, searchRelevant: relevant }));
             var hit = node.getAttribute('role') === 'button' ? node : node.querySelector('[role="button"]');
             if (hit) hit.setAttribute('aria-pressed', String(id === state.selectedEdgeId));
-            if (node._label) node._label.style.display = model.edges.length <= presentation.edgeLabelLimit || connected
-                || id === state.selectedEdgeId || (hasSearch && relevant) ? '' : 'none';
+            if (node._label) node._label.style.display = node._labelAllowed && (model.edges.length <= presentation.edgeLabelLimit
+                || connected || id === state.selectedEdgeId || (hasSearch && relevant)) ? '' : 'none';
         });
     }
     function focusedTarget() {

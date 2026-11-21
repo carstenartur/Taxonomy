@@ -235,6 +235,7 @@ public final class ArchitecturePdfRenderer {
                 diagramTop - (float) (node.y() + node.height()) * scale,
                 (float) node.width() * scale, (float) node.height() * scale)).toList();
         var captions = new ArrayList<EdgeCaption>();
+        var routing = new DiagramEdgeRouting(scene);
         float labelSize = 8;
         for (DiagramSceneEdge edge : scene.edges()) {
             float x1 = diagramX + (float) edge.sourceX() * scale;
@@ -246,17 +247,33 @@ public final class ArchitecturePdfRenderer {
             stream.setStrokingColor(Color.decode(theme.relationshipStroke(edge.relationType(), proposed)));
             stream.setLineDashPattern(proposed ? new float[]{6, 4} : new float[]{}, 0);
             stream.setLineWidth(Math.max(0.55f, (float) (0.8 + edge.relevance()) * scale));
+            var detour = routing.detourForLine(edge);
             stream.moveTo(x1, y1);
-            stream.lineTo(x2, y2);
+            float arrowStartX = x1, arrowStartY = y1;
+            float captionX = (x1 + x2) / 2, captionY = (y1 + y2) / 2;
+            if (detour == null) {
+                stream.lineTo(x2, y2);
+            } else {
+                var points = detour.points();
+                for (int i = 1; i < points.size(); i++) {
+                    var point = points.get(i);
+                    stream.lineTo(diagramX + (float) point.x() * scale, diagramTop - (float) point.y() * scale);
+                }
+                var beforeTarget = points.get(points.size() - 2);
+                arrowStartX = diagramX + (float) beforeTarget.x() * scale;
+                arrowStartY = diagramTop - (float) beforeTarget.y() * scale;
+                var caption = detour.labelAnchor();
+                captionX = diagramX + (float) caption.x() * scale;
+                captionY = diagramTop - (float) caption.y() * scale;
+            }
             stream.stroke();
-            drawArrow(stream, x1, y1, x2, y2, Math.max(4.0f, 7.0f * scale));
+            drawArrow(stream, arrowStartX, arrowStartY, x2, y2, Math.max(4.0f, 7.0f * scale));
             if (edge.relationType() == null || edge.relationType().isBlank()) continue;
             String state = canonical == null ? DiagramPresentation.relationshipStatus(edge.metadata(), language.german())
                     : DiagramPresentation.canonicalRelationshipStatus(canonical, edge.id());
-            float x = (x1 + x2) / 2, y = (y1 + y2) / 2;
-            var caption = placeCaption(edge.relationType() + " · " + state, x, y,
+            var caption = placeCaption(edge.relationType() + " · " + state, captionX, captionY,
                     diagramTop, nodeBounds, captions, fonts.regular(), labelSize);
-            if (caption == null) caption = placeCaption(edge.relationType(), x, y,
+            if (caption == null) caption = placeCaption(edge.relationType(), captionX, captionY,
                     diagramTop, nodeBounds, captions, fonts.regular(), labelSize);
             if (caption != null) captions.add(caption);
         }
