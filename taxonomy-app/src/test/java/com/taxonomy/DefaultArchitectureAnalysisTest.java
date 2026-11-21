@@ -40,6 +40,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class DefaultArchitectureAnalysisTest extends RetainedPortfolioCatalogue {
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final String ORIGINAL = "Provide secure voice communications";
+    private static final Set<String> RETAINED_NAVIGATION_UMBRELLAS = Set.of("CR-1000", "IP-1000", "UA-1000");
     @Autowired private MockMvc mvc;
     @Autowired private RequirementRelationSearchService search;
     @MockitoSpyBean private LlmService llm;
@@ -178,6 +179,14 @@ class DefaultArchitectureAnalysisTest extends RetainedPortfolioCatalogue {
         JsonNode rawScores = result.path("rawScores");
         JsonNode scores = result.path("scores");
         JsonNode scoreDetails = result.path("scoreDetails");
+        for (String code : RETAINED_NAVIGATION_UMBRELLAS) {
+            JsonNode wrapper = treeNodes.get(code);
+            assertThat(wrapper).as("Retain the scored catalogue umbrella %s", code).isNotNull();
+            assertThat(wrapper.path("parentCode").asString()).isEqualTo(wrapper.path("taxonomyRoot").asString());
+            assertThat(wrapper.path("children")).isNotEmpty();
+            assertThat(rawScores.path(code).asInt()).isPositive();
+            assertThat(scores.path(code).asInt()).isPositive();
+        }
         Set<String> scoredNodes = new LinkedHashSet<>();
         for (var entry : scores.properties()) {
             String code = entry.getKey();
@@ -190,7 +199,7 @@ class DefaultArchitectureAnalysisTest extends RetainedPortfolioCatalogue {
             assertThat(detail.path("nodeCode").asString()).isEqualTo(code);
             assertThat(detail.path("rawScore").asInt()).isEqualTo(raw);
             assertThat(detail.path("effectiveRelevance").asInt()).isEqualTo(effective);
-            scoredNodes.add(code);
+            if (!RETAINED_NAVIGATION_UMBRELLAS.contains(code)) scoredNodes.add(code);
         }
 
         Set<String> includedNodes = new LinkedHashSet<>();
@@ -236,6 +245,8 @@ class DefaultArchitectureAnalysisTest extends RetainedPortfolioCatalogue {
             anchorsByCode.put(code, anchor);
         }
         assertThat(view.path("totalAnchors").asInt()).isEqualTo(view.path("anchors").size());
+        assertThat(anchorNodes).as("Scored catalogue umbrellas remain navigation context")
+                .doesNotContainAnyElementsOf(RETAINED_NAVIGATION_UMBRELLAS);
         for (String code : directNodes) {
             assertThat(anchorNodes).as("Direct assessment %s needs anchor metadata", code).contains(code);
             JsonNode detail = scoreDetails.path(code);

@@ -487,14 +487,6 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     assert.equal(await page.locator('#editorTitle').inputValue(), `Updated system ${suffix}`);
     assert.ok((await page.locator('#editorDsl').inputValue()).includes(`Updated system ${suffix}`));
 
-    // Give the authored pair a deterministic lexical lead over unrelated catalogue elements.
-    const focusDescription = `focus${suffix}alpha focus${suffix}beta focus${suffix}gamma`;
-    for (const id of [system, component]) {
-      await select(id);
-      await page.locator('#editorDescription').fill(focusDescription);
-      await preview(() => page.locator('#editorPreviewElement').click());
-      await commit();
-    }
     await select(system);
 
     // Real focus endpoint + semantic journal: explicit optimization, local discovery, one-step acceptance and exact UUID undo.

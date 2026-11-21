@@ -5,6 +5,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -187,6 +188,33 @@ class ScenarioLlmPlaybackTest {
         assertThat(playback.prompts()).containsExactly(initial, subsequent);
         assertThat(playback.calls()).hasSize(2);
         assertThat(playback.failures()).isEmpty();
+    }
+
+    @Test void adoptedSourceAcceptsOriginalParagraphsAndRoutesTheReviewedVersion() throws Exception {
+        var playback = new ScenarioLlmPlayback(ReformulationScenarioCorpus.flood());
+        String original = playback.fixture().at("/requirement/text").asText();
+        String adopted = original.replace(". F1:", ".\n\nF1:").replace(". F2:", ".\n\nF2:")
+                + "\n\n[ANSWERED] How should stale observations be presented? — Human decision: Retain last observation with timestamp";
+        assertThat(adopted).doesNotContain(original);
+        playback.registerAdoptedSource(adopted);
+        String submitted = prompt(playback, playback.fixture().path("replies").get(0)).replace(original, adopted);
+        playback.respond(submitted);
+        assertThat(playback.prompts()).containsExactly(submitted);
+        assertThat(playback.calls()).hasSize(1);
+        assertThat(playback.failures()).isEmpty();
+    }
+
+    @Test void layoutAloneOrAlteredOriginalCannotRegisterAnAdoptedSource() throws Exception {
+        var playback = new ScenarioLlmPlayback(ReformulationScenarioCorpus.flood());
+        String original = playback.fixture().at("/requirement/text").asText();
+        String paragraphs = original.replace(". F1:", ".\n\nF1:");
+        for (String unreviewed : List.of(paragraphs,
+                paragraphs.replace("published flood warnings", "unpublished flood forecasts") + "\n\nReviewed wording.",
+                paragraphs.replace("published flood warnings", "published\n\nflood warnings") + "\n\nReviewed wording.",
+                "Changed opening scope. " + original + " Reviewed wording.")) {
+            assertThatThrownBy(() -> playback.registerAdoptedSource(unreviewed))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("retain the complete original");
+        }
     }
 
     @Test void duplicateReformulationScopesAreRejectedBeforeTransport() throws Exception {
