@@ -15,7 +15,14 @@ public class LifecycleHttpContext {
     private final WorkspaceResolver resolver;
     public LifecycleHttpContext(WorkspaceResolver resolver){this.resolver=resolver;}
     public RepositoryContext resolve(String repositoryId,String workspaceScopeKey,String branch) {
-        var resolved=resolver.resolveCurrentRepositoryContext();var actual=Context.of(resolved,null);
+        return pinned(resolver.resolveCurrentRepositoryContext(),repositoryId,workspaceScopeKey,branch);
+    }
+    public RepositoryContext resolveForRead(String repositoryId,String workspaceScopeKey,String branch) {
+        return pinned(resolver.resolveCurrentRepositoryContextForRead(),repositoryId,workspaceScopeKey,branch);
+    }
+    public RepositoryContext resolveForRead(){return resolveForRead(null,null,null);}
+    private static RepositoryContext pinned(RepositoryContext resolved,String repositoryId,String workspaceScopeKey,String branch) {
+        var actual=Context.of(resolved,null);
         if((repositoryId!=null&&!repositoryId.equals(actual.repositoryId()))
                 ||(workspaceScopeKey!=null&&!workspaceScopeKey.equals(actual.workspaceScopeKey()))
                 ||(branch!=null&&!branch.equals(actual.branch()))) throw problem("NOT_FOUND","The exact selected context is unavailable");

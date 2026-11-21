@@ -22,6 +22,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static com.taxonomy.plugins.sparx.QeaFailure.fail;
+import static com.taxonomy.plugins.sparx.QeaIds.key;
 
 /** Adds the checked views to a copy. Catalogue rows and existing project content are only read. */
 final class AdmbwQeaWriter {
@@ -190,9 +191,7 @@ final class AdmbwQeaWriter {
                 throw fail("QEA_ADMBW_CATALOGUE", "The QEA basis must contain exactly one element with catalogue GUID " + guid);
             Row row = matches.getFirst();
             String nativeType = AdmbwQeaProfile.ELEMENT_TYPES.get(element.stereotype());
-            if (!row.text("object_type").equals(nativeType) || !row.text("stereotype").equals(element.stereotype())
-                    || stereotypes.getOrDefault(guid, List.of()).stream().noneMatch(x -> x.text("type").equals("element property")
-                    && x.text("description").contains(QeaWriteTags.admbwDescription(element.stereotype()))))
+            if (!AdmbwQeaProfile.nativeIdentity(row, element.stereotype(), stereotypes.getOrDefault(guid, List.of())))
                 throw fail("QEA_ADMBW_CATALOGUE", "Catalogue GUID " + guid + " has the wrong native type or ADMBw stereotype");
             long id = row.id("object_id");
             if (nativeType.equals("Part")) {
@@ -253,11 +252,6 @@ final class AdmbwQeaWriter {
     }
 
     private static UUID stableUuid(String value) { return UUID.nameUUIDFromBytes(value.getBytes(StandardCharsets.UTF_8)); }
-
-    private static String key(String value) {
-        String upper = value.strip().toUpperCase(Locale.ROOT);
-        return upper.length() == 36 ? "{" + upper + "}" : upper;
-    }
 
     private static boolean matchesGuid(Row row, String field, String guid) { return key(row.text(field)).equals(guid); }
 }

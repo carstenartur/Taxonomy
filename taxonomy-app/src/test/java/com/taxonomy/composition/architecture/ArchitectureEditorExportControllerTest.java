@@ -167,6 +167,33 @@ class ArchitectureEditorExportControllerTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void ordinaryNativeRouteCannotMoveAReviewedGuidedViewToAnotherRoot() throws Exception {
+        String reviewedRoot = "{20000000-0000-0000-0000-000000000002}";
+        String project = "{20000000-0000-0000-0000-000000000003}";
+        String dsl = deliverableDsl().replace("relation capability REALIZES service", "relation service FULFILLS capability");
+        dsl = new com.taxonomy.dsl.command.ArchitectureDslCommands().apply(dsl,
+                new com.taxonomy.dsl.command.ArchitectureCommand.UpsertArchitectureView("guided", "Reviewed delivery", "Reviewed native root", List.of("capability", "service", "subject", "operation"), Map.of(
+                        "x-exchange-admbw-profile", com.taxonomy.dsl.admbw.AdmbwFffmlvProfile.ID,
+                        "x-exchange-admbw-project-code", "WARN", "x-exchange-admbw-native-project", project,
+                        "x-exchange-admbw-native-root", reviewedRoot, "x-exchange-admbw-relation-members", "service FULFILLS capability"))).dsl();
+        loadCheckpoint(dsl);
+        var writer = mock(AdmbwQeaExport.class);
+        ExtensionLease<IntegrationConnectorExtension> lease = mock(ExtensionLease.class);
+        when(catalog.acquire(AdmbwQeaExport.KEY, IntegrationConnectorExtension.class)).thenReturn(lease);
+        when(lease.extension()).thenReturn(writer);
+        when(writer.supportsCoverageNotes()).thenReturn(true);
+        when(writer.supportsBasisInspection()).thenReturn(true);
+        when(writer.inspectAdmbwBasis(any())).thenReturn(new AdmbwQeaExport.Basis("a".repeat(64), project,
+                List.of(new AdmbwQeaExport.Root(ROOT, "Other root"), new AdmbwQeaExport.Root(reviewedRoot, "Reviewed root")), List.of()));
+        standaloneSetup(exports).build().perform(nativeRequest("workspace-a").param("viewId", "guided"))
+                .andExpect(status().isBadRequest());
+        verify(writer).inspectAdmbwBasis(any());
+        verify(writer, org.mockito.Mockito.never()).exportAdmbw(any(), any(), any());
+        verify(lease).close();
+    }
+
+    @Test
     void reportsAnUnavailableNativePlugin() throws Exception {
         loadCheckpoint(deliverableDsl());
         when(catalog.acquire(AdmbwQeaExport.KEY, IntegrationConnectorExtension.class)).thenThrow(

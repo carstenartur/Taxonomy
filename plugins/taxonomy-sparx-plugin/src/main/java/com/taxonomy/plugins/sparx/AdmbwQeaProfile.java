@@ -3,7 +3,9 @@ package com.taxonomy.plugins.sparx;
 import com.taxonomy.extension.api.integration.AdmbwQeaExport.Connector;
 import com.taxonomy.extension.api.integration.AdmbwQeaExport.Element;
 
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import com.taxonomy.sparx.mapping.AdmbwSourceProfile;
 import java.util.Set;
 
@@ -16,6 +18,18 @@ final class AdmbwQeaProfile {
     static final Map<String, String> ELEMENT_TYPES = SOURCE_PROFILE.elementTypes();
     private static final Set<String> CATALOGUE_TYPES = Set.of("Capability", "OperationalArchitecture", "OperationalRole", "ResourceRole");
     private static final Set<String> C1_S1_TYPES = Set.of("Capability", "ServiceSpecification");
+
+    /** Source objects available for inspection. Only catalogue types can be bound by this writer. */
+    static final Set<String> REFERENCE_TYPES = Set.of("Capability", "OperationalArchitecture", "OperationalRole",
+            "CapabilityConfiguration", "ResourceRole");
+    static final String REFERENCE_FILTER = "stereotype IN (" + REFERENCE_TYPES.stream().sorted()
+            .map(type -> "'" + type + "'").collect(Collectors.joining(",")) + ")";
+
+    static boolean nativeIdentity(QeaDatabase.Row object, String stereotype, List<QeaDatabase.Row> xrefs) {
+        return object.text("object_type").equals(ELEMENT_TYPES.get(stereotype)) && object.text("stereotype").equals(stereotype)
+                && xrefs.stream().anyMatch(x -> x.text("type").equals("element property")
+                        && x.text("description").contains(QeaWriteTags.admbwDescription(stereotype)));
+    }
 
     static boolean catalogue(String stereotype) { return CATALOGUE_TYPES.contains(stereotype); }
 

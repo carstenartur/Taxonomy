@@ -17,7 +17,8 @@ ingress:
     nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/rewrite-target: "/$2"
     nginx.ingress.kubernetes.io/x-forwarded-prefix: "/taxonomy"
-    nginx.ingress.kubernetes.io/proxy-body-size: "25m"
+    # 32 MiB QEA basis plus its bounded multipart review/envelope.
+    nginx.ingress.kubernetes.io/proxy-body-size: "33m"
   hosts:
     - host: taxonomy.example.invalid
       paths:

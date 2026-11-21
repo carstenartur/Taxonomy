@@ -99,3 +99,13 @@
     .architecture-editor-surface #editorGraph .editor-ghost, .architecture-editor-surface #editorGraph .editor-lens-ring { stroke: Highlight; }
     .architecture-editor-surface #editorGraph .lens-examining rect, .architecture-editor-surface #editorGraph .lens-suggestions rect, .architecture-editor-surface #editorGraph .lens-unassessed rect, .architecture-editor-surface #editorGraph .lens-failed rect, .architecture-editor-surface #editorGraph .lens-stale rect { stroke: Highlight; }
 }
+
+#editorAdmbwPreparation { margin-block: 1rem; max-width: 66rem; overflow-wrap: anywhere; }
+#editorAdmbwPreparation .prep-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: .5rem 1rem; }
+#editorAdmbwPreparation fieldset, #editorAdmbwPreparation .prep-grid > div { min-width: 0; }
+#editorAdmbwPreparation label { display: block; margin-top: .5rem; }
+#editorAdmbwPreparation :is(select, textarea, input:not([type=checkbox])) { display: block; width: 100%; max-width: 100%; box-sizing: border-box; }
+#editorAdmbwPreparation button { margin-block: .5rem; white-space: normal; }
+#prepReview input + label { display: inline; }
+#prepResult pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow: auto; }
+#prepResult table { width: 100%; }

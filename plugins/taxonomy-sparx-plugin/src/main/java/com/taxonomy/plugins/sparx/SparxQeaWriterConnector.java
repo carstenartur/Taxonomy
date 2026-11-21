@@ -35,5 +35,10 @@ public final class SparxQeaWriterConnector implements AdmbwQeaExport {
         return new AdmbwQeaWriter().write(delivery, rootPackageGuid, basis);
     }
 
+    @Override public boolean supportsBasisInspection() { return true; }
+    @Override public Basis inspectAdmbwBasis(byte[] basis) {
+        return new AdmbwQeaReferences(new QeaDatabase().readAdmbwReferences(basis)).inspect();
+    }
+
     @Override public boolean supportsCoverageNotes() { return true; }
 }

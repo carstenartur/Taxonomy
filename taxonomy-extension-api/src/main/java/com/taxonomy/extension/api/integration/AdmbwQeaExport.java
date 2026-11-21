@@ -14,6 +14,23 @@ public interface AdmbwQeaExport extends IntegrationConnectorExtension {
 
     ExchangeFile exportAdmbw(Delivery delivery, String rootPackageGuid, byte[] basis);
 
+    /** Older plugins still support export without exposing a native reference inventory. */
+    default boolean supportsBasisInspection() { return false; }
+    default Basis inspectAdmbwBasis(byte[] basis) {
+        throw new UnsupportedOperationException("Native basis inspection is unavailable");
+    }
+
+    record Basis(String sha256, String projectGuid, List<Root> roots, List<Reference> references) {
+        public Basis { roots = List.copyOf(roots); references = List.copyOf(references); }
+    }
+
+    record Root(String guid, String name) { }
+
+    record Reference(String guid, String stereotype, String name, String notes, List<String> packagePath,
+                     String rootGuid, String ownerGuid) {
+        public Reference { packagePath = List.copyOf(packagePath); }
+    }
+
     /** Older plugins must not silently discard a host's delivery-scope disclosure. */
     default boolean supportsCoverageNotes() { return false; }
 

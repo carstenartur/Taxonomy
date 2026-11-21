@@ -658,3 +658,123 @@ test('architecture brief previews model-scoped values and drops an unsaved refer
         await page.close();
     }
 });
+
+for (const blockedNative of [false,true]) test('guided ADMBw review pins the original workspace and retries one frozen accepted request; native ' +
+    (blockedNative ? 'blocked by an unbound resource role' : 'available'), async () => {
+    const page = await browser.newPage({viewport:{width:375,height:820}});
+    const scope = {repositoryId:'repo',workspaceScopeKey:'__shared__',branch:'work',actor:'reviewer',revision:4,commit:'a'.repeat(40)};
+    const fileHash = '1'.repeat(64), fingerprint = '2'.repeat(64), requirementHash = '3'.repeat(64);
+    const calls = [], downloads = [];
+    const counts = {total:1,represented:1,omitted:0};
+    try {
+        const template = await readFile(path.join(resources,'templates/architecture-editor.html'),'utf8');
+        const panel = template.match(/<details id="editorAdmbwPreparation"[\s\S]+?(?=\s*<p id="editorMode")/);
+        assert.ok(panel, 'The editor needs an accessible guided ADMBw form');
+        await page.route('https://admbw.test/**', async route => {
+            const request = route.request(), url = new URL(request.url());
+            if (!url.pathname.startsWith('/api/')) return route.fulfill({contentType:'text/html',body:panel[0]});
+            assert.equal(url.searchParams.get('workspaceId'),'__shared__');
+            if (url.pathname.endsWith('/basis')) {
+                assert.equal(request.postData(),'fixture QEA');
+                return route.fulfill({json:{sha256:fileHash,projectGuid:'native',roots:[{guid:'root',name:'Model root'}],
+                    references:[{guid:'cap',stereotype:'Capability',name:'Training capability',rootGuid:'root',packagePath:['Model root','Capabilities']},
+                        {guid:'sub',stereotype:'OperationalRole',name:'Student',rootGuid:'root',packagePath:['Model root','School']},
+                        {guid:'wrong',stereotype:'ServiceSpecification',name:'Ineligible',rootGuid:'root',packagePath:[]}]}});
+            }
+            if (url.pathname.endsWith('.admbw.qea')) {
+                assert.equal(url.searchParams.get('commit'),'b'.repeat(40));
+                assert.equal(url.searchParams.get('viewId'),'review-view');
+                assert.equal(url.searchParams.get('rootPackageGuid'),'root');
+                assert.equal(request.postData(),'fixture QEA');
+                downloads.push(url);
+                return route.fulfill({headers:{'Content-Type':'application/vnd.sparx.qea','X-Taxonomy-Commit':'b'.repeat(40)},body:'native fixture output'});
+            }
+            const form = await new Response(request.postDataBuffer(),{headers:{'Content-Type':request.headers()['content-type']}}).formData();
+            const input = JSON.parse(await form.get('request').text());
+            assert.equal(await form.get('basis').text(),'fixture QEA');
+            assert.equal(request.headers()['if-match'],'"workspace-revision-4"');
+            assert.equal(input.basisSha256,fileHash);
+            calls.push([url.pathname,input]);
+            if (url.pathname.endsWith('/preview')) return route.fulfill({json:{context:scope,viewId:'review-view',
+                fingerprint,requirementId:'req',requirementVersion:2,requirementContentHash:requirementHash,basisSha256:fileHash,
+                notes:['Modeler review'],qeaIssues:blockedNative ? [{object:'element:resource-role',detail:'Native ResourceRole has no owned EA Part.'}] : [],changes:[{id:'element:service',before:'old service',after:'ServiceSpecification'}],
+                assessment:{coverage:{sourceViewId:'review-view',status:'PARTIAL',elements:counts,relations:counts,requirements:counts,mappings:counts},capabilityToService:{status:'REVIEW_REQUIRED',issues:[],elements:[],connectors:[]},
+                    requirementDerivation:{status:'REVIEW_REQUIRED',issues:[],elements:[],connectors:[]}}}});
+            if (calls.filter(c=>c[0].endsWith('/accept')).length === 1) {
+                return route.fulfill({status:202,json:{state:'CHECKPOINT_PENDING',context:{...scope,revision:5}}});
+            }
+            return route.fulfill({json:{state:'CHECKPOINTED',context:{...scope,revision:5,commit:'b'.repeat(40)},checkpoint:{commitId:'b'.repeat(40)}}});
+        });
+        await page.goto('https://admbw.test/');
+        await page.addStyleTag({path:path.join(resources,'static/css/architecture-editor.css')});
+        await page.evaluate(() => { window.TaxonomyI18n={resolveUrl:p=>p,t:(k,...args)=>[k,...args].join(' ')}; });
+        for (const script of ['api/taxonomy-api-client.js','api/architecture-editor-api.js','architecture-admbw-coverage.js','architecture-admbw-preparation.js']) {
+            await page.addScriptTag({path:path.join(resources,'static/js',script)});
+        }
+        await page.evaluate(scope => {
+            Object.defineProperty(scope,'workspaceId',{value:'__shared__'});
+            const view = {mayEdit:true,document:{context:scope,source:'WORKSPACE_REVISION',projectionState:'READY'},
+                model:{elements:[{id:'svc',title:'Learning service',type:'COIService'}],requirements:[{id:'req',title:'Training',text:'Provide\r\ntraining.'}]}};
+            window.guided = TaxonomyAdmbwPreparation.create({root:document,api:ArchitectureEditorApi,t:TaxonomyI18n.t,
+                report:(e,target)=>{target.textContent=e.message;},onAccepted:r=>{window.receipt=r;}});
+            window.guided.update(view,true);
+            window.showOtherWorkspace = () => {
+                guided.update({...view,document:{...view.document,context:{...scope,workspaceScopeKey:'other-workspace'}}}, true);
+            };
+            window.advance = () => {view.document.context={...scope,revision:5};Object.defineProperty(view.document.context,'workspaceId',{value:'__shared__'});guided.update(view,true);};
+        },scope);
+        await page.locator('#editorAdmbwPreparation summary').first().click();
+        await page.locator('#prepBasis').setInputFiles({name:'test.qea',mimeType:'application/vnd.sparx.qea',buffer:Buffer.from('fixture QEA')});
+        await page.locator('#prepInspect').click();
+        await page.locator('#prepRoot').selectOption('root');
+        await page.locator('#prepService').selectOption('svc');
+        await page.locator('#prepCapability').selectOption('cap');
+        assert.match(await page.locator('#prepCapability option:checked').innerText(),/Training capability.*Capabilities/);
+        assert.equal(await page.locator('#prepCapability option[value="wrong"]').count(),0);
+        await page.locator('#prepSubject').selectOption('sub');
+        await page.locator('#prepRequirement').selectOption('req');
+        await page.locator('#prepType').selectOption('FunctionalRequirement');
+        await page.locator('#prepProject').fill('TRAIN');
+        await page.locator('#prepConstraint').fill('Provide access to training.');
+        await page.locator('#prepQuote').fill('Provide\ntraining.');
+        await page.locator('#prepRationale').fill('Reviewed source and native requirements.');
+        await page.locator('#prepPreview').click();
+        await page.locator('#prepResult').getByText(requirementHash,{exact:false}).first().waitFor();
+        assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth <= window.innerWidth),true,
+            'The source paths, hashes, coverage and controls must fit a 375px viewport');
+        if (blockedNative) assert.match(await page.locator('#prepResult').innerText(),/element:resource-role.*no owned EA Part/);
+        assert.equal(await page.locator('#prepAccept').isEnabled(),false);
+        await page.locator('#prepRelationshipReviewed').check();
+        await page.locator('#prepDerivationReviewed').check();
+        await page.locator('#prepConstraint').fill('Provide access to assigned training.');
+        assert.equal(await page.locator('#prepAccept').isEnabled(),false);
+        await page.locator('#prepPreview').click();
+        await page.locator('#prepRelationshipReviewed').check();
+        await page.locator('#prepDerivationReviewed').check();
+        await page.locator('#prepAccept').click();
+        await page.locator('#prepRetry').waitFor();
+        await page.evaluate(()=>window.showOtherWorkspace());
+        assert.equal(await page.locator('#prepRetry').isVisible(),false);
+        assert.equal(await page.locator('#prepReceipt').innerText(),'');
+        assert.equal(await page.locator('#prepRationale').inputValue(),'');
+        await page.evaluate(()=>window.advance());
+        await page.locator('#prepRetry').click();
+        await page.waitForFunction(()=>window.receipt?.state==='CHECKPOINTED');
+        const accepted=calls.filter(c=>c[0].endsWith('/accept'));
+        assert.equal(accepted.length,2);
+        assert.deepEqual(accepted[0][1],accepted[1][1]);
+        assert.equal(accepted[0][1].selection.evidenceQuote,'Provide\r\ntraining.');
+        assert.equal(accepted[0][1].relationshipReviewed,true);
+        assert.equal(accepted[0][1].derivationReviewed,true);
+        assert.equal(accepted[0][1].previewFingerprint,fingerprint);
+        if (blockedNative) {
+            assert.equal(await page.locator('#prepDownload').isVisible(),false);
+            assert.equal(downloads.length,0);
+            return;
+        }
+        const download=page.waitForEvent('download');
+        await page.locator('#prepDownload').click();
+        assert.equal((await download).suggestedFilename(),'TRAIN-admbw.qea');
+        assert.equal(downloads.length,1);
+    } finally {await page.close();}
+});

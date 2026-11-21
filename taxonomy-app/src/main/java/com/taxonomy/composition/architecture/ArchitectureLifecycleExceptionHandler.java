@@ -12,7 +12,8 @@ import java.util.Set;
 
 @com.taxonomy.shared.features.ConditionalOnFeature("portfolio")
 @RestControllerAdvice(assignableTypes={ArchitectureLifecycleController.class,ArchitectureRequirementController.class,
-        ArchitectureRequirementHistoryController.class,ArchitectureLifecycleCreationController.class})
+        ArchitectureRequirementHistoryController.class,ArchitectureLifecycleCreationController.class,
+        ArchitectureAdmbwPreparationController.class})
 public class ArchitectureLifecycleExceptionHandler {
     @ExceptionHandler(LifecycleHttpContext.PreconditionRequired.class)
     public ResponseEntity<?> missing(){return ResponseEntity.status(428).body(Map.of("code","PRECONDITION_REQUIRED","detail","An exact semantic revision If-Match is required"));}
@@ -21,7 +22,8 @@ public class ArchitectureLifecycleExceptionHandler {
     @ExceptionHandler(CommandProblem.class)
     public ResponseEntity<?> command(CommandProblem failure) {
         int status="NOT_FOUND".equals(failure.code())?404:"READ_ONLY".equals(failure.code())?403:
-                Set.of("CONTEXT_CHANGED","PREVIEW_CHANGED","REQUIREMENT_VERSION_CHANGED","COMMAND_ID_REUSED","CHECKPOINT_PENDING","CHECKPOINT_CONFLICT","VERSION_CHANGED").contains(failure.code())?409:422;
+                "ADMBW_INSPECTOR_UNAVAILABLE".equals(failure.code())?503:
+                Set.of("CONTEXT_CHANGED","PREVIEW_CHANGED","REQUIREMENT_VERSION_CHANGED","COMMAND_ID_REUSED","CHECKPOINT_PENDING","CHECKPOINT_CONFLICT","VERSION_CHANGED","ADMBW_BASIS_CHANGED").contains(failure.code())?409:422;
         return ResponseEntity.status(status).body(Map.of("code",failure.code(),"field",failure.field(),"detail",failure.getMessage(),"dependencies",failure.dependencies()));
     }
     @ExceptionHandler(PortfolioException.class)

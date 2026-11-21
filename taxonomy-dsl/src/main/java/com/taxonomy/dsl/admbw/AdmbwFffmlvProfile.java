@@ -91,7 +91,7 @@ public final class AdmbwFffmlvProfile {
                                      String projectCode, String viewId, Map<String, String> catalogueIdentities) {
         ArchitectureView selected = selectedView(model, viewId);
         Set<String> members = selected == null ? elements.keySet() : new HashSet<>(selected.getIncludes());
-        String recordedRelations = selected == null ? null : selected.getExtensions().get("x-analysis-relation-members");
+        String recordedRelations = recordedRelationMembers(selected);
         Set<String> allowedRelations = recordedRelations == null ? Set.of()
                 : new HashSet<>(Arrays.asList(recordedRelations.split("\n")));
         var view = new ViewBuilder();
@@ -325,6 +325,15 @@ public final class AdmbwFffmlvProfile {
         List<ArchitectureView> views = model.getViews().stream().filter(view -> viewId.equals(view.getId())).toList();
         if (views.size() != 1) throw new IllegalArgumentException("Select one existing canonical view for C1-S1");
         return views.getFirst();
+    }
+
+    static String recordedRelationMembers(ArchitectureView view) {
+        if (view == null) return null;
+        var properties = view.getExtensions();
+        String frozen = properties.get("x-analysis-relation-members");
+        if (frozen != null) return frozen;
+        return ID.equals(properties.get(AdmbwPreparation.VIEW_PROFILE))
+                ? properties.getOrDefault(AdmbwPreparation.VIEW_RELATIONS, "") : null;
     }
 
     private static ArchitectureElement lookup(Map<String, ArchitectureElement> elements, String id) {
