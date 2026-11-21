@@ -81,6 +81,25 @@ function detailStartup({holdOffers=false,forbidden=false,copilot=false,probe=fal
 }
 const settleStartup=async()=>{for(let i=0;i<6;i++)await new Promise(resolve=>setImmediate(resolve));};
 
+test('the reformulation editor separates saved draft wording from collapsed taxonomy evidence',async()=>{
+  const h=detailStartup({lifecycleFetch:async url=>{
+    if(!url.pathname.endsWith('/reformulations/offer'))return;
+    return Response.json({id:'offer',baseline:{originalText:'Original',sourceVersionId:44},currentRevision:{number:2,
+      text:'Compact reviewed wording',questions:[],statements:[],validation:{findings:[]},sections:[{
+        id:'BP',title:'Process taxonomy',summary:'Detailed <b>roll-up</b> for review',statementIds:[],questionIds:[],children:[]}]}});
+  }});
+  const started=h.start();h.releaseLifecycle();await started;await settleStartup();
+  const view=h.get('reformulationList');
+  assert.equal(view.querySelector('[data-reformulation-editor]').value,'Compact reviewed wording');
+  const evidence=view.querySelector('[data-reformulation-section-evidence]');
+  assert.ok(evidence);
+  assert.equal(evidence.tagName,'DETAILS');
+  assert.equal(Boolean(evidence.open),false);
+  assert.equal(evidence.querySelector('summary').textContent,'Taxonomy evidence and unreviewed summaries');
+  assert.equal(evidence.querySelector('h4').textContent,'Process taxonomy');
+  assert.equal(evidence.querySelector('pre').textContent,'Detailed <b>roll-up</b> for review');
+});
+
 test('a version draft opened during the first detail read retains its text and binds the first authoritative base',async()=>{
   let releaseRequirement, prepared;
   const contentHash='a'.repeat(64);

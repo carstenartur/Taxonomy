@@ -212,20 +212,8 @@ public class CrossTaxonomyReconciler {
                 RejectedWordingGuard.safeSummary(s.summary(),rejected,findings),s.children(),s.statementIds(),s.questionIds()))
                 .toList();
         findings.add(new ValidationReport.Finding(ValidationReport.Kind.UNMAPPED_SOURCE,"ORIGINAL_REMAINDER","Original clauses remain visibly available independently of architecture scores",sourceIds,sourceSpans(baseline)));
-        var byId=new HashMap<String,Statement>();statements.forEach(s->byId.put(s.id(),s));var rendered=new HashSet<String>();var text=new StringBuilder();
-        for(var section:safeSections){text.append(section.title()).append("\n").append("[Unreviewed summary] ").append(section.summary()).append("\n");
-            for(String id:section.statementIds()){var s=byId.get(id);if(s!=null && !"REJECTED".equals(s.reviewState()) && (!sourceIds.contains(id) || section.id().equals("@unmapped")) && rendered.add(id))text.append("[").append(s.provenance()).append("] ").append(s.wording()).append("\n");}
-            text.append("\n");}
-        for(var s:statements)if(!"REJECTED".equals(s.reviewState()) && rendered.add(s.id()))text.append("[").append(s.provenance()).append("] ").append(s.wording()).append("\n\n");
-        for(var q:doc.questions()) {
-            text.append("[").append(q.state()).append("] ").append(q.wording());
-            if(q.state()==DecisionQuestion.State.OPEN)text.append(" — ").append(String.join(" / ",q.answerSchema().options()));
-            for(var resolution:q.sourceResolutions())text.append(" — Original: ").append(String.join(", ",resolution.values())).append(" (").append(resolution.rationale()).append(")");
-            answers.stream().filter(a->q.referenceIds().contains(a.questionId())).forEach(a->text.append(" — Human decision: ").append(String.join(", ",a.values())).append(a.otherText()==null?"":" — "+a.otherText()));
-            text.append("\n");
-        }
-        findings.stream().filter(f->f.kind()==ValidationReport.Kind.CONFLICT).distinct().forEach(f->text.append("[CONFLICT] ").append(f.message()).append("\n"));
-        return new ReformulationDocument(text.toString(),safeSections,statements,doc.questions(),doc.validation(),doc.nodeResults());
+        String text=GeneratedDraftText.render(baseline,statements,doc.questions(),answers,findings);
+        return new ReformulationDocument(text,safeSections,statements,doc.questions(),doc.validation(),doc.nodeResults());
     }
     private static void place(Section s,Map<String,Section> byId,Set<String> placed,List<Section> result) {
         if(!placed.add(s.id()))return;result.add(s);s.children().stream().sorted().map(byId::get).filter(Objects::nonNull).forEach(child->place(child,byId,placed,result));

@@ -24,7 +24,8 @@
             retryHint:'Gespeicherte Teilergebnisse bleiben erhalten. Ein neuer Lauf verwendet passende Ergebnisse erneut; eine bereits laufende Modellanfrage kann noch enden, aber nichts mehr veröffentlichen.', rationale:'Begründung', defaultRationale:'Bewusste Bearbeitung des Angebots',
             answer:'Antwort speichern', defer:'Noch offen / zurückstellen', na:'Nicht anwendbar', other:'Andere Auswahl erläutern', history:'Entscheidungsverlauf',
             impact:'Betroffene Aussagen / Abschnitte / Schnittstellen', noImpact:'Noch keine Antwortänderungen.', review:'Alle Ergänzungen bleiben fachlich ungeprüft.',
-            additions:'Aussagen, Ergänzungen und Herkunft', edit:'Absatz bearbeiten', reject:'Ergänzung ablehnen', rejected:'Abgelehnt – bleibt als Beleg erhalten',
+            sectionEvidence:'Taxonomiebelege und ungeprüfte Zusammenfassungen', additions:'Aussagen, Ergänzungen und Herkunft',
+            edit:'Absatz bearbeiten', reject:'Ergänzung ablehnen', rejected:'Abgelehnt – bleibt als Beleg erhalten',
             sourceAnswer:'Durch Original beantwortet', sourceConflict:'Widerspruch: Original und menschliche Entscheidung bleiben erhalten.',
             candidate:'Änderungsvorschlag – geschützte Bearbeitung bleibt erhalten', useCandidate:'Kandidat in den Editor laden (danach Entwurf speichern)', candidateLoaded:'Kandidat in den Editor geladen. Erst „Entwurf speichern“ ändert das Angebot.', current:'Aktuell gespeicherter Text', candidateText:'Neuer Kandidat',
             older:'Dieses Angebot basiert auf einer älteren Quellversion.', noQuestions:'Keine Fragen erfasst. Dies ist keine fachliche Freigabe.',
@@ -50,7 +51,8 @@
             retryHint:'Saved step results remain available for an explicit retry. An in-flight model request may still finish, but cannot publish after cancellation.', rationale:'Rationale', defaultRationale:'Deliberate proposal edit',
             answer:'Save answer', defer:'Still open / defer', na:'Not applicable', other:'Describe other choice', history:'Decision history',
             impact:'Affected statements / sections / interfaces', noImpact:'No answer changes yet.', review:'All additions still require expert review.',
-            additions:'Statements, additions and provenance', edit:'Edit paragraph', reject:'Reject addition', rejected:'Rejected – retained as evidence',
+            sectionEvidence:'Taxonomy evidence and unreviewed summaries', additions:'Statements, additions and provenance',
+            edit:'Edit paragraph', reject:'Reject addition', rejected:'Rejected – retained as evidence',
             sourceAnswer:'Answered by original', sourceConflict:'Conflict: source and human decision remain available.',
             candidate:'Candidate change – protected edit remains in place', useCandidate:'Load candidate into editor (then save draft)', candidateLoaded:'Candidate loaded into the editor. Only “Save draft” changes the proposal.', current:'Currently saved text', candidateText:'New candidate',
             older:'This offer is based on an older source version.', noQuestions:'No questions recorded. This does not mean expert approval.',
@@ -232,6 +234,15 @@
             finally {mutationInFlight=false;++readGeneration;}
             await refreshRuns();
         });generate.id='reformulationStartRun';generate.disabled=true;actions.append(generate,button(t('refresh'),refreshRuns));host.append(actions);
+        if(revision.sections?.length) {
+            const evidence=el('details');evidence.dataset.reformulationSectionEvidence='';
+            evidence.append(el('summary',t('sectionEvidence')));
+            for(const section of revision.sections) {
+                evidence.append(el('h4',section.title,'h6 mt-3'));
+                if(section.summary)evidence.append(pre(section.summary));
+            }
+            host.append(evidence);
+        }
         const statements=el('details');statements.append(el('summary',t('additions')));revision.statements.forEach(s=>{
             const item=el('div',undefined,'border rounded p-3 my-2');item.id='statement-'+s.id;item.tabIndex=-1;
             item.append(el('strong',t(s.provenance)+(s.editingOrigin==='HUMAN'?' · '+t('HUMAN_DECISION'):'')),pre(s.wording));

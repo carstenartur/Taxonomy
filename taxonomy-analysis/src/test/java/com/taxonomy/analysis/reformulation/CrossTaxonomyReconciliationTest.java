@@ -28,9 +28,10 @@ class CrossTaxonomyReconciliationTest {
         when(registry.getGatewayById(LlmProvider.OPENAI.id())).thenReturn(new LlmGateway(){
             public String providerName(){return "fixture";} public String extractResponseText(String s){return s;}
             public String sendHttpRequest(String prompt,String key){
-                assertThat(prompt).contains(baseline().originalText()).doesNotContain("FORBIDDEN_WORKSPACE","UNRELATED_ARCHIVE","NEVER_INCLUDE");
+                assertThat(prompt).doesNotContain("FORBIDDEN_WORKSPACE","UNRELATED_ARCHIVE","NEVER_INCLUDE");
                 String marker=prompt.contains("RECONCILIATION_DATA_JSON\n")?"RECONCILIATION_DATA_JSON\n":"INPUT_DATA_JSON\n";
                 var in=json.readTree(prompt.substring(prompt.indexOf(marker)+marker.length()));
+                assertThat(in.at("/baseline/originalText").asText()).isEqualTo(baseline().originalText());
                 if(marker.startsWith("RECONCILIATION")){reviews.add(in);return json.writeValueAsString(response.apply(in));}
                 wordings.add(in);var ids=new LinkedHashSet<String>();var qs=new LinkedHashSet<String>();
                 in.path("directContributions").forEach(s->ids.add(s.path("id").asText()));
@@ -65,10 +66,12 @@ class CrossTaxonomyReconciliationTest {
         assertThat(out.questions()).hasSize(1);assertThat(out.questions().getFirst().discoveries()).hasSize(3);
         assertThat(out.questions().getFirst().state()).isEqualTo(DecisionQuestion.State.OPEN);
         assertThat(out.questions().getFirst().answerSchema().options()).contains("Terminal","Browser");
-        assertThat(out.text()).contains("Arbeitszeiterfassung","Summary BP","Arbeitsbeginn und Arbeitsende werden erfasst.","MODEL_ADDITION");
+        assertThat(out.text()).contains("Arbeitszeiterfassung","Arbeitsbeginn und Arbeitsende werden erfasst.","MODEL_ADDITION")
+                .doesNotContain("Summary BP");
         assertThat(json.valueToTree(out.questions().getFirst()).path("aliases").toString()).contains("q-p","q-s");
         assertThat(json.writeValueAsString(original)).isEqualTo(frozen);
         assertThat(out.sections().getFirst().taxonomyCode()).isEqualTo("BP");
+        assertThat(out.sections().getFirst().summary()).isEqualTo("Summary BP");
     }
     @Test void reconciliationKeepsRejectedEvidenceOutOfActiveTextAndSummaries() {
         var d=draft(List.of());
@@ -118,8 +121,12 @@ class CrossTaxonomyReconciliationTest {
         assertThat(reviews).hasSize(1);assertThat(reviews.getFirst().path("boundaryEdges").toString()).contains("SUPPLIES","sourceCode","BP","targetCode","AP","PROPOSED");
         assertThat(reviews.getFirst().path("sharedInformation").toString()).contains("INFO");
         assertThat(reviews.getFirst().path("frozenNodeContext").toString()).contains("Frozen process description","Shared information description");
-        assertThat(out.text()).contains(baseline().originalText(),"keine Browseroberfläche","2 Sekunden","SUPPLIES","BP → AP");
-        assertThat(out.text().indexOf(baseline().originalText())).isGreaterThan(out.text().indexOf("Original / Unmapped source"));
+        assertThat(out.text().replace("\n\n", " ")).startsWith(baseline().originalText());
+        assertThat(out.text()).doesNotContain("SUPPLIES", "BP → AP", "Original / Unmapped source");
+        assertThat(out.sections()).anySatisfy(s -> {
+            assertThat(s.id()).isEqualTo("@interfaces");
+            assertThat(s.summary()).contains("SUPPLIES", "BP → AP");
+        });
         assertThat(reviews.getFirst().path("globalConstraintIds")).isNotEmpty();
         assertThat(reviews.getFirst().path("frozenNodeContext").path("rawScores").path("BP").asInt()).isEqualTo(1);
         assertThat(out.sections()).extracting(Section::id).contains("@interfaces","@cross-cutting","@unmapped");

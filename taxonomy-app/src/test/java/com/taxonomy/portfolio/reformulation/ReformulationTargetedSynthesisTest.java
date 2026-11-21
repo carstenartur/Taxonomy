@@ -50,7 +50,8 @@ class ReformulationTargetedSynthesisTest extends ReformulationWorkflowFixture {
             var after=reformulations.get(project.id(),requirement.id(),p.id(),"architect",context).currentRevision();
             assertThat(after.sections().get(2)).isEqualTo(answered.currentRevision().sections().get(2));
             assertThat(after.statements().stream().filter(s->s.id().equals("independent")).findFirst().orElseThrow()).isEqualTo(p.currentRevision().statements().get(1));
-            assertThat(after.text()).contains("Updated BP-1","Unabhängige Abrechnung.");
+            assertThat(after.text()).contains("Unabhängige Abrechnung.", "Human decision: Terminal").doesNotContain("Updated BP-1");
+            assertThat(after.sections()).extracting(com.taxonomy.reformulation.Section::summary).contains("Updated BP-1");
         } finally {server.reset();}
     }
 }

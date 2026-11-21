@@ -110,23 +110,20 @@ public class FrozenReformulationEngine {
         var findings=new ArrayList<>(before.validation().findings());
         var visiting=new HashSet<String>();
         for(var section:before.sections()) rewordSection(section.id(),baseline,sections,statements,questions,descriptions,parents,boundaries,answers,impact,results,findings,visiting,steps);
-        StringBuilder text=new StringBuilder();var rendered=new HashSet<String>();
+        var rejected=new LinkedHashSet<>(RejectedWordingGuard.from(statements.values()));
+        rejected.addAll(InheritedDecisionContext.allRejected(baseline.frozenContext().get("inheritedDecisionContext"),json));
         for(var section:List.copyOf(sections.values())) {
-            var rejected=new LinkedHashSet<>(RejectedWordingGuard.from(statements.values()));
-            rejected.addAll(InheritedDecisionContext.allRejected(baseline.frozenContext().get("inheritedDecisionContext"),json));
             String summary=RejectedWordingGuard.safeSummary(section.summary(),rejected,findings);
             if(!summary.equals(section.summary()))sections.put(section.id(),new Section(section.id(),section.taxonomyCode(),section.title(),summary,section.children(),section.statementIds(),section.questionIds()));
-            text.append(section.title()).append("\n").append(summary).append("\n\n");
-            for(String id:section.statementIds()) {
-                var statement=statements.get(id);
-                if(statement!=null && !"REJECTED".equals(statement.reviewState()) && rendered.add(id))
-                    text.append(statement.wording()).append(" [").append(statement.provenance()).append("]\n\n");
-            }
         }
-        for(var statement:statements.values())if(!"REJECTED".equals(statement.reviewState()) && rendered.add(statement.id()))
-            text.append(statement.wording()).append(" [").append(statement.provenance()).append("]\n\n");
-        text.append(baseline.language().equals("de")?"Original (unverändert)\n":"Original (unchanged)\n").append(baseline.originalText());
-        return new ReformulationDocument(text.toString(),List.copyOf(sections.values()),List.copyOf(statements.values()),List.copyOf(questions.values()),
+        if (GeneratedDraftText.originalRejected(baseline.originalText(), statements.values())
+                && findings.stream().noneMatch(f -> f.code().equals("ORIGINAL_NOT_VISIBLE"))) {
+            findings.add(new ValidationReport.Finding(ValidationReport.Kind.STRUCTURAL_LOSS, "ORIGINAL_NOT_VISIBLE",
+                    "The complete source has a recorded rejection", List.of(),
+                    List.of(new Statement.SourceSpan(0, baseline.originalText().length(), baseline.originalText()))));
+        }
+        String text=GeneratedDraftText.render(baseline,statements.values(),questions.values(),answers,findings);
+        return new ReformulationDocument(text,List.copyOf(sections.values()),List.copyOf(statements.values()),List.copyOf(questions.values()),
                 new ValidationReport(findings),List.copyOf(results.values()),before.reconciliation());
     }
     private NodeSynthesisResult rewordSection(String id,ReformulationBaseline baseline,Map<String,Section> sections,

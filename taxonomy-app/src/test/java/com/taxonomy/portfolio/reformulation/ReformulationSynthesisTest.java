@@ -151,7 +151,11 @@ class ReformulationSynthesisTest extends RetainedPortfolioCatalogue {
         assertThat(generated.currentRevision().text()).contains("keine Browseroberfläche","2 Sekunden","Das System erfasst Arbeitsbeginn und Arbeitsende am Terminal.");
         assertThat(generated.currentRevision().questions()).hasSize(1);
         assertThat(generated.currentRevision().sections()).isNotEmpty();
-        assertThat(generated.currentRevision().text()).contains("Arbeitszeiten werden ausschließlich am Terminal erfasst.","[MODEL_ADDITION]","Schnittstellen");
+        assertThat(generated.currentRevision().text()).contains("[MODEL_ADDITION]", "Bedingung: Korrekturverfahren noch offen")
+                .doesNotContain("Arbeitszeiten werden ausschließlich am Terminal erfasst.", "Schnittstellen");
+        assertThat(generated.currentRevision().sections()).extracting(com.taxonomy.reformulation.Section::summary)
+                .contains("Arbeitszeiten werden ausschließlich am Terminal erfasst.");
+        assertThat(generated.currentRevision().sections()).extracting(com.taxonomy.reformulation.Section::id).contains("@interfaces");
         assertThat(generated.baseline().frozenContext()).containsKeys("reformulationPrompt","reformulationSchemaVersion");
         mvc.perform(post(base()+"/"+id+"/synthesis-runs").with(csrf()).header("If-Match","\"2\"")).andExpect(status().isAccepted());
         org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(15)).untilAsserted(()->
@@ -162,9 +166,17 @@ class ReformulationSynthesisTest extends RetainedPortfolioCatalogue {
         assertThat(regenerated.currentRevision().questions()).isEqualTo(generated.currentRevision().questions());
         var publishedStatementIds=regenerated.currentRevision().statements().stream().map(com.taxonomy.reformulation.Statement::id).toList();
         regenerated.currentRevision().questions().forEach(q->assertThat(publishedStatementIds).containsAll(q.affectedStatementIds()));
+        var previews=app.getBean(ReformulationAdoptionService.class);
+        var preview=previews.preview(project.id(),requirement.id(),id,3,"architect",context);
+        assertThat(preview.content().finalText()).isEqualTo(regenerated.currentRevision().text());
+        assertThat(preview.content().revision()).isEqualTo(regenerated.currentRevision());
+        assertThat(preview.content().blockingReasons()).isEmpty();
         var edited=reformulations.saveDraft(project.id(),requirement.id(),id,3,new ReformulationDtos.SaveDraftRequest("Human wording","Manual edit"),"architect",context);
+        assertThat(edited.currentRevision().text()).isEqualTo("Human wording");
         assertThat(edited.currentRevision().questions()).isEqualTo(generated.currentRevision().questions());
         assertThat(edited.currentRevision().statements()).containsAll(generated.currentRevision().statements());
+        assertThat(previews.readPreview(project.id(),requirement.id(),id,preview.content().id(),"architect",context)).isEqualTo(preview);
+        assertThat(reformulations.revision(project.id(),requirement.id(),id,3,"architect",context)).isEqualTo(regenerated.currentRevision());
         assertThat(projects.getRequirement(project.id(),requirement.id(),"architect",context)).isEqualTo(before);
         assertThat(projects.listRequirementVersions(project.id(),requirement.id(),"architect",context)).hasSize(1);
         assertThat(architecture.read(resolver.resolveCurrentRepositoryContext(),null)).isEqualTo(architectureBefore);
@@ -257,7 +269,9 @@ class ReformulationSynthesisTest extends RetainedPortfolioCatalogue {
         var finalRevision=reformulations.get(project.id(),requirement.id(),proposal.id(),"architect",context).currentRevision();
         assertThat(finalRevision.answers()).isEmpty();
         assertThat(finalRevision.questions()).singleElement().satisfies(q->{assertThat(q.id()).isEqualTo(questionId.get());assertThat(q.state()).isEqualTo(com.taxonomy.reformulation.DecisionQuestion.State.ANSWERED);assertThat(q.sourceResolutions()).hasSize(1);assertThat(q.discoveries()).hasSize(2);assertThat(q.aliases()).hasSize(1);});
-        assertThat(finalRevision.text()).contains("Capture exclusively at a terminal",ORIGINAL);
+        assertThat(finalRevision.text().replace("\n\n", " ")).startsWith(ORIGINAL);
+        assertThat(finalRevision.text()).doesNotContain("Capture exclusively at a terminal").contains("Original: Terminal");
+        assertThat(finalRevision.sections()).extracting(com.taxonomy.reformulation.Section::summary).contains("Capture exclusively at a terminal");
         assertThat(reformulations.revision(project.id(),requirement.id(),proposal.id(),2,"architect",context).questions().getFirst().discoveries()).hasSize(1);
         assertThat(projects.listRequirementVersions(project.id(),requirement.id(),"architect",context)).hasSize(1);
         server.verify();
