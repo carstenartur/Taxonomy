@@ -3,6 +3,7 @@ package com.taxonomy.analysis.reformulation;
 import com.taxonomy.identity.StableIdentityHash;
 import com.taxonomy.reformulation.*;
 import tools.jackson.databind.*;
+import java.text.BreakIterator;
 import java.util.*;
 
 /** Strict schema and reference boundary; never accepts model-supplied business IDs. */
@@ -39,6 +40,7 @@ public class ReformulationResponseParser {
         if(!new HashSet<>(preservedStatements).equals(statementIds) || !new HashSet<>(preservedQuestions).equals(questionIds)) throw invalid("Child/direct statement or question loss");
         var statementRefs=localRefs(statementIds,root,"statementProposals","new-statement:","s",input);
         var questionRefs=localRefs(questionIds,root,"questionProposals","new-question:","q",input);
+        var conflicts=new ArrayList<ValidationReport.Finding>();
         var statements=new ArrayList<Statement>();int index=0;
         for(JsonNode node:array(root,"statementProposals")) {
             fields(node,"wording","provenance","sourceSpans","architectureLinks","questionDependencies","conditionalValidity");
@@ -49,8 +51,22 @@ public class ReformulationResponseParser {
                 throw invalid("Model cannot create human decisions or adopted source");
             if(provenance==Statement.Provenance.ORIGINAL && input.baseline().frozenContext().containsKey("adoptedLineage"))
                 throw invalid("Model cannot create ORIGINAL for adopted source");
-            if(provenance==Statement.Provenance.ORIGINAL && (spans.isEmpty() || !wording.equals(String.join("",spans.stream().map(Statement.SourceSpan::exactText).toList())))) throw invalid("ORIGINAL wording must exactly match source spans");
-            statements.add(new Statement(id("s",input,index++,node),wording,spans,provenance,refs(node,"architectureLinks",links),refs(node,"questionDependencies",questionRefs),nullableText(node,"conditionalValidity"),Statement.EditingOrigin.MODEL,"UNREVIEWED"));
+            boolean quotesSource = quotesContiguousSource(wording, spans, input.baseline().originalText());
+            if(provenance==Statement.Provenance.ORIGINAL && !quotesSource)
+                throw invalid("ORIGINAL wording must exactly match one contiguous source passage");
+            boolean wholeSourceUnit = quotesSource && quotesCompleteSourceUnit(spans, input.baseline());
+            var dependencies=refs(node,"questionDependencies",questionRefs);
+            String condition=nullableText(node,"conditionalValidity");
+            // An exact fragment may cut away a governing qualifier. Likewise, attaching a
+            // new qualifier or decision gate to a complete quotation makes it a proposal.
+            if (provenance == Statement.Provenance.ORIGINAL && (!wholeSourceUnit || condition != null || !dependencies.isEmpty()))
+                provenance = Statement.Provenance.MODEL_ADDITION;
+            String id=id("s",input,index++,node);
+            if (!provenance.isSource() && !spans.isEmpty() && (!wholeSourceUnit || condition != null || !dependencies.isEmpty()))
+                conflicts.add(new ValidationReport.Finding(ValidationReport.Kind.SEMANTIC_REVIEW, "SOURCE_FORMULATION_REVIEW",
+                        "Proposed wording or conditions cite the source. Review the actor, object, scope and modality against the exact source passage.",
+                        List.of(id), spans));
+            statements.add(new Statement(id,wording,spans,provenance,refs(node,"architectureLinks",links),dependencies,condition,Statement.EditingOrigin.MODEL,"UNREVIEWED"));
         }
         var questions=new ArrayList<DecisionQuestion>();index=0;
         for(JsonNode node:array(root,"questionProposals")) {
@@ -80,12 +96,43 @@ public class ReformulationResponseParser {
             var allowed=prerequisite.answerSchema().kind()==DecisionQuestion.AnswerSchema.Kind.BOOLEAN?List.of("true","false"):prerequisite.answerSchema().options();
             if(!allowed.containsAll(condition.anyOf()) || condition.anyOf().isEmpty())throw invalid("Unknown conditional choice");
         }
-        var conflicts=new ArrayList<ValidationReport.Finding>();
         for(JsonNode node:array(root,"conflictCandidates")) {
             fields(node,"kind","code","message","statementIds","sourceSpans");
             conflicts.add(new ValidationReport.Finding(ValidationReport.Kind.valueOf(text(node,"kind")),text(node,"code"),text(node,"message"),refs(node,"statementIds",statementRefs),spans(node,"sourceSpans",input)));
         }
         return new NodeSynthesisResult(input.nodeId(),text(root,"summary"),statements,preservedStatements,questions,preservedQuestions,spans(root,"uncoveredSourceRefs",input),conflicts);
+    }
+    private static boolean quotesContiguousSource(String wording, List<Statement.SourceSpan> spans, String source) {
+        if (spans.isEmpty()) return false;
+        int start = spans.getFirst().start();
+        int end = start;
+        for (var span : spans) {
+            if (span.start() != end) return false;
+            end = span.end();
+        }
+        return wording.equals(source.substring(start, end));
+    }
+    /** A sentence boundary protects against clipped clauses without certifying semantic entailment. */
+    private static boolean quotesCompleteSourceUnit(List<Statement.SourceSpan> spans, ReformulationBaseline baseline) {
+        String source = baseline.originalText();
+        int start = spans.getFirst().start();
+        int end = spans.getLast().end();
+        if (start == 0 && end == source.length()) return true;
+        while (start < end && Character.isWhitespace(source.charAt(start))) start++;
+        while (end > start && Character.isWhitespace(source.charAt(end - 1))) end--;
+        var sentences = BreakIterator.getSentenceInstance(Locale.forLanguageTag(baseline.language()));
+        sentences.setText(source);
+        boolean alignedStart = false;
+        for (int left = sentences.first(), right = sentences.next(); right != BreakIterator.DONE;
+             left = right, right = sentences.next()) {
+            int visibleStart = left;
+            int visibleEnd = right;
+            while (visibleStart < visibleEnd && Character.isWhitespace(source.charAt(visibleStart))) visibleStart++;
+            while (visibleEnd > visibleStart && Character.isWhitespace(source.charAt(visibleEnd - 1))) visibleEnd--;
+            alignedStart |= start == visibleStart;
+            if (end <= visibleEnd) return alignedStart && end == visibleEnd;
+        }
+        return false;
     }
     private static DecisionQuestion.AnswerSchema answerSchema(JsonNode schema,DecisionQuestion.AnswerSchema.Kind kind,
             List<String> options,Double min,Double max,Map<String,String> questionRefs) {

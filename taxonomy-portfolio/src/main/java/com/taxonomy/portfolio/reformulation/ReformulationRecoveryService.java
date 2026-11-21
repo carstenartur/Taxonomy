@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -196,7 +197,9 @@ public class ReformulationRecoveryService {
             };
             try (var statement = connection.createStatement(); var result = statement.executeQuery(sql)) {
                 if (!result.next()) throw new java.sql.SQLException("Recovery database clock missing");
-                return result.getTimestamp(1, java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))).toInstant();
+                // All four expressions return an offset-aware timestamp. Preserve that offset
+                // when comparing leases or recording usage from instances in different JVM zones.
+                return result.getObject(1, OffsetDateTime.class).toInstant();
             }
         });
     }

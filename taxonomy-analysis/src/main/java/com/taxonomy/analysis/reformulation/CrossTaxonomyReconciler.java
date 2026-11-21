@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.reformulation;
 
+import com.taxonomy.analysis.service.PromptBudgetExceededException;
 import com.taxonomy.identity.StableIdentityHash;
 import com.taxonomy.reformulation.*;
 import org.springframework.stereotype.Service;
@@ -26,7 +27,7 @@ public class CrossTaxonomyReconciler {
         var boundary=boundaries(baseline,current);
         for(int round=1;round<=2;round++) {
             rounds=round;var input=input(baseline,round,current,answers,boundary);
-            var review=steps.execute("RECONCILE",input,ReconciliationResult.class,()->nodes.reconcile(input));findings.addAll(review.findings());
+            var review=review(input,steps);findings.addAll(review.findings());
             current=resolve(current,review.sourceResolutions(),answers,findings);
             if(review.affectedSectionIds().isEmpty())break;
             current=reword(baseline,current,review,answers,boundary,touched,steps);
@@ -37,6 +38,28 @@ public class CrossTaxonomyReconciler {
         current=layout(baseline,current,findings,boundary,answers);
         findings.addAll(new ReformulationCoverageValidator().validate(baseline,phaseA,current).findings());
         return new ReformulationDocument(current.text(),current.sections(),current.statements(),current.questions(),new ValidationReport(distinct(findings)),current.nodeResults(),new ReformulationDocument.ReconciliationTrace(phaseA.nodeResults(),rounds,List.copyOf(touched)));
+    }
+    private record RoundReview(List<String> affectedSectionIds,
+            Map<String, List<DecisionQuestion.SourceResolution>> sourceResolutions, List<ValidationReport.Finding> findings) {}
+
+    private RoundReview review(ReconciliationInput input, ReformulationStepExecutor steps) {
+        List<ReconciliationResult> parts;
+        try {
+            // Keep the original complete-round checkpoint identity and provider path when it fits.
+            parts = List.of(steps.execute("RECONCILE", input, ReconciliationResult.class, () -> nodes.reconcile(input)));
+        } catch (IllegalStateException failure) {
+            if (!(failure.getCause() instanceof PromptBudgetExceededException)) throw failure;
+            parts = nodes.reconcileBounded(input, steps);
+        }
+        var affected = new LinkedHashSet<String>();
+        var resolutions = new LinkedHashMap<String, List<DecisionQuestion.SourceResolution>>();
+        var findings = new LinkedHashSet<ValidationReport.Finding>();
+        for (var part : parts) {
+            affected.addAll(part.affectedSectionIds());
+            findings.addAll(part.findings());
+            part.sourceResolutions().forEach((id, value) -> resolutions.computeIfAbsent(id, ignored -> new ArrayList<>()).add(value));
+        }
+        return new RoundReview(List.copyOf(affected), resolutions, List.copyOf(findings));
     }
     private ReformulationDocument canonicalize(ReformulationDocument doc,List<DecisionAnswer> answers,List<DecisionQuestion> prior,List<ValidationReport.Finding> findings) {
         var groups=new ArrayList<List<DecisionQuestion>>();
@@ -93,10 +116,10 @@ public class CrossTaxonomyReconciler {
         // Decimal/exponent values stay exact; a double conversion would erase real differences.
         return new BigDecimal(value).stripTrailingZeros();
     }
-    private static ReformulationDocument resolve(ReformulationDocument doc,Map<String,DecisionQuestion.SourceResolution> resolutions,List<DecisionAnswer> answers,List<ValidationReport.Finding> findings) {
+    private static ReformulationDocument resolve(ReformulationDocument doc,Map<String,List<DecisionQuestion.SourceResolution>> resolutions,List<DecisionAnswer> answers,List<ValidationReport.Finding> findings) {
         var questions=new ArrayList<DecisionQuestion>();
         for(var q:doc.questions()) {
-            var r=resolutions.get(q.id());if(r!=null){var evidence=new ArrayList<>(q.sourceResolutions());evidence.add(r);var origins=new ArrayList<>(q.origins());origins.add(q.origin());
+            var r=resolutions.get(q.id());if(r!=null){var evidence=new ArrayList<>(q.sourceResolutions());evidence.addAll(r);var origins=new ArrayList<>(q.origins());origins.add(q.origin());
                 q=new DecisionQuestion(q.id(),q.key(),q.wording(),q.discoveries(),q.affectedStatementIds(),q.answerSchema(),q.prerequisites(),q.dependentQuestionIds(),q.consequences(),q.state(),q.aliases(),distinct(origins),distinct(evidence));}
             questions.add(withState(q,answers,findings));
         }
@@ -126,7 +149,7 @@ public class CrossTaxonomyReconciler {
         return new ReconciliationInput(b,round,d.sections(),d.statements(),d.questions(),answers,boundaries,shared,
             d.statements().stream().filter(s->s.provenance().isSource()).map(Statement::id).toList());
     }
-    private ReformulationDocument reword(ReformulationBaseline baseline,ReformulationDocument before,ReconciliationResult review,List<DecisionAnswer> answers,Map<String,String> boundary,Set<String> touched,ReformulationStepExecutor steps) {
+    private ReformulationDocument reword(ReformulationBaseline baseline,ReformulationDocument before,RoundReview review,List<DecisionAnswer> answers,Map<String,String> boundary,Set<String> touched,ReformulationStepExecutor steps) {
         var affected=new LinkedHashSet<>(review.affectedSectionIds());boolean changed;
         do {changed=false;for(var s:before.sections())if(s.children().stream().anyMatch(affected::contains))changed|=affected.add(s.id());}while(changed);
         touched.addAll(affected);
