@@ -100,6 +100,26 @@ class DiagramPresentationTest {
     }
 
     @Test
+    void repeatedEvidenceRetainsEachAssessmentsDirectionRoleAndExactWording() {
+        var decision = new Decision("target", Outcome.VERIFIED, "scoped contribution", "scoped quote",
+                Necessity.OPTIONAL, "", "", "Different wording ", null);
+        var metadata = metadata(null, null, List.of(edge(Direction.OUTGOING, decision), edge(Direction.INCOMING, null)));
+        for (boolean german : List.of(false, true)) {
+            var lines = DiagramPresentation.relationshipDetails(metadata, german);
+            String evidence = german ? "Nachweis" : "Evidence";
+            String quote = german ? "Originalzitat" : "Original quote";
+            String decisionQuote = german ? "Zitat" : "Quote";
+            assertEquals(1, lines.stream().filter(line -> line.contains("scoped quote")).count());
+            org.assertj.core.api.Assertions.assertThat(lines).contains(
+                    evidence + " 1: source -> target | SUPPORTS | OUTGOING"
+                            + (german ? " | Ergebnis: VERIFIED | Notwendigkeit: OPTIONAL" : " | Outcome: VERIFIED | Necessity: OPTIONAL"),
+                    evidence + " 2: target -> source | SUPPORTS | INCOMING",
+                    "1 · " + quote + ", 1 · " + decisionQuote + ", 2 · " + quote + ": scoped quote",
+                    "1 · " + (german ? "Begründung" : "Rationale") + ": Different wording ");
+        }
+    }
+
+    @Test
     void incomingScopedEvidenceWithoutADecisionKeepsItsDirectionAndDoesNotInventDecisionFields() {
         var metadata = metadata(null, null, List.of(edge(Direction.INCOMING, null)));
         assertEquals(List.of("Status: AI-proposed", "Origin: unrecorded",

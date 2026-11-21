@@ -98,6 +98,27 @@ class AdmbwQeaExportTest {
     }
 
     @Test
+    void exportsExplicitEvaluationsIncludingMemoAndLeavesUnansweredFieldsNull() throws Exception {
+        String assessment = "Zur fachlichen Prüfung. ".repeat(20);
+        var req = new Element("req", "FunctionalRequirement", "Lesesaal", "Unterlagen bereitstellen.", null, 7, HASH,
+                java.util.Map.of("Kritikalität", "Fachlich geprüft", "Operative Bewertung", assessment,
+                        "QS_Status", "<memo>"));
+        try (var basis = basis()) {
+            var file = new SparxQeaWriterConnector().exportAdmbw(delivery(req), QeaFixture.ROOT, basis.bytes());
+            Path target = Files.write(temp.resolve("assessed-tags.qea"), file.content());
+            try (var read = DriverManager.getConnection("jdbc:sqlite:" + target)) {
+                assertEquals(List.of("Anforderungsart", "Kritikalität", "Operative Bewertung", "Priorität Vergabe", "QS_Status"), column(read,
+                        "select Property from t_objectproperties where Property in ('Anforderungsart','Kritikalität','Operative Bewertung','Priorität Vergabe','QS_Status') order by PropertyID"));
+                assertEquals(List.of("Fachlich geprüft"), column(read, "select Value from t_objectproperties where Property='Kritikalität'"));
+                assertEquals(List.of(assessment), column(read, "select Notes from t_objectproperties where Property='Operative Bewertung' and Value='<memo>'"));
+                assertEquals(List.of("<memo>"), column(read, "select Notes from t_objectproperties where Property='QS_Status' and Value='<memo>'"));
+                assertEquals(List.of("Anforderungsart", "Priorität Vergabe"), column(read,
+                        "select Property from t_objectproperties where Value is null and Notes is null order by Property"));
+            }
+        }
+    }
+
+    @Test
     void createsNativeViewsAndKeepsCatalogueObjectsInTheirPackages() throws Exception {
         try (var basis = basis()) {
             byte[] original = basis.bytes();

@@ -196,7 +196,7 @@ public final class ApiAccessPolicy {
                 "/api/projects/*/requirements/*/reformulations/*/revisions/*/export",
                 "/api/projects/*/requirements/*/reformulations/*/adoptions/*/export");
         // These complete operations accept model execution, including focus requests with useAi.
-        add(rules, "POST", ANALYSIS_RUN, "/api/architecture/focus/suggestions", "/api/architecture/editor/focus/suggestions",
+        add(rules, "POST", ANALYSIS_RUN, "/api/architecture/focus/suggestions", "/api/architecture/editor/focus/suggestions", "/api/architecture/dialogue",
                 "/api/documents/extract-ai", "/api/documents/map-regulation");
         // These GET handlers start new LLM work; HTTP method alone does not make them read-only.
         add(rules, "GET", ANALYSIS_RUN, "/api/analyze-stream", "/api/analyze-node");

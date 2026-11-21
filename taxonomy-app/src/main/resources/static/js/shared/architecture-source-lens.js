@@ -211,6 +211,7 @@ window.TaxonomyArchitectureSourceLens = (function () {
             activate: activate, suspend: suspend, refresh: refresh,
             open: function () { if (!active) return; root.hidden = false; el('Title').scrollIntoView({ block: 'nearest' }); el('Title').focus({ preventScroll: true }); },
             select: function (id) { selected = id || null; panel.select(selected); },
+            dialoguePin: function () { return pinned && isCurrent(pinned) ? pinned : null; },
             observe: observe, review: review
         };
     }

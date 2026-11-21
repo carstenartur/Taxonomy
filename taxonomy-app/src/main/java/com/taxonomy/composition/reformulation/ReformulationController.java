@@ -29,14 +29,17 @@ public class ReformulationController {
     private final WorkspaceResolver resolver;
     private final ReformulationExecutionService execution;
     public ReformulationController(ReformulationService service,WorkspaceResolver resolver,ReformulationExecutionService execution){this.service=service;this.resolver=resolver;this.execution=execution;}
-    @PostMapping @Operation(summary = "Create and start a reformulation proposal",
-            description = "Freezes the source requirement and starts proposal synthesis in the authenticated workspace. Returns 202 with the proposal Location and revision ETag. The original requirement remains unchanged until a separate confirmed adoption.")
+    @PostMapping @Operation(summary = "Create a reformulation or analysis clarification proposal",
+            description = "Freezes the authenticated snapshot and source requirement version. With includeAnalysisQuestions, opens the shared editable questionnaire for recorded domain questions without starting a model call. Otherwise starts synthesis. Both responses carry the proposal Location and revision ETag.")
+    @ApiResponse(responseCode = "200", description = "Clarification form ready for the architect")
     @ApiResponse(responseCode = "202", description = "Accepted; observe the run separately")
     public ResponseEntity<Proposal> create(@Parameter(description = "Project containing the scoped resource") @PathVariable Long projectId,@Parameter(description = "Requirement within the selected project") @PathVariable Long requirementId,@RequestBody CreateRequest request) {
         var actor=resolver.resolveCurrentUsername();var context=resolver.resolveCurrentContext();
         var proposal=service.create(projectId,requirementId,request,actor,context);
-        execution.start(projectId,requirementId,proposal.id(),proposal.currentRevision().number(),actor,context);
-        return ResponseEntity.accepted().location(ServletUriComponentsBuilder.fromCurrentRequestUri()
+        boolean clarification = Boolean.TRUE.equals(request.includeAnalysisQuestions());
+        if (!clarification)
+            execution.start(projectId,requirementId,proposal.id(),proposal.currentRevision().number(),actor,context);
+        return ResponseEntity.status(clarification ? HttpStatus.OK : HttpStatus.ACCEPTED).location(ServletUriComponentsBuilder.fromCurrentRequestUri()
                         .pathSegment(proposal.id()).build().toUri())
                 .eTag(Long.toString(proposal.currentRevision().number())).body(proposal);
     }

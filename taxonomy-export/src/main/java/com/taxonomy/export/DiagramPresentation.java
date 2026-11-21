@@ -2,6 +2,7 @@ package com.taxonomy.export;
 
 import com.taxonomy.diagram.DiagramScene;
 import com.taxonomy.diagram.DiagramCanonicalEvidence;
+import com.taxonomy.dto.RelationSearchModel.Edge;
 import com.taxonomy.dto.TaxonomyResponsibilityLookup.Assignment;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -92,6 +93,10 @@ public final class DiagramPresentation {
         if (metadata.includedBecause() != null) lines.add((german ? "Aufgenommen weil: " : "Included because: ") + metadata.includedBecause());
         if (metadata.derivationReason() != null) lines.add((german ? "Herleitungsbegründung: " : "Derivation reason: ") + metadata.derivationReason());
         if (metadata.presenceReason() != null) lines.add((german ? "Begründung der Aufnahme: " : "Presence reason: ") + metadata.presenceReason());
+        if (metadata.requirementEvidence().size() > 1) {
+            addScopedEvidence(lines, metadata.requirementEvidence(), german);
+            return List.copyOf(lines);
+        }
         for (var evidence : metadata.requirementEvidence()) {
             lines.add((german ? "Anforderungsbezogene Evidenz: " : "Scoped evidence: ") + evidence.sourceId() + " -> " + evidence.targetId()
                     + " | " + evidence.type() + " | " + evidence.direction());
@@ -107,6 +112,42 @@ public final class DiagramPresentation {
             }
         }
         return List.copyOf(lines);
+    }
+
+    /** Keep the roles and direction of each assessment while printing an identical original value once per relationship. */
+    private static void addScopedEvidence(List<String> lines, List<Edge> scopes, boolean german) {
+        var fieldsByValue = new LinkedHashMap<String, List<String>>();
+        for (int index = 0; index < scopes.size(); index++) {
+            Edge scope = scopes.get(index);
+            String number = Integer.toString(index + 1);
+            var decision = scope.evidence();
+            String heading = (german ? "Nachweis " : "Evidence ") + number + ": "
+                    + scope.sourceId() + " -> " + scope.targetId() + " | " + scope.type() + " | " + scope.direction();
+            if (decision != null) {
+                if (decision.outcome() != null) heading += (german ? " | Ergebnis: " : " | Outcome: ") + decision.outcome();
+                if (decision.necessity() != null) heading += (german ? " | Notwendigkeit: " : " | Necessity: ") + decision.necessity();
+            }
+            lines.add(heading);
+            var contribution = scope.contribution();
+            String prefix = number + " · ";
+            recordField(fieldsByValue, prefix + (german ? "Beitrag" : "Contribution"), contribution.text());
+            recordField(fieldsByValue, prefix + (german ? "Originalzitat" : "Original quote"), contribution.quote());
+            recordField(fieldsByValue, prefix + (german ? "Bedingung des Beitrags" : "Contribution condition"), contribution.condition());
+            if (decision == null) continue;
+            recordField(fieldsByValue, prefix + (german ? "Evidenzbeitrag" : "Evidence contribution"), decision.contribution());
+            recordField(fieldsByValue, prefix + (german ? "Zitat" : "Quote"), decision.quote());
+            recordField(fieldsByValue, prefix + (german ? "Bedingung" : "Condition"), decision.condition());
+            recordField(fieldsByValue, prefix + (german ? "Alternativgruppe" : "Alternative group"), decision.alternativeGroup());
+            recordField(fieldsByValue, prefix + (german ? "Begründung" : "Rationale"), decision.rationale());
+            recordField(fieldsByValue, prefix + (german ? "Frage" : "Question"), decision.question());
+        }
+        fieldsByValue.forEach((value, fields) -> lines.add(String.join(", ", fields) + ": " + value));
+    }
+
+    private static void recordField(Map<String, List<String>> fieldsByValue, String label, String value) {
+        if (value != null && !value.isBlank()) {
+            fieldsByValue.computeIfAbsent(value, ignored -> new ArrayList<>()).add(label);
+        }
     }
 
     /** Original mapping/review evidence stored separately from the frozen graph provenance. */
@@ -127,20 +168,53 @@ public final class DiagramPresentation {
         return relation == null || relation.status() == null || relation.status().isBlank() ? "unrecorded" : relation.status();
     }
 
+    static String canonicalRelationshipStatus(DiagramCanonicalEvidence evidence, String id, DiagramLanguage language) {
+        String status = canonicalRelationshipStatus(evidence, id);
+        return "unrecorded".equals(status) ? language.text(status, "nicht aufgezeichnet") : status;
+    }
+
     static boolean canonicalRelationshipProposed(DiagramCanonicalEvidence evidence, String id) {
         String status = canonicalRelationshipStatus(evidence, id);
         return "proposed".equals(status) || "provisional".equals(status);
     }
 
-    static List<String> canonicalRelationshipDetails(DiagramCanonicalEvidence evidence, String id) {
+    static List<String> canonicalRelationshipDetails(DiagramCanonicalEvidence evidence, String id, DiagramLanguage language) {
         var lines = new ArrayList<String>();
-        lines.add("Model status: " + canonicalRelationshipStatus(evidence, id));
+        lines.add(language.text("Model status: ", "Modellstatus: ") + canonicalRelationshipStatus(evidence, id, language));
         var recorded = evidence.relationships().get(id);
         String provenance = recorded == null || recorded.provenance() == null || recorded.provenance().isBlank()
-                ? "unrecorded" : recorded.provenance();
-        lines.add("Recorded provenance: " + provenance);
-        if (recorded != null && recorded.confidence() != null) lines.add("Recorded confidence: " + recorded.confidence());
+                ? language.text("unrecorded", "nicht aufgezeichnet") : recorded.provenance();
+        lines.add(language.text("Recorded provenance: ", "Gespeicherte Herkunft: ") + provenance);
+        if (recorded != null && recorded.confidence() != null) lines.add(language.text("Recorded confidence: ", "Gespeicherte Konfidenz: ") + recorded.confidence());
+        if (recorded != null) for (var witness : recorded.witnesses()) {
+            addField(lines, language.text("Evidence", "Beleg"), witness.id());
+            addField(lines, language.text("Source view", "Quellsicht"), witness.view());
+            addField(lines, "Snapshot", witness.snapshot());
+            addField(lines, language.text("Evidence type", "Belegtyp"), witness.type());
+            addField(lines, language.text("Source model", "Quellmodell"), witness.model());
+            addField(lines, language.text("Evidence origin", "Belegherkunft"), witness.origin());
+            addField(lines, language.text("Assessment direction", "Prüfrichtung"), witness.direction());
+            if (witness.confidence() != null) addField(lines, language.text("Evidence confidence", "Belegkonfidenz"), witness.confidence().toString());
+            addField(lines, language.text("Rationale", "Begründung"), witness.summary());
+            addField(lines, language.text("Assessment outcome", "Prüfergebnis"), witness.outcome());
+            addField(lines, language.text("Necessity", "Notwendigkeit"), witness.necessity());
+            addField(lines, language.text("Alternative group", "Alternativgruppe"), witness.alternative());
+            addField(lines, language.text("Open question", "Offene Frage"), witness.question());
+            endpointDetails(lines, witness.assessed(), language);
+            endpointDetails(lines, witness.candidate(), language);
+        }
         return List.copyOf(lines);
+    }
+
+    private static void endpointDetails(List<String> lines, DiagramCanonicalEvidence.Endpoint endpoint, DiagramLanguage language) {
+        String prefix = endpoint.id() == null || endpoint.id().isBlank() ? "" : endpoint.id() + " · ";
+        addField(lines, prefix + language.text("Contribution", "Beitrag"), endpoint.contribution());
+        addField(lines, prefix + language.text("Original quote", "Originalzitat"), endpoint.quote());
+        addField(lines, prefix + language.text("Condition", "Bedingung"), endpoint.condition());
+    }
+
+    private static void addField(List<String> lines, String label, String value) {
+        if (value != null && !value.isBlank()) lines.add(label + ": " + value);
     }
 
     /** Scores are fractions of one; a positive value must never be presented as zero. */
@@ -177,16 +251,16 @@ public final class DiagramPresentation {
         var seenEdges = new java.util.HashSet<String>();
         scene.edges().stream().filter(edge -> seenEdges.add(edge.id())).forEach(edge -> {
             String status = canonical == null ? relationshipStatus(edge.metadata(), language.german())
-                    : canonicalRelationshipStatus(canonical, edge.id());
+                    : canonicalRelationshipStatus(canonical, edge.id(), language);
             statuses.merge(status, 1, Integer::sum);
         });
         statuses.forEach((status, count) -> lines.add(language.text("Relationships - ", "Beziehungen - ") + status + ": " + count));
         if (canonical != null) {
-            lines.add("Scores and taxonomy depth: unrecorded in the canonical model.");
-            lines.add("Relationship statuses are the saved model states. Review and provenance evidence are separate.");
-            if (canonical.viewId() != null && !canonical.viewId().isBlank()) lines.add("Source view: " + canonical.viewId());
-            for (var source : canonical.analysisSources()) lines.add("Recorded analysis source: " + source.viewId()
-                    + " | Snapshot " + source.snapshotId() + " | " + Objects.toString(source.status(), "status unrecorded"));
+            lines.add(language.text("Scores and taxonomy depth: unrecorded in the canonical model.", "Bewertungen und Taxonomietiefe sind im kanonischen Modell nicht erfasst."));
+            lines.add(language.text("Relationship statuses are the saved model states. Review and provenance evidence are separate.", "Der Beziehungsstatus entspricht dem gespeicherten Modellstand. Herkunft und Prüfbelege sind gesondert ausgewiesen."));
+            if (canonical.viewId() != null && !canonical.viewId().isBlank()) lines.add(language.text("Source view: ", "Quellsicht: ") + canonical.viewId());
+            for (var source : canonical.analysisSources()) lines.add(language.text("Recorded analysis source: ", "Gespeicherte Analysequelle: ") + source.viewId()
+                    + " | Snapshot " + source.snapshotId() + " | " + Objects.toString(source.status(), language.text("status unrecorded", "Status nicht aufgezeichnet")));
             return List.copyOf(lines);
         }
         lines.add(language.text("Dashed connectors identify AI-proposed relationships; solid connectors do not imply approval.", "Gestrichelte Linien zeigen KI-Vorschläge. Durchgezogene Linien belegen keine Freigabe."));

@@ -4,6 +4,7 @@ import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotSummary;
 import com.taxonomy.portfolio.model.RequirementAnalysisSnapshot;
 import com.taxonomy.portfolio.model.SnapshotReference;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -13,6 +14,7 @@ import java.util.Set;
 import java.util.stream.Stream;
 
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import jakarta.persistence.LockModeType;
 import jakarta.persistence.QueryHint;
 import org.hibernate.jpa.HibernateHints;
 import org.springframework.data.jpa.repository.QueryHints;
@@ -99,6 +101,12 @@ public interface RequirementAnalysisSnapshotRepository
     List<SnapshotSummary> findSummariesByRequirementIdAndProjectIdAndScopeKey(
             @Param("requirementId") Long requirementId, @Param("projectId") Long projectId,
             @Param("scopeKey") String scopeKey);
+
+    /** Serializes the first opening of the shared clarification form for this exact snapshot. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select s from RequirementAnalysisSnapshot s where s.id = :id and s.projectId = :projectId and s.scopeKey = :scopeKey")
+    Optional<RequirementAnalysisSnapshot> lockForClarifications(
+            @Param("id") String id, @Param("projectId") Long projectId, @Param("scopeKey") String scopeKey);
 
     Optional<RequirementAnalysisSnapshot> findByIdAndProjectIdAndScopeKey(
             String id, Long projectId, String scopeKey);

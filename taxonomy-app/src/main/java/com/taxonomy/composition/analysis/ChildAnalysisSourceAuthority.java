@@ -39,7 +39,7 @@ public class ChildAnalysisSourceAuthority implements AnalysisChildSourceAuthorit
     @Override public boolean current(Operation operation) {
         if (operation.resultJson() == null) return true;
         return switch (operation.kind()) {
-            case "NODE_CHILDREN", "LEAF_JUSTIFICATION", "FOCUS_INVESTIGATION" -> {
+            case "NODE_CHILDREN", "LEAF_JUSTIFICATION", "FOCUS_INVESTIGATION", "ARCHITECTURE_DIALOGUE" -> {
                 int depth = DEPTH.orElse(0);
                 yield depth < 2 && ScopedValue.where(DEPTH, depth + 1).call(() -> revalidate(operation));
             }
@@ -51,10 +51,14 @@ public class ChildAnalysisSourceAuthority implements AnalysisChildSourceAuthorit
         var selected = workspaces.resolveCurrentRepositoryContextForRead();
         var stored = json.readTree(operation.resultJson());
         try {
-            if ("FOCUS_INVESTIGATION".equals(operation.kind())) {
+            if ("FOCUS_INVESTIGATION".equals(operation.kind()) || "ARCHITECTURE_DIALOGUE".equals(operation.kind())) {
                 var hash = stored.path("sourceHash").asString();
-                if (stored.hasNonNull("context"))
-                    return editor.getObject().editorSourceCurrent(selected, json.treeToValue(stored.get("context"), Context.class), hash);
+                if (stored.hasNonNull("context")) {
+                    var context = json.treeToValue(stored.get("context"), Context.class);
+                    return "ARCHITECTURE_DIALOGUE".equals(operation.kind())
+                            ? editor.getObject().dialogueSourceCurrent(selected, context, hash)
+                            : editor.getObject().editorSourceCurrent(selected, context, hash);
+                }
                 return sources.getObject().sourceCurrent(selected, json.treeToValue(stored.get("source"), ArchitectureSourceFocusDtos.Source.class), hash);
             }
             var workspace = new WorkspaceContext(selected.username(), selected.workspaceId(), selected.branch(), selected.repositoryId());

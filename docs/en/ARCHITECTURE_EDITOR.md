@@ -193,6 +193,12 @@ camera stable. Rearrange again to optimize for subsequent changes. The URL recor
 the strategy and reference revision; SVG and PDF use that same server ordering
 with the currently displayed model. Ghost suggestions are excluded from exports.
 
+## Ask about the displayed architecture
+
+In the **Architecture** workspace, select an analysis draft, a saved snapshot, a Git checkpoint or the current working revision. Open **Ask about this architecture** and ask, for example, “Which services support invoice validation?” or “Which of those assignments are still open?” A follow-up can refer to the previous answer.
+
+Use **Show model evidence** to see the records cited for each statement. The provider and the number of model facts supplied appear below each answer. Answers are AI interpretations of the selected version. Changing the version clears the conversation. For a vLLM endpoint use the existing OpenAI-compatible provider. The dialogue requires permission to execute analyses.
+
 ## Neutral packages and requirement mappings
 
 The **Packages** panel creates, renames, describes, moves and deletes organization

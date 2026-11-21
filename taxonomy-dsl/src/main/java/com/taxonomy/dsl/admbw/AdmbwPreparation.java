@@ -17,6 +17,8 @@ import com.taxonomy.dsl.planning.PlanningEntry;
 import com.taxonomy.dsl.planning.PlanningInformation;
 import com.taxonomy.dsl.requirements.RequirementRealization;
 
+import com.taxonomy.sparx.mapping.AdmbwRequirementField;
+
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -324,6 +326,9 @@ public final class AdmbwPreparation {
         new AdmbwRequirementProfile().validate(entry.values());
         var previous = new HashMap<>(entry.values());
         boolean imported = "true".equals(previous.remove(AdmbwRequirementProfile.IMPORTED));
+        if (!imported) {
+            for (var field : AdmbwRequirementField.values()) previous.remove(field.planningKey());
+        }
         if (!AdmbwRequirementProfile.VERSION.equals(entry.version()) || !values.equals(previous)) {
             throw invalid("An existing ADMBw R7 assignment conflicts with the selected requirement revision or derivation");
         }

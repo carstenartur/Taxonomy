@@ -3,6 +3,7 @@ package com.taxonomy.plugins.sparx;
 import com.taxonomy.plugins.sparx.QeaDatabase.Row;
 import com.taxonomy.plugins.sparx.QeaDatabase.Snapshot;
 import com.taxonomy.sparx.mapping.SparxSemanticTypes;
+import com.taxonomy.sparx.mapping.AdmbwRequirementField;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.util.*;
@@ -50,11 +51,16 @@ final class QeaWriteTags {
         }
     }
 
-    /** BWRequirement fields require a reviewer's judgment. A new native requirement starts with SQL NULLs. */
-    void newAdmbwRequirementPlanningTags(long owner, String ownerGuid) throws SQLException {
-        for (String property : List.of("Anforderungsart", "Kritikalität", "Operative Bewertung", "Priorität Vergabe", "QS_Status")) {
-            insertTag("t_objectproperties", "object_id", owner, ownerGuid, property, null, null);
+    /** Materialize the inherited fields. SQL NULL distinguishes unknown assessments from reviewed values. */
+    void newAdmbwRequirementPlanningTags(long owner, String ownerGuid, Map<String, String> assessed) throws SQLException {
+        var remaining = new HashMap<>(assessed);
+        for (var field : AdmbwRequirementField.values()) {
+            String tag = field.nativeTag();
+            String value = remaining.remove(tag);
+            if (value == null) insertTag("t_objectproperties", "object_id", owner, ownerGuid, tag, null, null);
+            else tags(owner, ownerGuid, false, Map.of(tag, value));
         }
+        if (!remaining.isEmpty()) throw fail("QEA_ADMBW_REQUIREMENT", "Unknown BWRequirement tagged value");
     }
 
     private void insertTag(String table, String ownerColumn, long owner, String ownerGuid, String property,

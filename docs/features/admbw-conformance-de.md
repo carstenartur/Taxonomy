@@ -42,7 +42,10 @@ ergibt sich aus dem Vorhaben. [Sparx-EA-Anleitung der Bundeswehr](https://www.bu
    Element-ID der operationellen Vorgabe, das zugehörige Katalogsubjekt und
    gegebenenfalls die Element-ID des vorgesehenen Systemelements angeben. Taxonomy hält die genaue Textversion und
    ihren SHA-256 fest. Bei einer neuen Textversion den R7-Eintrag erneut prüfen
-   und speichern. Importierte R7-Zuordnungen brauchen diese lokale Prüfung auch
+   und speichern. Im selben Planungsdialog kann der Architekt Anforderungsart,
+   Kritikalität, operative Bewertung, Priorität Vergabe und QS-Status eintragen.
+   Der Prüfbericht und die native QEA übernehmen die gespeicherten Werte. Leere
+   Felder bleiben in der QEA unbewertet. Importierte R7-Zuordnungen brauchen diese lokale Prüfung auch
    bei gleichem Text und gleicher Versionsnummer.
 3. Einen Checkpoint erstellen und ihn in der Versionshistorie öffnen. Unter
    **ADMBw-Abgabe vorbereiten** das Projektkürzel eintragen und bei Bedarf

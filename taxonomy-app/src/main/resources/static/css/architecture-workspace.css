@@ -98,3 +98,11 @@
     #architectureWorkspace #architectureWorkflow { display: none !important; }
     #architectureSnapshotSource .workbench-grid { height: auto; min-height: 0; }
 }
+
+#architectureDialogueTurns cite,
+#architectureDialogueTurns blockquote {
+    overflow-wrap: anywhere;
+}
+#architectureDialogueTurns blockquote {
+    white-space: pre-line;
+}

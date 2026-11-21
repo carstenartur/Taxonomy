@@ -40,5 +40,6 @@ public final class SparxQeaWriterConnector implements AdmbwQeaExport {
         return new AdmbwQeaReferences(new QeaDatabase().readAdmbwReferences(basis)).inspect();
     }
 
+    @Override public boolean supportsAssessedRequirementTags() { return true; }
     @Override public boolean supportsCoverageNotes() { return true; }
 }

@@ -75,7 +75,7 @@
             patternDetection: 'Detected patterns', matchedPatterns: 'Matched patterns',
             recommendation: 'Recommendation', proposedElements: 'Proposed elements',
             suggestedRelations: 'Suggested relationships', reasoning: 'Reasoning',
-            technicalData: 'Technical snapshot data',
+            technicalData: 'Technical snapshot data', clarifyAnalysis: 'Answer analysis questions…',
             modelEvidence: 'Model and catalogue used for analysis', projectCatalogue: 'Catalogue assigned to the project',
             executedCatalogue: 'Catalogue used for analysis', definitionVersion: 'Catalogue definition version',
             modelRevision: 'Architecture model revision', briefVersion: 'Architecture brief version',
@@ -142,7 +142,7 @@
             patternDetection: 'Erkannte Muster', matchedPatterns: 'Erfüllte Muster',
             recommendation: 'Empfehlung', proposedElements: 'Vorgeschlagene Elemente',
             suggestedRelations: 'Vorgeschlagene Beziehungen', reasoning: 'Begründung',
-            technicalData: 'Technische Snapshot-Daten',
+            technicalData: 'Technische Snapshot-Daten', clarifyAnalysis: 'Analysefragen beantworten…',
             modelEvidence: 'Modell und Katalog der Analyse', projectCatalogue: 'Katalogzuordnung im Projekt',
             executedCatalogue: 'Ausgeführte Kataloggeneration', definitionVersion: 'Version der Katalogdefinition',
             modelRevision: 'Revision des Architekturmodells', briefVersion: 'Version des Architekturauftrags',
@@ -556,6 +556,7 @@
             + `<dt>${escapeHtml(t('created'))}</dt><dd>${escapeHtml(formatDate(summary.createdAt))}</dd>`
             + `<dt>${escapeHtml(t('duration'))}</dt><dd>${escapeHtml(formatDuration(summary.durationMs))}</dd>`
             + `<dt>${escapeHtml(t('baseline'))}</dt><dd><code>${escapeHtml(String(summary.taxonomyFingerprint || '').slice(0, 16))}</code> / <code>${escapeHtml(String(summary.promptFingerprint || '').slice(0, 16))}</code></dd></dl>`
+            + renderClarificationAction(detail)
             + renderDecisionReportActions(summary)
             + renderAnalysisSummary(detail);
         if (window.TaxonomyInventoryComparison) {
@@ -565,6 +566,19 @@
             window.TaxonomyInventoryComparison.mount(inventory, {projectId, snapshot: detail,
                 solutions: state.portfolio?.solutions || []});
         }
+    }
+
+    function renderClarificationAction(detail) {
+        if (!state.account?.architectureMutationAllowed) return '';
+        const analysis = detail.analysis, report = analysis?.relationSearchReport ?? analysis?.architectureView?.relationSearchReport;
+        const hasQuestion = Object.values(analysis?.analysisCoverage?.nodes || {})
+            .some(node => node.reason?.startsWith('CLARIFICATION:'))
+            || report?.sources?.some(source => source.question?.trim())
+            || report?.result?.unfinished?.some(work => ['UNRESOLVED', 'ENDPOINT_REFINEMENT'].includes(work.reason) && work.question?.trim());
+        if (!hasQuestion) return '';
+        return '<button type="button" class="btn btn-primary" data-clarify-snapshot="'
+            + escapeHtml(String(detail.summary.id)) + '" data-source-version="' + escapeHtml(String(detail.summary.requirementVersionId))
+            + '">' + escapeHtml(t('clarifyAnalysis')) + '</button>';
     }
 
     function renderDecisionReportActions(summary) {

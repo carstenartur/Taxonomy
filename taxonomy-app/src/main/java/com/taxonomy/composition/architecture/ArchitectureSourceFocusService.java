@@ -80,6 +80,13 @@ public class ArchitectureSourceFocusService {
                 () -> sourceCurrent(selected, source, evidence.hash()));
     }
 
+    ArchitectureSourceFocusDtos.ResolvedModel readRetainedSource(RepositoryContext selected, ArchitectureSourceFocusDtos.Source source) {
+        var read = evidence(selected, source);
+        var original = read.retained().original();
+        if (original == null) original = read.retained().graph().getOriginalRequirementText();
+        return new ArchitectureSourceFocusDtos.ResolvedModel(read.model(), original, read.hash(), read.retained().report());
+    }
+
     public boolean sourceCurrent(RepositoryContext selected, ArchitectureSourceFocusDtos.Source source, String hash) {
         try {
             return hash.equals(evidence(selected, source).hash());

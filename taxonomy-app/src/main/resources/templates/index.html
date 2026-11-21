@@ -806,6 +806,17 @@
                         <div id="workingProposalInbox"></div>
                         <section th:replace="~{architecture-editor :: surface}"></section>
                     </section>
+                    <details id="architectureDialogue" class="my-2" data-taxonomy-feature="analysis">
+                        <summary th:text="#{dialogue.title}">Ask about this architecture</summary>
+                        <p th:text="#{dialogue.help}">Ask the configured AI about this model. Each answer shows the model facts used.</p>
+                        <ol id="architectureDialogueTurns"></ol>
+                        <form id="architectureDialogueForm">
+                            <label for="architectureDialogueQuestion" th:text="#{dialogue.question}">Question or follow-up</label>
+                            <textarea id="architectureDialogueQuestion" rows="2" maxlength="1000" required class="form-control"></textarea>
+                            <button type="submit" id="architectureDialogueSend" class="btn btn-primary btn-sm mt-2" th:text="#{dialogue.ask}">Ask</button>
+                        </form>
+                        <p id="architectureDialogueStatus" role="status" aria-live="polite"></p>
+                    </details>
                     <section th:replace="~{fragments/architecture-source-lens :: panel('architectureSourceLens')}"></section>
                 </section><!-- /architectureWorkspace -->
             </div><!-- /tab-architecture -->
@@ -2099,6 +2110,7 @@
 <script th:src="@{/js/architecture-workbench-export.js}" src="/js/architecture-workbench-export.js"></script>
 <script th:src="@{/js/api/architecture-source-focus-api.js}" src="/js/api/architecture-source-focus-api.js"></script>
 <script th:src="@{/js/shared/architecture-source-lens.js}" src="/js/shared/architecture-source-lens.js"></script>
+<script th:src="@{/js/shared/architecture-dialogue.js}" src="/js/shared/architecture-dialogue.js"></script>
 <script th:src="@{/js/shared/architecture-workspace.js}" src="/js/shared/architecture-workspace.js"></script>
 <script th:src="@{/js/core/analysis-profile-choice.js}" src="/js/core/analysis-profile-choice.js"></script>
 

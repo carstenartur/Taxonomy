@@ -215,6 +215,12 @@ dadurch Positionen und Ausschnitt bei. Erneutes Anordnen berücksichtigt später
 dieselbe Serveranordnung mit dem aktuell angezeigten Modell. Vorschlagspfeile
 werden nicht exportiert.
 
+## Fragen zum angezeigten Modellstand
+
+Öffnen Sie im Arbeitsbereich **Architektur** die gewünschte Analyse, einen gespeicherten Snapshot, einen Git-Checkpoint oder die aktuelle Arbeitsrevision. Klappen Sie **Fragen zu dieser Architektur** auf und fragen Sie beispielsweise „Welche Dienste unterstützen die Rechnungsprüfung?“ oder „Welche dieser Zuordnungen sind noch offen?“. Eine Anschlussfrage kann sich auf die vorherige Antwort beziehen.
+
+**Modellbelege anzeigen** öffnet die Modellstellen, auf die sich die jeweilige Aussage stützt. Unter jeder Antwort stehen der verwendete Anbieter und der Umfang des ausgewählten Ausschnitts. Die Antworten sind eine KI-Interpretation des angezeigten Stands. Der Wechsel des Modellstands leert den Dialog. Für einen eigenen vLLM-Endpunkt verwenden Sie den vorhandenen OpenAI-kompatiblen Anbieter. Der Dialog erfordert die Berechtigung zur Analyseausführung.
+
 ## Neutrale Pakete und Anforderungszuordnungen
 
 Der Bereich **Pakete** erstellt, benennt, beschreibt, verschiebt und löscht

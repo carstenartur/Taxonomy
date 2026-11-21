@@ -20,12 +20,22 @@ class AdmbwSourceProfileTest {
         assertEquals(profile.profileVersion(), xml.getElementsByTagName("Documentation").item(0).getAttributes().getNamedItem("version").getNodeValue());
         assertEquals(profile.nativeNamespace(), xml.getElementsByTagName("Documentation").item(0).getAttributes().getNamedItem("id").getNodeValue());
         var types = new java.util.HashMap<String, String>();
+        var requirementTags = new java.util.HashSet<String>();
         var stereotypes = xml.getElementsByTagName("Stereotype");
         for (int i = 0; i < stereotypes.getLength(); i++) {
             var stereotype = (org.w3c.dom.Element) stereotypes.item(i);
+            if ("BWRequirement".equals(stereotype.getAttribute("name"))) {
+                var tags = stereotype.getElementsByTagName("Tag");
+                for (int j = 0; j < tags.getLength(); j++) {
+                    var tag = (org.w3c.dom.Element) tags.item(j);
+                    if ("String".equals(tag.getAttribute("type")) && tag.getAttribute("values").isEmpty()
+                            && tag.getAttribute("default").isEmpty()) requirementTags.add(tag.getAttribute("name"));
+                }
+            }
             var apply = stereotype.getElementsByTagName("Apply");
             if (apply.getLength() > 0) types.putIfAbsent(stereotype.getAttribute("name"), ((org.w3c.dom.Element)apply.item(0)).getAttribute("type"));
         }
+        for (var field : AdmbwRequirementField.values()) assertTrue(requirementTags.contains(field.nativeTag()), field.nativeTag());
         profile.elementTypes().forEach((name, type) -> assertEquals(type, types.get(name), name));
         profile.connectorTypes().forEach((name, type) -> assertEquals(type, types.get(name), name));
         for (String qualified : profile.diagramTypes().values()) {

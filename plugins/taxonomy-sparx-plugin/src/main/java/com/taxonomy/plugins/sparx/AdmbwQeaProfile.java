@@ -46,6 +46,8 @@ final class AdmbwQeaProfile {
         }
         if (!catalogue(stereotype) && element.catalogueGuid() != null)
             throw fail("QEA_ADMBW_ELEMENT", "Only supported catalogue elements can refer to an existing EA GUID");
+        if (!element.assessedTags().isEmpty() && !requirement(stereotype))
+            throw fail("QEA_ADMBW_REQUIREMENT", "Only R7 requirements can carry assessment tags");
         if (requirement(stereotype) && (element.requirementVersion() == null || element.requirementVersion() < 1
                 || element.requirementContentHash() == null || !element.requirementContentHash().matches("[a-f0-9]{64}")))
             throw fail("QEA_ADMBW_REQUIREMENT", "The requirement needs a retained version and content SHA-256");

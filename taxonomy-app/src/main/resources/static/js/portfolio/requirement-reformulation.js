@@ -225,6 +225,11 @@
         }));
         proposal.append(controls);grid.append(proposal);
         const questions=el('section',undefined,'reformulation-panel reformulation-questions');questions.dataset.panel='questions';questions.append(el('h3',t('questions'),'h5'));
+        if (offer.baseline.frozenContext?.questionSource === 'ANALYSIS_SNAPSHOT') {
+            questions.append(el('p', lang === 'de'
+                ? 'Antwort speichern, betroffene Abschnitte neu formulieren und die Übernahme prüfen. Anschließend können Sie die übernommene Version analysieren und den neuen Architekturvorschlag vergleichen.'
+                : 'Save an answer, reword the affected sections and review adoption. Then analyze the adopted version to compare the new architecture proposal.'));
+        }
         if(!revision.questions.length)questions.append(el('p',t('noQuestions')));revision.questions.forEach(q=>questions.append(question(q)));grid.append(questions);host.append(grid);
         const impact=el('details');impact.open=true;impact.append(el('summary',t('impact')));impact.append(pre(revision.impact?.sectionIds.length ? [revision.impact.statementIds.join(', '),revision.impact.sectionIds.join(', '),revision.impact.boundaryEdgeIds.join(', ')].filter(Boolean).join('\n') : t('noImpact')));host.append(impact);
         const actions=el('div',undefined,'reformulation-controls');const generate=button(revision.impact?.sectionIds.length?t('synthesize'):t('generate'),async()=>{
@@ -477,14 +482,31 @@
         render();if(offer)await refreshRuns();else announce(t('empty'));
     }
     window.addEventListener('beforeunload',event=>{if(hasDrafts() || mutationInFlight){event.preventDefault();event.returnValue='';}});
-    perform(async () => {
-        try {
-            if (window.TaxonomyRequirementDetail?.whenReady) await window.TaxonomyRequirementDetail.whenReady();
-        } catch (error) {
-            // The source reports this error and owns the keyboard focus.
-            if (error.code !== 'ABORTED') announce(t('failed') + error.message);
-            return;
-        }
+    const initialized = (async () => {
+        if (window.TaxonomyRequirementDetail?.whenReady) await window.TaxonomyRequirementDetail.whenReady();
         await start();
+    })();
+    initialized.catch(error => { if (error.code !== 'ABORTED') announce(t('failed') + error.message); });
+    document.addEventListener('click', event => {
+        const button = event.target.closest('[data-clarify-snapshot]');
+        if (!button) return;
+        perform(async () => {
+            await initialized;
+            await window.TaxonomyRequirementDetail.whenReady();
+            if (!button.isConnected) return;
+            const snapshotId = button.dataset.clarifySnapshot;
+            if (offer?.baseline.snapshotId !== snapshotId
+                    || offer.baseline.frozenContext?.questionSource !== 'ANALYSIS_SNAPSHOT') {
+                await transition(() => api.createReformulation(project, requirement, {
+                    snapshotId, sourceVersionId: Number(button.dataset.sourceVersion), includeAnalysisQuestions: true
+                }));
+            }
+            if (!button.isConnected) return;
+            changeView('questions', true);
+            announce(t('questions') + (hasDrafts() ? ' ' + t('dirty') : ''));
+            const url = new URL(location.href);
+            url.searchParams.set('proposal', offer.id);
+            history.replaceState(null, '', url);
+        });
     });
 }());

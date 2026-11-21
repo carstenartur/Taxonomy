@@ -224,7 +224,7 @@ final class AdmbwQeaWriter {
                 evidence.put("Taxonomy.RequirementVersion", element.requirementVersion().toString());
                 evidence.put("Taxonomy.RequirementContentSha256", element.requirementContentHash());
                 tags.tags(id, guid, false, evidence);
-                tags.newAdmbwRequirementPlanningTags(id, guid);
+                tags.newAdmbwRequirementPlanningTags(id, guid, element.assessedTags());
             }
             return id;
         }

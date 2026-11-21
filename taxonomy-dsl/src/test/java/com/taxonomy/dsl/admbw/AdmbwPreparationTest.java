@@ -97,6 +97,26 @@ class AdmbwPreparationTest {
     }
 
     @Test
+    void subsequentPreparationRetainsAssessmentsSavedInTheVersionedPlanningEditor() {
+        Selection selection = selection("CI-1", CAPABILITY, "REQ-1", SUBJECT, DRIVER, QUOTE);
+        String initial = planner.prepare(SOURCE, selection, basis()).dsl();
+        var planning = new PlanningInformation();
+        var entry = planning.read(initial, "REQ-1").getFirst().entry();
+        var values = new java.util.HashMap<>(entry.values());
+        values.put("criticality", "Prüfung ausstehend");
+        values.put("procurementPriority", "Nach Freigabe");
+        String reviewed = planning.upsert(initial, "REQ-1",
+                new PlanningEntry(entry.id(), entry.profile(), entry.version(), "MANUAL", values), false);
+        var prepared = planner.prepare(reviewed, selection, basis());
+        assertThat(prepared.dsl()).isEqualTo(reviewed);
+        assertThat(prepared.assessment().requirementDerivation().elements()).anySatisfy(element -> {
+            assertThat(element.ref()).isEqualTo("requirement:REQ-1");
+            assertThat(element.assessedTags()).containsExactlyInAnyOrderEntriesOf(
+                    Map.of("Kritikalität", "Prüfung ausstehend", "Priorität Vergabe", "Nach Freigabe"));
+        });
+    }
+
+    @Test
     void guidedExportRetainsTheReviewedProjectAndRootEvenThroughAnotherExportRoute() {
         var result = planner.prepare(SOURCE, selection("CI-1", CAPABILITY, "REQ-1", SUBJECT, DRIVER, QUOTE), basis());
         assertThat(AdmbwPreparation.requiresBasisInspection(result.dsl(), result.assessment())).isTrue();

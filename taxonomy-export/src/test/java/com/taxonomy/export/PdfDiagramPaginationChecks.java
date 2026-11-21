@@ -35,6 +35,8 @@ final class PdfDiagramPaginationChecks {
             for (var edge : scene.edges()) require(inventory.contains(edge.id() + " |"), "Missing edge " + edge.id());
             require(inventory.contains("D1 -> D2"), "Cross-panel relationship needs endpoint page references");
             require(diagramText.contains("Cross-page relationships:"), "No continuation notice");
+            require(text(document, 1, 1).contains("Connections to other pages")
+                    && text(document, 1, 1).contains("D2 · fixture-node-"), "First panel needs a directed endpoint reference");
             require("Saved workspace revision 7".equals(document.getDocumentInformation().getSubject()), "Provenance lost");
             bounds(document, diagrams);
         }
