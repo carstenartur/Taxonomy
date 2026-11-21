@@ -1,5 +1,9 @@
 # Architekturqualität: Prüfung am Ausbildungsportal
 
+Berichtsstand: 21. November 2026, 20:24 Uhr MEZ. Laufende Abschlussprüfungen
+und deren jeweils neueste Ergebnisse sind im
+[Pull Request 1584](https://github.com/carstenartur/Taxonomy/pull/1584) dokumentiert.
+
 ## Anlass und Ziel
 
 Der gespeicherte QA-Lauf enthielt als einzige automatisch verifizierte Beziehung
@@ -197,8 +201,8 @@ zu einer offiziellen Capability; außerdem fehlt der R7-Planungseintrag. Die Obe
 bietet keinen erfolgreichen nativen Export an.
 
 Die automatische Klassifikation von Rollen- und Berichtskategorien ist
-außerdem noch keine abgesicherte Aussage, dass eine zivile/akademische Rolle
-oder eine bestimmte Berichtspflicht gefordert ist. Diese Kandidaten sind nicht
+außerdem noch keine abgesicherte Aussage, dass die Rollen `BR-1228` oder `BR-1232`
+oder eine bestimmte Berichtspflicht gefordert sind. Diese Kandidaten sind nicht
 als fachlich abgenommen zu lesen. Aus dem neuen Lauf folgt daher keine
 vollständige automatische ADMBw-Architektur.
 
@@ -223,6 +227,17 @@ keine der zwei Beziehungen, keine der einen Anforderung und keine der 20
 Zuordnungen in der gültigen Profil-Lieferung. C1–S1 und R7 bleiben
 `CHANGES_REQUIRED`. Der native Export bleibt trotz nachweislich geladenem
 Sparx-Plugin gesperrt.
+
+Eine weitere Lesprüfung der zwölf Anforderungsklauseln findet für acht davon
+zitiergebundene Knotenbeiträge. Zwei Klauseln haben zusätzlich separat
+verifizierte gerichtete Beziehungen: AF-02 für die Bereitstellung freigegebener
+Lehrinhalte und AF-06 für die Einsicht in Bearbeitungsstände zugeordneter
+Teilnehmer. Für Rollenunterscheidung und konkrete Berechtigungsdurchsetzung
+bleiben weitere Nachweise offen. Rahmen- und Ausschlussklauseln benötigen
+nicht automatisch eine zusätzliche Komponente. Die Leseberechtigung für
+Auditprotokolle bleibt eine offene Frage ohne gespeicherte Antwort. Diese
+Prüfung fand keinen Widerspruch zu den zwölf Klauseln; sie belegt weder
+vollständige Umsetzung noch unabhängige fachliche Abnahme.
 
 Alle drei gespeicherten Snapshot-Ansichten wurden erneut in Chrome geöffnet.
 Die gerichteten Pfade schneiden keine fremde Karte; insbesondere bleibt
@@ -393,13 +408,26 @@ die fokussierten Erfolge gelten nicht als Ersatz.
 
 ## Veröffentlichter Prüfstand
 
-Der Quellstand ist als Entwurfs-PR
+Der Quellstand wurde zunächst als Entwurfs-PR
 [1584](https://github.com/carstenartur/Taxonomy/pull/1584) veröffentlicht.
 GitHub führt im Job „Maven verification“ für Entwürfe ausdrücklich
 „Keep draft heads non-mergeable“ aus und beendet ihn mit Fehler. In
 [Lauf 44935210443](https://github.com/carstenartur/Taxonomy/actions/runs/44935210443)
 war dies der beobachtete Grund; der Job führte keine Codetests aus. Die
-Entwurfssperre bleibt bestehen und wird nicht als bestandene CI interpretiert.
+Entwurfssperre bleibt als unveränderte Regel bestehen und wird nicht als
+bestandene CI interpretiert.
+
+Nach den unabhängigen Reviews und dem erfolgreichen Provider-Reaktor wurde
+der PR am 21. November um 20:16 Uhr MEZ zur regulären Prüfung freigegeben.
+Damit starteten die vollständige gehostete CI und die drei Datenbankprofile
+auf dem veröffentlichten Quellstand. Eine Zusammenführung wurde nicht
+ausgeführt. Der erste vollständige gehostete Lauf
+[44940086711](https://github.com/carstenartur/Taxonomy/actions/runs/44940086711)
+fand in der QA-Dokumentation eine Formulierung, die gegen den bestehenden
+neutralen Namensvertrag verstieß. Die Formulierung benennt jetzt die
+unveränderten Katalogkennungen. Derselbe unveränderte Namens- und
+Verdrahtungsvertrag scheiterte vor der Korrektur und bestand danach.
+Die Prüfregel, die Testauswahl und die Produktdaten wurden nicht angepasst.
 
 ## Noch nicht durch diese Änderung bewiesen
 

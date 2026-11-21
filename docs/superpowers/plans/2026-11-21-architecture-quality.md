@@ -118,3 +118,6 @@ objects; existing C1-S1/R7 checks retain their meanings.
   The first A3 was subsequently interrupted by executor replacement; its retry is distinct.
 - [x] Capture final actual HTTP/browser/export outcomes, record remaining profile and
   expert-review gaps, and publish the exact reviewed source tree as a draft PR.
+- [x] Activate the existing full hosted verification after review readiness and fix
+  its neutral documentation-naming finding without changing the contract.
+  Final gate status is tracked in the PR; this does not mark a pending lane passed.
