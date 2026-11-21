@@ -93,6 +93,8 @@ public final class ArchitectureDslCommands {
             }
             // These are the same retained references that prevent unsafe relation deletion and undo.
             if (block.property("for-relation") != null) require(blocks, "relation:" + block.property("for-relation"));
+            if ("evidence".equals(block.getKind()) && block.property(SnapshotEvidence.VIEW) != null)
+                require(blocks, "view:" + block.property(SnapshotEvidence.VIEW));
             for (String member : AnalysisSnapshotAdoption.relationMembers(block)) require(blocks, "relation:" + member);
         }
         validateContainment(blocks);
@@ -149,7 +151,11 @@ public final class ArchitectureDslCommands {
             case SetExchangeProperties exchange -> exchangeProperties(source, blocks, exchange);
             case ClearArchitectureElementProperties clear -> clearElementProperties(source, blocks, clear);
             case UpsertArchitectureView view -> exchangeView(source, blocks, view);
-            case DeleteArchitectureView view -> ArchitectureSemanticPatch.replace(source, require(blocks, "view:" + view.id()), null);
+            case DeleteArchitectureView view -> {
+                var existing = require(blocks, "view:" + view.id());
+                requireNoDependencies(view.id(), dependencies(blocks, existing));
+                yield ArchitectureSemanticPatch.replace(source, existing, null);
+            }
             case StoreExchangeEvidence evidence -> exchangeEvidence(source, blocks, evidence);
         };
     }
@@ -158,12 +164,14 @@ public final class ArchitectureDslCommands {
     public Change inverse(String current, String before, String after) {
         List<ArchitectureSemanticPatch.BlockChange> original = ArchitectureSemanticPatch.between(before, after);
         if (original.isEmpty()) throw problem("NOT_UNDOABLE", "targetOperationId", "Target has no semantic changes");
+        Set<String> ownedEvidence = AnalysisSnapshotAdoption.ownedEvidence(original);
         if (original.stream().anyMatch(change -> !change.id().startsWith("element:")
                 && !change.id().startsWith("relation:") && !change.id().startsWith("package:")
                 && !change.id().startsWith("organization:")
                 && !change.id().startsWith(CatalogueResponsibility.KIND + ":")
                 && !change.id().startsWith("mapping:")
                 && !ArchitectureBrief.ownsChange(before, after, change.id())
+                && !ownedEvidence.contains(change.id())
                 && !AnalysisSnapshotAdoption.isAdoptionView(change)
                 && !com.taxonomy.dsl.requirements.RequirementRealization.reviewOnlyChange(before, after, change.id())
                 && !com.taxonomy.dsl.planning.PlanningInformation.planningOnlyChange(before, after, change.id()))) {
@@ -183,6 +191,14 @@ public final class ArchitectureDslCommands {
         Set<String> changed = new LinkedHashSet<>();
         original.forEach(change -> changed.add(change.id()));
         for (BlockAst block : blocks.values()) {
+            if (ownedEvidence.contains(ArchitectureSemanticPatch.key(block))) {
+                require(blocks, "relation:" + block.property("for-relation"));
+                require(blocks, "view:" + block.property(SnapshotEvidence.VIEW));
+            }
+            if (changed.contains(ArchitectureSemanticPatch.key(block)) && "view".equals(block.getKind())) {
+                for (String member : block.propertyValues("include")) require(blocks, "element:" + member);
+                for (String member : AnalysisSnapshotAdoption.relationMembers(block)) require(blocks, "relation:" + member);
+            }
             if (!"relation".equals(block.getKind())) continue;
             RelationKey key = relationKey(block);
             if (changed.contains(ArchitectureSemanticPatch.key(block)) || changed.contains("element:" + key.sourceId())
@@ -525,7 +541,7 @@ public final class ArchitectureDslCommands {
         return ArchitectureSemanticPatch.replace(source, existing, null);
     }
 
-    private String createRelation(String source, Map<String, BlockAst> blocks, RelationKey relation, String status,
+    String createRelation(String source, Map<String, BlockAst> blocks, RelationKey relation, String status,
                                   Map<String, String> properties) {
         String key = "relation:" + relation.id();
         if (blocks.containsKey(key)) throw problem("DUPLICATE_RELATION", "relation", "Relation already exists");
@@ -636,6 +652,8 @@ public final class ArchitectureDslCommands {
             } else if ("package".equals(removed.getKind())) {
                 references = "package".equals(candidate.getKind()) && id.equals(candidate.property("parent"))
                         || "element".equals(candidate.getKind()) && id.equals(candidate.property("package"));
+            } else if ("view".equals(removed.getKind())) {
+                references = "evidence".equals(candidate.getKind()) && id.equals(candidate.property(SnapshotEvidence.VIEW));
             } else if ("relation".equals(removed.getKind())) {
                 references = relationKey(removed).id().equals(candidate.property("for-relation"))
                         || AnalysisSnapshotAdoption.relationMembers(candidate).contains(relationKey(removed).id());
@@ -654,7 +672,7 @@ public final class ArchitectureDslCommands {
                 "Remove or reassign dependent objects before deletion", dependencies);
     }
 
-    private static BlockAst block(String kind, List<String> header, Map<String, String> changes, BlockAst existing) {
+    static BlockAst block(String kind, List<String> header, Map<String, String> changes, BlockAst existing) {
         Map<String, String> properties = new LinkedHashMap<>();
         if (existing != null) {
             for (PropertyAst property : existing.getProperties()) {

@@ -41,11 +41,22 @@ final class AnalysisSnapshotAdoption {
                 throw problem("MISSING_SNAPSHOT_ENDPOINT", "Snapshot relation references a missing snapshot endpoint");
             if (!relations.add(relation.id())) throw problem("AMBIGUOUS_SNAPSHOT_IDENTITY", "Duplicate snapshot relation identity");
         }
+        Set<RelationKey> directed = Set.copyOf(adoption.relations());
+        Map<RelationKey, Map<String, String>> recorded = new HashMap<>();
+        for (var observation : adoption.evidence()) {
+            if (!directed.contains(observation.relation()))
+                throw SnapshotEvidence.invalid("Observation does not belong to a directed snapshot relation");
+            recorded.put(observation.relation(), observation.relationProperties());
+        }
         Map<String, BlockAst> blocks = ArchitectureSemanticPatch.index(source);
         var existingView = blocks.get("view:" + adoption.viewId());
         if (existingView != null) {
+            String priorEvidence = existingView.property(SnapshotEvidence.FINGERPRINT);
             if (!adoption.graphFingerprint().equals(existingView.property("x-analysis-graph-fingerprint"))
-                    || adoption.provenance().entrySet().stream().anyMatch(entry -> !entry.getValue().equals(existingView.property(entry.getKey()))))
+                    || adoption.provenance().entrySet().stream()
+                            .filter(entry -> !entry.getKey().equals(SnapshotEvidence.FINGERPRINT))
+                            .anyMatch(entry -> !entry.getValue().equals(existingView.property(entry.getKey())))
+                    || priorEvidence != null && !priorEvidence.equals(adoption.provenance().get(SnapshotEvidence.FINGERPRINT)))
                 throw problem("SNAPSHOT_IDENTITY_CONFLICT", "The exact source identity already has a different frozen graph");
             return source; // Later ordinary edits remain authoritative; reopening never reapplies the graph.
         }
@@ -69,9 +80,25 @@ final class AnalysisSnapshotAdoption {
             }
         }
         for (var relation : adoption.relations().stream().sorted(Comparator.comparing(RelationKey::id)).toList()) {
-            commands.validateRelation(ArchitectureSemanticPatch.index(next), relation);
-            if (!blocks.containsKey("relation:" + relation.id()))
-                next = commands.apply(next, new CreateArchitectureRelation(relation, "proposed")).dsl();
+            var current = ArchitectureSemanticPatch.index(next);
+            if (blocks.containsKey("relation:" + relation.id())) commands.validateRelation(current, relation);
+            else next = commands.createRelation(next, current, relation, "proposed", recorded.getOrDefault(relation, Map.of()));
+        }
+        // Content-addressed observations from this source are additive even on an existing reviewed relation.
+        var observations = new TreeMap<String, Map<String, String>>();
+        for (var observation : adoption.evidence()) {
+            var fields = observation.properties(adoption.viewId(), adoption.provenance().get(SnapshotEvidence.SNAPSHOT));
+            String id = SnapshotEvidence.id(fields);
+            if (blocks.containsKey("evidence:" + id))
+                throw problem("SNAPSHOT_IDENTITY_CONFLICT", "A source evidence identity already exists without its view");
+            observations.put(id, fields);
+        }
+        if (!observations.isEmpty()) {
+            var appended = new StringBuilder(next);
+            if (!next.isEmpty() && !next.endsWith("\n")) appended.append('\n');
+            observations.forEach((id, fields) -> appended.append(ArchitectureSemanticPatch.replace("", null,
+                    ArchitectureDslCommands.block("evidence", List.of(id), fields, null))));
+            next = appended.toString();
         }
         Map<String, String> properties = new TreeMap<>(adoption.provenance());
         properties.put("x-analysis-graph-fingerprint", adoption.graphFingerprint());
@@ -91,6 +118,35 @@ final class AnalysisSnapshotAdoption {
         var view = ArchitectureSemanticPatch.index(source).get(change.id());
         return view != null && view.property("x-analysis-graph-fingerprint") != null;
     }
+    /** Only an entire content-addressed evidence set created or removed together with its owning view is invertible. */
+    static Set<String> ownedEvidence(List<ArchitectureSemanticPatch.BlockChange> changes) {
+        Map<String, ArchitectureSemanticPatch.BlockChange> views = new HashMap<>();
+        for (var change : changes) if (isAdoptionView(change)) views.put(change.id(), change);
+        Map<String, SortedSet<String>> byView = new HashMap<>();
+        for (var change : changes) {
+            if (!change.id().startsWith("evidence:analysis-evidence-") || change.before() != null && change.after() != null) continue;
+            String source = change.after() == null ? change.before() : change.after();
+            var block = ArchitectureSemanticPatch.index(source).get(change.id());
+            String owner = "view:" + block.property(SnapshotEvidence.VIEW);
+            var viewChange = views.get(owner);
+            if (viewChange == null || (viewChange.before() == null) != (change.before() == null)
+                    || (viewChange.after() == null) != (change.after() == null)) continue;
+            var fields = new TreeMap<String, String>();
+            for (var property : block.getProperties()) fields.put(property.key(), property.value());
+            String id = SnapshotEvidence.id(fields);
+            if (fields.size() != block.getProperties().size() || !change.id().equals("evidence:" + id)) continue;
+            byView.computeIfAbsent(owner, ignored -> new TreeSet<>()).add(id);
+        }
+        Set<String> owned = new HashSet<>();
+        byView.forEach((owner, ids) -> {
+            var change = views.get(owner);
+            var view = ArchitectureSemanticPatch.index(change.after() == null ? change.before() : change.after()).get(owner);
+            if (SnapshotEvidence.fingerprint(ids).equals(view.property(SnapshotEvidence.FINGERPRINT)))
+                ids.forEach(id -> owned.add("evidence:" + id));
+        });
+        return owned;
+    }
+
     static Set<String> relationMembers(BlockAst view) {
         String value = view.property(RELATIONS);
         return value == null || value.isEmpty() ? Set.of() : Set.copyOf(Arrays.asList(value.split("\n")));

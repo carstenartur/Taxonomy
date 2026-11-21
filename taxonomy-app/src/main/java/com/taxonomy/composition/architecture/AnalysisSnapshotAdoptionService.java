@@ -2,6 +2,9 @@ package com.taxonomy.composition.architecture;
 
 import com.taxonomy.dsl.command.ArchitectureCommand.*;
 import com.taxonomy.dsl.command.ArchitectureDslCommands;
+import com.taxonomy.dsl.command.SnapshotEvidence;
+import com.taxonomy.dto.RelationSearchModel;
+import com.taxonomy.dto.RequirementRelationshipView;
 import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
 import com.taxonomy.dsl.model.ArchitectureOrganization;
 import com.taxonomy.dsl.model.CatalogueDefinition;
@@ -137,6 +140,7 @@ public class AnalysisSnapshotAdoptionService {
         var version = projects.listRequirementVersions(source.projectId(),source.requirementId(),target.username(),sourceContext)
                 .stream().filter(candidate -> source.requirementVersionId().equals(candidate.id())).findFirst()
                 .orElseThrow(() -> problem("NOT_FOUND", "The exact retained requirement version is unavailable"));
+        SnapshotEvidence.requireUtf8(version.text());
         var graph = snapshot.analysis() == null ? null : snapshot.analysis().getArchitectureView();
         if (graph == null || graph.getIncludedElements() == null || graph.getIncludedRelationships() == null)
             throw problem("INVALID_SNAPSHOT", "Snapshot contains no retained full architecture graph");
@@ -201,9 +205,20 @@ public class AnalysisSnapshotAdoptionService {
         put(provenance,"x-analysis-provider",summary.provider()); put(provenance,"x-analysis-model",summary.modelName());
         put(provenance,"x-analysis-status",summary.status().name()); put(provenance,"x-analysis-created-at",Objects.toString(summary.createdAt(),null));
         String title = graph.getViewTitle() == null || graph.getViewTitle().isBlank() ? "Analysis " + summary.requirementKey() : graph.getViewTitle();
-        var adoption = new AdoptAnalysisSnapshot(viewId,title,version.text(),graphFingerprint,elements,relations,provenance);
         var document = editor.read(target,null);
         var model = new ArchitectureDslCommands().model(document.dsl());
+        var existingView = model.getViews().stream().filter(v -> v.getId().equals(viewId)).findFirst();
+        // A pre-evidence adoption has only the original graph proof. Reopening uses its original command fingerprint.
+        boolean legacyView = existingView.isPresent() && !existingView.get().getExtensions().containsKey(SnapshotEvidence.FINGERPRINT);
+        AdoptAnalysisSnapshot adoption;
+        if (legacyView) {
+            adoption = new AdoptAnalysisSnapshot(viewId, title, version.text(), graphFingerprint, elements, relations, provenance);
+        } else {
+            Map<String, String> sheets = new HashMap<>();
+            graph.getIncludedElements().forEach(element -> sheets.put(element.getNodeCode(), element.getTaxonomySheet()));
+            var observations = frozenEvidence(graph.getIncludedRelationships(), version.text(), sheets);
+            adoption = new AdoptAnalysisSnapshot(viewId, title, version.text(), graphFingerprint, elements, relations, provenance, observations);
+        }
         Map<String, String> organizationNames = new HashMap<>();
         model.getOrganizations().forEach(unit -> organizationNames.put(unit.id(), unit.title()));
         List<String> addedElements = new ArrayList<>(), reusedElements = new ArrayList<>(), addedRelations = new ArrayList<>(), reusedRelations = new ArrayList<>();
@@ -226,12 +241,78 @@ public class AnalysisSnapshotAdoptionService {
             boolean exists = model.getRelations().stream().anyMatch(e -> r.sourceId().equals(e.getSourceId()) && r.relationType().equals(e.getRelationType()) && r.targetId().equals(e.getTargetId()));
             (exists ? reusedRelations : addedRelations).add(r.id());
         });
-        boolean existing = model.getViews().stream().anyMatch(v -> v.getId().equals(viewId));
+        boolean existing = existingView.isPresent();
         List<String> previewParts = new ArrayList<>(Arrays.asList(viewId,title,version.text(),graphFingerprint,
                 request.context().toString(),request.metadata().toString()));
-        provenance.forEach((key,value) -> previewParts.addAll(List.of(key,value)));
+        new TreeMap<>(adoption.provenance()).forEach((key,value) -> previewParts.addAll(List.of(key,value)));
         return new Prepared(adoption,new Summary(List.copyOf(addedElements),List.copyOf(reusedElements),List.copyOf(addedRelations),
                 List.copyOf(reusedRelations),List.copyOf(differences),List.of()),existing,hash(previewParts));
+    }
+
+    private static List<SnapshotEvidence> frozenEvidence(List<RequirementRelationshipView> relations, String requirement,
+                                                       Map<String, String> sheets) {
+        List<SnapshotEvidence> result = new ArrayList<>();
+        for (var relation : relations) {
+            var key = new RelationKey(relation.getSourceCode(), relation.getRelationType(), relation.getTargetCode());
+            var origin = relation.getOrigin() == null ? null : relation.getOrigin().name();
+            var confidence = relation.getRecordedConfidence();
+            Map<String, String> fields = new TreeMap<>();
+            put(fields, "x-analysis-derivation", relation.getDerivationReason());
+            put(fields, "x-analysis-presence", relation.getPresenceReason());
+            put(fields, "x-analysis-included-because", relation.getIncludedBecause());
+            put(fields, "x-analysis-seed-type", Objects.toString(relation.getSeedType(), null));
+            var witnesses = relation.getRequirementEvidence();
+            if ((long) result.size() + Math.max(1, witnesses.size()) > SnapshotEvidence.MAX_RECORDS)
+                throw SnapshotEvidence.invalid("At most 10000 evidence records can be adopted");
+            if (witnesses.isEmpty()) {
+                if (origin != null || confidence != null || !fields.isEmpty()) {
+                    put(fields, "summary", Optional.ofNullable(relation.getDerivationReason()).orElse(
+                            relation.getPresenceReason() != null ? relation.getPresenceReason() : relation.getIncludedBecause()));
+                    result.add(new SnapshotEvidence(key, origin, confidence, fields));
+                }
+                continue;
+            }
+            for (var witness : witnesses) {
+                validateWitness(key, witness, requirement, sheets);
+                var scoped = new TreeMap<>(fields);
+                var assessed = witness.contribution();
+                var decision = witness.evidence();
+                put(scoped, "summary", decision.rationale());
+                put(scoped, "x-analysis-assessed-id", assessed.source().id());
+                put(scoped, "x-analysis-assessed-contribution", assessed.text());
+                put(scoped, "x-analysis-assessed-quote", assessed.quote());
+                put(scoped, "x-analysis-assessed-condition", assessed.condition());
+                put(scoped, "x-analysis-candidate-id", decision.targetId());
+                put(scoped, "x-analysis-candidate-contribution", decision.contribution());
+                put(scoped, "x-analysis-candidate-quote", decision.quote());
+                put(scoped, "x-analysis-candidate-condition", decision.condition());
+                put(scoped, "x-analysis-direction", witness.direction().name());
+                put(scoped, "x-analysis-outcome", decision.outcome().name());
+                put(scoped, "x-analysis-necessity", decision.necessity().name());
+                put(scoped, "x-analysis-alternative-group", decision.alternativeGroup());
+                put(scoped, "x-analysis-question", decision.question());
+                result.add(new SnapshotEvidence(key, origin, confidence, scoped));
+            }
+        }
+        return result;
+    }
+
+    private static void validateWitness(RelationKey key, RelationSearchModel.Edge witness, String requirement,
+                                        Map<String, String> sheets) {
+        if (witness == null || witness.direction() == null || witness.contribution() == null || witness.target() == null
+                || witness.evidence() == null || !key.relationType().equals(witness.type())
+                || !key.sourceId().equals(witness.sourceId()) || !key.targetId().equals(witness.targetId()))
+            throw SnapshotEvidence.invalid("Witness does not identify the same directed snapshot relation");
+        var assessed = witness.contribution().source();
+        var candidate = witness.target();
+        var decision = witness.evidence();
+        if (assessed.container() || candidate.container() || assessed.id().equals(candidate.id())
+                || !assessed.root().equals(sheets.get(assessed.id())) || !candidate.root().equals(sheets.get(candidate.id()))
+                || !candidate.id().equals(decision.targetId()) || decision.outcome() != RelationSearchModel.Outcome.VERIFIED
+                || decision.necessity() == null || decision.contribution() == null || decision.contribution().isBlank()
+                || decision.quote() == null || decision.quote().isBlank() || requirement == null
+                || !requirement.contains(witness.contribution().quote()) || !requirement.contains(decision.quote()))
+            throw SnapshotEvidence.invalid("Witness does not match the recorded endpoints, decision and exact requirement quotes");
     }
 
     private static SnapshotResponsibility responsibility(String code, Map<String, String> fields, Map<String, String> names) {
@@ -264,7 +345,12 @@ public class AnalysisSnapshotAdoptionService {
             var bytes = new ByteArrayOutputStream(); var stream = new DataOutputStream(bytes);
             for (String value : parts) {
                 if (value == null) stream.writeInt(-1);
-                else { byte[] encoded = value.getBytes(StandardCharsets.UTF_8); stream.writeInt(encoded.length); stream.write(encoded); }
+                else {
+                    SnapshotEvidence.requireUtf8(value);
+                    byte[] encoded = value.getBytes(StandardCharsets.UTF_8);
+                    stream.writeInt(encoded.length);
+                    stream.write(encoded);
+                }
             }
             return HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes.toByteArray()));
         } catch (IOException | java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
