@@ -1,8 +1,8 @@
 package com.taxonomy.analysis.usecase;
 
 import com.taxonomy.dto.*;
-import com.taxonomy.architecture.service.RequirementArchitectureViewService;
 import java.util.*;
+import java.util.function.Function;
 
 /**
  * Bounded, local-only projection of accepted assessments from the result's own catalogue snapshot.
@@ -17,13 +17,14 @@ public final class PartialArchitectureProjection {
         return complete(result, view, maxNodes, null);
     }
 
+    /** Supply retained navigation-only identities before the evidence projection selects its nodes. */
     public static RequirementArchitectureView completeEvidence(AnalysisResult result,
-            RequirementArchitectureViewService architecture, int maxNodes) {
-        return complete(result, null, maxNodes, Objects.requireNonNull(architecture));
+            Function<Set<String>, RequirementArchitectureView> evidenceProjection, int maxNodes) {
+        return complete(result, null, maxNodes, Objects.requireNonNull(evidenceProjection));
     }
 
     private static RequirementArchitectureView complete(AnalysisResult result, RequirementArchitectureView view, int maxNodes,
-                                                        RequirementArchitectureViewService architecture) {
+                                                        Function<Set<String>, RequirementArchitectureView> evidenceProjection) {
         Objects.requireNonNull(result);
         var index = new LinkedHashMap<String, TaxonomyNodeDto>();
         var ambiguous = new HashSet<String>();
@@ -49,9 +50,8 @@ public final class PartialArchitectureProjection {
         var navigationContext = new HashSet<String>();
         index.values().stream().filter(node -> node.architectureNavigationOnly(index.get(node.getParentCode())))
                 .forEach(node -> navigationContext.add(node.getCode()));
-        if (architecture != null) {
-            view = architecture.buildFromEvidence(result.getScores(), result.getScoreDetails(), maxNodes,
-                    result.getRelationSearchReport(), navigationContext);
+        if (evidenceProjection != null) {
+            view = evidenceProjection.apply(navigationContext);
         }
         if (view == null) view = new RequirementArchitectureView();
         var notes = new LinkedHashSet<>(view.getNotes() == null ? List.<String>of() : view.getNotes());

@@ -62,13 +62,17 @@ public final class FrozenClusterAnalysisFinalizer implements Consumer<AnalysisOp
         List<RootCatalogueSnapshot> roots = admitted.stream()
                 .map(root -> mapper.readValue(store.shard(context, root), RootCatalogueSnapshot.class)).toList();
         var required = admitted.stream().map(TaxonomyShardRoot::code).collect(Collectors.toSet());
+        int maxNodes = command.maxArchitectureNodes();
         try (var catalogue = snapshots.bind(DurableClusterAnalysisExecution.source(context), required, roots)) {
             if (result.getTree() == null || result.getTree().isEmpty()) {
                 result.setTree(snapshotProjectionTree(roots, result));
             }
             RequirementArchitectureView view = result.getRelationSearchReport() != null
-                    ? PartialArchitectureProjection.completeEvidence(result, architecture, command.maxArchitectureNodes())
-                    : PartialArchitectureProjection.complete(result, scoredView(command, result), command.maxArchitectureNodes());
+                    ? PartialArchitectureProjection.completeEvidence(result,
+                            navigationContext -> architecture.buildFromEvidence(result.getScores(),
+                                    result.getScoreDetails(), maxNodes, result.getRelationSearchReport(), navigationContext),
+                            maxNodes)
+                    : PartialArchitectureProjection.complete(result, scoredView(command, result), maxNodes);
             result.setArchitectureView(view); // Retain verified edges even if only presentation metadata fails.
             metadata.applyTo(view);
             view.setAnalysisCoverage(result.getAnalysisCoverage());
@@ -83,7 +87,7 @@ public final class FrozenClusterAnalysisFinalizer implements Consumer<AnalysisOp
             var warnings = new ArrayList<>(result.getWarnings());
             warnings.add(warning); result.setWarnings(warnings);
             if (result.getErrorMessage() == null || result.getErrorMessage().isBlank()) result.setErrorMessage(warning);
-            result.setArchitectureView(PartialArchitectureProjection.complete(result, result.getArchitectureView(), command.maxArchitectureNodes()));
+            result.setArchitectureView(PartialArchitectureProjection.complete(result, result.getArchitectureView(), maxNodes));
         }
         if (result.getArchitectureView() != null && command.businessText() != null)
             result.getArchitectureView().setOriginalRequirementText(command.businessText());
