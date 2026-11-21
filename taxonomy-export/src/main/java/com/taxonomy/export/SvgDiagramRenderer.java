@@ -1,5 +1,6 @@
 package com.taxonomy.export;
 
+import com.taxonomy.diagram.DiagramCanonicalEvidence;
 import com.taxonomy.diagram.DiagramScene;
 import java.awt.Font;
 import java.util.ArrayList;
@@ -39,26 +40,36 @@ public class SvgDiagramRenderer {
 
     public String render(DiagramScene scene, Map<String, String> nodeReasons,
                          Map<String, Map<String, String>> relationReasons, Locale locale) {
+        return render(scene, nodeReasons, relationReasons, locale, null);
+    }
+
+    public String renderCanonical(DiagramScene scene, DiagramCanonicalEvidence evidence) {
+        return render(scene, Map.of(), Map.of(), Locale.ENGLISH, Objects.requireNonNull(evidence, "canonical evidence"));
+    }
+
+    private String render(DiagramScene scene, Map<String, String> nodeReasons,
+                          Map<String, Map<String, String>> relationReasons, Locale locale,
+                          DiagramCanonicalEvidence canonical) {
         var language = DiagramLanguage.from(locale);
         if (scene == null || scene.isEmpty())
             throw new IllegalArgumentException("Architecture scene must contain at least one node");
         ExportTheme theme = Objects.requireNonNull(themes.current(), "export theme");
         var markers = new LinkedHashMap<String, String>();
         scene.edges().forEach(edge -> markers.computeIfAbsent(theme.relationshipStroke(edge.relationType(),
-                edge.metadata() != null && edge.metadata().proposed()), color -> "arrow-" + (markers.size() + 1)));
+                proposed(edge, canonical)), color -> "arrow-" + (markers.size() + 1)));
         var nodeReferences = new LinkedHashMap<String, String>();
         scene.nodes().forEach(node -> nodeReferences.putIfAbsent(node.id(), "evidence-node-" + (nodeReferences.size() + 1)));
         var edgeReferences = new LinkedHashMap<String, String>();
         scene.edges().forEach(edge -> edgeReferences.putIfAbsent(edge.id(), "evidence-edge-" + (edgeReferences.size() + 1)));
         var evidence = evidence(scene, nodeReasons == null ? Map.of() : nodeReasons,
-                relationReasons == null ? Map.of() : relationReasons, nodeReferences, edgeReferences, language);
+                relationReasons == null ? Map.of() : relationReasons, nodeReferences, edgeReferences, language, canonical);
         // Grow the sheet in both dimensions instead of making a narrow strip or shrinking the type.
         int columns = Math.max(1, (int) Math.ceil(Math.sqrt(
                 evidence.size() * EVIDENCE_LINE_HEIGHT * Math.sqrt(2) / EVIDENCE_COLUMN_WIDTH)));
         int linesPerColumn = (evidence.size() + columns - 1) / columns;
         double width = Math.max(scene.width(), columns * EVIDENCE_COLUMN_WIDTH);
         var summary = new ArrayList<String>();
-        for (String line : DiagramPresentation.inventorySummary(scene, language)) summary.addAll(
+        for (String line : DiagramPresentation.inventorySummary(scene, language, canonical)) summary.addAll(
                 DiagramTextWrapper.wrapMeasured(line, font(11, false), width - 28, Integer.MAX_VALUE, ""));
         double footer = Math.max(scene.height(), scene.nodes().stream().mapToDouble(n -> n.y() + n.height() + 24).max().orElse(0));
         double evidenceTitleY = footer + summary.size() * 16 + 40;
@@ -84,7 +95,9 @@ public class SvgDiagramRenderer {
             .append(number(width)).append(' ').append(number(height)).append("\" width=\"")
             .append(number(width)).append("\" height=\"").append(number(height)).append("\">\n")
             .append("<title>").append(xml(scene.title())).append("</title>\n")
-            .append("<desc>").append(language.text(
+            .append("<desc>").append(canonical != null
+                    ? "Canonical architecture diagram. Shapes link to the visible inventory of complete labels and saved model states."
+                    : language.text(
                     "Requirement-derived architecture diagram. Shapes link to the visible inventory of complete labels, scores and recorded explanations below. AI verification is not human approval.",
                     "Anforderungsbezogenes Architekturdiagramm. Die Elemente verweisen auf das Inventar mit vollständigen Bezeichnungen, Bewertungen und gespeicherten Begründungen. Eine KI-Prüfung ist keine menschliche Freigabe.")).append("</desc>\n")
             .append("<defs>");
@@ -97,13 +110,16 @@ public class SvgDiagramRenderer {
         var metrics = captionFont.getLineMetrics("Ag", new java.awt.font.FontRenderContext(null, true, true));
         for (var edge : scene.edges()) {
             double strokeWidth = 1.2 + Math.max(0, edge.relevance()) * 1.8;
-            String status = DiagramPresentation.relationshipStatus(edge.metadata(), language.german());
-            boolean proposed = edge.metadata() != null && edge.metadata().proposed();
+            String status = canonical == null ? DiagramPresentation.relationshipStatus(edge.metadata(), language.german())
+                    : DiagramPresentation.canonicalRelationshipStatus(canonical, edge.id());
+            var details = canonical == null ? DiagramPresentation.relationshipDetails(edge.metadata(), language.german())
+                    : DiagramPresentation.canonicalRelationshipDetails(canonical, edge.id());
+            boolean proposed = proposed(edge, canonical);
             String stroke = theme.relationshipStroke(edge.relationType(), proposed);
             svg.append("<a xlink:href=\"#").append(edgeReferences.get(edge.id())).append("\"><g class=\"architecture-edge\" data-edge-id=\"").append(xml(edge.id()))
                 .append("\" data-origin=\"").append(edge.metadata() == null || edge.metadata().origin() == null ? "unrecorded" : edge.metadata().origin().name())
                 .append("\"><title>").append(xml(edge.id() + " | " + edge.sourceId() + " -> " + edge.targetId() + " | " + edge.relationType()
-                        + "\n" + String.join("\n", DiagramPresentation.relationshipDetails(edge.metadata(), language.german())))).append("</title>\n")
+                        + "\n" + String.join("\n", details))).append("</title>\n")
                 .append("<line x1=\"").append(number(edge.sourceX())).append("\" y1=\"").append(number(edge.sourceY()))
                 .append("\" x2=\"").append(number(edge.targetX())).append("\" y2=\"").append(number(edge.targetY()))
                 .append("\" stroke=\"").append(stroke).append("\" stroke-width=\"")
@@ -111,7 +127,7 @@ public class SvgDiagramRenderer {
             if (proposed) svg.append(" stroke-dasharray=\"6 4\"");
             svg.append(" marker-end=\"url(#").append(markers.get(stroke)).append(")\"/>\n");
             svg.append("<metadata><relationship xmlns=\"urn:taxonomy:diagram\">");
-            metadataValue(svg, "provenance", edge.metadata());
+            metadataValue(svg, "provenance", canonical == null ? edge.metadata() : canonical.relationships().get(edge.id()));
             svg.append("</relationship></metadata>\n");
             double captionWidth = Math.max(12, Math.min(210, Math.abs(edge.targetX() - edge.sourceX()) - 12));
             double captionX = (edge.sourceX() + edge.targetX()) / 2;
@@ -131,7 +147,8 @@ public class SvgDiagramRenderer {
             svg.append("<a xlink:href=\"#").append(nodeReferences.get(node.id())).append("\"><g class=\"architecture-node\" data-node-id=\"").append(xml(node.id()))
                 .append("\" transform=\"translate(").append(number(node.x())).append(',').append(number(node.y())).append(")\">")
                 .append("<title>").append(xml(node.id() + " | " + node.label() + " | " + node.type()
-                        + language.text(" | Depth ", " | Tiefe ") + node.depth() + (node.container() ? " | Container" : "")
+                        + (canonical == null ? " | " + language.depth(node) : "")
+                        + (node.container() ? " | Container" : "")
                         + ownerDetails)).append("</title>\n")
                 .append("<rect width=\"").append(number(node.width())).append("\" height=\"").append(number(node.height()))
                 .append("\" rx=\"10\" fill=\"").append(theme.nodeFill(node.type())).append("\" stroke=\"")
@@ -146,12 +163,12 @@ public class SvgDiagramRenderer {
                         DiagramTextWrapper.wrapMeasured(assignment.name(), font(11, false), nodeTextWidth - 12, 1, "").getFirst());
             }
             text(svg, 14, 72, "start", 10, false, theme.nodeText(node.type(), "#475569"), DiagramTextWrapper.wrapMeasured(
-                    node.type() + " · " + language.percent(node.relevance()), font(10, false), nodeTextWidth, 1, language.text("Unclassified", "Nicht klassifiziert")).getFirst());
+                    canonical == null ? node.type() + " · " + language.score(node) : node.type(), font(10, false), nodeTextWidth, 1, language.text("Unclassified", "Nicht klassifiziert")).getFirst());
             svg.append("</g></a>\n");
         }
         for (int i = 0; i < summary.size(); i++) text(svg, 14, footer + 16 + i * 16, "start", 11, false, theme.canvasText("#334155"),
                 summary.get(i));
-        text(svg, 14, evidenceTitleY, "start", 16, true, theme.canvasText("#0f172a"), language.text("Scores and complete explanations", "Bewertungen und vollständige Begründungen"));
+        text(svg, 14, evidenceTitleY, "start", 16, true, theme.canvasText("#0f172a"), canonical == null ? language.text("Scores and complete explanations", "Bewertungen und vollständige Begründungen") : "Canonical inventory");
         for (int column = 0; column < columns; column++) {
             double x = 14 + column * EVIDENCE_COLUMN_WIDTH;
             var header = columnHeaders.get(column);
@@ -177,18 +194,23 @@ public class SvgDiagramRenderer {
         return svg.append("</svg>\n").toString();
     }
 
+    private static boolean proposed(com.taxonomy.diagram.DiagramSceneEdge edge, DiagramCanonicalEvidence canonical) {
+        return canonical == null ? edge.metadata() != null && edge.metadata().proposed()
+                : DiagramPresentation.canonicalRelationshipProposed(canonical, edge.id());
+    }
+
     private record EvidenceLine(String kind, String id, String reference, String value, boolean bold, boolean first) { }
 
     private static List<EvidenceLine> evidence(DiagramScene scene, Map<String, String> nodeReasons,
                                                Map<String, Map<String, String>> relationReasons,
                                                Map<String, String> nodeReferences, Map<String, String> edgeReferences,
-                                               DiagramLanguage language) {
+                                               DiagramLanguage language, DiagramCanonicalEvidence canonical) {
         var lines = new ArrayList<EvidenceLine>();
         var seenNodes = new HashSet<String>();
         for (var node : scene.nodes()) if (seenNodes.add(node.id())) {
             var parts = new ArrayList<String>();
-            parts.add(language.text("Node ", "Knoten ") + node.id() + " | " + language.percent(node.relevance()) + language.text(" | Depth ", " | Tiefe ") + node.depth()
-                    + (node.container() ? " | Container" : ""));
+            String metrics = canonical == null ? " | " + language.score(node) + " | " + language.depth(node) : "";
+            parts.add(language.text("Node ", "Knoten ") + node.id() + metrics + (node.container() ? " | Container" : ""));
             parts.add(node.label());
             parts.add((node.type() == null ? language.text("Unclassified", "Nicht klassifiziert") : node.type()) + language.text(" | Parent: ", " | Übergeordnet: ")
                     + (node.parentId() == null ? language.text("not included", "nicht enthalten") : node.parentId()));
@@ -201,9 +223,14 @@ public class SvgDiagramRenderer {
         for (var edge : scene.edges()) if (seenEdges.add(edge.id())) {
             var parts = new ArrayList<String>();
             parts.add(language.text("Relationship ", "Beziehung ") + edge.id() + " | " + edge.sourceId() + " -> " + edge.targetId());
-            parts.add(edge.relationType() + " | " + language.percent(edge.relevance()) + " | " + edge.relationCategory());
-            parts.addAll(DiagramPresentation.relationshipDetails(edge.metadata(), language.german()));
-            parts.addAll(DiagramPresentation.relationshipEvidenceDetails(relationReasons.get(edge.id()), language.german()));
+            if (canonical == null) {
+                parts.add(edge.relationType() + " | " + language.percent(edge.relevance()) + " | " + edge.relationCategory());
+                parts.addAll(DiagramPresentation.relationshipDetails(edge.metadata(), language.german()));
+                parts.addAll(DiagramPresentation.relationshipEvidenceDetails(relationReasons.get(edge.id()), language.german()));
+            } else {
+                parts.add(edge.relationType());
+                parts.addAll(DiagramPresentation.canonicalRelationshipDetails(canonical, edge.id()));
+            }
             appendEvidence(lines, "relationship", edge.id(), edgeReferences.get(edge.id()), parts);
         }
         return lines;

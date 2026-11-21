@@ -31,7 +31,8 @@ public class ArchitecturePdfRenderer {
                 projection.provider(),
                 projection.branchName(),
                 projection.commitSha(),
-                projection.warnings());
+                projection.warnings(),
+                projection.snapshotStatus() == null ? null : projection.snapshotStatus().name());
         return delegate.render(projection.scene(), metadata, projection.nodeReasons(), projection.relationReasons(), locale);
     }
 }

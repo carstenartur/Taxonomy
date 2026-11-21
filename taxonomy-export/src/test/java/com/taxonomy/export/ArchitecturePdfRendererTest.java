@@ -43,11 +43,88 @@ class ArchitecturePdfRendererTest {
             assertThat(text.getText(document)).contains("Short Messaging Access Services", "CO-1048", "100%", "Communications Services");
             assertThat(labels).isNotEmpty().allSatisfy(position -> assertThat(position.getFontSizeInPt()).isGreaterThanOrEqualTo(8));
             assertThat(nodeText).isNotEmpty().allSatisfy(position -> {
-                assertThat(position.getXDirAdj()).isGreaterThanOrEqualTo(2232);
-                assertThat(position.getXDirAdj() + position.getWidthDirAdj()).isLessThanOrEqualTo(2472);
+                assertThat(position.getXDirAdj()).isGreaterThanOrEqualTo(84);
+                assertThat(position.getXDirAdj() + position.getWidthDirAdj()).isLessThanOrEqualTo(324);
             });
-            assertThat(document.getPage(0).getMediaBox().getWidth()).isGreaterThan(2000);
+            assertThat(document.getPage(0).getMediaBox().getWidth())
+                    .isLessThanOrEqualTo(org.apache.pdfbox.pdmodel.common.PDRectangle.A3.getHeight());
         }
+    }
+
+    @Test
+    void snapshotInventoryPreservesParagraphsAndUnicodeEvidence() throws Exception {
+        var metadata = new ArchitecturePdfRenderer.SnapshotMetadata(
+                "P-001", "REQ-001", "snapshot-1", "MODEL", "draft", "abcdef1234567890", List.of());
+        byte[] bytes = renderer.render(scene(), metadata, Map.of("CP-1",
+                "Erste Begründung: Einsatzkräfte → Führungsstelle.\r\n\r\nZweite Begründung: Größe ≤ 10. verification offline."),
+                Map.of(), java.util.Locale.GERMAN);
+
+        try (var pdf = org.apache.pdfbox.Loader.loadPDF(bytes)) {
+            String text = new org.apache.pdfbox.text.PDFTextStripper().getText(pdf);
+            assertThat(text).contains("Begründung: Erste Begründung: Einsatzkräfte → Führungsstelle.",
+                    "Zweite Begründung: Größe ≤ 10. verification offline.")
+                    .doesNotContain("??", "Einsatzkraefte ? Fuehrungsstelle");
+            assertThat(text.lines().filter(line -> line.contains("Zweite Begründung")))
+                    .allMatch(line -> !line.contains("Erste Begründung"));
+        }
+    }
+
+    @Test
+    void retainedSnapshotDistinguishesUnavailableMetricsFromRecordedZeroes() throws Exception {
+        var view = new com.fasterxml.jackson.databind.ObjectMapper().readValue("""
+                {"includedElements":[
+                  {"nodeCode":"source-evidence","title":"Evidence-only source","taxonomySheet":"CI","origin":"REQUIREMENT_EVIDENCE"},
+                  {"nodeCode":"accepted-endpoint","title":"Unscored endpoint","taxonomySheet":"BP","origin":"RELATION_EVIDENCE",
+                   "relevance":0,"taxonomyDepth":0},
+                  {"nodeCode":"scored-root","title":"Scored root","taxonomySheet":"CP","origin":"DIRECT_SCORED",
+                   "relevance":0,"taxonomyDepth":0,"hierarchyPath":"scored-root",
+                   "scoreDetail":{"nodeCode":"scored-root","kind":"HIERARCHICAL_RELEVANCE","rawScore":0,"effectiveRelevance":0}},
+                  {"nodeCode":"typed-child","title":"Typed child","taxonomySheet":"CI","origin":"RELATION_EVIDENCE",
+                   "hierarchyPath":"CI > typed-child", "scoreDetail":{"nodeCode":"typed-child","kind":"HIERARCHICAL_RELEVANCE","rawScore":60,"effectiveRelevance":60}},
+                  {"nodeCode":"legacy-scored","title":"Legacy retained values","taxonomySheet":"UA","relevance":0.35,"taxonomyDepth":2}],
+                 "includedRelationships":[{"sourceCode":"source-evidence","targetCode":"accepted-endpoint","relationType":"SUPPORTS"}]}
+                """, com.taxonomy.dto.RequirementArchitectureView.class);
+        var graph = PersistedDiagramProjection.project(new DiagramProjectionService(), view, "Saved snapshot");
+        var metadata = new ArchitecturePdfRenderer.SnapshotMetadata(
+                "P-001", "REQ-001", "snapshot-1", "MODEL", "draft", "abcdef1234567890", List.of());
+        var retainedScene = layout.layout(graph);
+
+        try (var pdf = org.apache.pdfbox.Loader.loadPDF(renderer.render(retainedScene, metadata))) {
+            String text = new org.apache.pdfbox.text.PDFTextStripper().getText(pdf);
+            assertThat(text)
+                    .containsPattern("source-evidence \\| D\\d+ \\| Depth unknown \\| Score unrecorded")
+                    .containsPattern("accepted-endpoint \\| D\\d+ \\| Depth unknown \\| Score unrecorded")
+                    .containsPattern("scored-root \\| D\\d+ \\| Depth 0 \\| 0%")
+                    .containsPattern("typed-child \\| D\\d+ \\| Depth 1 \\| 60%")
+                    .containsPattern("legacy-scored \\| D\\d+ \\| Depth 2 \\| 35%");
+        }
+        assertThat(new SvgDiagramRenderer().render(retainedScene))
+                .contains("source-evidence | Score unrecorded | Depth unknown", "scored-root | 0% | Depth 0");
+    }
+
+    @Test
+    void retainedRelevancePresenceSurvivesSnapshotJsonRoundTrip() throws Exception {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper()
+                .disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+        var view = mapper.readValue("""
+                {"includedElements":[
+                  {"nodeCode":"missing-score","origin":"DIRECT_SCORED"},
+                  {"nodeCode":"stored-zero","origin":"PROPAGATED","relevance":0},
+                  {"nodeCode":"retained-typed","origin":"RELATION_EVIDENCE",
+                   "scoreDetail":{"nodeCode":"retained-typed","kind":"HIERARCHICAL_RELEVANCE","rawScore":60,"effectiveRelevance":60}}]}
+                """, com.taxonomy.dto.RequirementArchitectureView.class);
+
+        byte[] saved = mapper.writeValueAsBytes(view);
+        var elements = mapper.readTree(saved).path("includedElements");
+        assertThat(elements.get(0).has("relevance")).isFalse();
+        assertThat(elements.get(1).path("relevance").isNumber()).isTrue();
+        assertThat(elements.get(2).has("relevance")).isFalse();
+
+        var replay = mapper.readValue(saved, com.taxonomy.dto.RequirementArchitectureView.class);
+        assertThat(replay.getIncludedElements()).extracting(com.taxonomy.dto.RequirementElementView::recordedRelevance)
+                .containsExactly(null, 0.0, 0.6);
+        assertThat(replay.getIncludedElements()).extracting(com.taxonomy.dto.RequirementElementView::getRelevance)
+                .containsExactly(0.0, 0.0, 0.6);
     }
 
     @Test

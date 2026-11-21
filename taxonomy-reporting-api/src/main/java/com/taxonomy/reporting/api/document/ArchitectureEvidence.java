@@ -52,7 +52,8 @@ public final class ArchitectureEvidence {
                             n.selectedForImpact(),
                             n.parentId(),
                             n.container(),
-                            n.responsibility())
+                            n.responsibility(),
+                            n.missingMeasurements())
                     .equals(canonical.get(n.id())))
                 throw new IllegalArgumentException(
                         "Contradictory architecture scene node " + n.id());

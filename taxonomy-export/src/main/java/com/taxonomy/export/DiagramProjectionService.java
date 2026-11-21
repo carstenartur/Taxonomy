@@ -147,18 +147,23 @@ public class DiagramProjectionService {
             String type = ROOT_CODE_TO_LAYER.getOrDefault(rawType, rawType);
             int layer = LAYER_MAP.getOrDefault(type, 0);
             String parentId = parentMap.get(el.getNodeCode());
+            Double recordedRelevance = el.recordedRelevance();
+            Integer recordedDepth = el.recordedTaxonomyDepth();
+            boolean relevanceMissing = recordedRelevance == null;
+            boolean depthMissing = recordedDepth == null;
             nodes.add(new DiagramNode(
                     el.getNodeCode(),
                     el.getTitle() != null ? el.getTitle() : el.getNodeCode(),
                     type,
-                    el.getRelevance(),
+                    relevanceMissing ? el.getRelevance() : recordedRelevance,
                     el.isAnchor(),
                     layer,
-                    el.getTaxonomyDepth(),
+                    depthMissing ? el.getTaxonomyDepth() : recordedDepth,
                     el.isSelectedForImpact(),
                     parentId,
                     false,
-                    el.getResponsibility()));
+                    el.getResponsibility(), relevanceMissing || depthMissing
+                            ? new DiagramNode.MissingMeasurements(relevanceMissing, depthMissing) : null));
         }
 
         List<DiagramEdge> edges = new ArrayList<>();

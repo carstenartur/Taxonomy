@@ -10,6 +10,10 @@
         return String(Number(percentage.toFixed(6)));
     }
 
+    function nodeRelevanceText(node, translate) {
+        return node.missingMeasurements?.relevance ? translate('workbench.ui.unrecorded') : relevanceText(node.relevance) + '%';
+    }
+
     function computeHopDistances(scene) {
         const adjacency = new Map();
         scene.nodes.forEach(function (node) { adjacency.set(node.id, []); });
@@ -120,6 +124,7 @@
             const metadata = (data.elements || {})[node.id] || {};
             const unit = node.responsibility && window.TaxonomyResponsibilityDisplay?.unit?.(node.responsibility);
             const responsibilityLabel = unit ? t('views.diagram.responsibleUnit', unit.name) : '';
+            const relevance = nodeRelevanceText(node, t);
             return Object.assign({}, node, {
                 context: node.context === undefined ? !node.anchor : Boolean(node.context),
                 searchText: [node.id, node.label, node.type].join(' ') + (unit ? ' ' + unit.name : ''),
@@ -127,14 +132,14 @@
                 className: 'architecture-node' + (node.anchor ? ' is-anchor' : ''),
                 color: color,
                 textColor: textColor,
-                ariaLabel: t('workbench.ui.nodeLabel', node.id, node.label, node.type, relevanceText(node.relevance))
+                ariaLabel: t('workbench.ui.nodeLabel', node.id, node.label, node.type, relevance)
                     + (unit ? ' · ' + responsibilityLabel : ''),
-                score: (node.anchor ? '★ ' : '') + relevanceText(node.relevance) + '%',
+                score: (node.anchor ? '★ ' : '') + relevance,
                 scoreFill: common.rgba(textColor, textColor === '#ffffff' ? 0.18 : 0.12),
                 titleLines: common.wrapLabel(node.label, 32, unit ? 1 : 2),
                 responsibleUnit: unit,
                 meta: (node.anchor ? t('workbench.ui.directMatch') : t('workbench.ui.hop', hops.get(node.id))) + ' · ' + node.type,
-                tooltip: node.id + ' — ' + node.label + '\n' + node.type + '\n' + relevanceText(node.relevance) + '%'
+                tooltip: node.id + ' — ' + node.label + '\n' + node.type + '\n' + relevance
                     + (unit ? '\n' + responsibilityLabel + '\n' + t('responsibility.source', unit.sourceId) : '')
                     + (metadata.presenceReason ? '\n' + metadata.presenceReason : '')
             });
@@ -324,8 +329,8 @@
             [t('workbench.ui.detail.element'), node.id],
             [t('workbench.ui.detail.title'), node.label],
             [t('workbench.ui.detail.layer'), node.type],
-            [t('workbench.ui.detail.relevance'), relevanceText(node.relevance) + '%'],
-            [t('workbench.ui.detail.direct_score'), metadata.directScore],
+            [t('workbench.ui.detail.relevance'), nodeRelevanceText(node, t)],
+            [t('workbench.ui.detail.direct_score'), node.missingMeasurements?.relevance ? t('workbench.ui.unrecorded') : metadata.directScore],
             [t('workbench.ui.detail.anchor'), node.anchor ? t('ui.yes') : t('ui.no')],
             [t('workbench.ui.detail.origin'), window.TaxonomyI18n.formatEnum(metadata.mappingOrigin)],
             [t('workbench.ui.detail.review'), window.TaxonomyI18n.formatEnum(metadata.reviewStatus)],

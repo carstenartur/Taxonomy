@@ -21,6 +21,7 @@ import com.taxonomy.dto.TaxonomyResponsibilityLookup.Assignment;
  *                          ArchiMate must skip container-only nodes (or map them to a
  *                          grouping construct) to avoid false architecture semantics.
  * @param responsibility    effective organizational assignment from this node's source evidence
+ * @param missingMeasurements records where primitive layout values stand in for unavailable evidence
  */
 public record DiagramNode(
     String id,
@@ -33,8 +34,22 @@ public record DiagramNode(
     boolean selectedForImpact,
     String parentId,
     boolean container,
-    @JsonInclude(JsonInclude.Include.NON_NULL) Assignment responsibility
+    @JsonInclude(JsonInclude.Include.NON_NULL) Assignment responsibility,
+    @JsonInclude(JsonInclude.Include.NON_NULL) MissingMeasurements missingMeasurements
 ) {
+    /** Distinguishes unavailable retained measurements from a recorded score or depth of zero. */
+    public record MissingMeasurements(boolean relevance, boolean depth) { }
+
+    public boolean relevanceRecorded() { return missingMeasurements == null || !missingMeasurements.relevance(); }
+
+    public boolean depthRecorded() { return missingMeasurements == null || !missingMeasurements.depth(); }
+
+    public DiagramNode(String id, String label, String type, double relevance, boolean anchor, int layer,
+                       int depth, boolean selectedForImpact, String parentId, boolean container,
+                       Assignment responsibility) {
+        this(id, label, type, relevance, anchor, layer, depth, selectedForImpact, parentId, container,
+                responsibility, null);
+    }
     /**
      * Backward-compatible constructor for existing code that does not need
      * the extended metadata fields.

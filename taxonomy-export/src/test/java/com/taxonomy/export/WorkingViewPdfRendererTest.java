@@ -63,11 +63,12 @@ class WorkingViewPdfRendererTest {
             String text = new PDFTextStripper().getText(pdf);
             assertThat(pdf.getNumberOfPages()).isGreaterThan(2);
             for (var page : pdf.getPages()) {
-                assertThat(page.getMediaBox().getWidth()).isLessThanOrEqualTo(14_400);
-                assertThat(page.getMediaBox().getHeight()).isLessThanOrEqualTo(14_400);
+                assertThat(page.getMediaBox().getWidth()).isLessThanOrEqualTo(org.apache.pdfbox.pdmodel.common.PDRectangle.A3.getHeight());
+                assertThat(page.getMediaBox().getHeight()).isLessThanOrEqualTo(org.apache.pdfbox.pdmodel.common.PDRectangle.A3.getWidth());
             }
             for (int index = 0; index < 500; index++) assertThat(text).contains(String.format("LABEL-%04d-END", index));
-            assertThat(text).contains("Elements: 500", "Relationships: 1", "Cross-page relationships: 1", "D1 -> D2",
+            assertThat(text).containsPattern("D1 -> D(?:[2-9]|[1-9]\\d+)")
+                    .contains("Elements: 500", "Relationships: 1", "Cross-page relationships: 1",
                     "Relation ID: 9223372036854775807", "LLM_SUPPORTED", "Confidence: 0.125", "Seed type: FRAMEWORK_SEED",
                     "INCLUSION-END", "DERIVATION-END", "PRESENCE-END", "CONTRIBUTION-END", "ORIGINAL-QUOTE-END",
                     "CONTRIBUTION-CONDITION-END", "VERIFIED", "ALTERNATIVE", "DECISION-CONTRIBUTION-END", "DECISION-QUOTE-END",

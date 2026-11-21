@@ -17,17 +17,20 @@ class PdfDiagramTextTest {
     private static final PDType1Font FONT = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
 
     @Test
-    void measuresTransliteratedGlyphsAndKeepsEveryLineWithinItsBudget() throws Exception {
-        for (String input : List.of("ÄÖÜß ".repeat(12), "W".repeat(100), "small words ".repeat(15))) {
-            var lines = PdfDiagramText.wrap(input, FONT, 10, 90, 2);
-            assertTrue(lines.size() <= 2);
-            for (String line : lines) assertTrue(PdfDiagramText.width(FONT, 10, line) <= 90, line);
-            assertTrue(lines.getLast().endsWith("..."));
+    void measuresEmbeddedGlyphsAndKeepsEveryLineWithinItsBudget() throws Exception {
+        try (var document = new org.apache.pdfbox.pdmodel.PDDocument()) {
+            var font = PdfDiagramText.loadFont(document, false);
+            for (String input : List.of("ÄÖÜß → ".repeat(12), "W".repeat(100), "small words ".repeat(15))) {
+                var lines = PdfDiagramText.wrap(input, font, 10, 90, 2);
+                assertTrue(lines.size() <= 2);
+                for (String line : lines) assertTrue(PdfDiagramText.width(font, 10, line) <= 90, line);
+                assertTrue(lines.getLast().endsWith("..."));
+            }
+            assertEquals(List.of("Short"), PdfDiagramText.wrap("Short", font, 10, 90, 2));
+            assertEquals("ÄÖÜß →", PdfDiagramText.printable("ÄÖÜß →", font));
+            assertEquals("n/a", PdfDiagramText.printable(null, font));
+            assertEquals("n/a", PdfDiagramText.printable("  ", font));
         }
-        assertEquals(List.of("Short"), PdfDiagramText.wrap("Short", FONT, 10, 90, 2));
-        assertEquals("AeOeUess", PdfDiagramText.printable("ÄÖÜß"));
-        assertEquals("n/a", PdfDiagramText.printable(null));
-        assertEquals("n/a", PdfDiagramText.printable("  "));
     }
 
     @Test

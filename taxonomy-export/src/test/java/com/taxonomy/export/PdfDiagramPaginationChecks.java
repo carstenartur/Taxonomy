@@ -25,7 +25,7 @@ final class PdfDiagramPaginationChecks {
         byte[] bytes = new ArchitecturePdfRenderer().render(scene, "Saved workspace revision 7");
         try (var document = Loader.loadPDF(bytes)) {
             int diagrams = diagrams(document);
-            require(diagrams > 1 && diagrams < 32, "Expected bounded readable diagram panels");
+            require(diagrams > 1 && diagrams < scene.nodes().size(), "Expected bounded occupied diagram panels");
             String diagramText = text(document, 1, diagrams);
             for (var node : scene.nodes()) require(diagramText.contains(node.id() + "\n")
                     || diagramText.contains(node.id() + " "), "Missing diagram identity " + node.id());
@@ -107,7 +107,9 @@ final class PdfDiagramPaginationChecks {
     private static void bounds(PDDocument doc, int diagrams) throws IOException {
         for (int page = 1; page <= diagrams; page++) {
             var box = doc.getPage(page - 1).getMediaBox();
-            require(box.getWidth() <= 14_400 && box.getHeight() <= 14_400, "PDF page limit exceeded");
+            var landscape = org.apache.pdfbox.pdmodel.common.PDRectangle.A3;
+            require(box.getWidth() <= landscape.getHeight() && box.getHeight() <= landscape.getWidth(),
+                    "Diagram exceeds printable A3 landscape");
             var reader = new PDFTextStripper() {
                 @Override protected void writeString(String value, List<TextPosition> data) throws IOException {
                     for (var glyph : data) {

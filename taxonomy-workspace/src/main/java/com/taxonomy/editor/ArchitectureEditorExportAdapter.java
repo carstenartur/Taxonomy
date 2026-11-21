@@ -1,10 +1,12 @@
 package com.taxonomy.editor;
 
+import com.taxonomy.diagram.DiagramCanonicalEvidence;
 import com.taxonomy.editor.ArchitectureEditorExportPort.ExportDocument;
 import com.taxonomy.workspace.service.RepositoryContext;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.util.LinkedHashMap;
 import java.util.Objects;
 
 /** Projects one exact editor document into the neutral export boundary. */
@@ -50,6 +52,20 @@ public final class ArchitectureEditorExportAdapter implements ArchitectureEditor
         var reference = layoutRevision == null ? null : service.read(context, null, layoutRevision);
         var view = projection.project(document, false, strategy, reference, viewId);
         var provenance = document.context();
+        var analysisSources = view.model().getViews().stream()
+                .filter(item -> viewId == null || viewId.isBlank() || viewId.equals(item.getId()))
+                .filter(item -> item.getExtensions().containsKey("x-analysis-snapshot-id"))
+                .map(item -> new DiagramCanonicalEvidence.AnalysisSource(item.getId(),
+                        item.getExtensions().get("x-analysis-snapshot-id"), item.getExtensions().get("x-analysis-status")))
+                .toList();
+        var relationships = new LinkedHashMap<String, DiagramCanonicalEvidence.Relationship>();
+        var displayed = view.scene().edges().stream().map(com.taxonomy.diagram.DiagramSceneEdge::id)
+                .collect(java.util.stream.Collectors.toSet());
+        for (var relation : view.model().getRelations()) {
+            String id = relation.getSourceId() + " " + relation.getRelationType() + " " + relation.getTargetId();
+            if (displayed.contains(id)) relationships.putIfAbsent(id, new DiagramCanonicalEvidence.Relationship(
+                    relation.getStatus(), relation.getProvenance(), relation.getConfidence()));
+        }
         return new ExportDocument(
                 provenance.repositoryId(),
                 provenance.workspaceScopeKey(),
@@ -58,6 +74,7 @@ public final class ArchitectureEditorExportAdapter implements ArchitectureEditor
                 provenance.revision(),
                 document.source(),
                 view.schema().layoutMode(),
-                view.scene());
+                view.scene(),
+                new DiagramCanonicalEvidence(viewId, analysisSources, relationships));
     }
 }

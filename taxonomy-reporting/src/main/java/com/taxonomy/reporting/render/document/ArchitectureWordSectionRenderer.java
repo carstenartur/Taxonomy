@@ -17,7 +17,7 @@ public final class ArchitectureWordSectionRenderer {
         var writer = new WordDocumentWriter(document, labels);
         writer.properties(report);
         writer.heading(labels.requirement(), 1, "architecture_requirement");
-        writer.paragraph(report.requirement());
+        writer.sourceParagraphs(report.requirement());
         writer.heading(labels.scope(), 2, null);
         writer.paragraph(report.scope());
         ReportInventory.diagram(report.diagram(), labels.german()).forEach(writer::paragraph);
@@ -33,6 +33,7 @@ public final class ArchitectureWordSectionRenderer {
         writer.heading(labels.architectureOverview(), 1, "architecture_figures");
         if (!report.diagram().title().equals(report.title()))
             writer.paragraph(report.diagram().title());
+        writer.paragraph(labels.overviewPurpose());
         var plan = new ArchitectureFigurePlanner().plan(report.diagram(), report.scene());
         var renderer = new ArchitectureFigureRenderer();
         var panels = new ArrayList<ArchitectureFigurePlanner.Panel>();
@@ -40,14 +41,7 @@ public final class ArchitectureWordSectionRenderer {
         panels.addAll(plan.details());
         for (var panel : panels) {
             var figure = renderer.render(panel, report.languageTag());
-            writer.picture(
-                    figure.png(),
-                    figure.id(),
-                    figure.caption(),
-                    figure.altDescription(),
-                    figure.width(),
-                    figure.height(),
-                    !panel.overview());
+            writer.architecturePicture(figure, panel.overview());
             writer.caption(figure.caption(), true);
             if (!panel.overview() && !panel.diagram().edges().isEmpty()) {
                 var key =
@@ -83,12 +77,13 @@ public final class ArchitectureWordSectionRenderer {
                 report.legend().stream().map(e -> List.of(e.symbol(), e.meaning())).toList());
         writer.heading(labels.elements(), 1, "architecture_elements");
         writer.caption(labels.elements(), false);
-        writer.table(
+        var elements = writer.table(
                 List.of(
                         labels.identifier(),
                         labels.titleLabel(),
                         labels.type(),
                         labels.score(),
+                        labels.depth(),
                         labels.parentNode()),
                 report.elements().stream()
                         .map(
@@ -103,9 +98,11 @@ public final class ArchitectureWordSectionRenderer {
                                                         + (e.anchor()
                                                                 ? " · " + labels.anchor()
                                                                 : ""),
-                                                percentage(e.relevance()),
+                                                e.relevance() == null ? labels.notEvaluated() : percentage(e.relevance()),
+                                                e.depth() == null ? labels.unknown() : e.depth().toString(),
                                                 value(e.parentId(), labels)))
                         .toList());
+        writer.columnWidths(elements, 14, 29, 21, 13, 10, 13);
         writeResponsibilities(writer, labels, report.diagram());
         if (!report.nodeReasons().isEmpty()) {
             writer.heading(labels.recordedNodeReasons(), 2, null);
@@ -118,7 +115,7 @@ public final class ArchitectureWordSectionRenderer {
         writer.caption(labels.relations(), false);
         var metadataById = new HashMap<String, com.taxonomy.diagram.DiagramRelationMetadata>();
         report.diagram().edges().forEach(edge -> metadataById.put(edge.id(), edge.metadata()));
-        writer.table(
+        var relations = writer.table(
                 List.of(
                         labels.identifier(),
                         labels.source(),
@@ -138,6 +135,7 @@ public final class ArchitectureWordSectionRenderer {
                                                         + com.taxonomy.export.DiagramPresentation.relationshipStatus(metadataById.get(e.id()), labels.german()),
                                                 percentage(e.relevance())))
                         .toList());
+        writer.columnWidths(relations, 10, 16, 16, 15, 31, 12);
         if (report.diagram().edges().stream().anyMatch(edge -> edge.metadata() != null
                 || report.relationReasons().containsKey(edge.id()))) {
             writer.heading(labels.relationshipProvenance(), 2, null);

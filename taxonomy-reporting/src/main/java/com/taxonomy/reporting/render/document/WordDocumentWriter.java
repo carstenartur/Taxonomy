@@ -82,8 +82,16 @@ public final class WordDocumentWriter {
         p.setSpacingAfter(paragraphSpacingAfter);
         var r = p.createRun();
         r.setFontSize(10);
-        r.setText(value(text));
+        writeLines(r, text);
         return p;
+    }
+
+    /** Materialize the source's lines as editable Word paragraphs. */
+    public void sourceParagraphs(String text) {
+        for (String line : value(text).lines().toList()) {
+            if (line.isBlank()) continue;
+            paragraph(line);
+        }
     }
 
     public void contents(Map<String, String> sections) {
@@ -220,13 +228,24 @@ public final class WordDocumentWriter {
             int height,
             boolean readingScale)
             throws Exception {
+        picture(png, id, title, description, width, height, readingScale, 470, 30);
+    }
+
+    public void architecturePicture(ArchitectureFigureRenderer.RenderedFigure figure, boolean overview) throws Exception {
+        double width = Math.min(470, .65 * figure.width() / figure.rasterScale());
+        picture(figure.png(), figure.id(), figure.caption(), figure.altDescription(), figure.width(), figure.height(),
+                !overview, width, ArchitectureFigureRenderer.NODE_TITLE_SIZE * figure.rasterScale());
+    }
+
+    private void picture(byte[] png, String id, String title, String description, int width, int height,
+                         boolean readingScale, double displayWidth, double fontPixels) throws Exception {
         if (png == null
                 || width <= 0
                 || height <= 0
                 || description == null
                 || description.isBlank())
             throw new IllegalArgumentException("Invalid accessible report figure");
-        double targetWidth = Math.min(printableWidth(), 470);
+        double targetWidth = Math.min(printableWidth(), displayWidth);
         if (targetWidth <= 0)
             throw new WordReportLayoutException(
                     "Word template has no printable width for readable evidence at 8pt");
@@ -241,8 +260,7 @@ public final class WordDocumentWriter {
             targetWidth *= availableHeight / targetHeight;
             targetHeight = availableHeight;
         }
-        // Architecture renderer uses 20px node text at 1.5 raster scale.
-        if (readingScale && targetWidth * 30 / width < 8)
+        if (readingScale && targetWidth * fontPixels / width < 8)
             throw new WordReportLayoutException(
                     "Word detail figure cannot meet minimum 8pt reading scale within this template"
                             + " printable width and height, including its caption");
@@ -466,7 +484,15 @@ public final class WordDocumentWriter {
         p.setSpacingAfter(60);
         var run = p.createRun();
         run.setFontSize(9);
-        run.setText(value(value));
+        writeLines(run, value);
+    }
+
+    private void writeLines(XWPFRun run, String text) {
+        var lines = value(text).split("\\R", -1);
+        for (int i = 0; i < lines.length; i++) {
+            if (i > 0) run.addBreak();
+            run.setText(lines[i]);
+        }
     }
 
     private String value(String value) {

@@ -26,4 +26,12 @@ enum DiagramLanguage {
         String value = DiagramPresentation.percent(relevance);
         return german() ? value.replace('.', ',') : value;
     }
+
+    String score(com.taxonomy.diagram.DiagramSceneNode node) {
+        return node.relevanceRecorded() ? percent(node.relevance()) : text("Score unrecorded", "Bewertung nicht aufgezeichnet");
+    }
+
+    String depth(com.taxonomy.diagram.DiagramSceneNode node) {
+        return text("Depth ", "Tiefe ") + (node.depthRecorded() ? node.depth() : text("unknown", "unbekannt"));
+    }
 }
