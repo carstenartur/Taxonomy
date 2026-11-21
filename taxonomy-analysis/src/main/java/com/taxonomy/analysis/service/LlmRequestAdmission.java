@@ -5,6 +5,7 @@ import java.time.Duration;
 
 import java.time.Instant;
 import java.util.Locale;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import java.util.concurrent.TimeUnit;
 import org.springframework.web.client.HttpClientErrorException;
@@ -15,8 +16,10 @@ final class LlmRequestAdmission {
     private final ProviderId provider;
     private final int defaultRpm;
     private final AnalysisRuntimeSettings settings;
+    private final LongSupplier monotonicNanos;
+    private final ProviderRequestLimiter.Waiter waiter;
     private ProviderRequestLimiter.Limits limits = new ProviderRequestLimiter.Limits(4, 64);
-    private ProviderRequestLimiter limiter = new ProviderRequestLimiter(limits);
+    private ProviderRequestLimiter limiter;
     private ProviderConcurrencyPermits clusterPermits = ProviderConcurrencyPermits.NONE;
     private ProviderRateQuotas clusterQuotas = ProviderRateQuotas.NONE;
     private boolean used;
@@ -26,16 +29,33 @@ final class LlmRequestAdmission {
     }
 
     LlmRequestAdmission(ProviderId provider, int defaultRpm, AnalysisRuntimeSettings settings) {
+        this(provider, defaultRpm, settings, System::nanoTime, LlmRequestAdmission::pause);
+    }
+
+    LlmRequestAdmission(ProviderId provider, int defaultRpm, AnalysisRuntimeSettings settings,
+                        LongSupplier monotonicNanos, ProviderRequestLimiter.Waiter waiter) {
         this.provider = provider;
         this.defaultRpm = defaultRpm;
         this.settings = settings;
+        this.monotonicNanos = java.util.Objects.requireNonNull(monotonicNanos, "monotonicNanos");
+        this.waiter = java.util.Objects.requireNonNull(waiter, "waiter");
+        limiter = newLimiter(limits);
+    }
+
+    private ProviderRequestLimiter newLimiter(ProviderRequestLimiter.Limits limits) {
+        return new ProviderRequestLimiter(limits, () -> TimeUnit.NANOSECONDS.toMillis(monotonicNanos.getAsLong()));
+    }
+
+    private static void pause(ProviderRequestLimiter.WaitReason reason, long millis) {
+        AnalysisRunControl.pause(reason == ProviderRequestLimiter.WaitReason.CAPACITY
+                ? "WAITING_PROVIDER_CAPACITY" : "WAITING_RATE_LIMIT", millis);
     }
 
     /** Application-startup configuration only; an active queue is never replaced. */
     synchronized void configure(ProviderRequestLimiter.Limits limits) {
         if (used) throw new IllegalStateException("Cannot replace an active provider admission policy");
         this.limits = limits;
-        limiter = new ProviderRequestLimiter(limits);
+        limiter = newLimiter(limits);
     }
 
     synchronized void configure(ProviderConcurrencyPermits permits) {
@@ -67,11 +87,11 @@ final class LlmRequestAdmission {
         String key = provider.equals(LlmProvider.GEMINI.id()) ? "llm.rpm"
                 : "llm.rpm." + provider.value().toLowerCase(Locale.ROOT);
         int rpm = settings == null ? 0 : Math.max(0, settings.getInt(key, defaultRpm));
-        long queuedAt = System.nanoTime();
+        long queuedAt = monotonicNanos.getAsLong();
         Runnable checkpoint = () -> {
             AnalysisRunControl.checkpoint();
             if ((distributed != ProviderConcurrencyPermits.NONE || quotas != ProviderRateQuotas.NONE)
-                    && TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - queuedAt) >= maximumWait) {
+                    && TimeUnit.NANOSECONDS.toMillis(monotonicNanos.getAsLong() - queuedAt) >= maximumWait) {
                 throw new LlmRateLimitException(provider + ": Provider admission wait expired");
             }
         };
@@ -79,9 +99,7 @@ final class LlmRequestAdmission {
             long quotaWait = 0;
             ProviderRequestLimiter.Permit permit;
             try {
-                permit = current.acquire(rpm, checkpoint, (reason, millis) ->
-                        AnalysisRunControl.pause(reason == ProviderRequestLimiter.WaitReason.CAPACITY
-                                ? "WAITING_PROVIDER_CAPACITY" : "WAITING_RATE_LIMIT", millis));
+                permit = current.acquire(rpm, checkpoint, waiter);
             } catch (ProviderRequestLimiter.CapacityException | ProviderRequestLimiter.WaitTimeoutException full) {
                 throw new LlmRateLimitException(provider + ": " + full.getMessage(), full);
             }
@@ -110,9 +128,9 @@ final class LlmRequestAdmission {
                 permit.close();
             }
             checkpoint.run();
-            long remaining = maximumWait - TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - queuedAt);
+            long remaining = maximumWait - TimeUnit.NANOSECONDS.toMillis(monotonicNanos.getAsLong() - queuedAt);
             // Cooperative pause checks cancellation every250ms without repeatedly polling the broker ledger.
-            AnalysisRunControl.pause("WAITING_RATE_LIMIT", Math.min(quotaWait, Math.max(1, remaining)));
+            waiter.pause(ProviderRequestLimiter.WaitReason.RATE_LIMIT, Math.min(quotaWait, Math.max(1, remaining)));
         }
     }
 
