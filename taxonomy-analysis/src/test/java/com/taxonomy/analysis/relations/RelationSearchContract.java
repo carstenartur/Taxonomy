@@ -214,6 +214,80 @@ public final class RelationSearchContract {
         check(r.calls() == 2 && r.trace().size() == 3, "all siblings assessed in bounded batches");
     }
 
+    public static void testMixedSiblingVerificationPrecedesFurtherExplorationOnNewGrants() {
+        Node match = node("first-match", "IP", false);
+        Node branch = node("second-branch", "IP", true);
+        Node child = node("unrelated-child", "IP", false);
+        var engine = new RelationSearchEngine(n -> n.equals(ROOT) ? List.of(match, branch) : List.of(child),
+                q -> q.candidates().stream().map(n -> decision(n.id(), n.container() ? Outcome.DESCEND
+                        : n.equals(match) ? (q.phase() == Phase.VERIFY ? Outcome.VERIFIED : Outcome.MATCH)
+                        : Outcome.REJECT)).toList(), () -> {});
+        var limits = new Limits(3, 8, 10, 100);
+
+        var historical = engine.search(ORIGINAL, List.of(intent(READ)), limits, false);
+        check(historical.calls() == 3 && historical.edges().isEmpty()
+                        && historical.unfinished().stream().anyMatch(gap -> gap.targets().equals(List.of(match.id()))),
+                "unmarked grants retain the original paid exploration prefix");
+
+        var fresh = engine.search(ORIGINAL, List.of(intent(READ)), limits);
+        check(fresh.calls() == 3 && fresh.edges().stream().map(Edge::targetId).toList().equals(List.of(match.id())),
+                "third call should verify the first sibling: " + fresh.trace());
+        check(fresh.unfinished().stream().anyMatch(gap -> gap.reason().equals("CALL_BUDGET")
+                        && gap.targets().equals(List.of(child.id()))), "unvisited sibling must remain pending");
+    }
+
+    public static void testVerificationGetsTheLastWorkSlotBeforeSiblingDescents() {
+        Node branch = node("branch-a", "IP", true), match = node("match-b", "IP", false);
+        Node child = node("unrelated-child", "IP", false);
+        var engine = new RelationSearchEngine(n -> n.equals(ROOT) ? List.of(branch, match) : List.of(child),
+                q -> q.candidates().stream().map(n -> decision(n.id(), n.container() ? Outcome.DESCEND
+                        : q.phase() == Phase.VERIFY ? Outcome.VERIFIED : Outcome.MATCH)).toList(), () -> {});
+        var result = engine.search(ORIGINAL, List.of(intent(READ)), new Limits(10, 8, 10, 3));
+        check(result.edges().stream().map(Edge::targetId).toList().equals(List.of(match.id())),
+                "reserve the last available work slot for the already identified concrete match");
+        check(result.unfinished().stream().anyMatch(gap -> gap.reason().equals("WORK_LIMIT")
+                        && gap.targets().equals(List.of(child.id()))), "unadmitted descendants remain visible");
+    }
+
+    public static void testPackedSiblingDescentsKeepFirstBranchFirst() {
+        Node first = node("branch-a", "IP", true), second = node("branch-b", "IP", true);
+        Node firstChild = node("child-a", "IP", false), secondChild = node("child-b", "IP", false);
+        var engine = new RelationSearchEngine(n -> n.equals(ROOT) ? List.of(first, second)
+                : n.equals(first) ? List.of(firstChild) : List.of(secondChild),
+                q -> decisions(q, q.candidates().getFirst().container() ? Outcome.DESCEND : Outcome.REJECT), () -> {});
+        var result = engine.search(ORIGINAL, List.of(intent(READ)), new Limits(3, 8, 10, 100));
+        check(result.trace().getLast().targetId().equals(firstChild.id()), "first sibling's branch should run first");
+        check(result.unfinished().stream().anyMatch(gap -> gap.targets().equals(List.of(secondChild.id()))),
+                "unvisited sibling branch must remain pending");
+    }
+
+    public static void testDescendedPromptSplitsPreserveBatchAdmissionOrder() {
+        Node area = node("BP", "BP", true);
+        Node wrapper = node("BP-1000", "BP", true);
+        List<String> branchIds = List.of("BP-1327", "BP-1481", "BP-1486", "BP-1779");
+        List<Node> branches = branchIds.stream()
+                .map(id -> new Node(id, "BP", id, "x".repeat(9_000), false)).toList();
+        var visited = new ArrayList<String>();
+        var search = new RelationSearchEngine(parent -> parent.equals(area) ? List.of(wrapper) : branches, q -> {
+            check(q.candidates().size() == 1, "prompt budget should split sibling candidates");
+            Node candidate = q.candidates().getFirst();
+            visited.add(candidate.id());
+            return decisions(q, candidate.container() ? Outcome.MATCH : Outcome.REJECT);
+        }, () -> {});
+        var seed = new Intent(READ, "SUPPORTS", Direction.OUTGOING, List.of(area));
+        for (int workLimit : List.of(100, 4)) {
+            visited.clear();
+            Result result = search.search(ORIGINAL, List.of(seed), new Limits(3, 8, 10, workLimit));
+            check(visited.equals(List.of("BP", "BP-1000", "BP-1327")), "unexpected visit order: " + visited);
+            var pending = result.unfinished().stream()
+                    .filter(gap -> List.of("CALL_BUDGET", "WORK_LIMIT").contains(gap.reason()))
+                    .flatMap(gap -> gap.targets().stream()).toList();
+            check(pending.size() == 3 && Set.copyOf(pending).equals(Set.copyOf(branchIds.subList(1, 4))),
+                    "unvisited branches should remain funded or unfunded open work: " + pending);
+            check(!result.searchExhausted(), "budget-limited refinement remains open");
+        }
+    }
+
     public static void testOptionalAndAlternativeSemanticsSurviveVerification() {
         for (Necessity mode : List.of(Necessity.OPTIONAL, Necessity.ALTERNATIVE)) {
             Result r = engine(q -> List.of(new Decision("evidence", q.phase() == Phase.VERIFY ? Outcome.VERIFIED : Outcome.MATCH,

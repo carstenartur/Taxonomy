@@ -5,6 +5,8 @@ import com.taxonomy.dsl.model.CatalogueDefinition;
 import com.taxonomy.dto.RelationSearchProgress;
 import com.taxonomy.relations.service.RelationCompatibilityMatrix;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.util.*;
@@ -209,6 +211,104 @@ class DistributedRelationSearchTest {
     }
 
     @Test
+    void scarceSourceCallsAdmitOneIntactBatchPerTaxonomyInBothExecutionModes() {
+        var fixture = new MixedSourceCohort();
+        var localCalls = new ArrayList<String>();
+        var local = search(fixture, record(localCalls)).search(READ, fixture.scores, fixture.options);
+        var distributedCalls = new ArrayList<String>();
+        var engine = search(fixture, record(distributedCalls));
+        var plan = engine.prepare("fair-cohort", READ, fixture.scores, List.of("scored-roots"), fixture.options, true);
+
+        var expected = List.of(fixture.prompt(0), fixture.prompt(3));
+        assertThat(localCalls.stream().filter(prompt -> prompt.contains("Extract ONLY")).toList()).isEqualTo(expected);
+        assertThat(distributedCalls).isEqualTo(expected);
+        assertThat(plan.sourceCalls()).isEqualTo(2);
+        assertThat(plan.sources()).isEqualTo(local.sources());
+        assertThat(plan.sourceNodes()).containsExactlyElementsOf(fixture.ranked);
+        var distributed = RelationSearchDistribution.combine(plan, execute(engine, plan, READ));
+        for (var report : List.of(local, distributed)) {
+            assertThat(report.totalCalls()).isLessThanOrEqualTo(4);
+            assertThat(report.progress().totalSources()).isEqualTo(8);
+            assertThat(report.progress().assessedSources()).isEqualTo(4);
+            assertThat(report.progress().sourceTaxonomies()).extracting(RelationSearchProgress.SourceTaxonomy::root)
+                    .containsExactlyInAnyOrder("BP", "CI");
+            assertThat(report.warnings()).anyMatch(warning -> warning.startsWith("SOURCE_LIMIT"));
+            assertThat(report.isSearchExhausted()).isFalse();
+        }
+    }
+
+    @Test
+    void continuationReusesTheFormerBpFirstBatchesWithoutNewProviderCallsForThoseKeys() {
+        var fixture = new MixedSourceCohort();
+        var journal = new Journal();
+        var calls = new ArrayList<String>();
+        try (var session = new com.taxonomy.analysis.recovery.AnalysisCheckpointSession(journal)) {
+            // Seed the complete prompts/answers previously admitted before CI received a turn.
+            var protocol = new RelationSearchProtocol(record(calls));
+            protocol.contributionsRecovering(READ, fixture.batch(0));
+            protocol.contributionsRecovering(READ, fixture.batch(1));
+        }
+        assertThat(calls).containsExactly(fixture.prompt(0), fixture.prompt(1));
+        calls.clear();
+        try (var session = new com.taxonomy.analysis.recovery.AnalysisCheckpointSession(journal)) {
+            var resumed = search(fixture, record(calls)).search(READ, fixture.scores, fixture.options);
+            assertThat(calls.stream().filter(prompt -> prompt.contains("Extract ONLY")).toList())
+                    .containsExactly(fixture.prompt(3), fixture.prompt(2));
+            assertThat(resumed.sources().stream().map(SourceAssessment::node)).containsExactlyElementsOf(fixture.ranked);
+            assertThat(resumed.totalCalls()).isLessThanOrEqualTo(4);
+        }
+    }
+
+    @Test
+    void redeliveryOfALegacyFrozenGrantRecountsTheOriginalPrefixBeforeAnyNewCall() {
+        var fixture = new MixedSourceCohort();
+        var storedBudget = JSON.readValue("""
+                {"callsPerSlice":4,"maxTotalCalls":40,"callsBeforeExecution":0,"automatic":false,
+                 "sourcesPerSlice":8,"workItemsPerSlice":128,"sourceCohortSize":8}
+                """, RequirementRelationSearch.BudgetPolicy.class);
+        assertThat(JSON.valueToTree(storedBudget).has("batchSchedule")).isFalse();
+        assertThat(JSON.readValue(JSON.writeValueAsString(fixture.options), RequirementRelationSearch.Options.class))
+                .isEqualTo(fixture.options);
+        var options = new RequirementRelationSearch.Options(fixture.options.limits(), 8, 16_000, storedBudget);
+        var journal = new Journal();
+        var calls = new ArrayList<String>();
+        try (var session = new com.taxonomy.analysis.recovery.AnalysisCheckpointSession(journal)) {
+            var protocol = new RelationSearchProtocol(record(calls));
+            protocol.contributionsRecovering(READ, fixture.batch(0));
+            protocol.contributionsRecovering(READ, fixture.batch(1));
+            calls.clear();
+            var plan = search(fixture, record(calls)).prepare("legacy-retry", READ, fixture.scores,
+                    List.of("scored-roots"), options, true);
+            assertThat(calls).isEmpty();
+            assertThat(plan.sourceCalls()).isEqualTo(2);
+            assertThat(plan.sources().stream().map(SourceAssessment::node)).containsExactlyElementsOf(fixture.ranked.subList(0, 4));
+            assertThat(plan.warnings()).anyMatch(warning -> warning.startsWith("SOURCE_LIMIT"));
+        }
+    }
+
+    private static final class MixedSourceCohort implements RequirementRelationSearch.InputCatalogue {
+        final List<Node> ranked = new ArrayList<>();
+        final Map<String, Double> scores = new HashMap<>();
+        final RequirementRelationSearch.Options options = new RequirementRelationSearch.Options(new Limits(4, 8, 2, 128), 8, 16_000,
+                new RequirementRelationSearch.BudgetPolicy(4, 40, 0, false, 8, 128, 8));
+
+        MixedSourceCohort() {
+            for (int i = 0; i < 8; i++) {
+                String root = i < 6 ? "BP" : "CI";
+                String id = root + "-fixture-" + i;
+                ranked.add(new Node(id, root, id, "Fixture source", false));
+                scores.put(id, 95d - i);
+            }
+        }
+
+        List<Node> batch(int index) { return ranked.subList(2 * index, 2 * index + 2); }
+        String prompt(int index) { return RelationSearchProtocol.sourcePrompt(READ, batch(index), Map.of()); }
+        public Node find(String id) { return ranked.stream().filter(node -> node.id().equals(id)).findFirst().orElse(null); }
+        public List<Node> roots() { return List.of(ROOT); }
+        public List<Node> children(Node node) { return List.of(); }
+    }
+
+    @Test
     void sourceAndWorkLimitsRemainExplicitAndBounded() {
         var many = new LinkedHashMap<String, Node>();
         var scores = new LinkedHashMap<String, Double>();
@@ -354,6 +454,60 @@ class DistributedRelationSearchTest {
             assertThat(RelationSearchDistribution.ready(plan, List.of(replay)))
                     .isEqualTo(RelationSearchDistribution.ready(plan, List.of(first)));
         }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void oldTargetGrantReplaysItsPaidSplitPrefixAndNewGrantUsesPackingOrder(boolean withFrozenBudget) {
+        var first = new Node("evidence-a", "IP", "First", "a".repeat(9_000), false);
+        var last = new Node("evidence-z", "IP", "Last", "z".repeat(9_000), false);
+        var catalogue = new RequirementRelationSearch.InputCatalogue() {
+            public Node find(String id) { return SOURCE.id().equals(id) ? SOURCE : null; }
+            public List<Node> roots() { return List.of(ROOT); }
+            public List<Node> children(Node node) { return node.equals(ROOT) ? List.of(first, last) : List.of(); }
+        };
+        var budget = withFrozenBudget ? new RequirementRelationSearch.BudgetPolicy(4, 20, 0, false, 8, 128, 8) : null;
+        var options = new RequirementRelationSearch.Options(new Limits(4, 8, 10, 128), 8, 16_000, budget);
+        var calls = new ArrayList<String>();
+        var engine = search(catalogue, record(calls));
+        var fresh = engine.prepare("split-targets", READ, Map.of(SOURCE.id(), 90d), List.of("scored-BP"), options, true);
+        var grant = RelationSearchDistribution.ready(fresh, List.of()).getFirst();
+        assertThat(grant.maxCalls()).isEqualTo(3);
+        var document = JSON.valueToTree(fresh);
+        var oldOptions = (tools.jackson.databind.node.ObjectNode) document.path("options");
+        oldOptions.remove("standaloneBatchSchedule");
+        if (withFrozenBudget) {
+            var oldBudget = (tools.jackson.databind.node.ObjectNode) oldOptions.path("budget");
+            oldBudget.remove("batchSchedule");
+        }
+        var old = JSON.treeToValue(document, RelationSearchDistribution.Plan.class);
+        var intent = RelationSearchDistribution.intent(old, old.items().get(grant.ordinal()));
+        var journal = new Journal();
+        try (var session = new com.taxonomy.analysis.recovery.AnalysisCheckpointSession(journal)) {
+            // The old worker prepended split batches in forward order and verified the last child first.
+            var protocol = new RelationSearchProtocol(record(calls));
+            var root = new Query(READ, intent.contribution(), intent.type(), intent.direction(), Phase.NAVIGATE, List.of(ROOT), null);
+            var child = new Query(READ, intent.contribution(), intent.type(), intent.direction(), Phase.NAVIGATE, List.of(last), null);
+            assertThat(protocol.evaluateRecovering(root).getFirst().outcome()).isEqualTo(Outcome.DESCEND);
+            var proposal = protocol.evaluateRecovering(child).getFirst();
+            var verified = protocol.evaluateRecovering(new Query(READ, intent.contribution(), intent.type(), intent.direction(),
+                    Phase.VERIFY, List.of(last), proposal)).getFirst();
+            assertThat(verified.outcome()).isEqualTo(Outcome.VERIFIED);
+            calls.clear();
+
+            var replay = engine.evaluate(READ, old, grant);
+
+            assertThat(calls).as("redelivery must spend no new provider calls").isEmpty();
+            assertThat(replay.calls()).isEqualTo(3);
+            assertThat(replay.result().edges()).extracting(Edge::evidence).containsExactly(verified);
+            assertThat(replay.result().unfinished()).anyMatch(gap -> gap.targets().contains(first.id()));
+        }
+
+        var newPlan = JSON.readValue(JSON.writeValueAsString(fresh), RelationSearchDistribution.Plan.class);
+        var result = engine.evaluate(READ, newPlan, grant);
+        assertThat(result.calls()).isEqualTo(3);
+        assertThat(result.result().edges()).extracting(Edge::targetId).containsExactly(first.id());
+        assertThat(result.result().unfinished()).anyMatch(gap -> gap.targets().contains(last.id()));
     }
 
     private static final class Journal implements com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Store {

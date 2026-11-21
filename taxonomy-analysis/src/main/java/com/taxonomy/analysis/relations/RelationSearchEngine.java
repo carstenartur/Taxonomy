@@ -54,9 +54,13 @@ public final class RelationSearchEngine {
     }
 
     public Result search(String original, List<Intent> intents, Limits limits) {
+        return search(original, intents, limits, true);
+    }
+
+    Result search(String original, List<Intent> intents, Limits limits, boolean orderedDescendants) {
         Objects.requireNonNull(intents); Objects.requireNonNull(limits);
         if (original == null || original.isBlank()) throw new IllegalArgumentException("Missing original requirement");
-        return new Run(original, limits).execute(List.copyOf(intents));
+        return new Run(original, limits, orderedDescendants).execute(List.copyOf(intents));
     }
 
     private record Work(Query query, int depth, Set<String> path) { }
@@ -64,8 +68,10 @@ public final class RelationSearchEngine {
     private final class Run {
         private final String original;
         private final Limits limits;
+        private final boolean orderedDescendants;
         private final long started = System.nanoTime();
         private final Deque<Work> queue = new ArrayDeque<>();
+        private final List<Work> followups = new ArrayList<>();
         private final Set<Query> scheduled = new HashSet<>();
         private final Set<Edge> edges = new LinkedHashSet<>();
         private final List<Unfinished> unfinished = new ArrayList<>();
@@ -78,7 +84,11 @@ public final class RelationSearchEngine {
         private Intent activeSeed;
         private int unfinishedAtSeed;
 
-        Run(String original, Limits limits) { this.original = original; this.limits = limits; }
+        Run(String original, Limits limits, boolean orderedDescendants) {
+            this.original = original;
+            this.limits = limits;
+            this.orderedDescendants = orderedDescendants;
+        }
 
         Result execute(List<Intent> intents) {
             for (Intent intent : intents) {
@@ -154,6 +164,7 @@ public final class RelationSearchEngine {
                         case DESCEND -> descend(work, node);
                     }
                 }
+                scheduleFollowups();
             }
             finishSeed();
             return snapshot();
@@ -202,15 +213,35 @@ public final class RelationSearchEngine {
 
         private void enqueue(Contribution contribution, String type, Direction direction, Phase phase,
                              List<Node> candidates, Decision proposal, int depth, Set<String> path) {
+            boolean followup = phase == Phase.VERIFY || depth > 0;
             for (Query query : queries(contribution, type, direction, phase, candidates, proposal)) {
-                if (scheduled.contains(query)) continue;
-                if (!externalBudget && scheduled.size() >= limits.maxWorkItems()) { issue(query, "WORK_LIMIT", ""); continue; }
-                scheduled.add(query);
                 Work work = new Work(query, depth, path);
-                // Finish an admitted branch before admitting unrelated source roots.
-                if (phase == Phase.VERIFY || depth > 0) queue.addFirst(work);
-                else queue.addLast(work);
+                if (followup && orderedDescendants) {
+                    followups.add(work);
+                } else if (admit(query)) {
+                    if (followup) queue.addFirst(work); // Historical grants replay the original paid prefix.
+                    else queue.addLast(work);
+                }
             }
+        }
+
+        private boolean admit(Query query) {
+            if (scheduled.contains(query)) return false;
+            if (!externalBudget && scheduled.size() >= limits.maxWorkItems()) {
+                issue(query, "WORK_LIMIT", "");
+                return false;
+            }
+            return scheduled.add(query);
+        }
+
+        private void scheduleFollowups() {
+            if (followups.isEmpty()) return;
+            // Stable sort preserves candidate and split-batch order within each phase.
+            // Admit verification before exploration, even when only one work slot remains.
+            followups.sort(Comparator.comparing(work -> work.query().phase() != Phase.VERIFY));
+            followups.removeIf(work -> !admit(work.query()));
+            followups.reversed().forEach(queue::addFirst);
+            followups.clear();
         }
 
         private List<Query> queries(Contribution contribution, String type, Direction direction, Phase phase,
@@ -232,6 +263,7 @@ public final class RelationSearchEngine {
         }
 
         private void interrupt(Work current, RuntimeException stopped) {
+            scheduleFollowups(); // Include work already identified in this response before a later sibling failed.
             issue(current.query(), "INTERRUPTED", ""); drain("INTERRUPTED"); finishSeed();
             throw new InterruptedSearchException(stopped, snapshot());
         }
