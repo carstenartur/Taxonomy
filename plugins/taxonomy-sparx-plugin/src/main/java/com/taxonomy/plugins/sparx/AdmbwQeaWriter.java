@@ -219,10 +219,12 @@ final class AdmbwQeaWriter {
             tags.newAdmbwStereotype(guid, element.stereotype(), false);
             if (AdmbwQeaProfile.requirement(element.stereotype())) {
                 var evidence = new LinkedHashMap<String, String>();
+                evidence.put("Text", element.notes());
                 evidence.put("Taxonomy.SourceRef", element.ref());
                 evidence.put("Taxonomy.RequirementVersion", element.requirementVersion().toString());
                 evidence.put("Taxonomy.RequirementContentSha256", element.requirementContentHash());
                 tags.tags(id, guid, false, evidence);
+                tags.newAdmbwRequirementPlanningTags(id, guid);
             }
             return id;
         }

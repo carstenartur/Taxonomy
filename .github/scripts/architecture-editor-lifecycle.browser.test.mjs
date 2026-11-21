@@ -740,7 +740,7 @@ for (const blockedNative of [false,true]) test('guided ADMBw review pins the ori
         await page.locator('#prepRationale').fill('Reviewed source and native requirements.');
         await page.locator('#prepPreview').click();
         await page.locator('#prepResult').getByText(requirementHash,{exact:false}).first().waitFor();
-        assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth <= window.innerWidth),true,
+        assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth <= document.documentElement.clientWidth),true,
             'The source paths, hashes, coverage and controls must fit a 375px viewport');
         if (blockedNative) assert.match(await page.locator('#prepResult').innerText(),/element:resource-role.*no owned EA Part/);
         assert.equal(await page.locator('#prepAccept').isEnabled(),false);

@@ -260,6 +260,7 @@ class ScenarioArchitectureAcceptanceTest {
         for (var binding : fixture.get("bindings").properties()) {
             assertThat(names).containsEntry(binding.getKey(), binding.getValue().asText());
         }
+        verifyRelationSourceCatalogue(fixture.path("relationPlayback"));
         try (var browser = Boolean.getBoolean("generateScreenshots")
                 ? new ScenarioBrowserWalkthrough(port, output) : null) {
             Run run = browser == null ? startThroughHttp(fixture) : browser.start(fixture, this);
@@ -405,6 +406,21 @@ class ScenarioArchitectureAcceptanceTest {
             assertFrozenWordSourceSurvivesLiveStateMutations(projectId,snapshotId,projection);
             saveRun(projectId, requirementId, snapshotId);
         }
+    }
+
+    private void verifyRelationSourceCatalogue(JsonNode corpus) {
+        var expectedNavigation = new TreeSet<String>();
+        corpus.path("navigationOnlySources").forEach(node -> expectedNavigation.add(node.path("nodeId").asText()));
+        var classifiedSources = new TreeSet<>(expectedNavigation);
+        for (String section : List.of("sourceContributions", "sourceRejections")) {
+            corpus.path(section).forEach(node -> classifiedSources.add(node.path("nodeId").asText()));
+        }
+        var descriptions = catalogueService.getRelationAssessmentDescriptions(catalogueRepository.findByCodeIn(classifiedSources));
+        assertThat(descriptions.keySet()).containsExactlyInAnyOrderElementsOf(classifiedSources);
+        var actualNavigation = descriptions.entrySet().stream().filter(entry -> entry.getValue().navigationOnly())
+                .map(Map.Entry::getKey).toList();
+        assertThat(actualNavigation).as("Relation source expectations match the imported catalogue")
+                .containsExactlyInAnyOrderElementsOf(expectedNavigation);
     }
 
     void verifyIndependentPasses(long projectId, JsonNode operation, JsonNode analysis) throws Exception {

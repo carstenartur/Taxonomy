@@ -1,6 +1,51 @@
 /* Exact checkpoint coverage for the bounded C1-S1/R7 delivery. */
 (function () {
     'use strict';
+    // The report retains its audit text; localize known review guidance only for display.
+    var guidanceKeys = new Map([
+        [
+                "This preview represents the changes after explicit review of service fulfilment and requirement derivation.",
+                "editor.admbw.guidance.reviewedChanges"
+        ],
+        [
+                "The operational constraint is a proposed restatement grounded in the quoted requirement; independent upstream evidence was not supplied.",
+                "editor.admbw.guidance.derivedConstraint"
+        ],
+        [
+                "The selected QEA reference identities apply to the inspected basis; independent architecture review remains required.",
+                "editor.admbw.guidance.basisScope"
+        ],
+        [
+                "Verify catalogue identities against the supplied catalogue. Record unresolved capabilities as Issues.",
+                "editor.admbw.guidance.catalogue"
+        ],
+        [
+                "Check whether an Environment and EnvironmentalCondition are needed.",
+                "editor.admbw.guidance.environment"
+        ],
+        [
+                "Check the actual ADMBw diagram subtype, diagram notes and native delivery in Enterprise Architect.",
+                "editor.admbw.guidance.nativeDiagram"
+        ],
+        [
+                "Check the SAMIT requirement sentence, Require.7 tagged fields and agreement of the Subjekt with the planned realizer.",
+                "editor.admbw.guidance.requirement"
+        ],
+        [
+                "Verify the catalogue SubjectOfOperationalConstraint and the native Satisfy roles (R7-MK08).",
+                "editor.admbw.guidance.subject"
+        ],
+        [
+                "Check additional allowed realizer types and view grouping against the applicable project guide.",
+                "editor.admbw.guidance.realizer"
+        ]
+]);
+    function message(value, t) {
+        var key = guidanceKeys.get(value);
+        if (!key) return value;
+        var translated = t(key);
+        return translated && translated !== key ? translated : value;
+    }
     function render(coverage, t, selectElement) {
         function node(tag, value) {
             var result = document.createElement(tag);
@@ -61,5 +106,5 @@
         }
         return section;
     }
-    window.TaxonomyAdmbwCoverage = {render: render};
+    window.TaxonomyAdmbwCoverage = {render: render, message: message};
 }());

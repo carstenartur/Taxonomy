@@ -105,12 +105,12 @@
                 node('p', result.requirementId + ' · ' + text('version', result.requirementVersion) + ' · SHA-256 ' + result.requirementContentHash),
                 node('p', selection.requirementType + ' · ' + el('prepSubject').selectedOptions[0].textContent),
                 node('p', 'QEA SHA-256 ' + result.basisSha256));
-            for (const note of result.notes) area.append(node('p', note));
+            for (const note of result.notes) area.append(node('p', window.TaxonomyAdmbwCoverage.message(note, t)));
             for (const issue of result.qeaIssues || []) area.append(node('p', issue.object + ' · ' + issue.detail));
             for (const profile of [result.assessment.capabilityToService, result.assessment.requirementDerivation]) {
                 area.append(node('p', (profile.viewpoint || profile.name || '') + ' · ' + t('editor.admbw.status.' + profile.status)));
                 for (const issue of profile.issues) area.append(node('p', issue.object + ' · ' + issue.detail));
-                for (const item of profile.requiredReviews || []) area.append(node('p', item));
+                for (const item of profile.requiredReviews || []) area.append(node('p', window.TaxonomyAdmbwCoverage.message(item, t)));
             }
             area.append(window.TaxonomyAdmbwCoverage.render(result.assessment.coverage, t));
             for (const change of result.changes) {

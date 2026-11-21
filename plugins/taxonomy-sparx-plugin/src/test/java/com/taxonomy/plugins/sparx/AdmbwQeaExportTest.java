@@ -6,6 +6,8 @@ import com.taxonomy.extension.api.integration.AdmbwQeaExport.Element;
 import com.taxonomy.extension.api.integration.AdmbwQeaExport.View;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -46,6 +48,51 @@ class AdmbwQeaExportTest {
                 var diagrams = column(read, "select Notes from t_diagram where Diagram_ID > 30");
                 assertEquals(2, diagrams.size());
                 for (String diagram : diagrams) assertTrue(diagram.contains(notes), diagram);
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource({"FunctionalRequirement, short", "NonfunctionalRequirement, long", "FunctionalRequirement, sentinel"})
+    void exportsExactInheritedRequirementTextAndLeavesPlanningValuesUnknown(String stereotype, String size) throws Exception {
+        String text = switch (size) {
+            case "long" -> "Nächster Absatz.\r\n".repeat(25);
+            case "sentinel" -> "<memo>";
+            default -> "Freigegebene Texte lesen.";
+        };
+        String hash = QeaDatabase.digest(text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        try (var basis = basis()) {
+            basis.sql("INSERT INTO t_objectproperties(PropertyID,Object_ID,Property,Value) VALUES(9100,10,'QS_Status','preserved')");
+            byte[] original = basis.bytes();
+            var req = new Element("req", stereotype, "Anforderung", text, null, 7, hash);
+            var file = new SparxQeaWriterConnector().exportAdmbw(delivery(req), QeaFixture.ROOT, original);
+            assertArrayEquals(original, basis.bytes());
+            Path target = Files.write(temp.resolve("inherited-tags.qea"), file.content());
+            try (var read = DriverManager.getConnection("jdbc:sqlite:" + target)) {
+                assertEquals(List.of("preserved"), column(read,
+                        "select Value from t_objectproperties where PropertyID=9100 and Object_ID=10"));
+                try (var statement = read.prepareStatement("""
+                        select o.Note,p.Value,p.Notes from t_object o join t_objectproperties p on o.Object_ID=p.Object_ID
+                        where o.Stereotype=? and p.Property='Text'
+                        """)) {
+                    statement.setString(1, stereotype);
+                    try (var rows = statement.executeQuery()) {
+                        assertTrue(rows.next(), "The inherited BWRequirement.Text tag must exist");
+                        assertEquals(text, rows.getString("Note"));
+                        boolean memo = !"short".equals(size);
+                        assertEquals(memo ? "<memo>" : text, rows.getString("Value"));
+                        if (memo) assertEquals(text, rows.getString("Notes"));
+                        assertFalse(rows.next());
+                    }
+                }
+                assertEquals(List.of("Anforderungsart","Kritikalität","Operative Bewertung","Priorität Vergabe","QS_Status"),
+                        column(read, """
+                                select p.Property from t_objectproperties p join t_object o on p.Object_ID=o.Object_ID
+                                where o.Object_Type='Requirement' and p.Value is null and p.Notes is null
+                                order by p.Property
+                                """));
+                assertEquals(List.of(hash), column(read,
+                        "select Value from t_objectproperties where Property='Taxonomy.RequirementContentSha256'"));
             }
         }
     }
@@ -293,6 +340,10 @@ class AdmbwQeaExportTest {
     }
 
     private static Delivery delivery() {
+        return delivery(new Element("req", "FunctionalRequirement", "Warnen", "Muss warnen.", null, 7, HASH));
+    }
+
+    private static Delivery delivery(Element requirement) {
         return new Delivery("WARN", COMMIT, List.of(
                 new View("C1-S1", "C1-S1 : WARN : Capability to Service Mapping",
                         List.of("Service Specifications", "C1-S1", "Einordnung Fähigkeitslage"),
@@ -300,7 +351,7 @@ class AdmbwQeaExportTest {
                                 new Element("service", "ServiceSpecification", "Warndienst", "Beschreibung", null, null, null)),
                         List.of(new Connector("Exhibits", "service", "cap"))),
                 new View("R7", "R7 : WARN : Requirements Derivation", List.of("Requirements", "R7", "Requirement Derivation"),
-                        List.of(new Element("req", "FunctionalRequirement", "Warnen", "Muss warnen.", null, 7, HASH),
+                        List.of(requirement,
                                 new Element("constraint", "OperationalConstraint", "Randbedingung", "", null, null, null),
                                 new Element("subject", "OperationalRole", "Local role", "", QeaFixture.B, null, null),
                                 new Element("realizer", "CapabilityConfiguration", "WARN", "", null, null, null)),

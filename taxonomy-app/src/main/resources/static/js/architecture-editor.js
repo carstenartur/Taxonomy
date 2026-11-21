@@ -140,7 +140,7 @@
                 var list = document.createElement('ul');
                 reportView.issues.map(function (issue) { return issue.object + ' · ' + issue.detail; })
                     .concat(reportView.requiredReviews).forEach(function (detail) {
-                        var item = document.createElement('li'); item.textContent = detail; list.append(item);
+                        var item = document.createElement('li'); item.textContent = window.TaxonomyAdmbwCoverage.message(detail, t); list.append(item);
                     });
                 result.append(title, list);
             });

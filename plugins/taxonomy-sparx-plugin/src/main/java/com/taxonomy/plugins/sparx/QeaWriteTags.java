@@ -35,15 +35,11 @@ final class QeaWriteTags {
             if (Objects.equals(current, entry.getValue())) continue;
             if (old != null && (old.binaryFields().contains("value") || old.binaryFields().contains("notes")))
                 throw fail("QEA_BINARY_FIELD_UNSUPPORTED", "A binary tagged value cannot be replaced by scalar evidence");
-            boolean memo = old != null && old.text("value").equals("<memo>") && !entry.getValue().isEmpty() || entry.getValue().length() > 255;
+            boolean memo = entry.getValue().length() > 255 || entry.getValue().equals("<memo>")
+                    || old != null && old.text("value").equals("<memo>") && !entry.getValue().isEmpty();
             if (old == null) {
-                var fields = new LinkedHashMap<String, Object>();
-                fields.put("propertyid", database.next(table, "propertyid")); fields.put(ownerColumn, owner);
-                fields.put("property", entry.getKey()); fields.put("value", memo ? "<memo>" : entry.getValue());
-                if (memo) fields.put("notes", entry.getValue());
-                else if (database.hasColumn(table, "notes")) fields.put("notes", "");
-                if (database.hasColumn(table, "ea_guid")) fields.put("ea_guid", auxiliary("tag:" + ownerGuid + ":" + entry.getKey()));
-                database.insert(table, fields);
+                insertTag(table, ownerColumn, owner, ownerGuid, entry.getKey(),
+                        memo ? "<memo>" : entry.getValue(), memo ? entry.getValue() : "");
             } else {
                 var fields = new LinkedHashMap<String, Object>();
                 fields.put("value", memo ? "<memo>" : entry.getValue());
@@ -52,6 +48,25 @@ final class QeaWriteTags {
                 database.update(table, "propertyid", old.id("propertyid"), fields);
             }
         }
+    }
+
+    /** BWRequirement fields require a reviewer's judgment. A new native requirement starts with SQL NULLs. */
+    void newAdmbwRequirementPlanningTags(long owner, String ownerGuid) throws SQLException {
+        for (String property : List.of("Anforderungsart", "Kritikalität", "Operative Bewertung", "Priorität Vergabe", "QS_Status")) {
+            insertTag("t_objectproperties", "object_id", owner, ownerGuid, property, null, null);
+        }
+    }
+
+    private void insertTag(String table, String ownerColumn, long owner, String ownerGuid, String property,
+                           String value, String notes) throws SQLException {
+        var fields = new LinkedHashMap<String, Object>();
+        fields.put("propertyid", database.next(table, "propertyid"));
+        fields.put(ownerColumn, owner);
+        fields.put("property", property);
+        fields.put("value", value);
+        if (database.hasColumn(table, "notes") || notes != null && !notes.isEmpty()) fields.put("notes", notes);
+        if (database.hasColumn(table, "ea_guid")) fields.put("ea_guid", auxiliary("tag:" + ownerGuid + ":" + property));
+        database.insert(table, fields);
     }
 
     void stereotype(String ownerGuid, String canonical, boolean connector) throws SQLException {
