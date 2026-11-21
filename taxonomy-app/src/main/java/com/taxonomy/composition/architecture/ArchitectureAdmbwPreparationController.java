@@ -30,7 +30,8 @@ public class ArchitectureAdmbwPreparationController {
     }
 
     @PostMapping(value = "/basis", consumes = {AdmbwQeaExport.MEDIA_TYPE, MediaType.APPLICATION_OCTET_STREAM_VALUE})
-    @Operation(summary = "Inspect actual ADMBw reference identities in a supplied QEA basis without changing it")
+    @Operation(summary = "Inspect actual ADMBw reference identities in a supplied QEA basis without changing it",
+            description = "Reads a nonempty QEA file up to 32 MiB in the selected repository and branch, and returns its native identity choices for review.")
     public ResponseEntity<AdmbwQeaExport.Basis> basis(@RequestParam String repositoryId,
             @RequestParam String workspaceScopeKey, @RequestParam String branch, HttpServletRequest request) throws IOException {
         var context = contexts.resolveForRead(repositoryId, workspaceScopeKey, branch);
@@ -39,7 +40,8 @@ public class ArchitectureAdmbwPreparationController {
     }
 
     @PostMapping(value = "/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "Preview a version-bound C1–S1 and R7 draft using actual native references")
+    @Operation(summary = "Preview a version-bound C1–S1 and R7 draft using actual native references",
+            description = "Evaluates the requested mappings against the supplied QEA basis and workspace revision, returning proposed changes, findings and omitted model content for review.")
     public ResponseEntity<ArchitectureAdmbwPreparationService.Preview> preview(
             @RequestPart("request") MultipartFile review,
             @RequestPart("basis") MultipartFile basis,
@@ -52,7 +54,8 @@ public class ArchitectureAdmbwPreparationController {
     }
 
     @PostMapping(value = "/accept", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "Apply explicitly reviewed ADMBw assignments atomically and retain their checkpoint receipt")
+    @Operation(summary = "Apply explicitly reviewed ADMBw assignments atomically and retain their checkpoint receipt",
+            description = "Validates the reviewed mappings, rationale, native basis and revision, then records the accepted changes and returns the resulting checkpoint and operation receipt.")
     public ResponseEntity<ArchitectureLifecycleService.Publication> accept(
             @RequestPart("request") MultipartFile review,
             @RequestPart("basis") MultipartFile basis,
