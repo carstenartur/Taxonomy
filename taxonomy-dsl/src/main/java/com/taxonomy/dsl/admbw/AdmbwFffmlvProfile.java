@@ -50,7 +50,8 @@ public final class AdmbwFffmlvProfile {
     private static final String ZERO_GUID = "{00000000-0000-0000-0000-000000000000}";
 
     public record Report(String profile, String projectCode, String sourceViewId,
-                         View capabilityToService, View requirementDerivation, AdmbwSourceProfile sourceProfile) { }
+                         View capabilityToService, View requirementDerivation, AdmbwSourceProfile sourceProfile,
+                         AdmbwDeliveryCoverage coverage) { }
 
     public record View(String viewpoint, String name, List<String> packagePath, String status,
                        List<Element> elements, List<Connector> connectors, List<Issue> issues,
@@ -80,9 +81,10 @@ public final class AdmbwFffmlvProfile {
             }
         }
         Map<String, String> catalogueIdentities = new HashMap<>();
-        return new Report(ID, projectCode, viewId,
-                capabilityToService(model, elements, projectCode, viewId, catalogueIdentities),
-                requirementDerivation(model, elements, projectCode, catalogueIdentities), SOURCE_PROFILE);
+        View capabilityView = capabilityToService(model, elements, projectCode, viewId, catalogueIdentities);
+        View requirementView = requirementDerivation(model, elements, projectCode, catalogueIdentities);
+        return new Report(ID, projectCode, viewId, capabilityView, requirementView, SOURCE_PROFILE,
+                AdmbwDeliveryCoverage.assess(model, viewId, capabilityView, requirementView));
     }
 
     private View capabilityToService(CanonicalArchitectureModel model, Map<String, ArchitectureElement> elements,
@@ -271,7 +273,15 @@ public final class AdmbwFffmlvProfile {
     private static void validateDelimiters(String dsl) {
         int depth = 0;
         for (String line : dsl.lines().toList()) {
-            depth += TaxDslParser.blockDelimiter(line);
+            int delimiter = TaxDslParser.blockDelimiter(line);
+            String structural = TaxDslParser.withoutComment(line).strip();
+            if (delimiter < 0 && !"}".equals(structural)) {
+                throw new IllegalArgumentException("Unparsed source text after a DSL closing delimiter");
+            }
+            if (depth == 0 && delimiter == 0 && !structural.isBlank()) {
+                throw new IllegalArgumentException("Unparsed source text outside a DSL block");
+            }
+            depth += delimiter;
             if (depth < 0 || depth > 1) {
                 throw new IllegalArgumentException("Invalid architecture DSL block delimiters");
             }
@@ -281,7 +291,7 @@ public final class AdmbwFffmlvProfile {
 
     private static void validateSourceBlock(BlockAst block, Set<String> identities) {
         int headerLength = switch (block.getKind()) {
-            case "element", "relation" -> 3;
+            case "element", "relation", "mapping" -> 3;
             case "requirement", "view" -> 1;
             default -> 0;
         };
@@ -291,7 +301,8 @@ public final class AdmbwFffmlvProfile {
             throw new CommandProblem("INVALID_ADMBW_SOURCE", id, "Ambiguous duplicate block identity", List.of(id));
         }
         if (block.getHeaderTokens().size() != headerLength
-                || "element".equals(block.getKind()) && !"type".equals(block.getHeaderTokens().get(1))) {
+                || "element".equals(block.getKind()) && !"type".equals(block.getHeaderTokens().get(1))
+                || "mapping".equals(block.getKind()) && !"->".equals(block.getHeaderTokens().get(1))) {
             throw new CommandProblem("INVALID_ADMBW_SOURCE", id, "Invalid block header for ADMBw assessment", List.of(id));
         }
         Set<String> names = new HashSet<>();

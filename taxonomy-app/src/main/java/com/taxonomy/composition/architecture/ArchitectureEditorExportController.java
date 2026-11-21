@@ -119,9 +119,10 @@ public final class ArchitectureEditorExportController {
                 checked.qeaIssues().stream().map(AdmbwFffmlvProfile.Issue::object).toList());
 
         try (var lease = catalog.acquire(AdmbwQeaExport.KEY, IntegrationConnectorExtension.class)) {
-            if (!(lease.extension() instanceof AdmbwQeaExport writer)) throw admbwExporterUnavailable();
+            if (!(lease.extension() instanceof AdmbwQeaExport writer) || !writer.supportsCoverageNotes())
+                throw admbwExporterUnavailable();
             var delivery = new AdmbwQeaExport.Delivery(report.projectCode(), checked.commit(),
-                    views.stream().map(ArchitectureEditorExportController::nativeView).toList());
+                    views.stream().map(ArchitectureEditorExportController::nativeView).toList(), report.coverage().notes());
             var file = writer.exportAdmbw(delivery, rootPackageGuid, readQeaBasis(request));
             return ResponseEntity.ok()
                     .cacheControl(CacheControl.noStore())
@@ -130,6 +131,7 @@ public final class ArchitectureEditorExportController {
                     .header("X-Content-Type-Options", "nosniff")
                     .header("X-Taxonomy-Source", "GIT_CHECKPOINT")
                     .header("X-Taxonomy-Commit", checked.commit())
+                    .header("X-Taxonomy-Delivery-Coverage", report.coverage().status())
                     .body(file.content());
         } catch (ExtensionUnavailableException unavailable) {
             throw admbwExporterUnavailable();
@@ -194,7 +196,7 @@ public final class ArchitectureEditorExportController {
         return documentResponse(document)
                 .header("X-Taxonomy-Layout-Source", document.layoutMode())
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=architecture.svg")
-                .body(svg.render(document.scene()));
+                .body(svg.renderCanonical(document.scene(), document.evidence()));
     }
 
     @GetMapping(value = "/api/architecture/editor.pdf", produces = "application/pdf")
@@ -223,7 +225,7 @@ public final class ArchitectureEditorExportController {
         return documentResponse(document)
                 .header("X-Taxonomy-Layout-Source", document.layoutMode())
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=architecture.pdf")
-                .body(pdf.render(document.scene(), provenance));
+                .body(pdf.renderCanonical(document.scene(), provenance, document.evidence()));
     }
 
     public ResponseEntity<String> svg(String repositoryId, String workspaceScopeKey, String branch,

@@ -46,7 +46,8 @@ final class AdmbwQeaWriter {
         UUID namespace = stableUuid(snapshot.sha256() + "\0" + root + "\0" + delivery.projectCode() + "\0" + delivery.commit());
         byte[] content = QeaWriteDatabase.writeCopy(basis, true, database -> {
             var copy = new DeliveryCopy(snapshot, database, namespace);
-            for (View view : delivery.views()) copy.writeView(view, roots.getFirst().id("package_id"), delivery.commit());
+            for (View view : delivery.views()) copy.writeView(view, roots.getFirst().id("package_id"),
+                    delivery.commit(), delivery.coverageNotes());
         });
         return new ExchangeFile(AdmbwQeaExport.MEDIA_TYPE, delivery.projectCode() + "-admbw.qea", content, List.of());
     }
@@ -102,7 +103,7 @@ final class AdmbwQeaWriter {
             }
         }
 
-        void writeView(View view, long rootId, String commit) throws SQLException {
+        void writeView(View view, long rootId, String commit, String coverageNotes) throws SQLException {
             long packageId = packagePath(rootId, view.packagePath());
             for (Row row : basis.rows("t_diagram")) {
                 if (row.number("package_id") == packageId && row.text("name").equalsIgnoreCase(view.name()))
@@ -118,7 +119,10 @@ final class AdmbwQeaWriter {
                             + "\nSource " + AdmbwQeaProfile.SOURCE_PROFILE.sourceUrl()
                             + "\nMDG SHA-256 " + AdmbwQeaProfile.SOURCE_PROFILE.mdgSha256()
                             + "\nGenerator " + AdmbwQeaProfile.SOURCE_PROFILE.generatorVersion()
-                            + "\nBasis SHA-256 " + basis.sha256() + "\nManual review required"));
+                            + "\nBasis SHA-256 " + basis.sha256() + "\nManual review required\n"
+                            + (coverageNotes == null || coverageNotes.isBlank()
+                            ? "Delivery coverage was not supplied by this host; full-source representation is unverified."
+                            : coverageNotes)));
             var elements = new HashMap<String, Element>();
             var occurrences = new HashMap<String, Occurrence>();
             var byObject = new HashMap<Long, Occurrence>();

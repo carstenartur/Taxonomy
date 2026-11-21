@@ -153,8 +153,7 @@ public class TaxDslParser {
 
     private String firstToken(String line) {
         if (line.isEmpty()) return "";
-        int space = line.indexOf(' ');
-        return space < 0 ? line : line.substring(0, space);
+        return line.split("\\s+", 2)[0];
     }
 
     /**

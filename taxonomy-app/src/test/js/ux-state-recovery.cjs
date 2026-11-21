@@ -70,6 +70,76 @@ function dom() {
     return {document, element, all, downloads, revoked, events, urls};
 }
 
+function admbwCoverageFixture() {
+    const f = dom(), selected = [], window = {};
+    vm.runInNewContext(source('architecture-admbw-coverage.js'), {window, document: f.document});
+    const t = (key, ...args) => key + (args.length ? ': ' + args.join(' / ') : '');
+    const text = node => node.textContent + node.children.map(text).join(' ');
+    return {...f, selected, text, render: coverage => window.TaxonomyAdmbwCoverage.render(coverage, t, id => selected.push(id))};
+}
+
+test('snapshot workbench distinguishes unrecorded relevance from a recorded zero', () => {
+    const f = dom();
+    const t = (key, ...args) => key === 'workbench.ui.unrecorded' ? 'Not recorded' : [key, ...args].join(' ');
+    const window = {TaxonomyArchitectureDiagram: {
+        taxonomyPalette: () => ({layer: () => '#eee'}), readableTextColor: () => '#111',
+        rgba: () => '#eee', wrapLabel: label => [label]
+    }};
+    vm.runInNewContext(source('architecture-workbench.js'), {window, document: f.document});
+    const base = {label: 'Saved element', type: 'Capabilities', relevance: 0, depth: 0};
+    const scene = window.TaxonomyArchitectureSnapshot.prepareScene({scene: {nodes: [
+        {...base, id: 'missing', missingMeasurements: {relevance: true, depth: true}},
+        {...base, id: 'recorded'}
+    ], edges: []}}, t);
+    const [missing, recorded] = scene.nodes;
+    assert.equal(missing.score, 'Not recorded');
+    assert.match(missing.ariaLabel, /Not recorded/);
+    assert.match(missing.tooltip, /Not recorded/);
+    assert.equal(recorded.score, '0%');
+    assert.match(recorded.ariaLabel, /0%/);
+    assert.match(recorded.tooltip, /0%/);
+});
+
+test('ADMBw delivery coverage shows complete source counts and every omitted identity without HTML interpretation', async () => {
+    const f = admbwCoverageFixture();
+    const report = f.render({status:'PARTIAL', sourceViewId:'capability-view',
+        elements:{total:31,represented:5,omitted:26}, relations:{total:2,represented:1,omitted:1},
+        requirements:{total:1,represented:1,omitted:0}, mappings:{total:26,represented:0,omitted:26},
+        sourceAnalyses:[{viewId:'analysis',snapshotId:'saved-training',status:'PARTIAL'}],
+        omissions:[{kind:'ELEMENT',ref:'element:process',name:'<img onerror=alert(1)>',reason:'UNSUPPORTED_ELEMENT_TYPE'},
+            {kind:'RELATION',ref:'relation:service SUPPORTS process',name:'',reason:'UNSUPPORTED_RELATION'}]});
+    assert.equal(report.dataset.coverageStatus,'PARTIAL');
+    const cells=report.querySelectorAll('td').map(cell=>cell.textContent);
+    assert.deepEqual(cells,['31','5','26','2','1','1','1','1','0','26','0','26']);
+    assert.equal(report.querySelectorAll('li').length,2);
+    assert.match(f.text(report),/saved-training/);
+    assert.match(f.text(report),/sourceAnalysis: analysis \/ saved-training \/ PARTIAL/);
+    assert.match(f.text(report),/element:process/);
+    assert.equal(report.querySelectorAll('img').length,0);
+    const button=report.querySelector('button');
+    await button.click();
+    assert.deepEqual(f.selected,['process']);
+    assert.ok(report.querySelectorAll('th').some(th=>th.attributes.scope==='col'));
+    assert.ok(report.querySelectorAll('th').some(th=>th.attributes.scope==='row'));
+});
+
+test('ADMBw delivery coverage does not turn missing coverage into a successful empty export', () => {
+    const f=admbwCoverageFixture(), report=f.render(null);
+    assert.equal(report.dataset.coverageStatus,'UNRECORDED');
+    assert.match(f.text(report),/coverage.unavailable/);
+    assert.equal(report.querySelectorAll('table').length,0);
+});
+
+test('ADMBw delivery coverage keeps method review separate from full object representation', () => {
+    const f=admbwCoverageFixture(), report=f.render({status:'ALL_SOURCE_OBJECTS_REPRESENTED', sourceViewId:null,
+        elements:{total:2,represented:2,omitted:0}, relations:{total:1,represented:1,omitted:0},
+        requirements:{total:0,represented:0,omitted:0}, mappings:{total:0,represented:0,omitted:0},
+        omissions:[],sourceAnalyses:[]});
+    assert.match(f.text(report),/coverage.limit/);
+    assert.match(f.text(report),/coverage.scopeAll/);
+    assert.equal(report.querySelectorAll('details').length,0);
+});
+
 function searchFixture() {
     const d = dom(), pending = deferred(); let options;
     for (const id of ['searchInput', 'searchBtn', 'searchClearBtn', 'searchModeSelect', 'searchMaxResults',

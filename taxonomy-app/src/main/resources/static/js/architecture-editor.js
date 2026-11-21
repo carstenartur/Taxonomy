@@ -122,9 +122,10 @@
             var response = await api.admbwAssessment(context(), el('editorAdmbwProjectCode').value.trim(), el('editorAdmbwView').value);
             if (admbwRequest !== request) return;
             result.replaceChildren();
+            result.append(window.TaxonomyAdmbwCoverage.render(response.assessment.coverage, t, selectElement));
             var views = [response.assessment.capabilityToService, response.assessment.requirementDerivation];
             var qeaIssues = response.qeaIssues || [];
-            admbwChecked = qeaIssues.length === 0
+            admbwChecked = !!response.assessment.coverage && qeaIssues.length === 0
                 && views.every(function (reportView) { return reportView.status === 'REVIEW_REQUIRED'; });
             views.forEach(function (reportView) {
                 var title = document.createElement('h3');

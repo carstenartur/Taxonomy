@@ -30,6 +30,27 @@ class AdmbwQeaExportTest {
     }
 
     @Test
+    void keepsTheCompleteDeliveryCoverageInsideBothNativeDiagrams() throws Exception {
+        try (var basis = basis()) {
+            var original = delivery();
+            String notes = "Delivery coverage: PARTIAL\nElements: 5/31 represented; 26 omitted\n"
+                    + "Omitted: element:training-process / UNSUPPORTED_ELEMENT_TYPE\n"
+                    + "Source analysis: training / saved-training / PARTIAL\n"
+                    + "R7 scope: all checkpoint requirements\nFachliche Prüfung erforderlich.";
+            var scoped = new Delivery(original.projectCode(), original.commit(), original.views(), notes);
+            var connector = new SparxQeaWriterConnector();
+            assertTrue(connector.supportsCoverageNotes());
+            var file = connector.exportAdmbw(scoped, QeaFixture.ROOT, basis.bytes());
+            Path target = Files.write(temp.resolve("coverage.qea"), file.content());
+            try (var read = DriverManager.getConnection("jdbc:sqlite:" + target)) {
+                var diagrams = column(read, "select Notes from t_diagram where Diagram_ID > 30");
+                assertEquals(2, diagrams.size());
+                for (String diagram : diagrams) assertTrue(diagram.contains(notes), diagram);
+            }
+        }
+    }
+
+    @Test
     void createsNativeViewsAndKeepsCatalogueObjectsInTheirPackages() throws Exception {
         try (var basis = basis()) {
             byte[] original = basis.bytes();

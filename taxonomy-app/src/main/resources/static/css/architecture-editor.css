@@ -6,6 +6,11 @@
 .architecture-editor-surface h3 { font-size: 1rem; }
 .architecture-editor-surface main { max-width: 1600px; margin: auto; padding: 1.5rem; }
 .architecture-editor-surface .editor-context, .architecture-editor-surface pre, .architecture-editor-surface #editorSelection { overflow-wrap: anywhere; }
+.architecture-editor-surface .editor-admbw-coverage { min-width: 0; margin-block: 1rem; overflow-wrap: anywhere; }
+.architecture-editor-surface .editor-admbw-coverage table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+.architecture-editor-surface .editor-admbw-coverage th, .architecture-editor-surface .editor-admbw-coverage td { padding: .4rem; text-align: start; vertical-align: top; border-bottom: 1px solid #cbd5e1; }
+.architecture-editor-surface .editor-admbw-coverage th:first-child { width: 40%; }
+.architecture-editor-surface .editor-admbw-coverage li { margin-block: .6rem; }
 .architecture-editor-surface .editor-context { font-family: ui-monospace, monospace; }
 .architecture-editor-surface .editor-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin: .7rem 0; }
 .architecture-editor-surface button, .architecture-editor-surface .editor-toolbar a { border: 1px solid #8795a8; border-radius: .3rem; padding: .65rem .85rem; background: var(--taxonomy-panel-background, #fff); color: var(--taxonomy-surface-foreground, #17243a); cursor: pointer; font: inherit; min-height: 44px; }

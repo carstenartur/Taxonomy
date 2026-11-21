@@ -14,8 +14,14 @@ public interface AdmbwQeaExport extends IntegrationConnectorExtension {
 
     ExchangeFile exportAdmbw(Delivery delivery, String rootPackageGuid, byte[] basis);
 
-    record Delivery(String projectCode, String commit, List<View> views) {
+    /** Older plugins must not silently discard a host's delivery-scope disclosure. */
+    default boolean supportsCoverageNotes() { return false; }
+
+    record Delivery(String projectCode, String commit, List<View> views, String coverageNotes) {
         public Delivery { views = List.copyOf(views); }
+        public Delivery(String projectCode, String commit, List<View> views) {
+            this(projectCode, commit, views, null);
+        }
     }
 
     record View(String viewpoint, String name, List<String> packagePath, List<Element> elements, List<Connector> connectors) {
