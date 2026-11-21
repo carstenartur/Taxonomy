@@ -152,7 +152,11 @@ class AdoptedLineagePromptTest {
         assertThat(phaseB.statements()).filteredOn(s -> s.editingOrigin() == Statement.EditingOrigin.SOURCE)
                 .singleElement().satisfies(s -> assertThat(s.provenance().name())
                         .isEqualTo("ADOPTED_SOURCE"));
-        assertThat(phaseB.text()).contains(base.originalText());
+        assertThat(phaseB.text()).isEqualTo(base.originalText());
+        var targeted = new FrozenReformulationEngine(service, json).synthesizeAffected(base, phaseB,
+                List.of(), ReformulationImpact.empty());
+        assertThat(targeted.text()).isEqualTo(base.originalText());
+        assertThat(targeted.statements()).containsExactlyElementsOf(phaseB.statements());
     }
 
     @Test void historicalRejectionCannotBecomeActiveViaEngineOrReconciledLayout() {

@@ -95,6 +95,8 @@ final class GeneratedDraftText {
     /** Only exchange one plain inline space at a complete sentence boundary for a paragraph break. */
     private static String paragraphs(ReformulationBaseline baseline) {
         String source = baseline.originalText();
+        // An adopted requirement is already authored version evidence, including its layout.
+        if (baseline.frozenContext().containsKey("adoptedLineage")) return source;
         if (source.isEmpty() || !Character.isLetter(source.codePointAt(0)) || source.chars().anyMatch(c ->
                 c == '\n' || c == '\r' || c == '\t' || "|`<>=[]{}".indexOf(c) >= 0)) return source;
         var boundaries = BreakIterator.getSentenceInstance(Locale.forLanguageTag(baseline.language()));
