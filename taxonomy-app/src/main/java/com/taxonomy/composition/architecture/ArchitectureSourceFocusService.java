@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 /** Resolves authorized retained evidence before entering the shared, read-only inference engine. */
@@ -38,6 +39,10 @@ public class ArchitectureSourceFocusService {
     private CatalogueDefinitionResolver catalogues = CatalogueDefinitionResolver.standard();
     @Autowired(required = false)
     void useCatalogueDefinitions(CatalogueDefinitionResolver catalogues) { this.catalogues = catalogues; }
+    private AnalysisSnapshotAdoptionService snapshotRequirements;
+
+    @Autowired(required = false)
+    void useSnapshotRequirements(AnalysisSnapshotAdoptionService reader) { this.snapshotRequirements = reader; }
     private WorkspaceActorAccess actorAccess = WorkspaceActorAccess.unavailable();
 
     @Autowired(required = false)
@@ -58,14 +63,16 @@ public class ArchitectureSourceFocusService {
         this.engine=engine; this.drafts=drafts; this.operations=operations; this.continuations=continuations;
         this.snapshots=snapshots; this.workspaces=workspaces; this.repositories=repositories; this.membership=membership; this.json=json;
     }
-    private record Retained(RequirementArchitectureView graph, AnalysisModelBinding binding, Map<String,String> provenance) { }
+    private record Retained(RequirementArchitectureView graph, AnalysisModelBinding binding, Map<String,String> provenance,
+                            RelationSearchReport report, String original) { }
 
     public ArchitectureSourceFocusDtos.Response investigate(RepositoryContext selected, ArchitectureSourceFocusDtos.Request request) {
         var source = request.source();
         var evidence = evidence(selected, source);
-        var binding = evidence.retained().binding();
+        var retained = evidence.retained();
+        var binding = retained.binding();
         return engine.investigateModel(evidence.model(), evidence.catalogue(),
-                binding == null ? Set.of() : binding.excludedRelationTypes(), request.sourceId(),
+                binding == null ? Set.of() : binding.excludedRelationTypes(), retained.report(), retained.original(), request.sourceId(),
                 request.candidateLimit(), request.useAi(), request.language(), evidence.hash(), evidence.provenance(),
                 ArchitectureSourceFocusDtos.Response.class,
                 result -> new ArchitectureSourceFocusDtos.Response(source, request.sourceId(), evidence.hash(), result.method(),
@@ -116,6 +123,13 @@ public class ArchitectureSourceFocusService {
         else
             hashPins.remove("workspaceId");
         var evidence = new TreeMap<String,Object>(Map.of("source",hashPins,"graph",retained.graph(),"provenance",provenance));
+        if (retained.report() != null) {
+            if (retained.graph().getRelationSearchReport() == null) evidence.put("relationSearchReport", retained.report());
+            if (retained.original() != null && retained.original().length() > MAX_PAYLOAD)
+                throw problem("ITEM_LIMIT", "Retained requirement text exceeds investigation limits");
+            if (retained.original() != null && !retained.original().equals(retained.graph().getOriginalRequirementText()))
+                evidence.put("requirementTextHash", StableIdentityHash.sha256(retained.original()));
+        }
         if (binding != null) {
             evidence.put("modelBinding", binding);
             provenance.put("x-focus-execution-catalogue", binding.analysisCatalogueRevision());
@@ -141,6 +155,7 @@ public class ArchitectureSourceFocusService {
             throw problem("SOURCE_IDENTITY_MISMATCH","The retained analysis reference belongs to a different workspace");
         String operationId = optionalId(reference,"operationId"), continuationId = optionalId(reference,"continuationId");
         AnalysisResult result;
+        String original;
         var provenance = new TreeMap<String,String>(); provenance.put("x-focus-source-version",Long.toString(draft.version()));
         if (continuationId != null) {
             long recoveryVersion = recoveryVersion(reference);
@@ -151,6 +166,7 @@ public class ArchitectureSourceFocusService {
             if (saved.recovery().version() != recoveryVersion)
                 throw problem("CONTEXT_CHANGED","The retained continuation version changed; restore and save the displayed analysis before investigating");
             result = saved.result();
+            original = saved.request().getBusinessText();
             if (operationId != null && (saved.clusterOperationId() != null && !operationId.equals(saved.clusterOperationId())
                     || result != null && result.getAnalysisOperationId() != null && !operationId.equals(result.getAnalysisOperationId())
                     || saved.clusterOperationId() == null && (result == null || result.getAnalysisOperationId() == null)))
@@ -165,6 +181,7 @@ public class ArchitectureSourceFocusService {
                     || !source.branch().equals(input.scope().branch()))
                 throw problem("SOURCE_IDENTITY_MISMATCH","The retained analysis input source does not match");
             result = operations.result(operationId,scope.username(),scope);
+            original = input.businessText();
         } else throw problem("SOURCE_UNAVAILABLE","The draft has no retained server analysis reference");
         if (result == null) throw problem("SOURCE_UNAVAILABLE","The retained analysis result is not available yet");
         if (operationId != null && result.getAnalysisOperationId() != null && !operationId.equals(result.getAnalysisOperationId()))
@@ -173,7 +190,7 @@ public class ArchitectureSourceFocusService {
             throw problem("SOURCE_UNAVAILABLE","Only retained successful or partial architecture evidence can be investigated");
         if (operationId != null) provenance.put("x-focus-operation-id",operationId);
         provenance.put("x-analysis-status",result.getStatus());
-        return new Retained(result.getArchitectureView(),result.getModelBinding(),provenance);
+        return retained(result, provenance, original);
     }
 
     private Retained snapshot(ArchitectureSourceFocusDtos.Source source, WorkspaceContext scope) {
@@ -195,7 +212,28 @@ public class ArchitectureSourceFocusService {
         put(provenance,"x-analysis-created-at",Objects.toString(summary.createdAt(),null));
         var analysis = snapshot.analysis();
         if (analysis == null) throw problem("SOURCE_UNAVAILABLE","Snapshot contains no retained analysis");
-        return new Retained(analysis.getArchitectureView(),analysis.getModelBinding(),provenance);
+        var retained = retained(analysis, provenance, null);
+        if (retained.graph() == null || retained.report() == null) return retained;
+        if (snapshotRequirements == null) throw problem("SOURCE_UNAVAILABLE", "The pinned requirement version is unavailable");
+        String original = snapshotRequirements.requirementText(source.projectId(), source.requirementId(), source.requirementVersionId(),
+                scope.username(), scope);
+        if (original == null || original.isBlank() || !StandardCharsets.UTF_8.newEncoder().canEncode(original))
+            throw problem("SOURCE_UNAVAILABLE", "The pinned requirement text is unavailable");
+        if (original.length() > MAX_PAYLOAD) throw problem("ITEM_LIMIT", "Retained requirement text exceeds investigation limits");
+        String displayedText = retained.graph().getOriginalRequirementText();
+        if (!StableIdentityHash.sha256(original).equals(retained.report().originalSha256())
+                || displayedText != null && !displayedText.isBlank() && !original.equals(displayedText))
+            throw problem("SOURCE_IDENTITY_MISMATCH", "The pinned requirement version disagrees with the retained analysis evidence");
+        return new Retained(retained.graph(), retained.binding(), provenance, retained.report(), original);
+    }
+
+    private static Retained retained(AnalysisResult result, Map<String, String> provenance, String original) {
+        var graph = result.getArchitectureView();
+        var report = result.getRelationSearchReport();
+        var projected = graph == null ? null : graph.getRelationSearchReport();
+        if (report != null && projected != null && !report.equals(projected))
+            throw problem("SOURCE_IDENTITY_MISMATCH", "Retained analysis and graph relation reports disagree");
+        return new Retained(graph, result.getModelBinding(), provenance, report == null ? projected : report, original);
     }
 
     private CatalogueDefinition catalogue(AnalysisModelBinding binding) {
@@ -224,8 +262,8 @@ public class ArchitectureSourceFocusService {
                 throw problem("SOURCE_IDENTITY_MISMATCH","Recorded element identity and taxonomy type disagree or are duplicated");
             if (element.getTitle() == null || element.getTitle().isBlank())
                 throw problem("SOURCE_UNAVAILABLE","Source element has no retained title evidence");
-            model.getElements().add(new ArchitectureElement(id,catalogue.typeFor(root),element.getTitle(),
-                    Objects.toString(element.getPresenceReason(),Objects.toString(element.getIncludedBecause(),"")),root));
+            // A generated inclusion explanation is presentation metadata, not an authored element description.
+            model.getElements().add(new ArchitectureElement(id,catalogue.typeFor(root),element.getTitle(),"",root));
         }
         var relationKeys = new HashSet<String>();
         for (var relation : graph.getIncludedRelationships()) {

@@ -7,6 +7,8 @@ import com.taxonomy.analysis.dto.AiTargetDtos.PromptBudget;
 import com.taxonomy.analysis.service.AiPromptBudgetPolicy;
 import com.taxonomy.analysis.service.LlmCompletionOptions;
 import com.taxonomy.analysis.service.LlmService;
+import com.taxonomy.dsl.command.ArchitectureCommand.*;
+import com.taxonomy.dsl.command.ArchitectureDslCommands;
 import com.taxonomy.editor.ArchitectureCommandPort.Context;
 import com.taxonomy.extension.api.llm.ProviderId;
 import com.taxonomy.editor.ArchitectureEditorService;
@@ -291,6 +293,109 @@ class ArchitectureFocusSuggestionServiceTest {
         assertThat(response.outcome()).isEqualTo("NO_CANDIDATES");
         assertThat(response.candidateCount()).isZero();
         assertThat(response.suggestions()).isEmpty();
+        verifyNoInteractions(llm, budget);
+    }
+
+    @Test void unrelatedElementsWithOnlyGenericGermanAndEnglishWordsDoNotBecomeCandidates() throws Exception {
+        when(editor.read(scope, null, null)).thenReturn(doc("""
+                element arch-service type CoreService {
+                  title: "The system for radar tracking qa2b3";
+                  description: "Anwendung für das System und den Prozess";
+                }
+                element arch-app type UserApplication {
+                  title: "The system for payroll accounting qa2b3";
+                  description: "Anwendung für das System und den Prozess";
+                }
+                """));
+        var result = service.investigate(scope, request(true));
+        assertThat(result.outcome()).isEqualTo("NO_CANDIDATES");
+        assertThat(result.suggestions()).isEmpty();
+        verifyNoInteractions(llm, budget);
+    }
+
+    @Test void recognizedLegacyDisplayDescriptionsDoNotBecomeAuthoredEvidenceInTheWorkingModel() throws Exception {
+        when(editor.read(scope, null, null)).thenReturn(doc("""
+                element arch-service type CoreService {
+                  title: "Radar tracking";
+                  description: "Requirement-scoped contribution: Shared dispatch evaluation from the retained analysis";
+                }
+                element arch-app type UserApplication {
+                  title: "Payroll accounting";
+                  description: "Requirement-scoped contribution: Shared dispatch evaluation from the retained analysis";
+                }
+                view analysis-earlier {
+                  title: "Earlier evidence";
+                  include: arch-service;
+                  include: arch-app;
+                  x-analysis-snapshot-id: "earlier";
+                }
+                """));
+        assertThat(service.investigate(scope, request(true)).outcome()).isEqualTo("NO_CANDIDATES");
+        verifyNoInteractions(llm, budget);
+    }
+
+    @Test void aSnapshotReusingAuthoredElementsDoesNotRemoveTheirEvidence() throws Exception {
+        String authored = """
+                element arch-service type CoreService {
+                  title: "Inspection";
+                  description: "Dispatch the aircraft clearance to each crew";
+                }
+                element arch-app type UserApplication {
+                  title: "Flight console";
+                  description: "Record dispatch acknowledgements from the crew";
+                }
+                """;
+        var dsl = new ArchitectureDslCommands();
+        var command = new AdoptAnalysisSnapshot("analysis-existing", "Earlier source", "", "a".repeat(64),
+                List.of(new SnapshotElement("arch-service", "CoreService", "Captured service", "Generated presence explanation"),
+                        new SnapshotElement("arch-app", "UserApplication", "Captured application", "Generated presence explanation")),
+                List.of(), Map.of("x-analysis-snapshot-id", "existing"));
+        when(editor.read(scope, null, null)).thenReturn(doc(dsl.apply(authored, command).dsl()));
+        assertThat(service.investigate(scope, request(false)).suggestions()).isNotEmpty().allSatisfy(suggestion ->
+                assertThat(suggestion.evidence()).allSatisfy(witness -> assertThat(witness.quote()).containsIgnoringCase("dispatch")));
+    }
+
+    @Test void aNewlyAdoptedDescriptionBecomesAnAuthoredBasisAfterAnExplicitEdit() throws Exception {
+        String authored = """
+                element arch-service type CoreService {
+                  title: "Inspection";
+                  description: "Dispatch the aircraft clearance to each crew";
+                }
+                """;
+        var dsl = new ArchitectureDslCommands();
+        var command = new AdoptAnalysisSnapshot("analysis-new", "Earlier source", "", "a".repeat(64),
+                List.of(new SnapshotElement("arch-app", "UserApplication", "Flight console", "An arbitrary generated dispatch explanation")),
+                List.of(), Map.of("x-analysis-snapshot-id", "new"));
+        String adopted = dsl.apply(authored, command).dsl();
+        when(editor.read(scope, null, null)).thenReturn(doc(adopted));
+        assertThat(service.investigate(scope, request(false)).suggestions()).isEmpty();
+
+        var edited = dsl.apply(adopted, new UpdateArchitectureElement("arch-app", null,
+                Map.of("description", "Record dispatch acknowledgements from the crew"))).dsl();
+        when(editor.read(scope, null, null)).thenReturn(doc(edited));
+        assertThat(service.investigate(scope, request(false)).suggestions()).isNotEmpty().allSatisfy(suggestion ->
+                assertThat(suggestion.evidence()).allSatisfy(witness -> assertThat(witness.quote()).containsIgnoringCase("dispatch")));
+    }
+
+    @Test void evidenceForDifferentPeersGetsReservedSlotsBeforeExtraRelationTypes() throws Exception {
+        var result = service.investigate(scope,
+                new ArchitectureFocusSuggestionService.Request(context, "arch-service", 2, false, "en"));
+        assertThat(result.suggestions()).extracting(s -> "arch-service".equals(s.sourceId()) ? s.targetId() : s.sourceId())
+                .containsExactlyInAnyOrder("arch-app", "arch-product");
+        assertThat(result.suggestions()).allSatisfy(s -> assertThat(s.rationale()).contains("Unassessed", "order"));
+    }
+
+    @Test void navigationRootsNeverBecomeCandidateEndpointsEvenWithSharedText() throws Exception {
+        when(editor.read(scope, null, null)).thenReturn(doc(DSL + """
+                element CP type Capability {
+                  title: "Order processing category";
+                  description: "Processes and validates customer orders";
+                }
+                """));
+        var root = new ArchitectureFocusSuggestionService.Request(context, "CP", 8, true, "en");
+        assertThat(service.investigate(scope, root).outcome()).isEqualTo("NO_CANDIDATES");
+        assertThat(service.investigate(scope, request(false)).suggestions())
+                .noneMatch(s -> "CP".equals(s.sourceId()) || "CP".equals(s.targetId()));
         verifyNoInteractions(llm, budget);
     }
 

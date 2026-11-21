@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const test = require('node:test');
 const vm = require('node:vm');
 global.window = {};
 vm.runInThisContext(fs.readFileSync(process.argv[2], 'utf8'), { filename: 'architecture-focus.js' });
@@ -49,7 +50,7 @@ function panelFixture() {
     return { panel, ids, calls, accepted, inspect() { ids.editorLensInspect.onclick(); },
         retry() { ids.editorLensStates.querySelectorAll('button')[0].onclick(); } };
 }
-(async () => {
+test('focus queue and review preserve the existing investigation and retry contracts', async () => {
     const { session: s, calls, dwell } = fixture();
     s.observe(['arch-a']); dwell(); await flush(); assert.equal(calls.length, 0, 'No background I/O before explicit enable');
     s.setEnabled(true); s.observe(['arch-a']); s.observe([]); dwell(); await flush();
@@ -171,5 +172,117 @@ function panelFixture() {
     assert.equal(afterRetry.find(item => item.id === originals[3].id), originals[3], 'A pending acceptance retains its exact hypothesis');
     assert.equal(originals[3].command, pendingCommand, 'Pending command UUID and payload remain frozen');
     assert.equal(originals[3].rationale, suggestion.rationale);
-    console.log('Focus queue: dwell, deduplication, pause, budget, exact-context suppression, local provenance and explicit retry passed.');
-})().catch(error => { console.error(error); process.exitCode = 1; });
+});
+
+test('a literal shared-named working copy keeps its transport pin separate from the response DTO', async () => {
+    const f = fixture();
+    const semantic = { ...context(3), workspaceScopeKey: '__shared__' };
+    const pinned = Object.defineProperty({ ...semantic }, 'workspaceId', { value: '__shared__' });
+    f.session.setContext(pinned, true);
+    f.session.setEnabled(true);
+    f.session.inspect('arch-a');
+    await flush();
+    assert.equal(f.calls[0].body.context.workspaceId, '__shared__', 'Working focus lost the explicit transport workspace');
+    assert.deepEqual(JSON.parse(JSON.stringify(f.calls[0].body.context)), semantic);
+    f.calls[0].resolve({ context: semantic, sourceId: 'arch-a', outcome: 'ASSESSED', method: 'AI:test',
+        sourceHash: 'a'.repeat(64), modelCalls: 1, candidateCount: 1, suggestions: [suggestion] });
+    await flush();
+    assert.equal(f.session.snapshot().states['arch-a'], 'suggestions', 'The semantic-only response belongs to this request');
+    f.session.inspect('arch-b'); await flush();
+    f.calls[1].resolve({ context: { ...semantic, revision: 4 }, sourceId: 'arch-b', outcome: 'ASSESSED', method: 'AI:test',
+        sourceHash: 'a'.repeat(64), modelCalls: 1, candidateCount: 0, suggestions: [] });
+    await flush();
+    assert.equal(f.session.snapshot().states['arch-b'], 'failed', 'The wire result must still match the captured semantic Context');
+    f.session.setContext(semantic, true);
+    assert.equal(f.session.snapshot().suggestions.length, 0, 'A shared-named copy and central scope have distinct local identities');
+});
+
+test('a successful empty reassessment removes its earlier fallback and reviews independent evidence', async () => {
+    const f = fixture(); f.session.setEnabled(true);
+    f.session.inspect('arch-a'); await flush(); reply(f.calls[0], 'FAILED', [suggestion]); await flush();
+    const independent = { ...suggestion, id: 'independent', sourceId: 'arch-c' };
+    f.session.inspect('arch-c'); await flush(); reply(f.calls[1], 'LOCAL_CANDIDATES', [independent]); await flush();
+    const expected = f.session.snapshot().suggestions[1];
+    f.session.inspect('arch-a', true); await flush(); reply(f.calls[2]); await flush();
+    assert.deepEqual(f.session.snapshot().suggestions, [expected], 'A successful empty response retires only the reassessed fallback');
+    assert.equal(f.session.snapshot().reviewed, expected.id);
+});
+
+test('a normal assessment upgrades a duplicate fallback from another investigation', async () => {
+    const f = fixture(); f.session.setEnabled(true);
+    const overlapping = { ...suggestion, targetId: 'arch-b' };
+    f.session.inspect('arch-a'); await flush(); reply(f.calls[0], 'FAILED', [overlapping]); await flush();
+    const previous = f.session.snapshot().suggestions[0];
+    f.session.inspect('arch-b'); await flush();
+    reply(f.calls[1], 'ASSESSED', [{ ...overlapping, rationale: 'Separately assessed evidence' }]); await flush();
+    const current = f.session.snapshot();
+    assert.equal(current.suggestions.length, 1);
+    assert.equal(current.suggestions[0].rationale, 'Separately assessed evidence', 'Ordinary deduplication must allow an evidence upgrade');
+    assert.equal(current.reviewed, previous.id, 'The pinned review follows the upgrade');
+});
+
+test('empty reassessment preserves independent support for the same triple', async () => {
+    const f = fixture(); f.session.setEnabled(true);
+    const overlapping = { ...suggestion, targetId: 'arch-b' };
+    f.session.inspect('arch-a'); await flush(); reply(f.calls[0], 'FAILED', [overlapping]); await flush();
+    f.session.inspect('arch-b'); await flush();
+    reply(f.calls[1], 'LOCAL_CANDIDATES', [{ ...overlapping, rationale: 'Independently retained unassessed evidence' }]); await flush();
+    f.session.inspect('arch-a', true); await flush(); reply(f.calls[2]); await flush();
+    assert.equal(f.session.snapshot().suggestions.length, 1);
+    assert.equal(f.session.snapshot().suggestions[0].rationale, 'Independently retained unassessed evidence');
+});
+
+test('an assessment leaves accepted, dismissed and in-flight command decisions intact', async () => {
+    const f = fixture(); f.session.setEnabled(true);
+    const entries = [suggestion, { ...suggestion, id: 'dismissed' }, { ...suggestion, id: 'pending' }];
+    f.session.inspect('arch-a'); await flush(); reply(f.calls[0], 'FAILED', entries); await flush();
+    const [accepted, dismissed, pending] = f.session.snapshot().suggestions;
+    f.session.accepted(accepted.id, { operationId: 'recorded-operation', context: context(4) });
+    f.session.dismiss(dismissed.id);
+    pending.command = { metadata: { commandId: 'uncertain-command' } };
+    f.session.inspect('arch-a', true); await flush(); reply(f.calls[1]); await flush();
+    assert.deepEqual(f.session.snapshot().suggestions, [accepted, pending]);
+    assert.equal(f.session.snapshot().reviewed, accepted.id);
+    f.session.inspect('arch-outside-focus'); await flush(); reply(f.calls[2], 'ASSESSED', entries); await flush();
+    assert.deepEqual(f.session.snapshot().suggestions, [accepted, pending], 'Retried evidence cannot replace prior decisions');
+});
+
+test('same-context unavailability frees canceled queued work without forgetting completed work', async () => {
+    const f = fixture(); f.session.setEnabled(true);
+    f.session.inspect('arch-complete'); await flush(); reply(f.calls[0]); await flush();
+    f.session.inspect('arch-a'); f.session.inspect('arch-b'); await flush();
+    assert.equal(f.session.snapshot().states['arch-b'], 'queued');
+    f.session.setContext(context(3), false);
+    f.session.setContext(context(3), true);
+    f.session.setEnabled(true);
+    reply(f.calls[1]); await flush();
+    assert.equal(f.session.snapshot().states['arch-complete'], 'examined');
+    f.session.inspect('arch-b'); await flush();
+    assert.equal(f.calls[2]?.body.sourceId, 'arch-b', 'Canceled queued work can be scheduled again');
+});
+
+test('same-context unavailability fences a running investigation', async () => {
+    const f = fixture(); f.session.setEnabled(true);
+    f.session.inspect('arch-a'); await flush();
+    f.session.setContext(context(3), false);
+    f.session.setContext(context(3), true);
+    f.session.setEnabled(true);
+    reply(f.calls[0], 'ASSESSED', [suggestion]); await flush();
+    assert.equal(f.session.snapshot().suggestions.length, 0, 'A response belonging to the previous availability window is obsolete');
+    f.session.inspect('arch-a'); await flush();
+    assert.equal(f.calls[1]?.body.sourceId, 'arch-a', 'A previously running investigation can be scheduled again');
+});
+
+test('canceling a queued retry retains its previous completed status and fallback', async () => {
+    const f = fixture(); f.session.setEnabled(true);
+    f.session.inspect('arch-a'); await flush(); reply(f.calls[0], 'LOCAL_CANDIDATES', [suggestion]); await flush();
+    f.session.inspect('arch-b'); await flush(); f.session.inspect('arch-a', true);
+    assert.equal(f.session.snapshot().states['arch-a'], 'queued');
+    f.session.setContext(context(3), false);
+    f.session.setContext(context(3), true);
+    assert.equal(f.session.snapshot().states['arch-a'], 'unassessed', 'Canceling an upgrade does not erase its prior result state');
+    assert.equal(f.session.snapshot().suggestions[0].outcome, 'LOCAL_CANDIDATES');
+    f.session.setEnabled(true);
+    f.session.inspect('arch-a', true); reply(f.calls[1]); await flush();
+    assert.equal(f.calls[2]?.body.sourceId, 'arch-a', 'The previously queued upgrade can be explicitly retried');
+});

@@ -113,6 +113,13 @@ public class AnalysisSnapshotAdoptionService {
         return new Command(request.context(),request.metadata(),new SemanticCommand(prepared.adoption()));
     }
 
+    /** Read access to the exact immutable requirement version used by a frozen snapshot. */
+    String requirementText(Long projectId, Long requirementId, Long versionId, String actor, WorkspaceContext scope) {
+        return projects.listRequirementVersions(projectId, requirementId, actor, scope).stream()
+                .filter(candidate -> versionId.equals(candidate.id())).findFirst()
+                .orElseThrow(() -> problem("NOT_FOUND", "The exact retained requirement version is unavailable")).text();
+    }
+
     private Prepared prepare(RepositoryContext target, Request request) throws IOException {
         SourceRef source = request.source();
         if (target.scope() != RepositoryScope.WORKSPACE) throw problem("READ_ONLY", "Adoption requires an editable working copy");
@@ -137,10 +144,9 @@ public class AnalysisSnapshotAdoptionService {
             throw problem("SOURCE_IDENTITY_MISMATCH", "Snapshot identity does not match the exact requested source");
         if (summary.status() != AnalysisStatus.SUCCESS && summary.status() != AnalysisStatus.PARTIAL)
             throw problem("INVALID_SNAPSHOT", "Only retained successful or partial architecture evidence can be adopted");
-        var version = projects.listRequirementVersions(source.projectId(),source.requirementId(),target.username(),sourceContext)
-                .stream().filter(candidate -> source.requirementVersionId().equals(candidate.id())).findFirst()
-                .orElseThrow(() -> problem("NOT_FOUND", "The exact retained requirement version is unavailable"));
-        SnapshotEvidence.requireUtf8(version.text());
+        String requirementText = requirementText(source.projectId(), source.requirementId(), source.requirementVersionId(),
+                target.username(), sourceContext);
+        SnapshotEvidence.requireUtf8(requirementText);
         var graph = snapshot.analysis() == null ? null : snapshot.analysis().getArchitectureView();
         if (graph == null || graph.getIncludedElements() == null || graph.getIncludedRelationships() == null)
             throw problem("INVALID_SNAPSHOT", "Snapshot contains no retained full architecture graph");
@@ -200,7 +206,7 @@ public class AnalysisSnapshotAdoptionService {
         provenance.put("x-analysis-repository-id",source.repositoryId()); provenance.put("x-analysis-workspace-scope",source.workspaceScopeKey());
         provenance.put("x-analysis-branch",source.branch()); provenance.put("x-analysis-project-id",source.projectId().toString());
         provenance.put("x-analysis-requirement-id",source.requirementId().toString()); provenance.put("x-analysis-requirement-version-id",source.requirementVersionId().toString());
-        provenance.put("x-analysis-snapshot-id",source.snapshotId()); provenance.put("x-analysis-requirement-text-hash",StableIdentityHash.sha256(version.text()));
+        provenance.put("x-analysis-snapshot-id",source.snapshotId()); provenance.put("x-analysis-requirement-text-hash",StableIdentityHash.sha256(requirementText));
         put(provenance,"x-analysis-commit",summary.commitSha()); put(provenance,"x-analysis-catalogue-fingerprint",summary.taxonomyFingerprint());
         put(provenance,"x-analysis-provider",summary.provider()); put(provenance,"x-analysis-model",summary.modelName());
         put(provenance,"x-analysis-status",summary.status().name()); put(provenance,"x-analysis-created-at",Objects.toString(summary.createdAt(),null));
@@ -212,12 +218,12 @@ public class AnalysisSnapshotAdoptionService {
         boolean legacyView = existingView.isPresent() && !existingView.get().getExtensions().containsKey(SnapshotEvidence.FINGERPRINT);
         AdoptAnalysisSnapshot adoption;
         if (legacyView) {
-            adoption = new AdoptAnalysisSnapshot(viewId, title, version.text(), graphFingerprint, elements, relations, provenance);
+            adoption = new AdoptAnalysisSnapshot(viewId, title, requirementText, graphFingerprint, elements, relations, provenance);
         } else {
             Map<String, String> sheets = new HashMap<>();
             graph.getIncludedElements().forEach(element -> sheets.put(element.getNodeCode(), element.getTaxonomySheet()));
-            var observations = frozenEvidence(graph.getIncludedRelationships(), version.text(), sheets);
-            adoption = new AdoptAnalysisSnapshot(viewId, title, version.text(), graphFingerprint, elements, relations, provenance, observations);
+            var observations = frozenEvidence(graph.getIncludedRelationships(), requirementText, sheets);
+            adoption = new AdoptAnalysisSnapshot(viewId, title, requirementText, graphFingerprint, elements, relations, provenance, observations);
         }
         Map<String, String> organizationNames = new HashMap<>();
         model.getOrganizations().forEach(unit -> organizationNames.put(unit.id(), unit.title()));
@@ -242,7 +248,7 @@ public class AnalysisSnapshotAdoptionService {
             (exists ? reusedRelations : addedRelations).add(r.id());
         });
         boolean existing = existingView.isPresent();
-        List<String> previewParts = new ArrayList<>(Arrays.asList(viewId,title,version.text(),graphFingerprint,
+        List<String> previewParts = new ArrayList<>(Arrays.asList(viewId,title,requirementText,graphFingerprint,
                 request.context().toString(),request.metadata().toString()));
         new TreeMap<>(adoption.provenance()).forEach((key,value) -> previewParts.addAll(List.of(key,value)));
         return new Prepared(adoption,new Summary(List.copyOf(addedElements),List.copyOf(reusedElements),List.copyOf(addedRelations),

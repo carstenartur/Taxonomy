@@ -9,6 +9,7 @@ import com.taxonomy.dto.AnalysisReasonLength;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 import java.util.Map;
+import java.util.List;
 import java.util.UUID;
 import static org.assertj.core.api.Assertions.*;
 
@@ -60,5 +61,23 @@ class ChildAnalysisReceiptTest {
         assertThat(ChildAnalysisReceipt.restoreResult("LEAF_JUSTIFICATION",id,UUID.randomUUID().toString(),stored)).isNull();
         ((tools.jackson.databind.node.ObjectNode) stored.get("source")).put("nodeCode","other");
         assertThatThrownBy(() -> ChildAnalysisReceipt.validate("LEAF_JUSTIFICATION", id, stored)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test void focusReceiptRetainsExplicitSourceWorkspaceWithoutAllowingOtherProperties() {
+        for (String workspace : List.of("", "private-copy", "__shared__")) {
+            var source = Map.of("kind", "ANALYSIS_SNAPSHOT", "repositoryId", "repo", "workspaceScopeKey",
+                    workspace.isEmpty() ? "__shared__" : workspace, "workspaceId", workspace, "branch", "draft",
+                    "projectId", 1, "requirementId", 2, "requirementVersionId", 3, "snapshotId", "retained");
+            var properties = "__shared__".equals(workspace) ? Map.of("x-analysis-workspace-id", workspace) : Map.of();
+            var proposal = Map.of("id", "hypothesis", "sourceId", "a", "targetId", "b", "relationType", "USES",
+                    "rationale", "Reviewed scope", "evidence", List.of(), "properties", properties);
+            var receipt = json.valueToTree(Map.of("source", source, "sourceId", "a", "sourceHash", hash, "method",
+                    "AI:fixture", "outcome", "ASSESSED", "modelCalls", 1, "candidateCount", 1, "suggestions", List.of(proposal)));
+            ChildAnalysisReceipt.validate("FOCUS_INVESTIGATION", id, receipt);
+            assertThat(ChildAnalysisReceipt.publicResult("FOCUS_INVESTIGATION", receipt)).isEqualTo(receipt);
+            ((tools.jackson.databind.node.ObjectNode) receipt.path("source")).put("apiKey", "not allowed");
+            assertThatThrownBy(() -> ChildAnalysisReceipt.validate("FOCUS_INVESTIGATION", id, receipt))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
     }
 }

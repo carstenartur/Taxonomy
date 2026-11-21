@@ -142,7 +142,8 @@ window.TaxonomyArchitectureSourceLens = (function () {
                     await draftVersion(reviewed, ticket); requireCurrent(reviewed, ticket);
                     window.TaxonomyAnalysisSession.addAsRequirement({ preserveDraft: true }); return;
                 }
-                var values = { adoption: 'preview', element: selected };
+                // The reviewed snapshot owns this handoff, including when the editor retains another adopted view.
+                var values = { adoption: 'preview', viewId: null, element: selected };
                 Object.keys(reviewed).filter(function (key) { return key !== 'kind'; }).forEach(function (key) {
                     values['source' + key.charAt(0).toUpperCase() + key.slice(1)] = reviewed[key];
                 });

@@ -84,7 +84,7 @@ public final class ChildAnalysisReceipt {
                         || stored.path("suggestions").size() > stored.path("candidateCount").asInt()) throw invalid();
                 if (stored.hasNonNull("context"))
                     allowed(stored.get("context"), Set.of("repositoryId", "workspaceScopeKey", "branch", "commit", "revision", "actor", "writeMode"));
-                else allowed(stored.get("source"), Set.of("kind", "repositoryId", "workspaceScopeKey", "branch", "version",
+                else allowed(stored.get("source"), Set.of("kind", "repositoryId", "workspaceScopeKey", "workspaceId", "branch", "version",
                         "projectId", "requirementId", "requirementVersionId", "snapshotId"));
                 for (var item : stored.path("suggestions")) {
                     allowed(item, Set.of("id", "sourceId", "targetId", "relationType", "rationale", "evidence", "properties"));
@@ -95,7 +95,7 @@ public final class ChildAnalysisReceipt {
                             "x-analysis-branch","x-analysis-catalogue-fingerprint","x-analysis-commit","x-analysis-created-at",
                             "x-analysis-model","x-analysis-project-id","x-analysis-provider","x-analysis-repository-id",
                             "x-analysis-requirement-id","x-analysis-requirement-version-id","x-analysis-snapshot-id",
-                            "x-analysis-status","x-analysis-workspace-scope"));
+                            "x-analysis-status","x-analysis-workspace-scope","x-analysis-workspace-id"));
                     for (var evidence : item.path("evidence")) allowed(evidence, Set.of("elementId","field","quote"));
                 }
             }

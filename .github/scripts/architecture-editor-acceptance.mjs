@@ -384,11 +384,12 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     measurements.commands.push({ operationId: value.operationId, revision: value.context.revision, checkpoint: value.context.commit, changedIds: value.change.changedIds });
     return value;
   }
-  async function create(type, title, owner = '') {
+  async function create(type, title, owner = '', description = '') {
     await confirmDraftDiscard(page, () => page.locator('#editorNew').click(),
       measurements.explicitDraftDiscards, 'new element');
     await page.locator('#editorType').selectOption(type);
     await page.locator('#editorTitle').fill(title);
+    if (description) await page.locator('#editorDescription').fill(description);
     await page.locator('#editorOwner').fill(owner);
     await preview(() => page.locator('#editorPreviewElement').click());
     const result = await commit();
@@ -453,14 +454,16 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     assert.equal(await page.locator('#editorAccept').isDisabled(), true);
     await page.locator('#editorCancel').click();
     const suffix = Date.now().toString(36);
-    const system = await create('System', `Architecture system ${suffix}`, 'Architecture owner');
+    const system = await create('System', `Architecture system ${suffix}`, 'Architecture owner',
+      'Coordinates dispatch requests and maintains the acknowledgement register.');
     await page.locator('#editorOwner').fill('');
     const clearing = await preview(() => page.locator('#editorPreviewElement').click());
     assert.ok(clearing.change.changes[0].before.includes('Architecture owner'));
     assert.match(clearing.change.changes[0].after, /x-owner:\s*""/);
     await commit();
     assert.equal(await page.locator('#editorOwner').inputValue(), '');
-    const component = await create('Component', `Architecture component ${suffix}`);
+    const component = await create('Component', `Architecture component ${suffix}`, '',
+      'Validates dispatch requests and forwards acknowledgements to the register.');
     await select(system);
     await page.locator('#editorRelationType').selectOption('RELATED_TO');
     await page.locator('#editorRelationTarget').fill(system);
@@ -534,6 +537,9 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     assert.equal(investigation.outcome, 'LOCAL_CANDIDATES'); assert.equal(investigation.modelCalls, 0);
     const proposal = investigation.suggestions.find(s => [s.sourceId, s.targetId].includes(component));
     assert.ok(proposal, 'A newly created editor element outside the selected focus is an eligible target');
+    assert.match(proposal.rationale, /dispatch/);
+    assert.ok(proposal.evidence.every(witness => witness.quote.includes('dispatch requests')),
+      'Both endpoint excerpts retain the authored wording that supports investigation');
     const proposalButton = page.locator('#editorLensSuggestions button').filter({ hasText: `${proposal.sourceId} → ${proposal.targetId} · ${proposal.relationType}` });
     await proposalButton.focus(); await page.keyboard.press('Enter');
     assert.equal(await proposalButton.evaluate(button => document.activeElement === button), true, 'Selecting a proposal retains keyboard focus');

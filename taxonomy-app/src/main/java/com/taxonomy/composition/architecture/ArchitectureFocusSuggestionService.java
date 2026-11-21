@@ -12,11 +12,12 @@ import com.taxonomy.analysis.service.LlmCompletionOptions;
 import com.taxonomy.analysis.service.LlmService;
 import com.taxonomy.dsl.command.ArchitectureDslCommands;
 import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
-import com.taxonomy.dsl.model.ArchitectureElement;
 import com.taxonomy.dsl.model.CanonicalArchitectureModel;
 import com.taxonomy.dsl.model.CatalogueDefinition;
 import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
 import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.dto.RelationSearchModel.Edge;
+import com.taxonomy.dto.RelationSearchReport;
 import com.taxonomy.editor.ArchitectureCommandPort.Context;
 import com.taxonomy.editor.ArchitectureEditorService;
 import com.taxonomy.workspace.service.RepositoryContext;
@@ -43,6 +44,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
+import static com.taxonomy.composition.architecture.ArchitectureFocusCandidates.MAX_QUOTE;
+import static com.taxonomy.composition.architecture.ArchitectureFocusCandidates.Triple;
+
 /** Bounded read-only hypothesis engine with an exact-editor adapter. No catalogue or proposal writes. */
 @Service
 public class ArchitectureFocusSuggestionService {
@@ -50,7 +54,6 @@ public class ArchitectureFocusSuggestionService {
             .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
     private static final String LOCAL = "LOCAL_TEXT_UNASSESSED";
-    private static final int MAX_QUOTE = 512;
     private static final int MAX_RATIONALE = 4_000;
     private static final int MAX_RESPONSE = 65_536;
     private final ArchitectureEditorService editor;
@@ -101,10 +104,6 @@ public class ArchitectureFocusSuggestionService {
                         List<Suggestion> suggestions) {
         EngineResult { suggestions = List.copyOf(suggestions); }
     }
-    private record Triple(String sourceId, String targetId, String relationType, int rank, List<Evidence> evidence) {
-        String key() { return sourceId + " " + relationType + " " + targetId; }
-    }
-
     public Response investigate(RepositoryContext scope, Request request) throws IOException {
         requireScope(scope, request.context());
         // Always read current state. A retained historical revision must never masquerade as a current investigation.
@@ -118,6 +117,7 @@ public class ArchitectureFocusSuggestionService {
         String hash = sha256(document.dsl());
         return investigateModel(model, catalogues.forModel(model),
                 com.taxonomy.dsl.planning.ArchitectureBrief.read(model).excludedRelationTypes(),
+                null, null,
                 request.sourceId(), request.candidateLimit(), request.useAi(), request.language(), hash,
                 Map.of("x-focus-revision", Long.toString(request.context().revision())), Response.class,
                 result -> new Response(request.context(), request.sourceId(), hash, result.method(), result.outcome(),
@@ -140,23 +140,26 @@ public class ArchitectureFocusSuggestionService {
     }
 
     <T> T investigateModel(CanonicalArchitectureModel model, CatalogueDefinition catalogue, Set<String> excluded,
+                           RelationSearchReport report, String original,
                            String sourceId, int candidateLimit, boolean useAi, String language, String hash,
                            Map<String, String> provenance, Class<T> resultType, Function<EngineResult, T> wrap,
                            BooleanSupplier sourceCurrent) {
         var request = new EngineRequest(sourceId, candidateLimit, useAi, language, Map.copyOf(provenance));
-        var plan = prepare(model, catalogue, excluded, request, hash);
+        var plan = prepare(model, catalogue, excluded, report, original, request, hash);
         Supplier<T> result = () -> wrap.apply(plan.result().get());
         if (!useAi || childOperations == null) return result.get();
-        var fingerprint = AnalysisAdapterStore.digest(resultType.getName(), sourceId, hash, language,
+        var fingerprint = AnalysisAdapterStore.digest("focus-evidence-v2", resultType.getName(), sourceId, hash, language,
                 Integer.toString(candidateLimit), JSON.writeValueAsString(new java.util.TreeMap<>(provenance)));
         return childOperations.execute("FOCUS_INVESTIGATION", fingerprint, resultType, plan.dispatch(), result, sourceCurrent);
     }
 
     private Execution prepare(CanonicalArchitectureModel model, CatalogueDefinition catalogue, Set<String> excluded,
-                              EngineRequest request, String hash) {
+                              RelationSearchReport report, String original, EngineRequest request, String hash) {
         var source = model.findElement(request.sourceId())
                 .orElseThrow(() -> problem("NOT_FOUND", "sourceId", "The element is not present in this exact source"));
-        List<Triple> candidates = candidates(model, catalogue, excluded, source, request.candidateLimit());
+        var displayDescriptions = ArchitectureFocusCandidates.displayDescriptions(model);
+        List<Triple> candidates = ArchitectureFocusCandidates.find(model, catalogue, excluded, displayDescriptions,
+                source, request.candidateLimit(), report, original);
         if (candidates.isEmpty()) return Execution.local(response(LOCAL, "NO_CANDIDATES", 0, candidates, List.of()));
         var local = local(request, hash, candidates, LOCAL);
         if (!request.useAi()) return Execution.local(response(LOCAL, "LOCAL_CANDIDATES", 0, candidates, local));
@@ -173,7 +176,7 @@ public class ArchitectureFocusSuggestionService {
             if (provider == null || provider.isBlank() || provider.length() > 200 || controls(provider))
                 throw new IllegalStateException("Invalid provider identity");
             String method = "AI:" + provider;
-            Map<String, String> fields = offeredFields(model, candidates, source.getId());
+            Map<String, String> fields = offeredFields(model, candidates, source.getId(), displayDescriptions);
             String prompt = prompt(request, candidates, fields);
             var options = completionOptions(candidates, fields, request.candidateLimit());
             if (options.budgetText(prompt).length() > 60_000) throw new IllegalArgumentException("Focus prompt exceeds its bounded envelope");
@@ -217,66 +220,24 @@ public class ArchitectureFocusSuggestionService {
             throw problem("NOT_FOUND", "context", "This exact editor context is not selected or accessible");
     }
 
-    private static List<Triple> candidates(CanonicalArchitectureModel model, CatalogueDefinition catalogue, Set<String> excluded,
-                                           ArchitectureElement focus, int limit) {
-        Set<String> existing = new HashSet<>();
-        model.getRelations().forEach(r -> existing.add(r.getSourceId() + " " + r.getRelationType() + " " + r.getTargetId()));
-        Set<String> focusTokens = tokens(focus);
-        var peers = model.getElements().stream().filter(e -> !e.getId().equals(focus.getId()))
-                .sorted(Comparator.<ArchitectureElement>comparingInt(e -> overlap(focusTokens, tokens(e))).reversed()
-                        .thenComparing(ArchitectureElement::getId)).toList();
-        List<Triple> offered = new ArrayList<>();
-        var generatableTypes = catalogue.relationDomains().keySet().stream()
-                .filter(type -> !"CONTAINS".equals(type) && !excluded.contains(type)).sorted().toList();
-        // Bound expansion independently from the total architecture size; peers retain deterministic text rank.
-        int eligiblePeers = 0;
-        for (var peer : peers) {
-            int before = offered.size();
-            int rank = overlap(focusTokens, tokens(peer));
-            for (String type : generatableTypes) {
-                add(offered, catalogue, focus, peer, type, rank, existing);
-                add(offered, catalogue, peer, focus, type, rank, existing);
-            }
-            // A saturated peer must not consume the target-search allowance.
-            if (offered.size() > before && ++eligiblePeers >= limit) break;
-        }
-        return offered.stream().sorted(Comparator.comparingInt(Triple::rank).reversed()
-                .thenComparing(t -> "RELATED_TO".equals(t.relationType()))
-                .thenComparing(Triple::key)).limit(limit).toList();
+    /** The retained contribution key and operation digest frame the same non-null UTF-8 parts. */
+    static String retainedContributionKey(Edge edge) {
+        var contribution = edge.contribution();
+        return AnalysisAdapterStore.digest(contribution.source().id(), contribution.text(), contribution.quote(),
+                contribution.condition(), edge.type(), edge.direction().name());
     }
-    private static void add(List<Triple> result, CatalogueDefinition catalogue, ArchitectureElement from,
-                            ArchitectureElement to, String type, int rank, Set<String> existing) {
-        if (!catalogue.allows(catalogue.rootFor(from.getType()), type, catalogue.rootFor(to.getType()))) return;
-        var triple = new Triple(from.getId(), to.getId(), type, rank, List.of(excerpt(from), excerpt(to)));
-        if (!existing.contains(triple.key())) result.add(triple);
-    }
-    private static Evidence excerpt(ArchitectureElement element) {
-        boolean description = element.getDescription() != null && !element.getDescription().isBlank();
-        String value = description ? element.getDescription() : element.getTitle();
-        return new Evidence(element.getId(), description ? "description" : "title", clip(value, MAX_QUOTE));
-    }
-    private static Set<String> tokens(ArchitectureElement element) {
-        Set<String> tokens = new HashSet<>();
-        for (String token : (clip(element.getTitle(), 512) + " " + clip(element.getDescription(), 4_000))
-                .toLowerCase(Locale.ROOT).split("[^\\p{L}\\p{N}]+")) if (token.length() > 2) tokens.add(token);
-        return tokens;
-    }
-    private static int overlap(Set<String> left, Set<String> right) {
-        return (int) right.stream().filter(left::contains).count();
-    }
+
     private static List<Suggestion> local(EngineRequest request, String hash, List<Triple> candidates, String method) {
-        String rationale = "de".equals(request.language())
-                ? "Ungeprüfter Kandidat aus Textreihenfolge und zulässigen Endpunkttypen. Eine fachliche Prüfung ist erforderlich."
-                : "Unassessed candidate from text ranking and allowed endpoint types. Architectural review is required.";
-        return candidates.stream().map(t -> suggestion(request, hash, method, t, rationale, t.evidence())).toList();
+        return candidates.stream().map(t -> suggestion(request, hash, method, t, t.rationale(request.language()), t.evidence())).toList();
     }
-    private static Map<String, String> offeredFields(CanonicalArchitectureModel model, List<Triple> candidates, String focusId) {
+    private static Map<String, String> offeredFields(CanonicalArchitectureModel model, List<Triple> candidates, String focusId,
+                                                     Set<String> displayDescriptions) {
         var fields = new LinkedHashMap<String, String>();
         Set<String> endpoints = new LinkedHashSet<>();
         candidates.forEach(t -> { endpoints.add(t.sourceId()); endpoints.add(t.targetId()); });
         model.getElements().stream().filter(e -> endpoints.contains(e.getId())).forEach(e -> {
             putField(fields, e.getId(), "title", e.getTitle());
-            putField(fields, e.getId(), "description", e.getDescription());
+            if (!displayDescriptions.contains(e.getId())) putField(fields, e.getId(), "description", e.getDescription());
         });
         var requirements = new HashSet<String>();
         model.getMappings().stream().filter(m -> focusId.equals(m.getElementId()))
@@ -293,8 +254,8 @@ public class ArchitectureFocusSuggestionService {
         if (value != null && !value.isBlank()) fields.put(id + "\n" + field, clip(value, MAX_QUOTE));
     }
     private static String prompt(EngineRequest request, List<Triple> candidates, Map<String, String> fields) {
-        List<Map<String, String>> triples = candidates.stream().map(t -> Map.of("sourceId", t.sourceId(),
-                "targetId", t.targetId(), "relationType", t.relationType())).toList();
+        var triples = candidates.stream().map(t -> Map.of("sourceId", t.sourceId(), "targetId", t.targetId(),
+                "relationType", t.relationType(), "basis", t.scope() == null ? t.sharedTerms() : t.scope(), "witnesses", t.evidence())).toList();
         List<Evidence> excerpts = fields.entrySet().stream().map(e -> {
             int split = e.getKey().indexOf('\n');
             return new Evidence(e.getKey().substring(0, split), e.getKey().substring(split + 1), e.getValue());
@@ -308,6 +269,8 @@ public class ArchitectureFocusSuggestionService {
                 Select supported useful hypotheses; an empty array is allowed. No confidence percentages.
                 Each suggestion requires a nonempty rationale and exact nonempty source excerpts from BOTH endpoints.
                 Optional mapped requirement excerpts supplement endpoint evidence. Never invent source quotations.
+                Where a triple supplies scoped witnesses, select it only for its explicit retained conditions and necessity.
+                A rejection in a separate context never proves a global match or global exclusion.
                 Preserve relation direction and meaning: USES denotes usage; DEPENDS_ON denotes dependency;
                 PRODUCES/CONSUMES denote information flow; SUPPORTS denotes support; REALIZES/FULFILLS denote realization;
                 ASSIGNED_TO denotes role assignment; COMMUNICATES_WITH denotes communication; REQUIRES denotes need.
@@ -320,7 +283,7 @@ public class ArchitectureFocusSuggestionService {
         var ids = new LinkedHashSet<String>(); candidates.forEach(t -> { ids.add(t.sourceId()); ids.add(t.targetId()); });
         var evidenceIds = fields.keySet().stream().map(k -> k.substring(0, k.indexOf('\n'))).distinct().toList();
         var evidence = objectSchema(Map.of("elementId", Map.of("type", "string", "enum", evidenceIds),
-                "field", Map.of("type", "string", "enum", List.of("title", "description", "text")), "quote", textSchema(MAX_QUOTE)));
+                "field", Map.of("type", "string", "enum", List.of("title", "description", "text", "requirement")), "quote", textSchema(MAX_QUOTE)));
         var item = objectSchema(Map.of("sourceId", Map.of("type", "string", "enum", List.copyOf(ids)),
                 "targetId", Map.of("type", "string", "enum", List.copyOf(ids)),
                 "relationType", Map.of("type", "string", "enum", candidates.stream().map(Triple::relationType).distinct().toList()),
@@ -355,11 +318,15 @@ public class ArchitectureFocusSuggestionService {
                 exactFields(entry, "elementId", "field", "quote");
                 String id = text(entry, "elementId", 200), field = text(entry, "field", 20), quote = text(entry, "quote", MAX_QUOTE);
                 String actual = fields.get(id + "\n" + field);
-                if (actual == null || !actual.contains(quote)) throw new IllegalArgumentException("Unsupported source quotation");
+                if (!ArchitectureFocusCandidates.validUnicode(quote) || (actual == null || !actual.contains(quote)) && triple.evidence().stream().noneMatch(witness ->
+                        witness.elementId().equals(id) && witness.field().equals(field) && witness.quote().contains(quote)))
+                    throw new IllegalArgumentException("Unsupported source quotation");
                 supported.add(id); evidence.add(new Evidence(id, field, quote));
             }
             if (!supported.contains(from) || !supported.contains(to)) throw new IllegalArgumentException("Both endpoints require source evidence");
-            suggestions.add(suggestion(request, hash, method, triple, rationale, evidence));
+            // Selecting this triple cannot strengthen a retained optional, alternative or conditional witness.
+            suggestions.add(triple.scope() == null ? suggestion(request, hash, method, triple, rationale, evidence)
+                    : suggestion(request, hash, method, triple, triple.rationale(request.language()), triple.evidence()));
         }
         return List.copyOf(suggestions);
     }

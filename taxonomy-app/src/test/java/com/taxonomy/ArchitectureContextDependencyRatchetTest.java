@@ -228,6 +228,7 @@ class ArchitectureContextDependencyRatchetTest {
                 "ArchitectureSourceFocusService -> com.taxonomy.workspace.service.WorkspaceActorAccess",
                 "ArchitectureSourceFocusService -> com.taxonomy.workspace.service.WorkspaceContext");
         assertThat(compositionTargets).containsExactlyInAnyOrder(
+                compositionPackage + "AnalysisSnapshotAdoptionService",
                 compositionPackage + "ArchitectureFocusSuggestionService",
                 compositionPackage + "ArchitectureFocusSuggestionService$EngineResult",
                 compositionPackage + "ArchitectureFocusSuggestionService$Suggestion",
@@ -236,6 +237,7 @@ class ArchitectureContextDependencyRatchetTest {
         assertThat(calls).containsExactlyInAnyOrder(
                 "com.taxonomy.analysis.cluster.ClusterAnalysisObservation.request(java.lang.String,java.lang.String,com.taxonomy.workspace.service.WorkspaceContext)",
                 "com.taxonomy.analysis.cluster.ClusterAnalysisObservation.result(java.lang.String,java.lang.String,com.taxonomy.workspace.service.WorkspaceContext)",
+                "com.taxonomy.analysis.cluster.ClusterAnalysisObservation$RecoveryInput.businessText()",
                 "com.taxonomy.analysis.cluster.ClusterAnalysisObservation$RecoveryInput.operationId()",
                 "com.taxonomy.analysis.cluster.ClusterAnalysisObservation$RecoveryInput.scope()",
                 "com.taxonomy.analysis.cluster.ClusterAnalysisView$ObservationScope.branch()",
@@ -251,7 +253,8 @@ class ArchitectureContextDependencyRatchetTest {
                 "com.taxonomy.analysis.session.AnalysisDraftDtos$AnalysisDraftView.version()",
                 "com.taxonomy.analysis.session.AnalysisDraftDtos$AnalysisDraftView.workspaceId()",
                 "com.taxonomy.analysis.session.AnalysisWorkingDraftService.read(java.lang.String,java.lang.String)",
-                "com.taxonomy.composition.architecture.ArchitectureFocusSuggestionService.investigateModel(com.taxonomy.dsl.model.CanonicalArchitectureModel,com.taxonomy.dsl.model.CatalogueDefinition,java.util.Set,java.lang.String,int,boolean,java.lang.String,java.lang.String,java.util.Map,java.lang.Class,java.util.function.Function,java.util.function.BooleanSupplier)",
+                "com.taxonomy.composition.architecture.AnalysisSnapshotAdoptionService.requirementText(java.lang.Long,java.lang.Long,java.lang.Long,java.lang.String,com.taxonomy.workspace.service.WorkspaceContext)",
+                "com.taxonomy.composition.architecture.ArchitectureFocusSuggestionService.investigateModel(com.taxonomy.dsl.model.CanonicalArchitectureModel,com.taxonomy.dsl.model.CatalogueDefinition,java.util.Set,com.taxonomy.dto.RelationSearchReport,java.lang.String,java.lang.String,int,boolean,java.lang.String,java.lang.String,java.util.Map,java.lang.Class,java.util.function.Function,java.util.function.BooleanSupplier)",
                 "com.taxonomy.composition.architecture.ArchitectureFocusSuggestionService$EngineResult.candidateCount()",
                 "com.taxonomy.composition.architecture.ArchitectureFocusSuggestionService$EngineResult.method()",
                 "com.taxonomy.composition.architecture.ArchitectureFocusSuggestionService$EngineResult.modelCalls()",

@@ -9,6 +9,7 @@ import java.util.*;
 /** One source observation about a directed relation. Only the frozen snapshot adapter builds these. */
 public record SnapshotEvidence(RelationKey relation, String origin, Double confidence, Map<String, String> details) {
     public static final String FINGERPRINT = "x-analysis-evidence-fingerprint";
+    public static final String GENERATED_DESCRIPTION_HASH = "x-analysis-generated-description-sha256";
     static final String VIEW = "x-analysis-view-id";
     static final String SNAPSHOT = "x-analysis-snapshot-id";
     public static final int MAX_RECORDS = 10000;
@@ -83,7 +84,7 @@ public record SnapshotEvidence(RelationKey relation, String origin, Double confi
         return digest(String.join("\n", evidenceIds));
     }
 
-    private static String digest(String value) {
+    static String digest(String value) {
         requireUtf8(value);
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
