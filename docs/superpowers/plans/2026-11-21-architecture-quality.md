@@ -84,10 +84,11 @@ objects; existing C1-S1/R7 checks retain their meanings.
 ## Task 5: Integrated verification and delivery
 
 - [x] Run the focused union and broader Maven-owned gate attempts; retain commands/results.
-  The final complete gate remains open after executor interruption; see the QA report.
+  The final complete gate is being repeated after the provider-clock follow-up;
+  focused passing lanes do not substitute for it. See the QA report.
 - [x] Re-run the retained coarse-response regression through production components.
 - [x] Record outstanding real-model, external-database, browser and native-EA limits.
-- [ ] Review the full branch, fix material findings and publish reviewable commits/PR.
+- [x] Review the full branch, fix material findings and publish reviewable commits/PR.
 
 ## Live findings added to the same implementation
 
@@ -101,12 +102,19 @@ objects; existing C1-S1/R7 checks retain their meanings.
   the last work slot; retain discovered work if a later catalogue lookup fails.
 - [x] Route retained-snapshot edges around cards without moving persisted nodes or
   changing endpoints; inspect the actual retained A1 scene in Chromium.
+- [x] Route the actual SVG, Word and PDF exports around unrelated cards, bound
+  arrowhead geometry and retain accessible parallel edges when captions collide.
+- [x] Preserve already adopted requirement text exactly in full and targeted
+  compact synthesis and update the demo contract with stronger evidence assertions.
 - [x] Repair portable Visio text measurement against the unchanged native fixture.
 - [x] Make the public-key setup for native Git signature verification independent of
   private-agent sockets while preserving the actual native verification assertion.
+- [x] Make provider-admission deadline tests independent of host scheduling with
+  a shared controlled clock/waiter, unchanged production defaults and unchanged
+  deadlines; retain refund, consumed-RPM and expiry negative checks.
 - [x] Obtain independent reviews and observed red/green evidence for the added fixes.
 - [x] Recompile the final scheduling delta under Maven and resume the same persisted
   application data, preserving version and snapshot identities and the total request cap.
   The first A3 was subsequently interrupted by executor replacement; its retry is distinct.
-- [ ] Capture final actual HTTP/browser/export outcomes, record remaining profile and
+- [x] Capture final actual HTTP/browser/export outcomes, record remaining profile and
   expert-review gaps, and publish the exact reviewed source tree as a draft PR.

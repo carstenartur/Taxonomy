@@ -85,6 +85,15 @@ Dies ist ein Test der gespeicherten Evidenz mit dem neuen Renderer, keine neue
 Modellsynthese. Die Satzaufteilung erhält auch Titel und Initialen wie „Dr. E.
 White“.
 
+Der vollständige Reaktor deckte außerdem auf, dass die neue Absatzaufteilung
+eine bereits übernommene Anforderung verändern konnte. Für solche gebundenen
+Quellen bleiben Text und Layout jetzt bytegetreu erhalten, sowohl in normaler
+als auch in gezielter Synthese. Die Regression prüft vollständige Gleichheit
+statt des früheren Teilstringvergleichs. Der Demo-Vertrag prüft nun die neue
+kompakte Darstellung: genau eine Originalfassung am Anfang, alle fünf
+Ergänzungen und menschlichen Antworten sowie die unveränderten Fragen und die
+abgelehnte GPS-Aussage in der strukturierten Historie.
+
 Die ursprüngliche Übernahme von A1 reduzierte die Beziehung auf Endpunkte und
 Status. Der neue Weg erhält den vollständigen gerichteten Beleg im kanonischen
 Modell. Ein separater Test mit dem erfassten A1 bestätigt dieselbe Ansichts-ID,
@@ -111,6 +120,18 @@ keine Überschneidung von Kante oder Beschriftung mit einer Karte und den Pfeil 
 ursprünglichen Ziel. Die Beschriftung „Direkt bewertet“ bezeichnet nun eine
 Klassifikationsbewertung, ohne eine fachliche Freigabe vorzutäuschen.
 
+Dieselbe gespeicherte Szene legte den verdeckten Pfad auch im SVG und in der
+Word-Übersicht offen. Die Java-Renderer verwenden nun ebenfalls einen begrenzten
+Umweg durch freie Zwischenräume. PDF wendet ihn nach der Übersetzung in das
+jeweilige Seitenpanel an; die vorhandenen seitenübergreifenden Verweise bleiben
+erhalten. Pfeile folgen dem letzten Pfadsegment. SVG begrenzt zusätzlich die
+Pfeilspitzengröße auf die verfügbare Strecke. Parallele Kantenbeschriftungen
+erhalten kollisionsfreie Positionen oder bleiben über Inventar, Legende und
+zugängliche Kantenbedienung verfügbar, wenn kein freier Platz existiert.
+Die gespeicherten Knotenpositionen, Endpunkte und fachlichen Aussagen ändern
+sich dadurch nicht. Die unabhängige Prüfung bestätigte sowohl den tatsächlichen
+A1-Export als auch die drei parallelen Kanten im Browser.
+
 ### Kontrollierte Wiederaufnahme nach den Korrekturen
 
 Die Produktionsklassen wurden vor dem neuen Gesamtbuild in ein unveränderliches
@@ -127,6 +148,41 @@ beide Zulassungen zum gemeinsamen Höchstwert: 159 von 384 sind damit bereits
 verbraucht. Eine Wiederaufnahme darf den Zähler nicht auf null setzen oder den
 unterbrochenen Versuch als Erfolg werten.
 
+### Abgeschlossener Vergleichslauf A3
+
+Nach Wiederherstellung derselben Abhängigkeiten wurde eine neue A3-Ausführung
+auf Basis der unveränderten, sauber geschlossenen Daten zugelassen. Job
+`8840e201-eaed-47fd-8495-4b882eebb5fa` speicherte Snapshot
+`4d4b8dda-a4c3-46c1-88a4-321a1f427e02`. Alle 35 neu erzeugten
+HTTP-Antworten wurden ausgeliefert. Der gemeinsame Zähler steht danach bei
+194 von 384 Zulassungen: 157 aus dem ersten vollständigen Durchgang, zwei aus
+dem unterbrochenen Versuch und 35 aus A3. Eine der zwei unterbrochenen
+Zulassungen hat keine Antwort; sie wird trotzdem gezählt.
+
+Bei gleicher Version 2, gleichem BP/CI-Umfang und unverändert 20 Relationsaufrufen
+bewertete A3 nach dem ersten BP-Paket direkt CI-1023, CI-1047 und CI-1151.
+Die erste unter BP-1000 besuchte Teilmenge enthielt jetzt BP-1327. Danach folgten
+BP-1351, der konkrete Kandidat BP-2125 und dessen separate Verifikation. A3
+bestätigte erneut `CI-1151 SUPPORTS BP-2125`.
+
+| Messgröße | A1 vor der Reihenfolgekorrektur | A3 nach der Korrektur |
+| --- | ---: | ---: |
+| Relationsaufrufe | 20 | 20 |
+| Bewertete / nicht bewertete Katalogknoten | 75 / 465 | 75 / 465 |
+| Architekturelemente / verifizierte Beziehungen | 20 / 1 | 20 / 1 |
+| Nicht bewertete Relationsquellen | 10 | 6 |
+| Ausstehende / ungeklärte Quell-Ziel-Suchen | 95 / 1 | 80 / 1 |
+| Offene Arbeitspakete | 64 | 107 |
+| Analysestatus | PARTIAL | PARTIAL |
+
+Die größere Zahl offener Pakete gehört zum reichhaltigeren, weiterhin offenen
+Suchplan. Sie wird nicht als Verbesserung umgedeutet. A3 verwendete außerdem den bereits vorhandenen A1-Checkpoint als
+Modellkontext und frisch verfasste Antworten. Dieser Vergleich ist deshalb
+kein isolierter Kausalvergleich und kein kontrollierter Modellbenchmark.
+Nachgewiesen sind die korrigierte Reihenfolge, breitere Quellbewertung und
+weiterhin konkret belegte Beziehung; weder mehr Beziehungen noch vollständige
+Architekturabdeckung wurden dadurch erreicht.
+
 ### Tatsächliche ADMBw-Prüfung des neuen Modells
 
 Der neue kanonische A1-Checkpoint
@@ -135,8 +191,9 @@ Beziehung, eine gebundene Anforderung und 20 Zuordnungen. Die über HTTP
 abgerufene C1–S1/R7-Prüfung meldet **`CHANGES_REQUIRED`** und die
 Lieferabdeckung **`PARTIAL`**. Sechs von 20 Elementen sind abbildbar; die
 Beziehung, die Anforderung und die 20 Zuordnungen werden in diesem Profilstand
-noch nicht abgebildet. Unter anderem fehlen Service-Spezifikationen mit ihren
-Profilbeziehungen und R7-Planungsdaten. Die Oberfläche zeigt die Lücken und
+noch nicht abgebildet. Für die sechs vorhandenen CI-Kandidaten fordert die Prüfung die ausdrückliche
+Deklaration als ServiceSpecification und je eine akzeptierte Exhibits-Zuordnung
+zu einer offiziellen Capability; außerdem fehlt der R7-Planungseintrag. Die Oberfläche zeigt die Lücken und
 bietet keinen erfolgreichen nativen Export an.
 
 Die automatische Klassifikation von Rollen- und Berichtskategorien ist
@@ -144,6 +201,58 @@ außerdem noch keine abgesicherte Aussage, dass eine zivile/akademische Rolle
 oder eine bestimmte Berichtspflicht gefordert ist. Diese Kandidaten sind nicht
 als fachlich abgenommen zu lesen. Aus dem neuen Lauf folgt daher keine
 vollständige automatische ADMBw-Architektur.
+
+### Tatsächliche A2-Übernahme und aktueller kanonischer Stand
+
+Die A2-Vorschau hatte keine Konflikte. Die über HTTP ausgeführte Übernahme
+speicherte Checkpoint `f9c031ce194e743aea39ef5dc2bf840944a1351b`, Revision 4.
+Er enthält 36 Elemente, zwei Beziehungen, eine gebundene Anforderung und 20
+Zuordnungen. Die ältere A1-Beziehung bleibt im gespeicherten Status `accepted`;
+die neue Beziehung `UA-1209 SUPPORTS BP-1535` bleibt `proposed`.
+
+Ein echter nachfolgender Checkpoint-Lesezugriff bestätigt für A2 den neuen
+strukturierten Evidenzblock: das exakte Zitat, die Bedingung, gerichtete Beiträge,
+Notwendigkeit, Verifikationsentscheidung, Snapshot- und Ansichtsidentität.
+Die Herkunft ist `LLM_SUPPORTED`, unbekannte Konfidenz bleibt leer. Die
+kanonische PDF nennt Status, Herkunft und die partiellen Snapshot-Quellen;
+die vollständigen strukturierten Zitate sind im DSL/API-Nachweis enthalten.
+
+Die aktuelle ADMBw-Prüfung meldet für den gesamten Checkpoint 13 von 36
+abbildbare Elemente, für die ausgewählte A2-Sicht zehn von 36. Beide erfassen
+keine der zwei Beziehungen, keine der einen Anforderung und keine der 20
+Zuordnungen in der gültigen Profil-Lieferung. C1–S1 und R7 bleiben
+`CHANGES_REQUIRED`. Der native Export bleibt trotz nachweislich geladenem
+Sparx-Plugin gesperrt.
+
+Alle drei gespeicherten Snapshot-Ansichten wurden erneut in Chrome geöffnet.
+Die gerichteten Pfade schneiden keine fremde Karte; insbesondere bleibt
+CI-1151 als Quelle der A1-Kante sichtbar. Danach wurde die Anwendung bei leerer
+Antwortwarteschlange sauber beendet. Datenbank und Lucene-Indizes wurden für
+die abschließende Exportprüfung erneut mit Hashes gesichert.
+
+### Abschließender HTTP-Export des identischen Checkpoints
+
+Ein weiterer Neustart verwendete die zuletzt geprüften Produktionsklassen aus
+einem unveränderlichen Laufzeitverzeichnis und lehnte neue Modellaufrufe ab.
+Die ursprüngliche und die übernommene Anforderung, alle vier Snapshots und
+Checkpoint `f9c031ce194e743aea39ef5dc2bf840944a1351b` blieben identisch.
+Der Zähler blieb bei 194 Zulassungen.
+
+Alle 14 Downloads antworteten mit HTTP 200: jeweils SVG, PDF und DOCX für A1,
+A2 und A3 sowie Anforderungstext, kanonisches DSL, kanonische PDF und die beiden
+ADMBw-Bewertungen. Die SVG-Prüfung bestätigte korrekte Anschlusspunkte und keine
+Schnittpunkte mit fremden Karten in allen drei Ansichten. A1 umgeht jetzt auch
+im tatsächlichen Serverexport die Karte CI-1047. Die Sichtprüfung bestätigte
+die Word-Übersicht und die Detaildarstellung, den achtseitigen kanonischen
+PDF-Bericht sowie repräsentative Seiten des neunseitigen A3-Word-Berichts.
+
+Der Browser zeigte weiterhin die partiellen Quellen und die unveränderten
+ADMBw-Lücken. Trotz geladenem Sparx-Plugin wurde kein nativer Export angeboten.
+Es entstand keine QEA aus diesem aktuellen Checkpoint. Nach der Prüfung wurde
+die Anwendung mit leerer Warteschlange und sauber geschlossener Datenbank
+beendet. `live-current-export-final/final-http-evidence-manifest.json` bindet
+Quelldateien, Laufzeit, 417 externe JARs, Downloads, Browsernachweise und 19
+geschlossene Datenbank-/Indexdateien an ihre Hashes.
 
 ## Erneuter Export des unveränderten QA-Checkpoints
 
@@ -192,8 +301,10 @@ Assertions, TLS-Prüfungen oder Produkt-Qualitätsregeln.
 
 Die Rohprotokolle und reproduzierten Dokumente liegen unter
 `target/quality-20261121/` und werden nicht als Quellcode eingecheckt. Die
-Prüfungen wurden mit unveränderten Assertions und deaktiviertem Maven-Build-Cache
-ausgeführt. Die folgenden Läufe überschneiden sich in ihren Testfällen und dürfen
+Prüfungen wurden ohne abgeschwächte Qualitätsgrenzen und mit deaktiviertem
+Maven-Build-Cache ausgeführt. Angepasste Darstellungsverträge und verstärkte
+Quellschutz-Assertions sind oben ausdrücklich beschrieben. Die folgenden Läufe
+überschneiden sich in ihren Testfällen und dürfen
 nicht zu einer Anzahl unterschiedlicher Tests addiert werden:
 
 | Maven-Prüfung | Ergebnis | Nachweis |
@@ -205,6 +316,8 @@ nicht zu einer Anzahl unterschiedlicher Tests addiert werden:
 | Vollständige Exporttests samt benötigten Modulen nach der portablen Visio-Textmessung | 630 Exporttests und 300 Tests der abhängigen Module; keine Fehler oder übersprungenen Tests | `visio-portable-export-tests.log` |
 | Gemeinsamer Reaktor nach den Live-Korrekturen: Entwurf, Evidenzübernahme, DSL, Relationssuche, JS und echte Browserfälle | 3.758 Tests, darunter fünf Selenium-Tests; keine Fehler oder übersprungenen Tests | `post-live-combined.log` |
 | Letzte Korrektur der Verifikations- und Geschwisterreihenfolge, erneut kompiliert | 176 Tests in acht Klassen; keine Fehler oder übersprungenen Tests | `final-schedule-maven.log` |
+| Gemeinsamer Reaktor nach den Export- und Quellschutzkorrekturen | 3.571 Tests in 24 Klassen, darunter fünf Selenium-Tests; keine Fehler oder übersprungenen Tests | `final-integrated-regressions.log` |
+| Provider-Zulassung, Transportmessung, Konfiguration und Gateway-Verträge nach der deterministischen Zeitprüfung | 324 Tests in 54 Klassen; keine Fehler oder übersprungenen Tests | `provider-admission-clock/maven-confirmation.log` |
 | Native Signaturprüfung mit isoliertem öffentlichem Schlüsselring | 47 Tests, keine Fehler oder übersprungenen Tests | `native-gpg-public-keyring-confirmation.log` |
 | Kompakter Entwurf, normale/gezielte Synthese und tatsächlicher Browser im isolierten `test-local`-Reaktor | 111 Tests, darunter fünf Selenium-Tests; keine Fehler oder übersprungenen Tests | `../taxonomy-reformulation-ux/target/quality-compact-draft/maven-strict-shell.log` |
 
@@ -244,9 +357,49 @@ GPG-Einrichtungsfehler 7.201 Tests. Der abschließende Gesamtversuch nach den
 Live-Befunden wurde am 21. November um 19:16 Uhr MEZ während der Tooling-Tests
 durch den Austausch der Ausführungsumgebung unterbrochen. Der Ersatz hatte
 keinen Maven-Artefaktcache; der erste Neustart scheiterte daher bereits vor
-dem Start der JVM. Beide Protokolle bleiben getrennt erhalten. Es gibt zu
-diesem Zwischenstand noch kein erfolgreiches Ergebnis des vollständigen Gates.
-Die fokussierten Erfolge gelten nicht als Ersatz.
+dem Start der JVM. Beide Protokolle bleiben getrennt erhalten. Nach
+Wiederherstellung der exakten Abhängigkeiten erreichte `canonical-ci-final.log`
+11.012 Tests in 928 Klassen mit zwei Fehlern und sieben übersprungenen Fällen.
+Die beiden Fehler betrafen den beschriebenen Schutz übernommener Anforderungen
+und den bisherigen Demo-Darstellungsvertrag. Beide Korrekturen bestehen den
+gemeinsamen Reaktor mit 3.571 Tests und danach auch den vollständigen
+Analysemodul-Lauf.
+
+`canonical-ci-final-code.log` erreichte 11.020 Tests in 929 Klassen mit einem
+Fehler und sieben übersprungenen Fällen. Der unverändert vom Ausgangsstand
+übernommene `ProviderPermitRateReservationTest` scheiterte an seiner realen
+Zehn-Millisekunden-Frist nach der bereits erfolgreichen zweiten Broker-Zulassung.
+Die lokale RPM-Reservierung war damit verfügbar; eine bewusst verzögerte
+Baseline-Prüfung reproduzierte dieselbe Fristüberschreitung nach dem Broker.
+
+Die Zulassungsprüfung besitzt jetzt eine paketinterne kontrollierbare Uhr und
+Wartefunktion. Produktionsaufrufe verwenden weiterhin `System.nanoTime` und
+dieselben kooperativen Wartephasen. Der Test behält seine Zehn- beziehungsweise
+Hundert-Millisekunden-Grenzen: Broker-Ausfall verbraucht keinen Aufruf, Erholung
+erlaubt genau einen Aufruf ohne Wartezeit, der nächste Aufruf wird durch das
+verbrauchte RPM-Kontingent blockiert. Eine virtuelle Verzögerung von 150
+Millisekunden gegen die Hundert-Millisekunden-Grenze gibt das Permit zurück,
+ohne den Request zu starten. Drei gezielt fehlerhafte Varianten bestätigten,
+dass fehlende Rückgabe, irrtümliche Rückgabe nach Erfolg und fehlende Frist
+weiterhin erkannt werden. Der frisch kompilierte Maven-Lauf besteht mit 324
+Tests; die Änderung wurde unabhängig geprüft.
+
+Die sieben übersprungenen Fälle waren fünf Helm-Prüfungen ohne vorhandenes Helm
+und zwei optionale Visio-PDF-Prüfungen ohne Aktivierung. Sie gelten nicht als
+bestandene Tests. Der erneute vollständige Reaktor nach der Zeitkorrektur wird
+unter `canonical-ci-final-clock.log` aufgezeichnet. Ein erfolgreicher Abschluss
+des vollständigen Gates ist zu diesem Zwischenstand noch nicht festgestellt;
+die fokussierten Erfolge gelten nicht als Ersatz.
+
+## Veröffentlichter Prüfstand
+
+Der Quellstand ist als Entwurfs-PR
+[1584](https://github.com/carstenartur/Taxonomy/pull/1584) veröffentlicht.
+GitHub führt im Job „Maven verification“ für Entwürfe ausdrücklich
+„Keep draft heads non-mergeable“ aus und beendet ihn mit Fehler. In
+[Lauf 44935210443](https://github.com/carstenartur/Taxonomy/actions/runs/44935210443)
+war dies der beobachtete Grund; der Job führte keine Codetests aus. Die
+Entwurfssperre bleibt bestehen und wird nicht als bestandene CI interpretiert.
 
 ## Noch nicht durch diese Änderung bewiesen
 
