@@ -165,25 +165,28 @@
     function layoutScene(model) {
         const common = window.TaxonomyArchitectureDiagram;
         const groups = buildLayerGroups(model.nodes, common.taxonomyPalette());
-        const bounds = calculateBounds(model.nodes, groups);
+        const frame = calculateBounds(model.nodes, groups);
         const nodeById = new Map(model.nodes.map(function (node) { return [node.id, node]; }));
-        const lanes = common.relationshipLanes(model.edges);
+        const lanes = common.relationshipLanes(model.edges, true);
+        let left = frame.x, top = frame.y, right = frame.x + frame.width, bottom = frame.y + frame.height;
+        const edges = model.edges.map(function (edge) {
+            const route = common.routeEdge(nodeById.get(edge.sourceId), nodeById.get(edge.targetId),
+                lanes.get(edge.id) || 0, edge, model.nodes);
+            left = Math.min(left, route.bounds.left - 8);
+            top = Math.min(top, route.bounds.top - 8);
+            right = Math.max(right, route.bounds.right + 8);
+            bottom = Math.max(bottom, route.bounds.bottom + 8);
+            return Object.assign({}, edge, {path: route.path, labelX: route.labelX, labelY: route.labelY});
+        });
         return {
             nodes: model.nodes,
-            edges: model.edges.map(function (edge) {
-                const lane = lanes.get(edge.id) || 0;
-                return Object.assign({}, edge, {
-                    path: common.edgePath(nodeById.get(edge.sourceId), nodeById.get(edge.targetId), lane, edge),
-                    labelX: (edge.sourceX + edge.targetX) / 2,
-                    labelY: (edge.sourceY + edge.targetY) / 2 + lane * 12 - 6
-                });
-            }),
+            edges: edges,
             layers: groups.map(function (layer) {
                 return {
                     x: layer.x,
-                    y: bounds.y,
+                    y: frame.y,
                     width: layer.width,
-                    height: bounds.contentBottom + 12 - bounds.y,
+                    height: frame.contentBottom + 12 - frame.y,
                     color: layer.color,
                     backgroundFill: common.rgba(layer.color, 0.08),
                     headerHeight: 34,
@@ -193,7 +196,7 @@
                     labelOffsetY: 29
                 };
             }),
-            bounds: bounds
+            bounds: Object.assign({}, frame, {x: left, y: top, width: right - left, height: bottom - top})
         };
     }
 

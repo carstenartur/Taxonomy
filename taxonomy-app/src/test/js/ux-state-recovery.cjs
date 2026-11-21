@@ -100,6 +100,102 @@ test('snapshot workbench distinguishes unrecorded relevance from a recorded zero
     assert.match(recorded.tooltip, /0%/);
 });
 
+function snapshotLayout() {
+    const window = {}, {document} = dom();
+    vm.runInNewContext(source('shared/architecture-diagram.js'), {window, document});
+    vm.runInNewContext(source('architecture-workbench.js'), {window, document});
+    return window.TaxonomyArchitectureSnapshot.layoutScene;
+}
+
+function card(id, x, y, layer = 1) {
+    return {id, x, y, layer, width: 238, height: 82, type: layer === 1 ? 'BP' : 'CI'};
+}
+
+function link(id, source, target) {
+    const forward = source.x <= target.x;
+    return {id, sourceId: source.id, targetId: target.id, label: 'SUPPORTS',
+        sourceX: source.x + (forward ? source.width : 0), sourceY: source.y + source.height / 2,
+        targetX: target.x + (forward ? 0 : target.width), targetY: target.y + target.height / 2};
+}
+
+function pathSamples(path) {
+    const controls = path.match(/-?\d+(?:\.\d+)?/g).map(Number);
+    const points = controls.reduce((pairs, value, index) => {
+        if (index % 2 === 0) pairs.push([value, controls[index + 1]]);
+        return pairs;
+    }, []);
+    const sample = (position, steps) => Array.from({length: steps + 1}, (_, i) => position(i / steps));
+    if (path.includes(' C')) {
+        return sample(t => [0, 1].map(axis => (1 - t) ** 3 * points[0][axis]
+            + 3 * (1 - t) ** 2 * t * points[1][axis] + 3 * (1 - t) * t ** 2 * points[2][axis]
+            + t ** 3 * points[3][axis]), 500);
+    }
+    return points.slice(1).flatMap((end, i) => {
+        const start = points[i], steps = Math.max(1, Math.ceil(Math.hypot(end[0] - start[0], end[1] - start[1])));
+        return sample(t => start.map((value, axis) => value + t * (end[axis] - value)), steps);
+    });
+}
+
+function assertDirectedClearRoute(layout, original) {
+    const edge = layout.edges.find(item => item.id === original.id);
+    const points = pathSamples(edge.path);
+    assert.deepEqual(points[0], [original.sourceX, original.sourceY]);
+    assert.deepEqual(points.at(-1), [original.targetX, original.targetY]);
+    for (const node of layout.nodes) {
+        const inside = ([x, y]) => x > node.x + 0.25 && x < node.x + node.width - 0.25
+            && y > node.y + 0.25 && y < node.y + node.height - 0.25;
+        assert.ok(!points.some(inside), 'edge crosses ' + node.id);
+        assert.ok(!inside([edge.labelX, edge.labelY]), 'label is hidden by ' + node.id);
+    }
+    const {x, y, width, height} = layout.bounds;
+    assert.ok(points.every(point => point[0] >= x && point[0] <= x + width && point[1] >= y && point[1] <= y + height),
+        'fit bounds include the route');
+    assert.ok(edge.labelX >= x && edge.labelX <= x + width && edge.labelY >= y && edge.labelY <= y + height,
+        'fit bounds include the label');
+    return edge;
+}
+
+test('the retained A1 relation goes around CI-1047 without moving any cards', () => {
+    const education = card('BP-2125', 576, 400);
+    const intermediate = card('CI-1047', 906, 400, 2);
+    const service = card('CI-1151', 1168, 400, 2);
+    const nodes = [education, intermediate, service].map(Object.freeze);
+    const edge = Object.freeze(link('a1-supports', service, education));
+    const layout = snapshotLayout()({nodes, edges: [edge]});
+    assert.equal(layout.nodes, nodes);
+    assertDirectedClearRoute(layout, edge);
+});
+
+test('vertical snapshot links preserve their original ports and pass between cards', () => {
+    const source = card('top', 52, 52), intermediate = card('middle', 52, 168), target = card('bottom', 52, 284);
+    const edge = link('vertical', source, target);
+    assertDirectedClearRoute(snapshotLayout()({nodes: [source, intermediate, target], edges: [edge]}), edge);
+});
+
+test('reciprocal and parallel snapshot links remain individually traceable', () => {
+    const left = card('left', 52, 168), center = card('center', 314, 168), right = card('right', 576, 168);
+    const links = [link('forward', left, right), link('parallel', left, right), link('backward', right, left)];
+    const layout = snapshotLayout()({nodes: [left, center, right], edges: links});
+    const edges = links.map(edge => assertDirectedClearRoute(layout, edge));
+    assert.equal(new Set(edges.map(edge => `${edge.labelX}/${edge.labelY}`)).size, links.length);
+    assert.equal(new Set(edges.map(edge => edge.path)).size, links.length);
+});
+
+test('an unobstructed snapshot link preserves the existing smooth path', () => {
+    const source = card('source', 52, 52), target = card('target', 382, 168, 2);
+    const edge = link('clear', source, target);
+    const layout = snapshotLayout()({nodes: [source, target], edges: [edge]});
+    const routed = assertDirectedClearRoute(layout, edge);
+    assert.equal(routed.path, 'M290,93 C332,93 340,209 382,209');
+});
+
+test('a self-link leaves and returns to its card with a fitted exterior loop', () => {
+    const single = card('single', 52, 52);
+    const edge = link('loop', single, single);
+    const layout = snapshotLayout()({nodes: [single], edges: [edge]});
+    assertDirectedClearRoute(layout, edge);
+});
+
 test('ADMBw delivery coverage shows complete source counts and every omitted identity without HTML interpretation', async () => {
     const f = admbwCoverageFixture();
     const report = f.render({status:'PARTIAL', sourceViewId:'capability-view',

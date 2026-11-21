@@ -118,12 +118,17 @@
         var left = (vw - width * scale) / 2, top = (vh - height * scale) / 2;
         return { scale: scale, x: left - number(bounds.x, 0) * scale, y: top - number(bounds.y, 0) * scale, left: left, top: top, right: left + width * scale, bottom: top + height * scale };
     }
-    function relationshipLanes(edges) {
+    function relationshipLanes(edges, sharedDirections) {
         var groups = new Map(), lanes = new Map();
-        edges.forEach(function (edge) { var key = source(edge) + '\u0000' + target(edge); if (!groups.has(key)) groups.set(key, []); groups.get(key).push(edge); });
+        edges.forEach(function (edge) {
+            var from = source(edge), to = target(edge);
+            var key = sharedDirections && from > to ? to + '\u0000' + from : from + '\u0000' + to;
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(edge);
+        });
         groups.forEach(function (items) { items.forEach(function (edge, index) { lanes.set(edge.id, index - (items.length - 1) / 2); }); }); return lanes;
     }
-    function edgePath(source, target, lane, endpoints) {
+    function edgeCurve(source, target, lane, endpoints) {
         var sourceLayer = source.layerIndex === undefined ? source.layer : source.layerIndex;
         var targetLayer = target.layerIndex === undefined ? target.layer : target.layerIndex;
         var forward = sourceLayer < targetLayer, sameLayer = sourceLayer === targetLayer;
@@ -139,7 +144,99 @@
             var distance = Math.max(42, Math.abs(tx - sx) * 0.43), direction = tx >= sx ? 1 : -1;
             cx1 = sx + direction * distance; cx2 = tx - direction * distance;
         }
-        return 'M' + sx + ',' + sy + ' C' + cx1 + ',' + (sy + offset) + ' ' + cx2 + ',' + (ty + offset) + ' ' + tx + ',' + ty;
+        return [[sx, sy], [cx1, sy + offset], [cx2, ty + offset], [tx, ty]];
+    }
+    function curvePath(curve) {
+        return 'M' + curve[0] + ' C' + curve.slice(1).join(' ');
+    }
+    function edgePath(source, target, lane, endpoints) {
+        return curvePath(edgeCurve(source, target, lane, endpoints));
+    }
+    function pointBounds(points) {
+        var xs = points.map(function (point) { return point[0]; }), ys = points.map(function (point) { return point[1]; });
+        return { left: Math.min.apply(null, xs), right: Math.max.apply(null, xs),
+            top: Math.min.apply(null, ys), bottom: Math.max.apply(null, ys) };
+    }
+    function intersects(a, b) {
+        return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+    }
+    function midpoint(a, b) {
+        return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    }
+    function curveIntersects(curve, rectangle, depth) {
+        var box = pointBounds(curve);
+        if (!intersects(box, rectangle)) return false;
+        if (!depth) return true;
+        // A cubic stays within the hull of its controls, including after subdivision.
+        var a = midpoint(curve[0], curve[1]), b = midpoint(curve[1], curve[2]), c = midpoint(curve[2], curve[3]);
+        var left = midpoint(a, b), right = midpoint(b, c), center = midpoint(left, right);
+        return curveIntersects([curve[0], a, left, center], rectangle, depth - 1)
+            || curveIntersects([center, right, c, curve[3]], rectangle, depth - 1);
+    }
+    function labelBounds(x, y, halfWidth) {
+        return { left: x - halfWidth, right: x + halfWidth, top: y - 12, bottom: y + 5 };
+    }
+    function routeResult(path, points, labelX, labelY, halfWidth) {
+        var pathBox = pointBounds(points), labelBox = labelBounds(labelX, labelY, halfWidth);
+        return { path: path, labelX: labelX, labelY: labelY,
+            bounds: { left: Math.min(pathBox.left, labelBox.left), right: Math.max(pathBox.right, labelBox.right),
+                top: Math.min(pathBox.top, labelBox.top), bottom: Math.max(pathBox.bottom, labelBox.bottom) } };
+    }
+    function routeEdge(source, target, lane, edge, nodes) {
+        var curve = edgeCurve(source, target, lane, edge);
+        var start = curve[0], end = curve[3];
+        var cards = nodes.map(function (node) {
+            return { left: node.x, right: node.x + node.width, top: node.y, bottom: node.y + node.height };
+        });
+        var obstacles = cards.map(function (card, index) {
+            // A connector must touch its endpoints. Only their interiors block it.
+            var padding = nodes[index] === source || nodes[index] === target ? -0.1 : 4;
+            return { left: card.left - padding, right: card.right + padding,
+                top: card.top - padding, bottom: card.bottom + padding };
+        });
+        var halfWidth = String(edge.label || '').length * 3 + 3;
+        var center = midpoint(midpoint(start, end), midpoint(curve[1], curve[2]));
+        center = midpoint(center, midpoint(curve[1], curve[2]));
+        function clearLabel(x, y) {
+            var box = labelBounds(x, y, halfWidth);
+            return !cards.some(function (card) { return intersects(box, card); });
+        }
+        var baseline = routeResult(curvePath(curve), curve, center[0], center[1] - 6, halfWidth);
+        if (source !== target && clearLabel(baseline.labelX, baseline.labelY)
+                && !obstacles.some(function (card) { return curveIntersects(curve, card, 10); })) {
+            return baseline;
+        }
+
+        // Reuse the persisted side ports. The layered layout has a 24px minimum
+        // horizontal gutter and a 34px row gutter, so these tracks clear the cards.
+        var stagger = Math.tanh(lane / 2);
+        var stub = 12 + 5 * stagger;
+        var fromX = start[0] + (start[0] < source.x + source.width / 2 ? -stub : stub);
+        var toX = end[0] + (end[0] < target.x + target.width / 2 ? -stub : stub);
+        var desiredY = (start[1] + end[1]) / 2 + lane * 18;
+        var tracks = new Set();
+        cards.forEach(function (card) {
+            tracks.add(card.top - 10 + stagger * 6);
+            tracks.add(card.bottom + 18 + stagger * 6);
+        });
+        function distance(y) {
+            return Math.abs(y - start[1]) + Math.abs(y - end[1]) + Math.abs(y - desiredY);
+        }
+        var choices = Array.from(tracks).sort(function (a, b) { return distance(a) - distance(b) || b - a; });
+        for (var y of choices) {
+            var points = [start, [fromX, start[1]], [fromX, y], [toX, y], [toX, end[1]], end];
+            var blocked = points.slice(1).some(function (point, index) {
+                var segment = pointBounds([points[index], point]);
+                return obstacles.some(function (card) { return intersects(segment, card); });
+            });
+            if (blocked) continue;
+            var labelX = (fromX + toX) / 2, labelY = clearLabel(labelX, y - 6) ? y - 6 : y + 14;
+            if (clearLabel(labelX, labelY)) {
+                return routeResult('M' + points.join(' L'), points, labelX, labelY, halfWidth);
+            }
+        }
+        // Retain the edge if an externally supplied scene has incompatible ports or overlapping cards.
+        return baseline;
     }
     function regionNodeIds(nodes, center, radius) {
         return nodes.filter(function (node) {
@@ -238,7 +335,7 @@
     }
     window.TaxonomyArchitectureDiagram = { element: element, text: text, activate: activate, renderNode: renderNode, renderEdge: renderEdge,
         visibleModel: visibleModel, calculateFitTransform: calculateFitTransform, relationshipLanes: relationshipLanes,
-        edgePath: edgePath, regionNodeIds: regionNodeIds, suggestionPath: suggestionPath,
+        edgePath: edgePath, routeEdge: routeEdge, regionNodeIds: regionNodeIds, suggestionPath: suggestionPath,
         sourceId: source, targetId: target, isContext: isContext,
         wrapLabel: wrapLabel, parseColor: parseColor, rgba: rgba, readableTextColor: readableTextColor,
         taxonomyPalette: taxonomyPalette,
