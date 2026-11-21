@@ -318,15 +318,16 @@ public class AnalyzeRequirementUseCase {
         RequirementArchitectureView archView = null;
         try {
             if (result.getRelationSearchReport() != null) {
-                archView = architectureViewService.buildFromEvidence(result.getScores(), result.getScoreDetails(),
-                        command.maxArchitectureNodes(), result.getRelationSearchReport());
-            } else if ("SUCCESS".equals(result.getStatus()) && command.analysisScope().includesRelations()
-                    && (requirementRelationSearch == null || !requirementRelationSearch.isEnabled())) {
-                // Preserve only the explicitly configured legacy path, never an error fallback.
-                archView = architectureViewService.build(result.getScores(), command.businessText(),
-                        command.maxArchitectureNodes(), result.getProvisionalRelations());
+                archView = PartialArchitectureProjection.completeEvidence(result, architectureViewService, command.maxArchitectureNodes());
+            } else {
+                if ("SUCCESS".equals(result.getStatus()) && command.analysisScope().includesRelations()
+                        && (requirementRelationSearch == null || !requirementRelationSearch.isEnabled())) {
+                    // Preserve only the explicitly configured legacy path, never an error fallback.
+                    archView = architectureViewService.build(result.getScores(), command.businessText(),
+                            command.maxArchitectureNodes(), result.getProvisionalRelations());
+                }
+                archView = PartialArchitectureProjection.complete(result, archView, command.maxArchitectureNodes());
             }
-            archView = PartialArchitectureProjection.complete(result, archView, command.maxArchitectureNodes());
             DiagramViewMetadata meta = metadataPort.resolve();
             archView.setViewTitle(meta.viewTitle()); archView.setViewDescription(meta.viewDescription());
             archView.setContainmentEnabled(meta.containmentEnabled()); archView.setActiveRules(meta.activeRules());

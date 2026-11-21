@@ -594,7 +594,7 @@ class TaxonomyExtensionHttpTest {
             var metadata = mock(ArchitectureReportMetadataPort.class);
             when(metadata.resolve()).thenReturn(DiagramViewMetadata.fromConfig(DiagramSelectionConfig.trace(), "trace"));
             var architecture = mock(RequirementArchitectureViewService.class);
-            when(architecture.buildFromEvidence(any(), any(), anyInt(), any())).thenReturn(new RequirementArchitectureView());
+            when(architecture.buildFromEvidence(any(), any(), anyInt(), any(), anySet())).thenReturn(new RequirementArchitectureView());
             var usecase = new AnalyzeRequirementUseCase(llm, budget, architecture, new AnalysisRelationGenerator(rules, nodes),
                     mock(HypothesisService.class), views, metadata);
             ReflectionTestUtils.setField(usecase, "requirementRelationSearch", relations);

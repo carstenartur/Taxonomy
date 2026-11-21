@@ -2,6 +2,7 @@ package com.taxonomy.dto;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 public class TaxonomyNodeDto {
 
@@ -76,6 +77,17 @@ public class TaxonomyNodeDto {
     public boolean isTaxonomyContainer() {
         return code != null && !code.isBlank() && code.equals(taxonomyRoot)
                 && level == 0 && (parentCode == null || parentCode.isBlank());
+    }
+
+    /** Uses retained structure to recognize an original area wrapper without consulting the current catalogue. */
+    public boolean architectureNavigationOnly(TaxonomyNodeDto retainedParent) {
+        if (isTaxonomyContainer()) return true;
+        return code != null && "CATEGORY".equals(analysisRole)
+                && retainedParent != null && retainedParent.isTaxonomyContainer()
+                && Objects.equals(retainedParent.code, parentCode) && Objects.equals(retainedParent.code, taxonomyRoot)
+                && children != null && children.stream().anyMatch(child -> child != null
+                        && Objects.equals(child.parentCode, code) && Objects.equals(child.taxonomyRoot, taxonomyRoot)
+                        && "CATEGORY".equals(child.analysisRole));
     }
 
     public String getDataset() { return dataset; }

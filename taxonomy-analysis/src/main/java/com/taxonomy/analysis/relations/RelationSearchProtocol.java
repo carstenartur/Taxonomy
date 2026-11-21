@@ -195,14 +195,16 @@ public final class RelationSearchProtocol {
     static String decisionPrompt(Query query, Map<String, String> errors) {
         String task = query.phase() == Phase.VERIFY ? """
             VERIFY: check original and endpoints for the proposal's direction, function, necessity and conditions.
-            REJECT an unsupported proposal; UNRESOLVED needs a concrete question.
+            Verify the endpoints' own scoped functions. A shared topic or ancestor category is insufficient.
+            REJECT an unsupported proposal with an empty question. Use UNRESOLVED for an open question.
             Return all keys: {"decisions":[{"targetId":"offered ID","outcome":"VERIFIED|REJECT|UNRESOLVED","rationale":"justification","question":""}]}.
             VERIFIED accepts exactly the unchanged proposal.
             """ : """
             NAVIGATE: find a counterpart for this source contribution, type and direction.
-            DESCEND explores without asserting an edge. MATCH proposes an endpoint;
-            a non-leaf may match to avoid inventing detail. Containers and the source itself cannot be endpoints.
-            REJECT only irrelevant candidates; UNRESOLVED needs a concrete question.
+            DESCEND explores without asserting an edge. Use it for a relevant container or a category whose own scope is too broad.
+            MATCH only an endpoint whose own function supports the claim. A scoped non-leaf may match; never guess a leaf.
+            Containers and the source itself cannot be endpoints.
+            REJECT only irrelevant candidates with empty claim fields and no question. Use UNRESOLVED for an open question.
             Return one decision per candidate, all keys mandatory:
             {"decisions":[{"targetId":"offered ID","outcome":"DESCEND|MATCH|REJECT|UNRESOLVED",
             "contribution":"target contribution or empty","requirementQuote":"substring of INPUT.original or empty",
@@ -211,7 +213,7 @@ public final class RelationSearchProtocol {
             MATCH needs contribution, requirementQuote and necessity. Copy the quote from original, never catalogue or translation.
             For REQUIRED, connect the quote to necessity under the scope policy.
             OPTIONAL needs a grounded condition; ALTERNATIVE a stable named choice group. Otherwise use UNRESOLVED.
-            Keep joint necessities distinct from alternatives. Do not invent implementation choices.
+            Keep joint necessities distinct from alternatives. Positive decisions cannot carry an open question or a choice group outside ALTERNATIVE.
             """;
         Map<String, Object> input = new TreeMap<>();
         input.put("original", query.original()); input.put("contribution", promptContribution(query.contribution()));

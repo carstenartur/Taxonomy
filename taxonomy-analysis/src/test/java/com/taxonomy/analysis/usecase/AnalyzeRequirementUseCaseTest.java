@@ -38,6 +38,8 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anySet;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -263,7 +265,8 @@ class AnalyzeRequirementUseCaseTest {
                     0, 2, 1, List.of(), "");
             when(requirementRelationSearchService.isEnabled()).thenReturn(true);
             when(requirementRelationSearchService.search(source, assessment.getScores())).thenReturn(report);
-            when(architectureViewService.buildFromEvidence(assessment.getScores(), assessment.getScoreDetails(), 20, report))
+            when(architectureViewService.buildFromEvidence(eq(assessment.getScores()), eq(assessment.getScoreDetails()),
+                    eq(20), eq(report), anySet()))
                     .thenReturn(new RequirementArchitectureView());
         }
         if (path.equals("rendering-fallback")) when(preferencesService.resolve()).thenThrow(new IllegalStateException("fixture metadata unavailable"));

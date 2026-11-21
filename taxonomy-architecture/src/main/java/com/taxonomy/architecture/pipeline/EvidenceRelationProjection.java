@@ -15,6 +15,11 @@ public final class EvidenceRelationProjection {
 
     public static void apply(ArchitectureViewContext context, RelationSearchReport report,
                              Map<String, AnalysisScoreDetail> scoreDetails) {
+        apply(context, report, scoreDetails, Set.of());
+    }
+
+    public static void apply(ArchitectureViewContext context, RelationSearchReport report,
+                             Map<String, AnalysisScoreDetail> scoreDetails, Set<String> navigationContext) {
         Objects.requireNonNull(context); Objects.requireNonNull(report);
         Map<String, AnalysisScoreDetail> details = Map.copyOf(scoreDetails);
         Map<String, RequirementElementView> elements = new LinkedHashMap<>();
@@ -22,12 +27,16 @@ public final class EvidenceRelationProjection {
         List<RequirementRelationshipView> relationships = new ArrayList<>();
         Map<EdgeSignature, Set<Edge>> grouped = new LinkedHashMap<>();
         List<String> notes = context.getView().getNotes();
-        int omitted = 0, choices = 0;
+        int omitted = 0, choices = 0, genericContext = 0;
         for (Edge edge : report.result().edges()) {
             Node source = edge.contribution().source(), target = edge.target();
             if (edge.evidence().outcome() != Outcome.VERIFIED || source.container() || target.container()
                     || source.id().equals(target.id()) || !target.id().equals(edge.evidence().targetId())) {
                 throw new IllegalArgumentException("Only verified, concrete, distinct endpoints can be projected");
+            }
+            if (navigationContext.contains(source.id()) || navigationContext.contains(target.id())) {
+                genericContext++;
+                continue;
             }
             for (Node node : List.of(source, target)) {
                 Node prior = identities.putIfAbsent(node.id(), node);
@@ -85,7 +94,7 @@ public final class EvidenceRelationProjection {
                     throw new IllegalArgumentException("Contribution belongs to another source");
                 }
             }
-            if (node.container() || !assessment.question().isBlank()) continue;
+            if (node.container() || navigationContext.contains(node.id()) || !assessment.question().isBlank()) continue;
             RequirementElementView existing = elements.get(node.id());
             if (existing != null) {
                 if (!assessment.contributions().isEmpty()) {
@@ -123,6 +132,8 @@ public final class EvidenceRelationProjection {
         view.setAnchors(context.getAnchors()); view.setIncludedElements(context.getElements()); view.setIncludedRelationships(context.getRelationships());
         view.setTotalAnchors(0); view.setTotalElements(elements.size()); view.setTotalRelationships(relationships.size()); view.setMaxHopDistance(0);
         notes.add("Requirement-scoped relation proposals; not accepted into the active architecture. Confidence has not been calibrated.");
+        if (genericContext > 0) notes.add("GENERIC_RELATION_CONTEXT: " + genericContext
+                + " automatic relationships used a taxonomy container. See retained analysis evidence for context.");
         if (relationships.isEmpty()) notes.add("No verified required relationships available; no score-product or catalogue-seed fallback was used.");
         if (choices > 0) notes.add("DECISIONS_PENDING: " + choices + " optional/alternative contexts remain unaccepted in structured evidence; no optional-only edge is included in the required view.");
         if (omitted > 0) notes.add("NODE_LIMIT: " + omitted + " relations omitted from this view; complete evidence is unchanged in the analysis report.");

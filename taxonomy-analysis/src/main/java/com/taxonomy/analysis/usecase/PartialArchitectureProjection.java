@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.usecase;
 
 import com.taxonomy.dto.*;
+import com.taxonomy.architecture.service.RequirementArchitectureViewService;
 import java.util.*;
 
 /**
@@ -13,9 +14,17 @@ public final class PartialArchitectureProjection {
     private PartialArchitectureProjection() { }
 
     public static RequirementArchitectureView complete(AnalysisResult result, RequirementArchitectureView view, int maxNodes) {
+        return complete(result, view, maxNodes, null);
+    }
+
+    public static RequirementArchitectureView completeEvidence(AnalysisResult result,
+            RequirementArchitectureViewService architecture, int maxNodes) {
+        return complete(result, null, maxNodes, Objects.requireNonNull(architecture));
+    }
+
+    private static RequirementArchitectureView complete(AnalysisResult result, RequirementArchitectureView view, int maxNodes,
+                                                        RequirementArchitectureViewService architecture) {
         Objects.requireNonNull(result);
-        if (view == null) view = new RequirementArchitectureView();
-        var notes = new LinkedHashSet<>(view.getNotes() == null ? List.<String>of() : view.getNotes());
         var index = new LinkedHashMap<String, TaxonomyNodeDto>();
         var ambiguous = new HashSet<String>();
         var visited = Collections.newSetFromMap(new IdentityHashMap<TaxonomyNodeDto, Boolean>());
@@ -37,9 +46,43 @@ public final class PartialArchitectureProjection {
             }
         }
         ambiguous.forEach(index::remove);
+        var navigationContext = new HashSet<String>();
+        index.values().stream().filter(node -> node.architectureNavigationOnly(index.get(node.getParentCode())))
+                .forEach(node -> navigationContext.add(node.getCode()));
+        if (architecture != null) {
+            view = architecture.buildFromEvidence(result.getScores(), result.getScoreDetails(), maxNodes,
+                    result.getRelationSearchReport(), navigationContext);
+        }
+        if (view == null) view = new RequirementArchitectureView();
+        var notes = new LinkedHashSet<>(view.getNotes() == null ? List.<String>of() : view.getNotes());
         if (truncated || !pending.isEmpty() || !ambiguous.isEmpty()) notes.add("CATALOGUE_PROJECTION_LIMIT: only unambiguous retained catalogue nodes are shown.");
 
+        var relationships = new ArrayList<>(view.getIncludedRelationships() == null
+                ? List.<RequirementRelationshipView>of() : view.getIncludedRelationships());
+        int before = relationships.size();
+        var discardedEndpoints = new HashSet<String>();
+        relationships.removeIf(relation -> {
+            if (relation.getOrigin() != RelationOrigin.LLM_SUPPORTED
+                    || !navigationContext.contains(relation.getSourceCode()) && !navigationContext.contains(relation.getTargetCode())) return false;
+            discardedEndpoints.add(relation.getSourceCode());
+            discardedEndpoints.add(relation.getTargetCode());
+            return true;
+        });
+        if (relationships.size() < before) notes.add("GENERIC_RELATION_CONTEXT: " + (before - relationships.size())
+                + " automatic relationships used a taxonomy container. See retained analysis evidence for context.");
+        var retainedEndpoints = new HashSet<String>();
+        relationships.forEach(relation -> {
+            retainedEndpoints.add(relation.getSourceCode());
+            retainedEndpoints.add(relation.getTargetCode());
+        });
         var elements = new ArrayList<>(view.getIncludedElements() == null ? List.<RequirementElementView>of() : view.getIncludedElements());
+        elements.removeIf(element -> !retainedEndpoints.contains(element.getNodeCode())
+                && (navigationContext.contains(element.getNodeCode())
+                || discardedEndpoints.contains(element.getNodeCode()) && element.getOrigin() == NodeOrigin.RELATION_EVIDENCE));
+        for (var element : elements) if (navigationContext.contains(element.getNodeCode())) {
+            element.setAnchor(false);
+            element.setSelectedForImpact(false);
+        }
         var included = new HashSet<String>();
         elements.forEach(element -> included.add(element.getNodeCode()));
         // Typed score interpretation belongs to AnalysisResult, not to rendering.
@@ -49,7 +92,7 @@ public final class PartialArchitectureProjection {
                 .filter(entry -> entry.getValue() != null && entry.getValue() > 0 && entry.getValue() <= 100)
                 .filter(entry -> details.get(entry.getKey()) != null
                         && details.get(entry.getKey()).effectiveRelevance() == entry.getValue())
-                .filter(entry -> index.containsKey(entry.getKey()) && !index.get(entry.getKey()).isTaxonomyContainer())
+                .filter(entry -> index.containsKey(entry.getKey()) && !navigationContext.contains(entry.getKey()))
                 .sorted(Map.Entry.<String, Double>comparingByValue(Comparator.reverseOrder()).thenComparing(Map.Entry.comparingByKey()))
                 .toList();
         int limit = maxNodes > 0 ? maxNodes : MAX_SNAPSHOT_NODES;
@@ -74,7 +117,9 @@ public final class PartialArchitectureProjection {
         // Containment is the retained hierarchy, not a generated architectural relationship.
         for (var element : elements) {
             var node = index.get(element.getNodeCode());
-            if (node == null || element.getHierarchyPath() != null) continue;
+            boolean parentRemoved = navigationContext.contains(element.getParentNodeCode())
+                    && !included.contains(element.getParentNodeCode());
+            if (node == null || element.getHierarchyPath() != null && !parentRemoved) continue;
             var path = new LinkedList<String>(); var seen = new HashSet<String>();
             String parent = null;
             while (node != null && path.size() < MAX_PATH_DEPTH && seen.add(node.getCode())) {
@@ -106,7 +151,7 @@ public final class PartialArchitectureProjection {
             if (anchor == null || anchor.getNodeCode() == null || anchors.containsKey(anchor.getNodeCode())) continue;
             var element = elementsByCode.get(anchor.getNodeCode());
             var node = index.get(anchor.getNodeCode());
-            if (element != null && element.isAnchor() && node != null && !node.isTaxonomyContainer()) {
+            if (element != null && element.isAnchor() && node != null && !navigationContext.contains(node.getCode())) {
                 anchors.put(anchor.getNodeCode(), anchor);
             }
         }
@@ -121,7 +166,7 @@ public final class PartialArchitectureProjection {
                     + AnalysisPercentages.display(detail.effectiveRelevance()) + "."));
         }
         view.setIncludedElements(elements); view.setTotalElements(elements.size());
-        view.setTotalRelationships(view.getIncludedRelationships() == null ? 0 : view.getIncludedRelationships().size());
+        view.setIncludedRelationships(relationships); view.setTotalRelationships(relationships.size());
         view.setAnchors(new ArrayList<>(anchors.values()));
         view.setTotalAnchors(view.getAnchors().size());
         view.setNotes(new ArrayList<>(notes)); view.setRelationSearchReport(result.getRelationSearchReport());

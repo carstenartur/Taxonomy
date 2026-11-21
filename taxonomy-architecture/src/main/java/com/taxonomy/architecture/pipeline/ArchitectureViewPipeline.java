@@ -41,8 +41,15 @@ public class ArchitectureViewPipeline {
     public RequirementArchitectureView projectEvidence(com.taxonomy.dto.RelationSearchReport report,
             java.util.Map<String,Double> effectiveScores,
             java.util.Map<String,com.taxonomy.dto.AnalysisScoreDetail> scoreDetails, int maxNodes) {
+        return projectEvidence(report, effectiveScores, scoreDetails, maxNodes, Set.of());
+    }
+
+    public RequirementArchitectureView projectEvidence(com.taxonomy.dto.RelationSearchReport report,
+            java.util.Map<String,Double> effectiveScores,
+            java.util.Map<String,com.taxonomy.dto.AnalysisScoreDetail> scoreDetails, int maxNodes,
+            Set<String> navigationContext) {
         ArchitectureViewContext context = new ArchitectureViewContext(effectiveScores, "", maxNodes, java.util.List.of());
-        EvidenceRelationProjection.apply(context, report, scoreDetails);
+        EvidenceRelationProjection.apply(context, report, scoreDetails, navigationContext);
         invariantValidator.beforeReturn(context);
         return context.getView();
     }

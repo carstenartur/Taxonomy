@@ -2,7 +2,6 @@ package com.taxonomy.analysis.relations;
 
 import com.taxonomy.analysis.recovery.AnalysisCheckpointSession;
 import com.taxonomy.dto.LlmCallDetail;
-import com.taxonomy.dto.RelationSearchModel.Node;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
@@ -10,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static com.taxonomy.dto.RelationSearchModel.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** Offline protocol regressions; no Spring context and no provider requests. */
@@ -26,6 +26,66 @@ class RelationSearchResponseRobustnessTest {
             "contributions":[{"text":"Capture working time","quote":"arbeitszeiterfassung","condition":""}],
             "rationale":"The requested function is time recording.","question":""}]}
             """.strip();
+
+    @Test
+    void contradictoryNavigationRejectionIsCorrectedOnceWithoutLosingAValidSibling() {
+        var area = new Node("BP", "BP", "Business processes", "", true);
+        var peer = new Node("CP", "CP", "Capabilities", "", true);
+        var contribution = new Contribution(new Node("CI-1151", "CI", "Training services", "", false),
+                "Provide training", ORIGINAL, "");
+        var query = new Query(ORIGINAL, contribution, "SUPPORTS", Direction.OUTGOING,
+                Phase.NAVIGATE, List.of(area, peer), null);
+        String validPeer = """
+                {"targetId":"CP","outcome":"DESCEND","contribution":"","requirementQuote":"",
+                "necessity":null,"condition":"","alternativeGroup":"","rationale":"Review scoped capabilities.","question":""}
+                """;
+        for (String rejection : List.of(
+                """
+                {"targetId":"BP","outcome":"REJECT","contribution":"","requirementQuote":"",
+                "necessity":null,"condition":"","alternativeGroup":"","rationale":"The process is unclear.",
+                "question":"Which training process is required?"}
+                """,
+                """
+                {"targetId":"BP","outcome":"REJECT","contribution":"Training process","requirementQuote":"arbeitszeiterfassung",
+                "necessity":"REQUIRED","condition":"During training","alternativeGroup":"","rationale":"Explicit process.","question":""}
+                """)) {
+            var prompts = new java.util.ArrayList<String>();
+            var protocol = new RelationSearchProtocol(prompt -> {
+                prompts.add(prompt);
+                return "{\"decisions\":[" + rejection + (prompts.size() == 1 ? "," + validPeer : "") + "]}";
+            });
+
+            List<Decision> decisions = protocol.evaluateRecovering(query);
+
+            assertEquals(List.of(Outcome.UNRESOLVED, Outcome.DESCEND), decisions.stream().map(Decision::outcome).toList());
+            assertTrue(decisions.getFirst().question().startsWith("TECHNICAL_ASSESSMENT_FAILURE:"));
+            assertEquals(2, prompts.size());
+            assertTrue(prompts.getLast().contains("validationErrors"));
+        }
+    }
+
+    @Test
+    void compactVerificationRejectionWithAQuestionRemainsOpenAfterOneCorrection() {
+        var target = new Node("target", "IP", "Timesheet", "", false);
+        var contribution = new Contribution(SOURCE, "Record working time", ORIGINAL, "");
+        var proposal = new Decision(target.id(), Outcome.MATCH, "Record the reported time", ORIGINAL,
+                Necessity.REQUIRED, "", "", "Required output", "");
+        var query = new Query(ORIGINAL, contribution, "PRODUCES", Direction.OUTGOING,
+                Phase.VERIFY, List.of(target), proposal);
+        var calls = new AtomicInteger();
+        var protocol = new RelationSearchProtocol(prompt -> {
+            calls.incrementAndGet();
+            return """
+                    {"decisions":[{"targetId":"target","outcome":"REJECT","rationale":"The output type is unclear.",
+                    "question":"Which report is produced?"}]}
+                    """;
+        });
+
+        var decision = protocol.evaluateRecovering(query).getFirst();
+
+        assertEquals(Outcome.UNRESOLVED, decision.outcome());
+        assertEquals(2, calls.get());
+    }
 
     @Test
     void acceptsOneWholeJsonCodeFenceWithoutChangingItsContents() {

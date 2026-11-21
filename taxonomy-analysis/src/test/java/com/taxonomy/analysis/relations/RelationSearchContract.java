@@ -55,6 +55,20 @@ public final class RelationSearchContract {
         check(r.edges().isEmpty() && r.calls() == 2 && !r.searchExhausted(), "unverified matches are not edges");
     }
 
+    public static void testContradictoryRequiredChoiceDoesNotReachVerification() {
+        Result r = engine(q -> {
+            Node candidate = q.candidates().getFirst();
+            if (candidate.container()) return decisions(q, Outcome.DESCEND);
+            if (q.phase() == Phase.VERIFY) return decisions(q, Outcome.VERIFIED);
+            return List.of(new Decision(candidate.id(), Outcome.MATCH, "read evidence", READ.quote(),
+                    Necessity.REQUIRED, "", "possible-record", "One possible source of evidence", "Which record is required?"));
+        }).search(ORIGINAL, List.of(intent(READ)), DEFAULTS);
+
+        check(r.edges().isEmpty() && r.calls() == 2, "a contradictory provisional choice must not spend a verification call");
+        check(r.unfinished().stream().anyMatch(q -> q.reason().equals("INVALID_RESPONSE")),
+                "malformed scope remains open, rather than establishing a positive or a negative decision");
+    }
+
     public static void testRejectDoesNotDescend() {
         Result r = engine(q -> decisions(q, Outcome.REJECT)).search(ORIGINAL, List.of(intent(READ)), DEFAULTS);
         check(r.calls() == 1 && r.edges().isEmpty() && r.searchExhausted(), "pruned, not exhaustively proved");
@@ -259,6 +273,9 @@ public final class RelationSearchContract {
     static Intent intent(Contribution c) { return new Intent(c, "CONSUMES", Direction.OUTGOING, List.of(ROOT)); }
     static Node node(String id, String root, boolean container) { return new Node(id, root, id, "Description of " + id, container); }
     static List<Decision> decisions(Query q, Outcome o) { return q.candidates().stream().map(n -> decision(n.id(), o)).toList(); }
-    static Decision decision(String id, Outcome o) { return new Decision(id, o, "read evidence", READ.quote(), Necessity.REQUIRED, "", "", "Supported by the requirement", ""); }
+    static Decision decision(String id, Outcome o) {
+        return o == Outcome.REJECT ? new Decision(id, o, "", "", null, "", "", "Irrelevant to the requested function", "")
+                : new Decision(id, o, "read evidence", READ.quote(), Necessity.REQUIRED, "", "", "Supported by the requirement", "");
+    }
     static void check(boolean ok, String message) { if (!ok) throw new AssertionError(message); }
 }

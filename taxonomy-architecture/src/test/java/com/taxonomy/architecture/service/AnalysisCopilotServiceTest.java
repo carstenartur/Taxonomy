@@ -83,6 +83,31 @@ class AnalysisCopilotServiceTest {
     }
 
     @Test
+    void retainedAreaWrapperCannotCompleteAnAutomaticArchitecturePattern() {
+        AnalysisResult analysis = analysis();
+        TaxonomyNodeDto area = node("BP", "BP");
+        area.setLevel(0);
+        TaxonomyNodeDto wrapper = node("BP-1000", "BP");
+        wrapper.setParentCode("BP");
+        TaxonomyNodeDto branch = node("BP-1327", "BP");
+        branch.setParentCode("BP-1000");
+        branch.setLevel(2);
+        area.getChildren().add(wrapper);
+        wrapper.getChildren().add(branch);
+        analysis.getTree().add(area);
+        analysis.setRelationSearchReport(report(List.of(
+                edge("cap", "CP", "service", "CR", "REALIZES", Outcome.VERIFIED, Direction.OUTGOING),
+                edge("service", "CR", "BP-1000", "BP", "SUPPORTS", Outcome.VERIFIED, Direction.OUTGOING),
+                edge("BP-1000", "BP", "information", "IP", "CONSUMES", Outcome.VERIFIED, Direction.OUTGOING))));
+
+        AnalysisCopilotResult result = service.analyze(analysis, "Requirement");
+
+        assertTrue(result.patterns().getMatchedPatterns().isEmpty());
+        assertEquals("PARTIAL", result.state());
+        assertEquals(3, analysis.getRelationSearchReport().result().edges().size());
+    }
+
+    @Test
     void conditionalAlternativeEvidenceRemainsVisibleAndDoesNotProveAnUnconditionalChain() {
         AnalysisResult analysis = analysis();
         Edge conditional = new Edge(

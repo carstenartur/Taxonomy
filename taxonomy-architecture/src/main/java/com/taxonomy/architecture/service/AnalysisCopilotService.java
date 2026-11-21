@@ -19,6 +19,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -63,11 +64,18 @@ public class AnalysisCopilotService {
             notes.add("Reports describe retained evidence only; search exhaustion under a pruning policy does not prove architectural completeness.");
             Bounds bounds = new Bounds();
             Map<String, TaxonomyNodeDto> nodes = index(analysis.getTree(), bounds);
+            Set<String> navigationContext = new HashSet<>();
+            for (TaxonomyNodeDto node : nodes.values()) {
+                String parentCode = node.getParentCode();
+                if (node.architectureNavigationOnly(parentCode == null ? null : nodes.get(parentCode))) {
+                    navigationContext.add(node.getCode());
+                }
+            }
             Map<String, Double> scores = analysis.getScores();
             List<Entry<String, Double>> anchors = scores.entrySet()
                 .stream()
                 .filter(e -> e.getValue() >= 50)
-                .filter(e -> nodes.containsKey(e.getKey()) && !nodes.get(e.getKey()).isTaxonomyContainer())
+                .filter(e -> nodes.containsKey(e.getKey()) && !navigationContext.contains(e.getKey()))
                 .sorted(Entry.<String, Double>comparingByValue().reversed().thenComparing(Entry.comparingByKey()))
                 .toList();
             if (anchors.size() > MAX_ANCHORS) {
@@ -91,7 +99,7 @@ public class AnalysisCopilotService {
                 notes.add("Relation search evidence is absent or unfinished; unevidenced relations remain unknown.");
             }
 
-            Map<String, List<RetainedRelation>> outgoing = verifiedRelations(report, nodes, bounds);
+            Map<String, List<RetainedRelation>> outgoing = verifiedRelations(report, nodes, navigationContext, bounds);
             this.analyzeGaps(anchors, nodes, outgoing, gaps, bounds);
             analyzePatterns(anchors, nodes, outgoing, patterns);
             recommend(analysis, anchors, nodes, recommendation);
@@ -101,6 +109,9 @@ public class AnalysisCopilotService {
 
             if (bounds.invalidEdges) {
                 notes.add("Unverified relations or relations inconsistent with retained catalogue identities were excluded from positive evidence.");
+            }
+            if (bounds.genericEdges) {
+                notes.add("Automatic relations to taxonomy containers remain contextual evidence. Concrete counterpart coverage is open.");
             }
 
             return result(!bounds.incomplete && !bounds.truncated ? "COMPLETED" : "PARTIAL", gaps, patterns, recommendation, notes);
@@ -152,7 +163,7 @@ public class AnalysisCopilotService {
 
     /** Normalizes direction only after checking both retained endpoint identities. */
     private static Map<String, List<RetainedRelation>> verifiedRelations(
-        RelationSearchReport report, Map<String, TaxonomyNodeDto> nodes, Bounds bounds
+        RelationSearchReport report, Map<String, TaxonomyNodeDto> nodes, Set<String> navigationContext, Bounds bounds
     ) {
         TreeMap<String, List<RetainedRelation>> outgoing = new TreeMap<>();
         if (report == null) {
@@ -182,11 +193,15 @@ public class AnalysisCopilotService {
                 && Objects.equals(edge.target().id(), edge.evidence().targetId())) {
                 TaxonomyNodeDto assessed = nodes.get(edge.contribution().source().id());
                 TaxonomyNodeDto counterpart = nodes.get(edge.target().id());
+                if (assessed != null && counterpart != null && (navigationContext.contains(assessed.getCode())
+                        || navigationContext.contains(counterpart.getCode()))) {
+                    bounds.genericEdges = true;
+                    bounds.incomplete = true;
+                    continue;
+                }
                 if (assessed != null
                     && counterpart != null
                     && edge.type() != null
-                    && !assessed.isTaxonomyContainer()
-                    && !counterpart.isTaxonomyContainer()
                     && Objects.equals(assessed.getTaxonomyRoot(), edge.contribution().source().root())
                     && Objects.equals(counterpart.getTaxonomyRoot(), edge.target().root())) {
                     retained.add(
@@ -351,6 +366,7 @@ public class AnalysisCopilotService {
         boolean truncated;
         boolean incomplete;
         boolean invalidEdges;
+        boolean genericEdges;
     }
 
     /** Conditions and alternatives qualify positive evidence throughout all report views. */

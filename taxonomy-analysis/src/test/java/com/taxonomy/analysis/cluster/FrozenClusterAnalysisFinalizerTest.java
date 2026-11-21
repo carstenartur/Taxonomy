@@ -2,6 +2,8 @@ package com.taxonomy.analysis.cluster;
 
 import com.taxonomy.analysis.dag.TaxonomyShardRoot;
 import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
+import com.taxonomy.architecture.pipeline.ArchitecturePipelineInvariantValidator;
+import com.taxonomy.architecture.pipeline.ArchitectureViewPipeline;
 import com.taxonomy.architecture.service.ArchitectureReportMetadataPort;
 import com.taxonomy.architecture.service.RequirementArchitectureViewService;
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
@@ -105,16 +107,148 @@ class FrozenClusterAnalysisFinalizerTest {
         var report = new RelationSearchReport(1, "digest", "frozen-test", List.of(),
                 new RelationSearchModel.Result(List.of(), List.of(), List.of(), 0, 0, 1), 0, 2, 1, List.of(), "");
         state.result().setRelationSearchReport(report);
-        when(architecture.buildFromEvidence(anyMap(), anyMap(), eq(1), eq(report))).thenAnswer(i -> {
+        when(architecture.buildFromEvidence(anyMap(), anyMap(), eq(1), eq(report), anySet())).thenAnswer(i -> {
             assertThat(FrozenCatalogueContext.current().source()).isEqualTo(DurableClusterAnalysisExecutionTest.source(context));
             return new RequirementArchitectureView();
         });
         finalizer.accept(context);
-        verify(architecture).buildFromEvidence(anyMap(), anyMap(), eq(1), eq(report));
+        verify(architecture).buildFromEvidence(anyMap(), anyMap(), eq(1), eq(report), anySet());
         verify(architecture, never()).build(anyMap(), anyString(), anyInt(), anyList());
         verify(store).finalizeResult(eq(context), argThat(result -> report.equals(result.getRelationSearchReport())
                 && result.getArchitectureView() != null));
         verifyNoInteractions(nodes);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void retainedUmbrellaDoesNotUseTheRelationNodeLimitOrPromoteItsCounterpart(boolean concreteEdge) {
+        var context = prepareBoundedProjection();
+        var result = store.snapshot(context).result();
+        result.setRawScores(Map.of());
+        var area = new TaxonomyNodeDto();
+        area.setCode("BP"); area.setTaxonomyRoot("BP"); area.setLevel(0);
+        var wrapper = new TaxonomyNodeDto();
+        wrapper.setCode("BP-1000"); wrapper.setTaxonomyRoot("BP"); wrapper.setLevel(1); wrapper.setParentCode("BP");
+        var branch = new TaxonomyNodeDto();
+        branch.setCode("BP-1327"); branch.setTaxonomyRoot("BP"); branch.setLevel(2); branch.setParentCode("BP-1000");
+        var process = new TaxonomyNodeDto();
+        process.setCode("BP-1351"); process.setTaxonomyRoot("BP"); process.setLevel(3); process.setParentCode("BP-1327");
+        area.getChildren().add(wrapper); wrapper.getChildren().add(branch); branch.getChildren().add(process);
+        result.setTree(List.of(area));
+        var generic = trainingRelation("BP-1000", "Business Processes");
+        var scoped = trainingRelation("BP-1351", "Education, Training, Exercises and Evaluation");
+        var edges = concreteEdge ? List.of(generic, scoped) : List.of(generic);
+        var retained = new RelationSearchReport(1, "digest", "historical", List.of(),
+                new RelationSearchModel.Result(edges, List.of(), List.of(), 0, 0, 1), 0, 2, 1, List.of(), "");
+        result.setRelationSearchReport(retained);
+
+        productionEvidenceFinalizer().accept(context);
+
+        verify(store).finalizeResult(eq(context), argThat(finalized -> {
+            var view = finalized.getArchitectureView();
+            assertThat(finalized.getRelationSearchReport()).isEqualTo(retained);
+            assertThat(view.getNotes()).anyMatch(note -> note.startsWith("GENERIC_RELATION_CONTEXT:"));
+            assertThat(view.getNotes()).noneMatch(note -> note.startsWith("NODE_LIMIT:"));
+            if (concreteEdge) {
+                assertThat(view.getIncludedRelationships()).extracting(RequirementRelationshipView::getTargetCode)
+                        .containsExactly("BP-1351");
+                assertThat(view.getIncludedElements()).extracting(RequirementElementView::getNodeCode)
+                        .containsExactly("CI-1151", "BP-1351");
+                assertThat(view.getIncludedElements()).allMatch(element -> element.getScoreDetail() == null);
+            } else {
+                assertThat(view.getIncludedRelationships()).isEmpty();
+                assertThat(view.getIncludedElements()).isEmpty();
+            }
+            return true;
+        }));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void originalFrozenChildWitnessDistinguishesAnUmbrellaFromATopLevelLeaf(boolean hasSourceChild) {
+        var context = prepareBoundedProjection();
+        var result = store.snapshot(context).result();
+        result.setStatus("PARTIAL");
+        result.setRawScores(Map.of("BP-1000", 85d, "BR-1220", 72d));
+        result.setTree(List.of());
+        var bp = new java.util.ArrayList<>(List.of(
+                snapshotNode("BP", "BP", null, "Business Processes", 0),
+                snapshotNode("BP-1000", "BP", "BP", "Business Processes", 1)));
+        if (hasSourceChild) bp.add(snapshotNode("BP-1327", "BP", "BP-1000", "Enable", 2));
+        var br = List.of(snapshotNode("BR", "BR", null, "Business Roles", 0),
+                snapshotNode("BR-1220", "BR", "BR", "Capability Sustainment Manager", 1));
+        retainShard(context, "BP", bp);
+        retainShard(context, "BR", br);
+
+        productionEvidenceFinalizer().accept(context);
+
+        verify(store).finalizeResult(eq(context), argThat(finalized -> {
+            var expected = hasSourceChild ? List.of("BR-1220") : List.of("BP-1000", "BR-1220");
+            assertThat(finalized.getArchitectureView().getAnchors()).extracting(RequirementAnchor::getNodeCode)
+                    .containsExactlyElementsOf(expected);
+            assertThat(finalized.getRawScores()).containsEntry("BP-1000", 85d).doesNotContainKey("BP-1327");
+            return true;
+        }));
+        verifyNoInteractions(nodes);
+    }
+
+    @Test
+    void originalFrozenChildWitnessAlsoCoversAnUnscoredHistoricalEndpoint() {
+        var context = prepareBoundedProjection();
+        var result = store.snapshot(context).result();
+        result.setRawScores(Map.of());
+        result.setTree(List.of());
+        retainShard(context, "BP", List.of(
+                snapshotNode("BP", "BP", null, "Business Processes", 0),
+                snapshotNode("BP-1000", "BP", "BP", "Business Processes", 1),
+                snapshotNode("BP-1327", "BP", "BP-1000", "Enable", 2)));
+        var edge = trainingRelation("BP-1000", "Business Processes");
+        var retained = new RelationSearchReport(1, "digest", "historical", List.of(),
+                new RelationSearchModel.Result(List.of(edge), List.of(), List.of(), 0, 0, 1), 0, 2, 1, List.of(), "");
+        result.setRelationSearchReport(retained);
+
+        productionEvidenceFinalizer().accept(context);
+
+        verify(store).finalizeResult(eq(context), argThat(finalized -> {
+            assertThat(finalized.getArchitectureView().getIncludedRelationships()).isEmpty();
+            assertThat(finalized.getArchitectureView().getIncludedElements()).isEmpty();
+            assertThat(finalized.getRelationSearchReport()).isEqualTo(retained);
+            return true;
+        }));
+        verifyNoInteractions(nodes);
+    }
+
+    private com.taxonomy.analysis.dag.AnalysisOperationContext prepareBoundedProjection() {
+        var context = prepare("The portal provides education, training and evaluation.");
+        var command = store.command(context);
+        when(store.command(context)).thenReturn(new AnalyzeRequirementCommand(command.businessText(), true, 2,
+                command.provider(), command.username(), command.workspaceContext(), command.provenance(), command.analysisScope()));
+        return context;
+    }
+
+    private void retainShard(com.taxonomy.analysis.dag.AnalysisOperationContext context, String root,
+                             List<RootCatalogueSnapshot.Node> retainedNodes) {
+        var overlay = new CatalogueOverlayService.OverlayMetadata(false, "fixture", null, null, null, 0);
+        var shard = new RootCatalogueSnapshot(RootCatalogueSnapshot.SCHEMA_VERSION,
+                DurableClusterAnalysisExecutionTest.source(context), root, retainedNodes, overlay,
+                DurableClusterAnalysisExecutionTest.provenance());
+        when(store.shard(context, TaxonomyShardRoot.of(root))).thenReturn(mapper.writeValueAsString(shard));
+    }
+
+    private FrozenClusterAnalysisFinalizer productionEvidenceFinalizer() {
+        var pipeline = new ArchitectureViewPipeline(null, new ArchitecturePipelineInvariantValidator());
+        return new FrozenClusterAnalysisFinalizer(store, snapshots, new RequirementArchitectureViewService(pipeline), metadata, mapper);
+    }
+
+    private static RelationSearchModel.Edge trainingRelation(String id, String name) {
+        var source = new RelationSearchModel.Node("CI-1151", "CI", "Education and Individual Training Services", "", false);
+        var target = new RelationSearchModel.Node(id, "BP", name, "", false);
+        String quote = "The portal provides education, training and evaluation.";
+        var contribution = new RelationSearchModel.Contribution(source, "Provide training", quote, "");
+        var evidence = new RelationSearchModel.Decision(id, RelationSearchModel.Outcome.VERIFIED,
+                "Deliver education and training", quote, RelationSearchModel.Necessity.REQUIRED,
+                "", "", "Recorded source relationship", "");
+        return new RelationSearchModel.Edge(contribution, target, "SUPPORTS", RelationSearchModel.Direction.OUTGOING, evidence);
     }
 
     @Test
@@ -226,7 +360,7 @@ class FrozenClusterAnalysisFinalizerTest {
             var report = new RelationSearchReport(1, "digest", "frozen-test", List.of(),
                     new RelationSearchModel.Result(List.of(), List.of(), List.of(), 0, 0, 1), 0, 2, 1, List.of(), "");
             store.snapshot(context).result().setRelationSearchReport(report);
-            when(architecture.buildFromEvidence(anyMap(), anyMap(), eq(1), eq(report))).thenReturn(new RequirementArchitectureView());
+            when(architecture.buildFromEvidence(anyMap(), anyMap(), eq(1), eq(report), anySet())).thenReturn(new RequirementArchitectureView());
         }
         if (path.equals("rendering-fallback")) when(metadata.resolve()).thenThrow(new IllegalStateException("fixture metadata unavailable"));
 

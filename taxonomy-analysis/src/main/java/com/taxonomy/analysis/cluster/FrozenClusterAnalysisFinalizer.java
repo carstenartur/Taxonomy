@@ -15,6 +15,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -65,10 +67,8 @@ public final class FrozenClusterAnalysisFinalizer implements Consumer<AnalysisOp
                 result.setTree(snapshotProjectionTree(roots, result));
             }
             RequirementArchitectureView view = result.getRelationSearchReport() != null
-                    ? architecture.buildFromEvidence(result.getScores(), result.getScoreDetails(),
-                        command.maxArchitectureNodes(), result.getRelationSearchReport())
-                    : scoredView(command, result);
-            view = PartialArchitectureProjection.complete(result, view, command.maxArchitectureNodes());
+                    ? PartialArchitectureProjection.completeEvidence(result, architecture, command.maxArchitectureNodes())
+                    : PartialArchitectureProjection.complete(result, scoredView(command, result), command.maxArchitectureNodes());
             result.setArchitectureView(view); // Retain verified edges even if only presentation metadata fails.
             metadata.applyTo(view);
             view.setAnalysisCoverage(result.getAnalysisCoverage());
@@ -107,8 +107,17 @@ public final class FrozenClusterAnalysisFinalizer implements Consumer<AnalysisOp
             if (limited) break;
         }
 
+        var evidenceCodes = new LinkedHashSet<>(result.getRawScores().keySet());
+        var report = result.getRelationSearchReport();
+        if (report != null) {
+            for (var assessment : report.sources()) if (assessment.node() != null) evidenceCodes.add(assessment.node().id());
+            for (var edge : report.result().edges()) {
+                if (edge.contribution() != null) evidenceCodes.add(edge.contribution().source().id());
+                if (edge.target() != null) evidenceCodes.add(edge.target().id());
+            }
+        }
         var selected = new java.util.LinkedHashMap<String, RootCatalogueSnapshot.Node>();
-        for (String code : result.getRawScores().keySet()) {
+        for (String code : evidenceCodes) {
             var node = recorded.get(code);
             int depth = 0;
             while (node != null && depth++ < MAX_PATH_DEPTH) {
@@ -120,6 +129,21 @@ public final class FrozenClusterAnalysisFinalizer implements Consumer<AnalysisOp
                 node = node.parentCode() == null ? null : recorded.get(node.parentCode());
             }
             if (node != null) limited = true;
+        }
+
+        // A reduced display tree still needs one authoritative source child to
+        // distinguish a scored taxonomy wrapper from a genuine top-level leaf.
+        var parentsWithOriginalChildren = new HashSet<String>();
+        selected.values().stream().filter(node -> !node.parentPatch()).map(RootCatalogueSnapshot.Node::parentCode)
+                .forEach(parentsWithOriginalChildren::add);
+        for (var child : recorded.values()) {
+            if (child.parentPatch() || child.parentCode() == null) continue;
+            var parent = selected.get(child.parentCode());
+            if (parent == null || parent.parentPatch() || !Objects.equals(parent.parentCode(), parent.taxonomyRoot())
+                    || !Objects.equals(child.taxonomyRoot(), parent.taxonomyRoot())
+                    || !parentsWithOriginalChildren.add(parent.code())) continue;
+            if (selected.size() >= MAX_SNAPSHOT_NODES) { limited = true; break; }
+            selected.put(child.code(), child);
         }
 
         var detached = new java.util.LinkedHashMap<String, TaxonomyNodeDto>();

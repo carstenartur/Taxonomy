@@ -22,6 +22,25 @@ class DistributedRelationSearchTest {
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     @Test
+    void smallBudgetChecksTheConcreteCounterpartBeforeAnUnscoredTaxonomy() {
+        var catalogue = twoTargets();
+        var options = new RequirementRelationSearch.Options(new Limits(5, 8, 10, 128), 16);
+        var scores = Map.of(SOURCE.id(), 90d, TARGET.id(), 70d);
+        var engine = search(catalogue, RequirementRelationSearchContract::answer);
+
+        var sequential = engine.search(READ, scores, options);
+        var plan = engine.prepare("focused-search", READ, scores, List.of("scored-bp", "scored-ip"), options, true);
+        var distributed = RelationSearchDistribution.combine(plan, execute(engine, plan, READ));
+
+        assertThat(sequential.result().edges()).extracting(Edge::targetId).containsExactly(TARGET.id());
+        assertThat(distributed.result().edges()).isEqualTo(sequential.result().edges());
+        assertThat(sequential.totalCalls()).isEqualTo(5);
+        assertThat(distributed.totalCalls()).isEqualTo(5);
+        assertThat(distributed.result().unfinished()).anyMatch(unfinished -> "CR".equals(unfinished.targetRoot()));
+        assertThat(distributed.isSearchExhausted()).isFalse();
+    }
+
+    @Test
     void acceptedProfileRestrictsRelationCandidatesBeforeWorkerDispatch() {
         var model = new com.taxonomy.dto.AnalysisModelBinding(com.taxonomy.dto.AnalysisModelBinding.State.RESOLVED,
                 "repo", "workspace", "draft", "a".repeat(40), 1L, "GIT_CHECKPOINT", "b".repeat(64), "catalogue",

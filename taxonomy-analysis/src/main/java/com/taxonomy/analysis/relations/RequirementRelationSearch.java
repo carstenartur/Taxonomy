@@ -151,7 +151,7 @@ public final class RequirementRelationSearch {
             plan.calls(budget.calls);
             var protocol = new RelationSearchProtocol(budget::complete, provider, (step, ids) -> {}, options.maxPromptCharacters());
             assessSources(original, nodes, options, protocol, plan, sources, warnings);
-            List<Intent> intents = intents(sources, roots, warnings);
+            List<Intent> intents = intents(sources, nodes, roots, warnings);
             Limits l = options.limits();
             plan.expect(intents);
             var engine = new RelationSearchEngine(node -> {
@@ -291,7 +291,7 @@ public final class RequirementRelationSearch {
                 charged[0]++; admittedSources.addAll(ids); charged[1] = Math.toIntExact(charged[1] + additional); progress.calls(charged[0]);
             }, options.maxPromptCharacters());
             assessSources(original, nodes, options, protocol, progress, sources, warnings);
-            List<Intent> intents = intents(sources, roots, warnings);
+            List<Intent> intents = intents(sources, nodes, roots, warnings);
             Map<String, Integer> bounds = new HashMap<>();
             int cap = Math.min(options.limits().maxCalls(), options.limits().maxWorkItems()) + 1;
             for (Intent intent : intents) {
@@ -463,31 +463,60 @@ public final class RequirementRelationSearch {
         sources.sort(Comparator.comparingInt(source -> rank.getOrDefault(source.node().id(), Integer.MAX_VALUE)));
     }
 
-    private List<Intent> intents(List<SourceAssessment> sources, List<Node> roots, List<String> warnings) {
-    List<List<Intent>> routesByContribution = new ArrayList<>();
-    for (SourceAssessment assessment : sources) for (Contribution contribution : assessment.contributions()) {
+    private List<Intent> intents(List<SourceAssessment> sources, List<Node> scoredNodes, List<Node> roots,
+                                List<String> warnings) {
+        record GroundedScope(String root, String quote) { }
+        Map<GroundedScope, Set<String>> quoted = new HashMap<>();
+        for (SourceAssessment source : sources) for (Contribution contribution : source.contributions()) {
+            var key = new GroundedScope(source.node().root(), contribution.quote());
+            quoted.computeIfAbsent(key, unused -> new HashSet<>()).add(source.node().id());
+        }
+        Map<String, Set<String>> scored = new HashMap<>();
+        for (Node node : scoredNodes) scored.computeIfAbsent(node.root(), unused -> new HashSet<>()).add(node.id());
+        List<List<Intent>> routesBySource = new ArrayList<>();
+        for (SourceAssessment assessment : sources) {
+            List<List<Intent>> routesByContribution = new ArrayList<>();
+            for (Contribution contribution : assessment.contributions()) {
+                List<Intent> routes = new ArrayList<>();
+                for (RelationType type : RelationType.values()) {
+                    if (!RelationDiscoveryPolicy.automatic(type)) continue;
+                    var allowed = rules.targetDomain(contribution.source().root(), type);
+                    for (Node root : roots) {
+                        if (allowed.allows(root.root()))
+                            routes.add(new Intent(contribution, type.name(), Direction.OUTGOING, List.of(root)));
+                    }
+                    for (Node root : roots) {
+                        if (rules.targetDomain(root.root(), type).allows(contribution.source().root()))
+                            routes.add(new Intent(contribution, type.name(), Direction.INCOMING, List.of(root)));
+                    }
+                }
+                if (routes.isEmpty()) warnings.add("NO_STRUCTURAL_ROUTE " + contribution.source().id()
+                        + ": the current root profile cannot route this contribution; not evidence of absence.");
+                // A concrete counterpart on the same exact requirement quote is a useful lead.
+                // Other scored counterparts come next. Neither signal proves a relation or excludes an unknown route.
+                routes.sort(Comparator.comparingInt(intent -> {
+                    String root = intent.roots().getFirst().root(), sourceId = contribution.source().id();
+                    var sameScope = quoted.getOrDefault(new GroundedScope(root, contribution.quote()), Set.of());
+                    if (otherCounterpart(sameScope, sourceId)) return 0;
+                    return otherCounterpart(scored.getOrDefault(root, Set.of()), sourceId) ? 1 : 2;
+                }));
+                routesByContribution.add(routes);
+            }
+            routesBySource.add(roundRobin(routesByContribution));
+        }
+        return roundRobin(routesBySource);
+    }
+
+    private static boolean otherCounterpart(Set<String> candidates, String sourceId) {
+        return candidates.size() > (candidates.contains(sourceId) ? 1 : 0);
+    }
+
+    private static List<Intent> roundRobin(List<List<Intent>> groups) {
         List<Intent> intents = new ArrayList<>();
-        for (RelationType type : RelationType.values()) {
-            if (!RelationDiscoveryPolicy.automatic(type)) continue;
-            var allowed = rules.targetDomain(contribution.source().root(), type);
-            List<Node> outgoing = roots.stream().filter(n -> allowed.allows(n.root())).toList();
-            for (Node root : outgoing) intents.add(new Intent(contribution, type.name(), Direction.OUTGOING, List.of(root)));
-            List<Node> incoming = roots.stream().filter(n -> rules.targetDomain(n.root(), type).allows(contribution.source().root())).toList();
-            for (Node root : incoming) intents.add(new Intent(contribution, type.name(), Direction.INCOMING, List.of(root)));
+        int rounds = groups.stream().mapToInt(List::size).max().orElse(0);
+        for (int round = 0; round < rounds; round++) {
+            for (List<Intent> group : groups) if (round < group.size()) intents.add(group.get(round));
         }
-        if (intents.isEmpty()) warnings.add("NO_STRUCTURAL_ROUTE " + contribution.source().id()
-                + ": the current root profile cannot route this contribution; not evidence of absence.");
-        routesByContribution.add(intents);
-    }
-    // Complete an admitted branch, then give the next contribution a turn.
-    // One high-ranked source must not spend the entire budget on its types.
-    List<Intent> intents = new ArrayList<>();
-    int rounds = routesByContribution.stream().mapToInt(List::size).max().orElse(0);
-    for (int round = 0; round < rounds; round++) {
-        for (List<Intent> routes : routesByContribution) {
-            if (round < routes.size()) intents.add(routes.get(round));
-        }
-    }
         return List.copyOf(intents);
     }
 

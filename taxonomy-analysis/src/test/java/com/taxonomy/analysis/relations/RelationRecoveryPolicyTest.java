@@ -54,6 +54,13 @@ class RelationRecoveryPolicyTest {
     }
 
     @Test
+    void previousAnswerPolicyCannotReplayUnderHierarchySpecificity() {
+        String previous = previousPolicy(true, null, null) + "/"
+                + com.taxonomy.analysis.service.PromptTemplateService.FUNCTIONAL_SCOPE_POLICY;
+        assertThat(service.compatibleRecoveryPolicy(AnalysisCheckpointSession.digest(previous))).isNull();
+    }
+
+    @Test
     void unknownHistoricalSourceAndWorkSettingsRequireTheirOriginalDeploymentConfiguration() {
         assertThat(RelationRecoveryPolicy.compatible(AnalysisCheckpointSession.digest(
                 legacy(24, 8, 10, 513, 31, 120_000, "null", "null")),
