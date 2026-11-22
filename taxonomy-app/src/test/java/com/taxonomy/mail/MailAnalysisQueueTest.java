@@ -273,6 +273,39 @@ class MailAnalysisQueueTest {
     }
 
     @Test
+    void expiryRemovesOldReceiptsAndPositionsWhileKeepingLaterAdmissions() {
+        var clock = mock(Clock.class);
+        when(clock.instant()).thenReturn(NOW);
+        var queue = new MailAnalysisQueue(directory, 2, RETENTION, JsonMapper.builder().build(),
+                processor, delivery, clock);
+        try {
+            String unconfirmed = queue.submit(FIRST).jobToken();
+            String finished = queue.submit(SECOND).jobToken();
+            queue.confirmReceipt(finished);
+            when(processor.process(SECOND.subject(), SECOND.requirementText()))
+                    .thenReturn(MailAnalysisQueue.Outcome.failed("Kein Ergebnis"));
+            queue.processNext();
+            when(clock.instant()).thenReturn(NOW.plusSeconds(60));
+            var newer = new IncomingMail("uid-3", FIRST.sender(), FIRST.subject(), FIRST.requirementText());
+            String waiting = queue.submit(newer).jobToken();
+            assertThat(queue.status(waiting).orElseThrow().position()).isEqualTo(2);
+
+            when(clock.instant()).thenReturn(NOW.plus(RETENTION));
+            var again = queue.submit(FIRST);
+            assertThat(again.accepted()).isTrue();
+            assertThat(again.duplicate()).isFalse();
+            assertThat(again.jobToken()).isNotEqualTo(unconfirmed);
+            assertThat(again.position()).isEqualTo(2);
+            assertThat(queue.status(unconfirmed)).isEmpty();
+            assertThat(queue.status(finished)).isEmpty();
+            assertThat(queue.status(waiting).orElseThrow()).isEqualTo(
+                    new MailAnalysisQueue.Status(MailAnalysisQueue.State.QUEUED, 1, 2, 2, 0, 0, false));
+        } finally {
+            queue.destroy();
+        }
+    }
+
+    @Test
     void simultaneousAdmissionsReturnUniquePositionsUpToCapacity() throws Exception {
         var queue = queue(3, NOW);
         var start = new CountDownLatch(1);

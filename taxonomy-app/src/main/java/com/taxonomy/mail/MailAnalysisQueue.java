@@ -12,14 +12,14 @@ import java.nio.file.StandardOpenOption;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.EnumMap;
-import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableSet;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -46,7 +46,7 @@ import tools.jackson.databind.ObjectMapper;
 public final class MailAnalysisQueue implements ApplicationListener<ApplicationReadyEvent>, DisposableBean, Ordered {
     private static final Logger log = LoggerFactory.getLogger(MailAnalysisQueue.class);
     private static final Duration DELIVERY_RETRY = Duration.ofMinutes(1);
-    private static final Comparator<Job> FIFO = Comparator.comparingLong(Job::sequence);
+    private static final Comparator<Job> FIFO = Comparator.comparingLong(Job::sequence).thenComparing(Job::token);
     private static final Comparator<Job> DELIVERY_ORDER = Comparator
             .comparing(Job::retryAfter, Comparator.nullsFirst(Comparator.naturalOrder())).thenComparing(FIFO);
 
@@ -83,6 +83,11 @@ public final class MailAnalysisQueue implements ApplicationListener<ApplicationR
             return state == State.COMPLETED || state == State.PARTIAL || state == State.FAILED || state == State.REJECTED;
         }
 
+        Instant retentionStart() {
+            if (terminal() || !receiptConfirmed) return updatedAt;
+            return state == State.DELIVERING ? Objects.requireNonNullElse(deliveryStartedAt, updatedAt) : null;
+        }
+
         Job update(State next, boolean confirmed, Instant updated, Instant retry) {
             IncomingMail retained = switch (next) {
                 case COMPLETED, PARTIAL, FAILED, REJECTED -> null;
@@ -102,7 +107,15 @@ public final class MailAnalysisQueue implements ApplicationListener<ApplicationR
     private final ObjectMapper mapper;
     private final MailAnalysisProcessor processor;
     private final MailAnalysisDelivery delivery;
-    private final Map<String, Job> jobs = new LinkedHashMap<>();
+    // Rebuilt from the durable job files on startup. Only active jobs participate in scheduling.
+    private final Map<String, Job> jobs = new HashMap<>();
+    private final Map<String, String> tokenByIdentity = new HashMap<>();
+    private final NavigableSet<Job> queued = new TreeSet<>(FIFO);
+    private final NavigableSet<Job> running = new TreeSet<>(FIFO);
+    private final NavigableSet<Job> deliveries = new TreeSet<>(DELIVERY_ORDER);
+    private final NavigableSet<Job> expiring = new TreeSet<>(Comparator.comparing(Job::retentionStart).thenComparing(FIFO));
+    private final Map<State, NavigableSet<Job>> active = Map.of(
+            State.QUEUED, queued, State.RUNNING, running, State.DELIVERING, deliveries);
     private FileChannel lockChannel;
     private FileLock directoryLock;
     private ScheduledExecutorService executor;
@@ -138,10 +151,10 @@ public final class MailAnalysisQueue implements ApplicationListener<ApplicationR
         Objects.requireNonNull(mail);
         pruneExpired();
         String identity = StableIdentityHash.sha256(mail.sender() + "\n" + mail.messageId());
-        Optional<Job> existing = jobs.values().stream().filter(job -> job.identity().equals(identity)).findFirst();
-        if (existing.isPresent()) return submission(existing.get(), true);
+        Job existing = jobs.get(tokenByIdentity.get(identity));
+        if (existing != null) return submission(existing, true);
 
-        int waiting = Math.toIntExact(jobs.values().stream().filter(job -> job.state() == State.QUEUED).count());
+        int waiting = queued.size();
         boolean accepted = waiting < capacity;
         Instant admitted = clock.instant();
         // Record each decision before SMTP. A retry of the same IMAP UID must never change the answer.
@@ -171,16 +184,13 @@ public final class MailAnalysisQueue implements ApplicationListener<ApplicationR
     public synchronized Optional<Status> status(String jobToken) {
         Job job = jobs.get(jobToken);
         if (job == null || job.state() == State.REJECTED || removable(job, clock.instant())) return Optional.empty();
-        var counts = new EnumMap<State, Integer>(State.class);
-        for (Job candidate : jobs.values()) counts.merge(candidate.state(), 1, Integer::sum);
         Integer position = job.state() == State.QUEUED ? position(job) : null;
-        return Optional.of(new Status(job.state(), position, counts.getOrDefault(State.QUEUED, 0), capacity,
-                counts.getOrDefault(State.RUNNING, 0), counts.getOrDefault(State.DELIVERING, 0), job.terminal()));
+        return Optional.of(new Status(job.state(), position, queued.size(), capacity,
+                running.size(), deliveries.size(), job.terminal()));
     }
 
     private int position(Job job) {
-        return 1 + Math.toIntExact(jobs.values().stream().filter(candidate -> candidate.state() == State.QUEUED
-                && candidate.sequence() < job.sequence()).count());
+        return 1 + queued.headSet(job).size();
     }
 
     @Override
@@ -254,19 +264,17 @@ public final class MailAnalysisQueue implements ApplicationListener<ApplicationR
     private synchronized Job claimNext() {
         pruneExpired();
         Instant now = clock.instant();
-        Job running = jobs.values().stream().filter(job -> job.state() == State.RUNNING).min(FIFO).orElse(null);
-        if (running != null) return running;
-        Job due = jobs.values().stream().filter(job -> job.state() == State.DELIVERING
-                && (job.retryAfter() == null || !job.retryAfter().isAfter(now))).min(DELIVERY_ORDER).orElse(null);
-        Job queued = jobs.values().stream().filter(job -> job.state() == State.QUEUED && job.receiptConfirmed())
-                .min(FIFO).orElse(null);
+        if (!running.isEmpty()) return running.first();
+        Job due = deliveries.isEmpty() ? null : deliveries.first();
+        if (due != null && due.retryAfter() != null && due.retryAfter().isAfter(now)) due = null;
+        Job waiting = queued.stream().filter(Job::receiptConfirmed).findFirst().orElse(null);
         // Long SMTP timeouts across several due retries must still leave turns for admitted analyses.
-        if (due != null && (queued == null || !lastClaimWasDeliveryRetry)) {
+        if (due != null && (waiting == null || !lastClaimWasDeliveryRetry)) {
             lastClaimWasDeliveryRetry = true;
             return due;
         }
-        if (queued == null) return null;
-        Job started = queued.update(State.RUNNING, true, now, null);
+        if (waiting == null) return null;
+        Job started = waiting.update(State.RUNNING, true, now, null);
         store(started);
         lastClaimWasDeliveryRetry = false;
         return started;
@@ -295,7 +303,7 @@ public final class MailAnalysisQueue implements ApplicationListener<ApplicationR
                         // Jobs written before delivery had its own state retain their existing backoff on upgrade.
                         job = job.update(State.DELIVERING, true, job.updatedAt(), job.retryAfter());
                         store(job);
-                    } else jobs.put(job.token(), job);
+                    } else index(job);
                     lastSequence = Math.max(lastSequence, job.sequence());
                     if (job.terminal()) delete(file(job.token(), ".outgoing"));
                 }
@@ -351,23 +359,41 @@ public final class MailAnalysisQueue implements ApplicationListener<ApplicationR
 
     private void store(Job job) {
         write(file(job.token(), ".job"), job);
-        jobs.put(job.token(), job);
+        index(job);
+    }
+
+    private void index(Job job) {
+        Job previous = jobs.put(job.token(), job);
+        if (previous == null) tokenByIdentity.put(job.identity(), job.token());
+        else removeFromSchedule(previous);
+
+        var stateJobs = active.get(job.state());
+        if (stateJobs != null) stateJobs.add(job);
+        if (job.retentionStart() != null) expiring.add(job);
+    }
+
+    private void removeFromSchedule(Job job) {
+        var stateJobs = active.get(job.state());
+        if (stateJobs != null) stateJobs.remove(job);
+        if (job.retentionStart() != null) expiring.remove(job);
     }
 
     private void pruneExpired() {
-        var now = clock.instant();
-        var old = new ArrayList<String>();
-        for (Job job : jobs.values()) {
-            if (removable(job, now)) {
-                delete(file(job.token(), ".outgoing"));
-                delete(file(job.token(), ".job"));
-                old.add(job.token());
-            } else if (job.state() == State.DELIVERING && retainedTooLong(job.deliveryStartedAt(), now)) {
+        Instant now = clock.instant();
+        while (!expiring.isEmpty()) {
+            Job job = expiring.first();
+            if (!retainedTooLong(job.retentionStart(), now)) return;
+            if (job.state() == State.DELIVERING && job.receiptConfirmed()) {
                 store(job.update(State.FAILED, true, now, null));
                 delete(file(job.token(), ".outgoing"));
+            } else {
+                delete(file(job.token(), ".outgoing"));
+                delete(file(job.token(), ".job"));
+                removeFromSchedule(job);
+                jobs.remove(job.token());
+                tokenByIdentity.remove(job.identity());
             }
         }
-        old.forEach(jobs::remove);
     }
 
     private boolean removable(Job job, Instant now) {
