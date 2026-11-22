@@ -453,7 +453,8 @@ public final class ArchitecturePdfRenderer {
             stream.addRect(x, y, width, height);
             stream.stroke();
 
-            float inset = 8 * scale, small = 8 * scale;
+            float inset = 8 * scale;
+            float small = Math.max(7, 8 * scale);
             String score = canonical ? "" : language.score(node);
             float scoreWidth = PdfDiagramText.width(fonts.regular(), small, score);
             String id = PdfDiagramText.wrap(node.id(), fonts.bold(), small,

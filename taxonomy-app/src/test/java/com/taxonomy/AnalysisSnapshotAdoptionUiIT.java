@@ -133,8 +133,7 @@ class AnalysisSnapshotAdoptionUiIT {
                 viewId = (String) javascript().executeScript("return window.__adoptionAccepted.viewId;");
                 originalRequest = JsonMapper.builder().build().readValue((String) javascript().executeScript("return JSON.stringify(window.__adoptionAttempts[0]);"),AnalysisSnapshotAdoptionService.Request.class);
                 assertThat(driver.findElement(By.id("editorDsl")).getDomProperty("value")).contains(OLD_TEXT).doesNotContain("Later edited requirement text");
-                var provenanceSummary = driver.findElement(By.cssSelector("#snapshotAdoption details > summary"));
-                javascript().executeScript("arguments[0].scrollIntoView({behavior:'instant',block:'center'});",provenanceSummary); provenanceSummary.click();
+                click("adoptionProvenanceTitle");
                 assertThat(driver.findElement(By.id("adoptionProvenance")).getText()).contains(snapshot.id());
                 var selected = app.getBean(com.taxonomy.editor.ArchitectureEditorProjection.class).project(app.getBean(ArchitectureEditorService.class).read(target,null),true,
                         com.taxonomy.diagram.DiagramLayout.Strategy.STABLE,null,viewId);

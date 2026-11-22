@@ -231,7 +231,7 @@ async function runSnapshotAdoptionAcceptance(page, base, initial, navigationEvid
   assert.ok(adoptedViewTitle, 'The adopted view has a readable title');
   assert.doesNotMatch(adoptedViewTitle,/^archview\.policy\.title\./, 'Message keys must not be shown as view names');
   assert.equal(await page.locator('#editorHistory li').count(),1);
-  await page.locator('#snapshotAdoption details > summary').click();
+  await page.locator('#adoptionProvenanceTitle').click();
   assert.match(await page.locator('#adoptionProvenance').innerText(),new RegExp(snapshot));
   const provenance=page.locator('#adoptionProvenance');
   assert.equal(await provenance.getAttribute('tabindex'),'0','Scrollable source evidence must be keyboard reachable in every browser');
@@ -534,8 +534,10 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     assert.match(proposal.rationale, /dispatch/);
     assert.ok(proposal.evidence.every(witness => witness.quote.includes('dispatch requests')),
       'Both endpoint excerpts retain the authored wording that supports investigation');
-    const proposalButton = page.locator('#editorLensSuggestions button').filter({ hasText: `${proposal.sourceId} → ${proposal.targetId} · ${proposal.relationType}` });
-    await proposalButton.focus(); await page.keyboard.press('Enter');
+    const proposalButton = page.locator(`#editorLensSuggestions button[data-proposal-id$=${JSON.stringify(proposal.id)}]`);
+    await proposalButton.focus();
+    assert.equal(await proposalButton.count(), 1, 'The returned proposal identifies exactly one candidate button');
+    await page.keyboard.press('Enter');
     assert.equal(await proposalButton.evaluate(button => document.activeElement === button), true, 'Selecting a proposal retains keyboard focus');
     assert.ok((await page.locator('#editorLensReview').innerText()).includes(proposal.rationale));
     assert.equal(await page.locator('#editorPreviewDialog').isVisible(), false);

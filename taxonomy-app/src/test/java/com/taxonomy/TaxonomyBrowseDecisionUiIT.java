@@ -657,6 +657,7 @@ class TaxonomyBrowseDecisionUiIT {
                 });
                 </script>
                 <script src="/js/api/analysis-api.js"></script><script src="/js/api/export-api.js"></script>
+                <script src="/js/shared/match-scale.js"></script>
                 <script src="/js/core/taxonomy-browse.js"></script><script src="/js/core/taxonomy-scoring.js"></script>
                 <script>
                 document.addEventListener=nativeAdd;
