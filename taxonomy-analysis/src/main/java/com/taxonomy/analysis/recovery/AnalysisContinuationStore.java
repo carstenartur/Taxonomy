@@ -863,6 +863,11 @@ public class AnalysisContinuationStore {
     @Transactional
     public AnalysisResult completeWithFallback(Claim claim, AnalysisResult result,
             java.util.function.Supplier<List<TaxonomyNodeDto>> fallbackTree) {
+        return completeWithFallback(claim, result, fallbackTree, false);
+    }
+
+    private AnalysisResult completeWithFallback(Claim claim, AnalysisResult result,
+            java.util.function.Supplier<List<TaxonomyNodeDto>> fallbackTree, boolean relationBudgetRetained) {
         var run = em.find(AnalysisContinuationRun.class, claim.id(), LockModeType.PESSIMISTIC_WRITE);
         if (run == null || !Objects.equals(run.claimToken, claim.token())) throw conflict("Operation claim was superseded");
         var previous = readResult(run);
@@ -891,7 +896,8 @@ public class AnalysisContinuationStore {
         result.setModelBinding(frozenRequest.getModelBinding());
         if (previous != null && result.getRelationSearchReport() == null)
             result.setRelationSearchReport(previous.getRelationSearchReport());
-        retainRelationBudget(run, result);
+        if (!relationBudgetRetained)
+            retainRelationBudget(run, result, previous == null ? null : previous.getRelationSearchReport());
         var metadata = failUncertainAttempts(run, questionMetadata(run));
         var open = openQuestions(metadata);
         if ("CANCELLED".equals(run.state)) result.setStatus("CANCELLED");
@@ -1027,7 +1033,7 @@ public class AnalysisContinuationStore {
 
     @Transactional
     public Snapshot cancel(String id, WorkspaceContext scope) {
-        return cancelLocked(scoped(id, scope), null, null);
+        return cancelLocked(scoped(id, scope), null, null, false);
     }
     /** Cluster cancellation carries the bound identity and already committed aggregate relation evidence. */
     @Transactional
@@ -1037,30 +1043,36 @@ public class AnalysisContinuationStore {
         if (operationId == null || !operationId.equals(run.clusterOperationId))
             throw conflict("Operation claim was superseded");
         var result = readResult(run);
+        boolean relationBudgetRetained = result != null && aggregate.getRelationSearchReport() != null;
         if (result != null) {
             result.setAnalysisOperationId(operationId);
             if (aggregate.getViewContext() != null) result.setViewContext(aggregate.getViewContext());
             retainRelationReport(run, result, aggregate.getRelationSearchReport());
             writeResult(run, result);
         }
-        return cancelLocked(run, null, null);
+        return cancelLocked(run, null, null, relationBudgetRetained);
     }
     private void retainRelationReport(AnalysisContinuationRun run, AnalysisResult result, RelationSearchReport report) {
         if (report == null) return;
         var request = mapper.readValue(run.requestJson, AnalysisRequest.class);
         if (!Objects.equals(report.originalSha256(), com.taxonomy.analysis.dag.RequirementReference.sha256(request.getBusinessText())))
             throw conflict("Relation evidence belongs to a different requirement");
+        var previous = result.getRelationSearchReport();
         result.setRelationSearchReport(report);
-        retainRelationBudget(run, result);
+        retainRelationBudget(run, result, previous);
         if (result.getArchitectureView() != null) result.getArchitectureView().setRelationSearchReport(result.getRelationSearchReport());
     }
     /** Scheduler grants may include cached answers; only the claimed ledger measures new provider work. */
-    private static void retainRelationBudget(AnalysisContinuationRun run, AnalysisResult result) {
+    private static void retainRelationBudget(AnalysisContinuationRun run, AnalysisResult result,
+            RelationSearchReport previous) {
         var report = result.getRelationSearchReport();
         if (report == null || report.budget() == null || run.relationCallsSpent == null) return;
         var budget = report.budget();
-        result.setRelationSearchReport(report.withBudget(budget.withSpentCalls(run.relationCallsSpent,
-                budget.spentCalls() - budget.newCalls())));
+        int beforeExecution = budget.spentCalls() - budget.newCalls();
+        if (Objects.equals(previous, report) && previous.budget() != null
+                && previous.budget().spentCalls() <= run.relationCallsSpent)
+            beforeExecution = previous.budget().spentCalls();
+        result.setRelationSearchReport(report.withBudget(budget.withSpentCalls(run.relationCallsSpent, beforeExecution)));
         if (result.getArchitectureView() != null)
             result.getArchitectureView().setRelationSearchReport(result.getRelationSearchReport());
     }
@@ -1093,9 +1105,10 @@ public class AnalysisContinuationStore {
     /** Legacy in-flight rows can recover the tree only after its full semantic identity is verified. */
     @Transactional
     public Snapshot cancel(String id, WorkspaceContext scope, List<TaxonomyNodeDto> tree, String signature) {
-        return cancelLocked(scoped(id, scope), tree, signature);
+        return cancelLocked(scoped(id, scope), tree, signature, false);
     }
-    private Snapshot cancelLocked(AnalysisContinuationRun run, List<TaxonomyNodeDto> fallbackTree, String signature) {
+    private Snapshot cancelLocked(AnalysisContinuationRun run, List<TaxonomyNodeDto> fallbackTree, String signature,
+            boolean relationBudgetRetained) {
         var result = readResult(run);
         if (!"COMPLETED".equals(run.state) && (!"CANCELLED".equals(run.state)
                 || result == null || result.getAnalysisCoverage() == null)) {
@@ -1126,7 +1139,8 @@ public class AnalysisContinuationStore {
             run.state = "CANCELLED";
             // complete() remains inside this short transaction and marks unfinished attempts
             // uncertain, derives coverage from the frozen tree and persists the entire result.
-            result = complete(new Claim(run.id, run.claimToken, null), result, result.getTree());
+            result = completeWithFallback(new Claim(run.id, run.claimToken, null), result,
+                    result::getTree, relationBudgetRetained);
         }
         return new Snapshot(view(run), result, mapper.readValue(run.requestJson, AnalysisRequest.class), run.clusterOperationId);
     }

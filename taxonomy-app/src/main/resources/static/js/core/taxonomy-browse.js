@@ -175,7 +175,11 @@
                         S.activeAnalysisLanguage = S.lastAnalysisLanguage;
                         window.TaxonomyAnalysisScope?.acceptResult?.(S.lastAnalysisScope);
                         if (window.TaxonomyScoring?.applyLocalRawScores) {
-                            window.TaxonomyScoring.applyLocalRawScores(data.rawScores || data.scores || {}, true);
+                            // Portable evidence can legitimately refer to a retired catalogue node.
+                            // The server reports that identity in warnings; retain its measured value
+                            // without treating it as a new expert-entered score for the live catalogue.
+                            window.TaxonomyScoring.applyLocalRawScores(
+                                data.rawScores || data.scores || {}, true, true);
                         } else S.currentScores = data.scores || {};
                         S.currentReasons = data.reasons || {};
                         // Portable reports remain display evidence, not an owned execution reference.

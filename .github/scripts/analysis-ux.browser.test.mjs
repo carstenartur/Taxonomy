@@ -1233,6 +1233,22 @@ for (const [label, architectureFields] of [
     });
 }
 
+test('portable score import retains unresolved provider evidence reported by the server', async () => {
+    const page = await reportFixture();
+    try {
+        await bootScoreImport(page, {
+            scores: {'BP-1000': 42, 'RETIRED-7': 17},
+            rawScores: {'BP-1000': 42, 'RETIRED-7': 17},
+            warnings: ['Unknown node code: RETIRED-7']
+        });
+        await page.locator('#importJsonFile').setInputFiles({name: 'retained.json', mimeType: 'application/json',
+            buffer: Buffer.from(JSON.stringify({scores: {'BP-1000': 42, 'RETIRED-7': 17}}))});
+        await page.waitForFunction(() => TaxonomyState.lastAnalysisProvider === 'IMPORTED');
+        assert.equal(await page.evaluate(() => TaxonomyState.currentRawScores['RETIRED-7']), 17);
+        assert.equal(await page.evaluate(() => TaxonomyState.currentScores['RETIRED-7']), 17);
+    } finally { await finish(page); }
+});
+
 test('score import preserves legacy nested-only relationship evidence', async () => {
     const page = await reportFixture();
     const legacyArchitecture = {...importedArchitecture, relationSearchReport: importedRelationReport};
