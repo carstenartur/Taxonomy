@@ -625,9 +625,18 @@ class GitCommitSignatureServiceTest {
         var home = Files.createDirectory(directory.resolve("gnupg"));
         try { Files.setPosixFilePermissions(home, java.nio.file.attribute.PosixFilePermissions.fromString("rwx------")); }
         catch (UnsupportedOperationException ignored) { }
-        var publicFile = directory.resolve("public.asc");
-        Files.write(publicFile, armor(keys.generatePublicKeyRing().getEncoded()));
-        assertThat(run(List.of("gpg", "--homedir", home.toString(), "--batch", "--import", publicFile.toString()), null).exit()).isZero();
+        // Verification uses only this isolated public keyring; a private-key agent is not needed.
+        var publicKeys = keys.generatePublicKeyRing();
+        Files.write(home.resolve("pubring.gpg"), publicKeys.getEncoded());
+        var listed = run(List.of("gpg", "--homedir", home.toString(), "--batch", "--no-autostart",
+                "--with-colons", "--list-keys"), null);
+        assertThat(listed.exit()).withFailMessage(listed.output()).isZero();
+        var expectedFingerprint = java.util.HexFormat.of().withUpperCase()
+                .formatHex(publicKeys.getPublicKey().getFingerprint());
+        var nativeFingerprints = listed.output().lines().map(line -> line.split(":", -1))
+                .filter(fields -> fields.length > 9 && "fpr".equals(fields[0]))
+                .map(fields -> fields[9]).toList();
+        assertThat(nativeFingerprints).contains(expectedFingerprint);
         var repository = directory.resolve("git");
         assertThat(run(List.of("git", "init", "--bare", repository.toString()), null).exit()).isZero();
         var commit = commit(); service.sign(commit, "project", "main");

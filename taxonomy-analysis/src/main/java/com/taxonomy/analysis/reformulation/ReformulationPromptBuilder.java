@@ -8,7 +8,7 @@ import java.nio.charset.StandardCharsets;
 public class ReformulationPromptBuilder {
     public static final String PROMPT_VERSION="reformulation-node-v1";
     public static final String SCHEMA_VERSION="reformulation-response-v1";
-    public static final String INTERACTIVE_PROMPT_VERSION="reformulation-node-v2";
+    public static final String INTERACTIVE_PROMPT_VERSION="reformulation-node-v3";
     public static final String INTERACTIVE_SCHEMA_VERSION="reformulation-response-v2";
     /** Part of the checkpoint identity: old lossy prompt results must not be reused as v2 results. */
     public static final String INPUT_ENCODING_VERSION = "reformulation-input-inherited-budgeted-v7";
@@ -22,7 +22,7 @@ public class ReformulationPromptBuilder {
     private final ObjectMapper json;
     public ReformulationPromptBuilder(ObjectMapper json) { this.json=json; }
     public static String template() {return readTemplate("/prompts/reformulation-node.txt");}
-    public static String interactiveTemplate() {return readTemplate("/prompts/reformulation-node-v2.txt");}
+    public static String interactiveTemplate() {return readTemplate("/prompts/reformulation-node-v3.txt");}
     private static String readTemplate(String path) {
         try(var stream=ReformulationPromptBuilder.class.getResourceAsStream(path)) {
             if(stream==null) throw new IllegalStateException("Missing reformulation prompt");

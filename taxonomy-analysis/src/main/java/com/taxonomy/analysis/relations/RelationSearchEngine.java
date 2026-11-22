@@ -54,9 +54,13 @@ public final class RelationSearchEngine {
     }
 
     public Result search(String original, List<Intent> intents, Limits limits) {
+        return search(original, intents, limits, true);
+    }
+
+    Result search(String original, List<Intent> intents, Limits limits, boolean orderedDescendants) {
         Objects.requireNonNull(intents); Objects.requireNonNull(limits);
         if (original == null || original.isBlank()) throw new IllegalArgumentException("Missing original requirement");
-        return new Run(original, limits).execute(List.copyOf(intents));
+        return new Run(original, limits, orderedDescendants).execute(List.copyOf(intents));
     }
 
     private record Work(Query query, int depth, Set<String> path) { }
@@ -64,12 +68,15 @@ public final class RelationSearchEngine {
     private final class Run {
         private final String original;
         private final Limits limits;
+        private final boolean orderedDescendants;
         private final long started = System.nanoTime();
         private final Deque<Work> queue = new ArrayDeque<>();
+        private final List<Work> followups = new ArrayList<>();
         private final Set<Query> scheduled = new HashSet<>();
         private final Set<Edge> edges = new LinkedHashSet<>();
         private final List<Unfinished> unfinished = new ArrayList<>();
         private final List<Trace> trace = new ArrayList<>();
+        private final Map<String, Unfinished> refinementGaps = new LinkedHashMap<>();
         private int calls;
         private int visited;
         private List<Intent> seeds = List.of();
@@ -77,7 +84,11 @@ public final class RelationSearchEngine {
         private Intent activeSeed;
         private int unfinishedAtSeed;
 
-        Run(String original, Limits limits) { this.original = original; this.limits = limits; }
+        Run(String original, Limits limits, boolean orderedDescendants) {
+            this.original = original;
+            this.limits = limits;
+            this.orderedDescendants = orderedDescendants;
+        }
 
         Result execute(List<Intent> intents) {
             for (Intent intent : intents) {
@@ -85,6 +96,9 @@ public final class RelationSearchEngine {
                 validateCandidates(intent.roots());
                 if (!original.contains(intent.contribution().quote())) {
                     throw new IllegalArgumentException("Contribution evidence is not an original quote");
+                }
+                if (intent.contribution().source().container()) {
+                    throw new IllegalArgumentException("A navigation-only source cannot assert a contribution");
                 }
             }
             seeds = intents;
@@ -123,6 +137,17 @@ public final class RelationSearchEngine {
                 for (int i = 0; i < q.candidates().size(); i++) {
                     Node node = q.candidates().get(i);
                     Decision decision = decisions.get(i);
+                    if (decision.outcome() == Outcome.MATCH && node.container()) {
+                        trace.add(new Trace(q.contribution().source().id(), q.type(), q.direction(),
+                                q.phase(), node.id(), Outcome.DESCEND,
+                                "Generic match led to refinement: " + decision.rationale(), contributionKey));
+                        refinementGaps.putIfAbsent(node.id(), new Unfinished(q.contribution().source().id(), q.type(), q.direction(),
+                                List.of(node.id()), "ENDPOINT_REFINEMENT",
+                                "Which specific catalogue counterpart performs the required function below " + node.name() + "?",
+                                contributionKey, node.root()));
+                        descend(work, node);
+                        continue;
+                    }
                     trace.add(new Trace(q.contribution().source().id(), q.type(), q.direction(),
                             q.phase(), node.id(), decision.outcome(), decision.rationale(), contributionKey));
                     switch (decision.outcome()) {
@@ -132,19 +157,25 @@ public final class RelationSearchEngine {
                         case MATCH -> enqueue(q.contribution(), q.type(), q.direction(), Phase.VERIFY,
                                 List.of(node), decision, work.depth(), work.path());
                         case VERIFIED -> {
+                            work.path().forEach(refinementGaps::remove);
                             Edge edge = new Edge(q.contribution(), node, q.type(), q.direction(), decision);
                             if (edges.add(edge)) observer.verified(edge);
                         }
                         case DESCEND -> descend(work, node);
                     }
                 }
+                scheduleFollowups();
             }
             finishSeed();
             return snapshot();
         }
 
         private void finishSeed() {
-            if (activeSeed != null) observer.finished(activeSeed, unfinished.size() == unfinishedAtSeed);
+            if (activeSeed != null) {
+                unfinished.addAll(refinementGaps.values());
+                refinementGaps.clear();
+                observer.finished(activeSeed, unfinished.size() == unfinishedAtSeed);
+            }
             activeSeed = null;
         }
 
@@ -182,15 +213,35 @@ public final class RelationSearchEngine {
 
         private void enqueue(Contribution contribution, String type, Direction direction, Phase phase,
                              List<Node> candidates, Decision proposal, int depth, Set<String> path) {
+            boolean followup = phase == Phase.VERIFY || depth > 0;
             for (Query query : queries(contribution, type, direction, phase, candidates, proposal)) {
-                if (scheduled.contains(query)) continue;
-                if (!externalBudget && scheduled.size() >= limits.maxWorkItems()) { issue(query, "WORK_LIMIT", ""); continue; }
-                scheduled.add(query);
                 Work work = new Work(query, depth, path);
-                // Finish an admitted branch before admitting unrelated source roots.
-                if (phase == Phase.VERIFY || depth > 0) queue.addFirst(work);
-                else queue.addLast(work);
+                if (followup && orderedDescendants) {
+                    followups.add(work);
+                } else if (admit(query)) {
+                    if (followup) queue.addFirst(work); // Historical grants replay the original paid prefix.
+                    else queue.addLast(work);
+                }
             }
+        }
+
+        private boolean admit(Query query) {
+            if (scheduled.contains(query)) return false;
+            if (!externalBudget && scheduled.size() >= limits.maxWorkItems()) {
+                issue(query, "WORK_LIMIT", "");
+                return false;
+            }
+            return scheduled.add(query);
+        }
+
+        private void scheduleFollowups() {
+            if (followups.isEmpty()) return;
+            // Stable sort preserves candidate and split-batch order within each phase.
+            // Admit verification before exploration, even when only one work slot remains.
+            followups.sort(Comparator.comparing(work -> work.query().phase() != Phase.VERIFY));
+            followups.removeIf(work -> !admit(work.query()));
+            followups.reversed().forEach(queue::addFirst);
+            followups.clear();
         }
 
         private List<Query> queries(Contribution contribution, String type, Direction direction, Phase phase,
@@ -212,6 +263,7 @@ public final class RelationSearchEngine {
         }
 
         private void interrupt(Work current, RuntimeException stopped) {
+            scheduleFollowups(); // Include work already identified in this response before a later sibling failed.
             issue(current.query(), "INTERRUPTED", ""); drain("INTERRUPTED"); finishSeed();
             throw new InterruptedSearchException(stopped, snapshot());
         }
@@ -263,12 +315,22 @@ public final class RelationSearchEngine {
                 invalid("Decision is not permitted in this phase");
             }
             if (d.outcome() == Outcome.UNRESOLVED && blank(d.question())) invalid("Unresolved decision requires a question");
+            if (d.outcome() == Outcome.REJECT && (!blank(d.question()) || !blank(d.contribution()) || !blank(d.quote())
+                    || d.necessity() != null || !blank(d.condition()) || !blank(d.alternativeGroup()))) {
+                invalid("A rejection cannot carry an open question or a positive claim");
+            }
             if (d.outcome() == Outcome.MATCH || d.outcome() == Outcome.VERIFIED) {
-                if (node.container() || node.id().equals(q.contribution().source().id())) invalid("Not a concrete distinct endpoint");
+                // A well-formed container match is routing evidence. The walk
+                // refines it without paying for verification of an umbrella.
+                if (node.id().equals(q.contribution().source().id()) || d.outcome() == Outcome.VERIFIED && node.container()) {
+                    invalid("Not a concrete distinct endpoint");
+                }
                 if (blank(d.contribution()) || blank(d.quote()) || !q.original().contains(d.quote()) || d.necessity() == null) {
                     invalid("Positive relation requires a scoped contribution and exact original evidence");
                 }
+                if (!blank(d.question())) invalid("A positive decision with an open question must be unresolved");
                 if (d.necessity() == Necessity.ALTERNATIVE && blank(d.alternativeGroup())) invalid("Alternative requires an explicit choice group");
+                if (d.necessity() != Necessity.ALTERNATIVE && !blank(d.alternativeGroup())) invalid("Only alternatives may name a choice group");
                 if (d.necessity() == Necessity.OPTIONAL && blank(d.condition())) invalid("Optional relation requires an explicit condition");
                 if (q.phase() == Phase.VERIFY && !sameClaim(q.proposal(), d)) invalid("Verification must not replace the proposed claim");
             }

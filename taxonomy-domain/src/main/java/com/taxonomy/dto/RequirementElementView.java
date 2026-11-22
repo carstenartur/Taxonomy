@@ -1,13 +1,16 @@
 package com.taxonomy.dto;
 
+import com.fasterxml.jackson.annotation.JsonGetter;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonSetter;
 
 public class RequirementElementView {
 
     private String nodeCode;
     private String title;
     private String taxonomySheet;
-    private double relevance;
+    private Double relevance;
     private int hopDistance;
     private boolean anchor;
     private String includedBecause;
@@ -40,6 +43,23 @@ public class RequirementElementView {
 
     public AnalysisScoreDetail getScoreDetail() { return scoreDetail; }
     public void setScoreDetail(AnalysisScoreDetail scoreDetail) { this.scoreDetail = scoreDetail; }
+
+    /** A retained numeric relevance takes precedence over the typed assessment fallback. */
+    public Double recordedRelevance() {
+        if (scoreDetail != null) return getRelevance();
+        if (origin == NodeOrigin.RELATION_EVIDENCE || origin == NodeOrigin.REQUIREMENT_EVIDENCE) return null;
+        return relevance;
+    }
+
+    /** The saved root-to-node path can establish a depth when the numeric field was omitted. */
+    public Integer recordedTaxonomyDepth() {
+        if (taxonomyDepth > 0) return taxonomyDepth;
+        if (hierarchyPath == null || nodeCode == null) return null;
+        String[] path = hierarchyPath.split(">", -1);
+        if (!nodeCode.equals(path[path.length - 1].strip())) return null;
+        for (String component : path) if (component.isBlank()) return null;
+        return path.length - 1;
+    }
 
     /** Effective assignment captured from the analysis model, when available. */
     private TaxonomyResponsibilityLookup.Assignment responsibility;
@@ -75,8 +95,21 @@ public class RequirementElementView {
     public String getTaxonomySheet() { return taxonomySheet; }
     public void setTaxonomySheet(String taxonomySheet) { this.taxonomySheet = taxonomySheet; }
 
-    public double getRelevance() { return relevance; }
+    @JsonIgnore
+    public double getRelevance() {
+        if (relevance != null) return relevance;
+        return scoreDetail == null ? 0 : scoreDetail.effectiveRelevance() / 100.0;
+    }
+    @JsonIgnore
     public void setRelevance(double relevance) { this.relevance = relevance; }
+
+    /** Persist the stored value so the layout fallback cannot become recorded evidence on replay. */
+    @JsonGetter("relevance")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Double serializeRelevance() { return relevance; }
+
+    @JsonSetter("relevance")
+    private void deserializeRelevance(Double relevance) { this.relevance = relevance; }
 
     public int getHopDistance() { return hopDistance; }
     public void setHopDistance(int hopDistance) { this.hopDistance = hopDistance; }

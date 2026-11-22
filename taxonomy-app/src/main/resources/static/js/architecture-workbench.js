@@ -10,6 +10,10 @@
         return String(Number(percentage.toFixed(6)));
     }
 
+    function nodeRelevanceText(node, translate) {
+        return node.missingMeasurements?.relevance ? translate('workbench.ui.unrecorded') : relevanceText(node.relevance) + '%';
+    }
+
     function computeHopDistances(scene) {
         const adjacency = new Map();
         scene.nodes.forEach(function (node) { adjacency.set(node.id, []); });
@@ -120,6 +124,7 @@
             const metadata = (data.elements || {})[node.id] || {};
             const unit = node.responsibility && window.TaxonomyResponsibilityDisplay?.unit?.(node.responsibility);
             const responsibilityLabel = unit ? t('views.diagram.responsibleUnit', unit.name) : '';
+            const relevance = nodeRelevanceText(node, t);
             return Object.assign({}, node, {
                 context: node.context === undefined ? !node.anchor : Boolean(node.context),
                 searchText: [node.id, node.label, node.type].join(' ') + (unit ? ' ' + unit.name : ''),
@@ -127,14 +132,14 @@
                 className: 'architecture-node' + (node.anchor ? ' is-anchor' : ''),
                 color: color,
                 textColor: textColor,
-                ariaLabel: t('workbench.ui.nodeLabel', node.id, node.label, node.type, relevanceText(node.relevance))
+                ariaLabel: t('workbench.ui.nodeLabel', node.id, node.label, node.type, relevance)
                     + (unit ? ' · ' + responsibilityLabel : ''),
-                score: (node.anchor ? '★ ' : '') + relevanceText(node.relevance) + '%',
+                score: (node.anchor ? '★ ' : '') + relevance,
                 scoreFill: common.rgba(textColor, textColor === '#ffffff' ? 0.18 : 0.12),
                 titleLines: common.wrapLabel(node.label, 32, unit ? 1 : 2),
                 responsibleUnit: unit,
                 meta: (node.anchor ? t('workbench.ui.directMatch') : t('workbench.ui.hop', hops.get(node.id))) + ' · ' + node.type,
-                tooltip: node.id + ' — ' + node.label + '\n' + node.type + '\n' + relevanceText(node.relevance) + '%'
+                tooltip: node.id + ' — ' + node.label + '\n' + node.type + '\n' + relevance
                     + (unit ? '\n' + responsibilityLabel + '\n' + t('responsibility.source', unit.sourceId) : '')
                     + (metadata.presenceReason ? '\n' + metadata.presenceReason : '')
             });
@@ -160,25 +165,35 @@
     function layoutScene(model) {
         const common = window.TaxonomyArchitectureDiagram;
         const groups = buildLayerGroups(model.nodes, common.taxonomyPalette());
-        const bounds = calculateBounds(model.nodes, groups);
+        const frame = calculateBounds(model.nodes, groups);
         const nodeById = new Map(model.nodes.map(function (node) { return [node.id, node]; }));
-        const lanes = common.relationshipLanes(model.edges);
+        const lanes = common.relationshipLanes(model.edges, true);
+        const occupiedCaptions = [];
+        let left = frame.x, top = frame.y, right = frame.x + frame.width, bottom = frame.y + frame.height;
+        const edges = model.edges.map(function (edge) {
+            const route = common.routeEdge(nodeById.get(edge.sourceId), nodeById.get(edge.targetId),
+                lanes.get(edge.id) || 0, edge, model.nodes);
+            const caption = common.placeEdgeCaption(route, model.nodes, occupiedCaptions);
+            left = Math.min(left, route.bounds.left - 8);
+            top = Math.min(top, route.bounds.top - 8);
+            right = Math.max(right, route.bounds.right + 8);
+            bottom = Math.max(bottom, route.bounds.bottom + 8);
+            if (caption) {
+                top = Math.min(top, caption.bounds.top - 8);
+                bottom = Math.max(bottom, caption.bounds.bottom + 8);
+            }
+            return Object.assign({}, edge, {path: route.path, labelX: route.labelX,
+                labelY: caption ? caption.y : route.labelY, showLabel: Boolean(caption)});
+        });
         return {
             nodes: model.nodes,
-            edges: model.edges.map(function (edge) {
-                const lane = lanes.get(edge.id) || 0;
-                return Object.assign({}, edge, {
-                    path: common.edgePath(nodeById.get(edge.sourceId), nodeById.get(edge.targetId), lane, edge),
-                    labelX: (edge.sourceX + edge.targetX) / 2,
-                    labelY: (edge.sourceY + edge.targetY) / 2 + lane * 12 - 6
-                });
-            }),
+            edges: edges,
             layers: groups.map(function (layer) {
                 return {
                     x: layer.x,
-                    y: bounds.y,
+                    y: frame.y,
                     width: layer.width,
-                    height: bounds.contentBottom + 12 - bounds.y,
+                    height: frame.contentBottom + 12 - frame.y,
                     color: layer.color,
                     backgroundFill: common.rgba(layer.color, 0.08),
                     headerHeight: 34,
@@ -188,7 +203,7 @@
                     labelOffsetY: 29
                 };
             }),
-            bounds: bounds
+            bounds: Object.assign({}, frame, {x: left, y: top, width: right - left, height: bottom - top})
         };
     }
 
@@ -324,8 +339,8 @@
             [t('workbench.ui.detail.element'), node.id],
             [t('workbench.ui.detail.title'), node.label],
             [t('workbench.ui.detail.layer'), node.type],
-            [t('workbench.ui.detail.relevance'), relevanceText(node.relevance) + '%'],
-            [t('workbench.ui.detail.direct_score'), metadata.directScore],
+            [t('workbench.ui.detail.relevance'), nodeRelevanceText(node, t)],
+            [t('workbench.ui.detail.direct_score'), node.missingMeasurements?.relevance ? t('workbench.ui.unrecorded') : metadata.directScore],
             [t('workbench.ui.detail.anchor'), node.anchor ? t('ui.yes') : t('ui.no')],
             [t('workbench.ui.detail.origin'), window.TaxonomyI18n.formatEnum(metadata.mappingOrigin)],
             [t('workbench.ui.detail.review'), window.TaxonomyI18n.formatEnum(metadata.reviewStatus)],

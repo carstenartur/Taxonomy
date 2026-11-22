@@ -1,6 +1,8 @@
 package com.taxonomy.analysis.reformulation;
 
 import com.taxonomy.reformulation.NodeSynthesisInput;
+import com.taxonomy.reformulation.ReconciliationInput;
+import com.taxonomy.reformulation.ReformulationBaseline;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
@@ -25,16 +27,27 @@ final class InheritedDecisionContext {
             for (String field : List.of("sourceCode", "targetCode"))
                 if (edge.path(field).isString()) nodes.add(edge.path(field).asText());
         });
+        return select(input.baseline().frozenContext().get("inheritedDecisionContext"), json, nodes, edges,
+                knownArchitecture(input.baseline(), json), input.directContributions().stream().map(s -> s.id()).toList(),
+                input.openDecisions().stream().flatMap(q -> q.referenceIds().stream()).toList());
+    }
+
+    static ArrayNode forReconciliation(ReconciliationInput input, ObjectMapper json, Set<String> nodes) {
+        return select(input.baseline().frozenContext().get("inheritedDecisionContext"), json, nodes,
+                input.boundaryEdges().keySet(), knownArchitecture(input.baseline(), json),
+                input.statements().stream().map(s -> s.id()).toList(),
+                input.questions().stream().flatMap(q -> q.referenceIds().stream()).toList());
+    }
+
+    private static Set<String> knownArchitecture(ReformulationBaseline baseline, ObjectMapper json) {
         var known = new TreeSet<String>();
-        collectNodes(json.readTree(input.baseline().frozenContext().getOrDefault("catalogue", "[]")), known);
-        for (var relation : json.readTree(input.baseline().frozenContext().getOrDefault("relationMappings", "[]"))) {
+        collectNodes(json.readTree(baseline.frozenContext().getOrDefault("catalogue", "[]")), known);
+        for (var relation : json.readTree(baseline.frozenContext().getOrDefault("relationMappings", "[]"))) {
             if (!relation.path("id").isMissingNode()) known.add("edge-" + relation.path("id").asText());
             if (relation.path("sourceCode").isString()) known.add(relation.path("sourceCode").asText());
             if (relation.path("targetCode").isString()) known.add(relation.path("targetCode").asText());
         }
-        return select(input.baseline().frozenContext().get("inheritedDecisionContext"), json, nodes, edges, known,
-                input.directContributions().stream().map(s -> s.id()).toList(),
-                input.openDecisions().stream().flatMap(q -> q.referenceIds().stream()).toList());
+        return known;
     }
 
     static Set<String> rejected(NodeSynthesisInput input, ObjectMapper json) {

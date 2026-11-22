@@ -28,6 +28,7 @@ final class ScenarioRelationPlayback {
     private final Map<String, JsonNode> contributions = new LinkedHashMap<>();
     private final Map<String, List<JsonNode>> contributionsByNode = new LinkedHashMap<>();
     private final Map<String, String> sourceRejections = new LinkedHashMap<>();
+    private final Set<String> navigationOnlySources = new TreeSet<>();
     private final Map<String, String> specificRejections = new LinkedHashMap<>();
     private final Map<String, Integer> extracted = new LinkedHashMap<>();
     private final boolean strictSources;
@@ -58,11 +59,18 @@ final class ScenarioRelationPlayback {
             require(offeredIds.contains(id) && !contributionsByNode.containsKey(id) && !rationale.isBlank(), "Invalid source rejection");
             require(sourceRejections.putIfAbsent(id, rationale) == null, "Duplicate source rejection");
         }
+        for (var navigation : corpus.path("navigationOnlySources")) {
+            String id = navigation.path("nodeId").asString();
+            require(offeredIds.contains(id) && !contributionsByNode.containsKey(id) && !sourceRejections.containsKey(id)
+                    && !navigation.path("rationale").asString().isBlank() && navigationOnlySources.add(id),
+                    "Invalid navigation-only source: " + id);
+        }
         if (strictSources) {
             for (var rule : fixture.path("replies")) for (var answer : rule.path("answers").properties()) {
                 String code = answer.getKey();
                 if (code.contains("-") && answer.getValue().path("score").asDouble() > 0) {
-                    require(contributionsByNode.containsKey(code) || sourceRejections.containsKey(code),
+                    require(contributionsByNode.containsKey(code) || sourceRejections.containsKey(code)
+                                    || navigationOnlySources.contains(code),
                             "Missing positive source assessment: " + code);
                 }
             }
@@ -106,6 +114,7 @@ final class ScenarioRelationPlayback {
             for (JsonNode node : input.get("nodes")) {
                 String id = node.path("id").asString();
                 require(offeredIds.contains(id) && ids.add(id), "Unknown or repeated source: " + id);
+                require(!navigationOnlySources.contains(id), "Navigation-only node offered as a source: " + id);
                 List<JsonNode> scoped = contributionsByNode.getOrDefault(id, List.of());
                 require(!strictSources || !scoped.isEmpty() || sourceRejections.containsKey(id),
                         "Missing source response: " + id);
@@ -170,6 +179,7 @@ final class ScenarioRelationPlayback {
         var result = new LinkedHashMap<String, Object>();
         result.put("sourcePolicy", strictSources ? "EXPLICIT_ALL_POSITIVE" : "PROTOCOL_ONLY");
         result.put("sourceAssessments", Map.copyOf(extracted));
+        result.put("navigationOnlySources", List.copyOf(navigationOnlySources));
         result.put("authoredSourceContributions", contributions.size());
         result.put("authoredClaims", claims.size());
         result.put("verifiedClaims", Map.copyOf(verified));

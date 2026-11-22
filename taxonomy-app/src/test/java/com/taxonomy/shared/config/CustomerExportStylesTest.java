@@ -41,6 +41,7 @@ import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -104,8 +105,11 @@ class CustomerExportStylesTest {
                 var image = new PDFRenderer(document).renderImage(0);
                 assertThat(new Color(image.getRGB(2, 2))).isEqualTo(Color.decode("#F0F4F8"));
                 var box = scene.nodes().getFirst();
-                assertThat(new Color(image.getRGB((int) box.x() + 36, (int) box.y() + 90)))
-                        .isEqualTo(Color.decode("#17406F"));
+                int nodeFill = Color.decode("#17406F").getRGB();
+                int[] pixels = image.getRGB(0, 0, image.getWidth(), image.getHeight(), null, 0, image.getWidth());
+                long filledArea = Arrays.stream(pixels).filter(pixel -> pixel == nodeFill).count();
+                assertThat(filledArea).as("The single node uses the exact customer fill over its rendered interior")
+                        .isGreaterThan((long) (box.width() * box.height() / 2));
                 assertThat(new PDFTextStripper().getText(document))
                         .contains("Original capability title", "12.5%", "CUSTOMER-EVIDENCE-END");
                 assertThat(document.getDocumentInformation().getSubject()).isEqualTo("Client-provided working view");

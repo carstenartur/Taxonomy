@@ -1,5 +1,6 @@
 package com.taxonomy.editor;
 
+import com.taxonomy.diagram.DiagramCanonicalEvidence;
 import com.taxonomy.diagram.DiagramScene;
 import com.taxonomy.workspace.service.RepositoryContext;
 
@@ -41,7 +42,14 @@ public interface ArchitectureEditorExportPort {
             long revision,
             String source,
             String layoutMode,
-            DiagramScene scene) {
+            DiagramScene scene,
+            DiagramCanonicalEvidence evidence) {
+        public ExportDocument(String repositoryId, String workspaceScopeKey, String branch, String commit,
+                long revision, String source, String layoutMode, DiagramScene scene) {
+            this(repositoryId, workspaceScopeKey, branch, commit, revision, source, layoutMode, scene,
+                    new DiagramCanonicalEvidence(null, java.util.List.of(), java.util.Map.of()));
+        }
+
         public ExportDocument {
             repositoryId = Objects.requireNonNull(repositoryId, "repositoryId");
             workspaceScopeKey = Objects.requireNonNull(workspaceScopeKey, "workspaceScopeKey");
@@ -49,6 +57,7 @@ public interface ArchitectureEditorExportPort {
             source = Objects.requireNonNull(source, "source");
             layoutMode = Objects.requireNonNull(layoutMode, "layoutMode");
             scene = Objects.requireNonNull(scene, "scene");
+            evidence = Objects.requireNonNull(evidence, "evidence");
         }
     }
 }

@@ -70,6 +70,197 @@ function dom() {
     return {document, element, all, downloads, revoked, events, urls};
 }
 
+function admbwCoverageFixture() {
+    const f = dom(), selected = [], window = {};
+    vm.runInNewContext(source('architecture-admbw-coverage.js'), {window, document: f.document});
+    const t = (key, ...args) => key + (args.length ? ': ' + args.join(' / ') : '');
+    const text = node => node.textContent + node.children.map(text).join(' ');
+    return {...f, selected, text, render: coverage => window.TaxonomyAdmbwCoverage.render(coverage, t, id => selected.push(id))};
+}
+
+test('snapshot workbench distinguishes unrecorded relevance from a recorded zero', () => {
+    const f = dom();
+    const t = (key, ...args) => key === 'workbench.ui.unrecorded' ? 'Not recorded' : [key, ...args].join(' ');
+    const window = {TaxonomyArchitectureDiagram: {
+        taxonomyPalette: () => ({layer: () => '#eee'}), readableTextColor: () => '#111',
+        rgba: () => '#eee', wrapLabel: label => [label]
+    }};
+    vm.runInNewContext(source('architecture-workbench.js'), {window, document: f.document});
+    const base = {label: 'Saved element', type: 'Capabilities', relevance: 0, depth: 0};
+    const scene = window.TaxonomyArchitectureSnapshot.prepareScene({scene: {nodes: [
+        {...base, id: 'missing', missingMeasurements: {relevance: true, depth: true}},
+        {...base, id: 'recorded'}
+    ], edges: []}}, t);
+    const [missing, recorded] = scene.nodes;
+    assert.equal(missing.score, 'Not recorded');
+    assert.match(missing.ariaLabel, /Not recorded/);
+    assert.match(missing.tooltip, /Not recorded/);
+    assert.equal(recorded.score, '0%');
+    assert.match(recorded.ariaLabel, /0%/);
+    assert.match(recorded.tooltip, /0%/);
+});
+
+function snapshotLayout() {
+    const window = {}, {document} = dom();
+    vm.runInNewContext(source('shared/architecture-diagram.js'), {window, document});
+    vm.runInNewContext(source('architecture-workbench.js'), {window, document});
+    return window.TaxonomyArchitectureSnapshot.layoutScene;
+}
+
+function card(id, x, y, layer = 1) {
+    return {id, x, y, layer, width: 238, height: 82, type: layer === 1 ? 'BP' : 'CI'};
+}
+
+function link(id, source, target) {
+    const forward = source.x <= target.x;
+    return {id, sourceId: source.id, targetId: target.id, label: 'SUPPORTS',
+        sourceX: source.x + (forward ? source.width : 0), sourceY: source.y + source.height / 2,
+        targetX: target.x + (forward ? 0 : target.width), targetY: target.y + target.height / 2};
+}
+
+function pathSamples(path) {
+    const controls = path.match(/-?\d+(?:\.\d+)?/g).map(Number);
+    const points = controls.reduce((pairs, value, index) => {
+        if (index % 2 === 0) pairs.push([value, controls[index + 1]]);
+        return pairs;
+    }, []);
+    const sample = (position, steps) => Array.from({length: steps + 1}, (_, i) => position(i / steps));
+    if (path.includes(' C')) {
+        return sample(t => [0, 1].map(axis => (1 - t) ** 3 * points[0][axis]
+            + 3 * (1 - t) ** 2 * t * points[1][axis] + 3 * (1 - t) * t ** 2 * points[2][axis]
+            + t ** 3 * points[3][axis]), 500);
+    }
+    return points.slice(1).flatMap((end, i) => {
+        const start = points[i], steps = Math.max(1, Math.ceil(Math.hypot(end[0] - start[0], end[1] - start[1])));
+        return sample(t => start.map((value, axis) => value + t * (end[axis] - value)), steps);
+    });
+}
+
+function assertDirectedClearRoute(layout, original) {
+    const edge = layout.edges.find(item => item.id === original.id);
+    const points = pathSamples(edge.path);
+    assert.deepEqual(points[0], [original.sourceX, original.sourceY]);
+    assert.deepEqual(points.at(-1), [original.targetX, original.targetY]);
+    for (const node of layout.nodes) {
+        const inside = ([x, y]) => x > node.x + 0.25 && x < node.x + node.width - 0.25
+            && y > node.y + 0.25 && y < node.y + node.height - 0.25;
+        assert.ok(!points.some(inside), 'edge crosses ' + node.id);
+        assert.ok(!inside([edge.labelX, edge.labelY]), 'label is hidden by ' + node.id);
+    }
+    const {x, y, width, height} = layout.bounds;
+    assert.ok(points.every(point => point[0] >= x && point[0] <= x + width && point[1] >= y && point[1] <= y + height),
+        'fit bounds include the route');
+    assert.ok(edge.labelX >= x && edge.labelX <= x + width && edge.labelY >= y && edge.labelY <= y + height,
+        'fit bounds include the label');
+    return edge;
+}
+
+test('the retained A1 relation goes around CI-1047 without moving any cards', () => {
+    const education = card('BP-2125', 576, 400);
+    const intermediate = card('CI-1047', 906, 400, 2);
+    const service = card('CI-1151', 1168, 400, 2);
+    const nodes = [education, intermediate, service].map(Object.freeze);
+    const edge = Object.freeze(link('a1-supports', service, education));
+    const layout = snapshotLayout()({nodes, edges: [edge]});
+    assert.equal(layout.nodes, nodes);
+    assertDirectedClearRoute(layout, edge);
+});
+
+test('vertical snapshot links preserve their original ports and pass between cards', () => {
+    const source = card('top', 52, 52), intermediate = card('middle', 52, 168), target = card('bottom', 52, 284);
+    const edge = link('vertical', source, target);
+    assertDirectedClearRoute(snapshotLayout()({nodes: [source, intermediate, target], edges: [edge]}), edge);
+});
+
+test('reciprocal and parallel snapshot links remain individually traceable', () => {
+    const left = card('left', 52, 168), center = card('center', 314, 168), right = card('right', 576, 168);
+    const links = [link('forward', left, right), link('parallel', left, right), link('backward', right, left)];
+    const layout = snapshotLayout()({nodes: [left, center, right], edges: links});
+    const edges = links.map(edge => assertDirectedClearRoute(layout, edge));
+    assert.equal(new Set(edges.map(edge => `${edge.labelX}/${edge.labelY}`)).size, links.length);
+    assert.equal(new Set(edges.map(edge => edge.path)).size, links.length);
+});
+
+test('crowded parallel snapshot captions stay readable and every directed relation keeps its details', () => {
+    const source = card('CI-1151', 1168, 400, 2), target = card('BP-2125', 576, 400);
+    const nodes = [source, target, card('CI-1047', 906, 400, 2), card('above', 906, 284, 2)];
+    const links = ['SUPPORTS', 'USES', 'DEPENDS_ON'].map((label, index) => {
+        const detail = source.id + ' → ' + target.id + ' · ' + label;
+        return {...link('parallel-' + index, source, target), label, ariaLabel: detail, tooltip: detail};
+    });
+    const layout = snapshotLayout()({nodes, edges: links});
+    const occupied = [];
+    for (const edge of links) {
+        const rendered = assertDirectedClearRoute(layout, edge);
+        assert.equal(rendered.label, edge.label);
+        assert.equal(rendered.ariaLabel, edge.ariaLabel);
+        assert.equal(rendered.tooltip, edge.tooltip);
+        if (rendered.showLabel === false) continue;
+        const halfWidth = edge.label.length * 3 + 3;
+        const box = {left: rendered.labelX - halfWidth, right: rendered.labelX + halfWidth,
+            top: rendered.labelY - 12, bottom: rendered.labelY + 5};
+        assert.ok(occupied.every(other => box.right <= other.left || box.left >= other.right
+            || box.bottom <= other.top || box.top >= other.bottom), 'visible relation captions overlap');
+        occupied.push(box);
+    }
+    assert.ok(occupied.length > 0, 'keep a visible caption when space is available');
+});
+
+test('an unobstructed snapshot link preserves the existing smooth path', () => {
+    const source = card('source', 52, 52), target = card('target', 382, 168, 2);
+    const edge = link('clear', source, target);
+    const layout = snapshotLayout()({nodes: [source, target], edges: [edge]});
+    const routed = assertDirectedClearRoute(layout, edge);
+    assert.equal(routed.path, 'M290,93 C332,93 340,209 382,209');
+});
+
+test('a self-link leaves and returns to its card with a fitted exterior loop', () => {
+    const single = card('single', 52, 52);
+    const edge = link('loop', single, single);
+    const layout = snapshotLayout()({nodes: [single], edges: [edge]});
+    assertDirectedClearRoute(layout, edge);
+});
+
+test('ADMBw delivery coverage shows complete source counts and every omitted identity without HTML interpretation', async () => {
+    const f = admbwCoverageFixture();
+    const report = f.render({status:'PARTIAL', sourceViewId:'capability-view',
+        elements:{total:31,represented:5,omitted:26}, relations:{total:2,represented:1,omitted:1},
+        requirements:{total:1,represented:1,omitted:0}, mappings:{total:26,represented:0,omitted:26},
+        sourceAnalyses:[{viewId:'analysis',snapshotId:'saved-training',status:'PARTIAL'}],
+        omissions:[{kind:'ELEMENT',ref:'element:process',name:'<img onerror=alert(1)>',reason:'UNSUPPORTED_ELEMENT_TYPE'},
+            {kind:'RELATION',ref:'relation:service SUPPORTS process',name:'',reason:'UNSUPPORTED_RELATION'}]});
+    assert.equal(report.dataset.coverageStatus,'PARTIAL');
+    const cells=report.querySelectorAll('td').map(cell=>cell.textContent);
+    assert.deepEqual(cells,['31','5','26','2','1','1','1','1','0','26','0','26']);
+    assert.equal(report.querySelectorAll('li').length,2);
+    assert.match(f.text(report),/saved-training/);
+    assert.match(f.text(report),/sourceAnalysis: analysis \/ saved-training \/ PARTIAL/);
+    assert.match(f.text(report),/element:process/);
+    assert.equal(report.querySelectorAll('img').length,0);
+    const button=report.querySelector('button');
+    await button.click();
+    assert.deepEqual(f.selected,['process']);
+    assert.ok(report.querySelectorAll('th').some(th=>th.attributes.scope==='col'));
+    assert.ok(report.querySelectorAll('th').some(th=>th.attributes.scope==='row'));
+});
+
+test('ADMBw delivery coverage does not turn missing coverage into a successful empty export', () => {
+    const f=admbwCoverageFixture(), report=f.render(null);
+    assert.equal(report.dataset.coverageStatus,'UNRECORDED');
+    assert.match(f.text(report),/coverage.unavailable/);
+    assert.equal(report.querySelectorAll('table').length,0);
+});
+
+test('ADMBw delivery coverage keeps method review separate from full object representation', () => {
+    const f=admbwCoverageFixture(), report=f.render({status:'ALL_SOURCE_OBJECTS_REPRESENTED', sourceViewId:null,
+        elements:{total:2,represented:2,omitted:0}, relations:{total:1,represented:1,omitted:0},
+        requirements:{total:0,represented:0,omitted:0}, mappings:{total:0,represented:0,omitted:0},
+        omissions:[],sourceAnalyses:[]});
+    assert.match(f.text(report),/coverage.limit/);
+    assert.match(f.text(report),/coverage.scopeAll/);
+    assert.equal(report.querySelectorAll('details').length,0);
+});
+
 function searchFixture() {
     const d = dom(), pending = deferred(); let options;
     for (const id of ['searchInput', 'searchBtn', 'searchClearBtn', 'searchModeSelect', 'searchMaxResults',

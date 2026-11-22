@@ -195,6 +195,8 @@ public class TaxDslSerializer {
     private boolean shouldQuote(String key, String value) {
         if (value == null || value.isEmpty()) return true;
         if (BARE_VALUE_KEYS.contains(key)) return false;
+        // Numeric-looking prose may include significant whitespace in an exact source quote.
+        if (!value.equals(value.strip())) return true;
         // Check if value is numeric
         try {
             Double.parseDouble(value);

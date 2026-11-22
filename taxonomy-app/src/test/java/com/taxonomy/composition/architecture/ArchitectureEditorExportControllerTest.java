@@ -107,6 +107,7 @@ class ArchitectureEditorExportControllerTest {
         ExtensionLease<IntegrationConnectorExtension> lease = mock(ExtensionLease.class);
         when(catalog.acquire(AdmbwQeaExport.KEY, IntegrationConnectorExtension.class)).thenReturn(lease);
         when(lease.extension()).thenReturn(writer);
+        when(writer.supportsCoverageNotes()).thenReturn(true);
         byte[] nativeBytes = {4, 5, 6};
         when(writer.exportAdmbw(any(), eq(ROOT), any())).thenReturn(
                 new ExchangeFile(AdmbwQeaExport.MEDIA_TYPE, "WARN-admbw.qea", nativeBytes, List.of()));
@@ -121,6 +122,8 @@ class ArchitectureEditorExportControllerTest {
         verify(writer).exportAdmbw(delivery.capture(), eq(ROOT), bytes.capture());
         assertThat(bytes.getValue()).containsExactly(BASIS);
         assertThat(delivery.getValue().commit()).isEqualTo(HEAD);
+        assertThat(delivery.getValue().coverageNotes()).contains("Delivery coverage:", "R7 scope: all checkpoint requirements",
+                "not full architecture or ADMBw method conformance");
         assertThat(delivery.getValue().views()).extracting(AdmbwQeaExport.View::viewpoint).containsExactly("C1-S1", "R7");
         assertThat(delivery.getValue().views().get(1).elements()).anySatisfy(element -> {
             assertThat(element.ref()).isEqualTo("requirement:REQ-1");
@@ -171,6 +174,61 @@ class ArchitectureEditorExportControllerTest {
         standaloneSetup(exports).build().perform(nativeRequest("workspace-a"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value("ADMBW_QEA_UNAVAILABLE"));
+    }
+
+    @Test
+    void aSelectedCleanViewDisclosesTheWholeCheckpointAndPartialSourceAnalysis() throws Exception {
+        loadCheckpoint(deliverableDsl() + """
+                element process type Process {
+                  title: "Distribute warnings";
+                }
+                relation service SUPPORTS process {
+                  status: "accepted";
+                }
+                mapping REQ-1 -> service {
+                  source: "manual";
+                }
+                view focused {
+                  title: "Capability mapping";
+                  include: capability;
+                  include: service;
+                }
+                view original-analysis {
+                  title: "Original analysis";
+                  include: process;
+                  x-analysis-snapshot-id: "saved-analysis";
+                  x-analysis-status: "PARTIAL";
+                }
+                """);
+        standaloneSetup(exports).build().perform(get("/api/architecture/editor.admbw.json")
+                        .param("repositoryId", "repo-a").param("workspaceScopeKey", "workspace-a")
+                        .param("branch", "draft").param("commit", HEAD).param("projectCode", "WARN")
+                        .param("viewId", "focused"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.assessment.capabilityToService.status").value("REVIEW_REQUIRED"))
+                .andExpect(jsonPath("$.assessment.requirementDerivation.status").value("REVIEW_REQUIRED"))
+                .andExpect(jsonPath("$.assessment.coverage.status").value("PARTIAL"))
+                .andExpect(jsonPath("$.assessment.coverage.elements.total").value(5))
+                .andExpect(jsonPath("$.assessment.coverage.elements.represented").value(4))
+                .andExpect(jsonPath("$.assessment.coverage.relations.represented").value(1))
+                .andExpect(jsonPath("$.assessment.coverage.mappings.omitted").value(1))
+                .andExpect(jsonPath("$.assessment.coverage.sourceAnalyses[0].snapshotId").value("saved-analysis"))
+                .andExpect(jsonPath("$.assessment.coverage.sourceAnalyses[0].status").value("PARTIAL"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void anOlderPluginCannotSilentlyDropTheDeliveryCoverage() throws Exception {
+        loadCheckpoint(deliverableDsl());
+        var writer = mock(AdmbwQeaExport.class);
+        ExtensionLease<IntegrationConnectorExtension> lease = mock(ExtensionLease.class);
+        when(catalog.acquire(AdmbwQeaExport.KEY, IntegrationConnectorExtension.class)).thenReturn(lease);
+        when(lease.extension()).thenReturn(writer);
+        standaloneSetup(exports).build().perform(nativeRequest("workspace-a"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("ADMBW_QEA_UNAVAILABLE"));
+        verify(writer, org.mockito.Mockito.never()).exportAdmbw(any(), any(), any());
+        verify(lease).close();
     }
 
     private void loadCheckpoint(String dsl) throws Exception {
@@ -311,6 +369,45 @@ class ArchitectureEditorExportControllerTest {
                     .doesNotContain("Revision 0");
             assertThat(new org.apache.pdfbox.text.PDFTextStripper().getText(parsed))
                     .contains("System title");
+        }
+    }
+
+    @Test
+    void editorPdfRetainsCanonicalRelationshipStatusAndAdoptedViewCoverage() throws Exception {
+        when(resolver.resolveCurrentRepositoryContext()).thenReturn(scope);
+        String dsl = """
+                element feature type Capability {
+                  title: "Einsatzfähigkeit";
+                }
+                element system type System {
+                  title: "Führungssystem";
+                }
+                relation feature REALIZED_BY system {
+                  status: accepted;
+                  provenance: "Reviewed at checkpoint";
+                }
+                view captured {
+                  title: "Captured source view";
+                  include: feature;
+                  include: system;
+                  x-analysis-status: "PARTIAL";
+                  x-analysis-snapshot-id: "snapshot-1";
+                }
+                """;
+        when(service.read(scope, HEAD, null)).thenReturn(new ArchitectureEditorService.Document(
+                Context.of(scope, HEAD), dsl, "HISTORICAL", List.of(), List.of(), 0, null, "GIT_CHECKPOINT"));
+
+        var response = exports.pdf("repo-a", "workspace-a", "draft", HEAD, null, null, null, "captured");
+        var svg = exports.svg("repo-a", "workspace-a", "draft", HEAD, null, null, null, "captured");
+        assertThat(svg.getBody()).contains("Captured source view", "PARTIAL", "snapshot-1", "Model status: accepted",
+                        "Reviewed at checkpoint", "unrecorded")
+                .doesNotContain("Depth 0", ">0%</text>");
+
+        try (var parsed = org.apache.pdfbox.Loader.loadPDF(response.getBody())) {
+            String text = new org.apache.pdfbox.text.PDFTextStripper().getText(parsed);
+            assertThat(text).contains("Einsatzfähigkeit", "Führungssystem", "PARTIAL", "snapshot-1", "captured",
+                            "Model status: accepted", "Reviewed at checkpoint", "unrecorded")
+                    .doesNotContain("Depth 0", "0%");
         }
     }
 

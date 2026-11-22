@@ -103,9 +103,10 @@ public final class ArchitectureReportTextRenderer {
             md.append("### ").append(labels.elements()).append("\n\n");
             tableHeader(md, labels.node(), labels.titleLabel(), labels.score(), labels.rationale());
             for (var element : view.getIncludedElements()) {
+                Double relevance = element.recordedRelevance();
                 md.append("| ").append(tableCode(element.getNodeCode())).append(" | ")
                         .append(tableText(element.getTitle())).append(" | ")
-                        .append(com.taxonomy.export.DiagramPresentation.percent(element.getRelevance())).append(" | ")
+                        .append(relevance == null ? labels.notEvaluated() : com.taxonomy.export.DiagramPresentation.percent(relevance)).append(" | ")
                         .append(tableText(element.getIncludedBecause())).append(" |\n");
             }
             md.append("\n");

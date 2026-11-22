@@ -120,7 +120,7 @@ class SourceContinuationEvidenceTest {
                 return unresolved(q);
             }
             return JSON.writeValueAsString(Map.of("decisions", q.candidates().stream().map(n ->
-                    new Decision(n.id(), Outcome.REJECT, "unneeded counterpart", READ, Necessity.REQUIRED,
+                    new Decision(n.id(), Outcome.REJECT, "", "", null,
                             "", "", "This contribution does not need that counterpart", "")).toList()));
         };
         try (var session = new AnalysisCheckpointSession(journal)) {
@@ -216,7 +216,7 @@ class SourceContinuationEvidenceTest {
                 return unresolved(q);
             }
             return JSON.writeValueAsString(Map.of("decisions", q.candidates().stream().map(n ->
-                    new Decision(n.id(), Outcome.REJECT, "unneeded counterpart", READ, Necessity.REQUIRED,
+                    new Decision(n.id(), Outcome.REJECT, "", "", null,
                             "", "", "This source needs no counterpart in this branch", "")).toList()));
         };
         java.util.function.Supplier<RequirementRelationSearch> search = () -> new RequirementRelationSearch(

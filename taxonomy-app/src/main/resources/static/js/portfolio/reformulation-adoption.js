@@ -67,12 +67,12 @@ window.TaxonomyReformulationAdoption = (function () {
             dialog.append(grid,element('h3',words.questions));
             for(const q of data.revision.questions) {
                 const box=element('details');box.open=true;box.append(element('summary',q.wording+' ['+q.state+']'));
-                box.append(element('p',(q.answerSchema.options||[]).join(' / ')));
+                if(q.answerSchema.options?.length)box.append(element('p',q.answerSchema.options.join(' / ')));
                 for(const d of q.discoveries||[])box.append(element('p',d.rationale));
                 dialog.append(box);
             }
             const evidence=element('details');evidence.append(element('summary',words.evidence),
-                element('pre',JSON.stringify({statements:data.revision.statements,answers:data.revision.answers,
+                element('pre',JSON.stringify({sections:data.revision.sections,statements:data.revision.statements,answers:data.revision.answers,
                     questions:data.revision.questions,findings:data.revision.validation},null,2)));dialog.append(evidence);
             if(data.warnings.length){dialog.append(element('h3',words.warnings));data.warnings.forEach(w=>dialog.append(element('p',words[w]||w)));}
             if(data.blockingReasons.length){dialog.append(element('p',words.invalid),element('pre',data.blockingReasons.join('\n')));}

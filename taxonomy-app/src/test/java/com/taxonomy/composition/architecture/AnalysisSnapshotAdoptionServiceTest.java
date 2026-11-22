@@ -205,6 +205,144 @@ class AnalysisSnapshotAdoptionServiceTest {
         assertThat(adopted.accepted().change().dsl()).contains("element PROCESS.1 type AdministrativeService",
                 "x-captured-responsibility-unit: \"catalogue-team\"", "x-responsible-organization-id: \"local\"");
     }
+    private RequirementRelationshipView frozenEdge() {
+        var graph = snapshot.analysis().getArchitectureView();
+        var targetNode = new RequirementElementView();
+        targetNode.setNodeCode("UA-1000"); targetNode.setTaxonomySheet("UA"); targetNode.setTitle("Service");
+        graph.setIncludedElements(List.of(graph.getIncludedElements().getFirst(), targetNode));
+        var edge = new RequirementRelationshipView();
+        edge.setSourceCode("CP-1000"); edge.setTargetCode("UA-1000"); edge.setRelationType("RELATED_TO");
+        edge.setOrigin(RelationOrigin.LLM_SUPPORTED); edge.setPropagatedRelevance(0.98);
+        edge.setRequirementEvidence(List.of(witness("CP-1000", "Old requirement", "Approved only")));
+        graph.setIncludedRelationships(List.of(edge));
+        return edge;
+    }
+
+    private RelationSearchModel.Edge witness(String assessedTarget, String quote, String condition) {
+        var candidate = new RelationSearchModel.Node(assessedTarget, "CP", "Capability", "", false);
+        var source = new RelationSearchModel.Node("UA-1000", "UA", "Service", "", false);
+        var contribution = new RelationSearchModel.Contribution(source, "Assessed contribution", "requirement text", "When requested");
+        var decision = new RelationSearchModel.Decision(assessedTarget, RelationSearchModel.Outcome.VERIFIED,
+                "Candidate contribution", quote, RelationSearchModel.Necessity.REQUIRED, condition, "", "Verified rationale", "");
+        return new RelationSearchModel.Edge(contribution, candidate, "RELATED_TO", RelationSearchModel.Direction.INCOMING, decision);
+    }
+
+    @Test void freezesDirectedEvidenceIntoCanonicalModelAndDoesNotTurnRelevanceIntoConfidence() throws Exception {
+        frozenEdge();
+        var request = request(ref, null);
+        var preview = service.preview(target, request);
+        var accepted = service.adopt(target, new AnalysisSnapshotAdoptionService.Request(
+                request.context(), request.metadata(), ref, preview.fingerprint()));
+        var model = new com.taxonomy.dsl.command.ArchitectureDslCommands().model(accepted.accepted().change().dsl());
+        assertThat(model.getRelations()).singleElement().satisfies(r -> {
+            assertThat(r.getProvenance()).isEqualTo("LLM_SUPPORTED");
+            assertThat(r.getConfidence()).isNull();
+            assertThat(r.getStatus()).isEqualTo("proposed");
+        });
+        assertThat(model.getEvidence()).singleElement().satisfies(e -> {
+            assertThat(e.getForRelationSource()).isEqualTo("CP-1000");
+            assertThat(e.getForRelationType()).isEqualTo("RELATED_TO");
+            assertThat(e.getForRelationTarget()).isEqualTo("UA-1000");
+            assertThat(e.getConfidence()).isNull();
+            assertThat(e.getSummary()).isEqualTo("Verified rationale");
+            assertThat(e.getExtensions()).containsEntry("x-analysis-view-id", preview.viewId())
+                    .containsEntry("x-analysis-snapshot-id", "snapshot-old")
+                    .containsEntry("x-analysis-direction", "INCOMING")
+                    .containsEntry("x-analysis-outcome", "VERIFIED")
+                    .containsEntry("x-analysis-assessed-id", "UA-1000")
+                    .containsEntry("x-analysis-assessed-quote", "requirement text")
+                    .containsEntry("x-analysis-assessed-contribution", "Assessed contribution")
+                    .containsEntry("x-analysis-candidate-id", "CP-1000")
+                    .containsEntry("x-analysis-candidate-quote", "Old requirement")
+                    .containsEntry("x-analysis-candidate-condition", "Approved only")
+                    .containsEntry("x-analysis-necessity", "REQUIRED");
+        });
+    }
+
+    @Test void aChangedWitnessOnTheSameDirectedGraphInvalidatesPreviewAndANewlyAdoptedView() throws Exception {
+        var edge = frozenEdge();
+        var request = request(ref, null);
+        var first = service.preview(target, request);
+        edge.setRequirementEvidence(List.of(witness("CP-1000", "Old", "Approved only")));
+        assertCode(() -> service.adopt(target, new AnalysisSnapshotAdoptionService.Request(
+                request.context(), request.metadata(), ref, first.fingerprint())), "PREVIEW_CHANGED");
+        var second = service.preview(target, request);
+        service.adopt(target, new AnalysisSnapshotAdoptionService.Request(
+                request.context(), request.metadata(), ref, second.fingerprint()));
+        edge.setRequirementEvidence(List.of(witness("CP-1000", "Old", "Another condition")));
+        assertThat(service.preview(target, request(ref, null)).summary().conflicts()).hasSize(1);
+        assertThat(fixture.journal.read(target).operations()).hasSize(1);
+    }
+
+    @Test void refusesAMisdirectedWitnessOrAQuoteAbsentFromTheFrozenRequirement() throws Exception {
+        var edge = frozenEdge();
+        edge.setRequirementEvidence(List.of(witness("UA-1000", "Old", "")));
+        assertCode(() -> service.preview(target, request(ref, null)), "INVALID_SNAPSHOT_EVIDENCE");
+        edge.setRequirementEvidence(List.of(witness("CP-1000", "A different requirement", "")));
+        assertCode(() -> service.preview(target, request(ref, null)), "INVALID_SNAPSHOT_EVIDENCE");
+        assertThat(fixture.journal.read(target)).isNull();
+    }
+
+    @Test void malformedUtf16CannotAliasAPreviewAndValidSupplementaryEvidenceSurvivesGit() throws Exception {
+        var edge = frozenEdge();
+        edge.setPresenceReason("Proof?");
+        var request = request(ref, null);
+        var literal = service.preview(target, request);
+        var acceptedRequest = new AnalysisSnapshotAdoptionService.Request(request.context(), request.metadata(), ref, literal.fingerprint());
+        for (char unpaired : new char[]{(char) 0xd800, (char) 0xdc00}) {
+            edge.setPresenceReason("Proof" + unpaired);
+            assertCode(() -> service.adopt(target, acceptedRequest), "INVALID_SNAPSHOT_EVIDENCE");
+            assertThat(fixture.journal.read(target)).isNull();
+        }
+        String exact = "Proof" + Character.toString(0x1f4da);
+        edge.setPresenceReason(exact);
+        var valid = service.preview(target, request);
+        assertThat(valid.fingerprint()).isNotEqualTo(literal.fingerprint());
+        service.adopt(target, new AnalysisSnapshotAdoptionService.Request(request.context(), request.metadata(), ref, valid.fingerprint()));
+        var checkpointRequest = request(ref, null);
+        var checkpoint = fixture.service.checkpoint(target, new CreateCheckpointCommand(checkpointRequest.context(), checkpointRequest.metadata()));
+        String persisted = fixture.repositories.resolveRepository(target).getDslAtCommit(checkpoint.commitId());
+        var model = new com.taxonomy.dsl.command.ArchitectureDslCommands().model(persisted);
+        assertThat(model.getEvidence().getFirst().getExtensions()).containsEntry("x-analysis-presence", exact);
+    }
+
+    @Test void preservesAnExplicitZeroConfidenceOnANewEdgeAndItsSourceEvidence() throws Exception {
+        var edge = frozenEdge(); edge.setConfidence(0d);
+        var request = request(ref, null);
+        var preview = service.preview(target, request);
+        var adopted = service.adopt(target, new AnalysisSnapshotAdoptionService.Request(
+                request.context(), request.metadata(), ref, preview.fingerprint()));
+        var model = new com.taxonomy.dsl.command.ArchitectureDslCommands().model(adopted.accepted().change().dsl());
+        assertThat(model.getRelations().getFirst().getConfidence()).isEqualTo(0d);
+        assertThat(model.getEvidence().getFirst().getConfidence()).isEqualTo(0d);
+    }
+
+    @Test void previouslyAdoptedCommandReopensTheOriginalRevisionWithoutBackfillingRecoveredWitnesses() throws Exception {
+        var edge = frozenEdge();
+        var initial = request(ref, null);
+        var preview = service.preview(target, initial);
+        var dsl = new com.taxonomy.dsl.command.ArchitectureDslCommands();
+        var model = dsl.model(preview.preview().change().dsl());
+        var provenance = new TreeMap<>(model.getViews().getFirst().getExtensions());
+        String graphDigest = provenance.remove("x-analysis-graph-fingerprint");
+        provenance.remove("x-analysis-evidence-fingerprint");
+        provenance.remove("x-analysis-relation-members");
+        var elements = model.getElements().stream().map(e -> new com.taxonomy.dsl.command.ArchitectureCommand.SnapshotElement(
+                e.getId(), e.getType(), e.getTitle(), e.getDescription())).toList();
+        var key = new com.taxonomy.dsl.command.ArchitectureCommand.RelationKey(edge.getSourceCode(), edge.getRelationType(), edge.getTargetCode());
+        var legacy = new com.taxonomy.dsl.command.ArchitectureCommand.AdoptAnalysisSnapshot(preview.viewId(),
+                model.getViews().getFirst().getTitle(), "Old requirement text", graphDigest, elements, List.of(key), provenance);
+        var accepted = fixture.service.execute(target, new Command(initial.context(), initial.metadata(), new SemanticCommand(legacy)));
+        String before = accepted.change().dsl();
+        var next = request(ref, null);
+        var existing = service.preview(target, next);
+        assertThat(existing.preview().change().dsl()).isEqualTo(before);
+        assertThat(service.adopt(target, new AnalysisSnapshotAdoptionService.Request(next.context(), next.metadata(), ref, existing.fingerprint())).existing()).isTrue();
+        assertThat(fixture.journal.read(target).operations()).hasSize(1);
+        assertThat(fixture.service.read(target, null).dsl()).isEqualTo(before);
+        assertThat(dsl.model(before).getEvidence()).isEmpty();
+    }
+
     @Test void privateSourceOwnershipAndRepositoryMembershipAreAuthoritative() throws Exception {
         when(workspaces.findByWorkspaceId("bob-copy")).thenReturn(Optional.of(workspace("bob-copy","bob")));
         var other = new AnalysisSnapshotAdoptionService.SourceRef("repo-a","bob-copy","draft",1L,2L,3L,"snapshot-old");

@@ -303,16 +303,16 @@ class ProductDemoReplayTest {
         var second = engine.synthesizeAffected(baseline, before, answers,
                 new ReformulationImpact(List.of(), List.copyOf(affectedSections), List.of(), List.of(), false));
 
-        assertThat(second.text()).contains(scenario.r1RequiredPhrases().toArray(String[]::new));
-        assertThat(second.text()).doesNotContain(gps).contains("Original (unverändert)\n" + scenario.r0Text());
+        assertThat(second.text()).startsWith(scenario.r0Text() + "\n\n").containsOnlyOnce(scenario.r0Text())
+                .contains(scenario.r1RequiredPhrases().toArray(String[]::new)).doesNotContain(gps);
+        answers.forEach(answer -> assertThat(second.text()).contains("Human decision: " + String.join(", ", answer.values())));
         assertThat(second.statements()).filteredOn(s -> scenario.r1RequiredPhrases().contains(s.wording()))
                 .hasSize(5).allSatisfy(s -> {
                     assertThat(s.provenance()).isEqualTo(Statement.Provenance.MODEL_ADDITION);
                     assertThat(s.questionDependencies()).hasSize(1);
                 });
-        assertThat(second.statements()).filteredOn(s -> s.wording().equals(gps))
-                .allSatisfy(s -> assertThat(s.reviewState()).isEqualTo("REJECTED"));
-        assertThat(second.questions()).hasSize(5);
+        assertThat(second.statements()).filteredOn(s -> s.wording().equals(gps)).containsExactly(rejected);
+        assertThat(second.questions()).containsExactlyInAnyOrderElementsOf(first.questions());
 
         // The adopted text is now exactly answerable by the R1 book, and no longer by R0.
         var r1Book = new DemoReplyBook(scenario, "R1");

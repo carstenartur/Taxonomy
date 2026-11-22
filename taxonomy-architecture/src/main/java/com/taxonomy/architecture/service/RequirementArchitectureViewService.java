@@ -40,6 +40,13 @@ public class RequirementArchitectureViewService {
         return pipeline.projectEvidence(report, effectiveScores, scoreDetails, maxNodes);
     }
 
+    /** Applies known navigation-only identities from the retained catalogue before selecting concrete evidence. */
+    public RequirementArchitectureView buildFromEvidence(Map<String,Double> effectiveScores,
+            Map<String,com.taxonomy.dto.AnalysisScoreDetail> scoreDetails, int maxNodes,
+            com.taxonomy.dto.RelationSearchReport report, java.util.Set<String> navigationContext) {
+        return pipeline.projectEvidence(report, effectiveScores, scoreDetails, maxNodes, navigationContext);
+    }
+
     /**
      * Builds the architecture view from analysis scores (without provisional relations).
      *

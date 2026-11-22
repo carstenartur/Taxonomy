@@ -2,11 +2,14 @@ package com.taxonomy.reporting.render.document;
 
 import com.taxonomy.reporting.render.decision.DecisionReportLabels;
 import com.taxonomy.diagram.*;
+import com.taxonomy.export.DiagramEdgeRouting;
+import com.taxonomy.export.DiagramTextWrapper;
 
 import java.awt.*;
 import java.awt.geom.*;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
 import java.util.List;
 
 import javax.imageio.ImageIO;
@@ -14,12 +17,14 @@ import javax.imageio.ImageIO;
 /** Bounded Java2D renderer. One panel is allocated and released at a time. */
 public final class ArchitectureFigureRenderer {
     public static final int MAX_WIDTH = 1800, MAX_HEIGHT = 1300;
+    static final int NODE_TITLE_SIZE = 20;
 
     public record RenderedFigure(
             String id,
             byte[] png,
             int width,
             int height,
+            double rasterScale,
             String caption,
             String altDescription,
             List<String> nodeIds,
@@ -44,28 +49,24 @@ public final class ArchitectureFigureRenderer {
                 || scene.width() <= 0
                 || scene.height() <= 0)
             throw new IllegalArgumentException("Invalid architecture figure dimensions");
-        // Keep the overview's frozen frame. Details remove only unused canvas around their
-        // evidence.
-        Rectangle2D bounds = new Rectangle2D.Double(0, 0, scene.width(), scene.height());
-        if (!panel.overview()) {
-            bounds = null;
-            for (var node : scene.nodes()) {
-                var occupied =
-                        new Rectangle2D.Double(node.x(), node.y(), node.width(), node.height());
-                if (bounds == null) bounds = occupied;
-                else bounds.add(occupied);
-            }
-            for (var edge : scene.edges()) bounds.add(curve(edge, scene).getBounds2D());
-            bounds =
-                    new Rectangle2D.Double(
-                            bounds.getX() - 24,
-                            bounds.getY() - 24,
-                            bounds.getWidth() + 48,
-                            bounds.getHeight() + 48);
+        Rectangle2D bounds = null;
+        for (var node : scene.nodes()) {
+            var occupied = new Rectangle2D.Double(node.x(), node.y(), node.width(), node.height());
+            if (bounds == null) bounds = occupied;
+            else bounds.add(occupied);
         }
+        if (bounds == null) throw new IllegalArgumentException("Architecture figure has no elements");
+        var routing = new DiagramEdgeRouting(scene);
+        var figureEdges = scene.edges().stream().map(edge -> figureEdge(edge, scene, routing)).toList();
+        for (var edge : figureEdges) bounds.add(edge.path().getBounds2D());
+        bounds = new Rectangle2D.Double(bounds.getX() - 24, bounds.getY() - 24,
+                bounds.getWidth() + 48, bounds.getHeight() + 48);
+        // A full-width map of a large graph leaves fine print to the detail figures and inventory.
+        boolean topologyOnly = panel.overview() && (bounds.getWidth() > ArchitectureFigurePlanner.MAX_DETAIL_WIDTH
+                || bounds.getHeight() > ArchitectureFigurePlanner.MAX_DETAIL_HEIGHT);
         double scale =
                 Math.min(
-                        1.5,
+                        2,
                         Math.min(MAX_WIDTH / bounds.getWidth(), MAX_HEIGHT / bounds.getHeight()));
         int width = (int) Math.ceil(bounds.getWidth() * scale),
                 height = (int) Math.ceil(bounds.getHeight() * scale);
@@ -79,19 +80,17 @@ public final class ArchitectureFigureRenderer {
             g.scale(scale, scale);
             g.translate(-bounds.getX(), -bounds.getY());
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            for (var edge : scene.edges()) {
+            g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            for (var edge : figureEdges) {
                 g.setColor(new Color(0x64748B));
-                g.setStroke(stroke(edge.relationCategory()));
-                var path = curve(edge, scene);
-                g.draw(path);
-                double angle = Math.atan2(path.y2 - path.ctrly2, path.x2 - path.ctrlx2);
-                if (path.x2 == path.ctrlx2 && path.y2 == path.ctrly2)
-                    angle = Math.atan2(path.y2 - path.y1, path.x2 - path.x1);
-                double dx = Math.cos(angle), dy = Math.sin(angle);
+                g.setStroke(stroke(edge.edge().relationCategory()));
+                g.draw(edge.path());
+                double dx = Math.cos(edge.angle()), dy = Math.sin(edge.angle());
+                double x = edge.targetX(), y = edge.targetY();
                 var arrow = new Path2D.Double();
-                arrow.moveTo(path.x2, path.y2);
-                arrow.lineTo(path.x2 - 11 * dx + 6 * dy, path.y2 - 11 * dy - 6 * dx);
-                arrow.lineTo(path.x2 - 11 * dx - 6 * dy, path.y2 - 11 * dy + 6 * dx);
+                arrow.moveTo(x, y);
+                arrow.lineTo(x - 11 * dx + 6 * dy, y - 11 * dy - 6 * dx);
+                arrow.lineTo(x - 11 * dx - 6 * dy, y - 11 * dy + 6 * dx);
                 arrow.closePath();
                 g.fill(arrow);
             }
@@ -107,8 +106,10 @@ public final class ArchitectureFigureRenderer {
                                 ? new BasicStroke(2, 0, 0, 10, new float[] {7, 4}, 0)
                                 : new BasicStroke(node.anchor() ? 3 : 2));
                 g.draw(box);
+                if (topologyOnly) continue;
                 g.setFont(new Font("SansSerif", Font.BOLD, 20));
-                String score = com.taxonomy.dto.AnalysisPercentages.display(node.relevance() * 100);
+                String score = node.relevanceRecorded()
+                        ? com.taxonomy.dto.AnalysisPercentages.display(node.relevance() * 100) : "";
                 int scoreWidth = g.getFontMetrics().stringWidth(score);
                 drawBounded(
                         g,
@@ -120,13 +121,15 @@ public final class ArchitectureFigureRenderer {
                         score,
                         (float) (node.x() + node.width() - scoreWidth - 10),
                         (float) node.y() + 23);
-                g.setFont(new Font("SansSerif", Font.PLAIN, 20));
+                g.setFont(new Font("SansSerif", Font.PLAIN, NODE_TITLE_SIZE));
                 var assignment = node.responsibility();
                 float x = (float) node.x() + 10;
                 float titleY = (float) node.y() + 47;
                 int textWidth = (int) node.width() - 20;
                 if (assignment == null) {
-                    drawTitle(g, node.label(), x, titleY, textWidth);
+                    var titleLines = DiagramTextWrapper.wrapMeasured(node.label(), g.getFont(), textWidth, 3, node.id());
+                    for (int i = 0; i < titleLines.size(); i++)
+                        g.drawString(titleLines.get(i), x, (float) node.y() + 42 + i * 18);
                 } else {
                     drawBounded(g, node.label(), x, titleY, textWidth);
                     g.setColor(Color.decode(assignment.color()));
@@ -140,33 +143,29 @@ public final class ArchitectureFigureRenderer {
             // inventory.
             // Long source identifiers remain in those tables rather than covering nearby graph
             // evidence.
-            if (!panel.overview())
-                for (var edge : scene.edges()) {
-                    var path = curve(edge, scene);
-                    double x = (path.x1 + 3 * path.ctrlx1 + 3 * path.ctrlx2 + path.x2) / 8;
-                    double y = (path.y1 + 3 * path.ctrly1 + 3 * path.ctrly2 + path.y2) / 8;
-                    g.setFont(new Font("SansSerif", Font.BOLD, 20));
-                    String key = edge.id();
+            if (!panel.overview()) {
+                var captions = new ArrayList<Rectangle2D>();
+                g.setFont(new Font("SansSerif", Font.BOLD, 20));
+                for (var edge : figureEdges) {
+                    String key = edge.edge().id();
                     int keyWidth = g.getFontMetrics().stringWidth(key);
                     if (keyWidth > 120) continue;
-                    var labelBounds =
-                            new Rectangle2D.Double(
-                                    x - keyWidth / 2.0 - 3, y - 18, keyWidth + 6, 24);
-                    if (scene.nodes().stream()
-                            .anyMatch(
-                                    node ->
-                                            labelBounds.intersects(
-                                                    node.x(),
-                                                    node.y(),
-                                                    node.width(),
-                                                    node.height()))) continue;
-                    g.setColor(Color.WHITE);
-                    g.fill(
-                            new Rectangle2D.Double(
-                                    x - keyWidth / 2.0 - 3, y - 18, keyWidth + 6, 24));
-                    g.setColor(new Color(0x334155));
-                    g.drawString(key, (float) (x - keyWidth / 2.0), (float) y);
+                    double x = edge.labelX();
+                    for (int offset : edge.detoured() ? new int[]{0, 28} : new int[]{0}) {
+                        double y = edge.labelY() + offset;
+                        var labelBounds = new Rectangle2D.Double(x - keyWidth / 2.0 - 3, y - 18, keyWidth + 6, 24);
+                        if (!bounds.contains(labelBounds) || captions.stream().anyMatch(labelBounds::intersects)
+                                || scene.nodes().stream().anyMatch(node ->
+                                        labelBounds.intersects(node.x(), node.y(), node.width(), node.height()))) continue;
+                        g.setColor(Color.WHITE);
+                        g.fill(labelBounds);
+                        g.setColor(new Color(0x334155));
+                        g.drawString(key, (float) (x - keyWidth / 2.0), (float) y);
+                        captions.add(labelBounds);
+                        break;
+                    }
                 }
+            }
             var output = new ByteArrayOutputStream();
             ImageIO.write(image, "png", output);
             String caption =
@@ -206,6 +205,7 @@ public final class ArchitectureFigureRenderer {
                     output.toByteArray(),
                     width,
                     height,
+                    scale,
                     caption,
                     description,
                     panel.nodeIds(),
@@ -216,6 +216,28 @@ public final class ArchitectureFigureRenderer {
             g.dispose();
             image.flush();
         }
+    }
+
+    private record FigureEdge(DiagramSceneEdge edge, Shape path, double targetX, double targetY,
+                              double angle, double labelX, double labelY, boolean detoured) { }
+
+    private static FigureEdge figureEdge(DiagramSceneEdge edge, DiagramScene scene, DiagramEdgeRouting routing) {
+        var curve = curve(edge, scene);
+        var detour = routing.detour(edge, curve);
+        if (detour != null) {
+            var points = detour.points();
+            var target = points.getLast();
+            var beforeTarget = points.get(points.size() - 2);
+            var label = detour.labelAnchor();
+            double angle = Math.atan2(target.y() - beforeTarget.y(), target.x() - beforeTarget.x());
+            return new FigureEdge(edge, detour.shape(), target.x(), target.y(), angle, label.x(), label.y() - 8, true);
+        }
+        double angle = Math.atan2(curve.y2 - curve.ctrly2, curve.x2 - curve.ctrlx2);
+        if (curve.x2 == curve.ctrlx2 && curve.y2 == curve.ctrly2)
+            angle = Math.atan2(curve.y2 - curve.y1, curve.x2 - curve.x1);
+        double labelX = (curve.x1 + 3 * curve.ctrlx1 + 3 * curve.ctrlx2 + curve.x2) / 8;
+        double labelY = (curve.y1 + 3 * curve.ctrly1 + 3 * curve.ctrly2 + curve.y2) / 8;
+        return new FigureEdge(edge, curve, curve.x2, curve.y2, angle, labelX, labelY, false);
     }
 
     static CubicCurve2D.Double curve(DiagramSceneEdge edge, DiagramScene scene) {
@@ -261,20 +283,6 @@ public final class ArchitectureFigureRenderer {
                     case "Communications Services" -> 0xCFFAFE;
                     default -> 0xF1F5F9;
                 });
-    }
-
-    private void drawTitle(Graphics2D g, String title, float x, float y, int width) {
-        if (title == null) return;
-        int end = title.length();
-        while (end > 0 && g.getFontMetrics().stringWidth(title.substring(0, end)) > width) end--;
-        if (end == title.length()) {
-            g.drawString(title, x, y);
-            return;
-        }
-        int space = title.lastIndexOf(' ', end);
-        if (space > 0) end = space;
-        g.drawString(title.substring(0, end), x, y);
-        drawBounded(g, title.substring(end).stripLeading(), x, y + 23, width);
     }
 
     private void drawBounded(Graphics2D g, String text, float x, float y, int width) {

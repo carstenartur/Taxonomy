@@ -1,7 +1,13 @@
 package com.taxonomy.export;
 
+import com.taxonomy.diagram.DiagramCanonicalEvidence;
 import com.taxonomy.diagram.DiagramScene;
+import com.taxonomy.diagram.DiagramSceneEdge;
+import org.apache.commons.text.StringEscapeUtils;
+
 import java.awt.Font;
+import java.awt.font.FontRenderContext;
+import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -9,6 +15,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 /** Produces a standalone SVG with compact shapes and a visible, complete evidence inventory. */
 public class SvgDiagramRenderer {
@@ -39,26 +46,46 @@ public class SvgDiagramRenderer {
 
     public String render(DiagramScene scene, Map<String, String> nodeReasons,
                          Map<String, Map<String, String>> relationReasons, Locale locale) {
+        return render(scene, nodeReasons, relationReasons, locale, null);
+    }
+
+    public String renderCanonical(DiagramScene scene, DiagramCanonicalEvidence evidence) {
+        return render(scene, Map.of(), Map.of(), Locale.ENGLISH, Objects.requireNonNull(evidence, "canonical evidence"));
+    }
+
+    private String render(DiagramScene scene, Map<String, String> nodeReasons,
+                          Map<String, Map<String, String>> relationReasons, Locale locale,
+                          DiagramCanonicalEvidence canonical) {
         var language = DiagramLanguage.from(locale);
         if (scene == null || scene.isEmpty())
             throw new IllegalArgumentException("Architecture scene must contain at least one node");
         ExportTheme theme = Objects.requireNonNull(themes.current(), "export theme");
         var markers = new LinkedHashMap<String, String>();
-        scene.edges().forEach(edge -> markers.computeIfAbsent(theme.relationshipStroke(edge.relationType(),
-                edge.metadata() != null && edge.metadata().proposed()), color -> "arrow-" + (markers.size() + 1)));
+        var detours = new LinkedHashMap<DiagramSceneEdge, DiagramEdgeRouting.Detour>();
+        var routedColors = new HashSet<String>();
+        var routing = new DiagramEdgeRouting(scene);
+        for (var edge : scene.edges()) {
+            String color = theme.relationshipStroke(edge.relationType(), proposed(edge, canonical));
+            markers.computeIfAbsent(color, ignored -> "arrow-" + (markers.size() + 1));
+            var detour = routing.detourForLine(edge);
+            if (detour != null) {
+                detours.put(edge, detour);
+                routedColors.add(color);
+            }
+        }
         var nodeReferences = new LinkedHashMap<String, String>();
         scene.nodes().forEach(node -> nodeReferences.putIfAbsent(node.id(), "evidence-node-" + (nodeReferences.size() + 1)));
         var edgeReferences = new LinkedHashMap<String, String>();
         scene.edges().forEach(edge -> edgeReferences.putIfAbsent(edge.id(), "evidence-edge-" + (edgeReferences.size() + 1)));
         var evidence = evidence(scene, nodeReasons == null ? Map.of() : nodeReasons,
-                relationReasons == null ? Map.of() : relationReasons, nodeReferences, edgeReferences, language);
+                relationReasons == null ? Map.of() : relationReasons, nodeReferences, edgeReferences, language, canonical);
         // Grow the sheet in both dimensions instead of making a narrow strip or shrinking the type.
         int columns = Math.max(1, (int) Math.ceil(Math.sqrt(
                 evidence.size() * EVIDENCE_LINE_HEIGHT * Math.sqrt(2) / EVIDENCE_COLUMN_WIDTH)));
         int linesPerColumn = (evidence.size() + columns - 1) / columns;
         double width = Math.max(scene.width(), columns * EVIDENCE_COLUMN_WIDTH);
         var summary = new ArrayList<String>();
-        for (String line : DiagramPresentation.inventorySummary(scene, language)) summary.addAll(
+        for (String line : DiagramPresentation.inventorySummary(scene, language, canonical)) summary.addAll(
                 DiagramTextWrapper.wrapMeasured(line, font(11, false), width - 28, Integer.MAX_VALUE, ""));
         double footer = Math.max(scene.height(), scene.nodes().stream().mapToDouble(n -> n.y() + n.height() + 24).max().orElse(0));
         double evidenceTitleY = footer + summary.size() * 16 + 40;
@@ -84,44 +111,68 @@ public class SvgDiagramRenderer {
             .append(number(width)).append(' ').append(number(height)).append("\" width=\"")
             .append(number(width)).append("\" height=\"").append(number(height)).append("\">\n")
             .append("<title>").append(xml(scene.title())).append("</title>\n")
-            .append("<desc>").append(language.text(
+            .append("<desc>").append(canonical != null
+                    ? "Canonical architecture diagram. Shapes link to the visible inventory of complete labels and saved model states."
+                    : language.text(
                     "Requirement-derived architecture diagram. Shapes link to the visible inventory of complete labels, scores and recorded explanations below. AI verification is not human approval.",
                     "Anforderungsbezogenes Architekturdiagramm. Die Elemente verweisen auf das Inventar mit vollständigen Bezeichnungen, Bewertungen und gespeicherten Begründungen. Eine KI-Prüfung ist keine menschliche Freigabe.")).append("</desc>\n")
             .append("<defs>");
-        markers.forEach((color, id) -> svg.append("<marker id=\"").append(id)
-                .append("\" markerWidth=\"10\" markerHeight=\"8\" refX=\"9\" refY=\"4\" orient=\"auto\"><path d=\"M0,0 L10,4 L0,8 z\" fill=\"")
-                .append(color).append("\"/></marker>"));
+        markers.forEach((color, id) -> {
+            svg.append("<marker id=\"").append(id)
+                    .append("\" markerWidth=\"10\" markerHeight=\"8\" refX=\"9\" refY=\"4\" orient=\"auto\"><path d=\"M0,0 L10,4 L0,8 z\" fill=\"")
+                    .append(color).append("\"/></marker>");
+            if (routedColors.contains(color)) svg.append("<marker id=\"").append(id)
+                    .append("-routed\" markerUnits=\"userSpaceOnUse\" markerWidth=\"8\" markerHeight=\"6\" refX=\"7\" refY=\"3\" orient=\"auto\"><path d=\"M0,0 L8,3 L0,6 z\" fill=\"")
+                    .append(color).append("\"/></marker>");
+        });
         svg.append("</defs>\n<rect width=\"100%\" height=\"100%\" fill=\"")
                 .append(theme.canvasBackground()).append("\"/>\n");
         var captionFont = font(11, false);
-        var metrics = captionFont.getLineMetrics("Ag", new java.awt.font.FontRenderContext(null, true, true));
+        var captionContext = new FontRenderContext(null, true, true);
+        var metrics = captionFont.getLineMetrics("Ag", captionContext);
+        var detourCaptions = new ArrayList<Rectangle2D>();
         for (var edge : scene.edges()) {
             double strokeWidth = 1.2 + Math.max(0, edge.relevance()) * 1.8;
-            String status = DiagramPresentation.relationshipStatus(edge.metadata(), language.german());
-            boolean proposed = edge.metadata() != null && edge.metadata().proposed();
+            String status = canonical == null ? DiagramPresentation.relationshipStatus(edge.metadata(), language.german())
+                    : DiagramPresentation.canonicalRelationshipStatus(canonical, edge.id());
+            var details = canonical == null ? DiagramPresentation.relationshipDetails(edge.metadata(), language.german())
+                    : DiagramPresentation.canonicalRelationshipDetails(canonical, edge.id());
+            boolean proposed = proposed(edge, canonical);
             String stroke = theme.relationshipStroke(edge.relationType(), proposed);
+            var detour = detours.get(edge);
             svg.append("<a xlink:href=\"#").append(edgeReferences.get(edge.id())).append("\"><g class=\"architecture-edge\" data-edge-id=\"").append(xml(edge.id()))
                 .append("\" data-origin=\"").append(edge.metadata() == null || edge.metadata().origin() == null ? "unrecorded" : edge.metadata().origin().name())
                 .append("\"><title>").append(xml(edge.id() + " | " + edge.sourceId() + " -> " + edge.targetId() + " | " + edge.relationType()
-                        + "\n" + String.join("\n", DiagramPresentation.relationshipDetails(edge.metadata(), language.german())))).append("</title>\n")
-                .append("<line x1=\"").append(number(edge.sourceX())).append("\" y1=\"").append(number(edge.sourceY()))
-                .append("\" x2=\"").append(number(edge.targetX())).append("\" y2=\"").append(number(edge.targetY()))
-                .append("\" stroke=\"").append(stroke).append("\" stroke-width=\"")
+                        + "\n" + String.join("\n", details))).append("</title>\n");
+            if (detour == null) {
+                svg.append("<line x1=\"").append(number(edge.sourceX())).append("\" y1=\"").append(number(edge.sourceY()))
+                        .append("\" x2=\"").append(number(edge.targetX())).append("\" y2=\"").append(number(edge.targetY()));
+            } else {
+                svg.append("<polyline fill=\"none\" points=\"").append(detour.points().stream()
+                        .map(point -> number(point.x()) + "," + number(point.y())).collect(Collectors.joining(" ")));
+            }
+            svg.append("\" stroke=\"").append(stroke).append("\" stroke-width=\"")
                 .append(number(strokeWidth)).append('"');
             if (proposed) svg.append(" stroke-dasharray=\"6 4\"");
-            svg.append(" marker-end=\"url(#").append(markers.get(stroke)).append(")\"/>\n");
+            svg.append(" marker-end=\"url(#").append(markers.get(stroke))
+                    .append(detour == null ? "" : "-routed").append(")\"/>\n");
             svg.append("<metadata><relationship xmlns=\"urn:taxonomy:diagram\">");
-            metadataValue(svg, "provenance", edge.metadata());
+            metadataValue(svg, "provenance", canonical == null ? edge.metadata() : canonical.relationships().get(edge.id()));
             svg.append("</relationship></metadata>\n");
-            double captionWidth = Math.max(12, Math.min(210, Math.abs(edge.targetX() - edge.sourceX()) - 12));
-            double captionX = (edge.sourceX() + edge.targetX()) / 2;
-            double captionY = (edge.sourceY() + edge.targetY()) / 2;
-            // SVG marker units scale with the stroke. Leave room for the actual font's ascenders and descenders.
-            double markerClearance = 4 * strokeWidth + 2;
-            text(svg, captionX, captionY - Math.max(15, markerClearance + metrics.getDescent()), "middle", 11, false, theme.canvasText("#394150"),
-                    DiagramTextWrapper.wrapMeasured(edge.relationType(), captionFont, captionWidth, 1, language.text("Relationship", "Beziehung")).getFirst());
-            text(svg, captionX, captionY + Math.max(23, markerClearance + metrics.getAscent()), "middle", 11, false, theme.canvasText("#394150"),
-                    DiagramTextWrapper.wrapMeasured(status, captionFont, captionWidth, 1, language.text("Origin unrecorded", "Herkunft nicht aufgezeichnet")).getFirst());
+            if (detour == null) {
+                double captionWidth = Math.max(12, Math.min(210, Math.abs(edge.targetX() - edge.sourceX()) - 12));
+                double captionX = (edge.sourceX() + edge.targetX()) / 2;
+                double captionY = (edge.sourceY() + edge.targetY()) / 2;
+                // SVG marker units scale with the stroke. Leave room for the actual font's ascenders and descenders.
+                double markerClearance = 4 * strokeWidth + 2;
+                text(svg, captionX, captionY - Math.max(15, markerClearance + metrics.getDescent()), "middle", 11, false, theme.canvasText("#394150"),
+                        DiagramTextWrapper.wrapMeasured(edge.relationType(), captionFont, captionWidth, 1, language.text("Relationship", "Beziehung")).getFirst());
+                text(svg, captionX, captionY + Math.max(23, markerClearance + metrics.getAscent()), "middle", 11, false, theme.canvasText("#394150"),
+                        DiagramTextWrapper.wrapMeasured(status, captionFont, captionWidth, 1, language.text("Origin unrecorded", "Herkunft nicht aufgezeichnet")).getFirst());
+            } else {
+                drawDetourCaption(svg, scene, detour, edge.relationType() + " · " + status,
+                        captionFont, captionContext, theme, detourCaptions);
+            }
             svg.append("</g></a>\n");
         }
         for (var node : scene.nodes()) {
@@ -131,7 +182,8 @@ public class SvgDiagramRenderer {
             svg.append("<a xlink:href=\"#").append(nodeReferences.get(node.id())).append("\"><g class=\"architecture-node\" data-node-id=\"").append(xml(node.id()))
                 .append("\" transform=\"translate(").append(number(node.x())).append(',').append(number(node.y())).append(")\">")
                 .append("<title>").append(xml(node.id() + " | " + node.label() + " | " + node.type()
-                        + language.text(" | Depth ", " | Tiefe ") + node.depth() + (node.container() ? " | Container" : "")
+                        + (canonical == null ? " | " + language.depth(node) : "")
+                        + (node.container() ? " | Container" : "")
                         + ownerDetails)).append("</title>\n")
                 .append("<rect width=\"").append(number(node.width())).append("\" height=\"").append(number(node.height()))
                 .append("\" rx=\"10\" fill=\"").append(theme.nodeFill(node.type())).append("\" stroke=\"")
@@ -146,12 +198,12 @@ public class SvgDiagramRenderer {
                         DiagramTextWrapper.wrapMeasured(assignment.name(), font(11, false), nodeTextWidth - 12, 1, "").getFirst());
             }
             text(svg, 14, 72, "start", 10, false, theme.nodeText(node.type(), "#475569"), DiagramTextWrapper.wrapMeasured(
-                    node.type() + " · " + language.percent(node.relevance()), font(10, false), nodeTextWidth, 1, language.text("Unclassified", "Nicht klassifiziert")).getFirst());
+                    canonical == null ? node.type() + " · " + language.score(node) : node.type(), font(10, false), nodeTextWidth, 1, language.text("Unclassified", "Nicht klassifiziert")).getFirst());
             svg.append("</g></a>\n");
         }
         for (int i = 0; i < summary.size(); i++) text(svg, 14, footer + 16 + i * 16, "start", 11, false, theme.canvasText("#334155"),
                 summary.get(i));
-        text(svg, 14, evidenceTitleY, "start", 16, true, theme.canvasText("#0f172a"), language.text("Scores and complete explanations", "Bewertungen und vollständige Begründungen"));
+        text(svg, 14, evidenceTitleY, "start", 16, true, theme.canvasText("#0f172a"), canonical == null ? language.text("Scores and complete explanations", "Bewertungen und vollständige Begründungen") : "Canonical inventory");
         for (int column = 0; column < columns; column++) {
             double x = 14 + column * EVIDENCE_COLUMN_WIDTH;
             var header = columnHeaders.get(column);
@@ -177,18 +229,43 @@ public class SvgDiagramRenderer {
         return svg.append("</svg>\n").toString();
     }
 
+    private static void drawDetourCaption(StringBuilder svg, DiagramScene scene, DiagramEdgeRouting.Detour detour,
+            String label, Font font, FontRenderContext context, ExportTheme theme, List<Rectangle2D> occupied) {
+        var anchor = detour.labelAnchor();
+        String caption = DiagramTextWrapper.wrapMeasured(label, font, 210, 1, "").getFirst();
+        var glyphs = font.getStringBounds(caption, context);
+        for (int offset : new int[]{-6, 16}) {
+            double baseline = anchor.y() + offset;
+            var box = new Rectangle2D.Double(anchor.x() - glyphs.getWidth() / 2, baseline + glyphs.getY(),
+                    glyphs.getWidth(), glyphs.getHeight());
+            if (box.getMinX() < 0 || box.getMaxX() > scene.width() || box.getMinY() < 0 || box.getMaxY() > scene.height()
+                    || occupied.stream().anyMatch(box::intersects)
+                    || scene.nodes().stream().anyMatch(node -> box.intersects(node.x(), node.y(), node.width(), node.height())))
+                continue;
+            text(svg, anchor.x(), baseline, "middle", 11, false, theme.canvasText("#394150"), caption);
+            occupied.add(box);
+            return;
+        }
+        // The hyperlink still points to the full relationship label and status in the inventory.
+    }
+
+    private static boolean proposed(com.taxonomy.diagram.DiagramSceneEdge edge, DiagramCanonicalEvidence canonical) {
+        return canonical == null ? edge.metadata() != null && edge.metadata().proposed()
+                : DiagramPresentation.canonicalRelationshipProposed(canonical, edge.id());
+    }
+
     private record EvidenceLine(String kind, String id, String reference, String value, boolean bold, boolean first) { }
 
     private static List<EvidenceLine> evidence(DiagramScene scene, Map<String, String> nodeReasons,
                                                Map<String, Map<String, String>> relationReasons,
                                                Map<String, String> nodeReferences, Map<String, String> edgeReferences,
-                                               DiagramLanguage language) {
+                                               DiagramLanguage language, DiagramCanonicalEvidence canonical) {
         var lines = new ArrayList<EvidenceLine>();
         var seenNodes = new HashSet<String>();
         for (var node : scene.nodes()) if (seenNodes.add(node.id())) {
             var parts = new ArrayList<String>();
-            parts.add(language.text("Node ", "Knoten ") + node.id() + " | " + language.percent(node.relevance()) + language.text(" | Depth ", " | Tiefe ") + node.depth()
-                    + (node.container() ? " | Container" : ""));
+            String metrics = canonical == null ? " | " + language.score(node) + " | " + language.depth(node) : "";
+            parts.add(language.text("Node ", "Knoten ") + node.id() + metrics + (node.container() ? " | Container" : ""));
             parts.add(node.label());
             parts.add((node.type() == null ? language.text("Unclassified", "Nicht klassifiziert") : node.type()) + language.text(" | Parent: ", " | Übergeordnet: ")
                     + (node.parentId() == null ? language.text("not included", "nicht enthalten") : node.parentId()));
@@ -201,9 +278,14 @@ public class SvgDiagramRenderer {
         for (var edge : scene.edges()) if (seenEdges.add(edge.id())) {
             var parts = new ArrayList<String>();
             parts.add(language.text("Relationship ", "Beziehung ") + edge.id() + " | " + edge.sourceId() + " -> " + edge.targetId());
-            parts.add(edge.relationType() + " | " + language.percent(edge.relevance()) + " | " + edge.relationCategory());
-            parts.addAll(DiagramPresentation.relationshipDetails(edge.metadata(), language.german()));
-            parts.addAll(DiagramPresentation.relationshipEvidenceDetails(relationReasons.get(edge.id()), language.german()));
+            if (canonical == null) {
+                parts.add(edge.relationType() + " | " + language.percent(edge.relevance()) + " | " + edge.relationCategory());
+                parts.addAll(DiagramPresentation.relationshipDetails(edge.metadata(), language.german()));
+                parts.addAll(DiagramPresentation.relationshipEvidenceDetails(relationReasons.get(edge.id()), language.german()));
+            } else {
+                parts.add(edge.relationType());
+                parts.addAll(DiagramPresentation.canonicalRelationshipDetails(canonical, edge.id()));
+            }
             appendEvidence(lines, "relationship", edge.id(), edgeReferences.get(edge.id()), parts);
         }
         return lines;
@@ -247,9 +329,7 @@ public class SvgDiagramRenderer {
         xml.append("</").append(name).append('>');
     }
     private static String xml(String value) {
-        if (value == null) return "";
-        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                .replace("\"", "&quot;").replace("'", "&apos;");
+        return value == null ? "" : StringEscapeUtils.escapeXml10(value);
     }
     private static String number(double value) { return String.format(Locale.ROOT, "%.2f", value); }
 }

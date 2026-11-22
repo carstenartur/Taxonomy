@@ -6,11 +6,13 @@ public class ReformulationCoverageValidator {
     public ValidationReport validate(ReformulationBaseline baseline,ReformulationDocument original,ReformulationDocument candidate) {
         var findings=new ArrayList<ValidationReport.Finding>();var ids=new HashMap<String,Statement>();candidate.statements().forEach(s->ids.put(s.id(),s));
         for(var prior:original.statements()) if(!prior.equals(ids.get(prior.id()))) findings.add(new ValidationReport.Finding(ValidationReport.Kind.STRUCTURAL_LOSS,"STATEMENT_CHANGED_OR_LOST","Previously frozen detail must remain visible",List.of(),prior.sourceSpans()));
+        boolean paragraphSource=GeneratedDraftText.hasParagraphSource(baseline,candidate.text(),candidate.statements());
         var covered=new BitSet(baseline.originalText().length());
         for(var s:candidate.statements()) {
             for(var span:s.sourceSpans()) {
                 if(!span.matches(baseline.originalText())) findings.add(new ValidationReport.Finding(ValidationReport.Kind.STRUCTURAL_LOSS,"INVALID_SOURCE_SPAN","Source evidence does not match the frozen original",List.of(s.id()),List.of()));
-                else if(!"REJECTED".equals(s.reviewState()) && s.provenance().isSource() && s.wording().contains(span.exactText()) && candidate.text().contains(span.exactText()))covered.set(span.start(),span.end());
+                else if(!"REJECTED".equals(s.reviewState()) && s.provenance().isSource() && s.wording().contains(span.exactText())
+                        && (paragraphSource || candidate.text().contains(span.exactText())))covered.set(span.start(),span.end());
             }
             if(!s.provenance().isSource() && s.provenance()!=Statement.Provenance.HUMAN_DECISION)
                 findings.add(new ValidationReport.Finding(ValidationReport.Kind.SEMANTIC_REVIEW,"UNCONFIRMED_ADDITION","Unconfirmed architecture/model wording; repeated origins provide no independent confirmation",List.of(s.id()),List.of()));

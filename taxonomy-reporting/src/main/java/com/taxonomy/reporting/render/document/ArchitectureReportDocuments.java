@@ -41,10 +41,11 @@ public final class ArchitectureReportDocuments {
                                                 n.id(),
                                                 n.label(),
                                                 n.type(),
-                                                n.relevance(),
+                                                n.relevanceRecorded() ? n.relevance() : null,
                                                 n.anchor(),
                                                 n.parentId(),
-                                                n.container()))
+                                                n.container(),
+                                                n.depthRecorded() ? n.depth() : null))
                         .toList(),
                 graph.edges().stream()
                         .sorted(Comparator.comparing(DiagramEdge::id))

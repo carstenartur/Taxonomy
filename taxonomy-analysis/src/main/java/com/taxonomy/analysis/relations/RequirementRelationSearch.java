@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.relations;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.taxonomy.dto.RelationSearchReport;
 import com.taxonomy.analysis.assessment.ChildAssessmentContract;
 import com.taxonomy.analysis.recovery.AnalysisCheckpointSession;
@@ -19,9 +20,17 @@ public final class RequirementRelationSearch {
         Node find(String id);
         List<Node> roots();
     }
+    public enum BatchSchedule { FAIR_COHORTS_ORDERED_DESCENT }
+
     /** Frozen execution envelope; later preference commits cannot change admitted work. */
     public record BudgetPolicy(int callsPerSlice, int maxTotalCalls, int callsBeforeExecution,
-            boolean automatic, int sourcesPerSlice, int workItemsPerSlice, int sourceCohortSize) {
+            boolean automatic, int sourcesPerSlice, int workItemsPerSlice, int sourceCohortSize,
+            @JsonInclude(JsonInclude.Include.NON_NULL) BatchSchedule batchSchedule) {
+        public BudgetPolicy(int callsPerSlice, int maxTotalCalls, int callsBeforeExecution, boolean automatic,
+                            int sourcesPerSlice, int workItemsPerSlice, int sourceCohortSize) {
+            this(callsPerSlice, maxTotalCalls, callsBeforeExecution, automatic, sourcesPerSlice, workItemsPerSlice,
+                    sourceCohortSize, BatchSchedule.FAIR_COHORTS_ORDERED_DESCENT);
+        }
         public BudgetPolicy {
             new com.taxonomy.dto.RelationSearchBudget(callsPerSlice, maxTotalCalls, 0, callsBeforeExecution,
                     automatic, 0, sourcesPerSlice, workItemsPerSlice, sourceCohortSize);
@@ -34,14 +43,23 @@ public final class RequirementRelationSearch {
                     callsBeforeExecution + calls, automatic, sections, sourcesPerSlice, workItemsPerSlice, sourceCohortSize);
         }
     }
-    public record Options(Limits limits, int maxSources, int maxPromptCharacters, BudgetPolicy budget) {
+    public record Options(Limits limits, int maxSources, int maxPromptCharacters, BudgetPolicy budget,
+            @JsonInclude(JsonInclude.Include.NON_NULL) BatchSchedule standaloneBatchSchedule) {
+        public Options(Limits limits, int maxSources, int maxPromptCharacters, BudgetPolicy budget) {
+            this(limits, maxSources, maxPromptCharacters, budget, budget == null ? BatchSchedule.FAIR_COHORTS_ORDERED_DESCENT : null);
+        }
         public Options(Limits limits, int maxSources) { this(limits, maxSources, 16_000); }
         public Options(Limits limits, int maxSources, int maxPromptCharacters) { this(limits, maxSources, maxPromptCharacters, null); }
         public Options {
             Objects.requireNonNull(limits);
+            if (budget != null && standaloneBatchSchedule != null) throw new IllegalArgumentException("Duplicate frozen batch schedule");
             if (maxSources < 1 || maxSources > 256) throw new IllegalArgumentException("maxSources must be 1..256");
             if (maxPromptCharacters == 0) maxPromptCharacters = 16_000; // Historical frozen plans.
             if (maxPromptCharacters < 1 || maxPromptCharacters > 120_000) throw new IllegalArgumentException("Invalid relation prompt budget");
+        }
+        // Missing markers deserialize to the order used when historical grants were issued.
+        private boolean hasOrderedBatches() {
+            return (budget == null ? standaloneBatchSchedule : budget.batchSchedule()) == BatchSchedule.FAIR_COHORTS_ORDERED_DESCENT;
         }
     }
     private final InputCatalogue catalogue;
@@ -151,7 +169,7 @@ public final class RequirementRelationSearch {
             plan.calls(budget.calls);
             var protocol = new RelationSearchProtocol(budget::complete, provider, (step, ids) -> {}, options.maxPromptCharacters());
             assessSources(original, nodes, options, protocol, plan, sources, warnings);
-            List<Intent> intents = intents(sources, roots, warnings);
+            List<Intent> intents = intents(sources, nodes, roots, warnings);
             Limits l = options.limits();
             plan.expect(intents);
             var engine = new RelationSearchEngine(node -> {
@@ -161,7 +179,7 @@ public final class RequirementRelationSearch {
                 }
                 return children;
             }, protocol::evaluateRecovering, checkpoint, plan, true, options.maxPromptCharacters());
-            result = engine.search(original, intents, l);
+            result = engine.search(original, intents, l, options.hasOrderedBatches());
         } catch (RelationSearchEngine.InterruptedSearchException interrupted) {
             result = interrupted.partialResult();
             stop = failureReason(interrupted.getCause());
@@ -291,7 +309,7 @@ public final class RequirementRelationSearch {
                 charged[0]++; admittedSources.addAll(ids); charged[1] = Math.toIntExact(charged[1] + additional); progress.calls(charged[0]);
             }, options.maxPromptCharacters());
             assessSources(original, nodes, options, protocol, progress, sources, warnings);
-            List<Intent> intents = intents(sources, roots, warnings);
+            List<Intent> intents = intents(sources, nodes, roots, warnings);
             Map<String, Integer> bounds = new HashMap<>();
             int cap = Math.min(options.limits().maxCalls(), options.limits().maxWorkItems()) + 1;
             for (Intent intent : intents) {
@@ -377,7 +395,7 @@ public final class RequirementRelationSearch {
         Result result = new Result(List.of(), List.of(), List.of(), 0, 0, 0);
         String stop = "";
         try {
-            result = engine.search(original, List.of(intent), limits);
+            result = engine.search(original, List.of(intent), limits, plan.options().hasOrderedBatches());
         } catch (RelationSearchEngine.InterruptedSearchException interrupted) {
             result = interrupted.partialResult(); stop = failureReason(interrupted.getCause());
         } catch (RuntimeException failure) { stop = failureReason(failure); }
@@ -424,9 +442,16 @@ public final class RequirementRelationSearch {
             var cohort = nodes.subList(offset, Math.min(offset + cohortSize, nodes.size()));
             Map<String, List<Node>> taxonomies = new LinkedHashMap<>();
             for (Node node : cohort) taxonomies.computeIfAbsent(node.root(), unused -> new ArrayList<>()).add(node);
+            var batchesByTaxonomy = new ArrayList<List<List<Node>>>();
             for (List<Node> taxonomy : taxonomies.values()) {
-                batches.addAll(RelationCandidateBatches.split(taxonomy, options.limits().batchSize(), options.maxPromptCharacters(),
+                batchesByTaxonomy.add(RelationCandidateBatches.split(taxonomy, options.limits().batchSize(), options.maxPromptCharacters(),
                         offered -> RelationSearchProtocol.requestCharacters(RelationSearchProtocol.sourcePrompt(original, offered, Map.of()))));
+            }
+            if (!options.hasOrderedBatches()) {
+                // A legacy distributed grant must recount its original prefix on redelivery.
+                batchesByTaxonomy.forEach(batches::addAll);
+            } else {
+                batches.addAll(roundRobin(batchesByTaxonomy));
             }
         }
         for (var batch : batches) {
@@ -463,32 +488,61 @@ public final class RequirementRelationSearch {
         sources.sort(Comparator.comparingInt(source -> rank.getOrDefault(source.node().id(), Integer.MAX_VALUE)));
     }
 
-    private List<Intent> intents(List<SourceAssessment> sources, List<Node> roots, List<String> warnings) {
-    List<List<Intent>> routesByContribution = new ArrayList<>();
-    for (SourceAssessment assessment : sources) for (Contribution contribution : assessment.contributions()) {
-        List<Intent> intents = new ArrayList<>();
-        for (RelationType type : RelationType.values()) {
-            if (!RelationDiscoveryPolicy.automatic(type)) continue;
-            var allowed = rules.targetDomain(contribution.source().root(), type);
-            List<Node> outgoing = roots.stream().filter(n -> allowed.allows(n.root())).toList();
-            for (Node root : outgoing) intents.add(new Intent(contribution, type.name(), Direction.OUTGOING, List.of(root)));
-            List<Node> incoming = roots.stream().filter(n -> rules.targetDomain(n.root(), type).allows(contribution.source().root())).toList();
-            for (Node root : incoming) intents.add(new Intent(contribution, type.name(), Direction.INCOMING, List.of(root)));
+    private List<Intent> intents(List<SourceAssessment> sources, List<Node> scoredNodes, List<Node> roots,
+                                List<String> warnings) {
+        record GroundedScope(String root, String quote) { }
+        Map<GroundedScope, Set<String>> quoted = new HashMap<>();
+        for (SourceAssessment source : sources) for (Contribution contribution : source.contributions()) {
+            var key = new GroundedScope(source.node().root(), contribution.quote());
+            quoted.computeIfAbsent(key, unused -> new HashSet<>()).add(source.node().id());
         }
-        if (intents.isEmpty()) warnings.add("NO_STRUCTURAL_ROUTE " + contribution.source().id()
-                + ": the current root profile cannot route this contribution; not evidence of absence.");
-        routesByContribution.add(intents);
-    }
-    // Complete an admitted branch, then give the next contribution a turn.
-    // One high-ranked source must not spend the entire budget on its types.
-    List<Intent> intents = new ArrayList<>();
-    int rounds = routesByContribution.stream().mapToInt(List::size).max().orElse(0);
-    for (int round = 0; round < rounds; round++) {
-        for (List<Intent> routes : routesByContribution) {
-            if (round < routes.size()) intents.add(routes.get(round));
+        Map<String, Set<String>> scored = new HashMap<>();
+        for (Node node : scoredNodes) scored.computeIfAbsent(node.root(), unused -> new HashSet<>()).add(node.id());
+        List<List<Intent>> routesBySource = new ArrayList<>();
+        for (SourceAssessment assessment : sources) {
+            List<List<Intent>> routesByContribution = new ArrayList<>();
+            for (Contribution contribution : assessment.contributions()) {
+                List<Intent> routes = new ArrayList<>();
+                for (RelationType type : RelationType.values()) {
+                    if (!RelationDiscoveryPolicy.automatic(type)) continue;
+                    var allowed = rules.targetDomain(contribution.source().root(), type);
+                    for (Node root : roots) {
+                        if (allowed.allows(root.root()))
+                            routes.add(new Intent(contribution, type.name(), Direction.OUTGOING, List.of(root)));
+                    }
+                    for (Node root : roots) {
+                        if (rules.targetDomain(root.root(), type).allows(contribution.source().root()))
+                            routes.add(new Intent(contribution, type.name(), Direction.INCOMING, List.of(root)));
+                    }
+                }
+                if (routes.isEmpty()) warnings.add("NO_STRUCTURAL_ROUTE " + contribution.source().id()
+                        + ": the current root profile cannot route this contribution; not evidence of absence.");
+                // A concrete counterpart on the same exact requirement quote is a useful lead.
+                // Other scored counterparts come next. Neither signal proves a relation or excludes an unknown route.
+                routes.sort(Comparator.comparingInt(intent -> {
+                    String root = intent.roots().getFirst().root(), sourceId = contribution.source().id();
+                    var sameScope = quoted.getOrDefault(new GroundedScope(root, contribution.quote()), Set.of());
+                    if (otherCounterpart(sameScope, sourceId)) return 0;
+                    return otherCounterpart(scored.getOrDefault(root, Set.of()), sourceId) ? 1 : 2;
+                }));
+                routesByContribution.add(routes);
+            }
+            routesBySource.add(roundRobin(routesByContribution));
         }
+        return roundRobin(routesBySource);
     }
-        return List.copyOf(intents);
+
+    private static boolean otherCounterpart(Set<String> candidates, String sourceId) {
+        return candidates.size() > (candidates.contains(sourceId) ? 1 : 0);
+    }
+
+    private static <T> List<T> roundRobin(List<List<T>> groups) {
+        List<T> ordered = new ArrayList<>();
+        int rounds = groups.stream().mapToInt(List::size).max().orElse(0);
+        for (int round = 0; round < rounds; round++) {
+            for (List<T> group : groups) if (round < group.size()) ordered.add(group.get(round));
+        }
+        return List.copyOf(ordered);
     }
 
     private boolean hasTargetRoutes(List<Node> sources, List<Node> roots) {

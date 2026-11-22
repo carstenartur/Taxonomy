@@ -108,6 +108,34 @@ class PartialArchitectureProjectionAnchorTest {
                 || element.getNodeCode().equals("IP-9999") || element.getNodeCode().equals("IP"));
     }
 
+    @Test
+    void retainedGenericAutomaticEdgeAndAreaWrapperDoNotCountAsConcreteArchitecture() {
+        var area = node("BP", null, "BP", 0, "Business Processes");
+        var wrapper = node("BP-1000", "BP", "BP", 1, "Business Processes");
+        var enable = node("BP-1327", "BP-1000", "BP", 2, "Enable");
+        var process = node("BP-1351", "BP-1327", "BP", 3, "Education, Training, Exercises and Evaluation");
+        area.getChildren().add(wrapper);
+        wrapper.getChildren().add(enable);
+        enable.getChildren().add(process);
+        var service = node("CI-1151", "CI-1047", "CI", 4, "Education and Individual Training Services");
+        var result = assessment(Map.of("BP-1000", 100d, "CI-1151", 80d, "BP-1351", 70d), List.of(area, service));
+        var view = new RequirementArchitectureView();
+        var generic = new RequirementRelationshipView();
+        generic.setSourceCode("CI-1151");
+        generic.setTargetCode("BP-1000");
+        generic.setRelationType("SUPPORTS");
+        generic.setOrigin(RelationOrigin.LLM_SUPPORTED);
+        view.getIncludedRelationships().add(generic);
+
+        PartialArchitectureProjection.complete(result, view, 10);
+
+        assertThat(view.getIncludedRelationships()).isEmpty();
+        assertThat(view.getAnchors()).extracting(RequirementAnchor::getNodeCode)
+                .containsExactly("CI-1151", "BP-1351");
+        assertThat(view.getNotes()).anyMatch(note -> note.startsWith("GENERIC_RELATION_CONTEXT:"));
+        assertThat(result.getScores()).containsEntry("BP-1000", 100d);
+    }
+
     private static AnalysisResult assessment(Map<String, Double> scores, List<TaxonomyNodeDto> tree) {
         var result = new AnalysisResult(scores, tree);
         result.setStatus("PARTIAL");

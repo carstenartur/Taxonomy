@@ -416,8 +416,10 @@ class FrozenClusterRelationComputationTest {
             for (Node node : query.candidates()) {
                 Outcome outcome = !query.type().equals("CONSUMES") ? Outcome.REJECT
                         : query.phase() == Phase.VERIFY ? Outcome.VERIFIED : node.container() ? Outcome.DESCEND : Outcome.MATCH;
-                decisions.add(new Decision(node.id(), outcome, "requested evidence", original, Necessity.REQUIRED,
-                        "", "", "Original requires evidence", ""));
+                decisions.add(outcome == Outcome.REJECT
+                        ? new Decision(node.id(), outcome, "", "", null, "", "", "Irrelevant to the requested function", "")
+                        : new Decision(node.id(), outcome, "requested evidence", original, Necessity.REQUIRED,
+                                "", "", "Original requires evidence", ""));
             }
             return JSON.writeValueAsString(Map.of("decisions", decisions));
         }

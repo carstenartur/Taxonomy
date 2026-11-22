@@ -1,6 +1,7 @@
 package com.taxonomy.export;
 
 import com.taxonomy.diagram.DiagramScene;
+import com.taxonomy.diagram.DiagramCanonicalEvidence;
 import com.taxonomy.dto.TaxonomyResponsibilityLookup.Assignment;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -8,6 +9,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.TreeMap;
 
 /** Presentation only: colors and counts never imply model acceptance or change graph evidence. */
@@ -120,6 +122,27 @@ public final class DiagramPresentation {
         return List.copyOf(lines);
     }
 
+    static String canonicalRelationshipStatus(DiagramCanonicalEvidence evidence, String id) {
+        var relation = evidence.relationships().get(id);
+        return relation == null || relation.status() == null || relation.status().isBlank() ? "unrecorded" : relation.status();
+    }
+
+    static boolean canonicalRelationshipProposed(DiagramCanonicalEvidence evidence, String id) {
+        String status = canonicalRelationshipStatus(evidence, id);
+        return "proposed".equals(status) || "provisional".equals(status);
+    }
+
+    static List<String> canonicalRelationshipDetails(DiagramCanonicalEvidence evidence, String id) {
+        var lines = new ArrayList<String>();
+        lines.add("Model status: " + canonicalRelationshipStatus(evidence, id));
+        var recorded = evidence.relationships().get(id);
+        String provenance = recorded == null || recorded.provenance() == null || recorded.provenance().isBlank()
+                ? "unrecorded" : recorded.provenance();
+        lines.add("Recorded provenance: " + provenance);
+        if (recorded != null && recorded.confidence() != null) lines.add("Recorded confidence: " + recorded.confidence());
+        return List.copyOf(lines);
+    }
+
     /** Scores are fractions of one; a positive value must never be presented as zero. */
     public static String percent(double relevance) {
         if (!Double.isFinite(relevance) || relevance < 0 || relevance > 1) return "n/a";
@@ -135,6 +158,10 @@ public final class DiagramPresentation {
     }
 
     static List<String> inventorySummary(DiagramScene scene, DiagramLanguage language) {
+        return inventorySummary(scene, language, null);
+    }
+
+    static List<String> inventorySummary(DiagramScene scene, DiagramLanguage language, DiagramCanonicalEvidence canonical) {
         var nodes = new LinkedHashMap<String, com.taxonomy.diagram.DiagramSceneNode>();
         scene.nodes().forEach(node -> nodes.putIfAbsent(node.id(), node));
         long containers = nodes.values().stream().filter(node -> node.container()).count();
@@ -148,9 +175,20 @@ public final class DiagramPresentation {
         taxonomies.forEach((type, count) -> lines.add(type + ": " + count));
         Map<String, Integer> statuses = new TreeMap<>();
         var seenEdges = new java.util.HashSet<String>();
-        scene.edges().stream().filter(edge -> seenEdges.add(edge.id())).forEach(edge ->
-                statuses.merge(relationshipStatus(edge.metadata(), language.german()), 1, Integer::sum));
+        scene.edges().stream().filter(edge -> seenEdges.add(edge.id())).forEach(edge -> {
+            String status = canonical == null ? relationshipStatus(edge.metadata(), language.german())
+                    : canonicalRelationshipStatus(canonical, edge.id());
+            statuses.merge(status, 1, Integer::sum);
+        });
         statuses.forEach((status, count) -> lines.add(language.text("Relationships - ", "Beziehungen - ") + status + ": " + count));
+        if (canonical != null) {
+            lines.add("Scores and taxonomy depth: unrecorded in the canonical model.");
+            lines.add("Relationship statuses are the saved model states. Review and provenance evidence are separate.");
+            if (canonical.viewId() != null && !canonical.viewId().isBlank()) lines.add("Source view: " + canonical.viewId());
+            for (var source : canonical.analysisSources()) lines.add("Recorded analysis source: " + source.viewId()
+                    + " | Snapshot " + source.snapshotId() + " | " + Objects.toString(source.status(), "status unrecorded"));
+            return List.copyOf(lines);
+        }
         lines.add(language.text("Dashed connectors identify AI-proposed relationships; solid connectors do not imply approval.", "Gestrichelte Linien zeigen KI-Vorschläge. Durchgezogene Linien belegen keine Freigabe."));
         lines.add(language.text("Colors identify taxonomy families; a strong border marks a selection anchor, not approval.", "Farben kennzeichnen Taxonomiefamilien. Ein kräftiger Rahmen markiert einen Auswahlanker."));
         lines.add(language.text("Human confirmation is not recorded in this diagram model. AI verification is not human approval.", "Dieses Diagrammmodell erfasst keine menschliche Bestätigung. Eine KI-Prüfung ist keine menschliche Freigabe."));

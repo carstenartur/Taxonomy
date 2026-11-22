@@ -1,8 +1,11 @@
 package com.taxonomy.analysis.service;
 
 import com.taxonomy.analysis.relations.RelationSearchProtocol;
+import com.taxonomy.analysis.relations.RelationSearchEngine;
+import com.taxonomy.analysis.relations.RequirementRelationSearch;
 import com.taxonomy.analysis.relations.RequirementRelationSearchService;
 import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.relations.service.RelationCompatibilityMatrix;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -32,6 +35,94 @@ class RelationSourceContextBudgetTest {
 
     @BeforeAll static void loadCatalogue() throws Exception {
         TaxonomyHierarchyContextTest.loadRealWorkbook();
+    }
+
+    @Test void relationNavigationUsesTheRealHierarchyWithoutDiscardingGenuineTopLevelEntries() {
+        assertThat(scalar("BP").container()).isTrue();
+        assertThat(scalar("BP-1000").container()).isTrue();
+        assertThat(scalar("CI-1000").container()).isTrue();
+        assertThat(scalar("BR-1220").container()).isFalse();
+        assertThat(scalar("IP-1051").container()).isFalse();
+        assertThat(scalar("BP-1351").container()).isFalse();
+    }
+
+    @Test void weakModelMatchesAtTheAreaAndWrapperRefineToAnEvidencedNonleaf() {
+        var fixture = trainingSearch();
+        Result result = fixture.engine().search(fixture.requirement(), List.of(fixture.intent()),
+                new Limits(12, 8, 100, 128));
+
+        assertThat(result.edges()).extracting(Edge::targetId).containsExactly("BP-1351");
+        assertThat(result.trace()).filteredOn(trace -> trace.outcome() == Outcome.DESCEND)
+                .extracting(Trace::targetId).contains("BP", "BP-1000");
+        assertThat(result.unfinished()).isEmpty();
+    }
+
+    @Test void aGenericMatchWithoutAFundedRefinementLeavesAnExplicitGap() {
+        var fixture = trainingSearch();
+        Result result = fixture.engine().search(fixture.requirement(), List.of(fixture.intent()),
+                new Limits(2, 8, 100, 128));
+
+        assertThat(result.edges()).isEmpty();
+        assertThat(result.unfinished()).extracting(Unfinished::reason)
+                .contains("CALL_BUDGET", "ENDPOINT_REFINEMENT");
+        assertThat(result.searchExhausted()).isFalse();
+    }
+
+    @Test void positiveScoresForTheAreaAndWrapperDoNotCreateAConcreteSource() {
+        var workbook = new RequirementRelationSearch.InputCatalogue() {
+            @Override public Node find(String id) { return scalar(id); }
+            @Override public List<Node> roots() { return List.of(scalar("BP")); }
+            @Override public List<Node> children(Node node) { return List.of(); }
+        };
+        var called = new java.util.concurrent.atomic.AtomicBoolean();
+        var search = new RequirementRelationSearch(workbook, new RelationCompatibilityMatrix(), prompt -> {
+            called.set(true);
+            return sourceAnswer(scalar("BP-1000"));
+        }, () -> {});
+
+        var report = search.search(ORIGINAL, Map.of("BP", 91d, "BP-1000", 79d),
+                new RequirementRelationSearch.Options(new Limits(10, 8, 10, 128), 16));
+
+        assertThat(called).isFalse();
+        assertThat(report.sources()).isEmpty();
+        assertThat(report.warnings()).anyMatch(issue -> issue.startsWith("ROOT_SOURCE_UNRESOLVED BP:"));
+        assertThat(report.isSearchExhausted()).isFalse();
+    }
+
+    private record TrainingSearch(String requirement, Intent intent, RelationSearchEngine engine) { }
+
+    private static TrainingSearch trainingSearch() {
+        String requirement = "The service administers education, individual and collective training, and evaluation.";
+        var source = new Contribution(scalar("CI-1151"), "Administer education and training", requirement, "");
+        var intent = new Intent(source, "SUPPORTS", Direction.OUTGOING, List.of(scalar("BP")));
+        var protocol = new RelationSearchProtocol(prompt -> {
+            JsonNode query = input(prompt);
+            var rows = new ArrayList<Map<String, Object>>();
+            for (JsonNode candidate : query.get("candidates")) {
+                String id = candidate.get("id").asString();
+                if (query.get("phase").asString().equals("VERIFY")) {
+                    rows.add(Map.of("targetId", id, "outcome", "VERIFIED", "rationale", "The service supplies the stated training functions.", "question", ""));
+                    continue;
+                }
+                boolean match = List.of("BP", "BP-1000", "BP-1351").contains(id);
+                var row = new java.util.LinkedHashMap<String, Object>();
+                row.put("targetId", id);
+                row.put("outcome", match ? "MATCH" : id.equals("BP-1327") ? "DESCEND" : "REJECT");
+                row.put("contribution", match ? "Deliver the required education, training and evaluation functions" : "");
+                row.put("requirementQuote", match ? requirement : "");
+                row.put("necessity", match ? "REQUIRED" : null);
+                row.put("condition", "");
+                row.put("alternativeGroup", "");
+                row.put("rationale", match ? "Education and training belong to this process branch." : "No direct match.");
+                row.put("question", "");
+                rows.add(row);
+            }
+            return JSON.writeValueAsString(Map.of("decisions", rows));
+        });
+        var engine = new RelationSearchEngine(node -> TaxonomyHierarchyContextTest.catalogue.getChildrenOf(node.id())
+                .stream().map(child -> scalar(child.getCode())).toList(), protocol::evaluate, () -> {},
+                new RelationSearchEngine.Observer() { }, false, 120_000);
+        return new TrainingSearch(requirement, intent, engine);
     }
 
     @ParameterizedTest

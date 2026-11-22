@@ -184,6 +184,10 @@ public class ArchitectureWorkbenchService {
         if (analysis.getWarnings() != null) warnings.addAll(analysis.getWarnings());
         if (architectureView.getNotes() != null) warnings.addAll(architectureView.getNotes());
         warnings.removeIf(value -> value == null || value.isBlank());
+        if (warnings.stream().anyMatch(value -> value.startsWith("RELATION_SEARCH_PARTIAL:")
+                && value.contains(" evaluation attempts;"))) {
+            warnings.remove("RELATION_SEARCH_PARTIAL: see the analysis report for unassessed work, questions and budget limits.");
+        }
 
         return new Projection(
                 projectId, project.projectKey(), project.title(), requirementId,

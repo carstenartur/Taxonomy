@@ -315,18 +315,23 @@ public class AnalyzeRequirementUseCase {
         if (!command.includeArchitectureView() || result.getScores() == null) {
             return;
         }
+        int maxNodes = command.maxArchitectureNodes();
         RequirementArchitectureView archView = null;
         try {
             if (result.getRelationSearchReport() != null) {
-                archView = architectureViewService.buildFromEvidence(result.getScores(), result.getScoreDetails(),
-                        command.maxArchitectureNodes(), result.getRelationSearchReport());
-            } else if ("SUCCESS".equals(result.getStatus()) && command.analysisScope().includesRelations()
-                    && (requirementRelationSearch == null || !requirementRelationSearch.isEnabled())) {
-                // Preserve only the explicitly configured legacy path, never an error fallback.
-                archView = architectureViewService.build(result.getScores(), command.businessText(),
-                        command.maxArchitectureNodes(), result.getProvisionalRelations());
+                archView = PartialArchitectureProjection.completeEvidence(result,
+                        navigationContext -> architectureViewService.buildFromEvidence(result.getScores(),
+                                result.getScoreDetails(), maxNodes, result.getRelationSearchReport(), navigationContext),
+                        maxNodes);
+            } else {
+                if ("SUCCESS".equals(result.getStatus()) && command.analysisScope().includesRelations()
+                        && (requirementRelationSearch == null || !requirementRelationSearch.isEnabled())) {
+                    // Preserve only the explicitly configured legacy path, never an error fallback.
+                    archView = architectureViewService.build(result.getScores(), command.businessText(),
+                            maxNodes, result.getProvisionalRelations());
+                }
+                archView = PartialArchitectureProjection.complete(result, archView, maxNodes);
             }
-            archView = PartialArchitectureProjection.complete(result, archView, command.maxArchitectureNodes());
             DiagramViewMetadata meta = metadataPort.resolve();
             archView.setViewTitle(meta.viewTitle()); archView.setViewDescription(meta.viewDescription());
             archView.setContainmentEnabled(meta.containmentEnabled()); archView.setActiveRules(meta.activeRules());
@@ -338,7 +343,7 @@ public class AnalyzeRequirementUseCase {
             warnings.add(warning); result.setWarnings(warnings);
             if (result.getErrorMessage() == null) result.setErrorMessage(warning);
             // Keep a successfully projected evidence view if only presentation metadata failed.
-            archView = PartialArchitectureProjection.complete(result, archView, command.maxArchitectureNodes());
+            archView = PartialArchitectureProjection.complete(result, archView, maxNodes);
         }
         if (command.businessText() != null) archView.setOriginalRequirementText(command.businessText());
         archView.setAnalysisStatus(result.getStatus());

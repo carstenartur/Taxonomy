@@ -193,7 +193,7 @@ class FrozenReformulationEvidenceTest {
         assertEquals(List.of(deferred), rebuilt.questionProposals());
         assertEquals(List.of(rejected), rebuilt.statementProposals());
         assertTrue(result.validation().findings().contains(conflict));
-        assertTrue(result.text().contains(ORIGINAL));
+        assertTrue(result.text().replace("\n\n", " ").startsWith(ORIGINAL));
         assertFalse(result.text().contains(rejected.wording()));
         assertEquals(DecisionQuestion.State.DEFERRED, before.questions().getFirst().state());
         assertTrue(before.validation().findings().isEmpty());

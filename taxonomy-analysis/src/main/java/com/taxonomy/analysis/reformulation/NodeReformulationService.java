@@ -6,9 +6,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import tools.jackson.databind.ObjectMapper;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /** Uses the existing throttled, recording-aware, final-prompt-budgeted provider transport. */
 @Service
 public class NodeReformulationService {
+    private static final int RECONCILE_REPAIR_MESSAGE_LIMIT = 256;
     private final LlmGatewayRegistry registry;
     private final LlmProviderConfig config;
     private final ReformulationPromptBuilder prompts;
@@ -57,6 +61,33 @@ public class NodeReformulationService {
     public ReconciliationResult reconcile(ReconciliationInput input) {
         var builder=new ReconcilePromptBuilder(json);var responses=new ReconcileResponseParser(json);
         return call(errors->builder.build(input,errors),raw->responses.parse(raw,input));
+    }
+    List<ReconciliationResult> reconcileBounded(ReconciliationInput input, ReformulationStepExecutor steps) {
+        var builder = new ReconcilePromptBuilder(json);
+        var responses = new ReconcileResponseParser(json);
+        var gateway = registry.getGatewayById(config.getActiveProviderId());
+        // A control character requires six JSON bytes. Reserve enough for the longest
+        // permitted repair message, as well as its label, before admitting every view.
+        String repairReserve = "\u0000".repeat(RECONCILE_REPAIR_MESSAGE_LIMIT);
+        var plan = new BoundedReconciliation(json).plan(input, view -> {
+            try {
+                gateway.validatePromptBudget(builder.build(view, repairReserve));
+                return true;
+            } catch (PromptBudgetExceededException tooLarge) {
+                return false;
+            }
+        });
+        var reviews = new ArrayList<ReconciliationResult>();
+        for (var view : plan.views()) {
+            reviews.add(steps.execute("RECONCILE", view, ReconciliationResult.class, () ->
+                    call(errors -> builder.build(view, boundedRepairMessage(errors)), raw -> responses.parse(raw, view.input()))));
+        }
+        reviews.add(new ReconciliationResult(List.of(), java.util.Map.of(), List.of(plan.coverageFinding())));
+        return List.copyOf(reviews);
+    }
+    private static String boundedRepairMessage(String error) {
+        return error == null || error.length() <= RECONCILE_REPAIR_MESSAGE_LIMIT ? error
+                : "The previous response did not conform to the schema. Check all fields, references and evidence spans.";
     }
     private <T> T call(java.util.function.Function<String,String> prompt,java.util.function.Function<String,T> response) {
         if(TransactionSynchronizationManager.isActualTransactionActive()) throw new IllegalStateException("LLM_CALL_INSIDE_TRANSACTION");

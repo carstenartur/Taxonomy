@@ -97,6 +97,15 @@ responsibility and is not determined by the driver license.
 
 ---
 
+## DejaVu Sans
+
+The native architecture PDF renderer embeds glyph subsets from DejaVu Sans
+2.37. Native Visio exports use the same regular face to measure requirement
+and context text. The Bitstream Vera license and DejaVu attribution accompany
+the regular and bold font resources in `taxonomy-export/src/main/resources/fonts`.
+
+---
+
 ## ISC and BSD components
 
 ISC license text: https://opensource.org/licenses/ISC

@@ -234,7 +234,10 @@ public final class RequirementRelationSearchContract {
         for (Node node : q.candidates()) {
             Outcome outcome = q.type().equals("CONSUMES") || (q.type().equals("PRODUCES") && original.contains("writes"))
                     ? q.phase() == Phase.VERIFY ? Outcome.VERIFIED : node.container() ? Outcome.DESCEND : Outcome.MATCH : Outcome.REJECT;
-            decisions.add(new Decision(node.id(), outcome, "evidence record access", original, Necessity.REQUIRED, "", "", "Original requests this exact access", ""));
+            decisions.add(outcome == Outcome.REJECT
+                    ? new Decision(node.id(), outcome, "", "", null, "", "", "Irrelevant to the requested function", "")
+                    : new Decision(node.id(), outcome, "evidence record access", original, Necessity.REQUIRED,
+                            "", "", "Original requests this exact access", ""));
         }
         return JSON.writeValueAsString(Map.of("decisions", decisions));
     }

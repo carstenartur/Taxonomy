@@ -144,8 +144,9 @@ public final class ReformulationScenarioApplication {
         assertThat(ingestion.path("id")).isNotEqualTo(publication.path("id"));
         assertThat(ingestion.path("key")).isNotEqualTo(publication.path("key"));
         long originalRevision = revision(initial);
+        String decision = "Retain last observation with timestamp";
         var answered = request("POST", offerPath + "/answers", Map.of("questionId", shared.path("id").asText(),
-                "action", "ANSWER", "values", List.of("Retain last observation with timestamp"),
+                "action", "ANSWER", "values", List.of(decision),
                 "rationale", "Human scenario acceptance decision"), 201, originalRevision);
         var deferred = request("POST", offerPath + "/answers", Map.of("questionId", ingestion.path("id").asText(),
                 "action", "DEFER", "values", List.of(), "rationale", "Obtain evidence for a maximum age"), 201, revision(answered));
@@ -165,7 +166,8 @@ public final class ReformulationScenarioApplication {
         assertThat(playback.calls().stream().skip(beforeTargeted).map(ScenarioLlmPlayback.Call::ruleId).filter(id -> id.startsWith("scenario:REWORD:")))
                 .hasSize(8).doesNotHaveDuplicates();
         save("answered-proposal.json", revised);
-        assertThat(revised.at("/currentRevision/text").asText()).contains("retain last observation with timestamp");
+        assertThat(revised.at("/currentRevision/text").asText().lines())
+                .contains("[ANSWERED] " + shared.path("wording").asText() + " — Human decision: " + decision);
         verifyManualProtection(offerPath, revised, statementId);
         assertThat(request("GET", offerPath + "/revisions/" + originalRevision, null, 200)).isEqualTo(initial.path("currentRevision"));
         assertThat(request("GET", requirementPath, null, 200)).isEqualTo(before);

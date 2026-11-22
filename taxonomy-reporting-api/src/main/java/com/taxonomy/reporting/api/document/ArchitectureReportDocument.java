@@ -60,10 +60,16 @@ public record ArchitectureReportDocument(
             String id,
             String title,
             String type,
-            double relevance,
+            Double relevance,
             boolean anchor,
             String parentId,
-            boolean container) {}
+            boolean container,
+            Integer depth) {
+        public ElementRow(String id, String title, String type, double relevance, boolean anchor,
+                          String parentId, boolean container) {
+            this(id, title, type, relevance, anchor, parentId, container, null);
+        }
+    }
 
     public record RelationRow(
             String id,
@@ -146,6 +152,11 @@ public record ArchitectureReportDocument(
                     field(out, assignment.unitId());
                     field(out, assignment.name());
                     field(out, assignment.sourceId());
+                }
+                if (n.missingMeasurements() != null) {
+                    field(out, "missing-measurements-v1");
+                    out.writeBoolean(n.missingMeasurements().relevance());
+                    out.writeBoolean(n.missingMeasurements().depth());
                 }
             }
             for (var e :

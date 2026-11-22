@@ -91,7 +91,7 @@ class ArchitectureWorkbenchServiceTest {
         try (var document = Loader.loadPDF(pdf)) {
             String text = new PDFTextStripper().getText(document);
             assertThat(text)
-                    .contains("Sichere Fuehrungsarchitektur")
+                    .contains("Sichere Führungsarchitektur")
                     .contains("P-001")
                     .contains("REQ-001")
                     .contains("snapshot-1")
@@ -119,7 +119,7 @@ class ArchitectureWorkbenchServiceTest {
         String svg = service.renderSvg(projection, java.util.Locale.UK);
         assertThat(svg).contains("Küste &amp; Betrieb", "unit-42", "CP-1000", assignment.color());
         try (var pdf = Loader.loadPDF(service.renderPdf(projection, java.util.Locale.UK))) {
-            assertThat(new PDFTextStripper().getText(pdf)).contains("Kueste & Betrieb", "unit-42", "CP-1000");
+            assertThat(new PDFTextStripper().getText(pdf)).contains("Küste & Betrieb", "unit-42", "CP-1000");
         }
     }
 
@@ -232,6 +232,20 @@ class ArchitectureWorkbenchServiceTest {
         String svg = service.renderSvg(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT);
 
         assertThat(svg).contains("PARTIAL", "CP-1", "CR-1").doesNotContain("0 unassessed");
+    }
+
+    @Test
+    void snapshotWarningsPreferRecordedRelationCountsOverTheGenericDuplicate() {
+        var snapshot = snapshotWithArchitecture();
+        String summary = "RELATION_SEARCH_PARTIAL: 16/16 evaluation attempts; 8 pending and 2 unresolved.";
+        String fallback = "RELATION_SEARCH_PARTIAL: see the analysis report for unassessed work, questions and budget limits.";
+        snapshot.analysis().setWarnings(List.of(summary));
+        snapshot.analysis().getArchitectureView().setNotes(List.of(fallback));
+        prepareSnapshot(snapshot);
+
+        assertThat(service.load(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT).warnings())
+                .contains(summary).doesNotContain(fallback);
+        assertThat(snapshot.analysis().getArchitectureView().getNotes()).contains(fallback);
     }
 
     @Test

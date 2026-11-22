@@ -18,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 /** Independent LibreOffice/Poppler checks of the actual scenario acceptance exports. */
@@ -31,14 +32,16 @@ final class ScenarioDocumentQa {
     record PageProfile(int decisionPages, int architecturePages) { }
 
     private static final PageProfile LEGACY_PAGE_PROFILE = new PageProfile(74, 12);
-    private static final String COMPLETE_FLOOD_FIXTURE_SHA256 =
-            "5fd17eddbdeb5232e45c294bc726f43c1aef3d3d0572dd16078a912cf64b8609";
+    // Both authored playback revisions produce the reviewed document corpus below.
+    private static final Set<String> COMPLETE_FLOOD_FIXTURE_HASHES = Set.of(
+            "5fd17eddbdeb5232e45c294bc726f43c1aef3d3d0572dd16078a912cf64b8609",
+            "e258ed6440d1dd0a99edaf2ef2a4acb40a374520f19a5d3da210bca656463ba2");
     private static final String COMPLETE_FLOOD_REQUIREMENT_SHA256 =
             "a5546798b6117e9d66cc3c63ce316ae9985b980aa949df7669d3c28fb5d9d989";
 
     static PageProfile pageProfile(Map<?, ?> run, Map<?, ?> decision, Map<?, ?> architecture) {
         if (!"flood-information-v1".equals(run.get("scenario"))
-                || !COMPLETE_FLOOD_FIXTURE_SHA256.equals(run.get("fixtureSha256"))) {
+                || !(run.get("fixtureSha256") instanceof String hash && COMPLETE_FLOOD_FIXTURE_HASHES.contains(hash))) {
             return LEGACY_PAGE_PROFILE;
         }
         String requirement = text(decision, "requirement");

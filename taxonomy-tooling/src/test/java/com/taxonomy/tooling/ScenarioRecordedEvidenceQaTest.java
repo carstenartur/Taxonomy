@@ -11,6 +11,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ScenarioRecordedEvidenceQaTest {
+    @Test void navigationOnlyPlaybackRevisionUsesTheSameCompleteCorpusChecks() throws Exception {
+        var run = fixture("run");
+        run.put("fixtureSha256", "e258ed6440d1dd0a99edaf2ef2a4acb40a374520f19a5d3da210bca656463ba2");
+        var decision = fixture("decision");
+        var architecture = fixture("architecture");
+        var reasons = addNodeReasons(architecture);
+        assertThat(ScenarioDocumentQa.pageProfile(run, decision, architecture))
+                .isEqualTo(new ScenarioDocumentQa.PageProfile(178, 59));
+        reasons.remove(reasons.keySet().iterator().next());
+        assertThatThrownBy(() -> ScenarioDocumentQa.pageProfile(run, decision, architecture))
+                .hasMessageContaining("corpus mismatch: recorded node evidence");
+    }
+
     @Test void completeNodeEvidenceUsesMeasuredLimitsWithoutChangingHistoricalProfiles() throws Exception {
         var run = fixture("run"); var decision = fixture("decision"); var architecture = fixture("architecture");
         assertThat(ScenarioDocumentQa.pageProfile(run, decision, architecture))

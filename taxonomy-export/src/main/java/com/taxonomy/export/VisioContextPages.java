@@ -8,13 +8,15 @@ import com.taxonomy.visio.VisioShape;
 import com.taxonomy.visio.VisioTextBox;
 
 import java.awt.Font;
+import java.awt.FontFormatException;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 /** Editable source context, with complete requirement text on mandatory pages. */
 final class VisioContextPages {
-    private static final Font FONT = new Font(Font.SANS_SERIF, Font.PLAIN, 10);
+    private static final Font MEASUREMENT_FONT = measurementFont();
     private static final double PAGE_WIDTH = 7.5;
     private static final double LINE_HEIGHT = .20;
     private static final double TOP = 10.65;
@@ -25,6 +27,16 @@ final class VisioContextPages {
             "exportedBy", "exportedAt", "requirementUrl", "requirementUrlStatus");
 
     private VisioContextPages() { }
+
+    private static Font measurementFont() {
+        // Context wraps become part of the VSDX bytes. Measure with the same face on every host.
+        try (var input = VisioContextPages.class.getResourceAsStream("/fonts/DejaVuSans.ttf")) {
+            if (input == null) throw new IllegalStateException("Missing bundled Visio measurement font");
+            return Font.createFont(Font.TRUETYPE_FONT, input).deriveFont(10f);
+        } catch (IOException | FontFormatException error) {
+            throw new IllegalStateException("Cannot load bundled Visio measurement font", error);
+        }
+    }
 
     /** Called before optional relationship pages so complete source text reserves its capacity first. */
     static void append(VisioDocument document, boolean contextOnDrawings) {
@@ -186,7 +198,7 @@ final class VisioContextPages {
         for (String field : fields) {
             for (String paragraph : field.split("\\R", -1)) {
                 if (paragraph.isBlank()) lines.add("");
-                else lines.addAll(DiagramTextWrapper.wrapMeasured(paragraph, FONT, (width * 72 - 20) / 1.15,
+                else lines.addAll(DiagramTextWrapper.wrapMeasured(paragraph, MEASUREMENT_FONT, (width * 72 - 20) / 1.15,
                         Integer.MAX_VALUE, ""));
             }
         }

@@ -65,7 +65,7 @@ public final class ArchitectureReportDocxRenderer {
             runningIdentity(document, labels, labels.architectureTitle());
             w.heading(labels.architectureTitle(), 0, null);
             w.heading(labels.requirement(), 1, null);
-            w.paragraph(report.getBusinessText());
+            w.sourceParagraphs(report.getBusinessText());
             if (report.getCopilot() != null) {
                 w.paragraph("Copilot: " + labels.retainedCopilotStatus(report.getCopilot().state()));
                 report.getCopilot().notes().forEach(w::paragraph);
@@ -107,14 +107,7 @@ public final class ArchitectureReportDocxRenderer {
                 panels.addAll(plan.details());
                 for (var panel : panels) {
                     var figure = renderer.render(panel, language);
-                    w.picture(
-                            figure.png(),
-                            figure.id(),
-                            figure.caption(),
-                            figure.altDescription(),
-                            figure.width(),
-                            figure.height(),
-                            !panel.overview());
+                    w.architecturePicture(figure, panel.overview());
                     w.caption(figure.caption(), true);
                 }
                 w.heading(labels.elements(), 1, null);
@@ -130,7 +123,7 @@ public final class ArchitectureReportDocxRenderer {
                                                 List.of(
                                                         value(e.getNodeCode(), labels),
                                                         value(e.getTitle(), labels),
-                                                        percent(e.getRelevance()),
+                                                        e.recordedRelevance() == null ? labels.notEvaluated() : percent(e.recordedRelevance()),
                                                         value(e.getIncludedBecause(), labels)))
                                 .toList());
                 ArchitectureWordSectionRenderer.writeResponsibilities(w, labels, graph);

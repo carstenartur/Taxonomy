@@ -158,7 +158,7 @@ public final class ReconciliationContextChecks {
             check(result.questions().size() == 8, "Reconciliation merged independent questions");
             check(result.questions().stream().filter(q -> q.id().equals("q-0")).findFirst().orElseThrow().state()
                     == DecisionQuestion.State.ANSWERED, "Source resolution was not applied to its own question");
-            check(result.text().contains(ORIGINAL), "Whole original lost from result");
+            check(result.text().replace("\n\n", " ").startsWith(ORIGINAL), "Whole original lost from result");
             check(before.equals(JSON.writeValueAsString(draft)), "Phase B mutated its input draft");
             check(data(f.prompts.getFirst()).path("boundaryEdges").has("edge-1"), "Directed boundary was dropped");
         }

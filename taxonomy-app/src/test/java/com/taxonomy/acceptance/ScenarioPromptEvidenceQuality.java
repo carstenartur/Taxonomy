@@ -20,7 +20,7 @@ public final class ScenarioPromptEvidenceQuality {
     private static final int NORMAL_CALLS = 24, NORMAL_BATCH = 3, NORMAL_INPUT = 16_000;
 
     private record CatalogueNode(String code, String root, String name, String description,
-                                 String parent, boolean container, String role) { }
+                                 String parent, boolean container, boolean relationNavigationOnly, String role) { }
     private record SourcePart(String node, String text, String quote, String condition) { }
     public record Cycle(String snapshotId, int maxCalls, int totalCalls, String snapshotSha256) {
         public Cycle {
@@ -112,6 +112,8 @@ public final class ScenarioPromptEvidenceQuality {
         for (JsonNode candidate : candidates) {
             assertThat(ids.add(text(candidate, "id"))).as("Distinct offered relation identities").isTrue();
             checkNode(candidate, false);
+            if (extraction) assertThat(candidate.path("container").asBoolean())
+                    .as("Only concrete nodes enter source extraction: %s", text(candidate, "id")).isFalse();
         }
         String phase;
         String source = "";
@@ -161,7 +163,8 @@ public final class ScenarioPromptEvidenceQuality {
         assertThat(text(offered, "root")).as("Actual catalogue root for %s", actual.code()).isEqualTo(actual.root());
         assertThat(text(offered, "name")).as("Actual catalogue name for %s", actual.code()).isEqualTo(actual.name());
         assertThat(offered.path("container").isBoolean()).isTrue();
-        assertThat(offered.path("container").asBoolean()).as("Actual catalogue container for %s", actual.code()).isEqualTo(actual.container());
+        assertThat(offered.path("container").asBoolean()).as("Actual relation navigation flag for %s", actual.code())
+                .isEqualTo(actual.relationNavigationOnly());
         assertThat(string(offered, "description"))
                 .as(assessedSource ? "Complete assessed source description for %s" : "Complete full catalogue description for %s", actual.code())
                 .isEqualTo(actual.description() + context(actual, assessedSource));
@@ -273,10 +276,15 @@ public final class ScenarioPromptEvidenceQuality {
         for (JsonNode entry : tree) {
             String actualParent = entry.path("parentCode").asString("");
             assertThat(actualParent).as("Actual catalogue parent").isEqualTo(parent);
-            var node = new CatalogueNode(text(entry, "code"), text(entry, "taxonomyRoot"), text(entry, "nameEn"),
-                    entry.path("descriptionEn").asString(""), actualParent, entry.path("taxonomyContainer").asBoolean(), text(entry, "analysisRole"));
+            String code = text(entry, "code"), root = text(entry, "taxonomyRoot");
+            JsonNode children = entry.path("children");
+            boolean originalUmbrella = root.equals(actualParent) && !overlayParents.contains(code)
+                    && children.valueStream().anyMatch(child -> !overlayParents.contains(text(child, "code")));
+            var node = new CatalogueNode(code, root, text(entry, "nameEn"), entry.path("descriptionEn").asString(""),
+                    actualParent, entry.path("taxonomyContainer").asBoolean(), actualParent.isBlank() || originalUmbrella,
+                    text(entry, "analysisRole"));
             assertThat(nodes.put(node.code(), node)).as("One actual catalogue identity").isNull();
-            index(entry.path("children"), node.code());
+            index(children, node.code());
         }
     }
 

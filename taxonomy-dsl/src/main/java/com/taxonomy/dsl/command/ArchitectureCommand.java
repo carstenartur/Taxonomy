@@ -28,9 +28,27 @@ public sealed interface ArchitectureCommand {
     }
     record AdoptAnalysisSnapshot(String viewId, String title, String description, String graphFingerprint,
                                  List<SnapshotElement> elements, List<RelationKey> relations,
-                                 Map<String, String> provenance) implements ArchitectureCommand {
+                                 Map<String, String> provenance, List<SnapshotEvidence> evidence) implements ArchitectureCommand {
+        /** Original command shape for exact replay of previously retained views. */
+        public AdoptAnalysisSnapshot(String viewId, String title, String description, String graphFingerprint,
+                                    List<SnapshotElement> elements, List<RelationKey> relations, Map<String, String> provenance) {
+            this(viewId, title, description, graphFingerprint, elements, relations, provenance, null);
+        }
         public AdoptAnalysisSnapshot {
             elements = List.copyOf(elements); relations = List.copyOf(relations); provenance = copyProperties(provenance);
+            provenance.values().forEach(SnapshotEvidence::requireUtf8);
+            if (evidence == null) {
+                if (provenance.containsKey(SnapshotEvidence.FINGERPRINT))
+                    throw SnapshotEvidence.invalid("Marked snapshot requires its frozen evidence");
+                evidence = List.of();
+            } else {
+                evidence = List.copyOf(evidence);
+                var fields = new LinkedHashMap<>(provenance);
+                String digest = SnapshotEvidence.fingerprint(viewId, fields.get(SnapshotEvidence.SNAPSHOT), evidence);
+                String prior = fields.put(SnapshotEvidence.FINGERPRINT, digest);
+                if (prior != null && !prior.equals(digest)) throw SnapshotEvidence.invalid("Snapshot evidence fingerprint mismatch");
+                provenance = Map.copyOf(fields);
+            }
         }
     }
     record SetArchitectureBrief(Map<String, String> fields) implements ArchitectureCommand {

@@ -125,11 +125,6 @@ public final class FrozenClusterRelationComputation implements ClusterRelationCo
     }
     private Node scalar(TaxonomyNode node) { return node == null ? null : scalars(List.of(node)).getFirst(); }
     private List<Node> scalars(List<TaxonomyNode> nodes) {
-        var descriptions = taxonomy.getRelationAssessmentDescriptions(nodes);
-        return nodes.stream().map(node -> {
-            var captured = Objects.requireNonNull(descriptions.get(node.getCode()), "Captured relation catalogue context");
-            return new Node(node.getCode(), node.getTaxonomyRoot(), node.getNameEn(), captured.full(),
-                    node.getParentCode() == null || node.getParentCode().isBlank(), captured.assessedSource());
-        }).toList();
+        return RequirementRelationSearchService.catalogueNodes(taxonomy, nodes);
     }
 }

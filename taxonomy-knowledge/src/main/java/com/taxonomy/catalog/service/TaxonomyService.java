@@ -1004,7 +1004,11 @@ public class TaxonomyService {
         return text.toString();
     }
 
-    public record RelationAssessmentDescriptions(String full, String assessedSource) { }
+    public record RelationAssessmentDescriptions(String full, String assessedSource, boolean navigationOnly) {
+        public RelationAssessmentDescriptions(String full, String assessedSource) {
+            this(full, assessedSource, false);
+        }
+    }
 
     /**
      * Capture both relation-phase representations from the same structured source
@@ -1031,9 +1035,18 @@ public class TaxonomyService {
             List<TaxonomyNode> path = resolveCataloguePath(node.getCode(), true, resolved);
             String own = Objects.toString(node.getDescriptionEn(), "");
             descriptions.put(node.getCode(), new RelationAssessmentDescriptions(
-                    own + assessmentHierarchyContext(path, false), own + assessmentHierarchyContext(path, true)));
+                    own + assessmentHierarchyContext(path, false), own + assessmentHierarchyContext(path, true),
+                    relationNavigationOnly(node, path)));
         }
         return Collections.unmodifiableMap(descriptions);
+    }
+
+    private boolean relationNavigationOnly(TaxonomyNode node, List<TaxonomyNode> semanticPath) {
+        if (node.getParentCode() == null || node.getParentCode().isBlank()) return true;
+        // The original umbrella is the top-level branch under the virtual area.
+        // A peer with no source children, such as BR-1220, can still be an endpoint.
+        return semanticPath.size() == 2 && semanticPath.getFirst().getCode().equals(node.getTaxonomyRoot())
+                && getChildrenOf(node.getCode()).stream().anyMatch(child -> !hasOverlayParent(child.getCode()));
     }
 
     private String assessmentHierarchyContext(List<TaxonomyNode> path, boolean assessedSource) {

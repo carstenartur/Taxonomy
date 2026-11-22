@@ -3,23 +3,23 @@ package com.taxonomy.export;
 import com.taxonomy.diagram.DiagramScene;
 import com.taxonomy.diagram.DiagramSceneEdge;
 import com.taxonomy.diagram.DiagramSceneNode;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import java.util.*;
+import java.util.function.ToDoubleFunction;
 
 /** Readable PDF panels, preserving relative coordinates and complete canonical inventory. */
 final class PdfDiagramPages {
-    private static final double WIDTH = 14_336;
-    private static final double HEIGHT = 14_282;
+    static final float PAGE_WIDTH = PDRectangle.A3.getHeight();
+    static final float PAGE_HEIGHT = PDRectangle.A3.getWidth();
+    static final float PAGE_MARGIN = 32;
+    static final float HEADER_HEIGHT = 76;
+    private static final double WIDTH = PAGE_WIDTH - 2 * PAGE_MARGIN;
+    private static final double HEIGHT = PAGE_HEIGHT - 2 * PAGE_MARGIN - HEADER_HEIGHT;
     private static final double INSET = 52;
     private static final int MAX_PANELS = 256;
 
     record Panel(DiagramScene scene, int crossPageRelationships) { }
     record Plan(List<Panel> panels, Map<String, Integer> nodePages) { }
-    private record Cell(long column, long row) implements Comparable<Cell> {
-        @Override public int compareTo(Cell other) {
-            int order = Long.compare(column, other.column);
-            return order == 0 ? Long.compare(row, other.row) : order;
-        }
-    }
     private PdfDiagramPages() { }
 
     static Plan plan(DiagramScene scene) {
@@ -42,24 +42,24 @@ final class PdfDiagramPages {
             requireFinite(edge.sourceX()); requireFinite(edge.sourceY());
             requireFinite(edge.targetX()); requireFinite(edge.targetY());
         }
-        // Preserve established one-page coordinates and the existing readable poster range.
+        // Preserve the original geometry at readable scale whenever it fits on one sheet.
         if (Math.min(WIDTH / Math.max(1, scene.width()), HEIGHT / Math.max(1, scene.height())) >= .8) {
             Map<String, Integer> pages = new LinkedHashMap<>();
             scene.nodes().forEach(node -> pages.put(node.id(), 1));
             return new Plan(List.of(new Panel(scene, 0)), Map.copyOf(pages));
         }
-        double stepX = WIDTH - largestWidth - 2 * INSET;
-        double stepY = HEIGHT - largestHeight - 2 * INSET;
-        if (stepX <= 0 || stepY <= 0) throw invalid("single node exceeds readable PDF panel dimensions");
-        Map<Cell, List<DiagramSceneNode>> cells = new TreeMap<>();
-        for (var node : scene.nodes()) {
-            Cell cell = new Cell((long) Math.floor(node.x() / stepX), (long) Math.floor(node.y() / stepY));
-            cells.computeIfAbsent(cell, ignored -> new ArrayList<>()).add(node);
+        if (largestWidth > WIDTH - 2 * INSET || largestHeight > HEIGHT - 2 * INSET)
+            throw invalid("single node exceeds readable PDF panel dimensions");
+        // Start each sheet at the next occupied position and keep its full boxes together.
+        // Fixed grid boundaries can strand an entire sheet's first or last column.
+        var cells = new ArrayList<List<DiagramSceneNode>>();
+        for (var column : slices(scene.nodes(), DiagramSceneNode::x, DiagramSceneNode::width, WIDTH)) {
+            cells.addAll(slices(column, DiagramSceneNode::y, DiagramSceneNode::height, HEIGHT));
             if (cells.size() > MAX_PANELS) throw invalid("more than " + MAX_PANELS + " occupied PDF panels");
         }
         Map<String, Integer> nodePages = new LinkedHashMap<>();
         int number = 0;
-        for (var nodes : cells.values()) {
+        for (var nodes : cells) {
             number++;
             for (var node : nodes) nodePages.put(node.id(), number);
         }
@@ -72,7 +72,7 @@ final class PdfDiagramPages {
             else { crossing[source]++; crossing[target]++; }
         }
         List<Panel> panels = new ArrayList<>();
-        for (var nodes : cells.values()) {
+        for (var nodes : cells) {
             double x = nodes.stream().mapToDouble(DiagramSceneNode::x).min().orElseThrow() - INSET;
             double y = nodes.stream().mapToDouble(DiagramSceneNode::y).min().orElseThrow() - INSET;
             double width = nodes.stream().mapToDouble(n -> n.x() + n.width()).max().orElseThrow() - x + INSET;
@@ -80,7 +80,7 @@ final class PdfDiagramPages {
             List<DiagramSceneNode> translated = nodes.stream().map(n -> new DiagramSceneNode(
                     n.id(), n.label(), n.type(), n.relevance(), n.anchor(), n.layer(), n.depth(),
                     n.selectedForImpact(), n.parentId(), n.container(), n.x() - x, n.y() - y, n.width(), n.height(),
-                    n.responsibility())).toList();
+                    n.responsibility(), n.missingMeasurements())).toList();
             List<DiagramSceneEdge> translatedEdges = edges.get(panels.size()).stream().map(e -> new DiagramSceneEdge(
                     e.id(), e.sourceId(), e.targetId(), e.relationType(), e.relevance(), e.relationCategory(),
                     e.sourceX() - x, e.sourceY() - y, e.targetX() - x, e.targetY() - y, e.metadata())).toList();
@@ -89,6 +89,24 @@ final class PdfDiagramPages {
             panels.add(new Panel(panel, crossing[panels.size()]));
         }
         return new Plan(List.copyOf(panels), Map.copyOf(nodePages));
+    }
+
+    private static List<List<DiagramSceneNode>> slices(List<DiagramSceneNode> nodes,
+            ToDoubleFunction<DiagramSceneNode> coordinate, ToDoubleFunction<DiagramSceneNode> dimension, double extent) {
+        var result = new ArrayList<List<DiagramSceneNode>>();
+        double boundary = -1;
+        List<DiagramSceneNode> current = null;
+        for (var node : nodes.stream().sorted(Comparator.comparingDouble(coordinate)).toList()) {
+            double start = coordinate.applyAsDouble(node);
+            if (start + dimension.applyAsDouble(node) > boundary) {
+                boundary = start + extent - 2 * INSET;
+                current = new ArrayList<>();
+                result.add(current);
+                if (result.size() > MAX_PANELS) throw invalid("more than " + MAX_PANELS + " occupied PDF panels");
+            }
+            current.add(node);
+        }
+        return result;
     }
 
     private static void requireFinite(double value) {

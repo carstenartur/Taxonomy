@@ -130,7 +130,11 @@ public final class ScenarioLlmPlayback {
     /** Test driver registers only text read back after its explicit authenticated adoption command. */
     public synchronized void registerAdoptedSource(String source) {
         require(fixture.path("scenarioReformulation").asBoolean(false), "Only the scenario workflow binds adoption sources");
-        require(source.contains(fixture.at("/requirement/text").asText()) && !source.equals(fixture.at("/requirement/text").asText()),
+        String original = fixture.at("/requirement/text").asText();
+        // Only the comparison undoes compact draft paragraph breaks. Reanalysis uses the exact adopted text.
+        String restored = source.startsWith(original) ? source : source.replaceAll("(?<=[.!?])\n\n(?=\\p{Lu})", " ");
+        require((restored.startsWith(original + " ") || restored.startsWith(original + "\n\n"))
+                        && !restored.substring(original.length()).isBlank(),
                 "Adopted fixture must retain the complete original and add reviewed offer text");
         require(adoptedSources.stream().noneMatch(p -> p.fixture.at("/requirement/text").asText().equals(source)), "Duplicate adoption source");
         var next = (tools.jackson.databind.node.ObjectNode) fixture.deepCopy();

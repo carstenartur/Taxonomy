@@ -34,4 +34,6 @@ public final class SparxQeaWriterConnector implements AdmbwQeaExport {
     @Override public ExchangeFile exportAdmbw(Delivery delivery, String rootPackageGuid, byte[] basis) {
         return new AdmbwQeaWriter().write(delivery, rootPackageGuid, basis);
     }
+
+    @Override public boolean supportsCoverageNotes() { return true; }
 }

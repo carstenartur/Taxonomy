@@ -44,9 +44,9 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
             w.contents(contents);
             w.heading(t(de, "Original und Vorschlag", "Original and proposal"), 1, "rf_source");
             w.heading(t(de, "Originalanforderung", "Original requirement"), 2, null);
-            w.paragraph(report.originalText());
+            w.sourceParagraphs(report.originalText());
             w.heading(t(de, "Vollständiger Vorschlagstext", "Complete proposed text"), 2, null);
-            w.paragraph(report.reviewedText());
+            w.sourceParagraphs(report.reviewedText());
             report.metadata().forEach((key, value) -> w.paragraph(label(de, key) + ": " + value));
             w.heading(t(de, "Fragen und Antworten", "Questions and answers"), 1, "rf_questions");
             if (report.questions().isEmpty()) w.paragraph(t(de, "Keine Fragen gespeichert; dies bedeutet keine Freigabe.",

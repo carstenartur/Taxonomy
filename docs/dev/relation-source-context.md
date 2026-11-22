@@ -1,7 +1,7 @@
 # Relation source context
 
-Policy `relation-downwalk-v8` includes `relation-source-context-v1` and
-`relation-semantics-v2`. The procedure
+Policy `relation-downwalk-v10` includes `hierarchy-specificity-v1`,
+`relation-source-context-v1` and `relation-semantics-v2`. The procedure
 keeps its normal call, candidate-count, and request-size limits. A large request
 is never made acceptable by cutting a catalogue description or raising a limit.
 
@@ -22,6 +22,12 @@ exchanges; sources not admitted yet remain in the complete work plan. A delibera
 skipped source is reported as `SOURCE_LEFT_OPEN`, and skipped target work as
 `LEFT_OPEN`, rather than as an invalid provider response. Neither establishes that
 no relation exists.
+
+The search visits compatible target taxonomies with another concrete endpoint on
+the same original quote first, followed by taxonomies with another positively
+scored concrete candidate. Each source gets a turn before the next contribution
+from the same source. These signals order searches. A lower priority preserves
+the route and its pending status when the budget runs out.
 
 ## Evidence by phase
 
@@ -50,6 +56,18 @@ The hierarchy remains context. Its names cannot introduce additional requested
 features. An uncertain function or product identity still requires `UNRESOLVED`
 with a concrete question. The source-context change does not turn uncertainty into
 a negative finding or make generic catalogue features into project requirements.
+
+The virtual taxonomy area and its original top-level wrapper with source children
+guide the search. Top-level leaves and deeper non-leaves with a scoped function
+can be endpoints. For example, `BP-1000` groups the Business Processes branches,
+while `BR-1220` is a specific top-level role. A valid model match on a navigation
+container initiates a descent. If the branch supplies no verified concrete
+counterpart, `ENDPOINT_REFINEMENT` remains open alongside any depth or call limit.
+A positive decision with an open question or a choice group outside `ALTERNATIVE`
+requires correction before verification.
+An ordinary rejection prunes the branch. A rejection containing a question or
+positive claim fields gets one bounded correction. If that fails, the decision
+remains open while other valid answers in the batch are retained.
 
 ## Relationship semantics
 
@@ -86,6 +104,13 @@ readable. Such legacy nodes retain their entire original description; there is n
 text-parsing fallback. The changed recovery-policy fingerprint prevents existing
 journals created under the previous prompt strategy from being reused as if their
 questions had not changed.
+
+Existing analysis reports retain their recorded decisions. An architecture view
+or pattern regenerated from a retained tree excludes automatic relations to
+containers established by that tree before selecting nodes or assigning provenance.
+A frozen finalizer that reconstructs a small tree retains an original child as
+structural evidence for a top-level wrapper. Review decisions in Git and the
+original classification scores retain their own provenance.
 
 The typed ArchiMate relationship provenance preserves the captured source form
 through the optional node property `assessedSourceDescription`. Evidence with

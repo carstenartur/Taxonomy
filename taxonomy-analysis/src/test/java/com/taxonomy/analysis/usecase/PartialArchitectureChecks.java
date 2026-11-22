@@ -155,9 +155,10 @@ public final class PartialArchitectureChecks {
             @Override public com.taxonomy.analysis.dto.AiTargetDtos.AiTargetDescriptor requireWithinBudget(String text, String provider) { return null; }
         };
         var architecture = new RequirementArchitectureViewService(new ArchitectureViewPipeline(null, new ArchitecturePipelineInvariantValidator())) {
-            @Override public RequirementArchitectureView buildFromEvidence(Map<String,Double> scores, Map<String,AnalysisScoreDetail> details, int limit, RelationSearchReport report) {
+            @Override public RequirementArchitectureView buildFromEvidence(Map<String,Double> scores,
+                    Map<String,AnalysisScoreDetail> details, int limit, RelationSearchReport report, Set<String> navigationContext) {
                 if (renderingFailure != null) throw renderingFailure;
-                return super.buildFromEvidence(scores, details, limit, report);
+                return super.buildFromEvidence(scores, details, limit, report, navigationContext);
             }
         };
         WorkspaceViewContextReadPort views = new WorkspaceViewContextReadPort() {
