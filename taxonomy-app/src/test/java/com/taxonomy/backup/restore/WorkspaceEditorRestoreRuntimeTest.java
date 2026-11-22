@@ -1,5 +1,6 @@
 package com.taxonomy.backup.restore;
 
+import org.junit.jupiter.api.Tag;
 import com.taxonomy.backup.*;
 import com.taxonomy.backup.archive.*;
 import com.taxonomy.backup.runtime.*;
@@ -43,6 +44,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 /** Real owner journal, history exporter, native ZIP, staged Hibernate Git host and editor application boundary. */
+@Tag("ci-app-shard-runtime")
 class WorkspaceEditorRestoreRuntimeTest {
     private static final String VERSION="1.5.1-SNAPSHOT",SOURCE_SCOPE="source-owner",TARGET_SCOPE="target-owner";
     private static final String EDIT="00000000-0000-0000-0000-000000000211",SAVE="00000000-0000-0000-0000-000000000212";

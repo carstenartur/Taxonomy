@@ -1,5 +1,6 @@
 package com.taxonomy.backup.runtime;
 
+import org.junit.jupiter.api.Tag;
 import com.taxonomy.backup.*;
 import com.taxonomy.backup.archive.*;
 import com.taxonomy.backup.jobs.BackupJobWorker;
@@ -33,6 +34,7 @@ import static org.assertj.core.api.Assertions.*;
         "taxonomy.backup.directory=./target/production-backup", "taxonomy.backup.source-content-directory=./target/production-backup-sources", "llm.mock=true"})
 @DirtiesContext
 @org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
+@Tag("ci-app-shard-runtime")
 class ProductionCurrentBackupIT {
     @Autowired ApplicationContext context;
     @Autowired DataSource database;

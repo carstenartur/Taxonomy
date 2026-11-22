@@ -1,5 +1,6 @@
 package com.taxonomy.backup.runtime;
 
+import org.junit.jupiter.api.Tag;
 import com.taxonomy.backup.*;
 import com.taxonomy.backup.archive.*;
 import com.taxonomy.backup.jobs.*;
@@ -41,6 +42,7 @@ import static org.assertj.core.api.Assertions.*;
         "taxonomy.backup.directory=./target/production-history-backup",
         "taxonomy.backup.source-content-directory=./target/production-history-sources"})
 @DirtiesContext
+@Tag("ci-app-shard-runtime")
 class ProductionHistoryBackupIT {
     @Autowired ApplicationContext application;
     @Autowired DataSource database;

@@ -1,5 +1,6 @@
 package com.taxonomy.backup.restore;
 
+import org.junit.jupiter.api.Tag;
 import com.taxonomy.backup.*;
 import com.taxonomy.backup.archive.*;
 import com.taxonomy.backup.runtime.*;
@@ -22,6 +23,7 @@ import static com.taxonomy.workspace.backup.WorkspaceGitHistoryReferences.*;
 import static org.assertj.core.api.Assertions.*;
 
 /** Real HSQL owner export/archive/import plus native Git core proof; host DB-Git acceptance is separate. */
+@Tag("ci-app-shard-runtime")
 class WorkspaceRestoreImporterTest {
     @TempDir Path root;
     private final PrincipalId principal=PrincipalId.create();

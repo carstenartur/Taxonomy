@@ -6,7 +6,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import java.nio.file.*;
 import java.util.UUID;
 
-@Tag("ci-app-shard-browser")
+@Tag("ci-app-shard-domain-integration")
 class ReformulationAuthoredScenarioTest {
     @ParameterizedTest @ValueSource(strings = {"time-recording", "cross-taxonomy"})
     void actualAnalysisPreservesNegativeNumericalAndUnmappedSource(String scenario) throws Exception {
