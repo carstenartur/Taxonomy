@@ -20,6 +20,8 @@ Mermaid benötigt das Mermaid-Plugin. PDF für Entscheidungsbäume setzt `taxono
 
 Unterstützte Anhänge sind PDF, DOCX, HTML, Markdown und Text. Texthaltige PDFs können direkt gelesen werden. Gescannte PDFs brauchen eine durchsuchbare Textschicht. Die Grenzen gelten für Text und Anhänge zusammen. Standardmäßig gelten 10 MiB Nachrichtengröße, acht Anhänge und 5.000 Zeichen extrahierter Anforderungstext. Die Laufzeitgrenze der normalen Taxonomy-Analyse gilt auch für E-Mail-Aufträge.
 
+Unterstützt der Posteingangsserver IMAP IDLE, meldet er neue Nachrichten über eine offene TLS-Verbindung. Nach einem Verbindungsabbruch liest Taxonomy auch zwischenzeitlich eingetroffene Nachrichten. Ohne IDLE prüft Taxonomy das Postfach im konfigurierten Intervall (`imap.poll-interval`, standardmäßig 30 Sekunden).
+
 Sobald Taxonomy eine Nachricht eingelesen und einen Platz reserviert hat, bestätigt es den Eingang per E-Mail mit Warteschlangenposition und Live-Link. Eine volle Warteschlange führt zur sofortigen Ablehnung beim Einlesen. Der Live-Link zeigt den Bearbeitungsstand und die aktuelle Position des eigenen Auftrags. Für das gesamte Postfach zeigt er die belegten und konfigurierten Warteplätze, die Zahl der laufenden Analysen und die Ergebnisse im Versand. Ein Auftrag gibt seinen Warteplatz bei Beginn der Analyse frei. Ist der eigene Auftrag abgeschlossen, bleiben die Zahlen der Warteschlange bis zum Ablauf des Links sichtbar und werden weiter aktualisiert. Wer den Link hat, kann diese Angaben sehen. Nachricht, Anforderung und Exporte erscheinen dort nicht. Die Ergebnisse kommen als Anhänge an die zugelassene Absenderadresse. Teilstände sind in der Ergebnisnachricht gekennzeichnet.
 
 ## Einrichtung

@@ -1,5 +1,6 @@
 package com.taxonomy.mail;
 
+import com.icegreen.greenmail.imap.ImapServer;
 import com.icegreen.greenmail.util.DummySSLServerSocketFactory;
 import com.icegreen.greenmail.util.GreenMail;
 import com.icegreen.greenmail.util.ServerSetup;
@@ -28,6 +29,7 @@ import java.util.List;
 import java.util.Properties;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
@@ -75,7 +77,7 @@ class MailTransportRoundTripTest {
         var recipient = servers.setUser(AUTHOR, PASSWORD);
         var properties = new MailTransportProperties(URI.create("https://example.test/taxonomy"), List.of(AUTHOR),
                 1_000_000, 4, 5000, new MailTransportProperties.Imap("127.0.0.1", servers.getImaps().getPort(),
-                INBOX, PASSWORD, "INBOX", Duration.ofSeconds(10), 20, true),
+                INBOX, PASSWORD, "INBOX", Duration.ofMinutes(2), 20, true),
                 new MailTransportProperties.Smtp("127.0.0.1", servers.getSmtps().getPort(), INBOX, PASSWORD, INBOX, true));
         var delivery = new SmtpMailAnalysisDelivery(properties);
         var processor = mock(MailAnalysisProcessor.class);
@@ -85,16 +87,17 @@ class MailTransportRoundTripTest {
 
         var queue = new MailAnalysisQueue(directory.resolve("queue"), 1, Duration.ofHours(1),
                 JsonMapper.builder().build(), processor, delivery);
+        var collector = new ImapMailAnalysisPoller(properties.imap(), new MailRequestParser(
+                new DocumentParserService(), properties), queue, delivery);
         try {
-            var collector = new ImapMailAnalysisPoller(properties.imap(), new MailRequestParser(
-                    new DocumentParserService(), properties), queue, delivery);
-            inbox.deliver(request(SUBJECT));
-            inbox.deliver(request("Anderer Auftrag"));
-            collector.collect();
-
             var store = servers.getManagers().getImapHostManager();
             var received = store.getInbox(recipient);
-            assertThat(received.getMessages()).hasSize(2);
+            inbox.deliver(request(SUBJECT));
+            collector.start();
+            await().atMost(Duration.ofSeconds(10)).until(() -> received.getMessageCount() == 1);
+            // A second arrival after the first mailbox scan must wake IDLE, well before the 2-minute fallback.
+            inbox.deliver(request("Anderer Auftrag"));
+            await().atMost(Duration.ofSeconds(10)).until(() -> received.getMessageCount() == 2);
             var receipt = received.getMessages().get(0).getMimeMessage();
             assertThat(receipt.getContent().toString()).contains("Warteschlange bei Eingang: 1",
                     "https://example.test/taxonomy/mail-analysis/jobs/");
@@ -114,12 +117,33 @@ class MailTransportRoundTripTest {
                 assertThat(original.getFlags().contains(Flags.Flag.SEEN)).isTrue();
                 original.setFlag(Flags.Flag.SEEN, false);
             }
-            collector.collect();
+            // Only an arrival wakes IDLE. The notification message is from a non-allowlisted sender.
+            var notification = request("Notify");
+            notification.setFrom(new InternetAddress("unregistered@example.test"));
+            notification.saveChanges();
+            inbox.deliver(notification);
+            await().atMost(Duration.ofSeconds(10)).until(() -> store.getInbox(inbox).getMessages().stream()
+                    .allMatch(mail -> mail.getFlags().contains(Flags.Flag.SEEN)));
             queue.processNext();
             assertThat(received.getMessages()).hasSize(3);
             verify(processor).process(SUBJECT, REQUIREMENT);
             verifyNoMoreInteractions(processor);
+
+            // Drop the server-side IDLE connection. Leave the message in the same persistent mailbox.
+            var replacement = new ImapServer(servers.getImaps().getServerSetup(), servers.getManagers());
+            servers.getImaps().stopService();
+            inbox.deliver(request("Auftrag während Verbindungsunterbrechung"));
+            replacement.startService();
+            try {
+                await().atMost(Duration.ofSeconds(15)).until(() -> received.getMessageCount() == 4);
+                assertThat(received.getMessages().get(3).getMimeMessage().getContent().toString())
+                        .contains("Warteschlange bei Eingang: 1");
+                collector.stop();
+            } finally {
+                replacement.stopService();
+            }
         } finally {
+            collector.stop();
             queue.destroy();
         }
     }

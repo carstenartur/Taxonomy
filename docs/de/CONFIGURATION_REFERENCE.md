@@ -289,7 +289,7 @@ Die [Einrichtung des E-Mail-Eingangs](MAIL_ANALYSIS.md) enthält die Postfach-, 
 | Variable | Property / Gültigkeit | Standard | Bedeutung |
 |---|---|---|---|
 | `TAXONOMY_MAIL_ENABLED` | `taxonomy.mail.enabled` | `false` | Aktiviert E-Mail-Eingang, Auftragsverarbeitung und Live-Status. |
-| `TAXONOMY_MAIL_IMAP_POLL_ENABLED` | `taxonomy.mail.imap.poll-enabled` | `true` | Liest ungelesene Nachrichten im konfigurierten Postfach ein. |
+| `TAXONOMY_MAIL_IMAP_POLL_ENABLED` | `taxonomy.mail.imap.poll-enabled` | `true` | Aktiviert den Postfacheingang. Er nutzt IMAP IDLE bei verfügbaren Serverbenachrichtigungen und andernfalls das Abfrageintervall. |
 | `TAXONOMY_MAIL_QUEUE_DIRECTORY` | `taxonomy.mail.queue.directory` | `./data/mail-analysis` | Dauerhaftes Verzeichnis eines einzelnen Koordinators. |
 | `TAXONOMY_MAIL_QUEUE_CAPACITY` | `taxonomy.mail.queue.capacity` | `16` | Höchstzahl wartender Aufträge. |
 | `TAXONOMY_MAIL_QUEUE_RETENTION` | `taxonomy.mail.queue.retention` | `PT48H` | Aufbewahrung abgeschlossener Statusinformationen. |

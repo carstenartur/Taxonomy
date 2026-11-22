@@ -284,7 +284,7 @@ See the [email intake setup guide](../de/MAIL_ANALYSIS.md) for the mailbox, SMTP
 | Variable | Spring property / scope | Default | Meaning |
 |---|---|---|---|
 | `TAXONOMY_MAIL_ENABLED` | `taxonomy.mail.enabled` | `false` | Enables email intake, job processing and live status. |
-| `TAXONOMY_MAIL_IMAP_POLL_ENABLED` | `taxonomy.mail.imap.poll-enabled` | `true` | Reads unread messages from the configured mailbox. |
+| `TAXONOMY_MAIL_IMAP_POLL_ENABLED` | `taxonomy.mail.imap.poll-enabled` | `true` | Starts the mailbox listener. It uses IMAP IDLE when supported and otherwise checks the inbox at the configured poll interval. |
 | `TAXONOMY_MAIL_QUEUE_DIRECTORY` | `taxonomy.mail.queue.directory` | `./data/mail-analysis` | Persistent directory owned by one coordinator. |
 | `TAXONOMY_MAIL_QUEUE_CAPACITY` | `taxonomy.mail.queue.capacity` | `16` | Maximum number of waiting jobs. |
 | `TAXONOMY_MAIL_QUEUE_RETENTION` | `taxonomy.mail.queue.retention` | `PT48H` | Retention period for completed job status. |
