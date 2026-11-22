@@ -56,8 +56,12 @@ public final class ArchitectureEditorExportAdapter implements ArchitectureEditor
         var reference = layoutRevision == null ? null : service.read(context, null, layoutRevision);
         var view = projection.project(document, false, strategy, reference, viewId);
         var provenance = document.context();
-        var analysisSources = view.model().getViews().stream()
+        var selectedViews = view.model().getViews().stream()
                 .filter(item -> viewId == null || viewId.isBlank() || viewId.equals(item.getId()))
+                .toList();
+        // The request selects an existing view; only its canonical identity is part of the export.
+        String selectedId = viewId == null || viewId.isBlank() ? null : selectedViews.getFirst().getId();
+        var analysisSources = selectedViews.stream()
                 .filter(item -> item.getExtensions().containsKey("x-analysis-snapshot-id"))
                 .map(item -> new DiagramCanonicalEvidence.AnalysisSource(item.getId(),
                         item.getExtensions().get("x-analysis-snapshot-id"), item.getExtensions().get("x-analysis-status")))
@@ -96,7 +100,7 @@ public final class ArchitectureEditorExportAdapter implements ArchitectureEditor
                 document.source(),
                 view.schema().layoutMode(),
                 view.scene(),
-                new DiagramCanonicalEvidence(viewId, analysisSources, relationships));
+                new DiagramCanonicalEvidence(selectedId, analysisSources, relationships));
     }
 
     private static DiagramCanonicalEvidence.Endpoint endpoint(Map<String, String> fields, String which) {

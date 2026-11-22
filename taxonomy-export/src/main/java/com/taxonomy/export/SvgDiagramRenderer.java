@@ -3,6 +3,8 @@ package com.taxonomy.export;
 import com.taxonomy.diagram.DiagramCanonicalEvidence;
 import com.taxonomy.diagram.DiagramScene;
 import com.taxonomy.diagram.DiagramSceneEdge;
+import org.apache.commons.text.StringEscapeUtils;
+
 import java.awt.Font;
 import java.awt.font.FontRenderContext;
 import java.awt.geom.Rectangle2D;
@@ -336,9 +338,7 @@ public class SvgDiagramRenderer {
         xml.append("</").append(name).append('>');
     }
     private static String xml(String value) {
-        if (value == null) return "";
-        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                .replace("\"", "&quot;").replace("'", "&apos;");
+        return value == null ? "" : StringEscapeUtils.escapeXml10(value);
     }
     private static String number(double value) { return String.format(Locale.ROOT, "%.2f", value); }
 }
