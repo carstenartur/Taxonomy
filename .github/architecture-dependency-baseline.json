@@ -1217,7 +1217,7 @@
       "fromPackage": "com.taxonomy.architecture.decision",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.service",
-      "classDependencyCount": 3
+      "classDependencyCount": 4
     },
     {
       "fromContext": "architecture",
