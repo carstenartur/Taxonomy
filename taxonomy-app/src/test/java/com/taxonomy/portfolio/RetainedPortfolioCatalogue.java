@@ -16,12 +16,13 @@ public abstract class RetainedPortfolioCatalogue {
     protected static void portfolioDatabase(DynamicPropertyRegistry properties) {
         String database = "jdbc:hsqldb:mem:portfolio-" + UUID.randomUUID() + ";shutdown=true";
         properties.add("spring.datasource.url", () -> database);
+        properties.add("taxonomy.git.bootstrap", () -> "false");
     }
 
     @BeforeAll
     protected static void seedFixtureDraft(@Autowired DslGitRepositoryFactory repositories,
                                            @Autowired TaxDslExportService exporter) throws IOException {
-        // The first context in the JVM may already have consumed the application's draft bootstrap.
+        // Seed this isolated database without consuming the application-wide bootstrap guard.
         var repository = repositories.getSystemRepository();
         if (repository.getHeadCommit("draft") == null) {
             repository.commitDsl("draft", exporter.newProject("default"), "system", "Initialize portfolio test project");
