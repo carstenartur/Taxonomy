@@ -48,6 +48,13 @@ jobs:
         with:
           variant: writer-draw
       - name: Run sourced example scenario with real browser and remote LLM playback
+        # The scenario deliberately retains hundreds of immutable snapshots. Keep
+        # those rows and the Lucene index off-heap so the unchanged production
+        # memory guard measures analysis work instead of the test database.
+        env:
+          SPRING_PROFILES_ACTIVE: hsqldb-file
+          TAXONOMY_HSQLDB_FILE_PATH: ${{ runner.temp }}/taxonomy-scenario-${{ github.run_id }}-${{ github.run_attempt }}
+          TAXONOMY_SEARCH_DIRECTORY_ROOT: ${{ runner.temp }}/taxonomy-scenario-lucene-${{ github.run_id }}-${{ github.run_attempt }}
         run: >-
           ./mvnw -B -ntp -pl taxonomy-app -am test -Pscenario-acceptance
       - name: Independently render and check Word and Visio exports
