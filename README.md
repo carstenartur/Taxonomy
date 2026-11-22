@@ -274,7 +274,7 @@ flowchart TD
 Use the checked-in Maven Wrapper. A separately installed Maven version is neither required nor recommended.
 
 ```bash
-git clone https://github.com/carstenartur/Taxonomy.git
+git clone --filter=blob:none https://github.com/carstenartur/Taxonomy.git
 cd Taxonomy
 ./mvnw -pl taxonomy-app -am package -DskipTests
 java -Dloader.path=taxonomy-app/target/features -jar taxonomy-app/target/taxonomy-app-*.jar --taxonomy.plugins.directory=taxonomy-app/target/plugins
@@ -282,6 +282,12 @@ java -Dloader.path=taxonomy-app/target/features -jar taxonomy-app/target/taxonom
 
 Open `http://localhost:8080`. Run these commands from the repository root; the
 feature and plugin directories contain the artifacts staged by Maven.
+
+The partial clone above downloads the current files and commit history, fetching
+older file contents only when needed. For a one-off build of the current branch,
+`git clone --depth=1 --single-branch https://github.com/carstenartur/Taxonomy.git`
+also avoids downloading earlier commits. A shallow clone is not a complete
+history for research or comparisons; see the [source and archive guidance](docs/research/reproducibility.md#3-build-from-source).
 
 On a new local database, the application creates the `admin` account with a **random one-time bootstrap password** in a uniquely named owner-only temporary file. The startup log contains only the file path. Read the file once, sign in, and replace the password immediately; the application removes the file after the committed administrator password change. No reusable password is published in this repository.
 
