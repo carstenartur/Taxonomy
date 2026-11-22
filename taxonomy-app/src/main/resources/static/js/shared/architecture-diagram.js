@@ -46,13 +46,14 @@
             'aria-pressed': Boolean(node.selected) });
         group.appendChild(element('rect', { 'class': prefix + '-node-card', x: 0, y: 0, width: node.width, height: node.height, rx: node.compact ? 6 : 9, fill: node.color }));
         if (node.compact) {
+            var inlinePadding = 8;
             var lineHeight = 16;
             var availableHeight = node.responsibleUnit ? Math.min(44, node.height) : node.height;
             var lineCount = Math.min(3, Math.max(1, Math.floor((availableHeight - 8) / lineHeight)));
-            var lines = compactCaption(node.label || node.id, node.width - 24, lineCount);
+            var lines = compactCaption(node.label || node.id, node.width - 2 * inlinePadding, lineCount);
             var baseline = (availableHeight - (lines.length - 1) * lineHeight) / 2 + 5;
             lines.forEach(function (line, index) {
-                text(group, prefix + '-node-title', 12, baseline + index * lineHeight, line, node.textColor);
+                text(group, prefix + '-node-title', inlinePadding, baseline + index * lineHeight, line, node.textColor);
             });
         }
         else {

@@ -117,10 +117,14 @@
     .taxonomy-app-context-field dt { flex: 0 1 35%; }
 }
 @media (max-width: 420px) {
+    .taxonomy-app-toolbar { flex-wrap: wrap; }
     .taxonomy-app-menu > summary { gap: 0; }
     .taxonomy-app-menu-icon { display: inline; font-size: 1.25rem; }
     .taxonomy-app-menu-label, .taxonomy-app-menu > summary::after { display: none; }
+    /* Keep the 44px command button and work areas together when the account needs a second line. */
+    .taxonomy-app-workspaces { flex: 0 0 auto; max-width: calc(100% - 44px - .25rem); }
     .taxonomy-app-workspaces a { padding-inline: .2rem; }
+    #applicationAccount { margin-inline-start: auto; }
     #applicationAccount > summary { padding-inline: .2rem; font-size: .875rem; }
     #applicationAccount > summary::after { display: none; }
 }

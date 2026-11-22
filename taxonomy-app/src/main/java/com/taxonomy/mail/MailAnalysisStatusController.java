@@ -1,6 +1,7 @@
 package com.taxonomy.mail;
 
 import com.taxonomy.shared.features.ConditionalOnFeature;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
@@ -38,6 +39,8 @@ class MailAnalysisStatusController {
 
     @GetMapping("/{token}/status")
     @ResponseBody
+    @Operation(summary = "Read the status of an email analysis job",
+            description = "Returns the job state and completion flag, its queue position when queued, the queue capacity and queued, running and delivering job counts for the bearer token in the receipt link. The token grants read-only access; mail and result contents are not returned. Responses are not cached. Invalid, unknown, expired or rejected job tokens return HTTP 404. Available when mail analysis is enabled.")
     MailAnalysisQueue.Status status(@PathVariable String token, HttpServletResponse response) {
         return lookup(token, response);
     }
