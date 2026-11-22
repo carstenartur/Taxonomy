@@ -40,12 +40,14 @@ class CommitIndexSearchLifecycleTest {
     @ParameterizedTest
     @ValueSource(strings = {"", "all", "coordinator"})
     void searchableRuntimesKeepTheEmptyProjectionRebuild(String role) {
+        when(searchRebuilder.hasCompleteCoverage(0L)).thenReturn(false, true);
         var runner = contextRunner();
         if (!role.isEmpty()) runner = runner.withPropertyValues("taxonomy.analysis.runtime-role=" + role);
         runner.run(context -> {
             context.getBean(CommitIndexSearchLifecycle.class).run(arguments);
-            verify(indexRepository).count();
+            verify(indexRepository, org.mockito.Mockito.times(2)).count();
             verify(searchRebuilder).rebuildAll();
+            assertThat(context.getBean(CommitIndexSearchLifecycle.class).isReady()).isTrue();
         });
     }
 
@@ -59,23 +61,61 @@ class CommitIndexSearchLifecycleTest {
     void rebuildsAndPurgesSearchDocumentsWhenProjectionTableIsEmpty()
             throws Exception {
         when(indexRepository.count()).thenReturn(0L);
+        when(searchRebuilder.hasCompleteCoverage(0L)).thenReturn(false, true);
         CommitIndexSearchLifecycle lifecycle = new CommitIndexSearchLifecycle(
                 indexRepository, searchRebuilder);
 
         lifecycle.run(arguments);
 
         verify(searchRebuilder).rebuildAll();
+        assertThat(lifecycle.isReady()).isTrue();
     }
 
     @Test
-    void preservesAnAlreadyPopulatedTenantAwareSearchProjection() {
+    void preservesAnAlreadyVerifiedTenantAwareSearchProjection() throws Exception {
         when(indexRepository.count()).thenReturn(3L);
+        when(searchRebuilder.hasCompleteCoverage(3L)).thenReturn(true);
         CommitIndexSearchLifecycle lifecycle = new CommitIndexSearchLifecycle(
                 indexRepository, searchRebuilder);
 
         lifecycle.run(arguments);
 
-        verifyNoInteractions(searchRebuilder);
+        verify(searchRebuilder, org.mockito.Mockito.never()).rebuildAll();
+        assertThat(lifecycle.isReady()).isTrue();
+    }
+
+    @Test
+    void aPopulatedDatabaseCannotHideAnIncompleteSearchProjection() throws Exception {
+        when(indexRepository.count()).thenReturn(3L);
+        when(searchRebuilder.hasCompleteCoverage(3L)).thenReturn(false, true);
+        var lifecycle = new CommitIndexSearchLifecycle(indexRepository, searchRebuilder);
+
+        lifecycle.run(arguments);
+
+        verify(searchRebuilder).rebuildAll();
+        assertThat(lifecycle.isReady()).isTrue();
+    }
+
+    @Test
+    void incompleteRebuildCannotOpenHistorySearch() {
+        when(indexRepository.count()).thenReturn(3L);
+        var lifecycle = new CommitIndexSearchLifecycle(indexRepository, searchRebuilder);
+
+        assertThatThrownBy(() -> lifecycle.run(arguments)).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("coverage is incomplete");
+        assertThat(lifecycle.getState()).isEqualTo(CommitIndexSearchLifecycle.State.FAILED);
+        assertThat(lifecycle.isReady()).isFalse();
+    }
+
+    @Test
+    void explicitlyDisabledSearchDoesNotOpenHibernateSearch() {
+        contextRunner().withPropertyValues("spring.jpa.properties.hibernate.search.enabled=false").run(context -> {
+            var lifecycle = context.getBean(CommitIndexSearchLifecycle.class);
+            lifecycle.run(arguments);
+            assertThat(lifecycle.getState()).isEqualTo(CommitIndexSearchLifecycle.State.DISABLED);
+            assertThat(lifecycle.isReady()).isFalse();
+            verifyNoInteractions(indexRepository, searchRebuilder);
+        });
     }
 
     @Test
@@ -92,6 +132,7 @@ class CommitIndexSearchLifecycleTest {
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("rebuild was interrupted");
             assertThat(Thread.currentThread().isInterrupted()).isTrue();
+            assertThat(lifecycle.isReady()).isFalse();
         } finally {
             Thread.interrupted();
         }

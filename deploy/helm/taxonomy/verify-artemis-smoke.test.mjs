@@ -299,6 +299,35 @@ if web_ready; then exit 0; else exit 1; fi
     }
   } finally { rmSync(root,{recursive:true,force:true}); }
 });
+test('Catalogue-dependent smoke admission waits for authenticated initialized=true independently of web readiness', () => {
+  const root = mkdtempSync(join(tmpdir(), 'artemis-catalogue-ready-'));
+  try {
+    for (const [body, httpExit, ready] of [
+      [{initialized: false, status: 'Loading'}, 0, false],
+      [{status: 'UP'}, 0, false],
+      [{initialized: 'true'}, 0, false],
+      [{initialized: true}, 0, true],
+      [{initialized: true}, 22, false],
+    ]) {
+      const result = spawnSync('bash', ['-c', `set -euo pipefail
+curl() {
+  printf '%s\\n' "$@" >"$PRIVATE_DIR/catalogue-curl-arguments"
+  printf '%s\\n' "$CATALOGUE_RESPONSE"
+  return "$CATALOGUE_HTTP_EXIT"
+}
+${smokeFunction('catalogue_ready')}
+if catalogue_ready; then exit 0; else exit 1; fi
+`], {env: {...process.env, EVIDENCE_DIR: root, PRIVATE_DIR: root,
+        CATALOGUE_RESPONSE: JSON.stringify(body), CATALOGUE_HTTP_EXIT: String(httpExit)},
+        encoding: 'utf8', timeout: 5000});
+      assert.equal(result.status, ready ? 0 : 1, result.stdout + result.stderr);
+      const args = readFileSync(join(root, 'catalogue-curl-arguments'), 'utf8').trim().split('\n');
+      assert.equal(args[args.indexOf('--config') + 1], join(root, 'web.curl'));
+      assert.equal(args.at(-1), 'http://127.0.0.1:18081/api/status/startup');
+      assert.deepEqual(JSON.parse(readFileSync(join(root, 'catalogue-readiness.json'), 'utf8')), body);
+    }
+  } finally { rmSync(root, {recursive: true, force: true}); }
+});
 test('Frozen coordinator identity refuses incomplete selected graph and detects changed input or revision', () => {
   const root=mkdtempSync(join(tmpdir(), 'artemis-coordinator-identity-'));
   try {

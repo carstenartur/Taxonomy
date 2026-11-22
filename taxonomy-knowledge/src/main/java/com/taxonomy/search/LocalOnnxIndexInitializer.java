@@ -14,8 +14,9 @@ import org.springframework.context.event.EventListener;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 
-import java.time.Duration;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -49,10 +50,11 @@ public class LocalOnnxIndexInitializer {
         FAILED
     }
 
+    /** Consistent progress for the optional semantic index; total=-1 is indeterminate. */
+    public record ProgressSnapshot(State state, String detail, long processed, long total) { }
+
     private static final Logger log =
             LoggerFactory.getLogger(LocalOnnxIndexInitializer.class);
-    private static final Duration TAXONOMY_READY_TIMEOUT = Duration.ofMinutes(10);
-    private static final Duration READY_POLL_INTERVAL = Duration.ofMillis(250);
     private static final String READINESS_PROBE = "taxonomy architecture";
 
     private final LocalEmbeddingService embeddingService;
@@ -68,10 +70,8 @@ public class LocalOnnxIndexInitializer {
     private Thread startupWorker;
     private boolean closing;
     private final AtomicBoolean started = new AtomicBoolean();
-    private final AtomicReference<State> state =
-            new AtomicReference<>(State.DISABLED);
-
-    private volatile String detail = "Local embedding indexing has not started";
+    private final AtomicReference<ProgressSnapshot> progress = new AtomicReference<>(
+            new ProgressSnapshot(State.DISABLED, "Local embedding indexing has not started", 0, -1));
     private volatile int indexedNodesAtReadiness;
 
     public LocalOnnxIndexInitializer(
@@ -86,7 +86,8 @@ public class LocalOnnxIndexInitializer {
     }
 
     @Async
-    @EventListener(ApplicationReadyEvent.class)
+    @Order(Ordered.HIGHEST_PRECEDENCE)
+    @EventListener({ApplicationReadyEvent.class, AppInitializationStateService.InitializationReadyEvent.class})
     public void initializeLocalOnnxIndex() {
         if (catalogueRuntimePolicy.workerOnly()) {
             update(State.DISABLED, "Catalogue worker does not build a global embedding index");
@@ -97,9 +98,19 @@ public class LocalOnnxIndexInitializer {
             return;
         }
         synchronized (lifecycleMonitor) {
-            if (closing || !started.compareAndSet(false, true)) {
+            if (closing || started.get()) return;
+            var catalogueState = initializationState.getState();
+            if (catalogueState == AppInitializationStateService.State.FAILED) {
+                update(State.FAILED, "Taxonomy initialization failed before local embedding indexing");
                 return;
             }
+            if (catalogueState != AppInitializationStateService.State.READY) {
+                // Release the shared executor immediately. The catalogue completion event
+                // schedules the dependent work even when that executor has only one worker.
+                update(State.WAITING_FOR_TAXONOMY, "Waiting for the taxonomy catalogue to become ready");
+                return;
+            }
+            started.set(true);
             startupWorker = Thread.currentThread();
         }
 
@@ -108,6 +119,16 @@ public class LocalOnnxIndexInitializer {
         } finally {
             synchronized (lifecycleMonitor) {
                 startupWorker = null;
+            }
+        }
+    }
+
+    @EventListener(AppInitializationStateService.InitializationFailedEvent.class)
+    public void taxonomyInitializationFailed() {
+        synchronized (lifecycleMonitor) {
+            if (!closing && !started.get() && embeddingService.isEnabled()
+                    && !catalogueRuntimePolicy.workerOnly()) {
+                update(State.FAILED, "Taxonomy initialization failed before local embedding indexing");
             }
         }
     }
@@ -124,32 +145,34 @@ public class LocalOnnxIndexInitializer {
                 // Hold the same monitor used by finally, so a late interrupt cannot
                 // reach an unrelated task after this pooled worker has been reused.
                 startupWorker.interrupt();
+            } else if (progress.get().state() == State.WAITING_FOR_TAXONOMY) {
+                update(State.FAILED, "Local embedding indexing stopped during application shutdown");
             }
         }
     }
 
     private void buildLocalOnnxIndex() {
-        update(State.WAITING_FOR_TAXONOMY,
-                "Waiting for the taxonomy catalogue to become ready");
-        if (!awaitTaxonomyReady()) {
-            return;
-        }
-
         try {
             update(State.LOADING_MODEL, "Loading and warming the local embedding model");
             embeddingService.embed("Taxonomy embedding index warm-up");
             String modelKey = embeddingService.embeddingIndexKey();
 
             update(State.INDEXING_NODES,
-                    "Building taxonomy-node vectors required by semantic search");
-            indexRebuilder.rebuildNodeIndex();
+                    "Checking taxonomy-node vectors required by semantic search");
+            if (!indexRebuilder.isNodeEmbeddingIndexCurrent(modelKey)) {
+                indexRebuilder.refreshNodeEmbeddings((processed, total) -> reportProgress(State.INDEXING_NODES,
+                        "Building taxonomy-node vectors required by semantic search", processed, total));
+            }
             indexRebuilder.verifyNodeEmbeddingCoverage(modelKey);
             verifyNodeSearchReadiness();
 
             update(State.INDEXING_RELATIONS,
-                    "Node semantic search is ready; building relation vectors");
+                    "Node semantic search is ready; checking relation vectors");
             try {
-                indexRebuilder.rebuildRelationIndex();
+                if (!indexRebuilder.isRelationEmbeddingIndexCurrent(modelKey)) {
+                    indexRebuilder.refreshRelationEmbeddings((processed, total) -> reportProgress(State.INDEXING_RELATIONS,
+                            "Node semantic search is ready; building relation vectors", processed, total));
+                }
                 indexRebuilder.verifyRelationEmbeddingCoverage(modelKey);
                 update(State.READY,
                         "Local node and relation embedding indexes are ready");
@@ -166,7 +189,7 @@ public class LocalOnnxIndexInitializer {
         } catch (InterruptedException exception) {
             recordInterruption(State.FAILED, "Local embedding indexing was interrupted");
         } catch (Exception | LinkageError exception) {
-            State failedStage = state.get();
+            State failedStage = progress.get().state();
             update(State.FAILED,
                     "Local embedding indexing failed during " + failedStage + " (code=EMBEDDING_INDEX_FAILED)");
             log.error("Local embedding indexing failed (code=EMBEDDING_INDEX_FAILED, stage={})", failedStage);
@@ -174,7 +197,10 @@ public class LocalOnnxIndexInitializer {
     }
 
     public State getState() {
-        State current = state.get();
+        return effectiveState(progress.get().state());
+    }
+
+    private State effectiveState(State current) {
         if (current == State.INDEXING_RELATIONS || current == State.READY || current == State.PARTIAL) {
             if (indexHealth.hasNodeFailure()) return State.FAILED;
             if (current == State.READY && indexHealth.hasRelationFailure()) {
@@ -185,7 +211,17 @@ public class LocalOnnxIndexInitializer {
     }
 
     public String getDetail() {
-        State current = state.get();
+        return effectiveDetail(progress.get());
+    }
+
+    public ProgressSnapshot getProgress() {
+        ProgressSnapshot current = progress.get();
+        return new ProgressSnapshot(effectiveState(current.state()), effectiveDetail(current),
+                current.processed(), current.total());
+    }
+
+    private String effectiveDetail(ProgressSnapshot snapshot) {
+        State current = snapshot.state();
         boolean nodeFailure = indexHealth.hasNodeFailure();
         boolean relationFailure = indexHealth.hasRelationFailure();
         if (nodeFailure && (current == State.FAILED
@@ -198,7 +234,7 @@ public class LocalOnnxIndexInitializer {
                 && (current == State.READY || current == State.PARTIAL)) {
             return "Relation vector writes failed; resolve the cause and restart to rebuild (code=RELATION_VECTOR_WRITE_FAILED)";
         }
-        return detail;
+        return snapshot.detail();
     }
 
     public boolean hasStarted() {
@@ -229,34 +265,6 @@ public class LocalOnnxIndexInitializer {
         indexedNodesAtReadiness = indexedNodes;
     }
 
-    private boolean awaitTaxonomyReady() {
-        long deadline = System.nanoTime() + TAXONOMY_READY_TIMEOUT.toNanos();
-        while (System.nanoTime() < deadline) {
-            AppInitializationStateService.State current = initializationState.getState();
-            if (current == AppInitializationStateService.State.READY) {
-                return true;
-            }
-            if (current == AppInitializationStateService.State.FAILED) {
-                update(State.FAILED,
-                        "Taxonomy initialization failed before local embedding indexing");
-                log.warn("Skipping local embedding indexing because taxonomy initialization failed");
-                return false;
-            }
-            try {
-                Thread.sleep(READY_POLL_INTERVAL.toMillis());
-            } catch (InterruptedException exception) {
-                recordInterruption(State.FAILED,
-                        "Interrupted while waiting for taxonomy initialization");
-                return false;
-            }
-        }
-        update(State.FAILED,
-                "Taxonomy was not ready within " + TAXONOMY_READY_TIMEOUT);
-        log.error("Skipping local embedding indexing because taxonomy was not ready within {}",
-                TAXONOMY_READY_TIMEOUT);
-        return false;
-    }
-
     private void recordInterruption(State interruptedState, String interruptionDetail) {
         Thread.currentThread().interrupt();
         boolean applicationClosing;
@@ -275,9 +283,12 @@ public class LocalOnnxIndexInitializer {
     }
 
     private void update(State nextState, String nextDetail) {
-        state.set(nextState);
-        detail = nextDetail;
+        progress.set(new ProgressSnapshot(nextState, nextDetail, 0, -1));
         log.info("Local embedding index state {}: {}", getState(), getDetail());
+    }
+
+    private void reportProgress(State stage, String message, long processed, long total) {
+        progress.set(new ProgressSnapshot(stage, message, processed, total));
     }
 
 }

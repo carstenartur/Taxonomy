@@ -2,6 +2,10 @@
 
 This chart deploys the same Taxonomy image on Rancher/RKE2, K3s, OpenShift and generic Kubernetes. It deliberately contains no Rancher-specific application code. Published releases are also distributed as versioned OCI Helm artifacts for installation and upgrade through Rancher.
 
+For an existing Rancher workload managed by editing its image and environment,
+use the [non-Helm startup/probe/PVC patch](../../rancher/README.md). Updating an
+image does not apply this chart's templates to that workload.
+
 ## External Artemis and independent workers
 
 For a first installation, follow the [end-to-end Kubernetes guide (German)](../../../docs/de/ARTEMIS_SETUP.md).
@@ -20,7 +24,9 @@ endpoint in restricted mode. Web ingress never selects workers; optional worker
 metrics Services remain internal and require reviewed monitoring peers.
 
 Worker readiness checks `readinessState,analysisBroker`; web readiness checks
-`readinessState,taxonomy`. A broker connection is not evidence of provider availability.
+`readinessState`, allowing login and startup progress while catalogue/search work
+continues. Feature APIs retain their own readiness checks. A broker connection is
+not evidence of provider availability.
 Per-Deployment `Recreate` does not coordinate database migrations across several
 Deployments: stop all roles before an incompatible schema upgrade. See the complete
 [English operations guide](../../../docs/en/OPERATIONS_GUIDE.md#external-artemis-analysis-operations),
@@ -246,7 +252,17 @@ The chart uses:
 - migration-safe `Recreate` upgrades by default;
 - `ExitOnOutOfMemoryError`, allowing Kubernetes to restart a failed JVM.
 
-The startup probe permits up to five minutes for initialization. Increase it for unusually large catalogues or model loading.
+The startup probe permits up to five minutes for the JVM and HTTP server to
+become live. Background catalogue/search initialization can continue after it
+succeeds. Web readiness admits traffic to the login, application shell and startup
+status; it does not certify that every search feature is ready. Check the
+authenticated `/api/status/startup` response and feature-specific state separately.
+Do not use aggregate `/actuator/health` or catalogue/search health for liveness.
+
+These are direct pod paths. The Rancher ingress profile strips the public
+`/taxonomy` prefix, so the chart's probes remain unprefixed. A workload with a real
+`SERVER_SERVLET_CONTEXT_PATH=/taxonomy` instead needs `/taxonomy` on all probe
+paths; see the [two path arrangements](../../rancher/README.md#choose-the-correct-taxonomy-arrangement).
 
 ## Read-only filesystem and persistence
 
@@ -257,6 +273,13 @@ The portable Kubernetes default runs as numeric user/group `10001:10001`, drops 
 - additional explicitly configured mounts.
 
 The active database is the authoritative store for application records and server-side preferences, including database-backed Git history. PostgreSQL is the supported external production default and requires its own persistent storage. A Taxonomy PVC does not protect that external database or turn an in-memory HSQLDB into a file database. The default Lucene directory is in memory; complete recovery of every index is not guaranteed merely by restarting. When `TAXONOMY_SEARCH_DIRECTORY_TYPE=local-filesystem`, the chart requires a PVC and restricts the deployment to one replica.
+
+Set `TAXONOMY_SEARCH_DIRECTORY_ROOT` under `/app/data` (default
+`/app/data/lucene-index`) so the filesystem indexes use that PVC. Branch graph
+vector archives are stored in the database, not in a separately configured branch
+index directory. Preserve both database storage and application files. A shared
+RWX volume does not make concurrent Lucene writers safe; keep worker indexes off
+the web pod's writable index directory.
 
 The same `Recreate` strategy that prevents mixed-version schema access also avoids ReadWriteOnce multi-attach failures. Enabling persistence does not change the strategy because the safe strategy is already the default.
 

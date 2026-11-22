@@ -621,10 +621,15 @@ The native acceptance fixture distinguishes persistent restart from actual share
 
 | Signal | Meaning |
 |---|---|
-| Web `/actuator/health/readiness` | `readinessState,taxonomy`: editor/catalogue usability stays available during broker outage |
+| Web `/actuator/health/readiness` | `readinessState`: login, application shell and startup progress remain available during catalogue/search initialization or broker outage |
 | Worker `/actuator/health/readiness` | `readinessState,analysisBroker`: a connected broker, without waiting for the global catalogue |
 | `/actuator/health/broker` | Broker-only health group; details remain subject to Actuator authorization |
 | `/actuator/health/liveness` | Process liveness; a broker outage must not trigger restart loops |
+
+Catalogue/search feature readiness remains separate from web routing. Inspect
+authenticated `/api/status/startup` and the relevant feature state before using
+dependent operations. For direct Rancher workloads, see the
+[probe and persistent-storage patch](../../deploy/rancher/README.md).
 
 Worker readiness does **not** prove provider credentials, quota tokens, DNS/TLS to
 the model service, model availability, or a successful inference. Validate provider

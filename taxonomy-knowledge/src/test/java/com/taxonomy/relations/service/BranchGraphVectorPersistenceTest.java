@@ -18,13 +18,70 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.support.TransactionTemplate;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
 import static org.assertj.core.api.Assertions.*;
 
 class BranchGraphVectorPersistenceTest {
     @TempDir Path directory;
     static final String HEAD = "1".repeat(40);
+
+    @Test void anInterruptedBuildResumesAfterRestartWithoutReplacingOtherScopes() throws Exception {
+        var selected = RepositoryContext.workspace("repo:A", "alice-copy", "draft", "alice");
+        var source = source(selected, "m1");
+        String operation = java.util.UUID.randomUUID().toString();
+        Map<RepositoryContext, String> retainedLabels = new LinkedHashMap<>();
+        retainedLabels.put(RepositoryContext.workspace("repo:A", "alice-copy", "review", "alice"), "alice-review");
+        retainedLabels.put(RepositoryContext.workspace("repo:A", "bob-copy", "draft", "bob"), "bob-draft");
+        retainedLabels.put(RepositoryContext.workspace("repo:B", "alice-copy", "draft", "alice"), "other-repository");
+        Map<RepositoryContext, BranchGraphVectorStore.Generation> retained = new LinkedHashMap<>();
+
+        try (var beforeRestart = open("create")) {
+            for (var entry : retainedLabels.entrySet()) {
+                var context = entry.getKey();
+                var otherSource = source(context, "m1");
+                beforeRestart.checkpoint(context);
+                String generation = beforeRestart.store.begin(context, otherSource, "fixture");
+                beforeRestart.store.publish(context, otherSource, generation, archive(otherSource, entry.getValue()), () -> {});
+                retained.put(context, beforeRestart.store.read(context, otherSource));
+            }
+            beforeRestart.checkpoint(selected);
+            beforeRestart.store.beginCaptured(selected, source, "fixture", operation, null);
+            // The process stops after the durable build claim, before an archive is published.
+        }
+
+        try (var resumed = open("validate")) {
+            assertThat(resumed.store.status(selected, source).state()).isEqualTo(BranchGraphVectorStore.State.BUILDING);
+            assertThatThrownBy(() -> resumed.store.read(selected, source)).isInstanceOf(SearchUnavailableException.class);
+            assertRetained(resumed, retainedLabels, retained);
+
+            assertThat(resumed.store.beginCaptured(selected, source, "fixture", operation, null)).isEqualTo(operation);
+            resumed.store.publish(selected, source, operation, archive(source, "recovered-alice-draft"), () -> {});
+            assertThat(resumed.store.status(selected, source).state()).isEqualTo(BranchGraphVectorStore.State.READY);
+        }
+
+        try (var reopened = open("validate")) {
+            var recovered = reopened.store.read(selected, source);
+            assertThat(recovered.id()).isEqualTo(operation);
+            assertThat(BranchGraphVectorIndex.search(recovered.index(), vector(), 1, 1).nodes())
+                    .containsExactly("recovered-alice-draft");
+            assertRetained(reopened, retainedLabels, retained);
+        }
+    }
+
+    private static void assertRetained(Database database, Map<RepositoryContext, String> labels,
+                                       Map<RepositoryContext, BranchGraphVectorStore.Generation> retained) throws Exception {
+        for (var entry : labels.entrySet()) {
+            var context = entry.getKey();
+            var current = database.store.read(context, source(context, "m1"));
+            assertThat(current.id()).isEqualTo(retained.get(context).id());
+            assertThat(current.index().bytes()).containsExactly(retained.get(context).index().bytes());
+            assertThat(BranchGraphVectorIndex.search(current.index(), vector(), 1, 1).nodes())
+                    .containsExactly(entry.getValue());
+        }
+    }
 
     @Test void replayAfterRestartPreservesANewerVectorGenerationAtTheSameGitHead() {
         var context = RepositoryContext.centralRead("repo:a", "main", "operator");

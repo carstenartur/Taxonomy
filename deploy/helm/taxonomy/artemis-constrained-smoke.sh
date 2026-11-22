@@ -256,6 +256,11 @@ start_web_forward() {
 }
 start_web_forward
 web_ready() { curl --fail --silent --connect-timeout 2 --max-time 5 http://127.0.0.1:18081/actuator/health/readiness >"${EVIDENCE_DIR}/web-readiness.json" && jq -e ' .status == "UP" ' "${EVIDENCE_DIR}/web-readiness.json" >/dev/null; }
+catalogue_ready() {
+  curl --fail --silent --connect-timeout 2 --max-time 5 --config "${PRIVATE_DIR}/web.curl" \
+    http://127.0.0.1:18081/api/status/startup >"${EVIDENCE_DIR}/catalogue-readiness.json" &&
+    jq -e '.initialized == true' "${EVIDENCE_DIR}/catalogue-readiness.json" >/dev/null
+}
 await_until 90 "coordinator readiness" web_ready
 jq -e '.status == "UP"' "${EVIDENCE_DIR}/web-readiness.json" >/dev/null
 
@@ -287,6 +292,9 @@ workers_absent() { [[ $(kubectl get pod --namespace "${NAMESPACE}" --selector "$
 await_until 120 "workers stopped before admission" workers_absent
 no_cp_consumers() { broker_stats && jq -e '.value.ConsumerCount == 0 and .value.DeliveringCount == 0' "${PRIVATE_DIR}/broker-stats.json" >/dev/null; }
 await_until 90 "old CP consumers disconnected before admission" no_cp_consumers
+# HTTP readiness deliberately permits login/progress before the catalogue exists.
+# Provisioning and analysis require their own observed catalogue readiness.
+await_until 900 "catalogue readiness before workspace provisioning" catalogue_ready
 curl --fail --silent --show-error --config "${PRIVATE_DIR}/web.curl" -H 'Content-Type: application/json' \
   --data '{"displayName":"Artemis constrained acceptance"}' http://127.0.0.1:18081/api/workspace/create >"${PRIVATE_DIR}/workspace.json"
 WORKSPACE=$(jq -er '.workspaceId' "${PRIVATE_DIR}/workspace.json")

@@ -72,6 +72,23 @@ class AppInitializationStateServiceTest {
     }
 
     @Test
+    void failedInitializationDoesNotDiscloseCauseDetailsInPublicStatus() {
+        service.fail("Initialization failed", new IllegalStateException("private-path private-sql"));
+
+        assertThat(service.getState()).isEqualTo(State.FAILED);
+        assertThat(service.getError()).isEqualTo("INITIALIZATION_FAILED");
+    }
+
+    @Test
+    void aCompletionListenerFailureDoesNotRevokeACompleteIndex() {
+        service.setApplicationEventPublisher(event -> { throw new IllegalStateException("listener failed"); });
+
+        service.update(State.READY, "Ready");
+
+        assertThat(service.isReady()).isTrue();
+    }
+
+    @Test
     void failTransitionsToFailed() {
         service.update(State.LOADING_TAXONOMY, "Loading taxonomy from Excel\u2026");
 
@@ -81,7 +98,7 @@ class AppInitializationStateServiceTest {
         assertThat(service.getState()).isEqualTo(State.FAILED);
         assertThat(service.getMessage()).isEqualTo("Initialization failed");
         assertThat(service.isReady()).isFalse();
-        assertThat(service.getError()).isEqualTo("Excel file not found");
+        assertThat(service.getError()).isEqualTo("INITIALIZATION_FAILED");
     }
 
     @Test

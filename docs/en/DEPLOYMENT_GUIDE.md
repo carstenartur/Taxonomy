@@ -187,6 +187,21 @@ Use:
 
 The production Compose health check uses `/actuator/health/readiness`.
 
+For a Rancher workload managed directly through its image and environment, use the
+[existing-workload patch and storage guide](../../deploy/rancher/README.md).
+Updating an image does not apply the repository's Helm templates. Configure both
+startup and liveness probes against `/actuator/health/liveness`, and web readiness
+against `/actuator/health/readiness`. Add `/taxonomy` to those direct pod paths only
+when the application has a real `SERVER_SERVLET_CONTEXT_PATH=/taxonomy`; an
+Ingress that strips the public prefix still requires unprefixed pod probes.
+
+Web readiness means the login, application shell and startup status can receive
+traffic. Catalogue/search readiness is separate: inspect authenticated
+`/api/status/startup` and perform a representative search. Slow initialization or
+optional embeddings must not trigger a liveness restart loop. Keep filesystem
+Lucene indexes on a retained PVC with one writer and `Recreate`; branch graph
+vector archives require the persistent application database.
+
 Monitor:
 
 - readiness and initialization failures;

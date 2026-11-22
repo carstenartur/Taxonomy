@@ -31,6 +31,65 @@ class LocalOnnxIndexInitializerLifecycleTest {
 
     enum Stage { TAXONOMY, MODEL, NODES, RELATIONS }
 
+    @Test
+    void waitingForCatalogueDoesNotOccupyTheOnlyStartupExecutorThread() throws Exception {
+        try (var fixture = new Fixture(Stage.TAXONOMY)) {
+            fixture.start();
+            assertThat(fixture.entered.await(2, TimeUnit.SECONDS)).isTrue();
+            // Catalogue initialization itself is queued on this same executor.
+            // A polling embedding listener starves it indefinitely.
+            try {
+                fixture.executor.submit(() -> {
+                    fixture.release.countDown();
+                    fixture.context.publishEvent(new AppInitializationStateService.InitializationReadyEvent(
+                            new AppInitializationStateService.StateSnapshot(
+                                    AppInitializationStateService.State.READY, "Ready", java.time.Instant.now(), null)));
+                }).get(2, TimeUnit.SECONDS);
+                fixture.awaitWorker();
+                assertThat(fixture.initializer.getState()).isEqualTo(LocalOnnxIndexInitializer.State.READY);
+                assertThat(fixture.modelCalls).hasValue(1);
+            } finally {
+                fixture.release.countDown();
+            }
+        }
+    }
+
+    @Test
+    void catalogueFailureSignalsWaitingInitializerWithoutModelOrExecutorWork() throws Exception {
+        try (var fixture = new Fixture(Stage.TAXONOMY)) {
+            fixture.start();
+            assertThat(fixture.entered.await(2, TimeUnit.SECONDS)).isTrue();
+            fixture.awaitWorker();
+
+            fixture.context.publishEvent(new AppInitializationStateService.InitializationFailedEvent(
+                    new AppInitializationStateService.StateSnapshot(AppInitializationStateService.State.FAILED,
+                            "Catalogue failed", java.time.Instant.now(), "INITIALIZATION_FAILED")));
+
+            assertThat(fixture.initializer.getState()).isEqualTo(LocalOnnxIndexInitializer.State.FAILED);
+            assertThat(fixture.initializer.isNodeSearchReady()).isFalse();
+            assertThat(fixture.modelCalls).hasValue(0);
+        }
+    }
+
+    @Test
+    void unrelatedCompletionListenerFailureCannotStarveEmbeddingContinuation() throws Exception {
+        try (var fixture = new Fixture(Stage.TAXONOMY, true)) {
+            fixture.start();
+            assertThat(fixture.entered.await(2, TimeUnit.SECONDS)).isTrue();
+            fixture.awaitWorker();
+            fixture.release.countDown();
+            var completion = new AppInitializationStateService();
+            completion.setApplicationEventPublisher(fixture.context);
+
+            completion.update(AppInitializationStateService.State.READY, "Ready");
+            fixture.awaitWorker();
+
+            assertThat(completion.isReady()).isTrue();
+            assertThat(fixture.initializer.getState()).isEqualTo(LocalOnnxIndexInitializer.State.READY);
+            assertThat(fixture.modelCalls).hasValue(1);
+        }
+    }
+
     @ParameterizedTest
     @EnumSource(Stage.class)
     void closingOwningContextStopsStartupBeforeExecutorShutdown(Stage stage) throws Exception {
@@ -144,7 +203,19 @@ class LocalOnnxIndexInitializerLifecycleTest {
         final ThreadPoolTaskExecutor executor;
 
         Fixture(Stage stage) {
+            this(stage, false);
+        }
+
+        Fixture(Stage stage, boolean failingCompletionListener) {
             this.stage = stage;
+            if (failingCompletionListener) {
+                context.addApplicationListener(event -> {
+                    if (event instanceof org.springframework.context.PayloadApplicationEvent<?> payload
+                            && payload.getPayload() instanceof AppInitializationStateService.InitializationReadyEvent) {
+                        throw new IllegalStateException("Unrelated completion listener failed");
+                    }
+                });
+            }
             var initialization = new AppInitializationStateService() {
                 @Override
                 public State getState() {
@@ -171,8 +242,12 @@ class LocalOnnxIndexInitializerLifecycleTest {
                 }
             };
             var rebuilder = new LocalEmbeddingIndexRebuilder(null, 2, 16) {
-                @Override public void rebuildNodeIndex() throws InterruptedException { blockAt(Stage.NODES); }
-                @Override public void rebuildRelationIndex() throws InterruptedException { blockAt(Stage.RELATIONS); }
+                @Override public boolean isNodeEmbeddingIndexCurrent(String key) { return false; }
+                @Override public boolean isRelationEmbeddingIndexCurrent(String key) { return false; }
+                @Override public void refreshNodeEmbeddings(java.util.function.BiConsumer<Long, Long> progress)
+                        throws InterruptedException { blockAt(Stage.NODES); }
+                @Override public void refreshRelationEmbeddings(java.util.function.BiConsumer<Long, Long> progress)
+                        throws InterruptedException { blockAt(Stage.RELATIONS); }
                 @Override public void verifyNodeEmbeddingCoverage(String modelKey) { }
                 @Override public void verifyRelationEmbeddingCoverage(String modelKey) { }
             };

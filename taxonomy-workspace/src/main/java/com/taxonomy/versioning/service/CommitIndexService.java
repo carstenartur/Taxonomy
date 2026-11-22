@@ -18,6 +18,7 @@ import org.hibernate.search.mapper.orm.Search;
 import org.hibernate.search.mapper.orm.session.SearchSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -47,6 +48,9 @@ public class CommitIndexService {
 
     @PersistenceContext
     private EntityManager entityManager;
+
+    @Autowired(required = false)
+    private CommitIndexSearchLifecycle searchLifecycle;
 
     public CommitIndexService(
             DslGitRepositoryFactory repositoryFactory,
@@ -173,6 +177,7 @@ public class CommitIndexService {
             String query,
             int maxResults,
             RepositoryContext context) {
+        requireSearchReady();
         if (query == null || query.isBlank() || maxResults <= 0) {
             return Collections.emptyList();
         }
@@ -187,6 +192,7 @@ public class CommitIndexService {
     /** Search across indexed branches only after the selected branch head is searchable. */
     @Transactional(readOnly = true)
     public VersionedMatches searchVersioned(String query, int maxResults, RepositoryContext context, String head) {
+        requireSearchReady();
         TenantScope scope = TenantScope.from(context);
         String branch = context.branch();
         try {
@@ -263,6 +269,7 @@ public class CommitIndexService {
     public List<ArchitectureCommitIndex> findByElement(
             String elementId,
             RepositoryContext context) {
+        requireSearchReady();
         if (elementId == null || elementId.isBlank()) {
             return Collections.emptyList();
         }
@@ -303,6 +310,7 @@ public class CommitIndexService {
     public List<ArchitectureCommitIndex> findByRelation(
             String relationKey,
             RepositoryContext context) {
+        requireSearchReady();
         if (relationKey == null || relationKey.isBlank()) {
             return Collections.emptyList();
         }
@@ -450,6 +458,10 @@ public class CommitIndexService {
                         + ", workspace=" + scope.workspaceScopeKey()
                         + ", branch=" + branch,
                 exception);
+    }
+
+    private void requireSearchReady() {
+        if (searchLifecycle != null && !searchLifecycle.isReady()) throw new SearchUnavailableException();
     }
 
     private static String requireText(String value, String field) {

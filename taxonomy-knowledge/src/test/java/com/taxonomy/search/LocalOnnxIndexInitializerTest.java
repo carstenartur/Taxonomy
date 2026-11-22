@@ -18,6 +18,7 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
@@ -33,9 +34,10 @@ class LocalOnnxIndexInitializerTest {
     @Test
     @SuppressWarnings("unchecked")
     void detailUsesRawStateWithoutReadingEffectiveState() {
-        var rawState = (java.util.concurrent.atomic.AtomicReference<LocalOnnxIndexInitializer.State>)
-                org.springframework.test.util.ReflectionTestUtils.getField(initializer, "state");
-        rawState.set(LocalOnnxIndexInitializer.State.INDEXING_RELATIONS);
+        var rawState = (java.util.concurrent.atomic.AtomicReference<LocalOnnxIndexInitializer.ProgressSnapshot>)
+                org.springframework.test.util.ReflectionTestUtils.getField(initializer, "progress");
+        rawState.set(new LocalOnnxIndexInitializer.ProgressSnapshot(
+                LocalOnnxIndexInitializer.State.INDEXING_RELATIONS, "Building relations", 0, -1));
         var observed = org.mockito.Mockito.spy(initializer);
 
         assertThat(observed.getDetail()).doesNotContain("VECTOR_WRITE_FAILED");
@@ -119,8 +121,8 @@ class LocalOnnxIndexInitializerTest {
                             .isEqualTo(LocalOnnxIndexInitializer.State.READY);
                     assertThat(configuredInitializer.isNodeSearchReady()).isTrue();
                     assertThat(configuredInitializer.getIndexedNodesAtReadiness()).isEqualTo(309);
-                    verify(indexRebuilder).rebuildNodeIndex();
-                    verify(indexRebuilder).rebuildRelationIndex();
+                    verify(indexRebuilder).refreshNodeEmbeddings(any());
+                    verify(indexRebuilder).refreshRelationEmbeddings(any());
                 });
     }
 
@@ -132,10 +134,10 @@ class LocalOnnxIndexInitializerTest {
 
         InOrder order = inOrder(embeddingService, indexRebuilder);
         order.verify(embeddingService).embed("Taxonomy embedding index warm-up");
-        order.verify(indexRebuilder).rebuildNodeIndex();
+        order.verify(indexRebuilder).refreshNodeEmbeddings(any());
         order.verify(embeddingService).indexedNodeCount();
         order.verify(embeddingService).semanticSearch(anyString(), eq(1));
-        order.verify(indexRebuilder).rebuildRelationIndex();
+        order.verify(indexRebuilder).refreshRelationEmbeddings(any());
 
         assertThat(initializer.getState())
                 .isEqualTo(LocalOnnxIndexInitializer.State.READY);
@@ -147,7 +149,7 @@ class LocalOnnxIndexInitializerTest {
     void relationFailureKeepsNodeSemanticSearchAvailable() throws Exception {
         configureReadyTaxonomyAndSearchableNodes(309);
         org.mockito.Mockito.doThrow(new IllegalStateException("relation failure"))
-                .when(indexRebuilder).rebuildRelationIndex();
+                .when(indexRebuilder).refreshRelationEmbeddings(any());
 
         initializer.initializeLocalOnnxIndex();
 
@@ -171,7 +173,7 @@ class LocalOnnxIndexInitializerTest {
         assertThat(initializer.isNodeSearchReady()).isFalse();
         assertThat(initializer.getDetail())
                 .contains("INDEXING_NODES", "EMBEDDING_INDEX_FAILED");
-        verify(indexRebuilder, never()).rebuildRelationIndex();
+        verify(indexRebuilder, never()).refreshRelationEmbeddings(any());
     }
 
     @Test
@@ -190,7 +192,7 @@ class LocalOnnxIndexInitializerTest {
         assertThat(initializer.isNodeSearchReady()).isFalse();
         assertThat(initializer.getDetail())
                 .contains("INDEXING_NODES", "EMBEDDING_INDEX_FAILED");
-        verify(indexRebuilder, never()).rebuildRelationIndex();
+        verify(indexRebuilder, never()).refreshRelationEmbeddings(any());
     }
 
     @Test
@@ -214,8 +216,8 @@ class LocalOnnxIndexInitializerTest {
         initializer.initializeLocalOnnxIndex();
         initializer.initializeLocalOnnxIndex();
 
-        verify(indexRebuilder).rebuildNodeIndex();
-        verify(indexRebuilder).rebuildRelationIndex();
+        verify(indexRebuilder).refreshNodeEmbeddings(any());
+        verify(indexRebuilder).refreshRelationEmbeddings(any());
     }
 
     private void configureReadyTaxonomyAndSearchableNodes(int count) {

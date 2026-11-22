@@ -43,6 +43,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
 import static org.springframework.security.test.web.servlet.response.SecurityMockMvcResultMatchers.authenticated;
@@ -340,6 +342,18 @@ class LocalLoginFlowTest {
                         .accept("text/html").param("_csrf", formCsrf(form.group())))
                 .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/taxonomy/login?logout"));
         assertThat(session.isInvalid()).isTrue();
+    }
+
+    @Test
+    void loginAndHomeRemainUsableWhileTheCatalogueCannotBeRead() throws Exception {
+        when(taxonomyService.getFullTree()).thenThrow(new IllegalStateException("Catalogue is still loading"));
+        var session = signIn("/taxonomy");
+        mvc.perform(get("/taxonomy/").contextPath("/taxonomy").session(session).param("lang", "de"))
+                .andExpect(status().isOk())
+                .andExpect(view().name("index"))
+                .andExpect(content().string(containsString("id=\"startupBanner\"")))
+                .andExpect(content().string(containsString("id=\"applicationLogoutForm\"")));
+        verifyNoInteractions(taxonomyService);
     }
 
     @Test

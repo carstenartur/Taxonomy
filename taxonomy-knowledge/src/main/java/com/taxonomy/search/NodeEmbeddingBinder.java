@@ -4,6 +4,7 @@ import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.service.NodeEmbeddingText;
 import org.hibernate.search.engine.backend.document.DocumentElement;
 import org.hibernate.search.engine.backend.document.IndexFieldReference;
+import org.hibernate.search.engine.backend.types.Projectable;
 import org.hibernate.search.mapper.pojo.bridge.TypeBridge;
 import org.hibernate.search.mapper.pojo.bridge.binding.TypeBindingContext;
 import org.hibernate.search.mapper.pojo.bridge.mapping.programmatic.TypeBinder;
@@ -24,27 +25,36 @@ public class NodeEmbeddingBinder implements TypeBinder {
 
     @Override
     public void bind(TypeBindingContext context) {
-        context.dependencies().use("nameEn").use("descriptionEn");
+        context.dependencies().use("id").use("code").use("uuid").use("nameEn").use("nameDe")
+                .use("descriptionEn").use("descriptionDe").use("parentCode").use("taxonomyRoot")
+                .use("level").use("externalId").use("hasEmbedding").use("incomingRelationCount")
+                .use("outgoingRelationCount").use("requirementCoverageCount").use("graphRole");
 
         IndexFieldReference<float[]> embeddingField =
                 EmbeddingBridgeSupport.createEmbeddingField(context);
 
-        context.bridge(TaxonomyNode.class, new Bridge(embeddingField, EmbeddingBridgeSupport.createEmbeddingModelField(context)));
+        context.bridge(TaxonomyNode.class, new Bridge(embeddingField, EmbeddingBridgeSupport.createEmbeddingModelField(context),
+                context.indexSchemaElement().field(CatalogueIndexFingerprint.FIELD,
+                        f -> f.asString().projectable(Projectable.YES)).toReference()));
     }
 
     public static final class Bridge implements TypeBridge<TaxonomyNode> {
 
         private final IndexFieldReference<float[]> embeddingField;
         private final IndexFieldReference<String> modelField;
+        private final IndexFieldReference<String> contentField;
 
-        Bridge(IndexFieldReference<float[]> embeddingField, IndexFieldReference<String> modelField) {
+        Bridge(IndexFieldReference<float[]> embeddingField, IndexFieldReference<String> modelField,
+                IndexFieldReference<String> contentField) {
             this.embeddingField = embeddingField;
             this.modelField = modelField;
+            this.contentField = contentField;
         }
 
         @Override
         public void write(DocumentElement target, TaxonomyNode node,
                 TypeBridgeWriteContext context) {
+            target.addValue(contentField, CatalogueIndexFingerprint.node(node));
             EmbeddingBridgeSupport.writeEmbedding(target, embeddingField, modelField, node,
                     Bridge::buildEnrichedText);
         }

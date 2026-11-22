@@ -1,0 +1,14 @@
+# Only for a NEW application-data claim. Reuse the existing claim when present.
+# Choose the namespace with kubectl -n or the Rancher namespace selector.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: taxonomy-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  # storageClassName is intentionally omitted: select an available cluster class
+  # if there is no suitable default. Review its reclaim policy and backup support.
+  resources:
+    requests:
+      storage: 10Gi

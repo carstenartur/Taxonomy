@@ -606,10 +606,16 @@ RPM-/TPM-/RPD-Grenze; vorhandene lokale Ratenbegrenzungen bleiben bestehen.
 
 | Signal | Bedeutung |
 |---|---|
-| Web `/actuator/health/readiness` | `readinessState,taxonomy`: Editor/Katalog bleiben bei Brokerausfall nutzbar |
+| Web `/actuator/health/readiness` | `readinessState`: Anmeldung, Anwendungsoberfläche und Startfortschritt bleiben während Katalog-/Suchinitialisierung oder Brokerausfall erreichbar |
 | Worker `/actuator/health/readiness` | `readinessState,analysisBroker`: Broker-Verbindung ohne globalen Katalog |
 | `/actuator/health/broker` | Broker-Gruppe; Detailzugriff unterliegt weiterhin Actuator-Autorisierung |
 | `/actuator/health/liveness` | Prozesszustand; Brokerausfall darf keine Neustartschleife auslösen |
+
+Die Bereitschaft von Katalog und Suche bleibt von der Web-Erreichbarkeit getrennt.
+Vor abhängigen Operationen den authentifizierten `/api/status/startup` und den
+jeweiligen Funktionszustand prüfen. Für direkt verwaltete Rancher-Workloads steht
+ein [Patch für Probes und persistente Speicherung](../../deploy/rancher/README.md)
+bereit.
 
 Worker-Readiness beweist weder Provider-Zugangsdaten noch Quotentokens, DNS/TLS zum
 Modell, Modellverfügbarkeit oder erfolgreiche Inferenz. Provider-Konfiguration

@@ -43,6 +43,38 @@ Das generische `production`-Profil verwendet für die HSQLDB-Compose-Basis
 Migrationen laufen vor der Hibernate-Validierung. Ein Profilwechsel kopiert
 keine HSQLDB-Daten. Siehe [Datenbank-Einrichtung](DATABASE_SETUP.md#wechsel-von-hsqldb-zu-postgresql).
 
+## Bestehender Rancher-Workload ohne Helm
+
+Wenn Image und Umgebungsvariablen direkt im vorhandenen Rancher-Workload gepflegt
+werden, gilt die [Anleitung mit Deployment-Patch und PVC-Beispiel](../../deploy/rancher/README.md).
+Ein Image-Update wendet `deploy/helm/taxonomy/templates/resources.yaml` nicht an.
+Probes, Volume-Mounts und Update-Strategie müssen im Workload selbst gesetzt werden.
+
+Startup und Liveness verwenden `/actuator/health/liveness`; Web-Readiness verwendet
+`/actuator/health/readiness`. Bei einem echten
+`SERVER_SERVLET_CONTEXT_PATH=/taxonomy` benötigen alle direkten Pod-Probes das
+Präfix `/taxonomy`. Entfernt dagegen der Ingress das öffentliche Präfix, bleiben
+die Pod-Probes ohne Präfix. Das bestehende Helm-Rancher-Profil verwendet diese
+Ingress-Variante.
+
+Web-Readiness gibt Anmeldung, Anwendungsoberfläche und Startfortschritt frei.
+Katalog und Suche besitzen eigene Bereitschaftszustände, die unter dem
+authentifizierten `/api/status/startup` und in der Oberfläche sichtbar sind.
+Langsamer Indexaufbau darf keine Liveness-Neustartschleife verursachen.
+`TAXONOMY_INIT_ASYNC=true` aktiviert den Hintergrundstart; das Profil `kubernetes`
+setzt ihn standardmäßig. `TAXONOMY_INIT_RELOAD_EXISTING=false` behält den
+vorhandenen Katalog bei.
+
+Für persistente Hibernate-Search-Indizes
+`TAXONOMY_SEARCH_DIRECTORY_TYPE=local-filesystem` und
+`TAXONOMY_SEARCH_DIRECTORY_ROOT=/app/data/lucene-index` mit einer erhaltenen PVC
+unter `/app/data` kombinieren. Nur einen schreibenden Prozess, eine Replik und
+`Recreate` betreiben; ein gemeinsames RWX-Volume koordiniert keine Lucene-Schreiber.
+Branch-Vektorarchive liegen in der Anwendungsdatenbank und benötigen deren
+persistente Speicherung und Sicherung. Ein neues Volume kopiert keine vorhandenen
+Daten. Den vorhandenen Mount und Datenbank-/Secret-Konfiguration vor der
+Umstellung prüfen und erhalten.
+
 ## Sicherheitsanforderungen
 
 - TLS über Caddy, Ingress oder einen freigegebenen Reverse Proxy terminieren.

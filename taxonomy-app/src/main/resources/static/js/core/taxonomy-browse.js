@@ -414,7 +414,6 @@
             .then(r => { if (!r.ok) throw new Error('AI status request failed'); return r.json(); })
             .then(status => {
                 if (requestId !== aiStatusRequestId || (document.getElementById('providerSelect')?.value || '') !== selectedProvider) return;
-                const btn = document.getElementById('analyzeBtn');
                 const infoEl = document.getElementById('aiProviderInfo');
                 const badge = document.getElementById('aiStatusBadge');
                 const connectionWarning = document.getElementById('aiConnectionWarning');
@@ -429,7 +428,6 @@
                 if (['UNREACHABLE', 'AUTHENTICATION_FAILED', 'UNKNOWN'].includes(status.connectionStatus)) {
                     const key = status.connectionStatus === 'UNREACHABLE' ? 'unreachable'
                         : status.connectionStatus === 'AUTHENTICATION_FAILED' ? 'authentication' : 'unknown';
-                    btn.disabled = false;
                     infoEl.classList.add('d-none');
                     const aiWarn = document.getElementById('aiUnavailableWarning');
                     if (aiWarn) aiWarn.classList.add('d-none');
@@ -448,7 +446,6 @@
                 if (connectionWarning) connectionWarning.hidden = true;
 
                 if (status.available) {
-                    btn.disabled = false;
                     const aiWarn = document.getElementById('aiUnavailableWarning');
                     if (aiWarn) aiWarn.classList.add('d-none');
                     if (isAdminMode()) {
@@ -477,8 +474,7 @@
                         }
                     }
                 } else {
-                    // Even when no cloud provider is available, allow LOCAL_ONNX and MANUAL
-                    btn.disabled = false;
+                    // LOCAL_ONNX and MANUAL remain independent of cloud availability.
                     infoEl.classList.add('d-none');
                     const aiWarn = document.getElementById('aiUnavailableWarning');
                     if (aiWarn) aiWarn.classList.remove('d-none');
@@ -493,8 +489,6 @@
             .catch(() => {
                 if (requestId !== aiStatusRequestId || (document.getElementById('providerSelect')?.value || '') !== selectedProvider) return;
                 // If the status check fails, reset to a neutral unknown state.
-                const btn = document.getElementById('analyzeBtn');
-                if (btn) btn.disabled = false;
                 const aiWarn = document.getElementById('aiUnavailableWarning');
                 if (aiWarn) aiWarn.classList.add('d-none');
                 const connectionWarning = document.getElementById('aiConnectionWarning');
@@ -601,6 +595,8 @@
     var proposalSource = null;
     var startupRetryTimer = null;
     var taxonomyLoading = false;
+    var taxonomyLoaded = false;
+    var startupMonitoring = false;
 
     window.addEventListener('pagehide', function () {
         startupPageActive = false;
@@ -612,6 +608,7 @@
         if (!event.persisted || startupPageActive) return;
         startupPageActive = true;
         if (taxonomyLoading) loadTaxonomy();
+        else if (startupMonitoring) pollStartupStatus();
         loadProposals(S.currentProposalFilter);
     });
 
@@ -627,6 +624,10 @@
 
     /** Shows or hides the global startup banner and disables/enables interactive elements. */
     function setStartupBanner(show, statusText) {
+        if (window.TaxonomyStartupProgress) {
+            window.TaxonomyStartupProgress.render({initialized: !show, phaseMessage: statusText || ''});
+            return;
+        }
         var banner = document.getElementById('startupBanner');
         var statusSpan = document.getElementById('startupBannerStatus');
         var analyzeBtn = document.getElementById('analyzeBtn');
@@ -648,6 +649,8 @@
         if (!startupPageActive) return;
         clearTimeout(startupRetryTimer); startupRetryTimer = null;
         taxonomyLoading = true;
+        taxonomyLoaded = false;
+        setStartupBanner(true);
         var controller = beginStartupRead();
         window.TaxonomyReferenceApi.taxonomy(controller.signal)
             .then(function (r) {
@@ -665,6 +668,7 @@
             .then(function (data) {
                 if (!currentStartupRead(controller) || !data) return; // 503 branch already handled
                 taxonomyLoading = false;
+                taxonomyLoaded = true;
                 setStartupBanner(false);
                 S.taxonomyData = data;
                 window.TaxonomyAnalysisScope?.render(S.taxonomyData);
@@ -674,20 +678,23 @@
                 if (window.TaxonomyGraph) {
                     window.TaxonomyGraph.populateNodeSuggestions(S.taxonomyData);
                 }
+                // Optional vectors can still be building after full-text/catalogue readiness.
+                // Keep their progress visible without holding the catalogue or analysis button.
+                pollStartupStatus();
             })
             .catch(function (err) {
                 if (err?.code === 'ABORTED') return;
                 if (!currentStartupRead(controller)) return;
-                taxonomyLoading = false;
-                setStartupBanner(false);
-                document.getElementById('taxonomyTree').innerHTML =
-                    '<div class="alert alert-danger">' + t('browse.load.failed', err) + '</div>';
+                setStartupBanner(true, t('startup.ui.connectionRetry'));
+                document.getElementById('taxonomyTree').textContent = t('startup.ui.connectionRetry');
+                pollStartupStatus();
             });
     }
 
-    /** Polls /api/status/startup every 5 s until the taxonomy is ready, then reloads the tree. */
+    /** Polls measured catalogue/vector progress; terminal failures remain visible. */
     function pollStartupStatus() {
         if (!startupPageActive) return;
+        startupMonitoring = true;
         clearTimeout(startupRetryTimer);
         var timer = setTimeout(function () {
             if (!startupPageActive || startupRetryTimer !== timer) return;
@@ -697,16 +704,29 @@
                 .then(function (r) { return currentStartupRead(controller) ? r.json() : null; })
                 .then(function (s) {
                     if (!currentStartupRead(controller)) return;
+                    var presentation = s?.initialized && !taxonomyLoaded ? null
+                        : window.TaxonomyStartupProgress?.render(s || {initialized: false});
+                    if (s && s.phase === 'FAILED') {
+                        startupMonitoring = false;
+                        taxonomyLoading = false;
+                        var failedTree = document.getElementById('taxonomyTree');
+                        failedTree.textContent = t('startup.ui.failedHelp');
+                        return;
+                    }
                     if (s && s.initialized) {
-                        setStartupBanner(false);
-                        loadTaxonomy();
+                        if (!taxonomyLoaded) {
+                            loadTaxonomy();
+                        } else if (presentation && presentation.pending) {
+                            pollStartupStatus();
+                        } else {
+                            startupMonitoring = false;
+                        }
                     } else {
                         var statusMsg = s && s.phaseMessage
                             ? ' — ' + s.phaseMessage
                             : (s && s.status ? ' (status: ' + s.status + ')' : '');
-                        setStartupBanner(true, statusMsg.trim());
-                        document.getElementById('taxonomyTree').innerHTML =
-                            '<div class="alert alert-info">' + LOADING_MSG + statusMsg + '</div>';
+                        if (!presentation) setStartupBanner(true, statusMsg.trim());
+                        document.getElementById('taxonomyTree').textContent = LOADING_MSG + statusMsg;
                         pollStartupStatus();
                     }
                 })

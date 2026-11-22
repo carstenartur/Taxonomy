@@ -1161,6 +1161,13 @@
       "fromPackage": "com.taxonomy.shared.controller",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.service",
+      "classDependencyCount": 5
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.shared.controller",
+      "toContext": "knowledge",
+      "toPackage": "com.taxonomy.search",
       "classDependencyCount": 3
     },
     {
@@ -1176,6 +1183,13 @@
       "toContext": "preferences",
       "toPackage": "com.taxonomy.preferences.storage",
       "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.shared.controller",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.versioning.service",
+      "classDependencyCount": 2
     },
     {
       "fromContext": "app-composition",

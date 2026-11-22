@@ -23,7 +23,7 @@ Git-gestützte Einstellungen (`taxonomy.llm.*`, `taxonomy.analysis.min-score`, `
 |---|---|---|---|
 | `PORT` | `server.port` | `8080` | HTTP-Port. |
 | `SPRING_PROFILES_ACTIVE` | Spring-Profile | `hsqldb` | Kommagetrennte Profile, etwa `production,postgres`. |
-| `TAXONOMY_INIT_ASYNC` | `taxonomy.init.async` | `false` | Öffnet den Port vor dem Katalogladen; Readiness wartet weiter. |
+| `TAXONOMY_INIT_ASYNC` | `taxonomy.init.async` | `false`; im Profil `kubernetes` `true` | Anmeldung und Oberfläche sind während der Katalog- und Indexvorbereitung erreichbar. HTTP-Readiness gibt den Webzugriff frei; katalogabhängige APIs warten weiter auf erfolgreich vorbereitete Daten und Indizes. `/api/status/startup` meldet Funktionsbereitschaft und Fortschritt. |
 | `TAXONOMY_INIT_RELOAD_EXISTING` | `taxonomy.init.reload-existing` | `false` | Erzwingt einen destruktiven Katalogneuimport; nur nach Sicherung. |
 | `TAXONOMY_LAZY_INIT` | `spring.main.lazy-initialization` | `true` | Initialisiert die meisten Beans erst bei Bedarf. |
 | `TAXONOMY_THYMELEAF_CACHE` | `spring.thymeleaf.cache` | `true` | Template-Cache. |
@@ -40,7 +40,7 @@ Git-gestützte Einstellungen (`taxonomy.llm.*`, `taxonomy.analysis.min-score`, `
 | `GIT_COMMIT` | `git.commit.id` | leer | Bevorzugter Quell-Commit der Report-Provenienz. |
 | `GITHUB_SHA` | Fallback für `git.commit.id` | `unknown` | CI-Fallback, wenn `GIT_COMMIT` fehlt. |
 | `TAXONOMY_SCHEMA_MIGRATION_ENABLED` | `taxonomy.schema-migration.enabled` | `true` | Portable idempotente Schema-Vertragsmigrationen. |
-| `TAXONOMY_COMMIT_INDEX_SEARCH_REBUILD_EMPTY` | `taxonomy.commit-index.search-rebuild-empty` | `true` | Bereinigt/baut den Commit-Suchindex bei leerer Projektion neu. |
+| `TAXONOMY_COMMIT_INDEX_SEARCH_REBUILD_EMPTY` | `taxonomy.commit-index.search-rebuild-empty` | `true` | Prüft beim Start den vollständigen Inhalt und Geltungsbereich des Commit-Suchindexes und repariert fehlende/veraltete Indizes. `false` umgeht sämtliche Startprüfungen und Wiederherstellung; nur für einen kontrollierten Diagnosestart verwenden. |
 | `TAXONOMY_JGIT_STORAGE_LEGACY_ADOPTION` | `taxonomy.jgit-storage.legacy-adoption` | `false` | Einmalige, fail-closed Altschema-Adoption nach Backup und Preflight. |
 | `TAXONOMY_GIT_BOOTSTRAP` | `taxonomy.git.bootstrap` | `true` | Erzeugt bei leerem Systemrepository den ersten `draft`-Commit. |
 | `TAXONOMY_FEATURES_MULTI_REPOSITORY_API_ENABLED` | `taxonomy.features.multi-repository-api.enabled` | `false` | Aktiviert die opt-in `/api/repositories`-Oberfläche. |

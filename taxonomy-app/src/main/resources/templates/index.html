@@ -51,10 +51,16 @@
 
 <!-- Global startup loading banner — shown while taxonomy data is initializing,
      visible across all tabs to give clear feedback on any page. -->
-<div id="startupBanner" class="alert alert-info text-center mb-0 d-none" role="alert"
+<div id="startupBanner" class="alert alert-info text-center mb-0 d-none" role="status" aria-live="polite"
      style="border-radius:0; border-left:none; border-right:none; position:sticky; top:0; z-index:1050;">
-    ⏳ <strong th:text="#{startup.ui.title}">Application is starting up…</strong> <span th:text="#{startup.ui.help}">Taxonomy data is loading — this takes about 1–2 minutes on first start.</span>
-    <span id="startupBannerStatus" class="ms-2 text-muted small"></span>
+    <strong id="startupBannerTitle" th:text="#{startup.ui.title}">Application is starting up…</strong>
+    <span id="startupBannerHelp" th:text="#{startup.ui.help}">You can stay signed in while the catalogue and search are prepared.</span>
+    <div id="startupBannerStatus" class="small mt-1"></div>
+    <div id="startupHistoryStatus" class="small"></div>
+    <div class="mx-auto mt-1" style="max-width:32rem">
+        <progress id="startupProgress" class="w-100" max="1" aria-labelledby="startupBannerTitle startupBannerStatus"></progress>
+        <span id="startupProgressCount" class="small"></span>
+    </div>
 </div>
 
 <div class="container-fluid px-3 pt-3" id="mainContent" role="main">
@@ -1741,6 +1747,7 @@
 <script th:src="@{/js/shared/taxonomy-about.js}"></script>
 <script th:src="@{/js/core/taxonomy-analysis-scope.js}"></script>
 <script th:src="@{/js/core/taxonomy-scoring.js}"></script>
+<script th:src="@{/js/shared/taxonomy-startup-progress.js}"></script>
 <script th:src="@{/js/core/taxonomy-browse.js}"></script>
 <script th:src="@{/js/core/taxonomy-analysis-guidance.js}"></script>
 <script th:src="@{/js/shared/taxonomy-document-import.js}"></script>
