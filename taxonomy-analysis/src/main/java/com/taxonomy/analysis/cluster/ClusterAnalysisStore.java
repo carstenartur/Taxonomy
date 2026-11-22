@@ -40,6 +40,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
     private final AnalysisDispatchService dispatch;
     private final ClusterAnalysisDiagnostics diagnostics;
     private final ClusterAnalysisRetention retention;
+    private final ProgressCatalogueCache progressCatalogues;
     private final com.taxonomy.analysis.recovery.AnalysisContinuationStore continuations;
     private final AnalysisMessageCodec codec = new AnalysisMessageCodec();
     private volatile Consumer<AnalysisProgressEvent> events = event -> { };
@@ -89,6 +90,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
         this.em = Objects.requireNonNull(em); this.tx = new TransactionTemplate(transactions);
         this.mapper = Objects.requireNonNull(mapper); this.dispatch = Objects.requireNonNull(dispatch);
         this.diagnostics = new ClusterAnalysisDiagnostics(em, transactions, mapper, this);
+        this.progressCatalogues = new ProgressCatalogueCache(mapper);
         this.continuations = continuations;
         this.retention = new ClusterAnalysisRetention(em, tx);
     }
@@ -566,12 +568,12 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
             // Keep the revision and all per-task observations coherent with worker updates.
             var run = requireRun(context.operationId(), true); requireAuthority(run, context);
             var work = works(run.id);
-            var roots = new HashMap<String, RootCatalogueSnapshot>();
+            var roots = new HashMap<String, ClusterAnalysisProgress.Catalogue>();
             boolean restored = run.state.terminal() && work.stream().allMatch(task -> task.attempts == 0 && task.startedAt == null);
             com.taxonomy.catalog.snapshot.CatalogueSourceIdentity frozenSource = null;
             for (var input : em.createQuery("select i from ClusterAnalysisInput i where i.operationId=:id", ClusterAnalysisInput.class)
                     .setParameter("id", run.id).getResultList()) {
-                var root = ClusterAnalysisProgress.frozen(input.inputJson, mapper, context, input.root, restored);
+                var root = progressCatalogues.read(input.inputJson, context, input.root, restored);
                 if (root != null) {
                     if (frozenSource != null && !frozenSource.equals(root.source())) throw new IllegalStateException("Conflicting frozen progress sources");
                     frozenSource = root.source(); roots.put(input.root, root);

@@ -17,6 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Gives the complete scenario its own real heap, without mocking resource admission. */
 public final class ScenarioAcceptanceProcess {
     private static final String COMPLETED = "SCENARIO_FRESH_JVM_ACCEPTANCE_OK";
+    static final String STORAGE_PROPERTY = "scenario.storage.directory";
     private static final tools.jackson.databind.ObjectMapper EVIDENCE_JSON = new tools.jackson.databind.ObjectMapper();
     // A CI-heap measurement completed 80 continuations in ten minutes while only
     // 51/105 authored claims were verified. Real HSQL persistence and full saved
@@ -29,7 +30,7 @@ public final class ScenarioAcceptanceProcess {
 
     private ScenarioAcceptanceProcess() { }
 
-    static void verify() throws Exception {
+    static void verify(Path storage) throws Exception {
         Path directory = Path.of(System.getProperty("scenario.output", "target/scenario-acceptance"));
         Files.createDirectories(directory);
         clearEvidence(directory);
@@ -42,6 +43,7 @@ public final class ScenarioAcceptanceProcess {
         long maximumHeap = Runtime.getRuntime().maxMemory();
         command.add("-Xmx" + maximumHeap);
         command.add("-Dscenario.runId=" + runId);
+        command.add("-D" + STORAGE_PROPERTY + "=" + storage.toAbsolutePath());
         ManagementFactory.getRuntimeMXBean().getInputArguments().stream()
                 .filter(argument -> argument.startsWith("-javaagent:") && argument.contains("jacoco"))
                 .forEach(command::add);

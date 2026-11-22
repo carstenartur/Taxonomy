@@ -849,6 +849,15 @@
                 <maven.build.cache.enabled>false</maven.build.cache.enabled>
             </properties>
             <build><plugins><plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!-- Keep class-scoped HSQLDB, Spring and JGit state out of the
+                         next class instead of retaining it until the core JVM OOMs. -->
+                    <forkCount>1</forkCount>
+                    <reuseForks>false</reuseForks>
+                </configuration>
+            </plugin><plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>${exec-maven-plugin.version}</version>

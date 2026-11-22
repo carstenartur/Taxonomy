@@ -2,6 +2,7 @@ package com.taxonomy.analysis.cluster;
 
 import com.taxonomy.analysis.dag.*;
 import com.taxonomy.analysis.relations.RelationSearchDistribution;
+import com.taxonomy.catalog.snapshot.CatalogueSourceIdentity;
 import com.taxonomy.catalog.snapshot.RootCatalogueSnapshot;
 import com.taxonomy.dto.*;
 import tools.jackson.databind.ObjectMapper;
@@ -31,6 +32,33 @@ final class ClusterAnalysisProgress {
     record View(AnalysisNodeProgress nodes, RelationSearchProgress relations, String phase, String node) {
         static final View EMPTY = new View(null, null, null, null);
     }
+    private record ProgressNode(String code, String parentCode, boolean budgetLeaf) { }
+    static final class Catalogue {
+        private final CatalogueSourceIdentity source;
+        private final String root, nameEn, nameDe;
+        private final List<ProgressNode> nodes;
+        private final Map<String, ProgressNode> byCode;
+
+        Catalogue(RootCatalogueSnapshot snapshot) {
+            this.source = snapshot.source();
+            this.root = snapshot.rootCode();
+            var rootNode = snapshot.nodes().stream().filter(node -> root.equals(node.code())).findFirst().orElseThrow();
+            this.nameEn = rootNode.nameEn();
+            this.nameDe = rootNode.nameDe();
+            var budgetParents = new HashSet<String>();
+            snapshot.nodes().stream().filter(node -> !"PRODUCT".equals(node.analysisRole()))
+                    .map(RootCatalogueSnapshot.Node::parentCode).filter(Objects::nonNull).forEach(budgetParents::add);
+            this.nodes = snapshot.nodes().stream().map(node -> new ProgressNode(node.code(), node.parentCode(),
+                    !"PRODUCT".equals(node.analysisRole()) && !budgetParents.contains(node.code()))).toList();
+            Map<String, ProgressNode> indexed = new HashMap<>();
+            nodes.forEach(node -> indexed.put(node.code(), node));
+            this.byCode = Map.copyOf(indexed);
+        }
+
+        CatalogueSourceIdentity source() { return source; }
+        String root() { return root; }
+        int size() { return nodes.size(); }
+    }
 
     static Worker read(String source, ObjectMapper json) {
         if (source == null) return null;
@@ -46,13 +74,18 @@ final class ClusterAnalysisProgress {
         // catalogue has no denominator; task counts remain available for those runs.
         if (source == null || !json.readTree(source).has("schemaVersion")) return null;
         var frozen = json.readValue(source, RootCatalogueSnapshot.class);
-        if (!root.equals(frozen.rootCode()) || !restored && !DurableClusterAnalysisExecution.source(context).equals(frozen.source()))
-            throw new IllegalStateException("Progress catalogue differs from admitted authority");
+        requireFrozenAuthority(frozen.source(), frozen.rootCode(), context, root, restored);
         return frozen;
     }
 
+    static void requireFrozenAuthority(CatalogueSourceIdentity frozenSource, String frozenRoot,
+                                       AnalysisOperationContext context, String root, boolean restored) {
+        if (!root.equals(frozenRoot) || !restored && !DurableClusterAnalysisExecution.source(context).equals(frozenSource))
+            throw new IllegalStateException("Progress catalogue differs from admitted authority");
+    }
+
     static View combine(AnalysisOperationContext context, ClusterAnalysisState state, List<ClusterAnalysisWork> work,
-                        Map<String, RootCatalogueSnapshot> roots, String planJson, RelationSearchReport retained, ObjectMapper json) {
+                        Map<String, Catalogue> roots, String planJson, RelationSearchReport retained, ObjectMapper json) {
         var workers = new LinkedHashMap<ClusterAnalysisWork, Worker>();
         for (var task : work) {
             var progress = read(task.progressJson, json);
@@ -67,7 +100,7 @@ final class ClusterAnalysisProgress {
     }
 
     private static AnalysisNodeProgress nodes(List<ClusterAnalysisWork> work, Map<ClusterAnalysisWork, Worker> workers,
-                                              Map<String, RootCatalogueSnapshot> roots, ObjectMapper json) {
+                                              Map<String, Catalogue> roots, ObjectMapper json) {
         var parts = new ArrayList<AnalysisNodeProgress.Taxonomy>();
         int total = 0, assessed = 0, excluded = 0;
         for (var task : work) {
@@ -77,29 +110,23 @@ final class ClusterAnalysisProgress {
             var scores = new HashMap<String, Double>();
             var live = workers.get(task); if (live != null) scores.putAll(live.scores());
             if (task.resultJson != null) scores.putAll(json.readValue(task.resultJson, AnalysisResult.class).getRawScores());
-            var byCode = new HashMap<String, RootCatalogueSnapshot.Node>(); root.nodes().forEach(node -> byCode.put(node.code(), node));
             var pruning = new HashMap<String, Boolean>();
-            var budgetParents = new HashSet<String>();
-            root.nodes().stream().filter(node -> !"PRODUCT".equals(node.analysisRole()))
-                    .map(RootCatalogueSnapshot.Node::parentCode).filter(Objects::nonNull).forEach(budgetParents::add);
             int direct = 0, pruned = 0, positive = 0;
             double allocated = 0;
-            for (var node : root.nodes()) {
+            for (var node : root.nodes) {
                 if (scores.containsKey(node.code())) direct++;
-                else if (excluded(node.parentCode(), byCode, scores, pruning)) pruned++;
+                else if (excluded(node.parentCode(), root.byCode, scores, pruning)) pruned++;
                 Double score = scores.get(node.code());
                 if (score != null && score > 0) positive++;
-                if (score != null && !"PRODUCT".equals(node.analysisRole()) && !budgetParents.contains(node.code()))
-                    allocated += score;
+                if (score != null && node.budgetLeaf()) allocated += score;
             }
-            var name = byCode.get(task.root);
-            parts.add(new AnalysisNodeProgress.Taxonomy(task.root, name.nameEn(), name.nameDe(), root.nodes().size(),
-                    direct, pruned, root.nodes().size() - direct - pruned, positive, allocated, scores.get(task.root)));
-            total += root.nodes().size(); assessed += direct; excluded += pruned;
+            parts.add(new AnalysisNodeProgress.Taxonomy(task.root, root.nameEn, root.nameDe, root.size(),
+                    direct, pruned, root.size() - direct - pruned, positive, allocated, scores.get(task.root)));
+            total += root.size(); assessed += direct; excluded += pruned;
         }
         return parts.isEmpty() ? null : new AnalysisNodeProgress(total, assessed, excluded, total - assessed - excluded, parts);
     }
-    private static boolean excluded(String code, Map<String, RootCatalogueSnapshot.Node> nodes, Map<String, Double> scores,
+    private static boolean excluded(String code, Map<String, ProgressNode> nodes, Map<String, Double> scores,
                                     Map<String, Boolean> memo) {
         if (code == null) return false;
         var known = memo.get(code); if (known != null) return known;

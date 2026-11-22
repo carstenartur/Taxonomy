@@ -12,6 +12,23 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 class CiVerificationScopeTest {
+    private static final String README = """
+            # Fixture
+            ## Architecture Impact Showcase
+            ```mermaid
+            flowchart TD
+            ```
+
+            | `taxonomy-app` | Application |
+
+            ## Quick start
+            ```bash
+            git clone https://example.invalid/repository.git
+            ```
+
+            ## Production deployment
+            Current deployment guidance.
+            """;
     @TempDir Path root;
 
     @Test void internalProseAndPluginReadmeUseDocumentationScope() throws Exception {
@@ -38,6 +55,33 @@ class CiVerificationScopeTest {
         write("docs/internal/tasks.md", "# Prose\n");
         write("taxonomy-app/src/main/java/App.java", "class App {}\n");
         assertEquals("full", CiVerificationScope.classify(root, "pull_request", false, base, commit()).scope());
+    }
+
+    @Test void sourceCloneInstructionsAndReproducibilityProseUseDocumentationScope() throws Exception {
+        String base = initialize();
+        write("README.md", README.replace("git clone https://", "git clone --filter=blob:none https://"));
+        write("docs/research/reproducibility.md", "# Reproducing a release\n\nCheck out its recorded revision.\n");
+        String head = commit();
+        var decision = CiVerificationScope.classify(root, "pull_request", false, base, head);
+        assertEquals("documentation", decision.scope());
+        assertEquals(List.of("README.md", "docs/research/reproducibility.md"), decision.paths());
+        assertEquals("full", CiVerificationScope.classify(root, "push", false, base, head).scope());
+    }
+
+    @Test void readmeContractsAndOtherSectionsStillRequireFullVerification() throws Exception {
+        String base = initialize();
+        for (String readme : List.of(
+                README.replace("flowchart TD", "flowchart LR"),
+                README.replace("| Application |", "| Renamed service |"),
+                README.replace("Current deployment guidance.", "Changed deployment guidance."),
+                README.replace("## Production deployment", "## Deployment"),
+                README.replace("## Quick start\n", "## Quick start\n\n## Added section\n"),
+                README.replace("## Quick start\n", "## Quick start\n| `taxonomy-other` | Extra module |\n"),
+                README.replace("## Quick start\n", "## Quick start\n```mermaid\nflowchart TB\n```\n"),
+                README.replace("# Fixture", "# Architecture Impact Showcase"))) {
+            write("README.md", readme);
+            assertEquals("full", CiVerificationScope.classify(root, "pull_request", false, base, commit()).scope());
+        }
     }
 
     @Test void emptyDiffAndNonPullRequestEventsAlwaysRemainFull() throws Exception {
@@ -99,7 +143,7 @@ class CiVerificationScopeTest {
         GitSupport.require(root, "init", "--quiet");
         GitSupport.require(root, "config", "user.name", "CI fixture");
         GitSupport.require(root, "config", "user.email", "ci@example.invalid");
-        write("README.md", "# Fixture\n");
+        write("README.md", README);
         return commit();
     }
 
