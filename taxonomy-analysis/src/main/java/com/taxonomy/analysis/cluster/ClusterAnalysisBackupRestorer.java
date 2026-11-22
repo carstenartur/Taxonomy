@@ -226,7 +226,7 @@ public final class ClusterAnalysisBackupRestorer {
             require(TaxonomyShardRoot.of(input.root()).catalogueIdentifier() && inputRoots.add(input.root()), "Invalid frozen root reference");
             require(input.inputJson() != null && !input.inputJson().isBlank(), "Missing frozen root input"); characters += bounded(input.inputJson());
             if (!TaxonomyShardRoot.of(input.root()).defaultCatalogueRoot()) {
-                var snapshot = ClusterAnalysisProgress.frozen(input.inputJson(), json, source, input.root(), restored);
+                var snapshot = ClusterAnalysisProgress.Catalogue.frozen(input.inputJson(), json, source, input.root(), restored);
                 require(snapshot != null && snapshot.catalogueDefinition() != null, "Configured root is missing its frozen definition");
                 require(definition == null || definition.equals(snapshot.catalogueDefinition()), "Conflicting archived catalogue definitions");
                 definition = snapshot.catalogueDefinition();
@@ -314,7 +314,7 @@ public final class ClusterAnalysisBackupRestorer {
                 && archive.work().stream().allMatch(work -> work.attempts() == 0 && work.startedAt() == null);
         com.taxonomy.catalog.snapshot.CatalogueSourceIdentity original = null;
         for (var input : archive.inputs()) {
-            var root = ClusterAnalysisProgress.frozen(input.inputJson(), json, archive.run().context(), input.root(), restored);
+            var root = ClusterAnalysisProgress.Catalogue.frozen(input.inputJson(), json, archive.run().context(), input.root(), restored);
             if (root == null) continue;
             require(original == null || original.equals(root.source()), "Conflicting archived progress sources");
             original = root.source(); roots.put(input.root(), root);

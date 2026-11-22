@@ -189,7 +189,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
     ClusterAnalysisWork diagnosticWork(AnalysisTaskMessage task) { return requireWork(task); }
     RootCatalogueSnapshot progressRoot(AnalysisTaskMessage task) {
         return task.taskType() == AnalysisTaskType.SUBTAXONOMY_ANALYSIS
-                ? ClusterAnalysisProgress.frozen(shard(context(task.envelope()), task.routingRoot()), mapper,
+                ? ClusterAnalysisProgress.Catalogue.frozen(shard(context(task.envelope()), task.routingRoot()), mapper,
                         context(task.envelope()), task.routingRoot().code()) : null;
     }
     int diagnosticDelivery(AnalysisTaskMessage task) { return requireWork(task).attempts; }

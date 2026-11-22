@@ -25,13 +25,11 @@ final class ProgressCatalogueCache {
         Entry entry = cached(readJson);
         if (entry != null) {
             var catalogue = entry.catalogue();
-            ClusterAnalysisProgress.requireFrozenAuthority(catalogue.source(), catalogue.root(), context, root, restored);
+            catalogue.requireAuthority(context, root, restored);
             return catalogue;
         }
-        var snapshot = ClusterAnalysisProgress.frozen(readJson, mapper, context, root, restored);
-        if (snapshot == null) return null;
-        var catalogue = new ClusterAnalysisProgress.Catalogue(snapshot);
-        remember(readJson, catalogue);
+        var catalogue = ClusterAnalysisProgress.Catalogue.read(readJson, mapper, context, root, restored);
+        if (catalogue != null) remember(readJson, catalogue);
         return catalogue;
     }
 

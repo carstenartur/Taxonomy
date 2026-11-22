@@ -74,6 +74,7 @@ class MailAnalysisStatusControllerTest {
         String html = engine.process(view, new WebContext(web, Locale.GERMAN, model.asMap()));
         assertThat(html).contains("Teilergebnis zugestellt", "Belegte Warteplätze", "Ergebnisse im Versand",
                 "data-url=\"/taxonomy" + PATH + TOKEN + "/status\"", "src=\"/taxonomy/js/mail-analysis-status.js\"")
+                .contains("data-authenticated-surfaces=\"false\"", "src=\"/taxonomy/js/api/taxonomy-api-client.js\"")
                 .doesNotContain("??mail.analysis.");
     }
 

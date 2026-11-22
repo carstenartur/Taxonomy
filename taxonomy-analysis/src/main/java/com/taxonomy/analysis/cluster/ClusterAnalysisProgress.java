@@ -39,7 +39,7 @@ final class ClusterAnalysisProgress {
         private final List<ProgressNode> nodes;
         private final Map<String, ProgressNode> byCode;
 
-        Catalogue(RootCatalogueSnapshot snapshot) {
+        private Catalogue(RootCatalogueSnapshot snapshot) {
             this.source = snapshot.source();
             this.root = snapshot.rootCode();
             var rootNode = snapshot.nodes().stream().filter(node -> root.equals(node.code())).findFirst().orElseThrow();
@@ -55,8 +55,34 @@ final class ClusterAnalysisProgress {
             this.byCode = Map.copyOf(indexed);
         }
 
+        static Catalogue read(String input, ObjectMapper json, AnalysisOperationContext context, String root, boolean restored) {
+            var snapshot = frozen(input, json, context, root, restored);
+            return snapshot == null ? null : new Catalogue(snapshot);
+        }
+
+        void requireAuthority(AnalysisOperationContext context, String expectedRoot, boolean restored) {
+            requireFrozenAuthority(source, root, context, expectedRoot, restored);
+        }
+
+        static RootCatalogueSnapshot frozen(String source, ObjectMapper json, AnalysisOperationContext context, String root) {
+            return frozen(source, json, context, root, false);
+        }
+        static RootCatalogueSnapshot frozen(String source, ObjectMapper json, AnalysisOperationContext context, String root, boolean restored) {
+            // Older admitted operations may predate frozen progress evidence. An unknown
+            // catalogue has no denominator; task counts remain available for those runs.
+            if (source == null || !json.readTree(source).has("schemaVersion")) return null;
+            var frozen = json.readValue(source, RootCatalogueSnapshot.class);
+            requireFrozenAuthority(frozen.source(), frozen.rootCode(), context, root, restored);
+            return frozen;
+        }
+
+        private static void requireFrozenAuthority(CatalogueSourceIdentity frozenSource, String frozenRoot,
+                                                   AnalysisOperationContext context, String root, boolean restored) {
+            if (!root.equals(frozenRoot) || !restored && !DurableClusterAnalysisExecution.source(context).equals(frozenSource))
+                throw new IllegalStateException("Progress catalogue differs from admitted authority");
+        }
+
         CatalogueSourceIdentity source() { return source; }
-        String root() { return root; }
         int size() { return nodes.size(); }
     }
 
@@ -64,24 +90,6 @@ final class ClusterAnalysisProgress {
         if (source == null) return null;
         if (source.length() > MAX_JSON) throw new IllegalArgumentException("Oversized worker progress");
         return json.readValue(source, Worker.class);
-    }
-
-    static RootCatalogueSnapshot frozen(String source, ObjectMapper json, AnalysisOperationContext context, String root) {
-        return frozen(source, json, context, root, false);
-    }
-    static RootCatalogueSnapshot frozen(String source, ObjectMapper json, AnalysisOperationContext context, String root, boolean restored) {
-        // Older admitted operations may predate frozen progress evidence. An unknown
-        // catalogue has no denominator; task counts remain available for those runs.
-        if (source == null || !json.readTree(source).has("schemaVersion")) return null;
-        var frozen = json.readValue(source, RootCatalogueSnapshot.class);
-        requireFrozenAuthority(frozen.source(), frozen.rootCode(), context, root, restored);
-        return frozen;
-    }
-
-    static void requireFrozenAuthority(CatalogueSourceIdentity frozenSource, String frozenRoot,
-                                       AnalysisOperationContext context, String root, boolean restored) {
-        if (!root.equals(frozenRoot) || !restored && !DurableClusterAnalysisExecution.source(context).equals(frozenSource))
-            throw new IllegalStateException("Progress catalogue differs from admitted authority");
     }
 
     static View combine(AnalysisOperationContext context, ClusterAnalysisState state, List<ClusterAnalysisWork> work,

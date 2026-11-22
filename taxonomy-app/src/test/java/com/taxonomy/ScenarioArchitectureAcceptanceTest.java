@@ -291,8 +291,9 @@ class ScenarioArchitectureAcceptanceTest {
             String snapshotId = operation.path("selectedSnapshotId").asText();
             assertThat(snapshotId).isNotBlank();
             String snapshotPath = "/api/projects/" + projectId + "/snapshots/" + snapshotId;
-            JsonNode snapshot = get(snapshotPath);
-            checkpointSnapshot(projectId, requirementId, snapshot);
+            var checkedSnapshot = readSnapshot(snapshotPath);
+            JsonNode snapshot = checkedSnapshot.value();
+            checkpointSnapshot(projectId, requirementId, checkedSnapshot);
             ScenarioAcceptanceProcess.materializeCheckpoint(output, evidenceIdentity);
             assertThat(playback.failures()).isEmpty();
             // The independent reference retains one genuine, non-core F5 input-identity
@@ -452,12 +453,13 @@ class ScenarioArchitectureAcceptanceTest {
         }
     }
 
-    void checkpointSnapshot(long projectId, long requirementId, JsonNode snapshot) throws Exception {
-        String snapshotId = snapshot.at("/summary/id").asText();
+    void checkpointSnapshot(long projectId, long requirementId, CheckedSnapshot checked) throws Exception {
+        JsonNode snapshot = checked.value();
+        String snapshotId = checked.observation().id();
         assertThat(snapshotId).as("Checkpoint identifies its actual immutable snapshot").isNotBlank();
         JsonNode run = runManifest(projectId, requirementId, snapshotId);
         var checkpoint = json.createObjectNode().put("schemaVersion", 1)
-                .put("snapshotSha256", com.taxonomy.acceptance.ScenarioJsonFingerprint.sha256(snapshot));
+                .put("snapshotSha256", checked.observation().sha256());
         checkpoint.set("run", run); checkpoint.set("snapshot", snapshot);
         // This single atomic replacement is the recovery authority. Conventional
         // files are mirrors, never guessed or rebound from an unrelated snapshot.
@@ -562,30 +564,41 @@ class ScenarioArchitectureAcceptanceTest {
     record Run(long projectId, long requirementId, String operationId) { }
 
     JsonNode get(String path) throws Exception {
-        JsonNode value = requestJson("GET", path, null, 200);
-        if (path.matches("/api/projects/[0-9]+/snapshots/[^/?]+")) {
-            var checked = com.taxonomy.acceptance.ScenarioPromptEvidenceQuality.verifyCycle(value);
-            var previous = observedAnalysisCycles.putIfAbsent(checked.snapshotId(), checked);
-            if (previous != null) assertThat(checked).as("Repeated snapshot reads preserve the checked immutable source").isEqualTo(previous);
-            if (previous == null) {
-                JsonNode budget = value.at("/analysis/relationSearchReport/budget");
-                assertThat(budget.isObject()).as("Resolved durable relation budget").isTrue();
-                for (var expected : Map.of("callsPerSlice", 24, "maxTotalCalls", 3096,
-                        "sourcesPerSlice", 32, "workItemsPerSlice", 512, "sourceCohortSize", 32).entrySet())
-                    assertThat(budget.path(expected.getKey()).asInt()).as(expected.getKey()).isEqualTo(expected.getValue());
-                assertThat(budget.path("automatic").asBoolean()).isFalse();
-                String journal = value.at("/analysis/recovery/id").asText();
-                assertThat(journal).isNotBlank();
-                int before = observedRelationSpending.getOrDefault(journal, 0);
-                int spent = budget.path("spentCalls").asInt(), fresh = budget.path("newCalls").asInt();
-                assertThat(fresh).isBetween(0, 24);
-                assertThat(spent).isBetween(before, 3096);
-                assertThat(spent - before).as("Only actual new provider calls charge each durable journal").isEqualTo(fresh);
-                observedRelationSpending.put(journal, spent);
-            }
-        }
-        return value;
+        if (path.matches("/api/projects/[0-9]+/snapshots/[^/?]+")) return readSnapshot(path).value();
+        return getJson(path);
     }
+
+    JsonNode getJson(String path) throws Exception {
+        return requestJson("GET", path, null, 200);
+    }
+
+    record CheckedSnapshot(JsonNode value, ScenarioSnapshotObservation observation) { }
+
+    CheckedSnapshot readSnapshot(String path) throws Exception {
+        JsonNode value = getJson(path);
+        var checked = com.taxonomy.acceptance.ScenarioPromptEvidenceQuality.verifyCycle(value);
+        var previous = observedAnalysisCycles.putIfAbsent(checked.snapshotId(), checked);
+        if (previous != null) assertThat(checked).as("Repeated snapshot reads preserve the checked immutable source").isEqualTo(previous);
+        if (previous == null) {
+            JsonNode budget = value.at("/analysis/relationSearchReport/budget");
+            assertThat(budget.isObject()).as("Resolved durable relation budget").isTrue();
+            for (var expected : Map.of("callsPerSlice", 24, "maxTotalCalls", 3096,
+                    "sourcesPerSlice", 32, "workItemsPerSlice", 512, "sourceCohortSize", 32).entrySet())
+                assertThat(budget.path(expected.getKey()).asInt()).as(expected.getKey()).isEqualTo(expected.getValue());
+            assertThat(budget.path("automatic").asBoolean()).isFalse();
+            String journal = value.at("/analysis/recovery/id").asText();
+            assertThat(journal).isNotBlank();
+            int before = observedRelationSpending.getOrDefault(journal, 0);
+            int spent = budget.path("spentCalls").asInt(), fresh = budget.path("newCalls").asInt();
+            assertThat(fresh).isBetween(0, 24);
+            assertThat(spent).isBetween(before, 3096);
+            assertThat(spent - before).as("Only actual new provider calls charge each durable journal").isEqualTo(fresh);
+            observedRelationSpending.put(journal, spent);
+        }
+        assertThat(checked.snapshotId()).isEqualTo(path.substring(path.lastIndexOf('/') + 1));
+        return new CheckedSnapshot(value, ScenarioSnapshotObservation.fromVerifiedCycle(checked, value));
+    }
+
     JsonNode post(String path, Object body, int status) throws Exception {
         return requestJson("POST", path, body, status);
     }

@@ -19,16 +19,8 @@
     async function refresh() {
         if (!document.hidden) {
             try {
-                const response = await fetch(card.dataset.url, {cache:'no-store', redirect:'error'});
-                if (!response.ok) {
-                    if (response.status === 404) {
-                        error.hidden = true;
-                        expired.hidden = false;
-                        return;
-                    }
-                    throw new Error('Status unavailable');
-                }
-                const job = await response.json();
+                const job = await window.TaxonomyApiClient.requestJson(card.dataset.url,
+                    {cache: 'no-store', redirect: 'error'}, {workspaceScoped: false, contextSensitive: false});
                 show(state, labels.get(job.state) || job.state);
                 show(position, String(job.position ?? '—'));
                 show(queued, String(job.queuedJobs));
@@ -37,7 +29,12 @@
                 show(delivering, String(job.deliveringJobs));
                 error.hidden = true;
                 delay = job.finished ? 15000 : 3000;
-            } catch {
+            } catch (failure) {
+                if (failure.status === 404) {
+                    error.hidden = true;
+                    expired.hidden = false;
+                    return;
+                }
                 error.hidden = false;
                 delay = Math.min(delay * 2, 30000);
             }

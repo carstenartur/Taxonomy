@@ -82,6 +82,10 @@ source checkout, start the packaged app with
 
 `./mvnw -B verify -Pplugin-packaging-tests` owns independent SDK builds and real
 packaged HTTP checks. A focused local execution is not the canonical CI gate.
+Each standalone build starts with a private repository containing the exact reactor SDK.
+Where directory symlinks are available, Maven can also read third-party dependencies
+from the reactor cache, with the original repository IDs and the entire `com.taxonomy`
+group excluded from that cache view. Cache misses use the configured repositories.
 When Maven uses a non-default settings file, pass its path with
 `-Dtaxonomy.maven.user-settings=/path/to/settings.xml` so the independent build
 uses the same authorized repositories/proxy; credentials are never copied into
