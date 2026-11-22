@@ -14,6 +14,7 @@ import com.taxonomy.workspace.backup.*;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.model.WorkspaceSyncScope;
 import com.taxonomy.workspace.repository.WorkspaceSyncStateUpdatesImpl;
+import com.taxonomy.testsupport.HsqldbFixture;
 import org.springframework.orm.jpa.SharedEntityManagerCreator;
 import com.taxonomy.workspace.service.RepositoryScope;
 import com.taxonomy.workspace.service.RepositoryMembershipService;
@@ -32,6 +33,7 @@ import org.springframework.data.repository.core.support.RepositoryComposition.Re
 import com.taxonomy.workspace.storage.*;
 import io.github.carstenartur.jgit.storage.hibernate.DefaultHibernateRepositoryFactory;
 import org.hsqldb.jdbc.JDBCDataSource;
+import org.junit.jupiter.api.AutoClose;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -46,6 +48,9 @@ import static org.mockito.Mockito.*;
 /** Real owner journal, history exporter, native ZIP, staged Hibernate Git host and editor application boundary. */
 @Tag("ci-app-shard-runtime")
 class WorkspaceEditorRestoreRuntimeTest {
+    @AutoClose
+    private final HsqldbFixture databases = new HsqldbFixture();
+
     private static final String VERSION="1.5.1-SNAPSHOT",SOURCE_SCOPE="source-owner",TARGET_SCOPE="target-owner";
     private static final String EDIT="00000000-0000-0000-0000-000000000211",SAVE="00000000-0000-0000-0000-000000000212";
     private static final BackupCheckpoint CHECK=()->{};
@@ -659,7 +664,9 @@ class WorkspaceEditorRestoreRuntimeTest {
         },Clock.systemUTC());
     }
     private static Metadata metadata(String command){return new Metadata(command,command,command,"Editor restore acceptance");}
-    private static JDBCDataSource database(){var database=new JDBCDataSource();database.setUrl("jdbc:hsqldb:mem:editor-restore-"+UUID.randomUUID()+";hsqldb.tx=mvcc");database.setUser("sa");return database;}
+    private JDBCDataSource database() {
+        return databases.create("editor-restore-", ";hsqldb.tx=mvcc");
+    }
     private static List<Class<?>> model()throws Exception {try(var input=WorkspaceEditorRestoreRuntimeTest.class.getResourceAsStream("/db/restore/hsqldb/approved-business-model.txt")){var model=new ArrayList<Class<?>>();for(String name:new String(input.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8).lines().toList())if(!name.isBlank()&&!name.startsWith("#"))model.add(Class.forName(name));return model;}}
     private record RestoredOwners(GitRestoreImporter.Result git,RestoreIdentityImporter.Result identities) {}
     private final class Fixture implements AutoCloseable {

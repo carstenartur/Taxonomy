@@ -9,9 +9,11 @@ import com.taxonomy.security.backup.IdentityBackupContributor;
 import com.taxonomy.workspace.backup.*;
 import com.taxonomy.exchange.backup.PortableRows;
 import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.testsupport.HsqldbFixture;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.lib.PersonIdent;
 import org.hsqldb.jdbc.JDBCDataSource;
+import org.junit.jupiter.api.AutoClose;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -25,6 +27,9 @@ import static org.assertj.core.api.Assertions.*;
 /** Real HSQL owner export/archive/import plus native Git core proof; host DB-Git acceptance is separate. */
 @Tag("ci-app-shard-runtime")
 class WorkspaceRestoreImporterTest {
+    @AutoClose
+    private final HsqldbFixture databases = new HsqldbFixture();
+
     @TempDir Path root;
     private final PrincipalId principal=PrincipalId.create();
     private final PrincipalId retiredActor=PrincipalId.create();
@@ -436,7 +441,9 @@ class WorkspaceRestoreImporterTest {
     private static Object invoke(java.lang.reflect.Method method,Object target,Object[] args)throws Throwable{try{return method.invoke(target,args);}catch(java.lang.reflect.InvocationTargetException e){throw e.getCause();}}
     private static List<Class<?>> model()throws Exception {try(var input=WorkspaceRestoreImporterTest.class.getResourceAsStream("/db/restore/hsqldb/approved-business-model.txt")){var model=new ArrayList<Class<?>>();for(String name:new String(input.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8).lines().toList())if(!name.isBlank()&&!name.startsWith("#"))model.add(Class.forName(name));return model;}}
     private static void shutdown(JDBCDataSource database) { new JdbcTemplate(database).execute("shutdown"); }
-    private static JDBCDataSource database(){var ds=new JDBCDataSource();ds.setURL("jdbc:hsqldb:mem:workspace-restore-"+UUID.randomUUID());ds.setUser("sa");return ds;}
+    private JDBCDataSource database() {
+        return databases.create("workspace-restore-", "");
+    }
     private record Fixture(JDBCDataSource source,JDBCDataSource target,org.hibernate.SessionFactory factory,VerifiedBackup archive,Map<PrincipalId,RestorePrincipalAllocation> principals,GitRestoreImporter.Result git,Git nativeSource,String commit,UUID generationId)implements AutoCloseable {
         RestoreTargetGeneration generation()throws IOException{return RestoreTargetGeneration.verified(generationId,source,target,factory,Map.of(new BackupRepositoryKey("source-repository",null),new RestoreRepositoryAllocation(new BackupRepositoryKey("target-repository",null),"target-central-storage"),new BackupRepositoryKey("source-repository","source-workspace"),new RestoreRepositoryAllocation(new BackupRepositoryKey("target-repository","target-workspace"),com.taxonomy.workspace.storage.DslGitRepositoryFactory.workspaceRepositoryName("target-workspace"))),()->{});}
         public void close()throws Exception {
