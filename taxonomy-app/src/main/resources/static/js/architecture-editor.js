@@ -9,6 +9,8 @@
     var generation = 0;
     var loader = null;
     var pending = null;
+    var pendingReview = null;
+    var previewed = null;
     var pendingCheckpoint = null;
     var busy = false;
     var loading = false;
@@ -26,7 +28,10 @@
     };
     var renderer = window.ArchitectureEditorRenderer(el('editorGraph'), selectElement, selectRelation, function (visible, total) {
         el('editorGraphSummary').textContent = t('editor.visible', visible, total);
-    }, function (ids) { focusPanel.observe(ids); }, function (id) { focusPanel.review(id); }, function (state) {
+    }, function (ids) { focusPanel.observe(ids); }, function (id) {
+        window.TaxonomyRelationshipReview?.open('focus');
+        focusPanel.review(id);
+    }, function (state) {
         el('editorFocus').disabled = !state.selectedNodeId;
         el('editorUnfocus').disabled = state.mode !== 'focus';
     });
@@ -46,7 +51,8 @@
     var planningPanel = window.TaxonomyPlanningEditor.create({ t: t, stage: stage });
     var focusPanel = window.ArchitectureFocusPanel({ t: t, request: api.suggest, present: renderer.presentFocus,
         language: function () { return document.documentElement.lang === 'de' ? 'de' : 'en'; },
-        accept: acceptFocus, undo: undoFocus, canUndo: canUndoFocus,
+        accept: acceptFocus, acceptSelection: acceptFocusSelection, undo: undoFocus, canUndo: canUndoFocus,
+        elementNames: focusElementNames,
         locate: function (id) { if (view && view.model.elements.some(function (e) { return e.id === id; })) { selectElement(id); renderer.focus(); } }
     });
     var adoptionPanel = window.AnalysisSnapshotAdoption({t:t,api:api,
@@ -67,7 +73,7 @@
             await load(preserveWorkspacePin(publication.context, origin), null, true);
         }
     });
-    function el(id) { return root.querySelector('#' + id); }
+    function el(id) { return id.startsWith('editorLens') ? document.getElementById(id) : root.querySelector('#' + id); }
     function t(key) { return window.TaxonomyI18n.t.apply(null, arguments); }
     function short(commit) { return commit ? commit.substring(0, 12) : t('editor.emptyBranch'); }
     function context() { return view.document.context; }
@@ -222,6 +228,7 @@
         url.searchParams.set('layout', layout);
         if (layoutRevision !== null && layoutRevision !== undefined) url.searchParams.set('layoutRevision', layoutRevision);
         else url.searchParams.delete('layoutRevision');
+        if (activeSource.adoption === null) url.searchParams.delete('adoption');
         if (replace) history.replaceState(history.state, '', url); else history.pushState(history.state, '', url);
     }
     function permissions() {
@@ -252,7 +259,7 @@
         el('editorJumpToAssignment').disabled = !writable || !selectedElement();
         el('editorRelationFields').disabled = !writable || !selectedElement();
         el('editorDelete').disabled = !writable || !selectedElement();
-        el('editorAccept').disabled = busy || !pending;
+        el('editorAccept').disabled = busy || !pending || pending !== previewed;
         el('editorCollaborationToggle').disabled = !writable || !view?.collaboration?.mayManage;
     }
     async function load(scope, commit, preserveDraft) {
@@ -441,7 +448,7 @@
         if (!active || busy || loading || !view) return false;
         if (!fromHistory && id === selected) return true;
         if (!fromHistory && hasDraft() && !window.confirm(t('architecture.workspace.discardDraft'))) return false;
-        selected = id; pending = null;
+        selected = id; clearPending();
         renderForm(); renderRelations(); permissions();
         renderer.select(selected);
         focusPanel.select(selected);
@@ -614,59 +621,116 @@
             && ['repositoryId', 'workspaceScopeKey', 'branch'].every(function (key) { return a[key] === b[key]; });
     }
     function canUndoFocus(item) {
-        return view && view.mayEdit && item.accepted && sameScope(item.accepted.context, context()) && item.accepted.context.actor === context().actor;
+        return view && view.mayEdit && view.document.source === 'WORKSPACE_REVISION' && !item.undone
+            && item.accepted && sameScope(item.accepted.context, context()) && item.accepted.context.actor === context().actor;
     }
-    async function executeFocus(item, undo) {
-        if (busy || loading || !view || !view.mayEdit || (undo ? !canUndoFocus(item) : item.stale)) return;
-        var key = undo ? 'undoCommand' : 'command', previewKey = undo ? 'undoPreviewed' : 'previewed';
-        if (!item[key]) {
-            var audit = metadata(); audit.rationale = t(undo ? 'editor.lens.undoAudit' : 'editor.lens.audit', item.sourceId, item.relationType, item.targetId).substring(0, 1000);
-            item[key] = Object.assign({ context: context(), metadata: audit }, undo
-                ? { kind: 'UNDO', targetOperationId: item.accepted.operationId }
-                : { kind: 'CREATE_RELATION', sourceId: item.sourceId, relationType: item.relationType, targetId: item.targetId,
-                    status: 'accepted', properties: item.properties });
-        }
-        var ticket = generation; busy = true; permissions(); el('editorLensError').hidden = true;
-        try {
-            if (!item[previewKey]) { await api.preview(item[key]); item[previewKey] = true; }
-            if (ticket !== generation) return;
-            // An uncertain transport result retains both the exact command ID and its successful preview.
-            var result = await api.execute(item[key]);
-            if (ticket !== generation) return;
-            var confirmed = preserveWorkspacePin(result.context, item[key].context);
-            if (undo) focusPanel.undone(item.id); else focusPanel.accepted(item.id, result);
-            var ok = await load(confirmed, confirmed.revision, true);
-            if (ok) setStatus(t('editor.accepted', result.context.revision));
-        } catch (error) {
-            if (ticket !== generation) return;
-            report(error, el('editorLensError'));
-            if (error.status === 412) {
-                // A stale hypothesis is never silently rebased. Undo may be recreated explicitly against the refreshed revision.
-                if (undo) { delete item.undoCommand; delete item.undoPreviewed; }
-                await load(context(), null, true);
-            }
-        } finally { busy = false; permissions(); focusPanel.refresh(); }
+    function currentFocusCandidate(item) {
+        return view && view.mayEdit && view.document.source === 'WORKSPACE_REVISION' && !item.stale && !item.accepted
+            && sameScope(item.context, context())
+            && ['actor', 'writeMode', 'revision', 'commit'].every(function (pin) { return item.context[pin] === context()[pin]; });
     }
-    function acceptFocus(item) { return executeFocus(item, false); }
-    function undoFocus(item) { return executeFocus(item, true); }
-    async function stage(intent, rationaleInput, generatedRationale) {
-        if (busy || !view || !view.mayEdit) return;
+    function focusElementNames() {
+        var titles = view?.displayTitles || {};
+        return new Map((view?.model.elements || []).map(function (element) {
+            return [element.id, Object.hasOwn(titles, element.id) ? titles[element.id] : element.title];
+        }));
+    }
+    function acceptFocus(item) { return acceptFocusSelection([item]); }
+    function acceptFocusSelection(items) {
+        if (!items.length || items.length > 32 || !items.every(currentFocusCandidate)) return;
+        var relations = items.map(function (item) {
+            return Object.assign(relationPayload(item), { properties: Object.assign({}, item.properties) });
+        });
+        var item = items[0];
+        var intent = items.length > 1 ? { kind: 'CREATE_RELATIONS', relations: relations }
+            : Object.assign({ kind: 'CREATE_RELATION', status: 'accepted' }, relations[0]);
+        var rationale = items.length > 1 ? t('relationshipReview.auditSelected', items.length)
+            : t('editor.lens.audit', item.sourceId, item.relationType, item.targetId).substring(0, 1000);
+        return stage(intent, null, rationale, { items: items.map(function (value) { return Object.assign({}, value); }), undo: false });
+    }
+    function undoFocus(item) {
+        if (!canUndoFocus(item)) return;
+        var items = item.acceptedItems || [item];
+        var rationale = items.length > 1 ? t('relationshipReview.undoSelected', items.length)
+            : t('editor.lens.undoAudit', item.sourceId, item.relationType, item.targetId).substring(0, 1000);
+        return stage({ kind: 'UNDO', targetOperationId: item.accepted.operationId }, null, rationale, { items: items, undo: true });
+    }
+    function clearPending() {
+        pending = null;
+        pendingReview = null;
+        previewed = null;
+    }
+    async function stage(intent, rationaleInput, generatedRationale, review) {
+        if (busy || loading || dialog.open || !view || !view.mayEdit) return;
         rationaleInput = rationaleInput || el('editorRationale');
         if (!generatedRationale && !rationaleInput.reportValidity()) return;
         var audit = metadata(); audit.rationale = generatedRationale || rationaleInput.value;
+        pendingReview = review || null;
         pending = Object.assign({}, intent, { context: context(), metadata: audit });
         await previewPending();
     }
+    async function handleStalePreview(error, command, review) {
+        previewed = null;
+        if (!dialog.open) dialog.showModal();
+        report(error, el('editorPreviewError'));
+        if (!review) { el('editorReapply').hidden = false; return; }
+        // The relationship evidence belongs to the captured revision. A new review must use fresh evidence.
+        clearPending();
+        el('editorChanges').replaceChildren();
+        await load(command.context, null, true);
+    }
+    function renderFocusPreview(review, container) {
+        var names = focusElementNames();
+        var list = document.createElement('ul'); list.className = 'editor-focus-preview';
+        review.items.forEach(function (item) {
+            var row = document.createElement('li');
+            var title = document.createElement('strong');
+            title.textContent = window.ArchitectureFocusPanel.relationLabel?.(item, function (_, id) { return names.get(id) || id; }, t)
+                || (names.get(item.sourceId) || item.sourceId) + ' — ' + item.relationType + ' → ' + (names.get(item.targetId) || item.targetId);
+            row.append(title);
+            if (item.rationale) {
+                var reason = document.createElement('p'); reason.textContent = item.rationale; row.append(reason);
+            }
+            if (!review.undo && item.evidence?.length) {
+                var evidence = document.createElement('details');
+                var heading = document.createElement('summary'); heading.textContent = t('relationshipReview.evidence');
+                evidence.append(heading);
+                item.evidence.forEach(function (excerpt) {
+                    var quote = document.createElement('blockquote');
+                    quote.textContent = (names.get(excerpt.elementId) || excerpt.elementId) + ' · ' + excerpt.quote;
+                    evidence.append(quote);
+                });
+                row.append(evidence);
+            }
+            list.append(row);
+        });
+        container.append(list);
+    }
     async function previewPending() {
-        var ticket = generation;
+        var ticket = generation, command = pending, review = pendingReview;
+        previewed = null;
         busy = true; permissions();
         el('editorPreviewError').textContent = ''; el('editorReapply').hidden = true;
+        el('editorChanges').replaceChildren();
+        el('editorPreviewContext').textContent = '';
+        var reviewAction = review && (review.undo ? (review.items.length > 1 ? 'relationshipReview.undoSelected' : 'relationshipReview.undoRelation')
+            : review.items.length > 1 ? 'relationshipReview.acceptSelected' : 'relationshipReview.acceptRelation');
+        el('editorAccept').textContent = reviewAction ? t(reviewAction, review.items.length) : t('editor.accept');
         try {
-            var preview = await api.preview(pending);
-            if (ticket !== generation) return;
-            el('editorChanges').replaceChildren();
-            el('editorPreviewContext').textContent = context().repositoryId + ' / ' + context().workspaceScopeKey + ' / ' + context().branch
-                + ' · ' + t('editor.revision', preview.context.revision) + ' · ' + pending.metadata.rationale;
+            var preview = await api.preview(command);
+            if (ticket !== generation || pending !== command) return;
+            var revision = t('editor.revision', preview.context.revision);
+            var contextText = context().repositoryId + ' / ' + context().workspaceScopeKey + ' / ' + context().branch;
+            var changes = el('editorChanges');
+            el('editorPreviewContext').textContent = review ? t('relationshipReview.previewContext', context().branch, revision)
+                : contextText + ' · ' + revision + ' · ' + command.metadata.rationale;
+            if (review && preview.change.changes.length) {
+                renderFocusPreview(review, changes);
+                var details = document.createElement('details');
+                var summary = document.createElement('summary'); summary.textContent = t('relationshipReview.technicalChanges');
+                var provenance = document.createElement('p'); provenance.textContent = contextText;
+                details.append(summary, provenance); changes.append(details); changes = details;
+            }
             preview.change.changes.forEach(function (change) {
                 var title = document.createElement('h3'); title.textContent = change.id;
                 var diff = document.createElement('div'); diff.className = 'editor-diff';
@@ -675,19 +739,23 @@
                     var label = document.createElement('p'); label.textContent = t(index === 0 ? 'editor.before' : 'editor.after');
                     var pre = document.createElement('pre'); pre.textContent = text || t('editor.absent'); part.append(label, pre); diff.append(part);
                 });
-                el('editorChanges').append(title, diff);
+                changes.append(title, diff);
             });
             if (!dialog.open) dialog.showModal();
-            if (!preview.change.changes.length) { pending = null; el('editorPreviewError').textContent = t('editor.problem.NO_CHANGE'); }
+            if (preview.change.changes.length) previewed = command;
+            else { clearPending(); el('editorPreviewError').textContent = t('editor.problem.NO_CHANGE'); }
         } catch (error) {
-            if (ticket !== generation) return;
-            report(error, dialog.open ? el('editorPreviewError') : el('editorError'));
-            if (error.status === 412) { if (!dialog.open) dialog.showModal(); report(error, el('editorPreviewError')); el('editorReapply').hidden = false; }
-            else pending = null;
+            if (ticket !== generation || pending !== command) return;
+            if (error.status === 412) await handleStalePreview(error, command, review);
+            else {
+                if (review && !dialog.open) dialog.showModal();
+                report(error, dialog.open ? el('editorPreviewError') : el('editorError'));
+                clearPending();
+            }
         } finally {
             busy = false; permissions();
             if (dialog.open) {
-                el(!el('editorReapply').hidden ? 'editorReapply' : pending ? 'editorAccept' : 'editorCancel').focus();
+                el(!el('editorReapply').hidden ? 'editorReapply' : previewed ? 'editorAccept' : 'editorCancel').focus();
             }
         }
     }
@@ -709,7 +777,7 @@
         }
         stage({ kind: existing ? 'UPDATE_ELEMENT' : 'CREATE_ELEMENT', id: selected, type: el('editorType').value, properties: properties });
     });
-    el('editorForm').addEventListener('input', function () { el('editorDraft').hidden = false; pending = null; });
+    el('editorForm').addEventListener('input', function () { el('editorDraft').hidden = false; clearPending(); });
     el('editorRelationForm').addEventListener('submit', function (event) {
         event.preventDefault();
         if (el('editorRelationFields').disabled || !validateRelationTarget()) { el('editorRelationTarget').reportValidity(); return; }
@@ -726,7 +794,7 @@
     el('editorPlaceElement').onclick = function () { packagePlacement('ELEMENT', selected, false); };
     el('editorDetachElement').onclick = function () { packagePlacement('ELEMENT', selected, true); };
     el('editorMove').onclick = function () { stage({ kind: 'MOVE_ELEMENT', id: selected, parentId: el('editorParent').value.trim() || null }); };
-    el('editorDiscard').onclick = function () { pending = null; renderForm(); };
+    el('editorDiscard').onclick = function () { clearPending(); renderForm(); };
     el('editorNew').onclick = function () { selectElement(null); el('editorTitle').focus(); };
     function quickInverse(action) {
         if (busy || loading || !view || !view.mayEdit) return;
@@ -755,7 +823,7 @@
     el('editorRefresh').onclick = function () {
         var preserve = view && context().writeMode === 'SHARED_WORKSPACE' && hasDraft();
         if (busy || loading || (!preserve && hasDraft() && !window.confirm(t('editor.refreshDiscardDraft')))) return;
-        pending = null;
+        clearPending();
         load(view ? context() : scopeFromUrl(), null, preserve).then(function (ok) { if (ok) renderer.focus(); });
     };
     el('editorCollaborationToggle').onclick = async function () {
@@ -763,43 +831,52 @@
         busy = true; permissions();
         try {
             await api.setSharing(context(), !view.collaboration.enabled);
-            pending = null;
+            clearPending();
             await load(context(),null,hasDraft());
         } catch (error) { report(error); }
         finally { busy = false; permissions(); }
     };
-    el('editorCancel').onclick = function () { if (!busy) { pending = null; dialog.close(); } };
-    dialog.addEventListener('cancel', function (event) { if (busy) event.preventDefault(); else pending = null; });
+    el('editorCancel').onclick = function () { if (!busy) { clearPending(); dialog.close(); } };
+    dialog.addEventListener('cancel', function (event) { if (busy) event.preventDefault(); else clearPending(); });
     el('editorAccept').onclick = async function () {
-        if (!pending || busy) return;
-        var ticket = generation; var acceptedCommand = pending;
+        if (!dialog.open || !pending || pending !== previewed || busy) return;
+        var ticket = generation, acceptedCommand = pending, review = pendingReview;
         busy = true; permissions();
         try {
             var accepted = await api.execute(acceptedCommand);
             if (ticket !== generation) return;
-            pending = null; dialog.close();
+            clearPending(); dialog.close();
             if (selectedView && accepted.change?.changes?.some(function (change) { return change.id === 'view:' + selectedView && change.after == null; })) selectedView = null;
             if (acceptedCommand.kind === 'CREATE_ELEMENT') selected = 'arch-' + acceptedCommand.metadata.commandId;
             var confirmed = preserveWorkspacePin(accepted.context, acceptedCommand.context);
-            var ok = await load(confirmed, confirmed.revision);
-            if (ok) { setStatus(t('editor.accepted', accepted.context.revision) + ' · ' + t('editor.projection.' + accepted.projectionState)); renderer.focus(); }
+            if (review) {
+                review.items.forEach(function (item) {
+                    if (review.undo) focusPanel.undone(item.id);
+                    else focusPanel.accepted(item.id, accepted, review.items);
+                });
+            }
+            var ok = await load(confirmed, confirmed.revision, Boolean(review));
+            if (ok) {
+                setStatus(t('editor.accepted', accepted.context.revision) + ' · ' + t('editor.projection.' + accepted.projectionState));
+                if (!review) renderer.focus();
+            }
         } catch (error) {
             if (ticket !== generation) return;
-            report(error, el('editorPreviewError'));
-            if (error.status === 412) el('editorReapply').hidden = false;
+            if (error.status === 412) await handleStalePreview(error, acceptedCommand, review);
+            else report(error, el('editorPreviewError'));
             // Keep this exact identity on ambiguous transport failure; never silently replay with a new ID.
         } finally {
             busy = false; permissions();
-            if (dialog.open) el(!el('editorReapply').hidden ? 'editorReapply' : pending ? 'editorAccept' : 'editorCancel').focus();
-            else el(view && view.mayEdit ? 'editorTitle' : 'editorRefresh').focus();
+            if (dialog.open) el(!el('editorReapply').hidden ? 'editorReapply' : previewed ? 'editorAccept' : 'editorCancel').focus();
+            else if (!review) el(view && view.mayEdit ? 'editorTitle' : 'editorRefresh').focus();
         }
     };
     el('editorReapply').onclick = async function () {
-        if (!pending || busy) return;
+        if (!pending || pendingReview || busy || el('editorReapply').hidden) return;
         var original = pending; busy = true; permissions();
         var ok = await load(original.context, null, true);
         busy = false;
-        if (!ok) { pending = null; permissions(); return; }
+        if (!ok) { clearPending(); permissions(); return; }
         // Re-review the frozen intent; neither form may replace its rationale after a conflict.
         var audit = { commandId: crypto.randomUUID(), correlationId: original.metadata.correlationId,
             causationId: original.metadata.commandId, rationale: original.metadata.rationale };
@@ -844,7 +921,7 @@
         busy = true; permissions(); el('editorWorkspace').disabled = true;
         try {
             var workspace = await api.createWorkspace(context());
-            selected = null; pending = null;
+            selected = null; clearPending();
             await load({ repositoryId: workspace.sourceRepositoryId, workspaceId: workspace.workspaceId,
                 workspaceScopeKey: workspace.workspaceId, branch: workspace.currentBranch }, null);
             renderer.fit({ initial: true });
@@ -853,7 +930,7 @@
     };
     document.addEventListener('taxonomy:architecture-stand-requested', function (event) {
         if (!active) return;
-        if (dialog.open) dialog.close(); pending = null;
+        if (dialog.open) dialog.close(); clearPending();
         var selection = event.detail?.selection || {};
         load(event.detail?.context || scopeFromUrl(), selection.commit || selection.revision || null, true);
     });
@@ -899,6 +976,12 @@
         if (settings?.retain || (sameSelection(next) && (next.element || null) === selected)) return true;
         return !hasDraft() || window.confirm(t('architecture.workspace.discardDraft'));
     }
+    async function previewRequestedAdoption() {
+        if (activeSource?.adoption !== 'preview' || !adoptionPanel.getSource()) return;
+        activeSource.adoption = null;
+        linkSelection(true);
+        await adoptionPanel.showPreview();
+    }
     async function activate(source) {
         active = true;
         renderer.setActive(true);
@@ -911,6 +994,7 @@
             var nextElement = source.element && view.model.elements.some(function (item) { return item.id === source.element; }) ? source.element : null;
             if (nextElement !== selected) selectElement(nextElement, true);
             publishContext(); permissions(); linkSelection(true);
+            await previewRequestedAdoption();
             return true;
         }
         selected = source.element || null;
@@ -918,7 +1002,10 @@
         layout = source.layout || 'stable'; layoutRevision = source.layoutRevision ?? null;
         var ok = await load(scopeFromUrl(),source.commit || source.revision,refreshNeeded && hasDraft());
         refreshNeeded = false;
-        if (ok) { renderer.fit({initial:true}); if(selected) renderer.focus(); }
+        if (ok) {
+            renderer.fit({initial:true}); if(selected) renderer.focus();
+            await previewRequestedAdoption();
+        }
         return ok;
     }
     var instance = {activate:activate, suspend:function () {
@@ -926,11 +1013,13 @@
     }, canLeave:canLeave, hasDraft:hasDraft, getSource:getSource, getData:function () { return view; },
         getDiagram:function () { return renderer; }, select:selectElement,restoreUrl:function(){linkSelection(true);},
         openLens:function () {
-            var title = el('editorLensTitle'), enable = el('editorLensEnabled');
-            title.scrollIntoView({block:'nearest'});
-            (enable.disabled ? title : enable).focus({preventScroll:true});
+            window.TaxonomyRelationshipReview?.open('focus');
+            var title = el('editorLensTitle'), inspect = el('editorLensInspect');
+            title?.scrollIntoView({block:'nearest'});
+            (inspect?.disabled === false ? inspect : title)?.focus({preventScroll:true});
         }
     };
+    el('editorArchitectureLensAction')?.addEventListener('click', instance.openLens);
     root.__architectureEditor = instance;
     return instance;
     }

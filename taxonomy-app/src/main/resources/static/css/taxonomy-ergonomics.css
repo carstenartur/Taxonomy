@@ -150,11 +150,15 @@
     align-items: center;
     flex-wrap: wrap;
     gap: 0.375rem 0.5rem;
-    padding-block: 0.25rem;
+    margin-bottom: .5rem;
 }
 .score-legend > .legend-box {
     flex-shrink: 0;
 }
+.score-legend [data-score="25"] { background-color: #bfdfbf; color: #17243a; }
+.score-legend [data-score="50"] { background-color: #80c080; color: #17243a; }
+.score-legend [data-score="75"] { background-color: #40a040; color: #17243a; }
+.score-legend [data-score="100"] { background-color: #008000; color: #fff; }
 
 /* Keep dense toolbars usable at high zoom and on narrow viewports. */
 .card-header,
@@ -312,10 +316,6 @@
 /* Bootstrap's default danger text narrowly misses WCAG AA on bg-light. */
 #docImportStatus .text-danger {
     color: #b02a37 !important;
-}
-.legend-box[style*="rgba(0,128,0,0.75)"] {
-    background: #2f7532 !important;
-    color: #fff !important;
 }
 
 /* Touch users cannot discover hover-only node actions. */

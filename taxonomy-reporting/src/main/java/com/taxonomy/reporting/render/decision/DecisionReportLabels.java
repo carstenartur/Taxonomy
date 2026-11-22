@@ -47,7 +47,25 @@ public final class DecisionReportLabels {
     public String basedOnCommit() { return german ? "Datenstand / Commit" : "Data state / commit"; }
     public String analysisProvider() { return german ? "KI-Anbieter" : "AI provider"; }
     public String analysisStatus() { return german ? "Analysestatus" : "Analysis status"; }
+    public String analysisState(String state) {
+        String value = java.util.Objects.toString(state, "");
+        if (value.isBlank()) return unknown();
+        if (!german) return value;
+        return switch (value) {
+            case "PENDING" -> "Ausstehend";
+            case "RUNNING" -> "Läuft";
+            case "SUCCESS" -> "Erfolgreich";
+            case "PARTIAL" -> "Teilergebnis";
+            case "FAILED" -> "Fehlgeschlagen";
+            case "CANCELLED" -> "Abgebrochen";
+            case "UNKNOWN" -> unknown();
+            default -> value;
+        };
+    }
     public String analysisModel() { return german ? "KI-Modell" : "AI model"; }
+    public String modelName(String value) {
+        return german && (value == null || value.equalsIgnoreCase("unknown")) ? unknown() : value;
+    }
     public String analysisSnapshot() { return german ? "Unveränderlicher Analysesnapshot" : "Immutable analysis snapshot"; }
     public String requirementVersion() { return german ? "Anforderungsversion" : "Requirement version"; }
     public String analysisCreatedAt() { return german ? "Analyse erstellt am" : "Analysis created at"; }
@@ -123,6 +141,16 @@ public final class DecisionReportLabels {
     public String target() { return german ? "Ziel" : "Target"; }
     public String type() { return german ? "Typ" : "Type"; }
     public String category() { return german ? "Kategorie" : "Category"; }
+    public String relationCategory(String category) {
+        if (category == null) return unknown();
+        if (!german) return category;
+        return switch (category) {
+            case "trace" -> "Herleitung";
+            case "impact" -> "Auswirkung";
+            case "seed" -> "Katalogbasis";
+            default -> category;
+        };
+    }
     public String identifier() { return german ? "Kennung" : "Identifier"; }
     public String titleLabel() { return german ? "Titel" : "Title"; }
     public String graphDigest() { return german ? "SHA-256 des Architekturgraphen" : "Architecture graph SHA-256"; }
@@ -131,7 +159,7 @@ public final class DecisionReportLabels {
     public String unknown() { return german ? "Unbekannt" : "Unknown"; }
     public String noneRecorded() { return german ? "Keine im Snapshot dokumentiert" : "None recorded in snapshot"; }
     public String frozenScope() { return german ? "Gespeicherte Architektur und Entscheidungsevidenz der ausgewählten Anforderungsversion." : "Saved architecture and decision evidence for the selected requirement version."; }
-    public String overviewPurpose() { return german ? "Gesamtübersicht zur Orientierung; lesbare Details folgen." : "Whole-graph orientation view; reading-scale details follow."; }
+    public String overviewPurpose() { return german ? "Gesamtübersicht mit den Kennungen aus den folgenden Detailansichten und dem Elementinventar." : "Whole-graph view using the identifiers from the detail views and element inventory below."; }
     public String detailPurpose() { return german ? "Detailansicht; Randknoten können in weiteren Ansichten wiederholt werden." : "Detail view; boundary nodes may repeat in other panels."; }
     public String includedNodes() { return german ? "Enthaltene Knoten" : "Included nodes"; }
     public String relationTypes() { return german ? "Beziehungstypen" : "Relation types"; }

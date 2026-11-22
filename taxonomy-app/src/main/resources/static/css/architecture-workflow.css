@@ -14,3 +14,28 @@
 #snapshotAdoption { margin: 1rem 0; padding: 1rem; border: 1px solid #9aa9bd; border-radius: .5rem; }
 #snapshotAdoption pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow: auto; }
 #snapshotAdoption select { max-width: 100%; }
+
+.architecture-lens-tools {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .25rem .75rem;
+    min-width: 0;
+    max-width: 100%;
+}
+.architecture-lens-tools .architecture-lens-action {
+    min-height: 44px;
+    padding: .35rem .65rem;
+    border: 1px solid var(--taxonomy-primary, #315a91);
+    border-radius: .375rem;
+    color: var(--taxonomy-surface-foreground, #17243a);
+    background: var(--taxonomy-panel-background, #fff);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+.architecture-lens-action:hover { text-decoration: underline; }
+.architecture-lens-hover { display: inline-flex; align-items: center; gap: .4rem; min-height: 44px; font-size: .875rem; }
+.architecture-lens-hover input { flex: none; }
+.architecture-lens-tools :focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+@media print { .architecture-lens-tools { display: none; } }

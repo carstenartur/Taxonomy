@@ -110,13 +110,18 @@ public final class ArchitectureDslCommands {
     }
 
     /** Applies commands in order with their normal validation and one complete before/after patch. */
-    public Change applyAll(String source, List<ArchitectureCommand> commands) {
+    public Change applyAll(String source, List<? extends ArchitectureCommand> commands) {
         Objects.requireNonNull(source, "source");
         Objects.requireNonNull(commands, "commands");
         if (commands.isEmpty()) return new Change(source, List.of());
+        String next = transformAll(source, commands);
+        return new Change(next, ArchitectureSemanticPatch.between(source, next));
+    }
+
+    private String transformAll(String source, List<? extends ArchitectureCommand> commands) {
         String next = source;
         for (ArchitectureCommand command : commands) next = transformDsl(next, command);
-        return new Change(next, ArchitectureSemanticPatch.between(source, next));
+        return next;
     }
 
     private String transformDsl(String source, ArchitectureCommand command) {
@@ -145,6 +150,7 @@ public final class ArchitectureDslCommands {
             case UpdateArchitectureElement update -> updateElement(source, blocks, update);
             case DeleteArchitectureElement delete -> deleteElement(source, blocks, delete.id());
             case CreateArchitectureRelation create -> createRelation(source, blocks, create.relation(), create.status(), create.properties());
+            case CreateArchitectureRelations create -> transformAll(source, create.relations());
             case UpdateArchitectureRelation update -> updateRelation(source, blocks, update.relation(), update.status());
             case DeleteArchitectureRelation delete -> deleteRelation(source, blocks, delete.relation());
             case MoveOrGroupElement move -> move(source, blocks, move);

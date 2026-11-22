@@ -23,6 +23,8 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import org.springframework.context.i18n.LocaleContextHolder;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Locale;
 import java.util.ResourceBundle;
@@ -85,7 +87,8 @@ public class ExportFacade {
         DiagramModel diagram = analyzeAndProject(businessText);
         VisioDocument visioDocument = visioDiagramService.convert(diagram,
                 new VisioExportMetadata(VisioWorkingViewMetadata.document(businessText, workingViewMetadata),
-                        Map.of(), Map.of(), VisioExportMetadata.unbound().losses()));
+                        Map.of(), Map.of(), VisioExportMetadata.unbound().losses())
+                        .withLanguage(org.springframework.context.i18n.LocaleContextHolder.getLocale()));
         return visioPackageBuilder.build(visioDocument);
     }
 
@@ -175,6 +178,21 @@ public class ExportFacade {
             if (messages.containsKey(title)) title = messages.getString(title);
         }
         return diagramProjectionService.projectRaw(view, title, german);
+    }
+
+    /** Captured node explanations are presentation evidence independently of neutral diagram identity. */
+    public static Map<String, String> elementReasons(RequirementArchitectureView view) {
+        var reasons = new LinkedHashMap<String, String>();
+        for (var element : view.getIncludedElements()) {
+            var recorded = new LinkedHashSet<String>();
+            recorded.add(element.getPresenceReason());
+            recorded.add(element.getIncludedBecause());
+            recorded.removeIf(value -> value == null || value.isBlank());
+            if (element.getNodeCode() != null && !recorded.isEmpty()) {
+                reasons.put(element.getNodeCode(), String.join("\n\n", recorded));
+            }
+        }
+        return reasons;
     }
 
     private DiagramModel analyzeAndProject(String businessText) {

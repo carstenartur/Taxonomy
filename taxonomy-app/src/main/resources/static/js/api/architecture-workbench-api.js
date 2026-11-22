@@ -87,13 +87,13 @@ window.ArchitectureWorkbenchApi = (function () {
             return base(projectId, snapshotId, '.archimate.xml', source);
         },
         visioBundleUrl: function (projectId, snapshotId, source) {
-            return base(projectId, snapshotId, '.visio.zip', source);
+            return base(projectId, snapshotId, '.visio.zip', source, true);
         },
         archiMateBundleUrl: function (projectId, snapshotId, source) {
             return base(projectId, snapshotId, '.archimate.zip', source);
         },
         visioUrl: function (projectId, snapshotId, source) {
-            return base(projectId, snapshotId, '.vsdx', source);
+            return base(projectId, snapshotId, '.vsdx', source, true);
         }
     };
 }());

@@ -91,6 +91,7 @@
       "packages": [
         "com.taxonomy.backup..",
         "com.taxonomy.composition..",
+        "com.taxonomy.mail..",
         "com.taxonomy.observability..",
         "com.taxonomy.security..",
         "com.taxonomy.setup..",

@@ -379,6 +379,7 @@ class ArchitectureWorkbenchUiIT {
             assertThat(driver.findElement(By.id("editorNew")).isEnabled()).isTrue();
             saveEditorOverviewDocumentationScreenshot(language);
 
+            clickDocumentationControl(By.cssSelector("#editorLensSettings > summary"));
             WebElement useAi = driver.findElement(By.id("editorLensUseAi"));
             if (useAi.isSelected()) clickDocumentationControl(By.id("editorLensUseAi"));
             WebElement enableLens = wait.until(ExpectedConditions.elementToBeClickable(By.id("editorLensEnabled")));

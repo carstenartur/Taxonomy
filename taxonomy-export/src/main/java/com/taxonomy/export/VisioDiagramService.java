@@ -54,6 +54,8 @@ public class VisioDiagramService {
         validateGraph(model);
         VisioDocument doc = new VisioDocument();
         doc.setDrawingOptions(options);
+        doc.setGerman(metadata.german());
+        boolean german = doc.isGerman();
         doc.getProperties().putAll(metadata.document());
         doc.getProperties().put("taxonomy.exportProfile", VisioProperty.text(VisioHandoffProfile.ID));
         doc.getProperties().put("taxonomy.scoreSemantics", VisioProperty.text("relevance is a normalized selection score in [0,1], not a probability"));
@@ -66,7 +68,8 @@ public class VisioDiagramService {
         }
         doc.getLosses().add(new VisioLoss("document", "", "layout", "MAPPED",
                 "Generated layer layout in inches; browser geometry, routing and typography are not copied."));
-        VisioPage page = new VisioPage("0", model.title() != null ? model.title() : "Architecture View");
+        VisioPage page = new VisioPage("0", model.title() != null ? model.title()
+                : german ? "Architektursicht" : "Architecture View");
         doc.getPages().add(page);
 
         // Group nodes by layer for layout
@@ -93,6 +96,7 @@ public class VisioDiagramService {
         double width = options == null ? SHAPE_WIDTH : 3.3;
         double height = options == null ? SHAPE_HEIGHT : VisioPresentation.screenCardHeight(screenWithResponsibilities);
         if (wall) height = options.showsShortReasons() ? 1.7 : 1.32;
+        int rowsPerColumn = options == null ? Math.max(10, (int) Math.ceil(Math.sqrt(sortedNodes.size()))) : Integer.MAX_VALUE;
         int layerIdx = 0;
         for (var entry : layerGroups.entrySet().stream()
                 .sorted(Comparator.comparingInt(Map.Entry::getKey)).toList()) {
@@ -112,12 +116,12 @@ public class VisioDiagramService {
                 String displayedLabel = VisioPresentation.display(node.label(), options == null ? 24 : 46, 3);
                 String caption = options == null
                         ? VisioPresentation.display("N" + shapeId + " | " + node.id(), 24, 1) + "\n"
-                            + displayedLabel + "\n" + VisioPresentation.nodeFooter(Integer.toString(node.depth()), owner, 24)
+                            + displayedLabel + "\n" + VisioPresentation.nodeFooter(Integer.toString(node.depth()), owner, 24, german)
                         : VisioPresentation.drawingNodeCaption(node.id(),
                             java.math.BigDecimal.valueOf(node.relevance()).movePointRight(2).stripTrailingZeros().toPlainString() + "%",
                             displayedLabel, owner, reason, options);
-                double x = options == null ? MARGIN_X + layerIdx * H_GAP : 2.2 + layerIdx * 5.1;
-                double y = options == null ? MARGIN_Y + i * V_GAP : 1.25 + i * (height + .35);
+                double x = options == null ? MARGIN_X + (layerIdx + i / rowsPerColumn) * H_GAP : 2.2 + layerIdx * 5.1;
+                double y = options == null ? MARGIN_Y + (i % rowsPerColumn) * V_GAP : 1.25 + i * (height + .35);
                 var shape = new VisioShape(shapeId, caption, x, y, width, height, node.type(), node.anchor());
                 shape.getProperties().putAll(elementProperties);
                 var values = shape.getProperties();
@@ -140,7 +144,7 @@ public class VisioDiagramService {
                 if (node.container()) doc.getLosses().add(new VisioLoss("element", node.id(), "container", "MAPPED",
                         "Explicit visual container rendered with native membership for present descendants; it remains non-semantic and retains original parent identity in shape data."));
             }
-            layerIdx++;
+            layerIdx += 1 + (layerNodes.size() - 1) / rowsPerColumn;
         }
 
         // Create connectors
@@ -168,7 +172,7 @@ public class VisioDiagramService {
         java.util.Set<String> selected = model.nodes().stream().filter(n -> n.anchor() || n.selectedForImpact())
                 .map(n -> nodeIdToShapeId.get(n.id())).collect(java.util.stream.Collectors.toSet());
         if (options == null && !selected.isEmpty() && selected.size() < page.getShapes().size()) {
-            VisioPage impact = new VisioPage("1", "Anchor and impact selection");
+            VisioPage impact = new VisioPage("1", german ? "Anker- und Auswirkungsauswahl" : "Anchor and impact selection");
             page.getShapes().stream().filter(s -> selected.contains(s.getId())).map(VisioDiagramService::copyShape)
                     .forEach(impact.getShapes()::add);
             page.getConnects().stream().filter(c -> selected.contains(c.getFromShape()) && selected.contains(c.getToShape()))
@@ -182,6 +186,13 @@ public class VisioDiagramService {
             String legend = "Relationships: " + model.edges().size() + " | " + statusCounts.entrySet().stream()
                     .map(e -> e.getKey() + ": " + e.getValue()).collect(java.util.stream.Collectors.joining(" | "))
                     + "\nDashed = AI-proposed. Solid = other/unrecorded origin.\nAI support is not human approval; supplied review metadata remains authoritative.";
+            if (german) {
+                legend = "Beziehungen: " + model.edges().size() + " | " + statusCounts.entrySet().stream()
+                        .map(e -> VisioPresentation.statusLabel(e.getKey(), true) + ": " + e.getValue())
+                        .collect(java.util.stream.Collectors.joining(" | "))
+                        + "\nGestrichelt: KI-Vorschlag. Durchgezogen: sonstige oder unbekannte Herkunft."
+                        + "\nMaßgeblich ist der gespeicherte Prüfstatus.";
+            }
             if (options != null) {
                 legend = options.german() ? "Gestrichelt: KI-Vorschlag · Durchgezogen: sonstige / nicht erfasste Herkunft"
                         : "Dashed: AI-proposed · Solid: other or unrecorded origin";

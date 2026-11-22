@@ -2281,13 +2281,18 @@
         const badge = document.getElementById('proposalPendingBadge');
         const adoptionSection = document.getElementById('proposalAdoptionSection');
         const adoptionTable = document.getElementById('proposalAdoptionTable');
-        const working = window.TaxonomyArchitectureWorkspace?.getSource?.()?.kind === 'working';
+        const kind = window.TaxonomyArchitectureWorkspace?.getSource?.()?.kind;
+        const working = kind === 'working';
         const showCentralAcceptances = working && statusFilter === 'PENDING' && adoptionSection && adoptionTable;
         const listFilter = showCentralAcceptances ? 'ALL' : statusFilter;
         if (badge) badge.textContent = '';
         if (adoptionSection && adoptionTable) {
             adoptionSection.hidden = true;
             adoptionTable.textContent = '';
+        }
+        if (kind === 'snapshot') {
+            container.replaceChildren();
+            return;
         }
         container.innerHTML = '<div class="text-muted small p-2" role="status" aria-live="polite">' + t('browse.proposals.loading') + '</div>';
         // The working inbox uses the same authorized list for pending decisions and central acceptances.

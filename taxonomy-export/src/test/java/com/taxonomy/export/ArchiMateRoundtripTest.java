@@ -49,6 +49,62 @@ class ArchiMateRoundtripTest {
     }
 
     @Test
+    void exportAllocatesRoomForLongNodeTitlesAndRelationshipLabels() {
+        String title = "Dienst zur Zusammenarbeit und Dokumentation über mehrere Ausbildungsstandorte "
+                + "mit Verantwortlichkeiten, Änderungsprotokoll und getrennten Zugriffsrollen";
+        var graph = new DiagramModel("Layered catalogue", List.of(
+                new DiagramNode("wide", title, "Core Services", .8, false, 1),
+                new DiagramNode("next", "Other service", "Core Services", .3, false, 1),
+                new DiagramNode("target", "Education", "Business Processes", .9, true, 2)),
+                List.of(new DiagramEdge("reverse", "target", "wide", "ENABLES", .6),
+                        new DiagramEdge("supports", "wide", "target", "SUPPORTS", .8)), null);
+
+        var view = reader.read(exporter.export(converter.convert(graph))).view();
+        var longName = view.nodes().getFirst();
+        var next = view.nodes().get(1);
+        var target = view.nodes().getLast();
+        assertEquals(title, longName.label());
+        assertTrue(longName.w() > next.w());
+        assertTrue(longName.h() > next.h());
+        assertTrue(next.y() > longName.y() + longName.h());
+        assertTrue(target.x() - longName.x() - longName.w() >= 100);
+        assertEquals(List.of("supports", "reverse"), view.connections().stream()
+                .map(ArchiMateViewConnection::relationshipId).toList());
+    }
+
+    @Test
+    void unqualifiedAccessIsExplicitOnTheWireAndRemainsUnqualifiedInTaxonomy() {
+        var graph = new DiagramModel("Access modes", List.of(
+                new DiagramNode("process", "Process", "Business Processes", .8, false, 1),
+                new DiagramNode("content", "Content", "Information Products", .3, false, 2)),
+                List.of(new DiagramEdge("requires", "process", "content", "REQUIRES", .8)), null);
+        byte[] xml = exporter.export(converter.convert(graph));
+
+        assertTrue(new String(xml, StandardCharsets.UTF_8).contains("accessType=\"Access\""));
+        var read = reader.read(xml);
+        assertNull(read.relationships().getFirst().accessType());
+        assertEquals(graph, reader.toDiagram(read));
+    }
+
+    @Test
+    void crossLayerEdgeAvoidsAnIntermediateTitleAndKeepsItsPathOnExchangeReturn() {
+        var graph = new DiagramModel("Cross-layer connection", List.of(
+                new DiagramNode("from", "Service", "Core Services", .8, false, 1),
+                new DiagramNode("between", "Another service", "Core Services", .6, false, 2),
+                new DiagramNode("to", "Education", "Business Processes", .9, false, 3)),
+                List.of(new DiagramEdge("cross", "from", "to", "SUPPORTS", .8)), null);
+        var converted = converter.convert(graph);
+        var view = converted.view();
+        var route = view.connections().getFirst().bendpoints();
+        var box = view.nodes().get(1);
+
+        assertFalse(route.isEmpty());
+        assertTrue(route.stream().anyMatch(point -> point.y() < box.y() || point.y() > box.y() + box.h()));
+        assertEquals(converted, reader.read(exporter.export(converted)));
+        assertEquals(graph, reader.toDiagram(reader.read(exporter.export(converted))));
+    }
+
+    @Test
     void profileCoversAllDomainRelationshipTypesAndEveryDeclaredMappingValidates() {
         for (RelationType type : RelationType.values()) assertNotNull(ArchiMateExchangeProfile.relationship(type.name()));
         var elements = ArchiMateExchangeProfile.mappings().stream().filter(m -> m.scope().equals("element"))

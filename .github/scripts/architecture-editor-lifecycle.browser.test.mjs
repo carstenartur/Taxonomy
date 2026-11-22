@@ -153,7 +153,12 @@ async function fixture(standaloneUrl=null){
                 unfocus(){unfocusCalls++;state.mode='overview';changed();},zoom(){},setActive(value){diagramActivity.push(value);}};
         };
         window.TaxonomyPlanningEditor={create:()=>({render(){},setEnabled(){}})};
-        window.ArchitectureFocusPanel=()=>({observe(){},review(){},setLocked(){},setContext(){},select(){}});
+        window.ArchitectureFocusPanel=options=>{
+            window.editorFocusFixture={options,receipts:[],undos:[]};
+            return {observe(){},review(){},setLocked(){},setContext(){},select(){},
+                accepted:(id,receipt)=>editorFocusFixture.receipts.push({id,receipt}),
+                undone:id=>editorFocusFixture.undos.push(id)};
+        };
         window.AnalysisSnapshotAdoption=()=>({setLocked(){},update(){},getSource:()=>null});
         window.TaxonomyAppChrome={updateContext:value=>published.push(value)};
         window.ArchitectureEditorApi={load:async(scope,revision,_signal,layout,layoutRevision,viewId)=>{
@@ -295,6 +300,141 @@ test(`working tree updates a responsibility through preview, accept and reload i
         }
         assert.equal(await page.locator('#editorResponsibilitySource').innerText(), inherited);
         assert.equal(await page.locator('#editorTree [data-select-id="BR-1081"]').getAttribute('aria-current'), 'true');
+    } finally {
+        await page.close();
+    }
+});
+
+test('working proposal and inverse execute only after a visible exact preview', async () => {
+    const page = await fixture();
+    try {
+        await page.evaluate(async () => {
+            const baseLoad = ArchitectureEditorApi.load;
+            let revision = 7, rejected = false, sequence = 0;
+            const previews = [], commands = [];
+            window.editorFocusFixtureLog = { previews, commands };
+            crypto.randomUUID = () => '00000000-0000-4000-8000-' + String(++sequence).padStart(12, '0');
+            ArchitectureEditorApi.exportUrl = () => '/export';
+            ArchitectureEditorApi.load = async (...args) => {
+                const view = await baseLoad(...args);
+                Object.assign(view.document.context, { revision, writeMode:'PRIVATE_WORKSPACE' });
+                return view;
+            };
+            ArchitectureEditorApi.preview = async command => {
+                previews.push(JSON.parse(JSON.stringify(command)));
+                if (rejected) throw Object.assign(new Error('Proposal evidence belongs to the previous revision'), {status:412});
+                return {context:command.context,change:{changes:[{id:'source SUPPORTS target',
+                    before:command.kind === 'UNDO' ? 'source SUPPORTS target' : null,
+                    after:command.kind === 'UNDO' ? null : 'source SUPPORTS target'}]}};
+            };
+            ArchitectureEditorApi.execute = async command => {
+                commands.push(JSON.parse(JSON.stringify(command)));
+                if (commands.length === 1) {
+                    revision++;
+                    throw Object.assign(new Error('Response lost after commit'), {status:0});
+                }
+                if (command.kind === 'UNDO') revision++;
+                return {context:{...command.context,revision},operationId:command.metadata.commandId,projectionState:'READY'};
+            };
+            window.moveProposalRevision = () => { rejected = true; revision++; };
+            window.editor = TaxonomyArchitectureEditor.mount(document.getElementById('architectureWorkingSource'));
+            await editor.activate({kind:'working',repositoryId:'repo',workspaceScopeKey:'private-a',branch:'draft/a'});
+            window.workingCandidate = {id:'candidate',sourceId:'source',targetId:'target',relationType:'SUPPORTS',
+                properties:{provenance:'architecture-focus','x-focus-evidence':'exact proof'},context:editor.getData().document.context};
+        });
+
+        await page.locator('#editorTitle').fill('Unrelated unsaved edit');
+        await page.evaluate(() => editorFocusFixture.options.accept(workingCandidate));
+        const dialog = page.locator('#editorPreviewDialog');
+        assert.equal(await dialog.isVisible(), true);
+        assert.equal(await page.evaluate(() => editorFocusFixtureLog.commands.length), 0);
+        assert.match(await page.locator('#editorChanges').innerText(), /source — SUPPORTS → target/);
+        assert.equal(await page.locator('#editorChanges details').getAttribute('open'), null);
+        assert.equal(await page.locator('#editorAccept').innerText(), 'relationshipReview.acceptRelation');
+        await page.locator('#editorCancel').click();
+        assert.equal(await page.evaluate(() => editorFocusFixtureLog.commands.length), 0);
+
+        await page.evaluate(() => editorFocusFixture.options.accept(workingCandidate));
+        await page.locator('#editorAccept').click();
+        await page.getByText('Response lost after commit').waitFor();
+        assert.equal(await dialog.isVisible(), true);
+        assert.equal(await page.evaluate(() => editorFocusFixture.receipts.length), 0);
+        await page.locator('#editorAccept').click();
+        await page.waitForFunction(() => !document.querySelector('#editorPreviewDialog').open
+            && editor.getData().document.context.revision === 8);
+        const accepted = await page.evaluate(() => ({
+            receipt:editorFocusFixture.receipts[0], attempts:editorFocusFixtureLog.commands, preview:editorFocusFixtureLog.previews.at(-1)
+        }));
+        assert.equal(accepted.receipt.id, 'candidate');
+        assert.deepEqual(accepted.attempts, [accepted.preview, accepted.preview]);
+        assert.equal(accepted.preview.properties['x-focus-evidence'], 'exact proof');
+        assert.equal(await page.locator('#editorTitle').inputValue(), 'Unrelated unsaved edit');
+
+        await page.evaluate(() => editorFocusFixture.options.undo({...workingCandidate,accepted:editorFocusFixture.receipts[0].receipt}));
+        assert.equal(await dialog.isVisible(), true);
+        assert.equal(await page.evaluate(() => editorFocusFixtureLog.commands.length), 2);
+        const undo = await page.evaluate(() => editorFocusFixtureLog.previews.at(-1));
+        assert.equal(undo.kind, 'UNDO');
+        assert.equal(undo.targetOperationId, accepted.receipt.receipt.operationId);
+        await page.locator('#editorAccept').click();
+        await page.waitForFunction(() => editor.getData().document.context.revision === 9);
+        assert.deepEqual(await page.evaluate(() => editorFocusFixture.undos), ['candidate']);
+
+        await page.evaluate(() => {
+            moveProposalRevision();
+            return editorFocusFixture.options.accept({...workingCandidate,id:'stale-candidate',context:editor.getData().document.context});
+        });
+        assert.equal(await dialog.isVisible(), true);
+        assert.equal(await page.locator('#editorAccept').isDisabled(), true);
+        assert.equal(await page.locator('#editorReapply').isVisible(), false);
+        assert.match(await page.locator('#editorPreviewError').innerText(), /previous revision/);
+        assert.equal(await page.evaluate(() => editorFocusFixtureLog.commands.length), 3);
+    } finally {
+        await page.close();
+    }
+});
+
+test('selected working proposals share a single preview and a single write', async () => {
+    const page = await fixture();
+    try {
+        await page.evaluate(async () => {
+            const baseLoad = ArchitectureEditorApi.load;
+            window.batchRequests = [];
+            crypto.randomUUID = () => '00000000-0000-4000-8000-000000000001';
+            ArchitectureEditorApi.exportUrl = () => '/export';
+            ArchitectureEditorApi.load = async (...args) => {
+                const view = await baseLoad(...args);
+                view.model.elements = ['Source application','First service','Second service'].map((title, index) => ({id:`e${index}`,title}));
+                return view;
+            };
+            ArchitectureEditorApi.preview = async command => {
+                batchRequests.push({preview:command});
+                return {context:command.context,change:{changes:command.relations.map(relation => ({
+                    id:`relation:${relation.sourceId} ${relation.relationType} ${relation.targetId}`,before:null,after:'DSL block'
+                }))}};
+            };
+            ArchitectureEditorApi.execute = async command => {
+                batchRequests.push({write:command});
+                return {context:{...command.context,revision:Number(command.context.revision)+1},operationId:command.metadata.commandId,projectionState:'READY'};
+            };
+            const editor = TaxonomyArchitectureEditor.mount(document.getElementById('architectureWorkingSource'));
+            await editor.activate({kind:'working',repositoryId:'repo',workspaceScopeKey:'private-a',branch:'draft/a'});
+            const context = editor.getData().document.context;
+            await editorFocusFixture.options.acceptSelection(['e1','e2'].map((targetId, index) => ({id:`candidate-${index}`,sourceId:'e0',
+                targetId,relationType:'SUPPORTS',context,rationale:`Evidence ${index}`,properties:{'x-focus-evidence':`Quote ${index}`}})));
+        });
+        assert.equal(await page.locator('#editorPreviewDialog').isVisible(),true);
+        assert.match(await page.locator('#editorChanges').innerText(), /Source application .* First service/);
+        assert.match(await page.locator('#editorChanges').innerText(), /Source application .* Second service/);
+        assert.equal(await page.evaluate(() => batchRequests.length),1);
+        await page.locator('#editorAccept').click();
+        await page.waitForFunction(() => !document.querySelector('#editorPreviewDialog').open && editorFocusFixture.receipts.length === 2);
+        const requests = await page.evaluate(() => batchRequests);
+        assert.equal(requests.length,2);
+        assert.deepEqual(requests[0].preview,requests[1].write);
+        assert.equal(requests[1].write.kind,'CREATE_RELATIONS');
+        assert.deepEqual(requests[1].write.relations.map(relation => [relation.targetId,relation.properties['x-focus-evidence']]),
+            [['e1','Quote 0'],['e2','Quote 1']]);
     } finally {
         await page.close();
     }
@@ -713,7 +853,8 @@ for (const blockedNative of [false,true]) test('guided ADMBw review pins the ori
         assert.ok(panel, 'The editor needs an accessible guided ADMBw form');
         await page.route('https://admbw.test/**', async route => {
             const request = route.request(), url = new URL(request.url());
-            if (!url.pathname.startsWith('/api/')) return route.fulfill({contentType:'text/html',body:panel[0]});
+            if (!url.pathname.startsWith('/api/')) return route.fulfill({contentType:'text/html',
+                body:`<main class="architecture-editor-surface">${panel[0]}</main>`});
             assert.equal(url.searchParams.get('workspaceId'),'__shared__');
             if (url.pathname.endsWith('/basis')) {
                 assert.equal(request.postData(),'fixture QEA');
@@ -793,13 +934,32 @@ for (const blockedNative of [false,true]) test('guided ADMBw review pins the ori
         await page.locator('#prepUseSelection').click();
         assert.equal(await page.locator('#prepQuote').inputValue(),'Provide\ntraining.');
         await page.locator('#prepPreview').click();
-        await page.locator('#prepResult').getByText(requirementHash,{exact:false}).first().waitFor();
+        await page.locator('#prepReview').waitFor();
+        assert.match(await page.locator('#prepRelationshipSummary').innerText(),/Learning service.*Training capability/);
+        assert.match(await page.locator('#prepDerivationSummary').innerText(),/Training.*2.*FunctionalRequirement.*Student/);
+        assert.equal(await page.locator('#prepConstraintSummary').innerText(),'Provide access to training.');
+        assert.equal(await page.locator('#prepEvidenceQuote').textContent(),'Provide\r\ntraining.');
+        const technical = page.locator('#prepResult > details');
+        assert.equal(await technical.getAttribute('open'),null);
+        assert.doesNotMatch(await page.locator('#prepResult').innerText(),new RegExp(requirementHash));
+        await technical.locator(':scope > summary').click();
+        assert.match(await technical.innerText(),new RegExp(requirementHash));
         assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth <= document.documentElement.clientWidth),true,
             'The source paths, hashes, coverage and controls must fit a 375px viewport');
+        assert.deepEqual(await page.locator('#prepResult .editor-admbw-profile h4').allTextContents(), ['C1–S1', 'R7']);
         if (blockedNative) assert.match(await page.locator('#prepResult').innerText(),/element:resource-role.*no owned EA Part/);
         assert.equal(await page.locator('#prepAccept').isEnabled(),false);
-        await page.locator('#prepRelationshipReviewed').check();
-        await page.locator('#prepDerivationReviewed').check();
+        const review = page.locator('#prepReview .editor-check');
+        assert.deepEqual(await review.evaluateAll(items => items.map(label => {
+            const box = label.querySelector('input').getBoundingClientRect();
+            const text = label.querySelector('span').getBoundingClientRect();
+            const gap = text.left - box.right;
+            return box.width < 25 && gap > 0 && gap < 16 && text.top >= box.top - 8 && text.top < box.bottom;
+        })), [true, true], 'Checkbox and label start on the same line');
+        await review.nth(0).locator('span').click();
+        assert.equal(await page.locator('#prepAccept').isEnabled(),false);
+        await review.nth(1).locator('span').click();
+        assert.equal(await page.locator('#prepAccept').isEnabled(),true);
         await page.locator('#prepConstraint').fill('Provide access to assigned training.');
         assert.equal(await page.locator('#prepAccept').isEnabled(),false);
         await page.locator('#prepPreview').click();
@@ -807,6 +967,7 @@ for (const blockedNative of [false,true]) test('guided ADMBw review pins the ori
         await page.locator('#prepDerivationReviewed').check();
         await page.locator('#prepAccept').click();
         await page.locator('#prepRetry').waitFor();
+        assert.equal(await page.locator('#prepAssessment').isVisible(),false);
         await page.evaluate(()=>window.showOtherWorkspace());
         assert.equal(await page.locator('#prepRetry').isVisible(),false);
         assert.equal(await page.locator('#prepReceipt').innerText(),'');
@@ -821,6 +982,14 @@ for (const blockedNative of [false,true]) test('guided ADMBw review pins the ori
         assert.equal(accepted[0][1].relationshipReviewed,true);
         assert.equal(accepted[0][1].derivationReviewed,true);
         assert.equal(accepted[0][1].previewFingerprint,fingerprint);
+        const assessmentLink = page.locator('#prepAssessment');
+        assert.equal(await assessmentLink.isVisible(),true);
+        const assessment = new URL(await assessmentLink.evaluate(link => link.href));
+        assert.equal(assessment.pathname,'/api/architecture/editor.admbw.json');
+        assert.equal(assessment.searchParams.get('workspaceId'),'__shared__');
+        assert.equal(assessment.searchParams.get('commit'),'b'.repeat(40));
+        assert.equal(assessment.searchParams.get('projectCode'),'TRAIN');
+        assert.equal(assessment.searchParams.get('viewId'),'review-view');
         if (blockedNative) {
             assert.equal(await page.locator('#prepDownload').isVisible(),false);
             assert.equal(downloads.length,0);

@@ -75,7 +75,7 @@
 <section th:replace="~{fragments/architecture-workflow :: context}"></section>
 </div>
 
-<section th:fragment="surface" class="architecture-snapshot-content">
+<section th:fragment="surface(integrated)" class="architecture-snapshot-content">
 <div id="architectureStatus" class="workbench-status" role="status" aria-live="polite" th:text="#{workbench.ui.loading}">
     Loading persisted Copilot architecture snapshot…
 </div>
@@ -144,6 +144,9 @@
                     <button id="fullscreenArchitecture" class="architecture-control icon-only" type="button"
                             th:title="#{workbench.ui.fullscreen}" title="Fullscreen" th:attr="aria-label=#{workbench.ui.fullscreen}" aria-label="Fullscreen">⛶</button>
                 </div>
+                <th:block th:if="${integrated}">
+                    <div th:replace="~{fragments/architecture-diagram-controls :: lens('snapshotArchitectureLensAction', 'snapshotArchitectureLensEnabled', 'architectureSourceLens')}"></div>
+                </th:block>
 
                 <div id="architectureVisibleStatus" class="architecture-visible-status"
                      role="status" aria-live="polite"></div>

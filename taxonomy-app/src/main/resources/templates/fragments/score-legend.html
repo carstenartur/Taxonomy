@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<div th:fragment="matches(id)" th:id="${id}" class="score-legend" role="group"
+     th:attr="aria-labelledby=${id + 'Label'}" th:title="#{legend.title}">
+    <small th:id="${id + 'Label'}" class="text-muted" th:text="#{legend.label}">Match strength</small>
+    <span th:each="score : ${#numbers.sequence(0, 100, 25)}" class="legend-box"
+          th:attr="data-score=${score}" th:title="#{${'legend.' + score}}" th:text="${score} + '%'">0%</span>
+</div>
+</body>
+</html>

@@ -33,7 +33,12 @@ public final class AnalysisModelEvidence {
             case BRIEF_UNASSIGNED -> de ? "Kein Architekturauftrag zugeordnet" : "No architecture brief assigned";
             case PROFILE_UNRESOLVED -> de ? "Profilzuordnung ungeklärt" : "Profile assignment unresolved";
         }));
-        rows.add(List.of(de ? "Modellquelle" : "Model source", binding.modelSource()));
+        var source = switch (binding.modelSource()) {
+            case "WORKSPACE_REVISION" -> de ? "Arbeitsbereichsrevision" : "Workspace revision";
+            case "GIT_CHECKPOINT" -> de ? "Git-Prüfpunkt" : "Git checkpoint";
+            default -> binding.modelSource();
+        };
+        rows.add(List.of(de ? "Modellquelle" : "Model source", source));
 
         rows.add(List.of(labels.repository(), binding.repositoryId()));
         rows.add(List.of(labels.workspace(), binding.workspaceScopeKey()));
@@ -49,10 +54,10 @@ public final class AnalysisModelEvidence {
                 recorded(binding.catalogueDefinitionVersion(), labels)));
         rows.add(List.of(de ? "Version des Architekturauftrags" : "Architecture brief version",
                 recorded(binding.briefVersion(), labels)));
-        rows.add(List.of(de ? "Beauftragter Analyseumfang" : "Requested analysis scope", scope(binding.scope(), labels)));
+        rows.add(List.of(de ? "Beauftragter Analyseumfang" : "Requested analysis scope", describeScope(binding.scope(), labels)));
         if (actualScope != null) {
             rows.add(List.of(de ? "Ausgeführter Analyseumfang" : "Executed analysis scope",
-                    scope(actualScope, labels)));
+                    describeScope(actualScope, labels)));
         }
         if (!binding.rootCodes().isEmpty()) {
             rows.add(List.of(de ? "Erfasste Katalogwurzeln" : "Recorded catalogue roots",
@@ -78,7 +83,7 @@ public final class AnalysisModelEvidence {
         return value == null ? labels.unknown() : value.toString();
     }
 
-    private static String scope(AnalysisScope scope, DecisionReportLabels labels) {
+    public static String describeScope(AnalysisScope scope, DecisionReportLabels labels) {
         String mode = scope.mode() == AnalysisMode.TAXONOMIES_ONLY
                 ? (labels.german() ? "Nur Taxonomien" : "Taxonomies only")
                 : (labels.german() ? "Taxonomien und Beziehungen" : "Taxonomies and relations");

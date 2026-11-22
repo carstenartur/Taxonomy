@@ -45,7 +45,7 @@ async function fixture(locale='de',width=1366,entry=null){
     await page.goto('http://taxonomy.test/taxonomy/');
     if(entry)await page.evaluate(url=>history.replaceState(null,'',url),entry);
     let dict={};
-    for(const name of ['messages.properties',...(locale==='de'?['messages_de.properties']:[])]){
+    for(const name of ['messages.properties','messages_security.properties',...(locale==='de'?['messages_de.properties','messages_security_de.properties']:[])]){
         for(const line of (await readFile(path.join(resources,'i18n',name),'utf8')).split('\n')){
             const m=line.match(/^([^#!\s][^=]*)=(.*)$/);if(m)dict[m[1]]=m[2].replace(/\\n/g,'\n');
         }
@@ -232,6 +232,12 @@ for(const locale of ['de','en'])for(const width of [320,390,700,768,900,1100,136
         assert.ok((await page.locator('#applicationNavigation').boundingBox()).height<=64);
         for(const link of await page.locator('#applicationWorkspaces a').all()){
             assert.equal(await link.isVisible(),true);const box=await link.boundingBox();assert.ok(box.height>=44&&box.width>=44);
+        }
+        if (width >= 390) {
+            const sizes = await page.locator('#applicationWorkspaces').evaluate(nav => ({ visible: nav.clientWidth,
+                content: nav.scrollWidth, toolbar: nav.parentElement.clientWidth,
+                children: Array.from(nav.parentElement.children, node => [node.id, node.getBoundingClientRect().width]) }));
+            assert.ok(sizes.content <= sizes.visible + 1, JSON.stringify(sizes));
         }
         await page.locator('#businessText').fill('Retained requirement draft');
         for(const destination of ['architecture','versions','dsl-editor','graph','help','analyze']){

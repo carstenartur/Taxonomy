@@ -164,7 +164,7 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
         if (options.includes(DecisionReportOptions.Section.EVIDENCE)) navigation.put("decision_evidence", labels.appendix());
         if (!options.includes(DecisionReportOptions.Section.TITLE_PAGE)) {
             writer.heading(report.title(), 0, null);
-            writer.paragraph(report.requirement());
+            writer.requirementParagraphs(report.requirement());
         }
         var evidence = new DecisionNodeEvidence(report);
         boolean shortCompact = options.profile() == DecisionReportOptions.Profile.COMPACT
@@ -352,8 +352,13 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
         shade(requirementCell, LIGHT_GRAY);
         setCellMargins(requirementCell, 180, 220, 180, 220);
         setLeftCellBorder(requirementCell, TEAL, 22);
-        setCellText(requirementCell, report.requirement(), 13, false, NAVY,
-                ParagraphAlignment.LEFT);
+        clearCell(requirementCell);
+        RequirementReportText.write(report.requirement(), () -> {
+            var paragraph = requirementCell.addParagraph();
+            paragraph.setSpacingAfter(80);
+            return paragraph;
+        }, 11);
+        if (requirementCell.getParagraphs().isEmpty()) requirementCell.addParagraph();
 
         addBodyParagraph(document, labels.analysisSnapshot() + ": " + report.metadata().analysisSnapshotId(), true);
     }
@@ -391,15 +396,15 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
         addMetadataRow(provenance, labels.branch(), report.metadata().branch());
         addMetadataRow(provenance, labels.basedOnCommit(), report.metadata().basedOnCommit());
         addMetadataRow(provenance, labels.analysisProvider(), report.metadata().analysisProvider());
-        addMetadataRow(provenance, labels.analysisModel(), report.metadata().analysisModel());
+        addMetadataRow(provenance, labels.analysisModel(), labels.modelName(report.metadata().analysisModel()));
         addMetadataRow(provenance, labels.analysisSnapshot(), report.metadata().analysisSnapshotId());
-        addMetadataRow(provenance, labels.requirementVersion(), requirementVersion(report));
+        addMetadataRow(provenance, labels.requirementVersion(), requirementVersion(report, labels));
         addMetadataRow(provenance, labels.analysisCreatedAt(),
                 formatInstant(report.metadata().analysisCreatedAt(), report.metadata().reportTimeZone()));
         addMetadataRow(provenance, labels.analysisCreatedBy(), report.metadata().analysisCreatedBy());
         addMetadataRow(provenance, labels.analysisDigest(),
                 report.metadata().analysisSnapshotFingerprintSha256());
-        addMetadataRow(provenance, labels.analysisStatus(), report.metadata().analysisStatus());
+        addMetadataRow(provenance, labels.analysisStatus(), labels.analysisState(report.metadata().analysisStatus()));
         addMetadataRow(provenance, labels.analysisDuration(), labels.durationMillis(report.metadata().analysisDurationMillis()));
 
 
@@ -564,7 +569,7 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
         addMetadataRow(evidence, labels.analysisDigest(),
                 report.metadata().analysisSnapshotFingerprintSha256());
         addMetadataRow(evidence, labels.analysisSnapshot(), report.metadata().analysisSnapshotId());
-        addMetadataRow(evidence, labels.requirementVersion(), requirementVersion(report));
+        addMetadataRow(evidence, labels.requirementVersion(), requirementVersion(report, labels));
         addMetadataRow(evidence, labels.analysisCreatedAt(),
                 formatInstant(report.metadata().analysisCreatedAt(), report.metadata().reportTimeZone()));
         addMetadataRow(evidence, labels.analysisCreatedBy(), report.metadata().analysisCreatedBy());
@@ -573,11 +578,14 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
         addMetadataRow(evidence, labels.branch(), report.metadata().branch());
         addMetadataRow(evidence, labels.basedOnCommit(), report.metadata().basedOnCommit());
         addMetadataRow(evidence, labels.analysisProvider(), report.metadata().analysisProvider());
-        addMetadataRow(evidence, labels.analysisModel(), report.metadata().analysisModel());
-        addMetadataRow(evidence, labels.analysisStatus(), report.metadata().analysisStatus());
+        addMetadataRow(evidence, labels.analysisModel(), labels.modelName(report.metadata().analysisModel()));
+        addMetadataRow(evidence, labels.analysisStatus(), labels.analysisState(report.metadata().analysisStatus()));
         addMetadataRow(evidence, labels.analysisDuration(), labels.durationMillis(report.metadata().analysisDurationMillis()));
         addMetadataRow(evidence, labels.decisionTreeCompleteness(),
                 percent(report.metadata().completenessPercent()));
+        tableWidths(evidence, 44, 56);
+        evidence.getRows().forEach(row -> row.getTableCells().forEach(cell ->
+                setCellMargins(cell, 28, 110, 28, 110)));
 
         if (!report.discrepancies().isEmpty()) {
             addHeading(document,
@@ -1098,17 +1106,17 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
         };
     }
 
-    private String requirementVersion(DecisionRationaleReport report) {
+    private String requirementVersion(DecisionRationaleReport report, DecisionReportLabels labels) {
         if (report.metadata().requirementVersionNumber() == null) {
             return "—";
         }
         StringBuilder value = new StringBuilder("v")
                 .append(report.metadata().requirementVersionNumber());
         if (report.metadata().requirementId() != null) {
-            value.append(" · requirement ").append(report.metadata().requirementId());
+            value.append(" · ").append(labels.requirementId()).append(' ').append(report.metadata().requirementId());
         }
         if (report.metadata().projectId() != null) {
-            value.append(" · project ").append(report.metadata().projectId());
+            value.append(" · ").append(labels.project()).append(' ').append(report.metadata().projectId());
         }
         return value.toString();
     }
