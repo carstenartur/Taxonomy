@@ -103,7 +103,23 @@ offen. Die Liefermaske zeigt den Typbeleg bei eindeutigem Treffer an.
 Die Analyse- und Lupenprüfung verwendete gespeicherte Testläufe und einen
 kontrollierten OpenAI-kompatiblen Testdienst. Eine Qualitätsmessung mit einem
 eigenständig antwortenden vLLM-Modell steht aus.
-[Bebilderter Ablauf](../de/ARCHITECTURE_EDITOR.md#architecture-delivery-guide)
+
+## Bildfolge zum Ausbildungsportal
+
+Die Aufnahmen dokumentieren gespeicherte Teststände des fiktiven Ausbildungsportals.
+Die [Anleitung zum Ablauf](../de/ARCHITECTURE_EDITOR.md#architecture-delivery-guide) führt durch die gezeigten Schritte.
+
+![Offene Analysefrage zur Leseberechtigung für Auditprotokolle](../images/admbw-quickstart-01-offene-analysefrage.png)
+
+![Architektur-Lupe untersucht den gewählten schreibgeschützten Snapshot](../images/admbw-quickstart-02-lupe-im-snapshot.png)
+
+![Vorschau der Übernahme aus dem gewählten Snapshot in die Arbeitsarchitektur](../images/admbw-quickstart-03-uebernahmevorschau.png)
+
+![Ausgefüllte Liefermaske mit nativer Referenz und wörtlichem R7-Beleg](../images/admbw-quickstart-04-native-referenz.png)
+
+![Liefervorschau mit Prüfergebnissen für C1–S1 und R7 und der Abdeckung der gewählten Sicht](../images/admbw-quickstart-05-liefervorschau.png)
+
+![Gerenderte C1–S1-Liefersicht des Ausbildungsportals mit gerichteter Beziehung](../images/admbw-quickstart-06-liefersicht.png)
 
 ## API
 
