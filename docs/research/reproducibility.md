@@ -33,11 +33,31 @@ model files. See [AI providers](../en/AI_PROVIDERS.md) and the
 Replace `YOUR_RECORDED_TAG_OR_COMMIT` with the revision you recorded:
 
 ```bash
-git clone https://github.com/carstenartur/Taxonomy.git
+git clone --filter=blob:none --no-checkout https://github.com/carstenartur/Taxonomy.git
 cd Taxonomy
 git checkout YOUR_RECORDED_TAG_OR_COMMIT
 ./mvnw verify
 ```
+
+This partial clone retains the commit history and retrieves the selected
+revision's file contents when checking it out. Commands that inspect older
+contents may need network access. For fully offline work with the entire
+history, omit `--filter=blob:none` when cloning. Use `--depth=1 --single-branch`
+only for a current-tip build, not as a replacement for the recorded revision
+and its provenance.
+
+GitHub source ZIPs and Zenodo's GitHub source archives contain the files of the
+selected release, not the repository's Git history. Removing a generated file
+in a later commit makes later source archives smaller while its old versions
+remain available through earlier commits and tags. Existing DOI deposits do not
+change when `main` changes. Preserve runtime resources, test inputs, screenshots
+used by the documentation, and reproducibility evidence in a source release;
+large local `target/` directories do not imply a large source archive.
+
+For the Git and archive behavior, see the official
+[partial-clone explanation](https://github.blog/open-source/git/get-up-to-speed-with-partial-clone-and-shallow-clone/),
+[GitHub source archive documentation](https://docs.github.com/en/repositories/working-with-files/using-files/downloading-source-code-archives),
+and [Zenodo GitHub integration guide](https://help.zenodo.org/docs/github/enable-repository/).
 
 The default lifecycle is a bounded developer check. The canonical Maven CI command is:
 
