@@ -20,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.zip.ZipInputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -50,13 +51,18 @@ class MailAnalysisApplicationIT extends RetainedPortfolioCatalogue {
                 argThat((LlmCompletionOptions options) -> options != null && "mail_analysis_command_v1".equals(options.schemaName())));
     }
 
+    private MailAnalysisQueue.Outcome process(String subject) {
+        var command = processor.classify(subject, REQUIREMENT);
+        return processor.process(UUID.randomUUID().toString(), command, REQUIREMENT, () -> true);
+    }
+
     @Test
     void opensTheRequestedArchitectureFilesFromOneAssessment() throws Exception {
         answerSubject("""
                 {"mode":"ARCHITECTURE","taxonomyCodes":[],
                  "exports":["PDF","VISIO","SVG","ARCHIMATE","STRUCTURIZR","SPARX","DOCX","HTML","MARKDOWN","JSON"]}
                 """);
-        var result = processor.process("Gesamtarchitektur mit Zeichnungen und Berichten", REQUIREMENT);
+        var result = process("Gesamtarchitektur mit Zeichnungen und Berichten");
         assertThat(result.successful()).isTrue();
         var files = attachments(result);
         assertThat(files).containsOnlyKeys("requirement-architecture.pdf", "requirement-architecture.vsdx",
@@ -85,12 +91,13 @@ class MailAnalysisApplicationIT extends RetainedPortfolioCatalogue {
         answerSubject("""
                 {"mode":"DECISION_TREE","taxonomyCodes":["BP","IP"],"exports":["JSON","DOCX","HTML","VISIO"]}
                 """);
-        var result = processor.process("Entscheidungsbaum BP und IP als JSON, Word, HTML und Visio", REQUIREMENT);
+        var result = process("Entscheidungsbaum BP und IP als JSON, Word, HTML und Visio");
         assertThat(result.successful()).isTrue();
         var files = attachments(result);
         assertThat(files).containsOnlyKeys("decision-tree.json", "decision-tree.docx", "decision-tree.html", "decision-tree.vsdx");
         var report = json.readTree(files.get("decision-tree.json"));
         assertThat(report.path("requirement").asString()).isEqualTo(REQUIREMENT);
+        assertThat(report.path("metadata").path("generatedBy").asString()).isEqualTo("mail");
         assertThat(report.path("scope").path("reportRoots").valueStream().map(node -> node.asString()).toList())
                 .containsExactlyInAnyOrder("BP", "IP");
         assertThat(report.path("scope").path("decisionTree").path("rows").size()).isPositive();

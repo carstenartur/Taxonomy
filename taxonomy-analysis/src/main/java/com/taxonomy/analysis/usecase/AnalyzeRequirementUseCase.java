@@ -21,15 +21,19 @@ import com.taxonomy.analysis.service.AnalysisRunControl;
 import com.taxonomy.analysis.service.AnalysisStoppedException;
 
 import com.taxonomy.analysis.dag.AnalysisOperationContext;
+import com.taxonomy.analysis.dag.AnalysisTaskId;
 import com.taxonomy.analysis.dag.AnalysisTaskOutcome;
 import com.taxonomy.analysis.dag.RelationAnalysisTask;
 import com.taxonomy.analysis.dag.TaxonomyShardRoot;
 import com.taxonomy.analysis.dag.inprocess.InProcessAnalysisOperation;
 import com.taxonomy.dto.ViewContext;
+import com.taxonomy.workspace.service.WorkspaceContext;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 @Service
 public class AnalyzeRequirementUseCase {
@@ -79,21 +83,39 @@ public class AnalyzeRequirementUseCase {
      * claim has been revalidated and locked.
      */
     public AnalyzeRequirementResult analyze(AnalyzeRequirementCommand command) {
-        return execute(command, command.provenance() == null ? Submission.AD_HOC : Submission.QUEUED);
+        return execute(command, command.provenance() == null ? Submission.AD_HOC : Submission.QUEUED, null);
     }
 
-    /** Execute an accepted delivery job under normal capacity limits and keep its hypotheses private. */
-    public AnalyzeRequirementResult analyzeUnpublished(AnalyzeRequirementCommand command) {
-        return execute(command, Submission.QUEUED);
+    /** Resume the accepted delivery's durable analysis, or capture its input for first admission. */
+    public AnalyzeRequirementResult analyzeUnpublished(String operationId, WorkspaceContext scope, String requirementText,
+                                                        Supplier<AnalyzeRequirementCommand> admission) {
+        AnalysisTaskId.requireOperationId(operationId);
+        if (clustered()) {
+            var retained = clusterExecution.resumeUnpublished(operationId, scope, requirementText);
+            if (retained.isPresent()) return new AnalyzeRequirementResult(retained.get());
+        }
+        var command = admission.get();
+        if (!scope.equals(command.workspaceContext()) || !Objects.equals(scope.username(), command.username())
+                || !Objects.equals(requirementText, command.businessText()) || command.provenance() != null
+                || command.continuationBinding() != null) {
+            throw new IllegalArgumentException("Analysis input does not match the accepted delivery");
+        }
+        return execute(command, Submission.QUEUED, operationId);
     }
 
     private enum Submission { AD_HOC, QUEUED }
 
-    private AnalyzeRequirementResult execute(AnalyzeRequirementCommand command, Submission submission) {
+    private boolean clustered() {
+        return clusterExecution != null && !com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active();
+    }
+
+    private AnalyzeRequirementResult execute(AnalyzeRequirementCommand command, Submission submission, String operationId) {
         command = freezeGenerationContract(command);
-        if (clusterExecution != null && !com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active()) {
+        if (clustered()) {
             ViewContext view = resolveViewContext(command);
-            return analyze(command, operationContext(command, view), view);
+            var context = operationId == null ? operationContext(command, view)
+                    : AnalysisOperationContexts.create(operationId, command, view);
+            return analyze(command, context, view);
         }
         boolean publishHypotheses = submission == Submission.AD_HOC
                 && !com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active();

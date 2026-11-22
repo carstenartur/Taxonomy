@@ -24,12 +24,16 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.KeyStore;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.Properties;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
@@ -81,12 +85,15 @@ class MailTransportRoundTripTest {
                 new MailTransportProperties.Smtp("127.0.0.1", servers.getSmtps().getPort(), INBOX, PASSWORD, INBOX, true));
         var delivery = new SmtpMailAnalysisDelivery(properties);
         var processor = mock(MailAnalysisProcessor.class);
+        var command = new MailAnalysisCommand(MailAnalysisCommand.Mode.DECISION_TREE,
+                List.of("BP"), List.of(MailAnalysisCommand.Format.HTML));
         byte[] result = "<html><body>BP</body></html>".getBytes(StandardCharsets.UTF_8);
-        when(processor.process(SUBJECT, REQUIREMENT)).thenReturn(new MailAnalysisQueue.Outcome("Fertig",
+        when(processor.classify(SUBJECT, REQUIREMENT)).thenReturn(command);
+        when(processor.process(anyString(), eq(command), eq(REQUIREMENT), any())).thenReturn(new MailAnalysisQueue.Outcome("Fertig",
                 List.of(new MailAnalysisAttachment("entscheidung.html", "text/html", result)), true));
 
         var queue = new MailAnalysisQueue(directory.resolve("queue"), 1, Duration.ofHours(1),
-                JsonMapper.builder().build(), processor, delivery);
+                JsonMapper.builder().build(), processor, delivery, Clock.systemUTC());
         var collector = new ImapMailAnalysisPoller(properties.imap(), new MailRequestParser(
                 new DocumentParserService(), properties), queue, delivery);
         try {
@@ -126,7 +133,8 @@ class MailTransportRoundTripTest {
                     .allMatch(mail -> mail.getFlags().contains(Flags.Flag.SEEN)));
             queue.processNext();
             assertThat(received.getMessages()).hasSize(3);
-            verify(processor).process(SUBJECT, REQUIREMENT);
+            verify(processor).classify(SUBJECT, REQUIREMENT);
+            verify(processor).process(anyString(), eq(command), eq(REQUIREMENT), any());
             verifyNoMoreInteractions(processor);
 
             // Drop the server-side IDLE connection. Leave the message in the same persistent mailbox.

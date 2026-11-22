@@ -3,6 +3,7 @@ package com.taxonomy.mail;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 
 /** Validated options for running a mail request through the normal analysis pipeline. */
 public record MailAnalysisCommand(Mode mode, List<String> taxonomyCodes, List<Format> exports) {
@@ -10,6 +11,12 @@ public record MailAnalysisCommand(Mode mode, List<String> taxonomyCodes, List<Fo
         Objects.requireNonNull(mode);
         taxonomyCodes = List.copyOf(taxonomyCodes);
         exports = List.copyOf(exports);
+        if ((mode == Mode.ARCHITECTURE) != taxonomyCodes.isEmpty()
+                || taxonomyCodes.stream().anyMatch(String::isBlank) || Set.copyOf(taxonomyCodes).size() != taxonomyCodes.size()
+                || exports.isEmpty() || Set.copyOf(exports).size() != exports.size()
+                || mode == Mode.DECISION_TREE && exports.stream().anyMatch(format -> format.decisionId() == null)) {
+            throw new IllegalArgumentException("Invalid email analysis scope or exports");
+        }
     }
 
     public enum Mode { ARCHITECTURE, DECISION_TREE }

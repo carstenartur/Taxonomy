@@ -18,11 +18,13 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.time.Clock;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -141,6 +143,66 @@ class DurableClusterAnalysisExecutionTest {
         verify(store).admit(eq(context), any(), isNull(), anyMap(), anyMap());
         verify(store, never()).cancel(any());
         assertThat(signals.listenerCount()).isZero();
+    }
+
+    @Test
+    void restartingAnObserverReturnsTheOriginalSourceWhenLiveResolutionIsUnavailable() throws Exception {
+        var context = context("mail-interrupted");
+        var command = command(AnalysisMode.TAXONOMIES_ONLY, "MOCK");
+        when(store.findAuthorized(context.operationId(), command.username(), command.workspaceContext()))
+                .thenReturn(Optional.of(context));
+        when(views.getViewContext(anyString(), anyString(), any()))
+                .thenThrow(new IllegalStateException("Live source is unavailable"));
+        var terminal = snapshot(context, ClusterAnalysisState.COMPLETED);
+        var recordedView = new ViewContext(context.authority().sourceCommit(), context.authority().branch(),
+                null, false, false, false);
+        terminal.result().setViewContext(recordedView);
+        var subscribed = new CountDownLatch(1);
+        var current = new AtomicReference<>(snapshot(context, ClusterAnalysisState.RUNNING));
+        when(store.snapshot(context)).thenAnswer(invocation -> {
+            var state = current.get();
+            subscribed.countDown();
+            return state;
+        });
+
+        try (var workers = Executors.newSingleThreadExecutor()) {
+            var observation = workers.submit(() -> execution.resumeUnpublished(context.operationId(),
+                    command.workspaceContext(), command.businessText()));
+            try {
+                assertThat(subscribed.await(5, TimeUnit.SECONDS)).isTrue();
+                assertThat(observation.isDone()).isFalse();
+                current.set(terminal);
+                signals.reconnected();
+                var result = observation.get(5, TimeUnit.SECONDS).orElseThrow();
+                assertThat(result).isSameAs(terminal.result());
+                assertThat(result.getViewContext().basedOnCommit()).isEqualTo("commit");
+            } finally {
+                observation.cancel(true);
+            }
+        }
+
+        verify(store, never()).admit(any(), any(), any(), anyMap(), anyMap());
+        verifyNoInteractions(catalogue, views);
+        assertThat(signals.listenerCount()).isZero();
+    }
+
+    @Test
+    void reattachmentRejectsOtherScopesOrChangedRequirementTextBeforeObservingTheRun() {
+        var context = context("mail-protected");
+        var command = command(AnalysisMode.TAXONOMIES_ONLY, "MOCK");
+        var foreign = new WorkspaceContext(command.username(), command.workspaceContext().workspaceId(),
+                "other-branch", command.workspaceContext().repositoryId());
+        when(store.findAuthorized(context.operationId(), command.username(), foreign))
+                .thenThrow(new SecurityException("Analysis operation is unavailable in this scope"));
+        when(store.findAuthorized(context.operationId(), command.username(), command.workspaceContext()))
+                .thenReturn(Optional.of(context));
+
+        assertThatThrownBy(() -> execution.resumeUnpublished(context.operationId(), foreign, command.businessText()))
+                .isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> execution.resumeUnpublished(context.operationId(), command.workspaceContext(),
+                command.businessText() + " ")).isInstanceOf(SecurityException.class);
+        verify(store, never()).snapshot(any());
+        verifyNoInteractions(catalogue, views);
     }
 
     @Test

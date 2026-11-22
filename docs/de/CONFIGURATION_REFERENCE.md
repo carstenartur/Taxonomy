@@ -291,8 +291,8 @@ Die [Einrichtung des E-Mail-Eingangs](MAIL_ANALYSIS.md) enthält die Postfach-, 
 | `TAXONOMY_MAIL_ENABLED` | `taxonomy.mail.enabled` | `false` | Aktiviert E-Mail-Eingang, Auftragsverarbeitung und Live-Status. |
 | `TAXONOMY_MAIL_IMAP_POLL_ENABLED` | `taxonomy.mail.imap.poll-enabled` | `true` | Aktiviert den Postfacheingang. Er nutzt IMAP IDLE bei verfügbaren Serverbenachrichtigungen und andernfalls das Abfrageintervall. |
 | `TAXONOMY_MAIL_QUEUE_DIRECTORY` | `taxonomy.mail.queue.directory` | `./data/mail-analysis` | Dauerhaftes Verzeichnis eines einzelnen Koordinators. |
-| `TAXONOMY_MAIL_QUEUE_CAPACITY` | `taxonomy.mail.queue.capacity` | `16` | Höchstzahl wartender Aufträge. |
-| `TAXONOMY_MAIL_QUEUE_RETENTION` | `taxonomy.mail.queue.retention` | `PT48H` | Aufbewahrung abgeschlossener Statusinformationen. |
+| `TAXONOMY_MAIL_QUEUE_CAPACITY` | `taxonomy.mail.queue.capacity` | `16` | Höchstzahl wartender Aufträge. Für den Versand gilt eine eigene Obergrenze in gleicher Höhe, mindestens eins. Ist sie erreicht, behalten bestätigte Aufträge ihren Warteplatz, bis Ergebnisse versandt wurden oder ablaufen. |
+| `TAXONOMY_MAIL_QUEUE_RETENTION` | `taxonomy.mail.queue.retention` | `PT48H` | Aufbewahrung abgeschlossener Statusinformationen und maximale Dauer erneuter Versandversuche. |
 | `TAXONOMY_MAIL_QUEUE_LANGUAGE` | `taxonomy.mail.queue.language` | `de` | Sprache der Analyse und Dokumente. |
 | `TAXONOMY_MAIL_QUEUE_MAX_RESULT_BYTES` | `taxonomy.mail.queue.max-result-bytes` | `15000000` | Grenze für die Gesamtgröße exportierter Rohdateien pro Auftrag. |
 | `TAXONOMY_REPORTING_VISIO_PDF_ENABLED` | `taxonomy.reporting.visio-pdf.enabled` | `false` | Entscheidungsbaum-PDF über LibreOffice aktivieren. |

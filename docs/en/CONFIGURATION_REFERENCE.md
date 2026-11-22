@@ -286,8 +286,8 @@ See the [email intake setup guide](../de/MAIL_ANALYSIS.md) for the mailbox, SMTP
 | `TAXONOMY_MAIL_ENABLED` | `taxonomy.mail.enabled` | `false` | Enables email intake, job processing and live status. |
 | `TAXONOMY_MAIL_IMAP_POLL_ENABLED` | `taxonomy.mail.imap.poll-enabled` | `true` | Starts the mailbox listener. It uses IMAP IDLE when supported and otherwise checks the inbox at the configured poll interval. |
 | `TAXONOMY_MAIL_QUEUE_DIRECTORY` | `taxonomy.mail.queue.directory` | `./data/mail-analysis` | Persistent directory owned by one coordinator. |
-| `TAXONOMY_MAIL_QUEUE_CAPACITY` | `taxonomy.mail.queue.capacity` | `16` | Maximum number of waiting jobs. |
-| `TAXONOMY_MAIL_QUEUE_RETENTION` | `taxonomy.mail.queue.retention` | `PT48H` | Retention period for completed job status. |
+| `TAXONOMY_MAIL_QUEUE_CAPACITY` | `taxonomy.mail.queue.capacity` | `16` | Maximum number of waiting jobs. The delivery backlog has a separate limit equal to this value, with a minimum of one. When delivery is full, accepted jobs keep their waiting places until results are sent or expire. |
+| `TAXONOMY_MAIL_QUEUE_RETENTION` | `taxonomy.mail.queue.retention` | `PT48H` | Retention period for completed job status and maximum retry window for pending deliveries. |
 | `TAXONOMY_MAIL_QUEUE_LANGUAGE` | `taxonomy.mail.queue.language` | `de` | Analysis and document output language. |
 | `TAXONOMY_MAIL_QUEUE_MAX_RESULT_BYTES` | `taxonomy.mail.queue.max-result-bytes` | `15000000` | Maximum total raw export size per job. |
 | `TAXONOMY_REPORTING_VISIO_PDF_ENABLED` | `taxonomy.reporting.visio-pdf.enabled` | `false` | Enables decision tree PDF via LibreOffice. |

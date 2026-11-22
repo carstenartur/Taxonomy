@@ -4,8 +4,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
-import java.util.UUID;
+import java.util.function.BooleanSupplier;
 
 import com.taxonomy.analysis.service.AnalysisRuntimeSettings;
 import com.taxonomy.composition.analysis.SelectedArchitectureAdmissionModel;
@@ -17,6 +18,7 @@ import com.taxonomy.architecture.service.ArchitectureReportService;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AnalysisLanguage;
 import com.taxonomy.dto.AnalysisMode;
+import com.taxonomy.dto.AnalysisModelBinding;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.AnalysisScope;
 import com.taxonomy.dto.RequirementArchitectureView;
@@ -26,14 +28,20 @@ import com.taxonomy.export.LayeredDiagramLayoutService;
 import com.taxonomy.export.service.ExportFacade;
 import com.taxonomy.export.spi.ExportContext;
 import com.taxonomy.extension.api.report.ReportRenderContext;
+import com.taxonomy.identity.StableIdentityHash;
 import com.taxonomy.reporting.api.decision.DecisionReportOptions;
 import com.taxonomy.shared.features.ConditionalOnFeature;
+import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.service.RepositoryMembershipService;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.dao.DataAccessException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.CannotCreateTransactionException;
+import org.springframework.web.server.ResponseStatusException;
 
 /** Adapts a validated email command to the same analysis and renderers as the application. */
 @Service
@@ -43,6 +51,8 @@ final class MailAnalysisProcessor {
     static final class Rejected extends RuntimeException {
         Rejected(String message) { super(message); }
     }
+
+    static final class SourceUnavailable extends RuntimeException { }
 
     private final MailAnalysisCommandClassifier classifier;
     private final TaxonomyService taxonomies;
@@ -89,37 +99,40 @@ final class MailAnalysisProcessor {
         this.maxResultBytes = maxResultBytes;
     }
 
-    MailAnalysisQueue.Outcome process(String subject, String requirementText) {
+    MailAnalysisCommand classify(String subject, String requirementText) {
         int maxText = Math.max(100, Math.min(100_000, settings.getInt("limits.max-business-text", 5_000)));
         if (requirementText == null || requirementText.isBlank() || requirementText.length() > maxText) {
             throw new Rejected("Der Anforderungstext ist leer oder überschreitet die Grenze von " + maxText + " Zeichen.");
         }
-        MailAnalysisCommand command;
         try {
-            command = classifier.classify(subject);
+            return classifier.classify(subject);
+        } catch (DataAccessException | CannotCreateTransactionException unavailable) {
+            throw new SourceUnavailable();
         } catch (IllegalArgumentException invalid) {
             throw new Rejected("Der Betreff beschreibt keinen eindeutigen Auftrag mit verfügbaren Exportformaten."
                     + " Beispiel: Entscheidungsbaum BP und CR als Word.");
         }
+    }
+
+    MailAnalysisQueue.Outcome process(String privateJobId, MailAnalysisCommand command, String requirementText,
+                                      BooleanSupplier sourceReady) {
+        Objects.requireNonNull(privateJobId, "Private email analysis identity");
+        // The queue generates this private key separately from its public status token.
+        String actor = "mail-" + StableIdentityHash.sha256("mail-analysis-owner:v1:" + privateJobId);
+        String operationId = "mail-" + StableIdentityHash.sha256("mail-analysis-operation:v1:" + privateJobId);
+        var primary = primaryRepository(actor);
+        var context = new WorkspaceContext(actor, null, primary.getDefaultBranch(), primary.getRepositoryId());
+
         boolean architecture = command.mode() == MailAnalysisCommand.Mode.ARCHITECTURE;
         Set<String> roots = Set.copyOf(command.taxonomyCodes());
         AnalysisScope scope = new AnalysisScope(roots, architecture ? AnalysisMode.FULL : AnalysisMode.TAXONOMIES_ONLY);
+        AnalysisResult result;
         try {
-            scope.validateRoots(taxonomies.getRootCodes());
-        } catch (IllegalArgumentException changed) {
-            throw new Rejected("Eine ausgewählte Teiltaxonomie ist derzeit nicht verfügbar.");
+            result = analysis.analyzeUnpublished(operationId, context, requirementText,
+                    () -> captureRequest(primary, context, scope, architecture, requirementText, sourceReady)).analysisResult();
+        } catch (DataAccessException | CannotCreateTransactionException unavailable) {
+            throw new SourceUnavailable();
         }
-
-        // Each mail analysis has its own diagnostic owner on the shared read-only catalogue.
-        var primary = repositories.getPrimaryRepository();
-        String actor = "mail-" + UUID.randomUUID();
-        if (!membership.canRead(primary, actor)) throw new Rejected("Die gemeinsame Taxonomie ist derzeit nicht verfügbar.");
-        var context = new WorkspaceContext(actor, null, primary.getDefaultBranch(), primary.getRepositoryId());
-        var source = admission.capturePrimary(primary, actor, scope);
-        int maxNodes = Math.max(1, Math.min(1_000, settings.getInt("limits.max-architecture-nodes", 50)));
-        var request = new AnalyzeRequirementCommand(requirementText, architecture, maxNodes, null, actor, context, null, scope)
-                .withAnalysisLanguage(language).withModelBinding(source);
-        AnalysisResult result = analysis.analyzeUnpublished(request).analysisResult();
         if (result.getScores() == null || result.getScores().isEmpty() || "ERROR".equals(result.getStatus())) {
             throw new Rejected("Die Analyse hat keine exportierbaren Bewertungen geliefert.");
         }
@@ -132,6 +145,36 @@ final class MailAnalysisProcessor {
                 ? "Die Analyse enthält einen Teilstand. Offene Bewertungen oder Beziehungen können im Export gekennzeichnet sein."
                 : "Die Analyse ist abgeschlossen. Die angeforderten Exporte sind angehängt.";
         return new MailAnalysisQueue.Outcome(summary, List.copyOf(attachments), true, partial);
+    }
+
+    private SystemRepository primaryRepository(String actor) {
+        try {
+            var primary = repositories.getPrimaryRepository();
+            if (!membership.canRead(primary, actor)) throw new Rejected("Die gemeinsame Taxonomie ist derzeit nicht verfügbar.");
+            return primary;
+        } catch (IllegalStateException | DataAccessException | CannotCreateTransactionException unavailable) {
+            throw new SourceUnavailable();
+        }
+    }
+
+    private AnalyzeRequirementCommand captureRequest(SystemRepository primary, WorkspaceContext context, AnalysisScope scope,
+            boolean architecture, String requirementText, BooleanSupplier sourceReady) {
+        if (!sourceReady.getAsBoolean()) throw new SourceUnavailable();
+        try {
+            scope.validateRoots(taxonomies.getRootCodes());
+        } catch (IllegalArgumentException changed) {
+            throw new Rejected("Eine ausgewählte Teiltaxonomie ist derzeit nicht verfügbar.");
+        }
+        AnalysisModelBinding source;
+        try {
+            source = admission.capturePrimary(primary, context.username(), scope);
+        } catch (ResponseStatusException failure) {
+            if (HttpStatus.SERVICE_UNAVAILABLE.equals(failure.getStatusCode())) throw new SourceUnavailable();
+            throw failure;
+        }
+        int maxNodes = Math.max(1, Math.min(1_000, settings.getInt("limits.max-architecture-nodes", 50)));
+        return new AnalyzeRequirementCommand(requirementText, architecture, maxNodes, null, context.username(), context, null, scope)
+                .withAnalysisLanguage(language).withModelBinding(source);
     }
 
     private List<MailAnalysisAttachment> architectureFiles(MailAnalysisCommand command, AnalysisResult result, String requirementText) {
@@ -205,7 +248,9 @@ final class MailAnalysisProcessor {
         var options = new DecisionReportOptions(DecisionReportOptions.Profile.COMPACT, scope.taxonomyRoots(),
                 null, null, null, false);
 
-        var report = scoreSemantics.adapt(reports.generate(input, context, result.getViewContext(), locale, options), details, locale);
+        // Attribute exported reports to the mail adapter.
+        var reportContext = new WorkspaceContext("mail", context.workspaceId(), context.currentBranch(), context.repositoryId());
+        var report = scoreSemantics.adapt(reports.generate(input, reportContext, result.getViewContext(), locale, options), details, locale);
         if (result.getModelBinding() != null) report = report.withScope(report.scope().withModelBinding(result.getModelBinding()));
         var files = new ArrayList<MailAnalysisAttachment>();
         long total = 0;

@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -113,6 +114,42 @@ class ClusterAnalysisUseCaseTest {
         verifyNoInteractions(views);
         verify(llm).requireProviderAdmissible(org.mockito.ArgumentMatchers.any(), anyBoolean());
         verifyNoMoreInteractions(llm);
+    }
+
+    @Test
+    void deliveryResumesRetainedAnalysisWithoutCapturingSourceOrReadingProviderSettings() {
+        var usecase = new AnalyzeRequirementUseCase(llm, budget, null, null, null, views, null);
+        ReflectionTestUtils.setField(usecase, "clusterExecution", execution);
+        var result = new AnalysisResult();
+        result.setStatus("ERROR");
+        when(execution.resumeUnpublished("mail-existing", command.workspaceContext(), command.businessText()))
+                .thenReturn(Optional.of(result));
+
+        assertThat(usecase.analyzeUnpublished("mail-existing", command.workspaceContext(), command.businessText(),
+                () -> { throw new AssertionError("An admitted operation must not be rebuilt"); }).analysisResult()).isSameAs(result);
+        verifyNoInteractions(views, llm, budget);
+    }
+
+    @Test
+    void deliveryOnlyAdmitsWhenTheLookupReturnsAnAbsentOperation() {
+        var usecase = new AnalyzeRequirementUseCase(llm, budget, null, null, null, views, null);
+        ReflectionTestUtils.setField(usecase, "clusterExecution", execution);
+        when(execution.resumeUnpublished("mail-new", command.workspaceContext(), command.businessText()))
+                .thenReturn(Optional.empty());
+        when(views.getViewContext("alice", "draft", command.workspaceContext())).thenReturn(view);
+        var result = new AnalysisResult();
+        var context = AnalysisOperationContexts.create("mail-new", command, view);
+        when(execution.execute(eq(context), eq(command), eq(view), any())).thenReturn(result);
+
+        assertThat(usecase.analyzeUnpublished("mail-new", command.workspaceContext(), command.businessText(),
+                () -> command).analysisResult()).isSameAs(result);
+
+        var unavailable = new IllegalStateException("Durable state is unavailable");
+        when(execution.resumeUnpublished("mail-existing", command.workspaceContext(), command.businessText()))
+                .thenThrow(unavailable);
+        assertThatThrownBy(() -> usecase.analyzeUnpublished("mail-existing", command.workspaceContext(), command.businessText(),
+                () -> { throw new AssertionError("An unavailable lookup must never admit new work"); })).isSameAs(unavailable);
+        verify(execution, times(1)).execute(any(), any(), any(), any());
     }
 
     @Test
