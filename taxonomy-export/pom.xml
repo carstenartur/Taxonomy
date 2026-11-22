@@ -33,6 +33,11 @@
             <artifactId>taxonomy-sparx-mapping</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-text</artifactId>
+            <version>1.15.0</version>
+        </dependency>
         <!-- Server-side vector PDF export shared by application adapters. -->
         <dependency>
             <groupId>org.apache.pdfbox</groupId>
