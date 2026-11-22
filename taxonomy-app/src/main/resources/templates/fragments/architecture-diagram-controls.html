@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<div th:fragment="lens(actionId, hoverId, lensPrefix)" class="architecture-lens-tools" role="group"
+     th:aria-label="#{analysis.guide.lens}">
+    <button th:id="${actionId}" type="button" class="architecture-lens-action"
+            th:attr="aria-controls=${lensPrefix}" th:text="#{analysis.guide.lens}">Architecture lens</button>
+    <label class="architecture-lens-hover">
+        <input th:id="${hoverId}" type="checkbox" th:attr="data-architecture-lens-hover=${lensPrefix}" disabled/>
+        <span th:text="#{editor.lens.enable}">Investigate on hover</span>
+    </label>
+</div>
+</body>
+</html>

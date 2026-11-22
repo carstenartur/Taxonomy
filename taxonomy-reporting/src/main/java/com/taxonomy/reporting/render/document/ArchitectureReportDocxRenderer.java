@@ -65,7 +65,7 @@ public final class ArchitectureReportDocxRenderer {
             runningIdentity(document, labels, labels.architectureTitle());
             w.heading(labels.architectureTitle(), 0, null);
             w.heading(labels.requirement(), 1, null);
-            w.sourceParagraphs(report.getBusinessText());
+            w.requirementParagraphs(report.getBusinessText());
             if (report.getCopilot() != null) {
                 w.paragraph("Copilot: " + labels.retainedCopilotStatus(report.getCopilot().state()));
                 report.getCopilot().notes().forEach(w::paragraph);

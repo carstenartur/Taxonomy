@@ -72,6 +72,7 @@ class VisioWorkingViewMetadataTest {
 
         adapter.export(new ExportContext(diagram, Map.of(
                 "originalRequirementText", "Original submitted text\nÜnicode source.",
+                "analysisSource", Map.of("provider", "Forged provider"),
                 "generatorName", "Forged generator", "exportedBy", "Forged editor",
                 "requirementUrl", "https://forged.invalid/requirement")));
 
@@ -85,6 +86,16 @@ class VisioWorkingViewMetadataTest {
                 "taxonomy.requirementVersionCreatedBy", "taxonomy.requirementVersionCreatedAt");
         assertThat(metadata.getValue().document().values()).noneMatch(value -> value.value().startsWith("Forged"));
     }
+    @Test
+    void serverRunIncludesTheSourceWithoutClaimingASavedRequirement() {
+        var source = new com.taxonomy.export.AnalysisDiagramSource("AI provider", "PARTIAL", "main", "a".repeat(40));
+        var properties = VisioWorkingViewMetadata.document("Mail body", contextService(), source);
+        assertThat(properties.get("taxonomy.requirementTextProvenance").value()).isEqualTo("Server-side requirement analysis.");
+        assertThat(properties.get("taxonomy.analysisStatus").value()).isEqualTo("PARTIAL");
+        assertThat(properties.get("taxonomy.commit").value()).isEqualTo("a".repeat(40));
+        assertThat(properties).doesNotContainKeys("taxonomy.snapshotId", "taxonomy.requirementVersionId");
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"visio", "VISIO", "ViSiO"})
     void analysisDrivenRegistryRouteUsesTheSubmittedRequirementRatherThanASpoofedOption(String formatId) throws Exception {

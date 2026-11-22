@@ -8,6 +8,7 @@ import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.util.ArrayList;
@@ -154,6 +155,41 @@ class QualityEvidenceFinalizationTest {
     put(evidence + "coverage.exec", "fixture execution data core");
 
     QualitySite.verifyLocal(checkout.resolve(QUALITY), fixtureCommit);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"trailing bytes", "empty second member", "reserved flag", "damaged CRC"})
+  void refusesMalformedGzipEvenWhenTheOriginalCoverageBytesStillMatch(String mutation)
+      throws Exception {
+    fixture();
+    Result staged = finalizeEvidence();
+    assertThat(staged.exit()).as(staged.output()).isZero();
+
+    Path gzip = checkout.resolve(QUALITY + "evidence/application-test-shards/core/coverage.exec.gz");
+    switch (mutation) {
+      case "trailing bytes" -> Files.write(gzip, new byte[] {1, 2, 3}, StandardOpenOption.APPEND);
+      case "empty second member" -> {
+        try (var output = new GZIPOutputStream(Files.newOutputStream(gzip, StandardOpenOption.APPEND))) {
+          output.finish();
+        }
+      }
+      case "reserved flag", "damaged CRC" -> {
+        try (var file = new RandomAccessFile(gzip.toFile(), "rw")) {
+          boolean crc = mutation.equals("damaged CRC");
+          long offset = crc ? file.length() - 8 : 3;
+          file.seek(offset);
+          int original = file.readUnsignedByte();
+          file.seek(offset);
+          file.write(original ^ (crc ? 1 : 0x20));
+        }
+      }
+      default -> throw new IllegalArgumentException(mutation);
+    }
+
+    Result result = finalizeEvidence();
+
+    assertThat(result.exit()).as(result.output()).isEqualTo(1);
+    assertThat(result.output()).contains("application shard coverage gzip");
   }
 
   @ParameterizedTest

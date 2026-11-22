@@ -7,6 +7,9 @@ import java.util.*;
 
 /** Bounded presentation policy for native Visio shapes; canonical data stays on the overview. */
 final class VisioPresentation {
+    private static final MermaidLabels ENGLISH = MermaidLabels.english();
+    private static final MermaidLabels GERMAN = MermaidLabels.german();
+
     private VisioPresentation() { }
 
     static void apply(VisioDocument document) {
@@ -22,7 +25,7 @@ final class VisioPresentation {
         int ordinal = 0;
         for (var connect : overview.getConnects()) relationKeys.put(id(connect), "R" + (++ordinal));
         boolean dense = overview.getConnects().size() > 6 || overview.getShapes().size() > 12;
-        var labels = options != null && options.german() ? MermaidLabels.german() : MermaidLabels.english();
+        boolean german = document.isGerman();
         int unplaced = 0;
         boolean shortenedOverviewType = false;
         for (var page : document.getPages()) {
@@ -44,15 +47,12 @@ final class VisioPresentation {
             for (var connect : page.getConnects()) {
                 String key = relationKeys.get(id(connect));
                 connect.getProperties().put("taxonomy.displayKey", VisioProperty.text(key));
-                String fullCaption = key + " " + connect.getRelationType()
-                        + (connect.getProperties().containsKey("taxonomy.provenanceStatus") ? " | " + connect.getProperties().get("taxonomy.provenanceStatus").value() : "");
+                String fullCaption = key + " " + (german ? relationLabel(connect.getRelationType(), true) : connect.getRelationType())
+                        + (connect.getProperties().containsKey("taxonomy.provenanceStatus") ? " | "
+                        + statusLabel(connect.getProperties().get("taxonomy.provenanceStatus").value(), german) : "");
                 String text = dense ? key : display(fullCaption, 24, 2);
                 if (options != null) {
-                    fullCaption = switch (connect.getRelationType()) {
-                        case "CONTAINS" -> options.german() ? "enthält" : "contains";
-                        case "REQUIRES" -> options.german() ? "benötigt" : "requires";
-                        default -> labels.relationLabel(connect.getRelationType());
-                    };
+                    fullCaption = relationLabel(connect.getRelationType(), german);
                     text = display(fullCaption, 22, 2);
                 }
                 boolean shortened = (options != null || !dense) && shortened(fullCaption, text);
@@ -136,28 +136,39 @@ final class VisioPresentation {
         int diagramPages = (int) document.getPages().stream().filter(page -> !page.isEvidencePage()).count();
         while (covered < overview.getConnects().size() && diagramPages < VisioPackageValidator.MAX_DIAGRAM_PAGES) {
             List<VisioConnect> batch = new ArrayList<>();
-            Set<String> endpoints = new TreeSet<>(Comparator.comparingLong(Long::parseLong));
+            var endpoints = new TreeSet<String>(Comparator.comparingLong(Long::parseLong));
             for (int next = covered; next < overview.getConnects().size() && batch.size() < 6; next++) {
                 var c = overview.getConnects().get(next);
                 var candidate = new HashSet<>(endpoints); candidate.add(c.getFromShape()); candidate.add(c.getToShape());
                 if (candidate.size() > 6) break;
                 endpoints.addAll(candidate); batch.add(c);
             }
-            if (shapes + endpoints.size() + contextShapesPerDetail > 20_000 || connectors + batch.size() > 60_000) break;
-            String range = key(batch.getFirst()) + "–" + key(batch.getLast());
-            VisioPage page = new VisioPage(Integer.toString(document.getPages().size()), "Relationships " + range);
+            boolean german = document.isGerman();
+            boolean compact = contextOnDrawings && batch.size() == 1 && endpoints.size() == 2
+                    && batch.getFirst().getRelationType().length() <= 24;
+            var excerpt = compact ? VisioEvidencePages.relationExcerpt(
+                    Long.toString(1 + Long.parseLong(endpoints.last())), batch.getFirst(), german) : null;
+            int addedShapes = endpoints.size() + contextShapesPerDetail + (excerpt == null ? 0 : 1);
+            if (shapes + addedShapes > 20_000 || connectors + batch.size() > 60_000) break;
+            double compactRow = 1.25 + (excerpt == null ? 0 : excerpt.getHeight() + .35);
+            String start = key(batch.getFirst());
+            String range = batch.size() == 1 ? start : start + "–" + key(batch.getLast());
+            VisioPage page = new VisioPage(Integer.toString(document.getPages().size()),
+                    (german ? "Beziehungen " : "Relationships ") + range);
             page.setRelationshipDetail(true);
             int row = 0;
             for (String endpoint : endpoints) {
                 var source = nodes.get(endpoint);
                 // Six unique endpoints at generous fixed positions; captions occupy a separate rail.
-                double x = row % 2 == 0 ? 2.2 : 6.2, y = 9.4 - (row / 2) * 3.3;
+                double x = compact ? (endpoint.equals(batch.getFirst().getFromShape()) ? 2.2 : 8.0)
+                        : row % 2 == 0 ? 2.2 : 6.2;
+                double y = compact ? compactRow : 9.4 - (row / 2) * 3.3;
                 String label = source.getProperties().get("taxonomy.label").value();
                 String text = source.getProperties().get("taxonomy.displayKey").value() + " | "
                         + display(source.getProperties().get("taxonomy.id").value(), 26, 1) + "\n" + display(label, 32, 3)
                         + "\n" + nodeFooter(source.getProperties().get("taxonomy.depth").value(),
                                 Optional.ofNullable(source.getProperties().get("taxonomy.responsibilityName"))
-                                        .map(VisioProperty::value).orElse(null), 32);
+                                        .map(VisioProperty::value).orElse(null), 32, german);
                 var shape = new VisioShape(source.getId(), text, x, y, 3.2, 1.4, source.getType(), source.isAnchor());
                 shape.getProperties().putAll(source.getProperties()); page.getShapes().add(shape); row++;
             }
@@ -167,14 +178,18 @@ final class VisioPresentation {
                 connect.getProperties().putAll(source.getProperties());
                 String direction = nodes.get(source.getFromShape()).getProperties().get("taxonomy.displayKey").value()
                         + " → " + nodes.get(source.getToShape()).getProperties().get("taxonomy.displayKey").value();
-                String type = display(source.getRelationType(), 52, 4);
+                String sourceType = german ? relationLabel(source.getRelationType(), true) : source.getRelationType();
+                String type = display(sourceType, 52, 4);
                 String text = key(source) + "  " + direction + "\n" + type
-                        + (source.getProperties().containsKey("taxonomy.provenanceStatus") ? "\n" + source.getProperties().get("taxonomy.provenanceStatus").value() : "");
-                connect.setTextBox(new VisioTextBox(text, 11.3, 10 - row * 1.65, 5.2, 1.25));
-                connect.getProperties().put("taxonomy.captionDisposition", VisioProperty.text(shortened(source.getRelationType(), type) ? "TYPE_TRUNCATED" : "READABLE_DETAIL"));
+                        + (source.getProperties().containsKey("taxonomy.provenanceStatus") ? "\n"
+                        + statusLabel(source.getProperties().get("taxonomy.provenanceStatus").value(), german) : "");
+                connect.setTextBox(compact ? new VisioTextBox(text, 5.1, compactRow + .65, 2.5, .85)
+                        : new VisioTextBox(text, 11.3, 10 - row * 1.65, 5.2, 1.25));
+                connect.getProperties().put("taxonomy.captionDisposition", VisioProperty.text(shortened(sourceType, type) ? "TYPE_TRUNCATED" : "READABLE_DETAIL"));
                 page.getConnects().add(connect); row++;
             }
-            shapes += endpoints.size() + contextShapesPerDetail; connectors += batch.size(); covered += batch.size();
+            if (excerpt != null) page.getShapes().add(excerpt);
+            shapes += addedShapes; connectors += batch.size(); covered += batch.size();
             VisioContainers.fit(page);
             document.getPages().add(page); diagramPages++;
         }
@@ -242,8 +257,32 @@ final class VisioPresentation {
         return assigned ? 1.42 : 1.05;
     }
 
-    static String nodeFooter(String depth, String unitName, int columns) {
-        return unitName == null ? "Depth " + depth : display("Unit: " + unitName, columns, 1);
+    static String nodeFooter(String depth, String unitName, int columns, boolean german) {
+        return unitName == null ? (german ? "Tiefe " : "Depth ") + depth : display(unitLabel(unitName, german), columns, 1);
+    }
+
+    static String unitLabel(String unitName, boolean german) {
+        return (german ? "Einheit: " : "Unit: ") + unitName;
+    }
+
+    static String relationLabel(String type, boolean german) {
+        return switch (type) {
+            case "CONTAINS" -> german ? "enthält" : "contains";
+            case "REQUIRES" -> german ? "benötigt" : "requires";
+            default -> (german ? GERMAN : ENGLISH).relationLabel(type);
+        };
+    }
+
+    static String statusLabel(String status, boolean german) {
+        if (!german) return status;
+        return switch (status) {
+            case "AI-proposed" -> "KI-Vorschlag";
+            case "Catalogue seed" -> "Katalogbeziehung";
+            case "Propagated trace" -> "Fortgeführte Herleitung";
+            case "Derived impact" -> "Abgeleitete Auswirkung";
+            case "Origin unrecorded" -> "Herkunft nicht aufgezeichnet";
+            default -> status;
+        };
     }
 
     private static int glyphUnits(int codePoint) {

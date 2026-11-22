@@ -1,10 +1,13 @@
 package com.taxonomy.export;
 
+import com.taxonomy.archimate.ArchiMateExportMetadata;
+import com.taxonomy.archimate.ArchiMateProperty;
 import com.taxonomy.archimate.exchange.*;
 import com.taxonomy.diagram.*;
 import org.junit.jupiter.api.Test;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ArchiMateReturnProfileTest {
@@ -25,6 +28,24 @@ class ArchiMateReturnProfileTest {
         assertEquals(new ArchiMateExchangeReader().toDiagram(new ArchiMateExchangeReader().read(source)),
                 new ArchiMateExchangeReader().toDiagram(model));
         assertTrue(model.losses().stream().anyMatch(loss -> loss.kind().equals("ARCHI_PROPERTY_TYPE_TO_STRING")));
+    }
+
+    @Test void retainsOriginalMultilineTextOnlyForTheObservedArchiNormalization() {
+        String text = "  Erste Zeile\r\n\r\nZweite\tZeile mit Grüße  ";
+        var model = new ArchiMateExportMetadata("multiline", Map.of("taxonomy.requirementText", ArchiMateProperty.text(text)),
+                Map.of(), Map.of(), List.of()).apply(new ArchiMateExchangeReader().read(original()));
+        byte[] source = new ArchiMateXmlExporter().export(model);
+        var document = ArchiMateSchema.parse(typedReturn(source));
+        var originalValue = com.taxonomy.exchange.ExchangeXml.all(document, ArchiMateSchema.NAMESPACE, "value").stream()
+                .filter(value -> text.equals(value.getTextContent())).findFirst().orElseThrow();
+        originalValue.setTextContent("Erste Zeile Zweite Zeile mit Grüße");
+        var returned = new ArchiMateReturnProfile().read(source, com.taxonomy.exchange.ExchangeXml.write(document));
+        assertEquals(text, returned.properties().get("taxonomy.requirementText").value());
+        assertTrue(returned.losses().stream().anyMatch(loss -> loss.kind().equals("ARCHI_PROPERTY_WHITESPACE_NORMALIZED")));
+
+        originalValue.setTextContent("Erste Zeile Zweite Zeile ohne Grüße");
+        assertThrows(IllegalArgumentException.class,
+                () -> new ArchiMateReturnProfile().read(source, com.taxonomy.exchange.ExchangeXml.write(document)));
     }
 
     @Test void actualInstalledArchiReturnPreservesContentWithExplicitLosses() throws Exception {

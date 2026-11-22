@@ -37,7 +37,8 @@ function fixture() {
     }
     const node=id=>{if(!ids.has(id))ids.set(id,new Element());return ids.get(id);};
     document={readyState:'complete',documentElement:{lang:'en'},body:new Element('body'),getElementById:node,createElement:tag=>new Element(tag),
-        querySelector:()=>null,addEventListener:(name,fn)=>handlers.set(name,[...(handlers.get(name)||[]),fn]),
+        querySelector:()=>null,querySelectorAll:selector=>selector==='[data-architecture-lens-hover="sourceLens"]'?[node('sourceLensEnabled')]:[],
+        addEventListener:(name,fn)=>handlers.set(name,[...(handlers.get(name)||[]),fn]),
         dispatchEvent:event=>(handlers.get(event.type)||[]).forEach(fn=>fn(event))};document.activeElement=document.body;
     const calls=[],opens=[],presented=[];let current={kind:'analysis',repositoryId:'repo',workspaceScopeKey:'alice',branch:'feature'};
     let session={ready:true,workspaceId:'alice',version:7};let saves=0;
@@ -47,6 +48,7 @@ function fixture() {
         TaxonomyI18n:{t:(key,...args)=>[key,...args].join(' '),getLocale:()=> 'en',resolveUrl:path=>'/taxonomy'+path,ready:()=>Promise.resolve()},
         TaxonomyState:{currentArchView:{elements:[{id:'arch-a'},{id:'arch-b'}]},lastAnalysisStatus:'SUCCESS',lastAnalyzedText:'Requirement'},
         TaxonomyAnalysisSession:{state:()=>({...session}),saveNow:async()=>{saves++;return true;},addAsRequirement:options=>opens.push(['save',options])},
+        TaxonomyRelationshipReview:{open:section=>opens.push(['review',section])},
         TaxonomyApiClient:{request:(url,options,policy)=>new Promise((resolve,reject)=>calls.push({url,options,policy,resolve:body=>resolve({json:async()=>body}),reject}))}});
     context.window=context;
     const workspace={getSource:()=>({...current}),getData:()=>context.TaxonomyState.currentArchView,
@@ -77,13 +79,14 @@ test('read API pins source without editor If-Match, browser graph, retries or mu
     call.resolve(response(draft));await operation;
 });
 
-test('read-only panel scopes controls and never exposes editor accept or undo commands',async()=>{
+test('read-only panel exposes only candidate dismissal and navigation',async()=>{
     const f=fixture(),controller=f.create();f.setSource({...snapshot,kind:'snapshot'});await controller.activate(f.workspace.getSource());
-    controller.select('arch-a');f.node('sourceLensEnabled').checked=true;f.node('sourceLensEnabled').onchange();
+    controller.select('arch-a');
+    assert.equal(f.node('sourceLensEnabled').checked,false,'Pointer investigation is optional');
+    assert.equal(f.node('sourceLensInspect').disabled,false,'The selection can be investigated explicitly');
     f.node('sourceLensInspect').onclick();await flush();f.calls[0].resolve(response(snapshot));await flush();
     const actions=f.node('sourceLensReview').querySelectorAll('button').map(n=>n.dataset.focusAction);
-    assert.ok(actions.includes('dismiss'));assert.ok(actions.includes('locate'));assert.ok(actions.includes('adopt'));
-    assert.ok(!actions.includes('accept'));assert.ok(!actions.includes('undo'));
+    assert.deepEqual(actions.sort(),['dismiss','locate']);
     assert.match(f.node('sourceLensReview').textContent,/saved-A|ANALYSIS_SNAPSHOT/);
     assert.equal(f.node('editorLensEnabled').onchange,undefined,'The writable panel is independently scoped');
 });
@@ -115,15 +118,17 @@ test('wrong-source reply and unavailable durable draft remain honest failures wi
     assert.match(f.node('sourceLensStates').textContent,/No canonical retained source/);assert.equal(f.opens.length,0);
 });
 
-test('snapshot adoption is an explicit handoff to existing preview with exact frozen source pins',async()=>{
+test('a frozen graph candidate opens the shared review only when its source is current',async()=>{
     const f=fixture(),controller=f.create();f.setSource({...snapshot,kind:'snapshot'});await controller.activate(f.workspace.getSource());controller.select('arch-a');
     f.node('sourceLensEnabled').checked=true;f.node('sourceLensEnabled').onchange();f.node('sourceLensInspect').onclick();await flush();
     f.calls[0].resolve(response(snapshot));await flush();
-    f.node('sourceLensReview').querySelectorAll('button').find(n=>n.dataset.focusAction==='adopt').onclick();await flush();
-    assert.equal(f.calls.length,1,'Preview and acceptance remain owned by existing editor flow');
-    assert.equal(f.opens[0][0],'working');const options=plain(f.opens[0][1]);
-    assert.equal(options.adoption,'preview');assert.equal(options.sourceSnapshotId,'saved-A');assert.equal(options.sourceRequirementVersionId,3);
-    assert.equal(options.sourceWorkspaceScopeKey,'alice');assert.equal(options.sourceBranch,'feature');
+    const candidate=f.presented.at(-1).suggestions[0];
+    controller.review('unknown');controller.review(candidate.id);
+    assert.deepEqual(f.opens,[['review','focus']]);
+    f.setSource({...snapshot,kind:'snapshot',snapshotId:'saved-B'});
+    controller.review(candidate.id);
+    assert.deepEqual(f.opens,[['review','focus']],'A stale marker must not open review in another source');
+    assert.equal(f.node('sourceLensSuggestions').textContent,'');
 });
 
 test('a draft saved to a newer version while an investigation runs cannot receive its old hypotheses',async()=>{
@@ -172,27 +177,57 @@ async function reviewedDraft() {
     const f=fixture(),controller=f.create();await controller.activate(f.workspace.getSource());controller.select('arch-a');
     f.node('sourceLensEnabled').checked=true;f.node('sourceLensEnabled').onchange();f.node('sourceLensInspect').onclick();await flush();
     f.calls[0].resolve(response(draft));await flush();
-    const adopt=f.node('sourceLensReview').querySelectorAll('button').find(n=>n.dataset.focusAction==='adopt');
-    return {...f,controller,adopt};
+    const locate=f.node('sourceLensReview').querySelectorAll('button').find(n=>n.dataset.focusAction==='locate');
+    return {...f,controller,locate,candidate:f.presented.at(-1).suggestions[0]};
 }
 
+function deferFullscreenExit(f) {
+    const exit = Promise.withResolvers();
+    const {document} = f.context;
+    document.fullscreenElement = f.node('fullscreenDiagram');
+    document.exitFullscreen = () => exit.promise.then(() => { document.fullscreenElement = null; });
+    return exit;
+}
+
+test('a proposal arrow waits for fullscreen exit before opening its review', async () => {
+    const f = await reviewedDraft();
+    const exit = deferFullscreenExit(f);
+    const opening = f.controller.review(f.candidate.id);
+    assert.deepEqual(f.opens, [], 'The review is outside the fullscreen diagram');
+    exit.resolve();
+    await opening;
+    assert.equal(f.context.document.fullscreenElement, null);
+    assert.deepEqual(f.opens, [['review', 'focus']]);
+});
+
+test('evidence that changes during fullscreen exit cannot open an old proposal review', async () => {
+    const f = await reviewedDraft();
+    const exit = deferFullscreenExit(f);
+    const opening = f.controller.review(f.candidate.id);
+    f.context.TaxonomyState.currentArchView.elements[0].description = 'Updated evidence';
+    exit.resolve();
+    await opening;
+    assert.deepEqual(f.opens, []);
+    assert.equal(f.node('sourceLensEnabled').disabled, true);
+    assert.match(f.node('sourceLensError').textContent, /CONTEXT_CHANGED/);
+});
+
 for(const [name,changed] of [['version',{version:8}],['conflict',{ready:false,conflict:true}],['workspace',{workspaceId:'bob'}]]) {
-    test(`a reviewed draft cannot be promoted after its ${name} changes`,async()=>{
+    test(`a reviewed draft cannot navigate from old evidence after its ${name} changes`,async()=>{
         const f=await reviewedDraft();f.setSession(changed);
         f.context.document.dispatchEvent({type:'taxonomy:analysis-draft-saved'});
-        await f.controller.refresh();await f.adopt.onclick();await flush();
-        assert.equal(f.opens.length,0,'Old reviewed evidence cannot promote the newly current draft');
+        await f.controller.refresh();f.controller.review(f.candidate.id);f.locate.onclick();
+        assert.equal(f.opens.length,0,'Old reviewed evidence cannot open review or move the current selection');
         assert.equal(f.node('sourceLensEnabled').disabled,true);
-        assert.ok(f.node('sourceLensReview').querySelectorAll('button').every(n=>n.dataset.focusAction!=='adopt'||n.disabled));
+        assert.equal(f.node('sourceLensReview').querySelectorAll('button').length,0);
     });
 }
 
-test('adopting a reviewed draft saves unsaved input and refuses an advanced acknowledgement',async()=>{
-    const f=await reviewedDraft();let saves=0;
-    f.context.TaxonomyAnalysisSession.saveNow=async()=>{saves++;f.setSession({version:8});return true;};
-    await f.adopt.onclick();await flush();
-    assert.equal(saves,1);assert.equal(f.opens.length,0,'Saving newer input does not make an old hypothesis current');
-    assert.match(f.node('sourceLensError').textContent,/CONTEXT_CHANGED/);
+test('navigating from a current draft hypothesis does not save or promote the draft',async()=>{
+    const f=await reviewedDraft(), saves=f.saves();
+    f.locate.onclick();
+    assert.equal(f.saves(),saves);
+    assert.deepEqual(f.opens,[['select','arch-b']]);
 });
 
 for(const change of ['object replacement','in-place edit']) {
@@ -265,7 +300,7 @@ test('a departed deferred source ignores a later readiness event before starting
     assert.equal(f.saves(),0);assert.equal(f.node('sourceLensEnabled').disabled,true);assert.equal(f.node('lensRoot').hidden,true);
 });
 
-test('a copy named __shared__ keeps its draft, transport, review and adoption separate from central',async()=>{
+test('a copy named __shared__ keeps its draft, transport and review separate from central',async()=>{
     const f=fixture(), controller=f.create();
     const copy={...snapshot,workspaceScopeKey:'__shared__',workspaceId:'__shared__'};
     const central={...copy,workspaceId:''};

@@ -40,8 +40,9 @@ bash .github/scripts/taxonomy-tooling.sh write-quality-manifest \
 Published app-test shard probes use `coverage.exec.gz`. The shard producer's
 original manifest still names `coverage.exec` and records the SHA-256 of the
 uncompressed bytes. The quality verifier streams decompression to check that
-digest and also supports earlier archives with the original file. The CI inputs
-to JaCoCo aggregation retain their original format.
+digest and requires one gzip member with the fixed header produced by `gzip -n`.
+Earlier archives with the original file remain readable. The CI inputs to JaCoCo
+aggregation retain their original format.
 
 The `release` profile additionally requires `sbom`, `vex`, `image`, `image-onnx`,
 `security`, `database`, `distribution`, `helm` and `deployment` kinds. It requires exactly these

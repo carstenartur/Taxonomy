@@ -41,6 +41,8 @@ function panelFixture() {
     document.body = new Element('body'); document.activeElement = document.body;
     document.createElement = tag => new Element(tag);
     document.getElementById = id => ids[id] || (ids[id] = new Element('div'));
+    document.querySelectorAll = selector => selector === '[data-architecture-lens-hover="editorLens"]'
+        ? [document.getElementById('editorLensEnabled')] : [];
     global.document = document;
     const panel = window.ArchitectureFocusPanel({ t: (...parts) => parts.join(' '),
         request: body => new Promise((resolve, reject) => calls.push({ body, resolve, reject })),
@@ -53,6 +55,15 @@ function panelFixture() {
 test('focus queue and review preserve the existing investigation and retry contracts', async () => {
     const { session: s, calls, dwell } = fixture();
     s.observe(['arch-a']); dwell(); await flush(); assert.equal(calls.length, 0, 'No background I/O before explicit enable');
+    const manual = fixture();
+    manual.session.inspect('arch-a');
+    await flush();
+    assert.equal(manual.calls.length, 1, 'Explicit investigation requires neither hover nor AI opt-in');
+    assert.equal(manual.calls[0].body.useAi, false);
+    assert.equal(manual.session.snapshot().enabled, false);
+    reply(manual.calls[0], 'LOCAL_CANDIDATES', [suggestion]);
+    await flush();
+    assert.equal(manual.session.snapshot().suggestions.length, 1);
     s.setEnabled(true); s.observe(['arch-a']); s.observe([]); dwell(); await flush();
     assert.equal(calls.length, 0, 'Passing over an element briefly must not consume a call');
     s.observe(['arch-a', 'arch-b']); dwell(); await flush();
@@ -274,7 +285,7 @@ test('same-context unavailability fences a running investigation', async () => {
 });
 
 test('canceling a queued retry retains its previous completed status and fallback', async () => {
-    const f = fixture(); f.session.setEnabled(true);
+    const f = fixture(); f.session.setEnabled(true); f.session.setUseAi(true);
     f.session.inspect('arch-a'); await flush(); reply(f.calls[0], 'LOCAL_CANDIDATES', [suggestion]); await flush();
     f.session.inspect('arch-b'); await flush(); f.session.inspect('arch-a', true);
     assert.equal(f.session.snapshot().states['arch-a'], 'queued');

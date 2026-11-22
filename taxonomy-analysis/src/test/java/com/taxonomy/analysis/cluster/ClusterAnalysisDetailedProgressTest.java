@@ -118,6 +118,57 @@ class ClusterAnalysisDetailedProgressTest {
         }
     }
 
+    @Test void repeatedProgressReadsVerifyTheActualPersistedCatalogue() {
+        try (var db = new Database()) {
+            var context = context("repeated-frozen-progress");
+            db.admitFrozen(context);
+            var before = db.store.snapshot(context).progress();
+            assertEquals(before, db.store.snapshot(context).progress());
+
+            // Simulate changed retained bytes to ensure a warm cache never masks a row change.
+            replaceInput(db, context, db.store.shard(context, CP).replace("Frozen CP", "Current stored title"));
+            var current = db.store.snapshot(context).progress().nodes().taxonomies().getFirst();
+            assertEquals("Current stored title", current.nameEn());
+            assertEquals("Frozen CP", before.nodes().taxonomies().getFirst().nameEn());
+
+            // The cached value must never replace validation of the operation's frozen authority.
+            var mapper = new ObjectMapper();
+            var foreignSource = new com.taxonomy.catalog.snapshot.CatalogueSourceIdentity(
+                    "wrong-repository", null, "main", "other-commit");
+            var foreign = DurableClusterAnalysisExecutionTest.root(foreignSource, "CP");
+            replaceInput(db, context, mapper.writeValueAsString(foreign));
+            assertThrows(IllegalStateException.class, () -> db.store.snapshot(context));
+        }
+    }
+
+    @Test void progressEvictsOldCataloguesAndRechecksAuthorityOnCacheHits() {
+        var context = context("catalogue-cache-authority");
+        var source = DurableClusterAnalysisExecutionTest.source(context);
+        var mapper = new ObjectMapper();
+        String input = mapper.writeValueAsString(DurableClusterAnalysisExecutionTest.root(source, "CP"));
+        var cache = new ProgressCatalogueCache(mapper);
+        var cached = cache.read(input, context, "CP", false);
+        assertSame(cached, cache.read(new String(input), context, "CP", false));
+        assertThrows(IllegalStateException.class, () -> cache.read(input, context, "IP", false));
+        var foreign = new AnalysisOperationContext(context.operationId(),
+                new AnalysisSourceAuthority("other-repository", null, "main", "other-commit"),
+                context.requirement(), context.correlationId());
+        assertThrows(IllegalStateException.class, () -> cache.read(input, foreign, "CP", false));
+        assertSame(cached, cache.read(input, foreign, "CP", true), "Restored evidence retains its original source");
+        for (int i = 0; i < 32; i++) {
+            cache.read(input.replace("Frozen CP", "Other stored title " + i), context, "CP", false);
+        }
+        assertNotSame(cached, cache.read(input, context, "CP", false));
+        assertNull(cache.read("{\"root\":\"CP\"}", context, "CP", false), "Legacy inputs have no denominator");
+    }
+
+    private static void replaceInput(Database db, AnalysisOperationContext context, String input) {
+        new TransactionTemplate(db.transactions).executeWithoutResult(status -> db.em.createQuery(
+                "update ClusterAnalysisInput i set i.inputJson=:json where i.operationId=:run and i.root='CP'")
+                .setParameter("json", input)
+                .setParameter("run", context.operationId()).executeUpdate());
+    }
+
     @Test void durableProgressPublishesSavedReasonsAlongsideItsScorePreview() {
         try (var db = new Database(); var observation = observation(db.store)) {
             var context = context("live-reasons"); db.admitFrozen(context);

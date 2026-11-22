@@ -354,6 +354,10 @@ At the top of the left panel you will find:
 - **Taxonomy root selector** (Tree view only) — choose which taxonomy root to display.
 - **Descriptions toggle switch** — show or hide the description text for each node.
 
+The legend directly above the results explains the colours in the selected view.
+
+![Match colours for the list view](../images/10-match-legend.png)
+
 Each taxonomy node row shows:
 - The **node name** and its hierarchical code.
 - A **score bar** and percentage (visible after analysis).
@@ -368,10 +372,6 @@ Exports and saved-analysis import are in **Architecture → Export**. **Load Sco
 The right panel (narrower column) contains all interactive tools:
 
 - **Business Requirement Analysis card** — the main textarea where you type a requirement and run the analysis.
-- **Match legend** — a compact, always-visible colour scale below the analysis controls, with swatches at 0 %, 25 %, 50 %, 75 % and 100 %.
-
-![Compact, always-visible match legend](../images/10-match-legend.png)
-
 - **Analysis status** — inline progress and warnings; hide it without cancelling the run, then reopen it from the **Analysis status** button in the requirement workspace.
 - **System status** — expand operational and provider status details; warnings do not open the disclosure automatically.
 - **Analysis Log** (collapsible) — step-by-step log of the scoring process.
@@ -533,20 +533,9 @@ Tick the **Architecture View** checkbox before running analysis to also build an
 
 ### Understanding Scores and the Colour Legend
 
-The **Match legend** stays visible in a compact row below the analysis controls, including after analysis. Its swatches show the colour scale:
+The legend sits beside the taxonomy results. In **List**, **Tabs**, **Sunburst** and **Tree**, swatches at 0, 25, 50, 75 and 100 percent show the match scale. Stronger green indicates greater relevance. An assessed zero carries a 0% label. An unassessed node has no numerical score.
 
-| Colour | Score range | Meaning | Text Colour |
-|---|---|---|---|
-| Transparent | 0 % | Zero displayed weight; check whether an assessment exists | Dark (default) |
-| Very light green | 1 % – 24 % | Very low match | Dark (default) |
-| Light green | 25 % – 49 % | Low match | Dark (default) |
-| Medium green | 50 % – 59 % | Moderate match | Dark (default) |
-| Dark green | 60 % – 99 % | Good match | **White** (for readability) |
-| Solid green | 100 % | Maximum displayed weight, not proof of correctness | **White** |
-
-The colour is computed as `rgba(0, 128, 0, score/100)` — a pure green whose **opacity** (alpha channel) increases linearly with the score percentage. At 60 % and above, the text colour switches to white for readability against the darker background.
-
-Nodes with a score of 0 % have no highlight at all. Hover over any legend box to see a tooltip describing its match level.
+In **Decision**, gold, silver and bronze identify the three highest-ranked matches. Blue identifies other positive matches and grey marks context. The top three use the thickest lines. Line width for the remaining matches increases with the target node's score. In **Summary**, colour identifies the taxonomy layer, a star marks a direct match and the percentage gives its relevance.
 
 ![Compact match legend remains visible beside scored results](../images/17-match-legend-with-scores.png)
 
@@ -799,6 +788,7 @@ The main visualization is a **stable impact graph arranged by architecture layer
 - **★ Direct matches** use a highlighted border and appear first within their layer. These are the elements derived directly from the requirement analysis.
 - **⚠️ Hotspots** identify areas of high change impact, such as shared dependencies or direct matches with several outgoing relationships.
 - **Directed connections** show source, target, and relationship type. Selecting an element highlights its connected paths and de-emphasises unrelated elements.
+- Open **Architecture lens** beside the diagram to inspect a selected element. The adjacent checkbox enables investigation on hover.
 - Use **search** to find elements by code, title, or layer. Press Enter to move to the first match.
 - The **Context nodes** switch shows or hides propagated elements while preserving direct matches.
 - Switch between **Overview** and **Focus**. Focus mode shows the selected element and its immediate neighbours; double-clicking a card also activates it. **Unfocus** in the toolbar or element details restores the overview while retaining the selected element and other filters.

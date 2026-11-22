@@ -169,7 +169,8 @@ public final class DecisionNodeEvidence {
                 p.setKeepNext(true);
                 for (var node : entry.getValue()) writer.bookmark(p, reasonBookmark(node.row().code()));
                 String reason = entry.getKey().text();
-                writer.paragraph(reason == null || reason.isBlank() ? labels.missingReason() : reason);
+                writer.paragraph(reason == null || reason.isBlank()
+                        ? labels.missingReason() : DecisionReportPresentation.nodeReason(reason, labels));
             }
             if (report.scope().options().includes(Section.TREE) && treeContains(group.getFirst().root()))
                 writer.link(writer.paragraph(""), rootBookmark(group.getFirst().root()), labels.german() ? "Zurück zum Wurzelbaum" : "Back to root tree");

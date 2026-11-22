@@ -15,6 +15,7 @@ import com.taxonomy.editor.ArchitectureEditorService;
 import com.taxonomy.identity.StableIdentityHash;
 import com.taxonomy.model.WorkspaceOverlayScope;
 import com.taxonomy.shared.features.ConditionalOnFeature;
+import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
@@ -55,6 +56,26 @@ public class SelectedArchitectureAdmissionModel implements AnalysisAdmissionMode
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Selected architecture context has changed");
         }
 
+        return capture(context, expectedCommit, expectedRevision, scope);
+    }
+
+    /** The mailbox worker reads the authorized primary branch without a browser session or active workspace. */
+    public AnalysisModelBinding capturePrimary(SystemRepository primary, String actor, AnalysisScope scope) {
+        return capture(primaryReadContext(primary, actor), null, null, scope);
+    }
+
+    /** Mail intake can wait for the exact primary source before classifying a new request. */
+    public boolean hasPrimarySource(SystemRepository primary, String actor) throws IOException {
+        return editor.hasSourceAtHead(primaryReadContext(primary, actor));
+    }
+
+    private static RepositoryContext primaryReadContext(SystemRepository primary, String actor) {
+        if (!primary.isPrimaryRepo()) throw new IllegalArgumentException("Expected the primary catalogue");
+        return RepositoryContext.centralRead(primary.getRepositoryId(), primary.getDefaultBranch(), actor);
+    }
+
+    private AnalysisModelBinding capture(RepositoryContext context, String expectedCommit, Long expectedRevision,
+                                         AnalysisScope scope) {
         var version = select(context, expectedCommit, expectedRevision);
         var document = version.document();
         var selected = document.context();

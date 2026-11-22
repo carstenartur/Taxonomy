@@ -167,6 +167,29 @@
     border: 1px solid #d0d8e8;
 }
 
+/* Preserve the score scale even under a dark or customer theme. */
+.tax-node-header.tax-scored:hover { filter: none; }
+.tax-node-header.tax-scored .tax-pct { background: transparent; }
+.tax-node-header.tax-scored .tax-toggle,
+.tax-node-header.tax-scored .tax-code,
+.tax-node-header.tax-scored .tax-name,
+.tax-node-header.tax-scored .tax-pct {
+    color: inherit !important;
+}
+
+.tax-node-header.tax-scored .tax-node-actions .btn {
+    background-color: #fff !important;
+    border-color: #495057 !important;
+    color: #212529 !important;
+}
+
+.tax-node-header.tax-scored .tax-node-actions .btn:hover,
+.tax-node-header.tax-scored .tax-node-actions .btn:focus-visible {
+    background-color: #212529 !important;
+    border-color: #212529 !important;
+    color: #fff !important;
+}
+
 /* ── Legend boxes ──────────────────────────────────────────── */
 .legend-box {
     display: inline-block;

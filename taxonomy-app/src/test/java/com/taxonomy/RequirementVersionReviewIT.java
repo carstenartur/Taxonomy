@@ -22,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** The production version-review UI, executed by JUnit/Failsafe in a real browser. */
 @Tag("browser")
+@Tag("ci-app-shard-domain-integration")
 class RequirementVersionReviewIT {
     private static PortfolioClientTestPage page;
 

@@ -2,6 +2,7 @@ package com.taxonomy.reporting.render.decision;
 
 import com.taxonomy.reporting.api.document.DecisionTreeOverview;
 import com.taxonomy.reporting.render.document.DecisionTreeFigureRenderer;
+import com.taxonomy.reporting.render.document.RequirementReportText;
 
 import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
 import com.taxonomy.reporting.api.decision.DecisionReportOptions;
@@ -17,6 +18,7 @@ import com.taxonomy.extension.api.report.ReportRenderContext;
 import com.taxonomy.extension.api.report.ReportRenderResult;
 import com.taxonomy.extension.api.report.ReportRendererExtension;
 import org.springframework.stereotype.Component;
+import com.taxonomy.export.DiagramPresentation;
 import com.taxonomy.export.ExportThemeProvider;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -94,9 +96,13 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
         var visibleTree = visibleTree(report);
         var nodeEvidence = new DecisionNodeEvidence(report);
         var reasonCodes = nodeEvidence.linkedReasonCodes();
-        if (options.includes(DecisionReportOptions.Section.TITLE_PAGE)) renderTitlePage(html, report, labels);
-        html.append("<section class=\"source-notice\"><h1>").append(text(report.title())).append("</h1><p>")
-                .append(text(report.requirement())).append("</p>");
+        boolean hasTitlePage = options.includes(DecisionReportOptions.Section.TITLE_PAGE);
+        if (hasTitlePage) renderTitlePage(html, report, labels);
+        html.append("<section class=\"source-notice\">");
+        if (!hasTitlePage) {
+            html.append("<h1>").append(text(report.title())).append("</h1><div class=\"requirement-text\">")
+                    .append(RequirementReportText.html(report.requirement())).append("</div>");
+        }
         DecisionReportPresentation.sourceNotice(report).forEach(line -> html.append("<p>").append(text(line)).append("</p>"));
         html.append("</section>");
         var navigation = new java.util.LinkedHashMap<String, String>();
@@ -145,25 +151,25 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
             architecture.elements().forEach(e -> html.append("<tr><td>").append(text(e.id())).append("</td><td>")
                     .append(text(e.title())).append("</td><td>").append(percent(e.relevance() * 100)).append("</td></tr>"));
             html.append("</tbody></table><ul>");
-            report.architecture().relations().forEach(e -> html.append("<li>").append(text(e.sourceId())).append(" → ").append(text(e.targetId())).append(" · ").append(text(e.type())).append("</li>"));
+            architecture.relations().forEach(e -> html.append("<li>").append(text(e.sourceId())).append(" → ").append(text(e.targetId())).append(" · ").append(text(e.type())).append("</li>"));
             html.append("</ul>");
-            if (!report.architecture().nodeReasons().isEmpty()) {
+            if (!architecture.nodeReasons().isEmpty()) {
                 html.append("<div class=\"recorded-reasons\"><h3>").append(text(labels.recordedNodeReasons())).append("</h3>");
-                report.architecture().nodeReasons().entrySet().stream().sorted(java.util.Map.Entry.comparingByKey())
+                architecture.nodeReasons().entrySet().stream().sorted(java.util.Map.Entry.comparingByKey())
                         .forEach(entry -> html.append("<h4>").append(text(entry.getKey())).append("</h4><p>")
-                                .append(text(entry.getValue())).append("</p>"));
+                                .append(text(DecisionReportPresentation.nodeReason(entry.getValue(), labels))).append("</p>"));
                 html.append("</div>");
             }
-            if (!report.architecture().diagram().edges().isEmpty()) {
+            if (!architecture.diagram().edges().isEmpty()) {
                 html.append("<div class=\"recorded-reasons\"><h3>").append(text(labels.relationshipProvenance())).append("</h3>");
-                report.architecture().diagram().edges().forEach(edge -> {
-                    html.append("<h4>").append(text(edge.id() + " · " + edge.sourceId() + " → " + edge.targetId()))
+                architecture.diagram().edges().forEach(edge -> {
+                    html.append("<article class=\"relationship-evidence\"><h4>")
+                            .append(text(edge.id() + " · " + edge.sourceId() + " → " + edge.targetId()))
                             .append("</h4>");
-                    com.taxonomy.export.DiagramPresentation.relationshipDetails(edge.metadata(), labels.german())
+                    DiagramPresentation.relationshipReportDetails(edge.metadata(),
+                            architecture.relationReasons().get(edge.id()), labels.german())
                             .forEach(detail -> html.append("<p>").append(text(detail)).append("</p>"));
-                    com.taxonomy.export.DiagramPresentation.relationshipEvidenceDetails(
-                            report.architecture().relationReasons().get(edge.id()), labels.german())
-                            .forEach(detail -> html.append("<p>").append(text(detail)).append("</p>"));
+                    html.append("</article>");
                 });
                 html.append("</div>");
             }
@@ -184,7 +190,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
             evidence(html, labels.branch(), saved.branch());
             evidence(html, labels.basedOnCommit(), saved.commit());
             evidence(html, labels.analysisProvider(), saved.provider());
-            evidence(html, labels.analysisModel(), saved.model());
+            evidence(html, labels.analysisModel(), labels.modelName(saved.model()));
             evidence(html, labels.recordedTaxonomyDigest(), saved.taxonomyFingerprint());
             html.append("</dl>");
             html.append("</section>");
@@ -295,8 +301,8 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
                 .append(attr(report.status().name().toLowerCase(Locale.ROOT)))
                 .append("\">").append(text(statusLabel(report, labels))).append("</div>")
                 .append("<div class=\"requirement-card\"><h2>")
-                .append(text(labels.requirement())).append("</h2><p>")
-                .append(text(report.requirement())).append("</p></div>")
+                .append(text(labels.requirement())).append("</h2><div class=\"requirement-text\">")
+                .append(RequirementReportText.html(report.requirement())).append("</div></div>")
                 .append("<div class=\"metadata-grid\">");
         metadataItem(html, labels.dataVersion(), metadata.taxonomyDataVersion());
         metadataItem(html, labels.sourceFile(), metadata.taxonomyCatalogueFile());
@@ -305,9 +311,9 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
                 ? labels.frozenHierarchy() : labels.liveHierarchy());
         metadataItem(html, labels.nodes(), metadata.taxonomyNodeCount() + " / " + metadata.taxonomyRootCount());
         metadataItem(html, labels.analysisSnapshot(), metadata.analysisSnapshotId());
-        metadataItem(html, labels.requirementVersion(), requirementVersion(report));
+        metadataItem(html, labels.requirementVersion(), requirementVersion(report, labels));
         metadataItem(html, labels.analysisProvider(), metadata.analysisProvider());
-        metadataItem(html, labels.analysisModel(), metadata.analysisModel());
+        metadataItem(html, labels.analysisModel(), labels.modelName(metadata.analysisModel()));
         metadataItem(html, labels.analysisCreatedAt(),
                 formatInstant(metadata.analysisCreatedAt(), metadata.reportTimeZone()));
         metadataItem(html, labels.analysisCreatedBy(), metadata.analysisCreatedBy());
@@ -489,7 +495,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
         evidence(html, labels.promptDigest(), report.metadata().promptFingerprintSha256());
         evidence(html, labels.analysisDigest(), report.metadata().analysisSnapshotFingerprintSha256());
         evidence(html, labels.analysisSnapshot(), report.metadata().analysisSnapshotId());
-        evidence(html, labels.requirementVersion(), requirementVersion(report));
+        evidence(html, labels.requirementVersion(), requirementVersion(report, labels));
         evidence(html, labels.analysisCreatedAt(),
                 formatInstant(report.metadata().analysisCreatedAt(), report.metadata().reportTimeZone()));
         evidence(html, labels.analysisCreatedBy(), report.metadata().analysisCreatedBy());
@@ -498,8 +504,8 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
         evidence(html, labels.branch(), report.metadata().branch());
         evidence(html, labels.basedOnCommit(), report.metadata().basedOnCommit());
         evidence(html, labels.analysisProvider(), report.metadata().analysisProvider());
-        evidence(html, labels.analysisModel(), report.metadata().analysisModel());
-        evidence(html, labels.analysisStatus(), report.metadata().analysisStatus());
+        evidence(html, labels.analysisModel(), labels.modelName(report.metadata().analysisModel()));
+        evidence(html, labels.analysisStatus(), labels.analysisState(report.metadata().analysisStatus()));
         evidence(html, labels.analysisDuration(), labels.durationMillis(report.metadata().analysisDurationMillis()));
         evidence(html, labels.decisionTreeCompleteness(), percent(report.metadata().completenessPercent()));
         html.append("</dl><h3>").append(text(labels.methodology())).append("</h3><p>")
@@ -526,18 +532,18 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
                 .title-page,.report-section{padding:20mm 18mm 24mm}.title-page{min-height:285mm;position:relative;page-break-after:always;background:linear-gradient(150deg,#fff 0,#fff 70%,#edf7f6 100%)}
                 .brand-rule{height:8px;background:linear-gradient(90deg,var(--navy) 0 72%,var(--teal) 72%);margin-bottom:36px}.eyebrow,.section-kicker,.small-label{color:var(--teal);font-weight:700;letter-spacing:.12em;text-transform:uppercase;font-size:12px}
                 h1{font-size:44px;line-height:1.12;color:var(--navy);max-width:800px;margin:18px 0}.subtitle{font-size:21px;color:var(--muted);max-width:760px}.status{display:inline-block;margin-top:18px;padding:8px 14px;border-radius:999px;font-weight:700;background:var(--teal-light);color:var(--teal)}.status-draft_incomplete,.status-no_result{background:var(--warning);color:#745400}
-                .requirement-card{margin-top:42px;padding:20px 24px;border-left:6px solid var(--teal);background:#f6f8fa}.requirement-card h2{margin:0 0 8px;font-size:15px;color:var(--teal);text-transform:uppercase;letter-spacing:.08em}.requirement-card p{font-size:20px;margin:0;white-space:pre-wrap}
-                .metadata-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line);border:1px solid var(--line);margin-top:30px}.metadata-item{background:#fff;padding:13px 16px}.metadata-item span{display:block;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em}.metadata-item strong{display:block;margin-top:3px;overflow-wrap:anywhere}.classification-note{position:absolute;left:18mm;right:18mm;bottom:22mm;color:var(--muted);font-size:11px}
+                .requirement-card{margin-top:42px;padding:20px 24px;border-left:6px solid var(--teal);background:#f6f8fa}.requirement-card>h2{margin:0 0 8px;font-size:15px;color:var(--teal);text-transform:uppercase;letter-spacing:.08em}.requirement-text{font-size:15px;overflow-wrap:anywhere}.requirement-text p{margin:0 0 .6em}.requirement-text h1,.requirement-text h2,.requirement-text h3,.requirement-text h4,.requirement-text h5,.requirement-text h6{font-size:1em;margin:.6em 0 .25em;break-after:avoid}
+                .metadata-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line);border:1px solid var(--line);margin-top:30px}.metadata-item{background:#fff;padding:13px 16px}.metadata-item span{display:block;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em}.metadata-item strong{display:block;margin-top:3px;overflow-wrap:anywhere}.classification-note{margin-top:1em;color:var(--muted);font-size:11px}
                 .report-section{page-break-before:auto}.decision-chapter{page-break-before:always}.section-kicker{margin-bottom:5px}.report-section>h2{font-size:32px;color:var(--navy);margin:0 0 20px}.report-section h3{color:var(--navy);margin:26px 0 10px}.lead{font-size:20px;color:var(--navy)}
                 .leading-leaf{display:flex;justify-content:space-between;align-items:center;background:var(--navy);color:#fff;padding:22px 26px;border-radius:8px;margin:24px 0}.leading-leaf strong,.leading-leaf span{display:block}.leading-leaf .small-label{color:#8de0dd}.score-orb{width:92px;height:92px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--teal);font-size:35px;font-weight:800}.score-orb small{font-size:18px;margin-left:2px}
                 table{width:100%;border-collapse:collapse;margin:12px 0 24px;font-size:13px;page-break-inside:auto}thead{display:table-header-group}tr{page-break-inside:avoid}th{background:var(--navy);color:#fff;text-align:left;padding:9px 8px;font-weight:650}td{border-bottom:1px solid var(--line);padding:9px 8px;vertical-align:top}tbody tr:nth-child(even){background:#f7f9fa}code{font-family:"Cascadia Mono",Consolas,monospace;color:var(--navy);font-weight:700}.muted{color:var(--muted)}
                 .warning-box{background:var(--warning);border-left:5px solid var(--warning-border);padding:14px 18px;margin:22px 0}.warning-box h3{margin-top:0}.warning-box.compact{font-size:13px}.chapter-number{color:var(--teal);font-weight:800;font-size:14px}.chapter-heading{display:flex;align-items:flex-start;justify-content:space-between;border-bottom:3px solid var(--navy);padding-bottom:12px}.chapter-heading h2{margin:4px 0 0;color:var(--navy);font-size:29px}.parent-score{background:var(--teal);color:#fff;padding:10px 16px;border-radius:6px;font-weight:800;font-size:24px;white-space:nowrap}.parent-description{color:var(--muted)}
                 .decision-diagram{margin:24px 0;page-break-inside:avoid}.decision-diagram svg{width:100%;height:auto;border:1px solid var(--line);border-radius:6px;background:#fff}.decision-diagram figcaption{font-size:11px;color:var(--muted);text-align:right}.rationale-grid{display:grid;grid-template-columns:1fr 1.3fr;gap:22px}.rationale-grid>div{background:#f6f8fa;padding:14px 18px;border-top:4px solid var(--teal)}.rationale-grid h3{margin-top:0}.row-leading{background:var(--teal-light)!important}.row-rejected{color:var(--muted)}.row-missing{font-style:italic;color:var(--muted)}
                 .evidence-list{display:grid;grid-template-columns:210px 1fr;border-top:1px solid var(--line)}.evidence-list dt,.evidence-list dd{margin:0;padding:8px;border-bottom:1px solid var(--line)}.evidence-list dt{font-weight:700;color:var(--navy)}.evidence-list dd{overflow-wrap:anywhere}pre{white-space:pre-wrap;background:#f6f8fa;padding:12px;border:1px solid var(--line)}
-                .recorded-reasons p{white-space:pre-wrap;overflow-wrap:anywhere;break-inside:auto}.recorded-reasons h3,.recorded-reasons h4{break-after:avoid}td{overflow-wrap:anywhere}
+                .recorded-reasons p{white-space:pre-wrap;overflow-wrap:anywhere;break-inside:auto}.recorded-reasons h3,.recorded-reasons h4{break-after:avoid}.relationship-evidence{break-inside:avoid;margin-bottom:1em}.relationship-evidence p{margin:.4em 0}td{overflow-wrap:anywhere}
                 @media(max-width:760px){body{box-shadow:none}.title-page,.report-section{padding:28px 20px}.metadata-grid,.rationale-grid{grid-template-columns:1fr}.chapter-heading{display:block}.parent-score{display:inline-block;margin-top:12px}.running-footer{display:none}}
                 @media screen and (max-width:760px){.decision-table-scroll{overflow-x:auto}}
-                @media print{html,body{background:#fff;box-shadow:none;max-width:none}.running-footer{position:fixed}.page-counter:after{content:PAGE_COUNTER}@page{size:A4;margin:14mm 12mm 18mm}.title-page,.report-section{padding:12mm 10mm 18mm}.title-page{min-height:255mm}.classification-note{left:10mm;right:10mm;bottom:16mm}}
+                @media print{html,body{background:#fff;box-shadow:none;max-width:none}.running-footer{position:fixed}.page-counter:after{content:PAGE_COUNTER}@page{size:A4;margin:14mm 12mm 18mm}.title-page,.report-section{padding:12mm 10mm 18mm}.title-page{min-height:255mm}}
                 </style>
                 """.replace("PAGE_COUNTER", pageCounter);
     }
@@ -594,17 +600,17 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
         };
     }
 
-    private String requirementVersion(DecisionRationaleReport report) {
+    private String requirementVersion(DecisionRationaleReport report, DecisionReportLabels labels) {
         if (report.metadata().requirementVersionNumber() == null) {
             return "—";
         }
         StringBuilder value = new StringBuilder("v")
                 .append(report.metadata().requirementVersionNumber());
         if (report.metadata().requirementId() != null) {
-            value.append(" · requirement ").append(report.metadata().requirementId());
+            value.append(" · ").append(labels.requirementId()).append(' ').append(report.metadata().requirementId());
         }
         if (report.metadata().projectId() != null) {
-            value.append(" · project ").append(report.metadata().projectId());
+            value.append(" · ").append(labels.project()).append(' ').append(report.metadata().projectId());
         }
         return value.toString();
     }

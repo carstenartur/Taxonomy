@@ -165,7 +165,7 @@ class ProposalInboxStartupUiIT {
             assertThat(driver.findElement(pendingRow).isDisplayed()).isTrue();
             var displayedSource = new Select(driver.findElement(By.id("architectureSource")));
             displayedSource.selectByValue("analysis");
-            wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("#analysisProposalInbox #filterAll")));
+            wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("#analysisProposalOverview #filterAll")));
             displayedSource.selectByValue("working");
             ordinaryWorkingInbox(wait);
             var available = awaitPreview(wait, driver, "#proposalsTableContainer ", detail, "AVAILABLE");

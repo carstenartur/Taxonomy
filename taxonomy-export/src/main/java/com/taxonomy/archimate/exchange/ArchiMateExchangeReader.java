@@ -88,7 +88,9 @@ public final class ArchiMateExchangeReader {
                 connections.add(new ArchiMateViewConnection(viewIdentity("connection", connection, viewId),
                         decode("relationship", connection.getAttribute("relationshipRef")),
                         viewReference("node", connection.getAttribute("source"), viewId),
-                        viewReference("node", connection.getAttribute("target"), viewId)));
+                        viewReference("node", connection.getAttribute("target"), viewId),
+                        children(connection, "bendpoint").stream().map(point -> new ArchiMateViewConnection.Bendpoint(
+                                integer(point, "x"), integer(point, "y"))).toList()));
             }
             views.add(new ArchiMateView(viewId, content(view, "name"), nodes, connections));
         }
@@ -281,6 +283,7 @@ public final class ArchiMateExchangeReader {
             case "diagrams" -> Set.of("view");
             case "view" -> Set.of("name", "properties", "node", "connection");
             case "node" -> Set.of("label", "style");
+            case "connection" -> Set.of("bendpoint");
             case "style" -> Set.of("fillColor");
             default -> Set.of();
         };
@@ -292,6 +295,7 @@ public final class ArchiMateExchangeReader {
             case "properties" -> Set.of("property");
             case "diagrams" -> Set.of("view");
             case "view" -> Set.of("node", "connection");
+            case "connection" -> Set.of("bendpoint");
             default -> Set.of();
         };
         Set<String> seen = new HashSet<>();
@@ -310,6 +314,7 @@ public final class ArchiMateExchangeReader {
             case "relationship" -> Set.of("identifier", "source", "target", "accessType");
             case "node" -> Set.of("identifier", "elementRef", "x", "y", "w", "h");
             case "connection" -> Set.of("identifier", "relationshipRef", "source", "target");
+            case "bendpoint" -> Set.of("x", "y");
             case "style" -> Set.of("lineWidth");
             case "fillColor" -> Set.of("r", "g", "b");
             case "property" -> Set.of("propertyDefinitionRef");

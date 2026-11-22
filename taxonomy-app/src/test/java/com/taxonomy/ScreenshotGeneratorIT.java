@@ -15,6 +15,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.extension.TestWatcher;
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.Keys;
 import org.openqa.selenium.OutputType;
 import org.openqa.selenium.TakesScreenshot;
 import org.openqa.selenium.WebDriver;
@@ -686,9 +687,7 @@ class ScreenshotGeneratorIT {
         });
     }
 
-    /** Runs a standard (non-interactive) analysis and waits up to 120 s for completion. */
-    private void runAnalysis() {
-        navigateToTab("analyze");
+    private void waitForAnalysisSource() {
         // The rendered taxonomy tree precedes the durable analysis workspace's
         // confirmation. An early click is deliberately refused by the scoring
         // guard, so establish and assert the same production readiness first.
@@ -704,6 +703,12 @@ class ScreenshotGeneratorIT {
                             && !window.__taxonomyAnalysisSessionLoading
                             && typeof window.TaxonomyAnalysisProgress?.start==='function';
                         """)));
+    }
+
+    /** Runs a standard (non-interactive) analysis and waits up to 120 s for completion. */
+    private void runAnalysis() {
+        navigateToTab("analyze");
+        waitForAnalysisSource();
         WebElement textarea = driver.findElement(By.id("businessText"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", textarea);
         js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", textarea);
@@ -2230,9 +2235,12 @@ class ScreenshotGeneratorIT {
             // Show all eight collapsed root summaries and the unresolved question without inner scrolling.
             driver.manage().window().setSize(new org.openqa.selenium.Dimension(1680, 1800));
             resetPageState("de");
+            // The restored analysis owns this field until the draft is ready.
+            waitForAnalysisSource();
             WebElement input = driver.findElement(By.id("businessText"));
-            input.clear();
-            input.sendKeys("produktdemo");
+            input.sendKeys(Keys.chord(Keys.CONTROL, "a"), "produktdemo");
+            Assertions.assertEquals("produktdemo", input.getDomProperty("value"),
+                    "The product demo command must replace the restored requirement text");
             safeClick(By.id("analyzeBtn"));
             wait(60).until(ExpectedConditions.visibilityOfElementLocated(By.id("productDemoBanner")));
             var route = java.util.regex.Pattern.compile("/projects/(\\d+)/requirements/(\\d+)")

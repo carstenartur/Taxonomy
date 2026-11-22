@@ -1,5 +1,6 @@
 /** Shared SVG renderer acceptance using the packaged D3 dependency, with no API/provider calls. */
 import {installBrowserApiFixture} from './canonical-browser-fixture.mjs';
+import { architectureLensMarkup } from './architecture-lens-fixture.mjs';
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -46,16 +47,33 @@ async function mountAnalysis(page) {
     await page.waitForFunction(() => document.querySelector('.impact-map-workbench').dataset.fitState === 'complete');
 }
 async function appendFocusPanel(page, prefix) {
-    const template = await readFile(path.join(resources, 'templates/fragments/architecture-source-lens.html'), 'utf8');
-    await page.evaluate(({ template, prefix }) => {
-        // Resolve only this fragment's parameterized IDs; retain its actual controls.
-        const markup = template.replace(/th:id="\$\{idPrefix(?: \+ '([^']+)')?\}"/g,
-            (_match, suffix) => `id="${prefix}${suffix || ''}"`);
-        const parsed = new DOMParser().parseFromString(markup, 'text/html');
-        document.body.append(parsed.querySelector('section'));
-    }, { template, prefix });
+    const markup = await architectureLensMarkup(resources, prefix);
+    await page.evaluate(({panel, controls}) => {
+        document.body.insertAdjacentHTML('afterbegin', controls);
+        const review = document.createElement('div');
+        review.className = 'relationship-review';
+        review.insertAdjacentHTML('afterbegin', panel);
+        document.body.append(review);
+    }, markup);
     await page.addScriptTag({ path: path.join(resources, 'static/js/architecture-focus.js') });
 }
+test('the source lens keeps its numeric limit next to its label at desktop and mobile widths', async () => {
+    const page = await fixture();
+    try {
+        await appendFocusPanel(page, 'nativeSourceLens');
+        await page.locator('#nativeSourceLens').evaluate(panel => { panel.hidden = false; });
+        await page.locator('#nativeSourceLensSettings summary').click();
+        for (const width of [1200, 375]) {
+            await page.setViewportSize({ width, height: 800 });
+            const input = page.getByRole('spinbutton', { name: 'Investigation limit' });
+            assert.deepEqual(await input.evaluate(field => {
+                const box = field.getBoundingClientRect(), label = field.labels[0].querySelector('span').getBoundingClientRect();
+                return { compact: box.width < 100, adjacent: box.left > label.right && box.left - label.right < 15,
+                    fits: box.right <= window.innerWidth };
+            }), { compact: true, adjacent: true, fits: true }, `viewport ${width}`);
+        }
+    } finally { await page.close(); }
+});
 async function attachSourceLens(page, source, enabled) {
     await appendFocusPanel(page, 'nativeSourceLens');
     for (const file of ['api/architecture-source-focus-api.js', 'shared/architecture-source-lens.js']) {
@@ -109,6 +127,7 @@ async function attachSourceLens(page, source, enabled) {
         }
     }, source);
     assert.equal(await page.locator('#nativeSourceLensUseAi').isChecked(), false);
+    assert.equal(await page.locator('#nativeSourceLensSettings').getAttribute('open'), null);
     if (enabled) await page.locator('#nativeSourceLensEnabled').check();
     assert.equal(await page.locator('#nativeSourceLensEnabled').isChecked(), enabled);
 }
@@ -146,7 +165,7 @@ for (const source of ['analysis', 'snapshot']) for (const enabled of [false, tru
             assert.ok(await page.evaluate(() => nativeLensSelections.includes('A')),
                 'Real selection events must traverse SourceLens.select and ArchitectureFocusPanel.render');
             assert.equal(await page.locator('#nativeSourceLensEnabled').isChecked(), enabled);
-            assert.equal(await page.locator('#nativeSourceLensInspect').isEnabled(), enabled);
+            assert.equal(await page.locator('#nativeSourceLensInspect').isEnabled(), true);
             const requests = await page.evaluate(() => {
                 nativeSourceLens.suspend();
                 return { calls: nativeLensRequests, editor: nativeLensOpenCalls, saves: nativeLensSaves };
@@ -212,8 +231,8 @@ for (const enabled of [false, true]) test(`working: native double-click survives
             ], edges: [{ id: 'AB', sourceId: 'A', targetId: 'B', relationType: 'SUPPORTS', sourceX: 335, sourceY: 150, targetX: 405, targetY: 150 }] }, null);
             workingFocusPanel.setContext(context, true); workingFocusPanel.select(null);
         });
-        // Keep investigation local; enabling the working lens otherwise opts into AI by default.
-        await page.locator('#editorLensUseAi').uncheck();
+        assert.equal(await page.locator('#editorLensUseAi').isChecked(), false);
+        assert.equal(await page.locator('#editorLensSettings').getAttribute('open'), null);
         if (enabled) await page.locator('#editorLensEnabled').check();
         await recordNativeDoubleClick(page);
         await page.locator('[data-node-id="A"]').dblclick();
@@ -221,7 +240,7 @@ for (const enabled of [false, true]) test(`working: native double-click survives
             events: nativeDoubleClicks, selections: workingSelections })),
             { selected: 'A', mode: 'focus', events: [{ id: 'A', retained: true }], selections: ['A'] });
         assert.equal(await page.locator('#editorLensEnabled').isChecked(), enabled);
-        assert.equal(await page.locator('#editorLensInspect').isEnabled(), enabled);
+        assert.equal(await page.locator('#editorLensInspect').isEnabled(), true);
         assert.equal(await page.evaluate(() => workingLensRequests.every(request => request.useAi === false)), true);
         await page.evaluate(() => { workingFocusPanel.setContext(null, false); renderer.destroy(); });
         assert.deepEqual(page.errors, []);
@@ -251,15 +270,27 @@ test('working diagram fits after hidden mount, preserves server geometry and res
     const page = await fixture();
     try {
         await page.addScriptTag({ path: path.join(resources, 'static/js/architecture-editor-renderer.js') });
-        await page.evaluate(() => {
+        const label = 'Standortübergreifender Zugangs- und Verbindungsdienst für das Ausbildungsportal';
+        await page.evaluate(label => {
+            document.body.classList.add('architecture-editor-surface');
             const svg = document.getElementById('editorGraph'); svg.style.display = 'none';
-            const scene = { nodes: [{ id: 'A', label: 'Working element', x: 105, y: 207, width: 230, height: 86 }], edges: [], width: 2000, height: 700 };
+            const scene = { nodes: [
+                { id: 'A', label, x: 105, y: 207, width: 230, height: 86 },
+                { id: 'B', label: 'Fachgemeinschaftsspezifische Dienste', x: 365, y: 207, width: 230, height: 86 }
+            ], edges: [], width: 2000, height: 700 };
             window.renderer = ArchitectureEditorRenderer(svg, id => renderer.select(id)); renderer.render(scene, 'A'); renderer.fit();
-        });
+        }, label);
         assert.deepEqual(await page.evaluate(() => renderer.captureViewport()), { x: 0, y: 0, k: 1 });
         await page.evaluate(() => document.getElementById('editorGraph').style.display = '');
         await page.waitForFunction(() => renderer.captureViewport().k < 1);
-        assert.equal(await page.locator('.editor-node').getAttribute('transform'), 'translate(105,207)');
+        const card = page.getByRole('button', { name: label + ' · A' });
+        assert.equal(await card.getAttribute('transform'), 'translate(105,207)');
+        assert.equal(await card.locator('title').textContent(), label);
+        const lines = card.locator('.editor-node-title');
+        assert.equal(await lines.count(), 3);
+        assert.equal(await lines.evaluateAll(items => items.every(line => line.getBBox().x + line.getBBox().width < 230)), true);
+        assert.deepEqual(await page.locator('[data-node-id="B"] .editor-node-title').allTextContents(),
+            ['Fachgemeinschaftsspezifische', 'Dienste'], 'A visually fitting long word stays intact');
         await page.evaluate(() => renderer.restoreViewport({ x: 21, y: 43, k: 0.8 }));
         await page.evaluate(() => { renderer.focus(); renderer.unfocus(); });
         assert.deepEqual(await page.evaluate(() => renderer.captureViewport()), { x: 21, y: 43, k: 0.8 });
@@ -313,6 +344,9 @@ for (const embedded of [false,true]) test(`snapshot adapter keeps exact geometry
         assert.equal(await page.locator('.architecture-node').count(), 2);
         await page.evaluate(() => TaxonomySnapshotDiagram.unfocus());
         assert.equal(await page.locator('.architecture-node').count(), 3);
+        const context = page.locator('[data-node-id="C"]');
+        assert.equal(await context.evaluate(node => node.classList.contains('is-muted') && getComputedStyle(node).opacity === '1'), true,
+            'De-emphasized context remains legible after exiting focus');
         assert.equal(await page.locator('[data-node-id="A"]').getAttribute('transform'), 'translate(105,207)');
         await page.evaluate(() => { TaxonomySnapshotDiagram.focus('A'); TaxonomySnapshotDiagram.restoreViewport({ x: 23, y: 41, k: 0.8 }); });
         await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));

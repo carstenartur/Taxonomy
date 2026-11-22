@@ -369,6 +369,10 @@ Am oberen Rand des linken Panels finden Sie:
 - **Taxonomie-Stamm-Auswahl** (nur Baumansicht) — wählen Sie, welcher Taxonomie-Stamm angezeigt werden soll.
 - **Descriptions-Umschalter** — Beschreibungstext für jeden Knoten ein- oder ausblenden.
 
+Die Legende unmittelbar über den Ergebnissen erklärt die Farben der gewählten Ansicht.
+
+![Trefferfarben in der Listenansicht](../images/10-match-legend.png)
+
 Jede Taxonomieknoten-Zeile zeigt:
 - Den **Knotennamen** und seinen hierarchischen Code.
 - Einen **Bewertungsbalken** und Prozentsatz (sichtbar nach der Analyse).
@@ -383,10 +387,6 @@ Exporte und das Laden gespeicherter Analysen befinden sich unter **Architektur �
 Das rechte Panel (schmalere Spalte) enthält alle interaktiven Werkzeuge:
 
 - **Business Requirement Analysis Karte** — der Haupttextbereich, in dem Sie eine Anforderung eingeben und die Analyse ausführen.
-- **Trefferlegende** — kompakte, stets sichtbare Farbskala unterhalb der Analysebedienung mit Farbfeldern bei 0 %, 25 %, 50 %, 75 % und 100 %.
-
-![Kompakte, stets sichtbare Trefferlegende in der englischen Oberfläche](../images/10-match-legend.png)
-
 - **Analyse-Status** — Fortschritt und Warnungen direkt im Analysebereich; Ausblenden bricht den Lauf nicht ab. Mit dem Knopf **Analyse-Status** im Anforderungsarbeitsbereich lässt er sich wieder öffnen.
 - **Systemstatus** — Betriebs- und Anbieterstatusdetails aufklappen; Warnungen öffnen die Anzeige nicht selbsttätig.
 - **Analyseprotokoll** (einklappbar) — Schritt-für-Schritt-Protokoll des Bewertungsprozesses.
@@ -551,20 +551,9 @@ Aktivieren Sie das **Architecture View**-Kontrollkästchen, bevor Sie die Analys
 
 ### Bewertungen und die Farblegende verstehen
 
-Die **Trefferlegende** bleibt als kompakte Zeile unterhalb der Analysebedienung sichtbar, auch nach der Analyse. Ihre Farbfelder zeigen die Farbskala:
+Die Legende steht bei den Taxonomieergebnissen. In **Liste**, **Registerkarten**, **Sunburst** und **Baum** zeigen Farbfelder bei 0, 25, 50, 75 und 100 Prozent die Trefferstärke. Kräftigeres Grün bedeutet höhere Relevanz. Eine Bewertung von null ist mit 0 % beschriftet. Ein unbewerteter Knoten hat keinen Zahlenwert.
 
-| Farbe | Bewertungsbereich | Bedeutung | Textfarbe |
-|---|---|---|---|
-| Transparent | 0 % | Angezeigtes Gewicht null; Bewertungsstatus prüfen | Dunkel (Standard) |
-| Sehr helles Grün | 1 % – 24 % | Sehr geringe Übereinstimmung | Dunkel (Standard) |
-| Helles Grün | 25 % – 49 % | Geringe Übereinstimmung | Dunkel (Standard) |
-| Mittleres Grün | 50 % – 59 % | Mäßige Übereinstimmung | Dunkel (Standard) |
-| Dunkles Grün | 60 % – 99 % | Gute Übereinstimmung | **Weiß** (für Lesbarkeit) |
-| Sattes Grün | 100 % | Höchstes angezeigtes Gewicht, kein Richtigkeitsnachweis | **Weiß** |
-
-Die Farbe wird berechnet als `rgba(0, 128, 0, score/100)` — ein reines Grün, dessen **Deckkraft** (Alphakanal) linear mit dem Bewertungsprozentsatz ansteigt. Ab 60 % und höher wechselt die Textfarbe zu Weiß, um die Lesbarkeit vor dem dunkleren Hintergrund zu gewährleisten.
-
-Knoten mit einer Bewertung von 0 % haben keine Hervorhebung. Fahren Sie mit der Maus über ein beliebiges Legendenfeld, um einen Tooltip mit der Beschreibung der Übereinstimmungsstufe zu sehen.
+Im **Entscheidungsbaum** markieren Gold, Silber und Bronze die drei besten Treffer. Blau kennzeichnet weitere positive Treffer, Grau den Kontext. Die drei besten Treffer haben die dicksten Linien. Bei den übrigen Treffern steigt die Linienstärke mit der Bewertung des Zielknotens. In der **Zusammenfassung** steht die Farbe für die Teiltaxonomie, ein Stern für einen direkten Treffer und die Prozentzahl für dessen Relevanz.
 
 ![Kompakte Trefferlegende neben bewerteten Ergebnissen in der englischen Oberfläche](../images/17-match-legend-with-scores.png)
 
@@ -825,6 +814,7 @@ Die Hauptvisualisierung ist ein **stabiler, nach Architekturebenen geordneter Au
 - **★ Direkte Treffer** haben einen hervorgehobenen Rahmen und stehen innerhalb ihrer Ebene zuerst. Dies sind die Elemente, welche die Analyse unmittelbar aus der Anforderung abgeleitet hat.
 - **⚠️ Hotspots** kennzeichnen Elemente mit hoher Änderungswirkung, etwa gemeinsam genutzte Abhängigkeiten oder direkte Treffer mit mehreren ausgehenden Beziehungen.
 - **Gerichtete Verbindungen** zeigen Quelle, Ziel und Beziehungstyp. Wenn Sie ein Element auswählen, werden dessen verbundene Pfade hervorgehoben und nicht zugehörige Elemente zurückgenommen.
+- Öffnen Sie die **Architektur-Lupe** direkt am Diagramm, um ein ausgewähltes Element zu untersuchen. Das Kontrollkästchen daneben aktiviert die Untersuchung beim Überfahren mit der Maus.
 - Mit der **Suche** finden Sie Elemente anhand von Code, Bezeichnung oder Ebene. Drücken Sie die Eingabetaste, um zum ersten Treffer zu springen.
 - Der Schalter **Kontextknoten** blendet propagierte Elemente ein oder aus. Direkte Treffer bleiben sichtbar.
 - Wechseln Sie zwischen **Übersicht** und **Fokus**. Der Fokusmodus zeigt das ausgewählte Element mit seinen direkten Nachbarn; ein Doppelklick auf eine Karte aktiviert ihn ebenfalls. **Fokus aufheben** in der Werkzeugleiste oder den Elementdetails stellt die Übersicht wieder her und erhält das ausgewählte Element sowie die übrigen Filter.

@@ -7,12 +7,13 @@ import org.w3c.dom.*;
 import javax.xml.XMLConstants;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.regex.Pattern;
 
 /**
- * Explicit content-preservation return profile for the observed Archi 5.10 export.
+ * Explicit content-preservation return profile for observed Archi exchange output.
  * Requires a strict original; never selected as a fallback by the strict reader.
- * Returned semantic edits are unsupported. The original supplies erased representation,
- * never missing identity, property values or provenance. Callers must expose all losses.
+ * Returned semantic edits are unsupported. The original supplies erased representation
+ * and exact formatting for known whitespace normalization. Callers must expose all losses.
  */
 public final class ArchiMateReturnProfile {
     public static final String VERSION = "taxonomy-archi-5.10-return-v1";
@@ -21,6 +22,7 @@ public final class ArchiMateReturnProfile {
             + "<font name=\"Sans\" size=\"9\"><color r=\"0\" g=\"0\" b=\"0\"/></font></style>";
     private static final String CONNECTION_STYLE = "<style xmlns=\"" + NS + "\"><lineColor r=\"0\" g=\"0\" b=\"0\"/>"
             + "<font name=\"Sans\" size=\"9\"><color r=\"0\" g=\"0\" b=\"0\"/></font></style>";
+    private static final Pattern XML_WHITESPACE = Pattern.compile("[ \\t\\r\\n]+");
 
     public ArchiMateModel read(byte[] original, byte[] returned) {
         ArchiMateModel model = new ArchiMateExchangeReader().read(original);
@@ -89,7 +91,7 @@ public final class ArchiMateReturnProfile {
     }
 
     // Compare every field after only the declared transformations. Collection order and namespace
-    // prefix choices do not establish identity. Text (including blank property values) stays exact.
+    // prefix choices do not establish identity. Remaining text stays exact.
     private static String canonical(Element element) {
         Map<String, String> attrs = attributes(element);
         attrs.remove(XMLConstants.W3C_XML_SCHEMA_INSTANCE_NS_URI + "|schemaLocation");
@@ -134,12 +136,14 @@ public final class ArchiMateReturnProfile {
             requireEqual("property value count " + key, values.size(), actualValues.size());
             for (int index = 0; index < values.size(); index++) {
                 var value = values.get(index);
+                var returnedValue = actualValues.get(index);
                 if ("en".equals(value.getAttributeNS(javax.xml.XMLConstants.XML_NS_URI, "lang"))
-                        && !actualValues.get(index).hasAttributeNS(javax.xml.XMLConstants.XML_NS_URI, "lang")) {
+                        && !returnedValue.hasAttributeNS(javax.xml.XMLConstants.XML_NS_URI, "lang")) {
                     value.removeAttributeNS(javax.xml.XMLConstants.XML_NS_URI, "lang");
                     losses.add(new ArchiMateLoss("return", key, "value.xml:lang", "ARCHI_PROPERTY_LANGUAGE_OMITTED",
-                            "Archi 5.10.0 omits the emitted en property-value language marker; the value and all remaining attributes are compared exactly."));
+                            "Archi omits the emitted en property-value language marker."));
                 }
+                comparePropertyWhitespace(key, value, returnedValue, losses);
             }
             var expectedValue = (org.w3c.dom.Element) property.cloneNode(true);
             var actualValue = (org.w3c.dom.Element) actual.cloneNode(true);
@@ -147,6 +151,18 @@ public final class ArchiMateReturnProfile {
             actualValue.removeAttribute("propertyDefinitionRef");
             requireEqual("property content " + key, ExchangeXml.semantic(ExchangeXml.xml(expectedValue)), ExchangeXml.semantic(ExchangeXml.xml(actualValue)));
         });
+    }
+
+    private static void comparePropertyWhitespace(String key, Element original, Element returned,
+                                                   List<ArchiMateLoss> losses) {
+        String text = original.getTextContent();
+        String returnedText = returned.getTextContent();
+        if (!text.equals(returnedText) && XML_WHITESPACE.matcher(text).replaceAll(" ").trim().equals(returnedText)
+                && ExchangeXml.children(original).isEmpty() && ExchangeXml.children(returned).isEmpty()) {
+            original.setTextContent(returnedText);
+            losses.add(new ArchiMateLoss("return", key, "value", "ARCHI_PROPERTY_WHITESPACE_NORMALIZED",
+                    "Archi normalized XML whitespace. The returned value matches that exact transformation and Taxonomy retains the original property text."));
+        }
     }
 
     private static Map<String, org.w3c.dom.Element> scopedProperties(org.w3c.dom.Document document) {
@@ -233,7 +249,7 @@ public final class ArchiMateReturnProfile {
                 String id = key.substring(key.indexOf('/') + 1);
                 Element connection = connections.get(id);
                 if (connection == null) throw new IllegalArgumentException("Unknown returned connection: " + id);
-                connection.appendChild(before.importNode(actual, true));
+                connection.insertBefore(before.importNode(actual, true), connection.getFirstChild());
             }
         }
     }

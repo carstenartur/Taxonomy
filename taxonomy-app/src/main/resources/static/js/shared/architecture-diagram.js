@@ -2,6 +2,7 @@
 (function () {
     'use strict';
     var NS = 'http://www.w3.org/2000/svg';
+    var compactCaptionContext;
     function element(tag, attributes) {
         var result = document.createElementNS(NS, tag);
         Object.keys(attributes || {}).forEach(function (key) {
@@ -28,6 +29,15 @@
             if (focus) target.removeEventListener('dblclick', doubleClick);
         };
     }
+    function compactCaption(label, width, lineCount) {
+        if (compactCaptionContext === undefined) {
+            compactCaptionContext = document.createElement?.('canvas')?.getContext?.('2d') || null;
+            if (compactCaptionContext) compactCaptionContext.font = '14px system-ui, sans-serif';
+        }
+        return compactCaptionContext
+            ? wrapLabel(label, width, lineCount, function (value) { return compactCaptionContext.measureText(value).width; })
+            : wrapLabel(label, Math.floor(width / 8), lineCount);
+    }
     function renderNode(parent, node, callbacks) {
         callbacks = callbacks || {};
         var prefix = node.prefix || 'architecture';
@@ -35,7 +45,17 @@
             'data-node-id': node.id, tabindex: 0, role: 'button', 'aria-label': node.ariaLabel || node.label || node.id,
             'aria-pressed': Boolean(node.selected) });
         group.appendChild(element('rect', { 'class': prefix + '-node-card', x: 0, y: 0, width: node.width, height: node.height, rx: node.compact ? 6 : 9, fill: node.color }));
-        if (node.compact) text(group, prefix + '-node-title', 12, 30, node.label || node.id, node.textColor);
+        if (node.compact) {
+            var inlinePadding = 8;
+            var lineHeight = 16;
+            var availableHeight = node.responsibleUnit ? Math.min(44, node.height) : node.height;
+            var lineCount = Math.min(3, Math.max(1, Math.floor((availableHeight - 8) / lineHeight)));
+            var lines = compactCaption(node.label || node.id, node.width - 2 * inlinePadding, lineCount);
+            var baseline = (availableHeight - (lines.length - 1) * lineHeight) / 2 + 5;
+            lines.forEach(function (line, index) {
+                text(group, prefix + '-node-title', inlinePadding, baseline + index * lineHeight, line, node.textColor);
+            });
+        }
         else {
             text(group, prefix + '-node-code', 12, 19, node.id, node.textColor);
             var scoreWidth = node.scoreWidth || 58;
@@ -53,7 +73,8 @@
             var caption = name.length > 28 ? name.slice(0, 27).join('') + '…' : unit.name;
             text(group, prefix + '-node-responsibility', 25, y, caption, node.textColor).setAttribute('font-size', '11');
         }
-        if (node.tooltip) { var title = element('title'); title.textContent = node.tooltip; group.appendChild(title); }
+        var tooltip = node.tooltip || (node.compact && (node.label || node.id));
+        if (tooltip) { var title = element('title'); title.textContent = tooltip; group.appendChild(title); }
         activate(group, function () { if (callbacks.select) callbacks.select(node.id); }, callbacks.focus && function () { callbacks.focus(node.id); });
         parent.appendChild(group); return group;
     }
@@ -266,17 +287,28 @@
         var end = Math.min(target.width / (2 * Math.abs(dx || 0.001)), target.height / (2 * Math.abs(dy || 0.001)));
         return 'M' + (x + dx * start) + ',' + (y + dy * start) + ' L' + (x + dx * (1 - end)) + ',' + (y + dy * (1 - end));
     }
-    function wrapLabel(value, maximumCharacters, maximumLines) {
+    function wrapLabel(value, maximumWidth, maximumLines, measure) {
+        maximumWidth = Math.max(1, maximumWidth);
+        measure = measure || function (value) { return value.length; };
         var words = String(value || '').trim().split(/\s+/).filter(Boolean), lines = [], current = '';
         words.forEach(function (word) {
             var candidate = current ? current + ' ' + word : word;
-            if (candidate.length <= maximumCharacters || !current) current = candidate;
-            else { lines.push(current); current = word; }
+            if (measure(candidate) <= maximumWidth) { current = candidate; return; }
+            if (current) { lines.push(current); current = ''; }
+            if (measure(word) <= maximumWidth) current = word;
+            else for (var character of word) {
+                if (current && measure(current + character) > maximumWidth) {
+                    lines.push(current); current = '';
+                }
+                current += character;
+            }
         });
         if (current) lines.push(current);
         if (lines.length > maximumLines) {
             lines.splice(maximumLines);
-            lines[maximumLines - 1] = lines[maximumLines - 1].substring(0, Math.max(1, maximumCharacters - 1)).replace(/[\s.,;:]+$/, '') + '…';
+            var end = Array.from(lines[maximumLines - 1].replace(/[\s.,;:]+$/, ''));
+            while (end.length && measure(end.join('') + '…') > maximumWidth) end.pop();
+            lines[maximumLines - 1] = end.join('').replace(/[\s.,;:]+$/, '') + '…';
         }
         return lines.length ? lines : [''];
     }
@@ -444,12 +476,12 @@ window.TaxonomyArchitectureDiagram.create = function (svg, options) {
     var zoom = d3.zoom().scaleExtent([viewport.minimumScale, viewport.maximumScale])
         .filter(function (event) {
             return active && !destroyed && (!event.ctrlKey || event.type === 'wheel') && !event.button
-                && (!behavior.lensLocksPan || !lens.enabled || event.type === 'wheel');
+                && (!behavior.lensLocksPan || !(lens.hover ?? lens.enabled) || event.type === 'wheel');
         }).on('zoom', function (event) {
             if (destroyed) return;
             if (event.sourceEvent) markUserControlled();
             transform = event.transform; canvas.setAttribute('transform', transform.toString());
-            if (limits.cull && active && drawFrame === null) drawFrame = requestAnimationFrame(function () { drawFrame = null; draw(); });
+            if (limits.cull && active && drawFrame === null) drawFrame = requestAnimationFrame(function () { drawFrame = null; draw(true); });
         });
     selection.call(zoom).on('dblclick.zoom', null);
     canvas.setAttribute('transform', transform.toString());
@@ -563,7 +595,7 @@ window.TaxonomyArchitectureDiagram.create = function (svg, options) {
         });
         return result;
     }
-    function drawRelationships(focused) {
+    function drawRelationships(focused, lensUpdate) {
         var ids = new Set(drawnNodes.map(function (node) { return node.id; }));
         var byId = new Map(drawnNodes.map(function (node) { return [node.id, node]; }));
         var proposals = lens.enabled ? (lens.suggestions || []).filter(function (edge) { return ids.has(edge.sourceId) && ids.has(edge.targetId); }).slice(0, Math.min(limits.suggestions, limits.edges)) : [];
@@ -571,20 +603,27 @@ window.TaxonomyArchitectureDiagram.create = function (svg, options) {
         var edges = availableEdges.slice(0, Math.max(0, limits.edges - proposals.length));
         var selectedEdge = availableEdges.find(function (edge) { return edge.id === state.selectedEdgeId; });
         if (selectedEdge && !edges.includes(selectedEdge) && edges.length) edges[edges.length - 1] = selectedEdge;
-        definitions.replaceChildren(); relationships.replaceChildren(); overlay.replaceChildren(); edgeElements.clear();
-        var markers = new Map();
-        edges.forEach(function (edge) {
-            var color = edge.color || 'context-stroke';
-            if (!markers.has(color)) { var id = markerPrefix + 'edge-' + markers.size; markers.set(color, id); addMarker(id, color); }
-            var a = byId.get(source(edge)), b = byId.get(target(edge));
-            var path = edge.path || (edge.sourceX !== undefined ? 'M' + edge.sourceX + ',' + edge.sourceY + ' L' + edge.targetX + ',' + edge.targetY
-                : compact ? common.suggestionPath(a, b) : common.edgePath(a, b, 0));
-            var spec = Object.assign({ prefix: prefix, compact: compact, ariaLabel: source(edge) + ' ' + (edge.relationType || edge.type || '') + ' ' + target(edge) }, edge,
-                { source: source(edge), target: target(edge), path: path, markerId: markers.get(color) });
-            var group = common.renderEdge(relationships, spec, { select: selectEdge }); edgeElements.set(edge.id, group);
-            if (focused.kind === 'edge' && focused.id === edge.id) (group.getAttribute('role') === 'button' ? group : group.querySelector('[role="button"]')).focus({ preventScroll: true });
-        });
-        if (proposals.length) addMarker(markerPrefix + 'suggestion', '#7142a0');
+        // Lens progress and review selection do not change the base drawing. Its edge budget
+        // can still shrink or grow when visible suggestions share the working diagram's cap.
+        var baseChanged = !lensUpdate || edges.length !== edgeElements.size
+            || edges.some(function (edge) { return !edgeElements.has(edge.id); });
+        if (baseChanged) {
+            definitions.replaceChildren(); relationships.replaceChildren(); edgeElements.clear();
+            var markers = new Map();
+            edges.forEach(function (edge) {
+                var color = edge.color || 'context-stroke';
+                if (!markers.has(color)) { var id = markerPrefix + 'edge-' + markers.size; markers.set(color, id); addMarker(id, color); }
+                var a = byId.get(source(edge)), b = byId.get(target(edge));
+                var path = edge.path || (edge.sourceX !== undefined ? 'M' + edge.sourceX + ',' + edge.sourceY + ' L' + edge.targetX + ',' + edge.targetY
+                    : compact ? common.suggestionPath(a, b) : common.edgePath(a, b, 0));
+                var spec = Object.assign({ prefix: prefix, compact: compact, ariaLabel: source(edge) + ' ' + (edge.relationType || edge.type || '') + ' ' + target(edge) }, edge,
+                    { source: source(edge), target: target(edge), path: path, markerId: markers.get(color) });
+                var group = common.renderEdge(relationships, spec, { select: selectEdge }); edgeElements.set(edge.id, group);
+                if (focused.kind === 'edge' && focused.id === edge.id) (group.getAttribute('role') === 'button' ? group : group.querySelector('[role="button"]')).focus({ preventScroll: true });
+            });
+            addMarker(markerPrefix + 'suggestion', '#7142a0');
+        }
+        overlay.replaceChildren();
         proposals.forEach(function (edge) {
             var path = common.element('path', { 'data-suggestion-id': edge.id, 'class': 'editor-ghost' + (edge.id === lens.reviewed ? ' selected' : ''),
                 d: common.suggestionPath(byId.get(edge.sourceId), byId.get(edge.targetId)), fill: 'none', stroke: '#7142a0', 'stroke-width': 3,
@@ -593,35 +632,42 @@ window.TaxonomyArchitectureDiagram.create = function (svg, options) {
             common.activate(path, function () { if (active && onSuggestion) onSuggestion(edge.id); }); overlay.appendChild(path);
             if (focused.kind === 'suggestion' && focused.id === edge.id) path.focus({ preventScroll: true });
         });
+        return baseChanged;
     }
     function lensStyles() {
         drawnNodes.forEach(function (node) {
             var group = nodeElements.get(node.id), previous = group.getAttribute('data-lens-state');
             var assessment = lens.enabled && (lens.states || {})[node.id];
-            if (previous) group.classList.remove('lens-' + previous);
-            if (assessment) { group.classList.add('lens-' + assessment); group.setAttribute('data-lens-state', assessment); }
-            else group.removeAttribute('data-lens-state');
+            if (previous !== (assessment || null)) {
+                if (previous) group.classList.remove('lens-' + previous);
+                if (assessment) { group.classList.add('lens-' + assessment); group.setAttribute('data-lens-state', assessment); }
+                else group.removeAttribute('data-lens-state');
+            }
             var label = node.ariaLabel || (node.label || node.title || node.id) + ' · ' + node.id;
-            group.setAttribute('aria-label', label + (assessment ? ' · ' + (lens.label ? lens.label(assessment) : assessment) : ''));
+            if (assessment) label += ' · ' + (lens.label ? lens.label(assessment) : assessment);
+            if (group.getAttribute('aria-label') !== label) group.setAttribute('aria-label', label);
         });
-        if (!lens.enabled) ring.setAttribute('display', 'none');
+        if (!(lens.hover ?? lens.enabled)) ring.setAttribute('display', 'none');
     }
-    function draw() {
+    function draw(viewportOnly) {
         if (destroyed || !hasScene) return;
         var focused = focusedTarget(), size = viewportSize(), left = -transform.x / transform.k, top = -transform.y / transform.k;
         var candidates = limits.cull ? model.nodes.filter(function (node) {
             return node.x + node.width >= left && node.x <= left + size.width / transform.k
                 && node.y + node.height >= top && node.y <= top + size.height / transform.k;
         }) : model.nodes;
-        drawnNodes = candidates.slice(0, limits.visibleNodes);
+        var visible = candidates.slice(0, limits.visibleNodes);
         var selectedNode = candidates.find(function (node) { return node.id === state.selectedNodeId; });
-        if (selectedNode && !drawnNodes.includes(selectedNode) && drawnNodes.length) drawnNodes[drawnNodes.length - 1] = selectedNode;
+        if (selectedNode && !visible.includes(selectedNode) && visible.length) visible[visible.length - 1] = selectedNode;
+        // A camera transform already moves the SVG group. Preserve native event targets when culling changes nothing.
+        if (viewportOnly && visible.length === drawnNodes.length
+                && visible.every(function (node, index) { return node === drawnNodes[index]; })) return;
+        drawnNodes = visible;
         canvas.replaceChildren(); cards.replaceChildren(); nodeElements.clear();
         drawLayers(); canvas.append(relationships, overlay, cards); drawRelationships(focused);
         drawnNodes.forEach(function (node) {
             var label = node.label || node.title || node.id;
-            var spec = Object.assign({ prefix: prefix, compact: compact, titleLines: common.wrapLabel(label, 32, 2), score: '', meta: '' }, node);
-            spec.label = compact && label.length > 28 ? label.substring(0, 27) + '…' : label;
+            var spec = Object.assign({ prefix: prefix, compact: compact, titleLines: compact ? [] : common.wrapLabel(label, 32, 2), score: '', meta: '' }, node, { label: label });
             spec.selected = node.id === state.selectedNodeId;
             var group = common.renderNode(cards, spec, { select: requestSelection, focus: focus }); nodeElements.set(node.id, group);
             if (focused.kind === 'node' && focused.id === node.id) group.focus({ preventScroll: true });
@@ -738,7 +784,7 @@ window.TaxonomyArchitectureDiagram.create = function (svg, options) {
         } else if (event.key === 'Escape') { event.preventDefault(); unfocus(); }
     }
     function onPointer(event) {
-        if (!active || destroyed || !lens.enabled || !onRegion) return;
+        if (!active || destroyed || !(lens.hover ?? lens.enabled) || !onRegion) return;
         var point = d3.pointer(event, svg), matrix = svg.getScreenCTM();
         var radius = 56 / (matrix ? Math.hypot(matrix.a, matrix.b) || 1 : 1);
         ring.setAttribute('cx', point[0]); ring.setAttribute('cy', point[1]); ring.setAttribute('r', radius); ring.removeAttribute('display');
@@ -755,7 +801,7 @@ window.TaxonomyArchitectureDiagram.create = function (svg, options) {
             resizeFrame = null;
             if (!active || destroyed) return;
             if (autoFit) { if (fitFrame === null && (!fitting || pendingFit)) fit(lastFitSettings); }
-            else { updateViewBox(); if (limits.cull) draw(); }
+            else { updateViewBox(); if (limits.cull) draw(true); }
         });
     }) : null;
     if (observer) observer.observe(container);
@@ -798,7 +844,11 @@ window.TaxonomyArchitectureDiagram.create = function (svg, options) {
             if (destroyed) return;
             lens = value || { enabled: false };
             // Focus-panel feedback can reenter during a click; keep cards and their children attached.
-            if (hasScene) { drawRelationships(focusedTarget()); lensStyles(); interactionStyles(); }
+            if (hasScene) {
+                var baseChanged = drawRelationships(focusedTarget(), true);
+                lensStyles();
+                if (baseChanged) interactionStyles();
+            }
         },
         setActive: function (value) {
             if (destroyed) return;

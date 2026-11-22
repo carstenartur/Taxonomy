@@ -24,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @Testcontainers
 @Tag("db-postgres")
 @Tag("docker-required")
+@Tag("ci-app-shard-runtime")
 class RequirementTenantPostgresMigrationIT {
 
     private static final String REPOSITORY_ID = "primary-repository";

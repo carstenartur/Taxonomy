@@ -68,7 +68,13 @@ public class ArchiMateXmlExporter {
                 type(xml, relation.archiMateType());
                 attr(xml, "source", ArchiMateIds.id("element", relation.sourceId()));
                 attr(xml, "target", ArchiMateIds.id("element", relation.targetId()));
-                if (relation.accessType() != null) attr(xml, "accessType", relation.accessType());
+                if ("Access".equals(relation.archiMateType())) {
+                    // Make the XSD default explicit. Archi otherwise imports an omitted
+                    // qualifier as Write, which gives unqualified REQUIRES a new meaning.
+                    attr(xml, "accessType", Objects.requireNonNullElse(relation.accessType(), "Access"));
+                } else if (relation.accessType() != null) {
+                    attr(xml, "accessType", relation.accessType());
+                }
                 text(xml, "name", relation.name());
                 properties(xml, identity(relation.id(), relation.properties()));
                 xml.writeEndElement();
@@ -133,12 +139,22 @@ public class ArchiMateXmlExporter {
             xml.writeEndElement();
         }
         for (ArchiMateViewConnection connection : view.connections()) {
-            xml.writeEmptyElement("connection");
+            boolean routed = !connection.bendpoints().isEmpty();
+            if (routed) xml.writeStartElement("connection");
+            else xml.writeEmptyElement("connection");
             attr(xml, "identifier", ArchiMateIds.id("connection", view.id(), connection.id()));
             type(xml, "Relationship");
             attr(xml, "relationshipRef", ArchiMateIds.id("relationship", connection.relationshipId()));
             attr(xml, "source", ArchiMateIds.id("node", view.id(), connection.sourceNodeId()));
             attr(xml, "target", ArchiMateIds.id("node", view.id(), connection.targetNodeId()));
+            if (routed) {
+                for (var point : connection.bendpoints()) {
+                    xml.writeEmptyElement("bendpoint");
+                    attr(xml, "x", point.x());
+                    attr(xml, "y", point.y());
+                }
+                xml.writeEndElement();
+            }
         }
         xml.writeEndElement();
     }

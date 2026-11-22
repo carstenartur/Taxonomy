@@ -19,23 +19,28 @@ import org.springframework.beans.factory.annotation.Autowired;
 import com.taxonomy.analysis.service.AnalysisProgressRegistry;
 import com.taxonomy.analysis.service.AnalysisRunControl;
 import com.taxonomy.analysis.service.AnalysisStoppedException;
+import com.taxonomy.analysis.cluster.ClusterAnalysisExecution;
 
 import com.taxonomy.analysis.dag.AnalysisOperationContext;
+import com.taxonomy.analysis.dag.AnalysisTaskId;
 import com.taxonomy.analysis.dag.AnalysisTaskOutcome;
 import com.taxonomy.analysis.dag.RelationAnalysisTask;
 import com.taxonomy.analysis.dag.TaxonomyShardRoot;
 import com.taxonomy.analysis.dag.inprocess.InProcessAnalysisOperation;
 import com.taxonomy.dto.ViewContext;
+import com.taxonomy.workspace.service.WorkspaceContext;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 @Service
 public class AnalyzeRequirementUseCase {
 
     @Autowired(required = false)
-    private com.taxonomy.analysis.cluster.ClusterAnalysisExecution clusterExecution;
+    private ClusterAnalysisExecution clusterExecution;
 
     @Autowired
     private AnalysisProgressRegistry analysisProgressRegistry;
@@ -79,18 +84,51 @@ public class AnalyzeRequirementUseCase {
      * claim has been revalidated and locked.
      */
     public AnalyzeRequirementResult analyze(AnalyzeRequirementCommand command) {
+        return execute(command, command.provenance() == null ? Submission.AD_HOC : Submission.QUEUED, null);
+    }
+
+    /** Resume the accepted delivery's durable analysis, or capture its input for first admission. */
+    public AnalyzeRequirementResult analyzeUnpublished(String operationId, WorkspaceContext scope, String requirementText,
+                                                        Supplier<AnalyzeRequirementCommand> admission) {
+        AnalysisTaskId.requireOperationId(operationId);
+        if (clustered()) {
+            var resumeScope = new ClusterAnalysisExecution.ResumeScope(
+                    scope.username(), scope.repositoryId(), scope.workspaceId(), scope.currentBranch());
+            var retained = clusterExecution.resumeUnpublished(operationId, resumeScope, requirementText);
+            if (retained.isPresent()) return new AnalyzeRequirementResult(retained.get());
+        }
+        var command = admission.get();
+        if (!scope.equals(command.workspaceContext()) || !Objects.equals(scope.username(), command.username())
+                || !Objects.equals(requirementText, command.businessText()) || command.provenance() != null
+                || command.continuationBinding() != null) {
+            throw new IllegalArgumentException("Analysis input does not match the accepted delivery");
+        }
+        return execute(command, Submission.QUEUED, operationId);
+    }
+
+    private enum Submission { AD_HOC, QUEUED }
+
+    private boolean clustered() {
+        return clusterExecution != null && !com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active();
+    }
+
+    private AnalyzeRequirementResult execute(AnalyzeRequirementCommand command, Submission submission, String operationId) {
         command = freezeGenerationContract(command);
-        if (clusterExecution != null && !com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active()) {
+        if (clustered()) {
             ViewContext view = resolveViewContext(command);
-            return analyze(command, operationContext(command, view), view);
+            var context = operationId == null ? operationContext(command, view)
+                    : AnalysisOperationContexts.create(operationId, command, view);
+            return analyze(command, context, view);
         }
+        boolean publishHypotheses = submission == Submission.AD_HOC
+                && !com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active();
         if (analysisProgressRegistry == null || AnalysisRunControl.active()) {
-            return analyze(command, command.provenance() == null && !com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active());
+            return analyze(command, publishHypotheses);
         }
-        // Portfolio/Copilot callers retain their durable job and claim boundaries.
-        try (var run = analysisProgressRegistry.open(null, command.username(),
-                command.workspaceContext(), command.provenance())) {
-            AnalyzeRequirementResult result = analyze(command, command.provenance() == null && !com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active());
+        try (var run = submission == Submission.QUEUED
+                ? analysisProgressRegistry.openDurable(null, command.username(), command.workspaceContext(), command.provenance())
+                : analysisProgressRegistry.open(null, command.username(), command.workspaceContext(), null)) {
+            AnalyzeRequirementResult result = analyze(command, publishHypotheses);
             run.finish(result.analysisResult());
             return result;
         }

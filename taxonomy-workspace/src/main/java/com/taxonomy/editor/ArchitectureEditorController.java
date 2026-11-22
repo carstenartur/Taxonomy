@@ -227,7 +227,15 @@ public class ArchitectureEditorController {
                               Map<String, String> properties, String sourceId, String relationType, String targetId,
                               String status, String parentId, String targetOperationId,
                               List<PackagePlacement> placements, java.util.Set<String> completeParentScopes,
-                              PlanningEdit planning) {
+                              PlanningEdit planning, List<RelationCreation> relations) {
+        public WireCommand(Context context, Metadata metadata, String kind, String id, String type,
+                           Map<String, String> properties, String sourceId, String relationType, String targetId,
+                           String status, String parentId, String targetOperationId,
+                           List<PackagePlacement> placements, java.util.Set<String> completeParentScopes,
+                           PlanningEdit planning) {
+            this(context, metadata, kind, id, type, properties, sourceId, relationType, targetId,
+                    status, parentId, targetOperationId, placements, completeParentScopes, planning, List.of());
+        }
         public WireCommand(Context context, Metadata metadata, String kind, String id, String type,
                            Map<String, String> properties, String sourceId, String relationType, String targetId,
                            String status, String parentId, String targetOperationId,
@@ -249,10 +257,15 @@ public class ArchitectureEditorController {
             properties = properties == null ? Map.of() : Map.copyOf(properties);
             placements = placements == null ? List.of() : List.copyOf(placements);
             completeParentScopes = completeParentScopes == null ? java.util.Set.of() : java.util.Set.copyOf(completeParentScopes);
+            if (relations != null && (relations.size() > 32 || relations.stream().anyMatch(Objects::isNull))) {
+                throw new IllegalArgumentException("Relationships must contain up to 32 entries");
+            }
+            relations = relations == null ? List.of() : List.copyOf(relations);
         }
     }
 
     public record PlanningEdit(String entryId, String profile, String version, Map<String, String> values) {}
+    public record RelationCreation(String sourceId, String relationType, String targetId, Map<String, String> properties) {}
 
     private static PlanningEdit planning(WireCommand body) {
         if (body.planning() == null) throw new IllegalArgumentException("Planning edit is required");
@@ -285,6 +298,10 @@ public class ArchitectureEditorController {
             case "UPDATE_ELEMENT" -> new SemanticCommand(new UpdateArchitectureElement(body.id(), body.type(), body.properties()));
             case "DELETE_ELEMENT" -> new SemanticCommand(new DeleteArchitectureElement(body.id()));
             case "CREATE_RELATION" -> new SemanticCommand(new CreateArchitectureRelation(relation(body), body.status(), body.properties()));
+            case "CREATE_RELATIONS" -> new SemanticCommand(new CreateArchitectureRelations(body.relations().stream()
+                    .map(relation -> new CreateArchitectureRelation(
+                            relation(relation.sourceId(), relation.relationType(), relation.targetId()), "accepted",
+                            relation.properties() == null ? Map.of() : relation.properties())).toList()));
             case "UPDATE_RELATION" -> new SemanticCommand(new UpdateArchitectureRelation(relation(body), body.status()));
             case "DELETE_RELATION" -> new SemanticCommand(new DeleteArchitectureRelation(relation(body)));
             case "MOVE_ELEMENT" -> new SemanticCommand(new MoveOrGroupElement(body.id(), body.parentId()));
@@ -296,8 +313,12 @@ public class ArchitectureEditorController {
     }
 
     private static RelationKey relation(WireCommand body) {
-        if (body.sourceId() == null || body.relationType() == null || body.targetId() == null) throw new IllegalArgumentException("Relation identity is required");
-        return new RelationKey(body.sourceId(), body.relationType(), body.targetId());
+        return relation(body.sourceId(), body.relationType(), body.targetId());
+    }
+
+    private static RelationKey relation(String sourceId, String relationType, String targetId) {
+        if (sourceId == null || relationType == null || targetId == null) throw new IllegalArgumentException("Relation identity is required");
+        return new RelationKey(sourceId, relationType, targetId);
     }
 
     private static UUID requireTarget(String target) {

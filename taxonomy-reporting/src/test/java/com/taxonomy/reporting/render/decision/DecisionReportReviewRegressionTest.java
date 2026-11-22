@@ -105,6 +105,42 @@ class DecisionReportReviewRegressionTest {
                 "<dt>Architecture graph SHA-256</dt><dd>" + digest + "</dd>");
     }
 
+    @Test void htmlPrintsRepeatedRelationshipProvenanceOnlyOnceAndPreservesItsLabels() {
+        var base = DecisionRationaleTemplateRendererTest.report();
+        var report = new DecisionRationaleReport(base.title(), "de", base.requirement(), base.status(),
+                base.metadata(), base.executiveSummary(), base.chapters(), base.leadingLeaves(), base.warnings(),
+                base.productCoverageGaps(), base.discrepancies(), base.viewContext(), base.scoreDetails(),
+                base.architecture(), base.scope());
+        String rationale = "Gespeicherte Begründung mit <wortgetreuem> Nachweis.";
+        var metadata = new com.taxonomy.diagram.DiagramRelationMetadata(42L,
+                com.taxonomy.dto.RelationOrigin.LLM_SUPPORTED, null, rationale, rationale, rationale, null, List.of());
+        var graph = new com.taxonomy.diagram.DiagramModel("Saved graph", List.of(
+                new com.taxonomy.diagram.DiagramNode("CI-1151", "Ausbildungsdienst", "Service", .6, true, 0),
+                new com.taxonomy.diagram.DiagramNode("BP-2125", "Ausbildung", "Process", .5, false, 1)),
+                List.of(new com.taxonomy.diagram.DiagramEdge("e1", "CI-1151", "BP-2125", "SUPPORTS", .6, "impact", metadata)),
+                new com.taxonomy.diagram.DiagramLayout("LR", true));
+        var digest = com.taxonomy.reporting.api.document.ArchitectureReportDocument.graphSha256(graph);
+        var evidence = new com.taxonomy.reporting.api.document.ArchitectureReportDocument.SnapshotEvidence(
+                1L, 2L, 3L, 4, "snapshot", "repo", "workspace", "branch", "commit", "provider", "model", "taxonomy", digest);
+        var architecture = com.taxonomy.reporting.render.document.ArchitectureReportDocuments.from(
+                graph.title(), "de", base.requirement(), "Scope", "", List.of(), graph,
+                new com.taxonomy.export.LayeredDiagramLayoutService().layout(graph), null, evidence)
+                .withNodeReasons(Map.of("CI-1151", "Authored node observation.\n\n"
+                        + "Directly assessed relevance; this alone does not establish a relationship or required implementation.\n"
+                        + "Requirement-scoped contribution proposals: Preserved authored contribution."))
+                .withRelationReasons(Map.of("e1", Map.of("presenceReason", rationale, "decisionComment", "Ergänzender Prüfkommentar.")));
+        var html = new DecisionRationaleHtmlRenderer(new DecisionChapterDiagramRenderer()).render(report.withArchitecture(architecture));
+
+        assertThat(html).contains("Herkunft: Durch KI gestützt",
+                "Aufgenommen weil, Herleitungsbegründung, Begründung der Aufnahme, Gespeicherte Auswahlbegründung: ",
+                "Gespeicherter Prüfkommentar: Ergänzender Prüfkommentar.", "Authored node observation.",
+                "Diese Bewertung betrifft ausschließlich die Relevanz.",
+                "Beitragsvorschläge zur Anforderung: Preserved authored contribution.")
+                .doesNotContain("Herkunft: LLM_SUPPORTED", "Directly assessed relevance;");
+        String statement = "Gespeicherte Begründung mit &lt;wortgetreuem&gt; Nachweis.";
+        assertThat(html.indexOf(statement)).isPositive().isEqualTo(html.lastIndexOf(statement));
+    }
+
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.EnumSource(value = TreeLayout.class, names = {"AUTO", "TABLE"})
     void htmlResponsibilityOptionControlsPreviouslyAssignedGraphAndTreeNodes(TreeLayout layout) {

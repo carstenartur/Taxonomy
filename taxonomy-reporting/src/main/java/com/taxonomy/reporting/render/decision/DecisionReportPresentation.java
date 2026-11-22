@@ -3,13 +3,28 @@ package com.taxonomy.reporting.render.decision;
 import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
 import com.taxonomy.reporting.api.decision.DecisionReportOptions;
 import com.taxonomy.reporting.api.document.DecisionTreeOverview;
+import com.taxonomy.reporting.render.document.AnalysisModelEvidence;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /** Small mandatory source notice, independent of optional presentation sections. */
 public final class DecisionReportPresentation {
+    private static final Pattern DIRECT_ASSESSMENT_NOTICE = Pattern.compile("(?m)^" + Pattern.quote(
+            "Directly assessed relevance; this alone does not establish a relationship or required implementation.") + "$");
+    private static final Pattern SCOPED_CONTRIBUTION_HEADING = Pattern.compile("(?m)^" + Pattern.quote(
+            "Requirement-scoped contribution proposals:"));
+
     private DecisionReportPresentation() {}
+
+    /** Localize the generated notices while preserving the stored contribution and quotes. */
+    public static String nodeReason(String value, DecisionReportLabels labels) {
+        if (!labels.german()) return value;
+        String localized = DIRECT_ASSESSMENT_NOTICE.matcher(value).replaceAll(
+                "Diese Bewertung betrifft ausschließlich die Relevanz. Beziehungen und Umsetzungsbedarf erfordern eigene Nachweise.");
+        return SCOPED_CONTRIBUTION_HEADING.matcher(localized).replaceAll("Beitragsvorschläge zur Anforderung:");
+    }
     /** One representative outcome per root, using the complete tree rather than the top-20 ranking. */
     public static List<String> compactReasons(DecisionRationaleReport report) {
         var labels = new DecisionReportLabels(report.languageTag());
@@ -56,8 +71,7 @@ public final class DecisionReportPresentation {
         lines.add((de ? "Berichtsauswahl: " : "Report selection: ") + String.join(", ", scope.reportRoots()));
         lines.add((de ? "Analyseumfang: " : "Analysis scope: ") + (scope.analysisScope() == null
                 ? (de ? "historisch nicht aufgezeichnet" : "not recorded in this source")
-                : (scope.analysisScope().taxonomyRoots().isEmpty() ? (de ? "alle Taxonomien" : "all taxonomies")
-                    : String.join(", ", scope.analysisScope().taxonomyRoots())) + " · " + scope.analysisScope().mode()));
+                : AnalysisModelEvidence.describeScope(scope.analysisScope(), labels)));
         if (scope.analysisReasonLength() != null) {
             String length = switch (scope.analysisReasonLength()) {
                 case SHORT -> de ? "Kurz" : "Short";
@@ -75,7 +89,7 @@ public final class DecisionReportPresentation {
         if (scope.options().includes(DecisionReportOptions.Section.ARCHITECTURE) && report.architecture() != null)
             lines.addAll(com.taxonomy.reporting.render.document.ReportInventory.diagram(report.architecture().diagram(), de));
         lines.addAll(report.warnings());
-        com.taxonomy.reporting.render.document.AnalysisModelEvidence.rows(scope.modelBinding(), scope.analysisScope(), labels)
+        AnalysisModelEvidence.rows(scope.modelBinding(), scope.analysisScope(), labels)
                 .forEach(row -> lines.add(row.get(0) + ": " + row.get(1)));
         return List.copyOf(lines);
     }

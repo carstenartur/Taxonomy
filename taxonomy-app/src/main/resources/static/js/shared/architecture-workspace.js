@@ -262,12 +262,7 @@
         el('architectureSourceDescription').textContent = t('architecture.workspace.' + source.kind + '.help');
         dimensions();
         document.dispatchEvent(new CustomEvent('taxonomy:architecture-source-changed', {detail:{source:source,data:workspace.getData(),diagram:workspace.getDiagram(),active:true}}));
-        const panel = el('proposalsPanel');
-        const home = el(source.kind === 'working' ? 'workingProposalInbox' : 'analysisProposalInbox');
-        if (panel?.parentNode && home) {
-            if (panel.parentNode !== home) home.appendChild(panel);
-            panel.hidden = source.kind === 'snapshot';
-        }
+        window.TaxonomyRelationshipReview?.setSource(source.kind);
     }
     workspace = create({initial:initial, initialize:initializeSource, defaults:{analysis:Object.assign({kind:'analysis'},analysisScope),working:workingScope,snapshot:snapshotScope},
         adapters:{
@@ -361,15 +356,21 @@
         return true;
     };
     workspace.openLens = function () {
-        if (workspace.getSource().kind === 'working') editor?.openLens(); else { lens?.select(workspace.getSource().element);lens?.open(); }
+        var source = workspace.getSource();
+        if (source.kind === 'working') return editor?.openLens();
+        lens?.select(source.element);
+        return lens?.open();
     };
-    el('architectureLensAction')?.addEventListener('click', async function () {
+    async function openDiagramLens() {
         try {
             if (sourceActivation) await awaitSelectedSource(sourceActivation);
-            if (workspace.isActive()) workspace.openLens();
+            if (workspace.isActive()) await workspace.openLens();
         } catch (error) {
             report(error);
         }
+    }
+    ['architectureLensAction', 'snapshotArchitectureLensAction'].forEach(function (id) {
+        el(id)?.addEventListener('click', openDiagramLens);
     });
     workspace.restoreUrl=function(){pendingAnalysisHistory=null;writeUrl(workspace.getSource(),{replace:true});};
     window.TaxonomyArchitectureWorkspace = workspace;

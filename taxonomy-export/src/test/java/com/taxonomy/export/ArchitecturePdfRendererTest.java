@@ -52,6 +52,27 @@ class ArchitecturePdfRendererTest {
     }
 
     @Test
+    void scaledPanelKeepsCardMetadataAtReadableSize() throws Exception {
+        var node = new com.taxonomy.diagram.DiagramSceneNode("CO-1048", "Short Messaging Access Services",
+                "Communications Services", 1, true, 8, 4, true, null, false, 1040, 40, 240, 84);
+        var scaled = new DiagramScene("Flood information", 1300, 650, "LR", List.of(node), List.of());
+        try (var document = org.apache.pdfbox.Loader.loadPDF(renderer.render(scaled, "FLOOD-001"))) {
+            var glyphs = new java.util.ArrayList<org.apache.pdfbox.text.TextPosition>();
+            var text = new org.apache.pdfbox.text.PDFTextStripper() {
+                @Override protected void writeString(String value, List<org.apache.pdfbox.text.TextPosition> positions)
+                        throws java.io.IOException {
+                    glyphs.addAll(positions);
+                    super.writeString(value, positions);
+                }
+            };
+            text.setEndPage(1);
+            assertThat(text.getText(document)).contains("CO-1048", "100%", "Communications Services", "Depth 4");
+            assertThat(glyphs).isNotEmpty().allSatisfy(position ->
+                    assertThat(position.getFontSizeInPt()).as("PDF glyph: %s", position.getUnicode()).isGreaterThanOrEqualTo(7));
+        }
+    }
+
+    @Test
     void snapshotInventoryPreservesParagraphsAndUnicodeEvidence() throws Exception {
         var metadata = new ArchitecturePdfRenderer.SnapshotMetadata(
                 "P-001", "REQ-001", "snapshot-1", "MODEL", "draft", "abcdef1234567890", List.of());

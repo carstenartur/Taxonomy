@@ -1,5 +1,6 @@
 package com.taxonomy.backup.runtime;
 
+import org.junit.jupiter.api.Tag;
 import com.taxonomy.backup.*;
 
 import com.taxonomy.exchange.backup.PortableRows;
@@ -19,6 +20,7 @@ import java.util.stream.Stream;
 import static com.taxonomy.backup.runtime.CurrentStateExportIT.*;
 import static org.assertj.core.api.Assertions.*;
 
+@Tag("ci-app-shard-runtime")
 class WorkspaceRecordsExportIT {
     private static final List<String> SELECTED_VERSION_DATASETS = List.of("repositories","workspaces","memberships","ref-policies","synchronization",
             "branch-synchronization","fetch-journal","central-fetch-journal","publication-journal","publication-decisions","index-recovery","index-decisions",

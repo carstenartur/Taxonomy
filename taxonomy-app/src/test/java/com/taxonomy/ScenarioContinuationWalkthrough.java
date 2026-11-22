@@ -1,7 +1,6 @@
 package com.taxonomy;
 
 import tools.jackson.databind.JsonNode;
-import com.taxonomy.acceptance.ScenarioJsonFingerprint;
 import java.time.Duration;
 import java.util.*;
 
@@ -26,8 +25,8 @@ final class ScenarioContinuationWalkthrough {
         // continuation can fail or the parent can terminate this application.
         for (JsonNode job : operation.path("jobs")) for (JsonNode item : job.path("items")) {
             String id = item.path("snapshotId").asText();
-            JsonNode initial = app.get("/api/projects/" + projectId + "/snapshots/" + id);
-            originalSnapshots.put(job.path("id").asText() + ":" + item.path("id").asText(), ScenarioSnapshotObservation.observe(id, initial));
+            var initial = app.readSnapshot("/api/projects/" + projectId + "/snapshots/" + id);
+            originalSnapshots.put(job.path("id").asText() + ":" + item.path("id").asText(), initial.observation());
             if (id.equals(operation.path("selectedSnapshotId").asText()))
                 app.checkpointSnapshot(projectId, item.path("requirementId").asLong(), initial);
         }
@@ -42,17 +41,23 @@ final class ScenarioContinuationWalkthrough {
             app.save("continuation-history.json", app.json.valueToTree(history));
             assertThat(operation.path("jobs")).hasSize(2);
             JsonNode selectedJob = null, selectedItem = null, permission = null;
-            int selectedCycles = Integer.MAX_VALUE;
+            // Eligibility reads the retained analysis and its durable journal. Visit the least
+            // advanced pass first so a usable candidate never triggers a second expensive read.
+            record Candidate(JsonNode job, JsonNode item, int completedCycles) { }
+            var candidates = new ArrayList<Candidate>();
             for (JsonNode job : operation.path("jobs")) for (JsonNode item : job.path("items")) {
-                if (!item.path("status").asText().equals("PARTIAL")) continue;
-                String candidateKey = job.path("id").asText() + ":" + item.path("id").asText();
-                int completedCycles = itemCycles.getOrDefault(candidateKey, 0);
-                if (completedCycles >= selectedCycles) continue;
-                String path = itemPath(projectId, job, item);
+                if (item.path("status").asText().equals("PARTIAL")) {
+                    String key = job.path("id").asText() + ":" + item.path("id").asText();
+                    candidates.add(new Candidate(job, item, itemCycles.getOrDefault(key, 0)));
+                }
+            }
+            candidates.sort(Comparator.comparingInt(Candidate::completedCycles));
+            for (var candidate : candidates) {
+                String path = itemPath(projectId, candidate.job(), candidate.item());
                 JsonNode eligibility = app.get(path + "/continuation");
                 if (eligibility.path("available").asBoolean()) {
-                    selectedJob = job; selectedItem = item; permission = eligibility;
-                    selectedCycles = completedCycles;
+                    selectedJob = candidate.job(); selectedItem = candidate.item(); permission = eligibility;
+                    break;
                 }
             }
             if (permission == null) {
@@ -76,9 +81,9 @@ final class ScenarioContinuationWalkthrough {
             // Retain the complete first-read fingerprint and scalar progress for each
             // original pass. The full snapshot is already durably checkpointed; another
             // pre-action GET would silently replace the original observed evidence.
-            var observed = originalSnapshots.get(itemKey);
-            if (observed != null) assertThat(observed.id()).isEqualTo(oldSnapshotId);
-            var before = observed == null ? ScenarioSnapshotObservation.observe(oldSnapshotId, app.get(oldPath)) : observed;
+            var before = originalSnapshots.get(itemKey);
+            assertThat(before).isNotNull();
+            assertThat(before.id()).isEqualTo(oldSnapshotId);
             int callsBefore = app.playback.callCount();
             String path = itemPath(projectId, selectedJob, selectedItem);
             String jobId = selectedJob.path("id").asText();
@@ -108,9 +113,10 @@ final class ScenarioContinuationWalkthrough {
                     .isIn("SUCCESS", "PARTIAL");
             String nextId = completedItem.path("snapshotId").asText();
             assertThat(nextId).isNotBlank().isNotEqualTo(oldSnapshotId);
-            JsonNode after = app.get("/api/projects/" + projectId + "/snapshots/" + nextId);
-            app.checkpointSnapshot(projectId, selectedItem.path("requirementId").asLong(), after);
-            assertThat(ScenarioJsonFingerprint.sha256(app.get(oldPath)))
+            var checkedAfter = app.readSnapshot("/api/projects/" + projectId + "/snapshots/" + nextId);
+            JsonNode after = checkedAfter.value();
+            app.checkpointSnapshot(projectId, selectedItem.path("requirementId").asLong(), checkedAfter);
+            assertThat(app.readSnapshot(oldPath).observation().sha256())
                     .as("Continuation must preserve its immutable input snapshot").isEqualTo(before.sha256());
             assertThat(after.at("/analysis/recovery/state").asText())
                     .as("Continuation stopped outside an execution budget: %s", after.at("/analysis/warnings"))
@@ -142,7 +148,7 @@ final class ScenarioContinuationWalkthrough {
             entry.put("newProviderCalls", newCalls); entry.put("progress", progressAfter);
             entry.put("recoveryState", after.at("/analysis/recovery/state").asText());
             history.add(entry);
-            originalSnapshots.put(itemKey, ScenarioSnapshotObservation.observe(nextId, after));
+            originalSnapshots.put(itemKey, checkedAfter.observation());
         }
         app.save("continuation-history.json", app.json.valueToTree(history));
         throw new AssertionError("The declared scenario did not finish its independent budget work within the bounded driver");
