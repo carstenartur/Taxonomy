@@ -480,7 +480,7 @@ window.TaxonomyArchitectureDiagram.create = function (svg, options) {
             if (destroyed) return;
             if (event.sourceEvent) markUserControlled();
             transform = event.transform; canvas.setAttribute('transform', transform.toString());
-            if (limits.cull && active && drawFrame === null) drawFrame = requestAnimationFrame(function () { drawFrame = null; draw(); });
+            if (limits.cull && active && drawFrame === null) drawFrame = requestAnimationFrame(function () { drawFrame = null; draw(true); });
         });
     selection.call(zoom).on('dblclick.zoom', null);
     canvas.setAttribute('transform', transform.toString());
@@ -637,16 +637,20 @@ window.TaxonomyArchitectureDiagram.create = function (svg, options) {
         });
         if (!(lens.hover ?? lens.enabled)) ring.setAttribute('display', 'none');
     }
-    function draw() {
+    function draw(viewportOnly) {
         if (destroyed || !hasScene) return;
         var focused = focusedTarget(), size = viewportSize(), left = -transform.x / transform.k, top = -transform.y / transform.k;
         var candidates = limits.cull ? model.nodes.filter(function (node) {
             return node.x + node.width >= left && node.x <= left + size.width / transform.k
                 && node.y + node.height >= top && node.y <= top + size.height / transform.k;
         }) : model.nodes;
-        drawnNodes = candidates.slice(0, limits.visibleNodes);
+        var visible = candidates.slice(0, limits.visibleNodes);
         var selectedNode = candidates.find(function (node) { return node.id === state.selectedNodeId; });
-        if (selectedNode && !drawnNodes.includes(selectedNode) && drawnNodes.length) drawnNodes[drawnNodes.length - 1] = selectedNode;
+        if (selectedNode && !visible.includes(selectedNode) && visible.length) visible[visible.length - 1] = selectedNode;
+        // A camera transform already moves the SVG group. Preserve native event targets when culling changes nothing.
+        if (viewportOnly && visible.length === drawnNodes.length
+                && visible.every(function (node, index) { return node === drawnNodes[index]; })) return;
+        drawnNodes = visible;
         canvas.replaceChildren(); cards.replaceChildren(); nodeElements.clear();
         drawLayers(); canvas.append(relationships, overlay, cards); drawRelationships(focused);
         drawnNodes.forEach(function (node) {
@@ -785,7 +789,7 @@ window.TaxonomyArchitectureDiagram.create = function (svg, options) {
             resizeFrame = null;
             if (!active || destroyed) return;
             if (autoFit) { if (fitFrame === null && (!fitting || pendingFit)) fit(lastFitSettings); }
-            else { updateViewBox(); if (limits.cull) draw(); }
+            else { updateViewBox(); if (limits.cull) draw(true); }
         });
     }) : null;
     if (observer) observer.observe(container);
