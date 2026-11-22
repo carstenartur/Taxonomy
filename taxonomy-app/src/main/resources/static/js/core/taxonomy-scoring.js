@@ -294,6 +294,8 @@
             if (archPanel) { archPanel.style.display = 'none'; }
             const sugPanel = document.getElementById('suggestedRelationsPanel');
             if (sugPanel) { sugPanel.style.display = 'none'; }
+            const reviewEmpty = document.getElementById('relationshipReviewAnalysisEmpty');
+            if (reviewEmpty) reviewEmpty.hidden = false;
         }
     }
 
@@ -2019,7 +2021,7 @@
 
                 if (traceRels.length > 0) {
                     html += '<h6 class="mb-1">' + t('archview.trace.relations.title') + ' <span class="badge bg-secondary">' + traceRels.length + '</span></h6>';
-                    html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-0">';
+                    html += '<div class="table-responsive"><table class="table table-sm table-hover proposal-table mb-0">';
                     html += '<thead><tr><th>' + t('archview.trace.col.source') + '</th><th>\u2192</th><th>' + t('archview.trace.col.target') + '</th><th>' + t('archview.trace.col.type') + '</th><th>' + t('archview.trace.col.relevance') + '</th><th>' + t('archview.trace.col.hops') + '</th><th>' + t('archview.col.origin') + '</th><th>' + t('archview.trace.col.reason') + '</th></tr></thead><tbody>';
                     traceRels.forEach(r => {
                         const traceOriginKey = r.origin ? 'relation.origin.' + r.origin.replace(/_/g, '.').toLowerCase() : '';
@@ -2040,7 +2042,7 @@
 
                 if (seedRels.length > 0) {
                     html += '<details class="mt-2"><summary class="small text-muted">' + t('archview.seed.relations.title') + ' <span class="badge bg-warning text-dark">' + seedRels.length + '</span></summary>';
-                    html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-0">';
+                    html += '<div class="table-responsive"><table class="table table-sm table-hover proposal-table mb-0">';
                     html += '<thead><tr><th>' + t('archview.trace.col.source') + '</th><th>\u2192</th><th>' + t('archview.trace.col.target') + '</th><th>' + t('archview.trace.col.type') + '</th><th>' + t('archview.trace.col.relevance') + '</th><th>' + t('archview.col.origin') + '</th><th>' + t('archview.trace.col.reason') + '</th></tr></thead><tbody>';
                     seedRels.forEach(r => {
                         const seedOriginKey = r.origin ? 'relation.origin.' + r.origin.replace(/_/g, '.').toLowerCase() : '';
@@ -2169,6 +2171,8 @@
         var content = document.getElementById('suggestedRelationsContent');
         var badge = document.getElementById('suggestedRelationsBadge');
         if (!panel || !content) return;
+        var empty = document.getElementById('relationshipReviewAnalysisEmpty');
+        if (empty) empty.hidden = provisionalRelations.length > 0;
 
         if (!provisionalRelations || provisionalRelations.length === 0) {
             panel.style.display = 'none';
@@ -2185,7 +2189,7 @@
         html += '<span id="suggestedRelationsBulkActions">'
             + suggestedRelationsBulkActionsHtml(provisionalRelations) + '</span>';
         html += '</div>';
-        html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-0">';
+        html += '<div class="table-responsive"><table class="table table-sm table-hover proposal-table mb-0">';
         html += '<thead><tr><th>' + escapeHtml(t('scoring.ui.source')) + '</th><th>→</th><th>' + escapeHtml(t('scoring.ui.target')) + '</th><th>' + escapeHtml(t('scoring.ui.type')) + '</th><th>' + escapeHtml(t('scoring.ui.confidence')) + '</th><th>' + escapeHtml(t('scoring.ui.reasoning')) + '</th><th>' + escapeHtml(t('scoring.ui.actions')) + '</th></tr></thead><tbody>';
 
         provisionalRelations.forEach(function (h, idx) {

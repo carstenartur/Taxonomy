@@ -20,7 +20,7 @@
         <a th:href="@{/integrations(lang=${#locale.language})}" href="/integrations" data-i18n="integration.title">Tool integrations</a></th:block>
 </header>
 <section th:replace="~{fragments/architecture-workflow :: context}"></section>
-<section th:fragment="surface" class="architecture-editor-surface">
+<section th:fragment="surface(integrated)" class="architecture-editor-surface">
 <main id="architectureEditor">
     <p id="editorContext" class="editor-context"></p>
     <p id="editorStatus" role="status" aria-live="polite" data-i18n="editor.loading">Loading architecture…</p>
@@ -173,27 +173,10 @@
                 <select id="editorLayout"><option value="stable" data-i18n="editor.layoutStable">Stable order</option><option value="reduce-crossings" data-i18n="editor.layoutCrossings">Reduce crossings</option></select>
                 <button id="editorArrange" type="button" data-i18n="editor.arrange">Rearrange explicitly</button>
             </div>
-            <section class="editor-lens-panel" aria-labelledby="editorLensTitle">
-                <h2 id="editorLensTitle" tabindex="-1" data-i18n="editor.lens.title">Architecture focus lens</h2>
-                <label class="editor-check"><input id="editorLensEnabled" type="checkbox" disabled/><span data-i18n="editor.lens.enable">Enable focus lens</span></label>
-                <p data-i18n="editor.lens.help">Move slowly over elements to investigate connections across the model. For keyboard or touch, select an element and investigate the selection. Results remain hypotheses until reviewed.</p>
-                <div class="editor-toolbar">
-                    <button id="editorLensInspect" type="button" disabled data-i18n="editor.lens.inspect">Investigate selection</button>
-                    <button id="editorLensPause" type="button" disabled data-i18n="editor.lens.pause">Pause new investigations</button>
-                    <label class="editor-lens-budget">
-                        <span data-i18n="editor.lens.budget">Investigation limit</span>
-                        <input id="editorLensBudget" type="number" min="1" max="128" value="16"/>
-                    </label>
-                </div>
-                <label class="editor-check"><input id="editorLensUseAi" type="checkbox" checked/><span data-i18n="editor.lens.useAi">Ask the configured AI provider when available</span></label>
-                <p data-i18n="editor.lens.cost">Each investigation may send one request to the configured provider. Pausing lets an active request finish. Local text candidates remain unassessed.</p>
-                <p id="editorLensSummary" role="status" aria-live="polite"></p>
-                <ul id="editorLensStates" class="editor-lens-states"></ul>
-                <h3 id="editorLensCount"></h3>
-                <ul id="editorLensSuggestions" class="editor-lens-suggestions"></ul>
-                <section id="editorLensReview" aria-label="Suggestion review" th:aria-label="#{editor.lens.review}"></section>
-                <p id="editorLensError" role="alert" hidden></p>
-            </section>
+            <div th:if="${integrated}" id="workingProposalInbox"></div>
+            <th:block th:unless="${integrated}">
+                <section th:replace="~{fragments/relationship-review :: inbox(false)}"></section>
+            </th:block>
         </section>
         <section aria-labelledby="editorPropertiesTitle">
             <h2 id="editorPropertiesTitle" data-i18n="editor.properties">Element properties</h2>
@@ -348,6 +331,7 @@
 <th:block th:replace="~{fragments/application-chrome :: scripts}"></th:block>
 <script th:src="@{/js/api/analysis-adapter-api.js}" src="/js/api/analysis-adapter-api.js"></script>
 <script th:src="@{/js/api/architecture-editor-api.js}" src="/js/api/architecture-editor-api.js"></script>
+<script th:src="@{/js/shared/relationship-review.js}" src="/js/shared/relationship-review.js"></script>
 <script th:src="@{/js/architecture-focus.js}" src="/js/architecture-focus.js"></script>
 <script th:src="@{/js/architecture-brief.js}" src="/js/architecture-brief.js"></script>
 <script th:src="@{/js/architecture-planning.js}" src="/js/architecture-planning.js"></script>

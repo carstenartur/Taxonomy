@@ -475,7 +475,7 @@ window.TaxonomyArchitectureDiagram.create = function (svg, options) {
     var zoom = d3.zoom().scaleExtent([viewport.minimumScale, viewport.maximumScale])
         .filter(function (event) {
             return active && !destroyed && (!event.ctrlKey || event.type === 'wheel') && !event.button
-                && (!behavior.lensLocksPan || !lens.enabled || event.type === 'wheel');
+                && (!behavior.lensLocksPan || !(lens.hover ?? lens.enabled) || event.type === 'wheel');
         }).on('zoom', function (event) {
             if (destroyed) return;
             if (event.sourceEvent) markUserControlled();
@@ -635,7 +635,7 @@ window.TaxonomyArchitectureDiagram.create = function (svg, options) {
             var label = node.ariaLabel || (node.label || node.title || node.id) + ' · ' + node.id;
             group.setAttribute('aria-label', label + (assessment ? ' · ' + (lens.label ? lens.label(assessment) : assessment) : ''));
         });
-        if (!lens.enabled) ring.setAttribute('display', 'none');
+        if (!(lens.hover ?? lens.enabled)) ring.setAttribute('display', 'none');
     }
     function draw() {
         if (destroyed || !hasScene) return;
@@ -768,7 +768,7 @@ window.TaxonomyArchitectureDiagram.create = function (svg, options) {
         } else if (event.key === 'Escape') { event.preventDefault(); unfocus(); }
     }
     function onPointer(event) {
-        if (!active || destroyed || !lens.enabled || !onRegion) return;
+        if (!active || destroyed || !(lens.hover ?? lens.enabled) || !onRegion) return;
         var point = d3.pointer(event, svg), matrix = svg.getScreenCTM();
         var radius = 56 / (matrix ? Math.hypot(matrix.a, matrix.b) || 1 : 1);
         ring.setAttribute('cx', point[0]); ring.setAttribute('cy', point[1]); ring.setAttribute('r', radius); ring.removeAttribute('display');

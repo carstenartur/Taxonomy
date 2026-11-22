@@ -52,7 +52,10 @@ async function appendFocusPanel(page, prefix) {
         const markup = template.replace(/th:id="\$\{idPrefix(?: \+ '([^']+)')?\}"/g,
             (_match, suffix) => `id="${prefix}${suffix || ''}"`);
         const parsed = new DOMParser().parseFromString(markup, 'text/html');
-        document.body.append(parsed.querySelector('section'));
+        const review = document.createElement('div');
+        review.className = 'relationship-review';
+        review.append(parsed.querySelector('section'));
+        document.body.append(review);
     }, { template, prefix });
     await page.addScriptTag({ path: path.join(resources, 'static/js/architecture-focus.js') });
 }
@@ -61,6 +64,7 @@ test('the source lens keeps its numeric limit next to its label at desktop and m
     try {
         await appendFocusPanel(page, 'nativeSourceLens');
         await page.locator('#nativeSourceLens').evaluate(panel => { panel.hidden = false; });
+        await page.locator('#nativeSourceLensSettings summary').click();
         for (const width of [1200, 375]) {
             await page.setViewportSize({ width, height: 800 });
             const input = page.getByRole('spinbutton', { name: 'Investigation limit' });
@@ -125,7 +129,10 @@ async function attachSourceLens(page, source, enabled) {
         }
     }, source);
     assert.equal(await page.locator('#nativeSourceLensUseAi').isChecked(), false);
-    if (enabled) await page.locator('#nativeSourceLensEnabled').check();
+    if (enabled) {
+        await page.locator('#nativeSourceLensSettings summary').click();
+        await page.locator('#nativeSourceLensEnabled').check();
+    }
     assert.equal(await page.locator('#nativeSourceLensEnabled').isChecked(), enabled);
 }
 async function recordNativeDoubleClick(page) {
@@ -162,7 +169,7 @@ for (const source of ['analysis', 'snapshot']) for (const enabled of [false, tru
             assert.ok(await page.evaluate(() => nativeLensSelections.includes('A')),
                 'Real selection events must traverse SourceLens.select and ArchitectureFocusPanel.render');
             assert.equal(await page.locator('#nativeSourceLensEnabled').isChecked(), enabled);
-            assert.equal(await page.locator('#nativeSourceLensInspect').isEnabled(), enabled);
+            assert.equal(await page.locator('#nativeSourceLensInspect').isEnabled(), true);
             const requests = await page.evaluate(() => {
                 nativeSourceLens.suspend();
                 return { calls: nativeLensRequests, editor: nativeLensOpenCalls, saves: nativeLensSaves };
@@ -228,16 +235,18 @@ for (const enabled of [false, true]) test(`working: native double-click survives
             ], edges: [{ id: 'AB', sourceId: 'A', targetId: 'B', relationType: 'SUPPORTS', sourceX: 335, sourceY: 150, targetX: 405, targetY: 150 }] }, null);
             workingFocusPanel.setContext(context, true); workingFocusPanel.select(null);
         });
-        // Keep investigation local; enabling the working lens otherwise opts into AI by default.
-        await page.locator('#editorLensUseAi').uncheck();
-        if (enabled) await page.locator('#editorLensEnabled').check();
+        assert.equal(await page.locator('#editorLensUseAi').isChecked(), false);
+        if (enabled) {
+            await page.locator('#editorLensSettings summary').click();
+            await page.locator('#editorLensEnabled').check();
+        }
         await recordNativeDoubleClick(page);
         await page.locator('[data-node-id="A"]').dblclick();
         assert.deepEqual(await page.evaluate(() => ({ selected: renderer.getState().selectedNodeId, mode: renderer.getState().mode,
             events: nativeDoubleClicks, selections: workingSelections })),
             { selected: 'A', mode: 'focus', events: [{ id: 'A', retained: true }], selections: ['A'] });
         assert.equal(await page.locator('#editorLensEnabled').isChecked(), enabled);
-        assert.equal(await page.locator('#editorLensInspect').isEnabled(), enabled);
+        assert.equal(await page.locator('#editorLensInspect').isEnabled(), true);
         assert.equal(await page.evaluate(() => workingLensRequests.every(request => request.useAi === false)), true);
         await page.evaluate(() => { workingFocusPanel.setContext(null, false); renderer.destroy(); });
         assert.deepEqual(page.errors, []);

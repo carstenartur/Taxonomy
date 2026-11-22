@@ -70,23 +70,115 @@
 .architecture-editor-surface #editorPlanningStatus { overflow-wrap: anywhere; }
 
 .architecture-editor-surface .editor-layout-controls select { width: auto; flex: 1; min-width: 10rem; }
-.architecture-editor-surface .editor-lens-panel { border-top: 1px solid #aab5c4; margin-top: 1rem; }
 .architecture-editor-surface .editor-check { display: flex; gap: .6rem; align-items: start; min-height: 44px; padding-block: .45rem; cursor: pointer; }
 .architecture-editor-surface .editor-check input { flex: none; inline-size: 1.2rem; block-size: 1.2rem; margin: .15rem 0 0; }
-.architecture-editor-surface .editor-lens-budget { display: flex; flex-wrap: wrap; gap: .55rem; align-items: center; margin: 0; }
-.architecture-editor-surface .editor-lens-budget input { flex: none; inline-size: 5.25rem; max-inline-size: 100%; }
-.architecture-editor-surface .editor-lens-states, .architecture-editor-surface .editor-lens-suggestions { padding-left: 1.3rem; overflow-wrap: anywhere; }
-.architecture-editor-surface .editor-lens-state { margin: .4rem 0; }
-.architecture-editor-surface .editor-lens-state.examining { font-weight: 700; text-decoration: underline; }
-.architecture-editor-surface .editor-lens-suggestions li { margin: .5rem 0; }
-.architecture-editor-surface .editor-lens-suggestions button { text-align: left; overflow-wrap: anywhere; }
-.architecture-editor-surface .editor-lens-suggestions small { display: block; }
-.architecture-editor-surface .editor-lens-suggestions button[aria-pressed="true"] { border: 2px solid #7142a0; }
-.architecture-editor-surface #editorLensReview { border-left: 4px solid #7142a0; padding: 0 1rem; overflow-wrap: anywhere; }
-.architecture-editor-surface .editor-lens-rationale, .architecture-editor-surface #editorLensReview blockquote { white-space: pre-wrap; }
-.architecture-editor-surface #editorLensReview blockquote { margin: .5rem 0; padding: .5rem; background: #f1f4f8; }
-.architecture-editor-surface .editor-lens-notice { font-weight: 600; }
-.architecture-editor-surface #editorLensError { color: #8f210f; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Relationship review is shared by the workspace and standalone editor. */
+.relationship-review {
+    --review-border: var(--taxonomy-panel-border, var(--bs-border-color, #c8d1dd));
+    --review-panel: var(--taxonomy-panel-background, var(--bs-body-bg, #fff));
+    --review-muted: var(--taxonomy-surface-muted, var(--bs-secondary-color, #536579));
+    --review-accent: var(--taxonomy-primary, var(--bs-primary, #285a96));
+    color: var(--taxonomy-surface-foreground, var(--bs-body-color, #17243a));
+    background: var(--review-panel);
+    border: 1px solid var(--review-border);
+    border-radius: .55rem;
+    padding: 1rem;
+    margin-block: 1rem;
+    min-inline-size: 0;
+}
+.relationship-review [hidden] { display: none !important; }
+.relationship-review-header, .relationship-review-switch, .relationship-review-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem;
+}
+.relationship-review-header, .editor-lens-panel > .relationship-review-toolbar { justify-content: space-between; }
+.relationship-review :is(h2,h3) { margin: 0; font-size: 1rem; font-weight: 650; }
+.relationship-review-header h2 { font-size: 1.125rem; }
+.relationship-review-switch { margin-block: .75rem; }
+.relationship-review :where(button:not(.btn)), .architecture-editor-surface .relationship-review button:not(.btn) {
+    border: 1px solid var(--review-border);
+    border-radius: .375rem;
+    color: inherit;
+    background: var(--review-panel);
+    padding: .4rem .7rem;
+    min-block-size: 2.5rem;
+    font: inherit;
+    cursor: pointer;
+}
+.relationship-review button:disabled { opacity: .6; cursor: default; }
+.relationship-review button[aria-pressed="true"]:not(.btn) {
+    border-color: var(--review-accent);
+    background: color-mix(in srgb, var(--review-accent) 10%, var(--review-panel));
+}
+.relationship-review button.relationship-review-primary:not(.btn) {
+    color: #fff;
+    background: var(--review-accent);
+    border-color: var(--review-accent);
+}
+.relationship-review :is(button,summary):focus-visible {
+    outline: 2px solid var(--review-accent);
+    outline-offset: 2px;
+}
+.relationship-review-results {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    gap: .75rem 1rem;
+    align-items: start;
+}
+.relationship-review-results > :first-child:not(:has(li)) { display: none; }
+.relationship-review-results > :first-child:not(:has(li)) + section { grid-column: 1 / -1; }
+.relationship-review-status, .relationship-review-empty, .relationship-review-count { color: var(--review-muted); margin: .35rem 0; }
+.relationship-review-status:empty { display: none; }
+.relationship-review-error { color: var(--bs-danger-text-emphasis, #9e251c); white-space: pre-wrap; overflow-wrap: anywhere; }
+.relationship-review .editor-lens-suggestions { list-style: none; margin: 0; padding: 0; max-block-size: 20rem; overflow: auto; }
+.relationship-review .editor-lens-suggestions li { border-bottom: 1px solid var(--review-border); padding-block: .35rem; }
+.relationship-review .editor-lens-suggestions li:last-child { border-bottom: 0; }
+.relationship-review .relationship-review-candidate {
+    display: block;
+    text-align: start;
+    overflow-wrap: anywhere;
+    inline-size: 100%;
+}
+.relationship-review .editor-lens-suggestions small { display: block; margin: .2rem .4rem 0; color: var(--review-muted); }
+.relationship-review-detail { min-inline-size: 0; overflow-wrap: anywhere; }
+.relationship-review-detail > p { margin: .5rem 0; }
+.relationship-review .editor-lens-rationale, .relationship-review-evidence blockquote { white-space: pre-wrap; }
+.relationship-review .editor-lens-notice { font-weight: 600; }
+.relationship-review-evidence { list-style: none; margin: .5rem 0; padding: 0; }
+.relationship-review-evidence li { margin-block: .5rem; color: var(--review-muted); font-size: .9em; }
+.relationship-review-evidence blockquote {
+    margin: .2rem 0 0;
+    padding: .2rem .55rem;
+    color: var(--taxonomy-surface-foreground, var(--bs-body-color, #17243a));
+    border-inline-start: 3px solid var(--review-border);
+}
+.relationship-review :is(.relationship-review-settings, .relationship-review-provenance) {
+    margin: .75rem 0 0;
+    color: var(--review-muted);
+}
+.relationship-review-settings { border-top: 1px solid var(--review-border); padding-top: .5rem; }
+.relationship-review :is(.relationship-review-settings, .relationship-review-provenance) > summary {
+    padding: .25rem 0;
+    cursor: pointer;
+}
+.relationship-review :is(.relationship-review-settings, .relationship-review-provenance) p { margin: .4rem 0; overflow-wrap: anywhere; }
+.relationship-review-toolbar :is(.relationship-review-check,.editor-lens-budget) {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: .4rem;
+    align-items: center;
+    margin: 0;
+}
+.relationship-review-toolbar .editor-lens-budget input { flex: none; inline-size: 4.5rem; max-inline-size: 100%; }
+.relationship-review .editor-lens-states { margin: .5rem 0; padding-inline-start: 1.3rem; overflow-wrap: anywhere; }
+.relationship-review .editor-lens-state { margin: .3rem 0; }
+.relationship-review .editor-lens-state.examining { font-weight: 700; }
+@media (max-width: 54rem) {
+    .relationship-review-results { grid-template-columns: minmax(0, 1fr); }
+    .relationship-review .editor-lens-suggestions { max-block-size: 12rem; }
+}
 .architecture-editor-surface #editorGraph .editor-lens-ring { fill: #7142a00c; stroke: #7142a0; stroke-width: 2; pointer-events: none; }
 .architecture-editor-surface #editorGraph .editor-ghost { stroke: #7142a0; stroke-width: 3; stroke-dasharray: 8 5; fill: none; cursor: pointer; }
 .architecture-editor-surface #editorGraph .editor-ghost.selected, .architecture-editor-surface #editorGraph .editor-ghost:focus { stroke-width: 5; outline: none; }

@@ -153,7 +153,12 @@ async function fixture(standaloneUrl=null){
                 unfocus(){unfocusCalls++;state.mode='overview';changed();},zoom(){},setActive(value){diagramActivity.push(value);}};
         };
         window.TaxonomyPlanningEditor={create:()=>({render(){},setEnabled(){}})};
-        window.ArchitectureFocusPanel=()=>({observe(){},review(){},setLocked(){},setContext(){},select(){}});
+        window.ArchitectureFocusPanel=options=>{
+            window.editorFocusFixture={options,receipts:[],undos:[]};
+            return {observe(){},review(){},setLocked(){},setContext(){},select(){},
+                accepted:(id,receipt)=>editorFocusFixture.receipts.push({id,receipt}),
+                undone:id=>editorFocusFixture.undos.push(id)};
+        };
         window.AnalysisSnapshotAdoption=()=>({setLocked(){},update(){},getSource:()=>null});
         window.TaxonomyAppChrome={updateContext:value=>published.push(value)};
         window.ArchitectureEditorApi={load:async(scope,revision,_signal,layout,layoutRevision,viewId)=>{
@@ -295,6 +300,93 @@ test(`working tree updates a responsibility through preview, accept and reload i
         }
         assert.equal(await page.locator('#editorResponsibilitySource').innerText(), inherited);
         assert.equal(await page.locator('#editorTree [data-select-id="BR-1081"]').getAttribute('aria-current'), 'true');
+    } finally {
+        await page.close();
+    }
+});
+
+test('working proposal and inverse execute only after a visible exact preview', async () => {
+    const page = await fixture();
+    try {
+        await page.evaluate(async () => {
+            const baseLoad = ArchitectureEditorApi.load;
+            let revision = 7, rejected = false, sequence = 0;
+            const previews = [], commands = [];
+            window.editorFocusFixtureLog = { previews, commands };
+            crypto.randomUUID = () => '00000000-0000-4000-8000-' + String(++sequence).padStart(12, '0');
+            ArchitectureEditorApi.exportUrl = () => '/export';
+            ArchitectureEditorApi.load = async (...args) => {
+                const view = await baseLoad(...args);
+                Object.assign(view.document.context, { revision, writeMode:'PRIVATE_WORKSPACE' });
+                return view;
+            };
+            ArchitectureEditorApi.preview = async command => {
+                previews.push(JSON.parse(JSON.stringify(command)));
+                if (rejected) throw Object.assign(new Error('Proposal evidence belongs to the previous revision'), {status:412});
+                return {context:command.context,change:{changes:[{id:'source SUPPORTS target',
+                    before:command.kind === 'UNDO' ? 'source SUPPORTS target' : null,
+                    after:command.kind === 'UNDO' ? null : 'source SUPPORTS target'}]}};
+            };
+            ArchitectureEditorApi.execute = async command => {
+                commands.push(JSON.parse(JSON.stringify(command)));
+                if (commands.length === 1) {
+                    revision++;
+                    throw Object.assign(new Error('Response lost after commit'), {status:0});
+                }
+                if (command.kind === 'UNDO') revision++;
+                return {context:{...command.context,revision},operationId:command.metadata.commandId,projectionState:'READY'};
+            };
+            window.moveProposalRevision = () => { rejected = true; revision++; };
+            window.editor = TaxonomyArchitectureEditor.mount(document.getElementById('architectureWorkingSource'));
+            await editor.activate({kind:'working',repositoryId:'repo',workspaceScopeKey:'private-a',branch:'draft/a'});
+            window.workingCandidate = {id:'candidate',sourceId:'source',targetId:'target',relationType:'SUPPORTS',
+                properties:{provenance:'architecture-focus','x-focus-evidence':'exact proof'},context:editor.getData().document.context};
+        });
+
+        await page.locator('#editorTitle').fill('Unrelated unsaved edit');
+        await page.evaluate(() => editorFocusFixture.options.accept(workingCandidate));
+        const dialog = page.locator('#editorPreviewDialog');
+        assert.equal(await dialog.isVisible(), true);
+        assert.equal(await page.evaluate(() => editorFocusFixtureLog.commands.length), 0);
+        assert.match(await page.locator('#editorChanges').innerText(), /source SUPPORTS target/);
+        await page.locator('#editorCancel').click();
+        assert.equal(await page.evaluate(() => editorFocusFixtureLog.commands.length), 0);
+
+        await page.evaluate(() => editorFocusFixture.options.accept(workingCandidate));
+        await page.locator('#editorAccept').click();
+        await page.getByText('Response lost after commit').waitFor();
+        assert.equal(await dialog.isVisible(), true);
+        assert.equal(await page.evaluate(() => editorFocusFixture.receipts.length), 0);
+        await page.locator('#editorAccept').click();
+        await page.waitForFunction(() => !document.querySelector('#editorPreviewDialog').open
+            && editor.getData().document.context.revision === 8);
+        const accepted = await page.evaluate(() => ({
+            receipt:editorFocusFixture.receipts[0], attempts:editorFocusFixtureLog.commands, preview:editorFocusFixtureLog.previews.at(-1)
+        }));
+        assert.equal(accepted.receipt.id, 'candidate');
+        assert.deepEqual(accepted.attempts, [accepted.preview, accepted.preview]);
+        assert.equal(accepted.preview.properties['x-focus-evidence'], 'exact proof');
+        assert.equal(await page.locator('#editorTitle').inputValue(), 'Unrelated unsaved edit');
+
+        await page.evaluate(() => editorFocusFixture.options.undo({...workingCandidate,accepted:editorFocusFixture.receipts[0].receipt}));
+        assert.equal(await dialog.isVisible(), true);
+        assert.equal(await page.evaluate(() => editorFocusFixtureLog.commands.length), 2);
+        const undo = await page.evaluate(() => editorFocusFixtureLog.previews.at(-1));
+        assert.equal(undo.kind, 'UNDO');
+        assert.equal(undo.targetOperationId, accepted.receipt.receipt.operationId);
+        await page.locator('#editorAccept').click();
+        await page.waitForFunction(() => editor.getData().document.context.revision === 9);
+        assert.deepEqual(await page.evaluate(() => editorFocusFixture.undos), ['candidate']);
+
+        await page.evaluate(() => {
+            moveProposalRevision();
+            return editorFocusFixture.options.accept({...workingCandidate,id:'stale-candidate',context:editor.getData().document.context});
+        });
+        assert.equal(await dialog.isVisible(), true);
+        assert.equal(await page.locator('#editorAccept').isDisabled(), true);
+        assert.equal(await page.locator('#editorReapply').isVisible(), false);
+        assert.match(await page.locator('#editorPreviewError').innerText(), /previous revision/);
+        assert.equal(await page.evaluate(() => editorFocusFixtureLog.commands.length), 3);
     } finally {
         await page.close();
     }
