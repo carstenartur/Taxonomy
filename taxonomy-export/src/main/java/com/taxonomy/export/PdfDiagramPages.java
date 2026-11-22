@@ -18,7 +18,7 @@ final class PdfDiagramPages {
     private static final double INSET = 52;
     private static final int MAX_PANELS = 256;
 
-    record Panel(DiagramScene scene, int crossPageRelationships) { }
+    record Panel(DiagramScene scene, List<DiagramSceneEdge> crossPageRelationships) { }
     record Plan(List<Panel> panels, Map<String, Integer> nodePages) { }
     private PdfDiagramPages() { }
 
@@ -46,7 +46,7 @@ final class PdfDiagramPages {
         if (Math.min(WIDTH / Math.max(1, scene.width()), HEIGHT / Math.max(1, scene.height())) >= .8) {
             Map<String, Integer> pages = new LinkedHashMap<>();
             scene.nodes().forEach(node -> pages.put(node.id(), 1));
-            return new Plan(List.of(new Panel(scene, 0)), Map.copyOf(pages));
+            return new Plan(List.of(new Panel(scene, List.of())), Map.copyOf(pages));
         }
         if (largestWidth > WIDTH - 2 * INSET || largestHeight > HEIGHT - 2 * INSET)
             throw invalid("single node exceeds readable PDF panel dimensions");
@@ -65,11 +65,12 @@ final class PdfDiagramPages {
         }
         List<List<DiagramSceneEdge>> edges = new ArrayList<>();
         for (int i = 0; i < cells.size(); i++) edges.add(new ArrayList<>());
-        int[] crossing = new int[cells.size()];
+        List<List<DiagramSceneEdge>> crossing = new ArrayList<>();
+        for (int i = 0; i < cells.size(); i++) crossing.add(new ArrayList<>());
         for (var edge : scene.edges()) {
             int source = nodePages.get(edge.sourceId()) - 1, target = nodePages.get(edge.targetId()) - 1;
             if (source == target) edges.get(source).add(edge);
-            else { crossing[source]++; crossing[target]++; }
+            else { crossing.get(source).add(edge); crossing.get(target).add(edge); }
         }
         List<Panel> panels = new ArrayList<>();
         for (var nodes : cells) {
@@ -80,13 +81,13 @@ final class PdfDiagramPages {
             List<DiagramSceneNode> translated = nodes.stream().map(n -> new DiagramSceneNode(
                     n.id(), n.label(), n.type(), n.relevance(), n.anchor(), n.layer(), n.depth(),
                     n.selectedForImpact(), n.parentId(), n.container(), n.x() - x, n.y() - y, n.width(), n.height(),
-                    n.responsibility(), n.missingMeasurements())).toList();
+                    n.responsibility(), n.missingMeasurements(), n.catalogueUuid())).toList();
             List<DiagramSceneEdge> translatedEdges = edges.get(panels.size()).stream().map(e -> new DiagramSceneEdge(
                     e.id(), e.sourceId(), e.targetId(), e.relationType(), e.relevance(), e.relationCategory(),
                     e.sourceX() - x, e.sourceY() - y, e.targetX() - x, e.targetY() - y, e.metadata())).toList();
             var panel = new DiagramScene(scene.title(), Math.max(760, width), Math.max(420, height),
                     scene.direction(), translated, translatedEdges);
-            panels.add(new Panel(panel, crossing[panels.size()]));
+            panels.add(new Panel(panel, List.copyOf(crossing.get(panels.size()))));
         }
         return new Plan(List.copyOf(panels), Map.copyOf(nodePages));
     }

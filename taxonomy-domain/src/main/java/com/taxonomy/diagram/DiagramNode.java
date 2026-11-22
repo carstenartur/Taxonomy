@@ -22,6 +22,7 @@ import com.taxonomy.dto.TaxonomyResponsibilityLookup.Assignment;
  *                          grouping construct) to avoid false architecture semantics.
  * @param responsibility    effective organizational assignment from this node's source evidence
  * @param missingMeasurements records where primitive layout values stand in for unavailable evidence
+ * @param catalogueUuid optional identity of the recorded catalogue entry, distinct from diagram and native exchange IDs
  */
 public record DiagramNode(
     String id,
@@ -35,10 +36,22 @@ public record DiagramNode(
     String parentId,
     boolean container,
     @JsonInclude(JsonInclude.Include.NON_NULL) Assignment responsibility,
-    @JsonInclude(JsonInclude.Include.NON_NULL) MissingMeasurements missingMeasurements
+    @JsonInclude(JsonInclude.Include.NON_NULL) MissingMeasurements missingMeasurements,
+    @JsonInclude(JsonInclude.Include.NON_NULL) String catalogueUuid
 ) {
     /** Distinguishes unavailable retained measurements from a recorded score or depth of zero. */
     public record MissingMeasurements(boolean relevance, boolean depth) { }
+
+    public DiagramNode {
+        catalogueUuid = com.taxonomy.dto.CatalogueSourceUuids.normalize(catalogueUuid);
+    }
+
+    public DiagramNode(String id, String label, String type, double relevance, boolean anchor, int layer,
+                       int depth, boolean selectedForImpact, String parentId, boolean container,
+                       Assignment responsibility, MissingMeasurements missingMeasurements) {
+        this(id, label, type, relevance, anchor, layer, depth, selectedForImpact, parentId, container,
+                responsibility, missingMeasurements, null);
+    }
 
     public boolean relevanceRecorded() { return missingMeasurements == null || !missingMeasurements.relevance(); }
 

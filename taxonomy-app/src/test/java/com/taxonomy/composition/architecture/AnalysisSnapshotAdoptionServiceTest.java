@@ -169,7 +169,7 @@ class AnalysisSnapshotAdoptionServiceTest {
         when(resolver.forRevision("retained")).thenReturn(definition);
         when(resolver.forModel(any())).thenReturn(definition);
         when(resolver.analysisNodes("retained")).thenReturn(List.of(
-                new CatalogueDefinitionResolver.Node("PROCESS.1", "AS", "AS", "Plan", null, 1),
+                new CatalogueDefinitionResolver.Node("PROCESS.1", "AS", "AS", "Plan", "Planung", 1, "4ec1702a-929e-42a8-807b-cb7c82e1ab47"),
                 new CatalogueDefinitionResolver.Node("PROCESS.2", "AS", "AS", "Operate", null, 2)));
         service.setCatalogueDefinitionResolver(resolver);
         fixture.service.setCatalogueDefinitionResolver(resolver);
@@ -203,6 +203,7 @@ class AnalysisSnapshotAdoptionServiceTest {
                 });
         var adopted = service.adopt(target, new AnalysisSnapshotAdoptionService.Request(request.context(), request.metadata(), ref, preview.fingerprint()));
         assertThat(adopted.accepted().change().dsl()).contains("element PROCESS.1 type AdministrativeService",
+                "x-catalogue-uuid: \"4ec1702a-929e-42a8-807b-cb7c82e1ab47\"", "x-catalogue-title-de: \"Planung\"",
                 "x-captured-responsibility-unit: \"catalogue-team\"", "x-responsible-organization-id: \"local\"");
     }
     private RequirementRelationshipView frozenEdge() {

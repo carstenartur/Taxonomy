@@ -2,6 +2,7 @@ package com.taxonomy.dsl.command;
 
 import com.taxonomy.dsl.ast.BlockAst;
 import com.taxonomy.dsl.ast.PropertyAst;
+import com.taxonomy.dsl.model.CatalogueReference;
 import com.taxonomy.dsl.command.ArchitectureCommand.*;
 import java.util.*;
 
@@ -67,6 +68,11 @@ final class AnalysisSnapshotAdoption {
                 var header = existing.getHeaderTokens();
                 if (header.size() != 3 || !"type".equals(header.get(1)) || !element.type().equals(header.get(2)))
                     throw problem("SNAPSHOT_TYPE_CONFLICT", "Existing element identity has a different type: " + element.id());
+                String existingUuid = existing.property(CatalogueReference.UUID_PROPERTY);
+                var reference = element.catalogueReference();
+                if (existingUuid != null && reference != null && reference.uuid() != null
+                        && !existingUuid.equalsIgnoreCase(reference.uuid()))
+                    throw problem("SNAPSHOT_IDENTITY_CONFLICT", "Existing element has a different source catalogue UUID: " + element.id());
                 if (existing.getProperties().stream().map(PropertyAst::key).distinct().count() != existing.getProperties().size())
                     throw problem("DUPLICATE_PROPERTY", "Existing element has ambiguous properties");
             } else {
@@ -74,6 +80,7 @@ final class AnalysisSnapshotAdoption {
                 var properties = new LinkedHashMap<String, String>();
                 properties.put("title", element.title());
                 properties.put("description", element.description());
+                if (element.catalogueReference() != null) element.catalogueReference().writeTo(properties);
                 if (!element.description().isBlank())
                     properties.put(SnapshotEvidence.GENERATED_DESCRIPTION_HASH, SnapshotEvidence.digest(element.description()));
                 next = ArchitectureSemanticPatch.replace(next, null,

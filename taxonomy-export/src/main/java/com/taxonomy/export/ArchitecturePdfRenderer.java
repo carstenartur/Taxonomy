@@ -108,17 +108,23 @@ public final class ArchitecturePdfRenderer {
 
     /** Canonical editor exports carry checkpoint fields independently of snapshot scores. */
     public byte[] renderCanonical(DiagramScene scene, String provenance, DiagramCanonicalEvidence evidence) {
+        return renderCanonical(scene, provenance, evidence, Locale.ENGLISH);
+    }
+
+    public byte[] renderCanonical(DiagramScene scene, String provenance, DiagramCanonicalEvidence evidence, Locale locale) {
+        var language = DiagramLanguage.from(locale);
         requireScene(scene);
         Objects.requireNonNull(evidence, "canonical evidence");
         var header = new ArrayList<>(safe(provenance).lines().limit(2).toList());
         String scope = evidence.viewId() == null || evidence.viewId().isBlank()
-                ? "Scope: canonical workspace" : "Scope: canonical view " + evidence.viewId();
+                ? language.text("Scope: canonical workspace", "Umfang: kanonischer Arbeitsbereich")
+                : language.text("Scope: canonical view ", "Umfang: kanonische Sicht ") + evidence.viewId();
         var partial = evidence.analysisSources().stream().filter(source -> "PARTIAL".equals(source.status())).count();
-        if (partial != 0) scope += " · PARTIAL analysis sources: " + partial;
+        if (partial != 0) scope += language.text(" · PARTIAL analysis sources: ", " · Analysequellen mit Status PARTIAL: ") + partial;
         header.add(scope);
         return renderScene(scene, document -> configureSource(document, scene, provenance),
-                new Decoration(scene.title(), header, List.of("Derived server layout · Canonical architecture"),
-                        List.of(), evidence), Map.of(), Map.of(), DiagramLanguage.ENGLISH);
+                new Decoration(scene.title(), header, List.of(language.text("Derived server layout · Canonical architecture", "Serverlayout · Kanonische Architektur")),
+                        List.of(), evidence), Map.of(), Map.of(), language);
     }
 
     /** Supplied working data has no verified Git or persisted-snapshot authority. */
@@ -132,12 +138,21 @@ public final class ArchitecturePdfRenderer {
 
     public byte[] renderWorkingView(DiagramScene scene, Map<String, String> nodeReasons,
                                     Map<String, Map<String, String>> relationReasons) {
+        return renderWorkingView(scene, nodeReasons, relationReasons, Locale.ENGLISH);
+    }
+
+    public byte[] renderWorkingView(DiagramScene scene, Map<String, String> nodeReasons,
+                                    Map<String, Map<String, String>> relationReasons, Locale locale) {
         requireScene(scene);
-        return renderScene(scene, document -> configureSource(document, scene, "Client-provided working view"),
-                new Decoration("Requirement architecture - working view", List.of(
-                        "Client-provided working view; source authority has not been verified.", scene.title()),
-                        List.of("Generated server layout | Client-provided working view | No re-analysis or persistence"),
-                        List.of(), null), nodeReasons, relationReasons, DiagramLanguage.ENGLISH);
+        var language = DiagramLanguage.from(locale);
+        String source = language.text("Client-provided working view", "Vom Client übermittelte Arbeitsansicht");
+        return renderScene(scene, document -> configureSource(document, scene, source),
+                new Decoration(language.text("Requirement architecture - working view", "Anforderungsarchitektur - Arbeitsansicht"),
+                        List.of(language.text("Client-provided working view; source authority has not been verified.",
+                                "Vom Client übermittelte Arbeitsansicht. Die Herkunft ist ungeprüft."), scene.title()),
+                        List.of(language.text("Generated server layout | Client-provided working view | No re-analysis or persistence",
+                                "Serverlayout | Vom Client übermittelte Arbeitsansicht | Keine erneute Analyse oder Speicherung")),
+                        List.of(), null), nodeReasons, relationReasons, language);
     }
 
     private static void requireScene(DiagramScene scene) {
@@ -179,11 +194,12 @@ public final class ArchitecturePdfRenderer {
                     drawHeader(stream, decoration, width, height, theme, fonts);
                     drawEdges(stream, part, PAGE_MARGIN, diagramTop, scale, theme, language, fonts, decoration.canonical());
                     drawNodes(stream, part, PAGE_MARGIN, diagramTop, scale, theme, language, fonts, decoration.canonical() != null);
+                    drawPageReferences(stream, panel, plan.nodePages(), diagramTop, scale, width, theme, fonts, language);
                     drawFooter(stream, decoration, width, theme, language, fonts.regular());
                     if (plan.panels().size() > 1) {
                         text(stream, theme, fonts.regular(), 8, PAGE_MARGIN, 30,
                                 language.text("Diagram D", "Diagramm D") + (index + 1) + "/" + plan.panels().size()
-                                        + language.text(" | Cross-page relationships: ", " | Seitenübergreifende Beziehungen: ") + panel.crossPageRelationships()
+                                        + language.text(" | Cross-page relationships: ", " | Seitenübergreifende Beziehungen: ") + panel.crossPageRelationships().size()
                                         + language.text(" | Complete endpoints and diagram references: see export inventory.", " | Endpunkte und Diagrammverweise siehe Exportinventar."));
                     }
                 }
@@ -194,6 +210,24 @@ public final class ArchitecturePdfRenderer {
             return output.toByteArray();
         } catch (IOException error) {
             throw new IllegalStateException("Unable to render architecture PDF", error);
+        }
+    }
+
+    private static void drawPageReferences(PDPageContentStream stream, PdfDiagramPages.Panel panel,
+            Map<String, Integer> pages, float diagramTop, float scale, float width, ExportTheme theme, Fonts fonts,
+            DiagramLanguage language) throws IOException {
+        if (panel.crossPageRelationships().isEmpty()) return;
+        // Allow for connectors routed around the nodes; never draw over the panel or the footer.
+        float y = diagramTop - (float) panel.scene().height() * scale - 16;
+        if (y < 70) return;
+        text(stream, theme, fonts.bold(), 10, PAGE_MARGIN, y, language.text("Connections to other pages", "Verbindungen zu anderen Seiten"));
+        for (var edge : panel.crossPageRelationships()) {
+            y -= 14;
+            if (y < 46) break;
+            String reference = "D" + pages.get(edge.sourceId()) + " · " + edge.sourceId() + "  →  " + edge.relationType()
+                    + "  →  D" + pages.get(edge.targetId()) + " · " + edge.targetId();
+            text(stream, theme, fonts.regular(), 9, PAGE_MARGIN, y,
+                    PdfDiagramText.wrap(reference, fonts.regular(), 9, width - 2 * PAGE_MARGIN, 1).getFirst());
         }
     }
 
@@ -250,7 +284,6 @@ public final class ArchitecturePdfRenderer {
             var detour = routing.detourForLine(edge);
             stream.moveTo(x1, y1);
             float arrowStartX = x1, arrowStartY = y1;
-            float captionX = (x1 + x2) / 2, captionY = (y1 + y2) / 2;
             if (detour == null) {
                 stream.lineTo(x2, y2);
             } else {
@@ -262,18 +295,17 @@ public final class ArchitecturePdfRenderer {
                 var beforeTarget = points.get(points.size() - 2);
                 arrowStartX = diagramX + (float) beforeTarget.x() * scale;
                 arrowStartY = diagramTop - (float) beforeTarget.y() * scale;
-                var caption = detour.labelAnchor();
-                captionX = diagramX + (float) caption.x() * scale;
-                captionY = diagramTop - (float) caption.y() * scale;
             }
             stream.stroke();
             drawArrow(stream, arrowStartX, arrowStartY, x2, y2, Math.max(4.0f, 7.0f * scale));
             if (edge.relationType() == null || edge.relationType().isBlank()) continue;
             String state = canonical == null ? DiagramPresentation.relationshipStatus(edge.metadata(), language.german())
-                    : DiagramPresentation.canonicalRelationshipStatus(canonical, edge.id());
-            var caption = placeCaption(edge.relationType() + " · " + state, captionX, captionY,
+                    : DiagramPresentation.canonicalRelationshipStatus(canonical, edge.id(), language);
+            var anchors = DiagramEdgeRouting.captionAnchors(edge, detour).stream().map(anchor ->
+                    new DiagramEdgeRouting.Point(diagramX + anchor.x() * scale, diagramTop - anchor.y() * scale)).toList();
+            var caption = placeCaption(edge.relationType() + " · " + state, anchors,
                     diagramTop, nodeBounds, captions, fonts.regular(), labelSize);
-            if (caption == null) caption = placeCaption(edge.relationType(), captionX, captionY,
+            if (caption == null) caption = placeCaption(edge.relationType(), anchors,
                     diagramTop, nodeBounds, captions, fonts.regular(), labelSize);
             if (caption != null) captions.add(caption);
         }
@@ -288,17 +320,20 @@ public final class ArchitecturePdfRenderer {
         }
     }
 
-    private static EdgeCaption placeCaption(String label, float x, float y, float diagramTop,
+    private static EdgeCaption placeCaption(String label, List<DiagramEdgeRouting.Point> anchors, float diagramTop,
             List<Rectangle2D.Float> nodeBounds, List<EdgeCaption> captions, PDFont font, float labelSize) throws IOException {
         String text = PdfDiagramText.wrap(label, font, labelSize, 210, 1).getFirst();
         float width = PdfDiagramText.width(font, labelSize, text) + 8;
-        for (int offset : new int[]{12, -20, 26, -34}) {
-            var rect = new Rectangle2D.Float(x - width / 2, y + offset, width, 12);
-            if (rect.x < PAGE_MARGIN || rect.getMaxX() > PdfDiagramPages.PAGE_WIDTH - PAGE_MARGIN
-                    || rect.y < PAGE_MARGIN || rect.getMaxY() > diagramTop
-                    || nodeBounds.stream().anyMatch(rect::intersects)
-                    || captions.stream().anyMatch(other -> rect.intersects(other.bounds()))) continue;
-            return new EdgeCaption(rect, text);
+        int[] offsets = {12, -20, 26, -34};
+        for (var anchor : anchors) {
+            for (int offset : offsets) {
+                var rect = new Rectangle2D.Float((float) anchor.x() - width / 2, (float) anchor.y() + offset, width, 12);
+                if (rect.x < PAGE_MARGIN || rect.getMaxX() > PdfDiagramPages.PAGE_WIDTH - PAGE_MARGIN
+                        || rect.y < PAGE_MARGIN || rect.getMaxY() > diagramTop
+                        || nodeBounds.stream().anyMatch(rect::intersects)
+                        || captions.stream().anyMatch(other -> rect.intersects(other.bounds()))) continue;
+                return new EdgeCaption(rect, text);
+            }
         }
         return null;
     }
@@ -449,7 +484,7 @@ public final class ArchitecturePdfRenderer {
                 lines.addAll(DiagramPresentation.relationshipDetails(edge.metadata(), language.german()));
                 lines.addAll(DiagramPresentation.relationshipEvidenceDetails(relationReasons.get(edge.id()), language.german()));
             } else {
-                lines.addAll(DiagramPresentation.canonicalRelationshipDetails(canonical, edge.id()));
+                lines.addAll(DiagramPresentation.canonicalRelationshipDetails(canonical, edge.id(), language));
             }
             entries.add(new Entry(edge.id(), lines));
         }

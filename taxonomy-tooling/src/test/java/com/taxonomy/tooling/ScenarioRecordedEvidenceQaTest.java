@@ -79,6 +79,19 @@ class ScenarioRecordedEvidenceQaTest {
                 .containsEntry("contentAssertions", 3);
     }
 
+    @Test void renderedScopesRequireBothContributionsAllQuestionsAndExactQuotes() {
+        var incoming = Map.of("contribution", Map.of("text", "Source B", "quote", "Quote B"));
+        var outgoing = Map.of("contribution", Map.of("text", "Source A", "quote", "Quote A", "condition", "Scope A"),
+                "evidence", Map.of("contribution", "Source B", "quote", "Quote B", "condition", "Scope B",
+                        "outcome", "VERIFIED", "necessity", "ALTERNATIVE", "alternativeGroup", "Group A",
+                        "rationale", "Recorded explanation", "question", "Open question?"));
+        var metadata = Map.of("requirementEvidence", List.of(outgoing, incoming));
+        var architecture = Map.<String, Object>of("diagram", Map.of("edges", List.of(Map.of("metadata", metadata))));
+        assertThat(ScenarioDocumentQa.expectedScopedEvidenceText(architecture)).containsExactly(
+                "Source A", "Quote A", "Scope A", "VERIFIED", "ALTERNATIVE", "Source B", "Quote B",
+                "Scope B", "Group A", "Recorded explanation", "Open question?");
+    }
+
     @SuppressWarnings("unchecked")
     private static Map<String, Object> addNodeReasons(Map<String, Object> architecture) {
         var diagram = (Map<String, Object>) architecture.get("diagram");

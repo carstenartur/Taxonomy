@@ -383,7 +383,7 @@
         if (responsibilityDisplay?.enabled() && !displayedAssignments) {
             displayedAssignments = responsibilityDisplay.fromEditor(view);
         }
-        tree.render({elements: view.model.elements, hierarchy: view.hierarchy,
+        tree.render({elements: view.model.elements, hierarchy: view.hierarchy, displayTitles: view.displayTitles,
             selected: selected, query: el('editorSearch').value,
             assignments: responsibilityDisplay?.enabled() ? displayedAssignments : null});
     }
@@ -413,6 +413,7 @@
         var item = selectedElement();
         formBaseline = {};
         el('editorSelection').textContent = item ? item.id : t('editor.newDraft');
+        renderCatalogueEntry(item);
         el('editorType').value = item ? item.type : view.schema.elementTypes[0];
         Object.keys(fieldMap).forEach(function (key) {
             var value = item && (key.startsWith('x-') ? item.extensions[key] : item[key]);
@@ -423,6 +424,18 @@
         var parent = item && view.scene.nodes.find(function (node) { return node.id === item.id; });
         el('editorParent').value = parent && parent.parentId || '';
         el('editorDraft').hidden = true;
+    }
+    function renderCatalogueEntry(item) {
+        var details = el('editorCatalogue');
+        if (!details) return;
+        var texts = view.catalogueTexts || {};
+        var source = item && Object.hasOwn(texts, item.id) ? texts[item.id] : null;
+        details.hidden = !source;
+        el('editorCatalogueTitle').textContent = source?.title || '';
+        el('editorCatalogueOriginal').textContent = source?.originalTitle ? ' (' + source.originalTitle + ')' : '';
+        var description = el('editorCatalogueDescription');
+        description.textContent = source?.description || '';
+        description.lang = source?.descriptionLanguage || '';
     }
     function selectElement(id, fromHistory) {
         if (!active || busy || loading || !view) return false;
@@ -485,7 +498,8 @@
     }
     function renderRelationTargets() {
         relationTargets.replaceChildren();
-        legalRelationTargets().forEach(function (target) { option(relationTargets, target.id, target.title || target.id); });
+        legalRelationTargets().forEach(function (target) { option(relationTargets, target.id,
+            Object.hasOwn(view.displayTitles || {}, target.id) ? view.displayTitles[target.id] : target.title || target.id); });
         validateRelationTarget();
     }
     function renderRelationChoices() {
@@ -911,7 +925,11 @@
         active = false; renderer.setActive(false); generation++; loader?.abort(); loading = false; window.TaxonomyArchitectureLifecycle?.suspend?.(); focusPanel.setLocked(true); permissions();
     }, canLeave:canLeave, hasDraft:hasDraft, getSource:getSource, getData:function () { return view; },
         getDiagram:function () { return renderer; }, select:selectElement,restoreUrl:function(){linkSelection(true);},
-        openLens:function () { el('editorLensTitle').scrollIntoView({block:'nearest'}); el('editorLensEnabled').focus(); }
+        openLens:function () {
+            var title = el('editorLensTitle'), enable = el('editorLensEnabled');
+            title.scrollIntoView({block:'nearest'});
+            (enable.disabled ? title : enable).focus({preventScroll:true});
+        }
     };
     root.__architectureEditor = instance;
     return instance;

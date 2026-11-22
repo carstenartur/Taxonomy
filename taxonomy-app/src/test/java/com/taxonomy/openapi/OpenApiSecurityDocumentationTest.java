@@ -200,7 +200,7 @@ class OpenApiSecurityDocumentationTest {
 
     @Test
     void optionalModelInvestigationsAreDocumentedAsCompleteExecutionOperations() {
-        for (String path : java.util.List.of("/api/architecture/focus/suggestions", "/api/architecture/editor/focus/suggestions",
+        for (String path : java.util.List.of("/api/architecture/focus/suggestions", "/api/architecture/editor/focus/suggestions", "/api/architecture/dialogue",
                 "/api/documents/extract-ai", "/api/documents/map-regulation")) {
             var operation = document(true, new Paths().addPathItem(path, new PathItem().post(new Operation())))
                     .getPaths().get(path).getPost();

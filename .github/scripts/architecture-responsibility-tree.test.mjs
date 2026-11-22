@@ -69,6 +69,19 @@ test('opens the selected catalogue path, keeps repeated titles distinct, and res
     assert.equal(f.by('selectId', 'BR-1081'), undefined);
 });
 
+test('German projected titles are searchable alongside the authored catalogue title', () => {
+    const f = fixture();
+    const displayTitles = {'BR-1081': 'Medizinische Beratung'};
+    const render = query => f.tree.render({elements: roles, hierarchy, displayTitles, query});
+    render('medizinische beratung');
+    assert.ok(f.by('selectId', 'BR-1081'));
+    assert.ok(f.all().some(node => node.textContent === 'Medizinische Beratung'));
+    assert.equal(f.by('selectId', 'BR-1081').title, 'Medical Advisor Roles');
+    assert.equal(f.by('selectId', 'BR-1081').getAttribute('aria-description'), 'Medical Advisor Roles');
+    render('medical advisor');
+    assert.ok(f.by('selectId', 'BR-1081'));
+});
+
 test('search shows matching titles and ancestors and restores user expansion after clearing', () => {
     const f = fixture();
     const render = query => f.tree.render({elements:roles, hierarchy, query});

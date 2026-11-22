@@ -85,7 +85,7 @@
     window.TaxonomyArchitectureWorkspaceController = Object.freeze({create:create, parseSource:parseSource, urlFor:urlFor});
     var root = document.getElementById('architectureWorkspace');
     if (!root) return;
-    var initial = parseSource(new URL(window.location.href)), editor, snapshot, lens, workspace;
+    var initial = parseSource(new URL(window.location.href)), editor, snapshot, lens, dialogue, workspace;
     var initialScope = Object.assign({}, window.TaxonomyArchitectureWorkflow?.getScope?.());
     var analysisScope = initial.kind === 'analysis' ? Object.assign({},initialScope) : {};
     if (initial.kind === 'analysis') ['repositoryId','workspaceId','workspaceScopeKey','branch','projectId','requirementId','requirementVersionId'].forEach(function (key) {
@@ -301,6 +301,7 @@
                 pendingAnalysisHistory = null;
                 analysisUrlSource = explicitAnalysisUrlSource(settings.source || settings);
             }
+            dialogue?.reset();
             lens?.suspend();
             // Keep the old branch's proposals hidden until the selected source has been published.
             const panel = el('proposalsPanel');
@@ -362,9 +363,28 @@
     workspace.openLens = function () {
         if (workspace.getSource().kind === 'working') editor?.openLens(); else { lens?.select(workspace.getSource().element);lens?.open(); }
     };
+    el('architectureLensAction')?.addEventListener('click', async function () {
+        try {
+            if (sourceActivation) await awaitSelectedSource(sourceActivation);
+            if (workspace.isActive()) workspace.openLens();
+        } catch (error) {
+            report(error);
+        }
+    });
     workspace.restoreUrl=function(){pendingAnalysisHistory=null;writeUrl(workspace.getSource(),{replace:true});};
     window.TaxonomyArchitectureWorkspace = workspace;
     if (window.TaxonomyArchitectureSourceLens) lens = window.TaxonomyArchitectureSourceLens.create({root:el('architectureSourceLens'),workspace:workspace,idPrefix:'architectureSourceLens'});
+    if (window.TaxonomyArchitectureDialogue) dialogue = window.TaxonomyArchitectureDialogue.mount(function () {
+        if (!workspace.isActive()) return null;
+        if (workspace.getSource().kind !== 'working') {
+            var source = lens?.dialoguePin();
+            return source ? {source:source} : null;
+        }
+        var document = workspace.getData()?.document;
+        const current = document?.source === 'WORKSPACE_REVISION' && document.projectionState === 'READY';
+        const checkpoint = document?.source === 'GIT_CHECKPOINT' && /^[0-9a-f]{40}$/.test(document.context?.commit);
+        return current || checkpoint ? {context:document.context} : null;
+    });
     function open(kind, settings) {
         return workspace.open(kind,settings).catch(function (error) {
             var target = el('architectureWorkspaceError'); target.textContent = error.message; target.hidden = false;
@@ -379,7 +399,7 @@
             var keepSelected = event.detail.page === 'graph' && selected.kind === 'working'
                 && /^[a-f0-9]{40}$/.test(selected.commit || '') && visible
                 && ['repositoryId','workspaceScopeKey','branch','commit'].every(function (key) { return selected[key] === visible[key]; });
-            workspace.suspend(); positionSnapshotContext(false); lens?.suspend(); window.TaxonomyArchitectureLifecycle?.suspend?.();
+            dialogue?.reset(); workspace.suspend(); positionSnapshotContext(false); lens?.suspend(); window.TaxonomyArchitectureLifecycle?.suspend?.();
             if (keepSelected) {
                 activateSavedModel(selected, event.detail.page);
             } else restoreAnalysisPage(event.detail.page);

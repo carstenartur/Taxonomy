@@ -308,9 +308,12 @@
                             <a id="analysisLensAction" href="#architecture" class="btn btn-sm btn-outline-primary"
                                data-taxonomy-feature="architecture"
                                th:text="#{analysis.guide.lens}">Architecture focus lens</a>
+                            <a th:href="@{/(lang=${#locale.language})} + '#help/ARCHITECTURE_EDITOR/architecture-delivery-guide'"
+                               target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-link"
+                               th:text="#{editor.deliveryGuide}">Illustrated architecture delivery guide</a>
                         </div>
                         <p id="analysisReformulationHint" class="small text-muted mt-2 mb-1"></p>
-                        <p class="small text-muted mb-0" th:text="#{analysis.guide.lens.hint}">The lens investigates the editable workspace model. Analysis proposals require review before adoption.</p>
+                        <p class="small text-muted mb-0" th:text="#{analysis.guide.lens.hint}">Investigate relationships in this analysis. Review its proposals before adopting them into the working architecture.</p>
                         <p id="analysisGuideError" class="small text-danger mt-2 mb-0" role="alert" hidden></p>
                     </div>
                 </section>
@@ -533,11 +536,15 @@
                     <div class="architecture-source-toolbar">
                         <h2 id="architectureWorkspaceTitle" th:text="#{nav.architecture}">Architecture</h2>
                         <label for="architectureSource" th:text="#{architecture.workspace.source}">Displayed architecture</label>
-                        <select id="architectureSource" class="form-select" aria-describedby="architectureSourceDescription">
-                            <option value="analysis" th:text="#{architecture.workspace.analysis}">Current analysis</option>
-                            <option value="snapshot" th:text="#{architecture.workspace.snapshot}">Saved analysis snapshot</option>
-                            <option value="working" th:text="#{architecture.workspace.working}">Working architecture</option>
-                        </select>
+                        <div class="architecture-source-selection">
+                            <select id="architectureSource" class="form-select" aria-describedby="architectureSourceDescription">
+                                <option value="analysis" th:text="#{architecture.workspace.analysis}">Current analysis</option>
+                                <option value="snapshot" th:text="#{architecture.workspace.snapshot}">Saved analysis snapshot</option>
+                                <option value="working" th:text="#{architecture.workspace.working}">Working architecture</option>
+                            </select>
+                            <button id="architectureLensAction" type="button" class="btn btn-outline-primary"
+                                    th:text="#{analysis.guide.lens}">Architecture focus lens</button>
+                        </div>
                     </div>
                     <p id="architectureSourceDescription" class="text-muted" th:text="#{architecture.workspace.analysis.help}">The architecture from the current analysis. Your input and results stay available when switching sources.</p>
                     <p id="architectureWorkspaceError" role="alert" hidden></p>
@@ -561,8 +568,6 @@
                 <div id="subtab-arch-overview">
                 <div class="view-help"><a th:replace="~{fragments/context-help :: button('USER_GUIDE', 'guide-section-7')}"></a></div>
                 <div class="d-flex flex-wrap gap-2 mb-3">
-                    <a id="architectureLensAction" href="#architecture" class="btn btn-outline-primary"
-                        th:text="#{analysis.guide.lens}">Architecture focus lens</a>
                     <a href="#analysisNextSteps" class="btn btn-outline-secondary" id="architectureNextStepsAction"
                        th:text="#{analysis.guide.title}">Next steps</a>
                 </div>
@@ -806,6 +811,17 @@
                         <div id="workingProposalInbox"></div>
                         <section th:replace="~{architecture-editor :: surface}"></section>
                     </section>
+                    <details id="architectureDialogue" class="my-2" data-taxonomy-feature="analysis">
+                        <summary th:text="#{dialogue.title}">Ask about this architecture</summary>
+                        <p th:text="#{dialogue.help}">Ask the configured AI about this model. Each answer shows the model facts used.</p>
+                        <ol id="architectureDialogueTurns"></ol>
+                        <form id="architectureDialogueForm">
+                            <label for="architectureDialogueQuestion" th:text="#{dialogue.question}">Question or follow-up</label>
+                            <textarea id="architectureDialogueQuestion" rows="2" maxlength="1000" required class="form-control"></textarea>
+                            <button type="submit" id="architectureDialogueSend" class="btn btn-primary btn-sm mt-2" th:text="#{dialogue.ask}">Ask</button>
+                        </form>
+                        <p id="architectureDialogueStatus" role="status" aria-live="polite"></p>
+                    </details>
                     <section th:replace="~{fragments/architecture-source-lens :: panel('architectureSourceLens')}"></section>
                 </section><!-- /architectureWorkspace -->
             </div><!-- /tab-architecture -->
@@ -2099,6 +2115,7 @@
 <script th:src="@{/js/architecture-workbench-export.js}" src="/js/architecture-workbench-export.js"></script>
 <script th:src="@{/js/api/architecture-source-focus-api.js}" src="/js/api/architecture-source-focus-api.js"></script>
 <script th:src="@{/js/shared/architecture-source-lens.js}" src="/js/shared/architecture-source-lens.js"></script>
+<script th:src="@{/js/shared/architecture-dialogue.js}" src="/js/shared/architecture-dialogue.js"></script>
 <script th:src="@{/js/shared/architecture-workspace.js}" src="/js/shared/architecture-workspace.js"></script>
 <script th:src="@{/js/core/analysis-profile-choice.js}" src="/js/core/analysis-profile-choice.js"></script>
 

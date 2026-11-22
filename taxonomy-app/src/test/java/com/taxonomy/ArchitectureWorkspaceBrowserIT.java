@@ -258,6 +258,39 @@ class ArchitectureWorkspaceBrowserIT {
         assertThat(page.driver().executeScript("return window.__integrationErrors;")).isEqualTo(List.of());
     }
 
+    @Test
+    void dialogueFollowsTheDisplayedStandAndClearsHistoryWhenSwitching() {
+        open("de", 1100);
+        var requests = new java.util.ArrayList<Map<String,Object>>();
+        page.route("POST", "/taxonomy/api/architecture/dialogue", req -> {
+            var body = read(req.body()); requests.add(body);
+            return json(200, Map.of("provider", "test-provider", "sourceHash", "a".repeat(64),
+                    "outcome", "ANSWERED", "suppliedFacts", 1, "totalFacts", 2,
+                    "statements", List.of(Map.of("text", "Das Modell beschreibt CP-1000.", "evidence",
+                            List.of(Map.of("source", "element CP-1000", "text", "Working capability B"))))));
+        });
+        source("working", scope("repository-B", "private-B", "draft/B"));
+        page.driver().findElement(By.cssSelector("#architectureDialogue > summary")).click();
+        var input = page.driver().findElement(By.id("architectureDialogueQuestion"));
+        var send = page.driver().findElement(By.id("architectureDialogueSend"));
+        input.sendKeys("Was ist CP-1000?"); send.click();
+        wait.until(ExpectedConditions.numberOfElementsToBe(By.cssSelector("#architectureDialogueTurns > li"), 1));
+        page.driver().findElement(By.cssSelector("#architectureDialogueTurns summary")).click();
+        assertThat(page.driver().findElement(By.cssSelector("#architectureDialogueTurns blockquote")).getText()).contains("Working capability B");
+        input.sendKeys("Welche Belege gibt es dafür?"); send.click();
+        wait.until(ExpectedConditions.numberOfElementsToBe(By.cssSelector("#architectureDialogueTurns > li"), 2));
+        assertThat(requests.get(1)).containsEntry("language", "de").containsEntry("sourceHash", "a".repeat(64));
+        assertThat(requests.get(1).get("history").toString()).contains("Was ist CP-1000?", "Das Modell beschreibt");
+        source("snapshot", snapshotSource("private-B"));
+        assertThat(page.driver().findElements(By.cssSelector("#architectureDialogueTurns > li"))).isEmpty();
+        wait.until(driver -> page.driver().findElement(By.id("architectureSourceLensSource")).getText().contains("snapshot-B"));
+        input.sendKeys("Was steht im Snapshot?"); send.click();
+        wait.until(ExpectedConditions.numberOfElementsToBe(By.cssSelector("#architectureDialogueTurns > li"), 1));
+        assertThat(requests.get(2)).containsEntry("history", List.of()).containsEntry("sourceHash", null);
+        assertThat(requests.get(2).get("source").toString()).contains("snapshot-B");
+        noScriptErrors();
+    }
+
     @ParameterizedTest @ValueSource(strings = {"en", "de"})
     void ownerOptsIntoTheExistingWorkingCopyWithAnExplicitPermissionNotice(String locale) {
         open(locale, 1440);

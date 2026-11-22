@@ -447,14 +447,14 @@
       "fromPackage": "com.taxonomy.composition.architecture",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.dto",
-      "classDependencyCount": 1
+      "classDependencyCount": 2
     },
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.architecture",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.operation",
-      "classDependencyCount": 2
+      "classDependencyCount": 4
     },
     {
       "fromContext": "app-composition",
@@ -468,7 +468,7 @@
       "fromPackage": "com.taxonomy.composition.architecture",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.service",
-      "classDependencyCount": 6
+      "classDependencyCount": 13
     },
     {
       "fromContext": "app-composition",
@@ -524,7 +524,7 @@
       "fromPackage": "com.taxonomy.composition.architecture",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.editor",
-      "classDependencyCount": 46
+      "classDependencyCount": 49
     },
     {
       "fromContext": "app-composition",
@@ -559,7 +559,7 @@
       "fromPackage": "com.taxonomy.composition.architecture",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 39
+      "classDependencyCount": 41
     },
     {
       "fromContext": "app-composition",
@@ -1217,7 +1217,7 @@
       "fromPackage": "com.taxonomy.architecture.decision",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.service",
-      "classDependencyCount": 3
+      "classDependencyCount": 4
     },
     {
       "fromContext": "architecture",

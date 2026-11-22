@@ -55,6 +55,8 @@ class TaxDslExportClosureTest {
         var standalone = node("IP-standalone", "IP", 2);
         standalone.setParentCode("IP-parent");
         standalone.setSortOrder(13);
+        standalone.setUuid("{4EC1702A-929E-42A8-807B-CB7C82E1AB47}");
+        standalone.setNameDe("Einzelprodukt");
         var exporter = exporter(List.of(standalone), List.of());
         var parser = new com.taxonomy.dsl.parser.TaxDslParser();
         var seed = parser.parse(exporter.newProject("project"));
@@ -65,6 +67,9 @@ class TaxDslExportClosureTest {
         var single = catalogue.blocksOfKind("element").getFirst();
         assertEquals("InformationProduct", new AstToModelMapper().map(catalogue).getElements().getFirst().getType());
         assertEquals("IP-parent", single.property("x-catalogue-parent"));
+        assertEquals("4ec1702a-929e-42a8-807b-cb7c82e1ab47", single.property("x-catalogue-uuid"));
+        assertEquals("Einzelprodukt", single.property("x-catalogue-title-de"));
+        assertNull(single.property("x-admbw-catalogue-guid"));
         assertEquals("13", single.property("x-catalogue-order"));
     }
 

@@ -186,7 +186,7 @@ test('workspaceId aliases are normalized before a retained dirty editor decides 
 async function mountedWorkspace(initialKind='analysis',loaderOnly=false,options={}){
     const events=new Map(),windowEvents=new Map(),nodes=new Map(),scopes=[],metadata=[],headers=[];let ready;
     const readyPromise=new Promise(resolve=>ready=resolve),loaderEvents=new Map();
-    const node=id=>{if(!nodes.has(id))nodes.set(id,{hidden:false,value:'',textContent:'',addEventListener(){}});return nodes.get(id);};
+    const node=id=>{if(!nodes.has(id))nodes.set(id,{hidden:false,value:'',textContent:'',addEventListener(name,handler){this[name]=handler;}});return nodes.get(id);};
     const document={getElementById:node,querySelector:selector=>selector==='script[data-taxonomy-analysis-session]'&&loaderOnly?{
         addEventListener:(name,callback)=>loaderEvents.set(name,callback),removeEventListener:(name)=>loaderEvents.delete(name)
     }:null,addEventListener:(name,callback)=>events.set(name,callback),dispatchEvent(){}};
@@ -208,7 +208,7 @@ async function mountedWorkspace(initialKind='analysis',loaderOnly=false,options=
     vm.runInContext(await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/shared/architecture-workspace.js',import.meta.url),'utf8'),context);
     const settle=()=>new Promise(resolve=>setImmediate(resolve));
     await settle();
-    return {context,scopes,metadata,headers,settle,activatePage:page=>{
+    return {context,scopes,metadata,headers,settle,node,activatePage:page=>{
         // The actual page activator commits its hash before publishing this event.
         context.history.replaceState(null,'','#'+page);
         events.get('taxonomy:page-activated')({detail:{page}});
@@ -217,6 +217,31 @@ async function mountedWorkspace(initialKind='analysis',loaderOnly=false,options=
         ready:async()=>{context.TaxonomyAnalysisSession={whenInitialized:()=>Promise.resolve(true),state:()=>({workspaceId:'A',version:7})};
             context.TaxonomyAnalysisSessionReady=readyPromise;loaderEvents.get('load')?.();ready(true);await settle();}};
 }
+test('the architecture toolbar waits for the currently selected snapshot before opening its lens', async () => {
+    const lens = [], snapshot = {kind:'snapshot', snapshotId:'saved-B', element:'service'};
+    let activateSnapshot;
+    const snapshotPending = new Promise(resolve => { activateSnapshot = resolve; });
+    const f = await mountedWorkspace('analysis', false, {beforeMount(context) {
+        context.TaxonomyArchitectureSnapshot = {mount:() => ({
+            activate:() => snapshotPending, getSource:() => snapshot, getData:()=>null, getDiagram:()=>null,
+        })};
+        context.TaxonomyArchitectureSourceLens = {create:() => ({
+            suspend() {}, activate() {}, select:id=>lens.push(id), open:()=>lens.push('opened'),
+        })};
+    }});
+    await f.ready();
+    const workspace = f.context.TaxonomyArchitectureWorkspace;
+    const activation = workspace.open('snapshot', {source:snapshot});
+    await f.settle();
+    const opening = f.node('architectureLensAction').click();
+    await f.settle();
+    assert.deepEqual(lens,[]);
+    activateSnapshot();
+    await activation;
+    await opening;
+    assert.equal(workspace.getSource().snapshotId,'saved-B');
+    assert.deepEqual(lens,['service','opened']);
+});
 for(const loaderOnly of [false,true])test('analysis waits for '+(loaderOnly?'the dynamic session loader':'the session readiness promise')+' before resolving its private source',async()=>{
     const fixture=await mountedWorkspace('analysis',loaderOnly);
     assert.equal(fixture.scopes.some(scope=>scope.workspaceScopeKey==='__shared__'),false,'A pending session is not a confirmed shared source');

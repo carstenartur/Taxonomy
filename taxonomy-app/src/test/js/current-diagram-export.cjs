@@ -72,6 +72,33 @@ for (const recordedProvider of ['Recorded provider', null]) {
     });
 }
 
+test('current exchange exports recover only unambiguous UUIDs from the matching analysis tree', async () => {
+    const codes = ['CI-1151', 'BR-1075', 'CI', 'CI-conflict', 'CI-duplicate', 'CI-alias', 'CI-live', 'CI-mismatch'];
+    const view = {includedElements: codes.map(nodeCode => ({nodeCode})), includedRelationships: []};
+    const f = fixture(view);
+    const uuid = '78505b43-d4b8-4d10-8546-b9ecc42f9803';
+    const other = '2da01869-1ab3-49fe-9e3d-5d8667ea5934';
+    const duplicate = '024ea945-e3e8-4087-af6a-7aec8f093c9f';
+    view.includedElements.at(-1).catalogueUuid = uuid;
+    const row = (code, uuid) => ({level: 1, code, uuid});
+    f.api.retainArchitectureCatalogue(view, [{level: 0, code: 'CI', uuid, children: [
+        row('CI-1151', '{' + uuid.toUpperCase() + '}'), row('BR-1075', '57fee725b3fb42479054f2eff238b4b8'),
+        row('CI-conflict', other), row('CI-conflict', 'a0fc02de-ca2a-4d39-aaec-645f79da506b'),
+        row('CI-duplicate', duplicate), row('CI-alias', duplicate), row('CI-mismatch', '59af3b6c-6ae3-400d-ab8d-fb480db23ad8')
+    ]}]);
+    f.state.taxonomyData = [row('CI-live', uuid), row('CI-1151', other)];
+    const pending = f.api.exportStructurizrDsl('original');
+    await Promise.resolve();
+    f.resolve({ok: true, headers: {get: () => 'text/plain'}, blob: async () => new Blob(['workspace {}'])});
+    assert.equal(await pending, true);
+    assert.deepEqual(JSON.parse(f.requests[0].options.body).includedElements,
+        [{nodeCode: 'CI-1151', catalogueUuid: uuid},
+            {nodeCode: 'BR-1075', catalogueUuid: '57fee725-b3fb-4247-9054-f2eff238b4b8'},
+            ...codes.slice(2).map(nodeCode => ({nodeCode}))]);
+    assert.equal(view.includedElements[0].catalogueUuid, undefined);
+    assert.equal(view.includedElements.at(-1).catalogueUuid, uuid);
+});
+
 test('current Mermaid requests the recorded German content language even when the interface is English', async () => {
     const f = fixture();
     f.state.lastAnalysisLanguage = 'de';
@@ -565,4 +592,30 @@ for (const source of [undefined, 'Original view source']) test(`Visio freezes ca
     f.state.lastAnalyzedText = 'A later analysis';
     assert.equal(JSON.parse(f.requests[0].options.body).originalRequirementText, source || 'original');
     f.resolve(binaryResponse()); await work;
+});
+
+test('architecture result cards use the frozen German title and preserve edits and source titles', () => {
+    const first = Object.freeze({nodeCode: 'BP-1016', title: 'Accounting', taxonomySheet: 'BP', relevance: 0.8,
+        catalogueTitles: {en: 'Accounting', de: 'Rechnungswesen'}});
+    const edited = Object.freeze({nodeCode: 'BP-1017', title: 'My process', taxonomySheet: 'BP', relevance: 0.7,
+        catalogueTitles: {en: 'Acquire Data', de: 'Daten beschaffen'}});
+    const state = {currentArchView: {includedElements: [first, edited]}};
+    const tree = {querySelector: () => ({appendChild() {}}), querySelectorAll: () => []};
+    const document = {getElementById: id => id === 'taxonomyTree' ? tree : null,
+        createElement: () => ({setAttribute() {}})};
+    let language = 'de';
+    const i18n = {getLocale: () => language, t: key => key};
+    const window = {TaxonomyState: state, TaxonomyI18n: i18n};
+    const script = readFileSync(path.resolve(__dirname, '../../main/resources/static/js/core/taxonomy-scoring.js'), 'utf8');
+    vm.runInNewContext(script, {window, document, TaxonomyI18n: i18n, TaxonomyUtils: {escapeHtml: String}});
+    window.TaxonomyScoring.renderSummaryView([], {});
+    assert.match(tree.innerHTML, /Rechnungswesen/);
+    assert.match(tree.innerHTML, /My process/);
+    assert.match(tree.innerHTML, /title="[^"]*Rechnungswesen \(Accounting\)[^"]*"/);
+    assert.doesNotMatch(tree.innerHTML, /Daten beschaffen|Acquire Data/);
+    language = 'en';
+    window.TaxonomyScoring.renderSummaryView([], {});
+    assert.match(tree.innerHTML, /Accounting/);
+    assert.doesNotMatch(tree.innerHTML, /Rechnungswesen/);
+    assert.equal(first.title, 'Accounting');
 });

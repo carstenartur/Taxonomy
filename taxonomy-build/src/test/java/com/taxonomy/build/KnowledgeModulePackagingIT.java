@@ -31,7 +31,7 @@ class KnowledgeModulePackagingIT {
             var ownedClasses = new HashSet<String>();
             var ownedResources = new HashSet<String>();
             var catalogueResources = List.of("data/C3_Taxonomy_Catalogue_25AUG2025.xlsx",
-                    "data/nato-taxonomy.json", "data/relations.csv");
+                    "data/bilingual/C3_Taxonomy_Catalogue_25AUG2025.xlsx", "data/nato-taxonomy.json", "data/relations.csv");
             for (String name : names) {
                 if (!name.startsWith("BOOT-INF/lib/") || !name.endsWith(".jar")) {
                     continue;

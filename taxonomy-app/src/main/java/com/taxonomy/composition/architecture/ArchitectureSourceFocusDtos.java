@@ -6,6 +6,10 @@ import java.util.*;
 /** Exact retained-source pins; a source is never an editable semantic revision. */
 public final class ArchitectureSourceFocusDtos {
     private ArchitectureSourceFocusDtos() { }
+
+    /** Internal read model for the displayed retained or workspace source. */
+    record ResolvedModel(com.taxonomy.dsl.model.CanonicalArchitectureModel model, String original, String hash,
+                         com.taxonomy.dto.RelationSearchReport report) { }
     @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
     public record Source(String kind, String repositoryId, String workspaceScopeKey, String branch,
                          Long version, Long projectId, Long requirementId, Long requirementVersionId, String snapshotId,

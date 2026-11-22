@@ -6,6 +6,21 @@ import org.junit.jupiter.api.Test;
 import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 class DiagramProvenanceDigestTest {
+    @Test void retainedCatalogueUuidChangesTheDigestAndMustMatchTheScene() {
+        var plain = graphWithResponsibility(null);
+        var source = plain.nodes().getFirst();
+        var node = new DiagramNode(source.id(), source.label(), source.type(), source.relevance(), source.anchor(),
+                source.layer(), source.depth(), source.selectedForImpact(), null, false, null, null,
+                "78505b43-d4b8-4d10-8546-b9ecc42f9803");
+        var graph = new DiagramModel(plain.title(), List.of(node), List.of(), plain.layout());
+        assertNotEquals(ArchitectureReportDocument.graphSha256(plain), ArchitectureReportDocument.graphSha256(graph));
+        var withoutUuid = new DiagramSceneNode(node.id(), node.label(), node.type(), node.relevance(), node.anchor(),
+                node.layer(), node.depth(), node.selectedForImpact(), null, false, 0, 0, 100, 100);
+        var scene = new DiagramScene("T", 200, 200, "LR", List.of(withoutUuid), List.of());
+        assertThrows(IllegalArgumentException.class,
+                () -> com.taxonomy.reporting.api.document.ArchitectureEvidence.validateEvidence(graph, scene));
+    }
+
     @Test void capturedResponsibilityParticipatesInTheFrozenGraphDigest() {
         var original = new TaxonomyResponsibilityLookup.Assignment("unit-42", "Operations", "CP-1000");
         var renamed = new TaxonomyResponsibilityLookup.Assignment("unit-42", "Internal operations", "CP-1000");

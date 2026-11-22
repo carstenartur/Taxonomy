@@ -121,7 +121,7 @@ datalist.textContent = '';
 (nodes || []).forEach(function (node) {
 const code = String(node.code || '').toUpperCase();
 if (!code) return;
-const name = node.nameEn || node.nameDe || code;
+const name = (locale === 'de' && node.nameDe) || node.nameEn || node.name || code;
 nodeCache.set(code, { code: code, name: name });
 const option = document.createElement('option');
 const context = [name, node.taxonomyRoot];

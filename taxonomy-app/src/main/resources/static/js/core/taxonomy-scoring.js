@@ -113,6 +113,19 @@
         return String(locale || '').toLowerCase().startsWith('de');
     }
 
+    function displayArchitectureElements(elements) {
+        if (!isGermanLocale()) return elements;
+        return elements.map(function (element) {
+            var titles = element.catalogueTitles;
+            return titles && element.title === titles.en && typeof titles.de === 'string' && titles.de.trim()
+                ? Object.assign({}, element, {title: titles.de, originalTitle: titles.en !== titles.de ? titles.en : null}) : element;
+        });
+    }
+
+    function architectureTitleWithOriginal(element) {
+        return (element.title || '') + (element.originalTitle ? ' (' + element.originalTitle + ')' : '');
+    }
+
     function scoreLabel(code, effective, raw, detail) {
         if (isProductScore(detail)) {
             if (productRelevancePending(detail)) {
@@ -493,6 +506,7 @@
         S.storedBusinessText = text;
         S.lastAnalyzedText = text;
         if (result.architectureView || replacesDerivedEvidence) S.currentArchView = result.architectureView || null;
+        window.TaxonomyExport?.retainArchitectureCatalogue?.(result.architectureView, result.tree);
         B().renderView(S.taxonomyData, S.currentScores);
 
         console.log('[Taxonomy] Analysis result:', result);
@@ -1576,7 +1590,7 @@
         if (el.anchor) nodeClasses += ' impact-node-anchor';
         if (hotspotCodes.has(el.nodeCode)) nodeClasses += ' impact-node-hotspot';
         var opacity = 0.6 + (el.relevance * 0.4);
-        var titleParts = el.nodeCode + ' ' + (el.title || '') + ' — ' + (el.includedBecause || '');
+        var titleParts = el.nodeCode + ' ' + architectureTitleWithOriginal(el) + ' — ' + (el.includedBecause || '');
         if (hotspotCodes.has(el.nodeCode)) {
             titleParts += ' | ⚠️ hotspot: ' + (hotspotReasons[el.nodeCode] || t('analyze.hotspot.risk'));
         }
@@ -1768,7 +1782,7 @@
                 view.notes.map(n => escapeHtml(n)).join('<br>') + '</div>';
         }
 
-        const elements = view.includedElements || [];
+        const elements = displayArchitectureElements(view.includedElements || []);
         const relationships = view.includedRelationships || [];
         const anchors = view.anchors || [];
 
@@ -2326,7 +2340,7 @@
 
         // Project the display only; the saved architecture remains authoritative for exports.
         // "All" also preserves external/legacy elements absent from the current catalogue.
-        var displayElements = view.includedElements;
+        var displayElements = displayArchitectureElements(view.includedElements);
         var displayRelationships = view.includedRelationships || [];
         var displayAnchors = view.anchors || [];
         if (B().isRelevanceFilterActive?.()) {
@@ -2417,7 +2431,7 @@
                 var pct = scoreText(el.relevance * 100);
                 // Use full hierarchy path from backend (e.g. "CP > CP-1000 > CP-1023")
                 var path = el.hierarchyPath || el.nodeCode;
-                var titleParts = [path, el.title || '', el.includedBecause || '']
+                var titleParts = [path, architectureTitleWithOriginal(el), el.includedBecause || '']
                     .filter(function (p) { return p.length > 0; });
                 html += '<button type="button" class="summary-layer-element" aria-pressed="false" aria-controls="summarySelectionDetails" data-code="' + escapeHtml(el.nodeCode) +
                     '" title="' + escapeHtml(titleParts.join(' — ')) + '">';
@@ -2462,7 +2476,7 @@
             details.hidden = false;
             var heading = document.createElement('h3');
             heading.className = 'h6';
-            heading.textContent = code + (selected.title ? ' — ' + selected.title : '');
+            heading.textContent = code + (selected.title ? ' — ' + architectureTitleWithOriginal(selected) : '');
             details.appendChild(heading);
             [selected.hierarchyPath, selected.includedBecause, (S.currentReasons || {})[code]].forEach(function (value) {
                 if (!value) return;

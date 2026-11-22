@@ -867,6 +867,11 @@ public final class ScenarioArchitectureQuality {
                 output.writeDouble(node.path("relevance").asDouble()); output.writeBoolean(node.path("anchor").asBoolean());
                 output.writeInt(node.path("depth").asInt()); output.writeBoolean(node.path("selectedForImpact").asBoolean());
                 String parent = value(node, "parentId"); writeText(output, ids.contains(parent) ? parent : null);
+                String catalogueUuid = value(node, "catalogueUuid");
+                if (catalogueUuid != null) {
+                    writeText(output, "catalogue-uuid-v1");
+                    writeText(output, catalogueUuid);
+                }
             }
             List<JsonNode> edges = nodes(array(graph, "edges")).stream().filter(e -> ids.contains(value(e, "sourceId")) && ids.contains(value(e, "targetId")))
                     .sorted(Comparator.comparing(e -> text(e, "id"))).toList();

@@ -320,6 +320,10 @@ public class ArchitectureSnapshotExportService {
                     parentId != null && semanticNodeIds.contains(parentId)
                             ? parentId
                             : null);
+            if (node.catalogueUuid() != null) {
+                putText(digest, "catalogue-uuid-v1");
+                putText(digest, node.catalogueUuid());
+            }
         }
 
         List<DiagramEdge> edges = diagram.edges().stream()

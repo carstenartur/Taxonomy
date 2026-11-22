@@ -13,6 +13,7 @@ import com.taxonomy.dsl.command.ArchitectureDslCommands;
 import com.taxonomy.dsl.model.CanonicalArchitectureModel;
 import com.taxonomy.dsl.model.CatalogueDefinition;
 import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
+import org.springframework.context.i18n.LocaleContextHolder;
 import com.taxonomy.dsl.validation.DslValidator;
 import com.taxonomy.dto.TaxonomyResponsibilityLookup.Assignment;
 import com.taxonomy.export.LayeredDiagramLayoutService;
@@ -59,13 +60,14 @@ public class ArchitectureEditorProjection {
     public record SearchEntry(String id, String text) {}
     public record View(ArchitectureEditorService.Document document, CanonicalArchitectureModel model,
                        DiagramScene scene, Schema schema, boolean mayEdit, List<SearchEntry> searchIndex,
-                       WorkspaceCollaborationService.Status collaboration, Map<String, ArchitectureResponsibility.Entry> hierarchy) {
+                       WorkspaceCollaborationService.Status collaboration, Map<String, ArchitectureResponsibility.Entry> hierarchy,
+                       Map<String, String> displayTitles, Map<String, CatalogueDefinitionResolver.SourceText> catalogueTexts) {
         public View(ArchitectureEditorService.Document document, CanonicalArchitectureModel model,
                     DiagramScene scene, Schema schema, boolean mayEdit, List<SearchEntry> searchIndex) {
-            this(document, model, scene, schema, mayEdit, searchIndex, null, Map.of());
+            this(document, model, scene, schema, mayEdit, searchIndex, null, Map.of(), Map.of(), Map.of());
         }
         public View withCollaboration(WorkspaceCollaborationService.Status status) {
-            return new View(document, model, scene, schema, mayEdit, searchIndex, status, hierarchy);
+            return new View(document, model, scene, schema, mayEdit, searchIndex, status, hierarchy, displayTitles, catalogueTexts);
         }
         public ArchitectureBrief.Snapshot getArchitectureBrief() { return ArchitectureBrief.read(model); }
         public Map<String, List<com.taxonomy.dsl.planning.PlanningInformation.View>> getPlanningInformation() {
@@ -105,9 +107,12 @@ public class ArchitectureEditorProjection {
                 : com.taxonomy.dsl.model.CatalogueDefinitionResolver.parentLinks(catalogues.catalogueNodes(model));
         var hierarchy = ArchitectureResponsibility.forEditor(model, architectureParents, catalogueParents);
         var assignments = ArchitectureResponsibility.namedAssignments(model, hierarchy);
-        DiagramModel diagram = selectView(diagram(model, document.context().branch(), catalogue, assignments), model, selectedViewId);
+        String language = LocaleContextHolder.getLocale().getLanguage();
+        var displayTitles = catalogues.translatedTitles(model, language);
+        DiagramModel diagram = selectView(diagram(model, document.context().branch(), catalogue, assignments, displayTitles), model, selectedViewId);
         var referenceModel = layoutReference == null ? null : new ArchitectureDslCommands().model(layoutReference.dsl());
-        DiagramModel reference = referenceModel == null ? null : diagram(referenceModel, document.context().branch(), catalogues.forModel(referenceModel));
+        DiagramModel reference = referenceModel == null ? null : diagram(referenceModel, document.context().branch(),
+                catalogues.forModel(referenceModel), Map.of(), catalogues.translatedTitles(referenceModel, language));
         DiagramScene scene = layout.layout(diagram, strategy, reference);
         var brief = ArchitectureBrief.read(model);
         var declared = catalogue.relationDomains().keySet();
@@ -120,8 +125,8 @@ public class ArchitectureEditorProjection {
                 strategy.id(), layoutRevision);
         return new View(document, model, scene, schema, editable(document, mayEdit),
                 model.getElements().stream().map(element -> new SearchEntry(element.getId(),
-                        (element.getId() + " " + element.getTitle() + " " + element.getType()).toLowerCase(java.util.Locale.ROOT))).toList(), null,
-                hierarchy);
+                        (element.getId() + " " + element.getTitle() + " " + displayTitles.getOrDefault(element.getId(), "") + " " + element.getType()).toLowerCase(java.util.Locale.ROOT))).toList(), null,
+                hierarchy, displayTitles, catalogues.sourceTexts(model, language));
     }
 
     public static boolean editable(ArchitectureEditorService.Document document, boolean mayEdit) {
@@ -150,11 +155,11 @@ public class ArchitectureEditorProjection {
     }
 
     static DiagramModel diagram(CanonicalArchitectureModel model, String branch, CatalogueDefinition catalogue) {
-        return diagram(model, branch, catalogue, Map.of());
+        return diagram(model, branch, catalogue, Map.of(), Map.of());
     }
 
     private static DiagramModel diagram(CanonicalArchitectureModel model, String branch, CatalogueDefinition catalogue,
-                                        Map<String, Assignment> assignments) {
+                                        Map<String, Assignment> assignments, Map<String, String> displayTitles) {
         Map<String, String> parents = new java.util.LinkedHashMap<>();
         model.getRelations().stream().filter(relation -> "CONTAINS".equals(relation.getRelationType()))
                 .forEach(relation -> parents.putIfAbsent(relation.getTargetId(), relation.getSourceId()));
@@ -162,9 +167,10 @@ public class ArchitectureEditorProjection {
         Map<String, Integer> typeRanks = new java.util.HashMap<>();
         for (int rank = 0; rank < elementTypes.size(); rank++) typeRanks.put(elementTypes.get(rank), rank);
         List<DiagramNode> nodes = model.getElements().stream().map(element -> new DiagramNode(
-                element.getId(), element.getTitle(), element.getType(), 0, false,
+                element.getId(), displayTitles.getOrDefault(element.getId(), element.getTitle()), element.getType(), 0, false,
                 typeRanks.getOrDefault(element.getType(), 0), 0, false,
-                parents.get(element.getId()), false, assignments.get(element.getId()))).toList();
+                parents.get(element.getId()), false, assignments.get(element.getId()), null,
+                element.getExtensions().get(com.taxonomy.dsl.model.CatalogueReference.UUID_PROPERTY))).toList();
         List<DiagramEdge> edges = model.getRelations().stream().map(relation -> new DiagramEdge(
                 relation.getSourceId() + " " + relation.getRelationType() + " " + relation.getTargetId(),
                 relation.getSourceId(), relation.getTargetId(), relation.getRelationType(), 0)).toList();

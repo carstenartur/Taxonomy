@@ -5,7 +5,11 @@ import com.taxonomy.extension.api.plugin.PluginInvocation;
 import java.util.List;
 public final class ReformulationDtos {
     private ReformulationDtos(){}
-    public record CreateRequest(Long sourceVersionId,String snapshotId,String language) {}
+    public record CreateRequest(Long sourceVersionId, String snapshotId, String language, Boolean includeAnalysisQuestions) {
+        public CreateRequest(Long sourceVersionId, String snapshotId, String language) {
+            this(sourceVersionId, snapshotId, language, false);
+        }
+    }
     public record SaveDraftRequest(String text,String rationale,AnswerRequest answer,String statementId,StatementRequest statement) {
         public SaveDraftRequest(String text,String rationale) {this(text,rationale,null,null,null);}
     }

@@ -7,6 +7,10 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.*;
 
 class AnalysisSnapshotAdoptionTest {
+    @Test void retainsTheCompactOriginalUuidOfTheCatalogueBusinessRole() {
+        assertThat(com.taxonomy.dsl.model.CatalogueReference.from("dbae351d4be84e9eb3865be83c73b9b4", null, null).uuid())
+                .isEqualTo("dbae351d-4be8-4e9e-b386-5be83c73b9b4");
+    }
     private final ArchitectureDslCommands dsl = new ArchitectureDslCommands();
     private final RelationKey relation = new RelationKey("system", "CONTAINS", "component");
     private AdoptAnalysisSnapshot adoption(String fingerprint) {
@@ -52,6 +56,24 @@ class AnalysisSnapshotAdoptionTest {
         var undo = dsl.inverse(after, before, after).dsl();
         assertThat(undo).isEqualTo(before);
     }
+    @Test void originalCatalogueIdentitySurvivesAdoptionAndCannotBeReassignedToAnotherSource() {
+        String first = "4ec1702a-929e-42a8-807b-cb7c82e1ab47";
+        var reference = com.taxonomy.dsl.model.CatalogueReference.from(first, "Accounting", "Buchhaltung");
+        var input = new AdoptAnalysisSnapshot("analysis-accounting", "Analysis", "", "a".repeat(64),
+                List.of(new SnapshotElement("accounts", "Component", "Accounting", "", null, reference)), List.of(), Map.of());
+        String after = dsl.apply("", input).dsl();
+        var adopted = dsl.model(after).findElement("accounts").orElseThrow();
+        assertThat(adopted.getExtensions()).containsEntry("x-catalogue-uuid", first)
+                .doesNotContainKey("x-admbw-catalogue-guid");
+        assertThat(com.taxonomy.dsl.model.CatalogueReference.displayTitle(adopted, "de")).isEqualTo("Buchhaltung");
+        adopted.setTitle("Kostenstelle");
+        assertThat(com.taxonomy.dsl.model.CatalogueReference.displayTitle(adopted, "de")).isEqualTo("Kostenstelle");
+        var unrelated = com.taxonomy.dsl.model.CatalogueReference.from("d3483d54-ed70-420e-8da9-f4851258cb65", "Accounting", null);
+        var conflict = new AdoptAnalysisSnapshot("analysis-other", "Analysis", "", "b".repeat(64),
+                List.of(new SnapshotElement("accounts", "Component", "Accounting", "", null, unrelated)), List.of(), Map.of());
+        assertCode(() -> dsl.apply(after, conflict), "SNAPSHOT_IDENTITY_CONFLICT");
+    }
+
     @Test void newElementsCarryTheFrozenUnitAndExistingLocalAssignmentsStayInPlace() {
         String before = """
                 organization local {

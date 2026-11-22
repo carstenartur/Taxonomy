@@ -136,6 +136,28 @@ class PartialArchitectureProjectionAnchorTest {
         assertThat(result.getScores()).containsEntry("BP-1000", 100d);
     }
 
+    @Test
+    void retainsOriginalCatalogueTitlesForBothNewAndExistingEvidenceElements() {
+        var source = node("BP-1016", "BP", "BP", 2, "Accounting");
+        source.setNameDe("Rechnungswesen");
+        var other = node("BP-1017", "BP", "BP", 2, "Acquire Data");
+        other.setNameDe("Daten beschaffen");
+        var existing = new RequirementElementView();
+        existing.setNodeCode(other.getCode());
+        existing.setTaxonomySheet("BP");
+        existing.setTitle("My revised title");
+        existing.setHierarchyPath("BP > BP-1017");
+        var view = new RequirementArchitectureView();
+        view.getIncludedElements().add(existing);
+        var result = assessment(Map.of(source.getCode(), 90d, other.getCode(), 89d), List.of(source, other));
+        PartialArchitectureProjection.complete(result, view, 10);
+        assertThat(view.getIncludedElements()).extracting(element -> element.displayTitle(true))
+                .containsExactlyInAnyOrder("Rechnungswesen", "My revised title");
+        assertThat(existing.getCatalogueTitles().de()).isEqualTo("Daten beschaffen");
+        assertThat(view.getIncludedElements()).extracting(RequirementElementView::getTitle)
+                .containsExactlyInAnyOrder("Accounting", "My revised title");
+    }
+
     private static AnalysisResult assessment(Map<String, Double> scores, List<TaxonomyNodeDto> tree) {
         var result = new AnalysisResult(scores, tree);
         result.setStatus("PARTIAL");

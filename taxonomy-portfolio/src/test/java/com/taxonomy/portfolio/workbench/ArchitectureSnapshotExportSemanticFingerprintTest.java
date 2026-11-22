@@ -79,6 +79,23 @@ class ArchitectureSnapshotExportSemanticFingerprintTest {
         verify(diagramExportService).exportAsVisio(org.mockito.ArgumentMatchers.eq(grouped), org.mockito.ArgumentMatchers.any());
     }
 
+    @Test void retainedCatalogueUuidParticipatesInTheSemanticFingerprint() {
+        DiagramModel plain = plainDiagram();
+        DiagramNode source = plain.nodes().getFirst();
+        DiagramNode identified = new DiagramNode(source.id(), source.label(), source.type(), source.relevance(),
+                source.anchor(), source.layer(), source.depth(), source.selectedForImpact(), source.parentId(),
+                source.container(), source.responsibility(), source.missingMeasurements(),
+                "4726e390-d42b-4dc4-bc4a-a259045fd10d");
+        DiagramModel graph = new DiagramModel(plain.title(), List.of(identified, plain.nodes().getLast()),
+                plain.edges(), plain.layout());
+        when(workbenchService.load(PROJECT_ID, "snapshot-identified", "alice", CONTEXT))
+                .thenReturn(projection("snapshot-identified", graph));
+        when(diagramExportService.exportAsArchiMate(org.mockito.ArgumentMatchers.eq(graph),
+                org.mockito.ArgumentMatchers.any())).thenReturn(new byte[]{1});
+        assertThat(service.exportArchiMate(PROJECT_ID, "snapshot-identified", "alice", CONTEXT).canonicalGraphSha256())
+                .isNotEqualTo(PLAIN_SEMANTIC_GRAPH_SHA256);
+    }
+
     private static DiagramModel plainDiagram() {
         return new DiagramModel(
                 "Plain view",

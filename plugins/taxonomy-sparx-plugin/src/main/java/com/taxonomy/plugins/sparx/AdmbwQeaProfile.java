@@ -6,6 +6,7 @@ import com.taxonomy.extension.api.integration.AdmbwQeaExport.Element;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import com.taxonomy.sparx.mapping.AdmbwSourceProfile;
 import java.util.Set;
 
@@ -22,7 +23,8 @@ final class AdmbwQeaProfile {
     /** Source objects available for inspection. Only catalogue types can be bound by this writer. */
     static final Set<String> REFERENCE_TYPES = Set.of("Capability", "OperationalArchitecture", "OperationalRole",
             "CapabilityConfiguration", "ResourceRole");
-    static final String REFERENCE_FILTER = "stereotype IN (" + REFERENCE_TYPES.stream().sorted()
+    static final String REFERENCE_FILTER = "stereotype IN (" + Stream.concat(REFERENCE_TYPES.stream(),
+            Stream.of("ServiceSpecification")).sorted()
             .map(type -> "'" + type + "'").collect(Collectors.joining(",")) + ")";
 
     static boolean nativeIdentity(QeaDatabase.Row object, String stereotype, List<QeaDatabase.Row> xrefs) {
@@ -46,6 +48,8 @@ final class AdmbwQeaProfile {
         }
         if (!catalogue(stereotype) && element.catalogueGuid() != null)
             throw fail("QEA_ADMBW_ELEMENT", "Only supported catalogue elements can refer to an existing EA GUID");
+        if (!element.assessedTags().isEmpty() && !requirement(stereotype))
+            throw fail("QEA_ADMBW_REQUIREMENT", "Only R7 requirements can carry assessment tags");
         if (requirement(stereotype) && (element.requirementVersion() == null || element.requirementVersion() < 1
                 || element.requirementContentHash() == null || !element.requirementContentHash().matches("[a-f0-9]{64}")))
             throw fail("QEA_ADMBW_REQUIREMENT", "The requirement needs a retained version and content SHA-256");

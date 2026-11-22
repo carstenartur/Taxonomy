@@ -126,7 +126,7 @@ class ApiPermissionsSecurityTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/api/architecture/focus/suggestions", "/api/architecture/editor/focus/suggestions",
+    @ValueSource(strings = {"/api/architecture/focus/suggestions", "/api/architecture/editor/focus/suggestions", "/api/architecture/dialogue",
             "/api/documents/extract-ai", "/api/documents/map-regulation"})
     void modelProducingInvestigationsRequireExecutionInsteadOfReadOrBusinessWrite(String path) throws Exception {
         for (String scope : java.util.List.of("architecture:read", "analysis:read", "architecture:write")) {
@@ -442,7 +442,7 @@ class ApiPermissionsSecurityTest {
                 "/api/projects/p/**", "/api/architecture/editor.svg", "/api/architecture/editor.pdf",
                 "/api/architecture/editor.admbw.json", "/api/architecture/editor.admbw.qea", "/api/dsl/export",
                 "/api/projects/git/export", "/api/documents/**", "/api/architecture/focus/suggestions",
-                "/api/architecture/editor/focus/suggestions", "/api/diagram/**", "/api/scores/export",
+                "/api/architecture/editor/focus/suggestions", "/api/architecture/dialogue", "/api/diagram/**", "/api/scores/export",
                 "/api/integrations/c/publish", "/api/integrations/c/operations/o/retry"})
         String ok() { return "ok"; }
     }

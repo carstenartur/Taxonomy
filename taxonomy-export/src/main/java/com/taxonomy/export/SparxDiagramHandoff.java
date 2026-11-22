@@ -46,6 +46,7 @@ public final class SparxDiagramHandoff {
             Map<String, String> attributes = new TreeMap<>();
             attributes.put("tag:taxonomy.mappingProfile", SparxMappingProfile.PROFILE + "@3");
             attributes.put("tag:taxonomy.sourceId", node.id());
+            if (node.catalogueUuid() != null) attributes.put("tag:taxonomy.catalogueUuid", node.catalogueUuid());
             attributes.put("tag:taxonomy.sourceType", node.type());
             attributes.put("tag:taxonomy.relevance", Double.toString(node.relevance()));
             attributes.put("tag:taxonomy.anchor", Boolean.toString(node.anchor()));

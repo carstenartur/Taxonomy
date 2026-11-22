@@ -12,6 +12,11 @@
                 "editor.admbw.guidance.derivedConstraint"
         ],
         [
+                "The quote is an excerpt from the requirement. Review whether the operational constraint supports the entire requirement. "
+                    + "If it supports a narrower scope, select a separately versioned requirement for that scope.",
+                "editor.admbw.guidance.constraintExcerpt"
+        ],
+        [
                 "The selected QEA reference identities apply to the inspected basis; independent architecture review remains required.",
                 "editor.admbw.guidance.basisScope"
         ],
@@ -45,6 +50,13 @@
         if (!key) return value;
         var translated = t(key);
         return translated && translated !== key ? translated : value;
+    }
+    function serviceTypeEvidence(basis, revision, rootId, serviceId, t) {
+        if (revision == null || basis?.revision !== revision) return '';
+        const match = basis.serviceTypeEvidence?.find(item => item.serviceId === serviceId && item.specification.rootGuid === rootId);
+        if (!match) return '';
+        const {specification} = match;
+        return t('editor.admbw.guidance.serviceTypeEvidence', specification.name, specification.packagePath.join(' / '), specification.guid);
     }
     function render(coverage, t, selectElement) {
         function node(tag, value) {
@@ -106,5 +118,5 @@
         }
         return section;
     }
-    window.TaxonomyAdmbwCoverage = {render: render, message: message};
+    window.TaxonomyAdmbwCoverage = {render: render, message: message, serviceTypeEvidence: serviceTypeEvidence};
 }());

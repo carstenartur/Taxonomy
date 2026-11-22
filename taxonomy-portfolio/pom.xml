@@ -13,6 +13,11 @@
     <description>Project portfolio, analysis jobs, snapshots, reviews and recovery</description>
     <dependencies>
         <dependency>
+            <groupId>com.vladsch.flexmark</groupId>
+            <artifactId>flexmark</artifactId>
+            <version>${flexmark.version}</version>
+        </dependency>
+        <dependency>
             <groupId>com.taxonomy</groupId>
             <artifactId>taxonomy-reporting</artifactId>
             <version>${project.version}</version>

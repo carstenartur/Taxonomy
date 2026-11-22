@@ -3,6 +3,7 @@ package com.taxonomy.plugins.sparx;
 import com.taxonomy.extension.api.integration.AdmbwQeaExport.Basis;
 import com.taxonomy.extension.api.integration.AdmbwQeaExport.Reference;
 import com.taxonomy.extension.api.integration.AdmbwQeaExport.Root;
+import com.taxonomy.extension.api.integration.AdmbwQeaExport.ServiceSpecification;
 import com.taxonomy.plugins.sparx.QeaDatabase.Row;
 import com.taxonomy.plugins.sparx.QeaDatabase.Snapshot;
 
@@ -55,11 +56,17 @@ final class AdmbwQeaReferences {
         if (roots.isEmpty()) throw fail("QEA_ADMBW_ROOT", "The basis contains no selectable model root");
         roots.sort(Comparator.comparing(Root::guid));
         List<Reference> references = new ArrayList<>();
+        List<ServiceSpecification> specifications = new ArrayList<>();
+        Map<Long, List<Row>> sourceTags = new HashMap<>();
+        for (Row tag : basis.rows("t_objectproperties")) {
+            sourceTags.computeIfAbsent(tag.id("object_id"), ignored -> new ArrayList<>()).add(tag);
+        }
         long pathCharacters = 0;
         for (Row object : objects.values()) {
             String type = object.text("stereotype");
             String guid = key(object.text("ea_guid"));
-            if (!AdmbwQeaProfile.REFERENCE_TYPES.contains(type)
+            boolean specification = "ServiceSpecification".equals(type);
+            if (!(specification || AdmbwQeaProfile.REFERENCE_TYPES.contains(type))
                     || !AdmbwQeaProfile.nativeIdentity(object, type, stereotypes.getOrDefault(guid, List.of()))) continue;
             var location = location(object);
             // Disconnected example/test packages can have placeholder root identifiers.
@@ -68,11 +75,18 @@ final class AdmbwQeaReferences {
             for (String segment : location.names()) pathCharacters += segment.length() + 1L;
             if (pathCharacters > QeaDatabase.MAX_TEXT)
                 throw fail("QEA_LIMIT", "The reference inventory exceeds the supported package-path budget");
+            if (specification) {
+                var tags = sourceTags.getOrDefault(object.id("object_id"), List.of());
+                String source = tags.size() == 1 ? tags.getFirst().text("value").strip() : null;
+                specifications.add(new ServiceSpecification(guid, name(object), location.names(), location.rootGuid(), source));
+                continue;
+            }
             String ownerGuid = "Part".equals(object.text("object_type")) ? ownerGuid(object, location.rootGuid()) : null;
             references.add(new Reference(guid, type, name(object), object.text("note"), location.names(), location.rootGuid(), ownerGuid));
         }
         references.sort(Comparator.comparing(Reference::guid));
-        return new Basis(basis.sha256(), key(projects.getFirst().text("value")), roots, references);
+        specifications.sort(Comparator.comparing(ServiceSpecification::guid));
+        return new Basis(basis.sha256(), key(projects.getFirst().text("value")), roots, references, specifications);
     }
 
     private String ownerGuid(Row part, String rootGuid) {

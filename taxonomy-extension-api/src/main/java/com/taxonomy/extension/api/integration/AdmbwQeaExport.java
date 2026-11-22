@@ -5,6 +5,7 @@ import com.taxonomy.extension.api.plugin.ExtensionKey;
 import com.taxonomy.shared.extension.ExtensionKind;
 
 import java.util.List;
+import java.util.Map;
 
 /** Optional native delivery from the host's checked FFFmLV checkpoint, using a supplied QEA copy basis. */
 public interface AdmbwQeaExport extends IntegrationConnectorExtension {
@@ -20,8 +21,16 @@ public interface AdmbwQeaExport extends IntegrationConnectorExtension {
         throw new UnsupportedOperationException("Native basis inspection is unavailable");
     }
 
-    record Basis(String sha256, String projectGuid, List<Root> roots, List<Reference> references) {
-        public Basis { roots = List.copyOf(roots); references = List.copyOf(references); }
+    record Basis(String sha256, String projectGuid, List<Root> roots, List<Reference> references,
+                 List<ServiceSpecification> serviceSpecifications) {
+        public Basis {
+            roots = List.copyOf(roots);
+            references = List.copyOf(references);
+            serviceSpecifications = serviceSpecifications == null ? List.of() : List.copyOf(serviceSpecifications);
+        }
+        public Basis(String sha256, String projectGuid, List<Root> roots, List<Reference> references) {
+            this(sha256, projectGuid, roots, references, List.of());
+        }
     }
 
     record Root(String guid, String name) { }
@@ -31,8 +40,16 @@ public interface AdmbwQeaExport extends IntegrationConnectorExtension {
         public Reference { packagePath = List.copyOf(packagePath); }
     }
 
+    /** An inspected object can support a type decision without establishing a native identity binding. */
+    record ServiceSpecification(String guid, String name, List<String> packagePath, String rootGuid, String source) {
+        public ServiceSpecification { packagePath = List.copyOf(packagePath); }
+    }
+
     /** Older plugins must not silently discard a host's delivery-scope disclosure. */
     default boolean supportsCoverageNotes() { return false; }
+
+    /** Set when the writer preserves reviewed BWRequirement tagged values. */
+    default boolean supportsAssessedRequirementTags() { return false; }
 
     record Delivery(String projectCode, String commit, List<View> views, String coverageNotes) {
         public Delivery { views = List.copyOf(views); }
@@ -50,7 +67,13 @@ public interface AdmbwQeaExport extends IntegrationConnectorExtension {
     }
 
     record Element(String ref, String stereotype, String name, String notes, String catalogueGuid,
-                   Integer requirementVersion, String requirementContentHash) { }
+                   Integer requirementVersion, String requirementContentHash, Map<String, String> assessedTags) {
+        public Element { assessedTags = assessedTags == null ? Map.of() : Map.copyOf(assessedTags); }
+        public Element(String ref, String stereotype, String name, String notes, String catalogueGuid,
+                       Integer requirementVersion, String requirementContentHash) {
+            this(ref, stereotype, name, notes, catalogueGuid, requirementVersion, requirementContentHash, Map.of());
+        }
+    }
 
     record Connector(String stereotype, String client, String supplier) { }
 }

@@ -27,7 +27,7 @@ import java.util.Map;
 /** Native Visio drawings from the same captured hierarchy and architecture as the other decision reports. */
 public class DecisionRationaleVisioRenderer implements ReportRendererExtension {
     private static final ReportFormatDescriptor DESCRIPTOR = new ReportFormatDescriptor(
-            "visio", "Visio", "vsdx", "application/vnd.ms-visio.drawing", false);
+            "visio", "Visio", "vsdx", "application/vnd.ms-visio.drawing", true);
 
     private final VisioDiagramService diagrams;
     private final VisioPackageBuilder packages;
@@ -60,7 +60,7 @@ public class DecisionRationaleVisioRenderer implements ReportRendererExtension {
             // A frozen architecture can already contain assignments independent of the decision tree.
             var visibleNodes = architecture.nodes().stream().map(node -> new DiagramNode(node.id(), node.label(),
                     node.type(), node.relevance(), node.anchor(), node.layer(), node.depth(), node.selectedForImpact(),
-                    node.parentId(), node.container(), null, node.missingMeasurements())).toList();
+                    node.parentId(), node.container(), null, node.missingMeasurements(), node.catalogueUuid())).toList();
             architecture = new DiagramModel(architecture.title(), visibleNodes, architecture.edges(), architecture.layout());
         }
         if (nodes.isEmpty() && architecture.nodes().isEmpty()) {

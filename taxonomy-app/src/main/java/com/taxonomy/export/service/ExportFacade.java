@@ -6,6 +6,7 @@ import com.taxonomy.archimate.ArchiMateModel;
 import com.taxonomy.architecture.service.RequirementArchitectureViewService;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.DocumentLanguage;
 import com.taxonomy.dto.RequirementArchitectureView;
 import com.taxonomy.dto.SavedAnalysis;
 import com.taxonomy.export.ArchiMateDiagramService;
@@ -20,8 +21,11 @@ import com.taxonomy.visio.VisioExportMetadata;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import org.springframework.context.i18n.LocaleContextHolder;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
+import java.util.ResourceBundle;
 
 /** High-level application facade for analysis-driven exports and score exchange. */
 @com.taxonomy.shared.features.ConditionalOnFeature({"analysis"})
@@ -131,6 +135,10 @@ public class ExportFacade {
      * This is client-provided working data, not a certified historical snapshot.
      */
     public DiagramModel buildCurrentDiagram(RequirementArchitectureView view) {
+        return buildCurrentDiagram(view, null);
+    }
+
+    public DiagramModel buildCurrentDiagram(RequirementArchitectureView view, String contentLanguage) {
         if (view == null || view.getIncludedElements() == null
                 || view.getIncludedElements().isEmpty()) {
             throw new IllegalArgumentException("An existing architecture view is required; no analysis was started.");
@@ -157,8 +165,16 @@ public class ExportFacade {
             }
         }
         String title = view.getViewTitle();
-        return diagramProjectionService.projectRaw(view,
-                title == null || title.isBlank() ? "Requirement architecture" : title);
+        Locale locale = DocumentLanguage.resolve(DocumentLanguage.optionalOverride(contentLanguage), null,
+                LocaleContextHolder.getLocale());
+        boolean german = "de".equals(locale.getLanguage());
+        if (title == null || title.isBlank()) {
+            title = german ? "Anforderungsarchitektur" : "Requirement architecture";
+        } else if (title.startsWith("archview.policy.title.")) {
+            var messages = ResourceBundle.getBundle("i18n.messages", german ? Locale.GERMAN : Locale.ROOT);
+            if (messages.containsKey(title)) title = messages.getString(title);
+        }
+        return diagramProjectionService.projectRaw(view, title, german);
     }
 
     private DiagramModel analyzeAndProject(String businessText) {
@@ -170,6 +186,6 @@ public class ExportFacade {
         String title = businessText.length() > 60
                 ? businessText.substring(0, 57) + "..."
                 : businessText;
-        return diagramProjectionService.project(view, title);
+        return diagramProjectionService.project(view, title, "de".equals(LocaleContextHolder.getLocale().getLanguage()));
     }
 }

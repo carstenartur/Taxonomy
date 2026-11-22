@@ -3,7 +3,10 @@ package com.taxonomy.dsl.admbw;
 import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
 import com.taxonomy.dsl.planning.PlanningProfile;
 import com.taxonomy.dsl.requirements.RequirementRealization;
+import com.taxonomy.sparx.mapping.AdmbwRequirementField;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,14 +28,21 @@ public final class AdmbwRequirementProfile implements PlanningProfile {
 
     @Override
     public Descriptor descriptor() {
-        return new Descriptor(ID, VERSION, List.of(new Field(KIND, true, KINDS),
+        var fields = new ArrayList<>(List.of(new Field(KIND, true, KINDS),
                 new Field(DERIVED_FROM, true, List.of()), new Field(SUBJECT, true, List.of()),
                 new Field(REALIZER, false, List.of())));
+        for (var field : AdmbwRequirementField.values()) fields.add(new Field(field.planningKey(), false, List.of()));
+        return new Descriptor(ID, VERSION, fields);
     }
 
     @Override
     public void validate(Map<String, String> values) {
-        if (!FIELDS.containsAll(values.keySet()) || !KINDS.contains(values.getOrDefault(KIND, ""))
+        var remaining = new HashSet<>(values.keySet());
+        for (var field : AdmbwRequirementField.values()) {
+            if (remaining.remove(field.planningKey()) && values.get(field.planningKey()).isBlank())
+                throw new IllegalArgumentException("An R7 assessment must have a value or be left unset");
+        }
+        if (!FIELDS.containsAll(remaining) || !KINDS.contains(values.getOrDefault(KIND, ""))
                 || !elementId(values.get(DERIVED_FROM)) || !elementId(values.get(SUBJECT))
                 || values.containsKey(REALIZER) && !elementId(values.get(REALIZER))
                 || values.containsKey(IMPORTED) && !"true".equals(values.get(IMPORTED))) {

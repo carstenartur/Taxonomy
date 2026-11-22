@@ -97,6 +97,26 @@ class AdmbwPreparationTest {
     }
 
     @Test
+    void subsequentPreparationRetainsAssessmentsSavedInTheVersionedPlanningEditor() {
+        Selection selection = selection("CI-1", CAPABILITY, "REQ-1", SUBJECT, DRIVER, QUOTE);
+        String initial = planner.prepare(SOURCE, selection, basis()).dsl();
+        var planning = new PlanningInformation();
+        var entry = planning.read(initial, "REQ-1").getFirst().entry();
+        var values = new java.util.HashMap<>(entry.values());
+        values.put("criticality", "Prüfung ausstehend");
+        values.put("procurementPriority", "Nach Freigabe");
+        String reviewed = planning.upsert(initial, "REQ-1",
+                new PlanningEntry(entry.id(), entry.profile(), entry.version(), "MANUAL", values), false);
+        var prepared = planner.prepare(reviewed, selection, basis());
+        assertThat(prepared.dsl()).isEqualTo(reviewed);
+        assertThat(prepared.assessment().requirementDerivation().elements()).anySatisfy(element -> {
+            assertThat(element.ref()).isEqualTo("requirement:REQ-1");
+            assertThat(element.assessedTags()).containsExactlyInAnyOrderEntriesOf(
+                    Map.of("Kritikalität", "Prüfung ausstehend", "Priorität Vergabe", "Nach Freigabe"));
+        });
+    }
+
+    @Test
     void guidedExportRetainsTheReviewedProjectAndRootEvenThroughAnotherExportRoute() {
         var result = planner.prepare(SOURCE, selection("CI-1", CAPABILITY, "REQ-1", SUBJECT, DRIVER, QUOTE), basis());
         assertThat(AdmbwPreparation.requiresBasisInspection(result.dsl(), result.assessment())).isTrue();
@@ -168,6 +188,18 @@ class AdmbwPreparationTest {
     }
 
     @Test
+    void doesNotShowExcerptGuidanceWhenTheQuoteIsTheEntireRequirement() {
+        var result = planner.prepare(SOURCE, selection("CI-1", CAPABILITY, "REQ-1", SUBJECT, DRIVER, TEXT), basis());
+        var excerpt = planner.prepare(SOURCE, selection("CI-1", CAPABILITY, "REQ-1", SUBJECT, DRIVER, QUOTE), basis());
+
+        assertThat(result.notes()).noneMatch(note -> note.startsWith("The quote is an excerpt from the requirement."));
+        assertThat(result.assessment().requirementDerivation().status())
+                .isEqualTo(excerpt.assessment().requirementDerivation().status());
+        assertThat(result.assessment().requirementDerivation().issues())
+                .isEqualTo(excerpt.assessment().requirementDerivation().issues());
+    }
+
+    @Test
     void plansExactVersionedEvidenceAndPreservesTheFrozenScopeAndWholeModelGaps() {
         var result = planner.prepare(SOURCE, selection("CI-1", CAPABILITY, "REQ-1", SUBJECT, DRIVER, QUOTE), basis());
         var blocks = ArchitectureSemanticPatch.index(result.dsl());
@@ -177,6 +209,9 @@ class AdmbwPreparationTest {
         assertThat(result.requirementContentHash()).isEqualTo(TEXT_HASH);
         assertThat(result.basisSha256()).isEqualTo(DIGEST);
         assertThat(result.notes()).anyMatch(note -> note.contains("restatement"));
+        assertThat(result.notes()).anySatisfy(note -> assertThat(note)
+                .startsWith("The quote is an excerpt from the requirement.")
+                .contains("supports the entire requirement", "separately versioned requirement"));
         assertThat(capability).isNotEqualTo("CP-1");
         assertThat(blocks.get("element:CP-1").property(AdmbwFffmlvProfile.CATALOGUE_GUID)).isNull();
         assertThat(blocks.get("element:CI-1").property(AdmbwFffmlvProfile.TYPE)).isEqualTo("ServiceSpecification");

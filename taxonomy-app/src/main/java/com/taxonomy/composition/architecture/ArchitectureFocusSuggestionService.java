@@ -105,16 +105,11 @@ public class ArchitectureFocusSuggestionService {
         EngineResult { suggestions = List.copyOf(suggestions); }
     }
     public Response investigate(RepositoryContext scope, Request request) throws IOException {
-        requireScope(scope, request.context());
-        // Always read current state. A retained historical revision must never masquerade as a current investigation.
-        var document = editor.read(scope, null, null);
-        if (!document.context().equals(request.context())) throw problem("CONTEXT_CHANGED", "context", "The editor context or revision changed; refresh before investigating");
-        if (!"WORKSPACE_REVISION".equals(document.source()) || !"READY".equals(document.projectionState()))
-            throw problem("CONTEXT_CHANGED", "context", "The current workspace revision is not ready for investigation");
-        var model = new ArchitectureDslCommands().model(document.dsl());
+        var source = readWorkspaceSource(scope, request.context());
+        var model = source.model();
         if (model.findElement(request.sourceId()).isEmpty())
             throw problem("NOT_FOUND", "sourceId", "The element is not present in this exact editor revision");
-        String hash = sha256(document.dsl());
+        String hash = source.hash();
         return investigateModel(model, catalogues.forModel(model),
                 com.taxonomy.dsl.planning.ArchitectureBrief.read(model).excludedRelationTypes(),
                 null, null,
@@ -123,6 +118,36 @@ public class ArchitectureFocusSuggestionService {
                 result -> new Response(request.context(), request.sourceId(), hash, result.method(), result.outcome(),
                         result.modelCalls(), result.candidateCount(), result.suggestions()),
                 () -> editorSourceCurrent(scope, request.context(), hash));
+    }
+
+    ArchitectureSourceFocusDtos.ResolvedModel readWorkspaceSource(RepositoryContext scope, Context context) throws IOException {
+        requireScope(scope, context);
+        // Always read current state. A retained historical revision must never masquerade as a current investigation.
+        var document = editor.read(scope, null, null);
+        if (!document.context().equals(context)) throw problem("CONTEXT_CHANGED", "context", "The editor context or revision changed; refresh before investigating");
+        if (!"WORKSPACE_REVISION".equals(document.source()) || !"READY".equals(document.projectionState()))
+            throw problem("CONTEXT_CHANGED", "context", "The current workspace revision is not ready for investigation");
+        var model = new ArchitectureDslCommands().model(document.dsl());
+        return new ArchitectureSourceFocusDtos.ResolvedModel(model, null, sha256(document.dsl()), null);
+    }
+
+    ArchitectureSourceFocusDtos.ResolvedModel readDialogueSource(RepositoryContext scope, Context context) throws IOException {
+        if (!"READ_ONLY".equals(context.writeMode())) return readWorkspaceSource(scope, context);
+        if (context.commit() == null || !context.commit().matches("[0-9a-f]{40}")
+                || !Context.version(scope, context.commit()).equals(context))
+            throw problem("NOT_FOUND", "context", "The selected checkpoint is unavailable");
+        // The editor checks that the requested commit is reachable from the authorized branch.
+        var document = editor.read(scope, context.commit(), null);
+        if (!context.equals(document.context()) || !"GIT_CHECKPOINT".equals(document.source()))
+            throw problem("CONTEXT_CHANGED", "context", "The selected checkpoint changed");
+        return new ArchitectureSourceFocusDtos.ResolvedModel(new ArchitectureDslCommands().model(document.dsl()),
+                null, sha256(document.dsl()), null);
+    }
+
+    public boolean dialogueSourceCurrent(RepositoryContext scope, Context context, String hash) {
+        if (!"READ_ONLY".equals(context.writeMode())) return editorSourceCurrent(scope, context, hash);
+        try { return hash.equals(readDialogueSource(scope, context).hash()); }
+        catch (IOException unavailable) { return false; }
     }
 
     public boolean editorSourceCurrent(RepositoryContext scope, Context context, String hash) {

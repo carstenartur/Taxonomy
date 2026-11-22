@@ -146,6 +146,10 @@ public record ArchitectureReportDocument(
                 out.writeBoolean(n.selectedForImpact());
                 field(out, n.parentId());
                 out.writeBoolean(n.container());
+                if (n.catalogueUuid() != null) {
+                    field(out, "catalogue-uuid-v1");
+                    field(out, n.catalogueUuid());
+                }
                 var assignment = n.responsibility();
                 if (assignment != null) {
                     field(out, "organizational-responsibility-v1");

@@ -7,7 +7,6 @@
     var renderConsistencyCheck = 0;
 
     var state = {
-        taxonomyData: [],
         currentRawScores: {}, // provider evidence; PRODUCT values are independent suitability
         currentEffectiveScores: {}, // comparable relevance for generic downstream consumers
         currentScoreDetails: {}, // code → typed score-semantics envelope
@@ -96,6 +95,28 @@
             }
         });
     }
+
+    // Keep the bilingual source fields intact across imports and language switches.
+    // Only the presentation aliases consumed by the tree, diagrams and graph suggestions change.
+    var taxonomyData = [];
+    function displayNode(node, german) {
+        var name = (german && node.nameDe) || node.nameEn || node.name;
+        var description = (german && node.descriptionDe) || node.descriptionEn || node.description;
+        return Object.assign({}, node, {
+            name: name,
+            description: description,
+            children: Array.isArray(node.children) ? node.children.map(child => displayNode(child, german)) : node.children
+        });
+    }
+    Object.defineProperty(state, 'taxonomyData', {
+        enumerable: true,
+        get: function () { return taxonomyData; },
+        set: function (nodes) {
+            var language = window.TaxonomyI18n?.getLocale?.() || globalThis.document?.documentElement?.lang || 'en';
+            var german = language.toLowerCase().split('-')[0] === 'de';
+            taxonomyData = Array.isArray(nodes) ? nodes.map(node => displayNode(node, german)) : nodes;
+        }
+    });
 
     Object.defineProperty(state, 'currentScores', {
         enumerable: true,

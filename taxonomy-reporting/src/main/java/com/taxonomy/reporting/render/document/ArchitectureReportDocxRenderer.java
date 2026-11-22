@@ -96,7 +96,7 @@ public final class ArchitectureReportDocxRenderer {
                     && !view.getIncludedElements().isEmpty()) {
                 var graph =
                         PersistedDiagramProjection.project(
-                                new DiagramProjectionService(), view, labels.architectureTitle());
+                                new DiagramProjectionService(), view, labels.architectureTitle(), labels.german());
                 var scene = new LayeredDiagramLayoutService().layout(graph);
                 var plan = new ArchitectureFigurePlanner().plan(graph, scene);
                 w.heading(labels.architectureOverview(), 1, null);
@@ -122,7 +122,7 @@ public final class ArchitectureReportDocxRenderer {
                                         e ->
                                                 List.of(
                                                         value(e.getNodeCode(), labels),
-                                                        value(e.getTitle(), labels),
+                                                        value(e.displayTitle(labels.german()), labels),
                                                         e.recordedRelevance() == null ? labels.notEvaluated() : percent(e.recordedRelevance()),
                                                         value(e.getIncludedBecause(), labels)))
                                 .toList());

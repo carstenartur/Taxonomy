@@ -1,5 +1,7 @@
 package com.taxonomy.dsl.command;
 
+import com.taxonomy.dsl.model.CatalogueReference;
+
 import java.util.Map;
 import java.util.Objects;
 import java.util.LinkedHashMap;
@@ -21,7 +23,11 @@ public sealed interface ArchitectureCommand {
             Objects.requireNonNull(sourceId);
         }
     }
-    record SnapshotElement(String id, String type, String title, String description, SnapshotResponsibility responsibility) {
+    record SnapshotElement(String id, String type, String title, String description, SnapshotResponsibility responsibility,
+                           CatalogueReference catalogueReference) {
+        public SnapshotElement(String id, String type, String title, String description, SnapshotResponsibility responsibility) {
+            this(id, type, title, description, responsibility, null);
+        }
         public SnapshotElement(String id, String type, String title, String description) {
             this(id, type, title, description, null);
         }

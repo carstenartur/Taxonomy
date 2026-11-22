@@ -631,6 +631,7 @@ See [Accessibility](docs/en/ACCESSIBILITY.md) for the evidence matrix, manual ch
 | [Git integration](docs/en/GIT_INTEGRATION.md) | Versioning and external repository behavior |
 | [Sparx EA exchange](docs/features/sparx-integration.md) / [Deutsch](docs/features/sparx-integration-de.md) | Reviewed XMI and optional native QEA workflows, mapping and compatibility limits |
 | [ADMBw delivery preparation (Deutsch)](docs/features/admbw-conformance-de.md) | Checkpoint assessment for C1–S1 and R7 and the evidence needed for delivery |
+| [Illustrated ADMBw walkthrough (Deutsch)](docs/de/ARCHITECTURE_EDITOR.md#architecture-delivery-guide) | From a saved requirement and the Architecture Lens to a reviewed delivery checkpoint |
 | [Inventory comparison](docs/features/inventory-comparison.md) | Scoped product and inventory evidence, variants and review decisions |
 | [Security](docs/en/SECURITY.md) | Authentication, authorization, and deployment controls |
 | [AI transparency](docs/en/AI_TRANSPARENCY.md) | AI usage, limitations, and operator responsibilities |

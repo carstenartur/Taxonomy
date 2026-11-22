@@ -69,6 +69,18 @@ class CurrentDiagramPdfControllerTest {
         return stripper.getText(pdf);
     }
 
+    @Test void germanWorkingPdfTranslatesLabelsAndPreservesTheRecordedEvidence() throws Exception {
+        var view = view(2);
+        view.setViewTitle("archview.policy.title.defaultImpact");
+        var response = mvc().perform(post("/api/diagram/current/pdf").param("locale", "de")
+                        .contentType(MediaType.APPLICATION_JSON).content(JSON.writeValueAsBytes(view)))
+                .andExpect(status().isOk()).andReturn().getResponse();
+        try (var pdf = Loader.loadPDF(response.getContentAsByteArray())) {
+            assertThat(new PDFTextStripper().getText(pdf)).contains("Anforderungsarchitektur - Arbeitsansicht",
+                    "Architektur-Wirkungsansicht", "Exportinventar", "HTTP-ORIGINAL-QUOTE-END");
+        }
+    }
+
     @Test void malformedAndOversizedBodiesReturn400ThroughSpringMappings() throws Exception {
         var mvc = mvc();
         for (String body : List.of("{", "null", "{}", JSON.writeValueAsString(view(10_001))))
@@ -82,7 +94,8 @@ class CurrentDiagramPdfControllerTest {
     @Test void rendererFailureIsAnHonest500WithoutLeakingDetails() throws Exception {
         var renderer = org.mockito.Mockito.mock(ArchitecturePdfRenderer.class);
         org.mockito.Mockito.doThrow(new IllegalStateException("PRIVATE_RENDERER_DETAIL"))
-                .when(renderer).renderWorkingView(org.mockito.ArgumentMatchers.any(com.taxonomy.diagram.DiagramScene.class));
+                .when(renderer).renderWorkingView(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyMap(),
+                        org.mockito.ArgumentMatchers.anyMap(), org.mockito.ArgumentMatchers.any());
         mvc(renderer).perform(post("/api/diagram/current/pdf").contentType(MediaType.APPLICATION_JSON).content(JSON.writeValueAsBytes(view(2))))
                 .andExpect(status().isInternalServerError()).andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.error").value("The architecture PDF could not be created. The working state was not changed."));

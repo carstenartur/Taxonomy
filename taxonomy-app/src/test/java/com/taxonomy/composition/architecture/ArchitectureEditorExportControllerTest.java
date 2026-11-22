@@ -102,12 +102,19 @@ class ArchitectureEditorExportControllerTest {
     @Test
     @SuppressWarnings("unchecked")
     void sendsOnlyTheAuthorizedCheckpointAndBasisToTheNativeExporter() throws Exception {
-        loadCheckpoint(deliverableDsl());
+        var values = Map.of("requirementType", "FunctionalRequirement", "derivedFrom", "operation",
+                "constraintSubject", "subject", "qualityStatus", "Fachliche Prüfung ausstehend");
+        loadCheckpoint(new PlanningInformation().upsert(deliverableDsl(), "REQ-1",
+                new PlanningEntry("r7", "admbw-r7", "1", "MANUAL", values), false));
         var writer = mock(AdmbwQeaExport.class);
         ExtensionLease<IntegrationConnectorExtension> lease = mock(ExtensionLease.class);
         when(catalog.acquire(AdmbwQeaExport.KEY, IntegrationConnectorExtension.class)).thenReturn(lease);
         when(lease.extension()).thenReturn(writer);
         when(writer.supportsCoverageNotes()).thenReturn(true);
+        standaloneSetup(exports).build().perform(nativeRequest("workspace-a"))
+                .andExpect(status().isServiceUnavailable());
+        verify(writer, org.mockito.Mockito.never()).exportAdmbw(any(), any(), any());
+        when(writer.supportsAssessedRequirementTags()).thenReturn(true);
         byte[] nativeBytes = {4, 5, 6};
         when(writer.exportAdmbw(any(), eq(ROOT), any())).thenReturn(
                 new ExchangeFile(AdmbwQeaExport.MEDIA_TYPE, "WARN-admbw.qea", nativeBytes, List.of()));
@@ -128,8 +135,9 @@ class ArchitectureEditorExportControllerTest {
         assertThat(delivery.getValue().views().get(1).elements()).anySatisfy(element -> {
             assertThat(element.ref()).isEqualTo("requirement:REQ-1");
             assertThat(element.requirementVersion()).isEqualTo(2);
+            assertThat(element.assessedTags()).containsExactlyEntriesOf(Map.of("QS_Status", "Fachliche Prüfung ausstehend"));
         });
-        verify(lease).close();
+        verify(lease, org.mockito.Mockito.times(2)).close();
     }
 
     @Test
@@ -413,6 +421,29 @@ class ArchitectureEditorExportControllerTest {
                   status: accepted;
                   provenance: "Reviewed at checkpoint";
                 }
+                evidence cited {
+                  for-relation: "feature REALIZED_BY system";
+                  summary: "The system records the request.";
+                  x-analysis-view-id: "captured";
+                  x-analysis-snapshot-id: "snapshot-1";
+                  x-analysis-assessed-id: "feature";
+                  x-analysis-assessed-quote: "Der Antrag wird digital erfasst.";
+                  x-analysis-candidate-condition: "Nach Freigabe";
+                  x-analysis-direction: "OUTGOING";
+                  x-analysis-origin: "LLM_SUPPORTED";
+                  confidence: 0.65;
+                }
+                evidence different-snapshot {
+                  for-relation: "feature REALIZED_BY system";
+                  summary: "Belongs to snapshot two.";
+                  x-analysis-snapshot-id: "snapshot-2";
+                  x-analysis-view-id: "captured";
+                }
+                evidence other-source {
+                  for-relation: "feature REALIZED_BY system";
+                  summary: "Only in a different source review.";
+                  x-analysis-view-id: "other";
+                }
                 view captured {
                   title: "Captured source view";
                   include: feature;
@@ -427,14 +458,28 @@ class ArchitectureEditorExportControllerTest {
         var response = exports.pdf("repo-a", "workspace-a", "draft", HEAD, null, null, null, "captured");
         var svg = exports.svg("repo-a", "workspace-a", "draft", HEAD, null, null, null, "captured");
         assertThat(svg.getBody()).contains("Captured source view", "PARTIAL", "snapshot-1", "Model status: accepted",
-                        "Reviewed at checkpoint", "unrecorded")
-                .doesNotContain("Depth 0", ">0%</text>");
+                        "Reviewed at checkpoint", "unrecorded", "Der Antrag wird digital erfasst.", "Nach Freigabe")
+                .doesNotContain("Only in a different source review.", "Belongs to snapshot two.", "Depth 0", ">0%</text>");
 
         try (var parsed = org.apache.pdfbox.Loader.loadPDF(response.getBody())) {
             String text = new org.apache.pdfbox.text.PDFTextStripper().getText(parsed);
             assertThat(text).contains("Einsatzfähigkeit", "Führungssystem", "PARTIAL", "snapshot-1", "captured",
-                            "Model status: accepted", "Reviewed at checkpoint", "unrecorded")
-                    .doesNotContain("Depth 0", "0%");
+                            "Model status: accepted", "Reviewed at checkpoint", "unrecorded", "Der Antrag wird digital erfasst.", "Nach Freigabe")
+                    .doesNotContain("Only in a different source review.", "Belongs to snapshot two.", "Depth 0", "0%");
+        }
+        var previous = org.springframework.context.i18n.LocaleContextHolder.getLocaleContext();
+        try {
+            org.springframework.context.i18n.LocaleContextHolder.setLocale(java.util.Locale.GERMAN);
+            var german = exports.pdf("repo-a", "workspace-a", "draft", HEAD, null, null, null, "captured");
+            var germanSvg = exports.svg("repo-a", "workspace-a", "draft", HEAD, null, null, null, "captured");
+            assertThat(germanSvg.getBody()).contains("Kanonisches Inventar", "Originalzitat", "Der Antrag wird digital erfasst.", "Belegkonfidenz: 0.65", "Prüfrichtung: OUTGOING");
+            try (var parsed = org.apache.pdfbox.Loader.loadPDF(german.getBody())) {
+                assertThat(parsed.getDocumentCatalog().getLanguage()).isEqualTo("de");
+                assertThat(new org.apache.pdfbox.text.PDFTextStripper().getText(parsed))
+                        .contains("Exportinventar", "Originalzitat", "Der Antrag wird digital erfasst.", "Belegkonfidenz: 0.65", "Prüfrichtung: OUTGOING");
+            }
+        } finally {
+            org.springframework.context.i18n.LocaleContextHolder.setLocaleContext(previous);
         }
     }
 

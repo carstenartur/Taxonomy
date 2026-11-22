@@ -140,6 +140,8 @@ public class LeafEnrichmentStep implements ArchitecturePipelineStep {
                         continue;
                     }
                     element.setTitle(node.getNameEn());
+                    element.retainCatalogueTitles(node.getNameEn(), node.getNameDe());
+                    element.setCatalogueUuid(node.getLevel() > 0 ? node.getUuid() : null);
                     element.setTaxonomySheet(node.getTaxonomyRoot());
                     element.setTaxonomyDepth(node.getLevel());
                 } else {

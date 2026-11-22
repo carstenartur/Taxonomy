@@ -83,7 +83,11 @@ public class DiagramProjectionService {
      * @return a curated diagram model
      */
     public DiagramModel project(RequirementArchitectureView view, String title) {
-        DiagramModel raw = projectRaw(view, title);
+        return project(view, title, false);
+    }
+
+    public DiagramModel project(RequirementArchitectureView view, String title, boolean german) {
+        DiagramModel raw = projectRaw(view, title, german);
         DiagramModel curated = policy.apply(raw);
         if (view != null && view.getRelationSearchReport() != null) {
             // A visual policy may omit nodes/edges, but may not transform a verified
@@ -117,6 +121,16 @@ public class DiagramProjectionService {
      * @return a raw diagram model with all projected nodes and edges
      */
     public DiagramModel projectRaw(RequirementArchitectureView view, String title) {
+        return projectRaw(view, title, false);
+    }
+
+    public DiagramModel projectRaw(RequirementArchitectureView view, String title, boolean german) {
+        return projectRaw(view, title, german, null);
+    }
+
+    /** A retained tree, when supplied, disambiguates catalogue identities for this snapshot only. */
+    public DiagramModel projectRaw(RequirementArchitectureView view, String title, boolean german,
+                                   Map<String, String> retainedUuids) {
         if (view == null) {
             return new DiagramModel(title, List.of(), List.of(),
                     new DiagramLayout("LR", true));
@@ -151,9 +165,14 @@ public class DiagramProjectionService {
             Integer recordedDepth = el.recordedTaxonomyDepth();
             boolean relevanceMissing = recordedRelevance == null;
             boolean depthMissing = recordedDepth == null;
+            String sourceUuid = el.getCatalogueUuid();
+            if (retainedUuids != null) {
+                String recorded = retainedUuids.get(el.getNodeCode());
+                sourceUuid = sourceUuid == null || sourceUuid.equals(recorded) ? recorded : null;
+            }
             nodes.add(new DiagramNode(
                     el.getNodeCode(),
-                    el.getTitle() != null ? el.getTitle() : el.getNodeCode(),
+                    el.getTitle() != null ? el.displayTitle(german) : el.getNodeCode(),
                     type,
                     relevanceMissing ? el.getRelevance() : recordedRelevance,
                     el.isAnchor(),
@@ -163,7 +182,7 @@ public class DiagramProjectionService {
                     parentId,
                     false,
                     el.getResponsibility(), relevanceMissing || depthMissing
-                            ? new DiagramNode.MissingMeasurements(relevanceMissing, depthMissing) : null));
+                            ? new DiagramNode.MissingMeasurements(relevanceMissing, depthMissing) : null, sourceUuid));
         }
 
         List<DiagramEdge> edges = new ArrayList<>();

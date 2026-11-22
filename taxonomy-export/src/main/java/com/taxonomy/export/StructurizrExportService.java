@@ -61,6 +61,9 @@ public class StructurizrExportService {
             sb.append(" {\n            properties {\n");
             sb.append("                \"taxonomy.id\" \"").append(escapeQuotes(node.id())).append("\"\n");
             sb.append("                \"taxonomy.label\" \"").append(escapeQuotes(node.label())).append("\"\n");
+            if (node.catalogueUuid() != null) {
+                sb.append("                \"taxonomy.catalogueUuid\" \"").append(escapeQuotes(node.catalogueUuid())).append("\"\n");
+            }
             sb.append("            }\n        }\n");
         }
 

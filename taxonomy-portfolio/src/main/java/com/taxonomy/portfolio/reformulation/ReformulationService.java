@@ -54,10 +54,19 @@ public class ReformulationService {
             throw PortfolioException.validation("sourceVersionId and snapshotId are required");
         var version=versions.findByIdAndRequirementIdAndScopeKey(request.sourceVersionId(),requirementId,requirement.getScopeKey())
                 .orElseThrow(()->PortfolioException.notFound("Source version not found in requirement"));
-        var snapshot=snapshots.findByIdAndProjectIdAndScopeKey(request.snapshotId(),projectId,requirement.getScopeKey())
+        boolean questionnaire = Boolean.TRUE.equals(request.includeAnalysisQuestions());
+        var snapshot=(questionnaire ? snapshots.lockForClarifications(request.snapshotId(),projectId,requirement.getScopeKey())
+                : snapshots.findByIdAndProjectIdAndScopeKey(request.snapshotId(),projectId,requirement.getScopeKey()))
                 .orElseThrow(()->PortfolioException.notFound("Snapshot not found in project"));
         if(!snapshot.getRequirementId().equals(requirementId) || !snapshot.getRequirementVersionId().equals(version.getId()))
             throw PortfolioException.conflict("Snapshot must match the selected requirement version");
+        String id = questionnaire
+                ? UUID.nameUUIDFromBytes(("analysis-questions:" + snapshot.getId()).getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString()
+                : UUID.randomUUID().toString();
+        if (questionnaire) {
+            var existing = proposals.findByIdAndProjectIdAndRequirementIdAndScopeKey(id,projectId,requirementId,requirement.getScopeKey());
+            if (existing.isPresent()) return view(existing.get());
+        }
         var detail=analysis.getSnapshot(projectId,snapshot.getId(),actor,context);
         var recordedLanguage=detail.analysis()==null ? null : detail.analysis().getAnalysisLanguage();
         String language=request.language()!=null ? request.language()
@@ -66,7 +75,13 @@ public class ReformulationService {
                         com.taxonomy.analysis.service.AnalysisLanguageContext.resolveCurrentRequest(null),
                         com.taxonomy.dto.AnalysisLanguage.ENGLISH).value();
         if(!language.equals("de") && !language.equals("en")) throw PortfolioException.validation("language must be de or en");
+        var clarification = questionnaire
+                ? SnapshotClarifications.from(detail.analysis(), snapshot.getId(), json).withSourceQuestions(version.getText(), snapshot.getId(), json)
+                : new SnapshotClarifications(List.of(), List.of());
+        if (questionnaire && clarification.questions().isEmpty())
+            throw PortfolioException.conflict("This snapshot contains no recorded domain questions");
         var content=new TreeMap<>(contextPort.freeze(detail,actor,context));
+        if (!clarification.questions().isEmpty()) content.put("questionSource", "ANALYSIS_SNAPSHOT");
         content.put("analysisLanguagePolicy", com.taxonomy.analysis.service.AnalysisLanguageContext.POLICY);
         content.put("analysisLanguageContract", com.taxonomy.analysis.service.AnalysisLanguageContext.promptContract(
                 com.taxonomy.dto.AnalysisLanguage.fromValue(language)));
@@ -84,11 +99,11 @@ public class ReformulationService {
         var baseline=ReformulationBaseline.freeze(new ReformulationBaseline.Source(scope,version.getId(),version.getText()),
                 new ReformulationBaseline.Snapshot(scope,snapshot.getId(),snapshot.getRequirementVersionId(),snapshot.getAnalysisPayload()),
                 content,language,"reformulation-v1");
-        String id=UUID.randomUUID().toString();Instant now=Instant.now();String author=PortfolioScope.username(actor,context);
+        Instant now=Instant.now();String author=PortfolioScope.username(actor,context);
         var proposal=new ReformulationProposal(id,requirement.getScopeKey(),projectId,requirementId,version.getId(),snapshot.getId(),json.write(baseline),author,now);
         proposals.saveAndFlush(proposal);
         // The initial draft deliberately preserves the original verbatim, with no generated claims.
-        saveRevision(proposal,version.getText(),"Initial source-preserving draft",author,now);
+        saveRevision(proposal,version.getText(),clarification,author,now);
         return view(proposal);
     }
     @Transactional(readOnly=true)
@@ -345,12 +360,14 @@ public class ReformulationService {
     private static Run state(Run old,String status,String failure,Long revision,ReformulationDocument candidate) {
         return new Run(old.id(),old.proposalId(),old.sourceRevision(),status,old.provider(),old.model(),old.promptVersion(),old.schemaVersion(),old.promptContent(),failure,revision,candidate,old.actor(),old.createdAt(),old.reconcileContext(),old.providerBinding());
     }
-    private void saveRevision(ReformulationProposal proposal,String text,String rationale,String actor,Instant now) {
+    private void saveRevision(ReformulationProposal proposal,String text,SnapshotClarifications clarification,String actor,Instant now) {
         long number=proposal.getCurrentRevision();
         // No particular source span was evaluated. The exact original is retained once in the baseline.
         var validation=new ValidationReport(List.of(new ValidationReport.Finding(ValidationReport.Kind.UNMAPPED_SOURCE,
                 "NOT_SYNTHESIZED","Source coverage has not been evaluated",List.of(),List.of())));
-        var revision=new Revision(number,number==1?null:number-1,text,List.of(),List.of(),List.of(),List.of(),validation,actor,now,rationale);
+        var revision=new Revision(number,number==1?null:number-1,text,clarification.sections(),List.of(),
+                clarification.questions(),List.of(),validation,actor,now,clarification.questions().isEmpty()
+                        ? "Initial source-preserving draft" : "Clarification of recorded analysis questions");
         revisions.save(new ReformulationRevision(proposal.getId(),proposal.getScopeKey(),number,json.write(revision)));
     }
     private ReformulationProposal require(Long projectId,Long requirementId,String id,String actor,WorkspaceContext context,boolean lock) {

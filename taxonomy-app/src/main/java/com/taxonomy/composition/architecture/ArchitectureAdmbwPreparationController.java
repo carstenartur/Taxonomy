@@ -32,7 +32,7 @@ public class ArchitectureAdmbwPreparationController {
     @PostMapping(value = "/basis", consumes = {AdmbwQeaExport.MEDIA_TYPE, MediaType.APPLICATION_OCTET_STREAM_VALUE})
     @Operation(summary = "Inspect actual ADMBw reference identities in a supplied QEA basis without changing it",
             description = "Reads a nonempty QEA file up to 32 MiB in the selected repository and branch, and returns its native identity choices for review.")
-    public ResponseEntity<AdmbwQeaExport.Basis> basis(@RequestParam String repositoryId,
+    public ResponseEntity<ArchitectureAdmbwPreparationService.InspectedBasis> basis(@RequestParam String repositoryId,
             @RequestParam String workspaceScopeKey, @RequestParam String branch, HttpServletRequest request) throws IOException {
         var context = contexts.resolveForRead(repositoryId, workspaceScopeKey, branch);
         var result = service.inspect(context, read(request.getInputStream()));

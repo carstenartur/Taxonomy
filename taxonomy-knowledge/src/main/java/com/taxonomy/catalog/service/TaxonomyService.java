@@ -8,6 +8,7 @@ import com.taxonomy.catalog.model.TaxonomyRelation;
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
 import com.taxonomy.catalog.definition.WorkbookCatalogueDefinition;
+import com.taxonomy.catalog.definition.BundledCatalogue;
 import com.taxonomy.dsl.model.CatalogueDefinition;
 import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
 import com.taxonomy.catalog.snapshot.FrozenCatalogueContext;
@@ -53,6 +54,8 @@ public class TaxonomyService {
     private static final Logger log = LoggerFactory.getLogger(TaxonomyService.class);
 
     private static final int BATCH_SIZE = 50;
+    private static final List<String> LEGACY_COLUMNS = List.of("page", "uuid", "title", "description", "parent",
+            "dataset", "external id", "source", "reference", "order", "state", "level");
 
     public static final String ROOT_ASSESSMENT_CONTEXT_POLICY = "root-catalogue-context-v1";
 
@@ -79,7 +82,7 @@ public class TaxonomyService {
     private CatalogueRuntimePolicy catalogueRuntimePolicy = CatalogueRuntimePolicy.fullCatalogue();
 
     /** Exact catalogue resource used both for loading and report provenance. */
-    @Value("${taxonomy.catalogue.resource:classpath:data/C3_Taxonomy_Catalogue_25AUG2025.xlsx}")
+    @Value("${taxonomy.catalogue.resource:" + BundledCatalogue.BILINGUAL_RESOURCE + "}")
     private String catalogueResource;
 
     /** Whether to load taxonomy asynchronously after the server starts. */
@@ -109,6 +112,14 @@ public class TaxonomyService {
     /** Returns {@code true} once the taxonomy has been fully loaded and indexed. */
     public boolean isInitialized() {
         return stateService.isReady();
+    }
+
+    /** Digest of the workbook actually applied to the live catalogue, including across a configuration change. */
+    @Transactional(readOnly = true)
+    public Optional<String> appliedWorkbookSha256() {
+        var generation = catalogueSourceJournal.current();
+        return generation == null || generation.workbook().use() != Use.APPLIED
+                ? Optional.empty() : Optional.of(generation.workbook().sha256());
     }
 
     public record ProvisionalProductMapping(String productCode, String productTitle, String sourceParentReference,
@@ -300,7 +311,8 @@ public class TaxonomyService {
             CatalogueOverlayService.OverlayApplicationResult overlayResult =
                     catalogueOverlayService.applyAndValidate(
                             persistedNodeMap, persistedUuidToCode, catalogueResource);
-            catalogueSourceJournal.reconcileOverlay(overlayResult.sourceUse());
+            var translatedWorkbook = upgradeBundledTranslations(persistedNodeMap);
+            catalogueSourceJournal.reconcileOverlay(overlayResult.sourceUse(), translatedWorkbook);
             entityManager.flush();
             entityManager.clear();
             log.info("Reconciled {} persisted taxonomy nodes with catalogue overlay {}; "
@@ -579,6 +591,35 @@ public class TaxonomyService {
         return SourceUse.applied(bytes);
     }
 
+    /** Only the exact earlier shipped editions are eligible for this additive, in-place upgrade. */
+    private CatalogueSourceBytes upgradeBundledTranslations(Map<String, TaxonomyNode> persisted) throws IOException {
+        if (!BundledCatalogue.BILINGUAL_RESOURCE.equals(catalogueResource)) return null;
+        var previous = catalogueSourceJournal.current();
+        if (previous == null || previous.workbook().use() != Use.APPLIED
+                || !BundledCatalogue.needsTranslationUpgrade(previous.workbook().sha256())) return null;
+        var bytes = CatalogueSourceBytes.capture(() -> resourceLoader.getResource(catalogueResource).getInputStream());
+        try (var input = bytes.openStream(); var workbook = new XSSFWorkbook(input)) {
+            var incoming = readWorkbookNodes(workbook).nodes();
+            for (var candidate : incoming.values()) {
+                var stored = persisted.get(candidate.getCode());
+                if (stored == null || !Objects.equals(stored.getUuid(), candidate.getUuid())
+                        || !Objects.equals(stored.getNameEn(), candidate.getNameEn())
+                        || !Objects.equals(stored.getDescriptionEn(), candidate.getDescriptionEn())
+                        || stored.getNameDe() != null && !stored.getNameDe().equals(candidate.getNameDe())
+                        || stored.getDescriptionDe() != null && !stored.getDescriptionDe().equals(candidate.getDescriptionDe())) {
+                    log.info("Retaining customized catalogue translations for existing generation {}", previous.id());
+                    return null;
+                }
+            }
+            incoming.forEach((code, translated) -> {
+                var stored = persisted.get(code);
+                stored.setNameDe(translated.getNameDe());
+                stored.setDescriptionDe(translated.getDescriptionDe());
+            });
+        }
+        return bytes;
+    }
+
     public record WorkbookNodes(CatalogueDefinition definition, List<TaxonomyNode> virtualRoots,
                                 Map<String, TaxonomyNode> nodes, Map<String, String> uuidToCode) { }
 
@@ -605,6 +646,14 @@ public class TaxonomyService {
                 continue;
             }
             readSheet(sheet, sheetRoot.code(), nodeMap, uuidToCode);
+            var catalogueRoot = nodeMap.get(sheetRoot.code() + "-1000");
+            if (catalogueRoot != null && catalogueRoot.getTaxonomyRoot().equals(sheetRoot.code())
+                    && CatalogueDefinition.standard().roots().contains(sheetRoot)) {
+                var root = nodeMap.get(sheetRoot.code());
+                root.setNameDe(catalogueRoot.getNameDe());
+                if (catalogueRoot.getNameDe() != null)
+                    root.setDescriptionDe("C3-Taxonomie – " + catalogueRoot.getNameDe());
+            }
         }
 
         return new WorkbookNodes(definition, virtualRoots, nodeMap, uuidToCode);
@@ -613,24 +662,32 @@ public class TaxonomyService {
     /** Read one sheet and populate nodeMap and uuidToCode. */
     private static void readSheet(Sheet sheet, String sheetPrefix, Map<String, TaxonomyNode> nodeMap,
                            Map<String, String> uuidToCode) {
-        // Expected columns: Page(0), UUID(1), Title(2), Description(3),
-        //                   Parent(4), Dataset(5), ExternalID(6), Source(7),
-        //                   Reference(8), Order(9), State(10), Level(11)
-        boolean first = true;
-        for (Row row : sheet) {
-            if (first) { first = false; continue; } // skip header
-            String code        = cellString(row, 0);
-            String uuid        = cellString(row, 1);
-            String name        = cellString(row, 2);
-            String description = cellString(row, 3, false);
-            String parentCode  = cellString(row, 4);
-            String dataset     = cellString(row, 5);
-            String externalId  = cellString(row, 6);
-            String source      = cellString(row, 7);
-            String reference   = cellString(row, 8, false);
-            String orderStr    = cellString(row, 9);
-            String state       = cellString(row, 10);
-            String levelStr    = cellString(row, 11);
+        Iterator<Row> rows = sheet.iterator();
+        if (!rows.hasNext()) return;
+        // Named columns can be inserted anywhere. Legacy worksheets with positional headers stay readable.
+        Map<String, Integer> columns = new HashMap<>();
+        for (Cell cell : rows.next()) {
+            if (cell.getCellType() == CellType.STRING) {
+                columns.put(cell.getStringCellValue().strip().toLowerCase(Locale.ROOT), cell.getColumnIndex());
+            }
+        }
+        if (!columns.containsKey("page") || !columns.containsKey("title")) {
+            for (int i = 0; i < LEGACY_COLUMNS.size(); i++) columns.putIfAbsent(LEGACY_COLUMNS.get(i), i);
+        }
+        while (rows.hasNext()) {
+            Row row = rows.next();
+            String code        = cellString(row, columns.getOrDefault("page", -1));
+            String uuid        = cellString(row, columns.getOrDefault("uuid", -1));
+            String name        = cellString(row, columns.getOrDefault("title", -1));
+            String description = cellString(row, columns.getOrDefault("description", -1), false);
+            String parentCode  = cellString(row, columns.getOrDefault("parent", -1));
+            String dataset     = cellString(row, columns.getOrDefault("dataset", -1));
+            String externalId  = cellString(row, columns.getOrDefault("external id", -1));
+            String source      = cellString(row, columns.getOrDefault("source", -1));
+            String reference   = cellString(row, columns.getOrDefault("reference", -1), false);
+            String orderStr    = cellString(row, columns.getOrDefault("order", -1));
+            String state       = cellString(row, columns.getOrDefault("state", -1));
+            String levelStr    = cellString(row, columns.getOrDefault("level", -1));
 
             if (code == null || name == null) continue;
 
@@ -653,6 +710,9 @@ public class TaxonomyService {
             node.setCode(code);
             node.setUuid(uuid);
             node.setNameEn(name);
+            if (columns.containsKey("title de")) node.setNameDe(truncate(cellString(row, columns.get("title de")), 255));
+            if (columns.containsKey("description de"))
+                node.setDescriptionDe(truncate(cellString(row, columns.get("description de"), false), 5000));
             node.setDescriptionEn(truncate(description, 5000));
             node.setParentCode(parentCode);
             node.setTaxonomyRoot(sheetPrefix);
@@ -672,6 +732,7 @@ public class TaxonomyService {
     }
 
     private static String cellString(Row row, int col, boolean trim) {
+        if (col < 0) return null;
         Cell cell = row.getCell(col, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
         if (cell == null) return null;
         String val = switch (cell.getCellType()) {

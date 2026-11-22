@@ -275,6 +275,25 @@ class RelationCallLedgerTest {
         assertTerminalBudget(false);
     }
 
+    @Test void completionUsesTheAdmittedLedgerBaselineWhenNoNewProviderCallWasMade() {
+        try (var db = new Database(2)) {
+            assertEquals(2, spent(db));
+            var retained = result(2);
+            retained.setRelationSearchReport(retained.getRelationSearchReport().withBudget(
+                    new com.taxonomy.dto.RelationSearchBudget(2, 20, 2, 2, false, 1, 32, 512, 32)));
+            db.tx(em -> {
+                em.find(AnalysisContinuationRun.class, db.id).resultJson = db.json.writeValueAsString(retained);
+                return null;
+            });
+
+            var completed = db.tx(em -> db.store(em).complete(db.claim(), retained, List.of()));
+
+            assertEquals(2, completed.getRelationSearchReport().budget().spentCalls());
+            assertEquals(0, completed.getRelationSearchReport().budget().newCalls(),
+                    "A retained report must not repeat the preceding execution's provider calls");
+        }
+    }
+
     @Test void cancellationRetainsActualCumulativeCallsInBothSavedEvidenceViews() {
         assertTerminalBudget(true);
     }

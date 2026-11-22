@@ -470,3 +470,30 @@ ein versionierter Katalog und gleiche Grenzen für Zeit und Modellaufrufe verwen
 werden. Unabhängige Prüfer müssen die konkreten Endpunkte, Belegtreue, notwendigen
 Beziehungen, fehlenden Anforderungen, Widersprüche und Bearbeitbarkeit beurteilen.
 Eine hohe Anzahl von Knoten oder formal gültigen Kanten ist kein Ersatz dafür.
+
+### Optionaler Live-Test des Architekturdialogs mit vLLM
+
+Der JUnit-Test sendet zwei Fragen zu einem synthetischen Ausbildungsportal über
+den produktiven `CUSTOM_OPENAI`-Transport. Für das sichtbare Teilnehmerkonto
+muss die Antwort die Sichtregel und die Kontozuordnung belegen. Bei der
+Folgefrage zur offenen Freigaberolle akzeptiert der Test eine belegte offene
+Entscheidung oder eine Enthaltung. Beide Antworten beziehen sich auf denselben
+Checkpoint. Der Test verwendet bewusst kurze Antwortformate, damit seine
+fachlichen Erwartungen maschinell prüfbar sind.
+
+Der Test verwendet ausschließlich den unter `CUSTOM_LLM_URL` angegebenen
+vLLM-Server über HTTP oder HTTPS. Im Rancher-Cluster kann das der interne
+DNS-Name des Kubernetes-Service sein. Der Maven-Prozess braucht direkten
+Netzzugriff auf diesen Endpunkt. `CUSTOM_LLM_MODEL` bezeichnet das dort
+bereitgestellte Modell. Ein optionaler Schlüssel kommt aus der Umgebung (`CUSTOM_LLM_API_KEY`).
+Der normale Build überspringt den Test. Der folgende Aufruf deaktiviert den
+Maven-Buildcache, damit jede angeforderte Prüfung neue Antworten einholt.
+
+```bash
+# Beispiel für den Service llm-service im selben Kubernetes-Namespace
+export CUSTOM_LLM_URL=http://llm-service:8000/v1/chat/completions
+export CUSTOM_LLM_MODEL='bereitgestellter-modellname'
+./mvnw -pl taxonomy-app -am test -Dtest=ArchitectureDialogueVllmLiveTest \
+  -Dgroups=real-llm -DexcludedGroups=onnx -Dsurefire.failIfNoSpecifiedTests=false \
+  -Dtaxonomy.dialogue.evaluateLive=true -Dmaven.build.cache.enabled=false
+```

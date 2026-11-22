@@ -93,6 +93,45 @@ class PortfolioRequirementReviewIT {
         assertThat(page.driver().switchTo().activeElement()).isEqualTo(fixture.element("newVersionError"));
     }
 
+    @Test
+    void architectOpensRecordedQuestionsFromTheSelectedHistoricalSnapshot() {
+        var fixture = new PortfolioRequirementFixture(page);
+        var summary = Map.of("id", "qa-partial", "projectId", 1, "requirementId", 2, "requirementVersionId", 11,
+                "requirementVersionNumber", 1, "status", "PARTIAL");
+        String question = "Welches Team bestätigt den Eingang?";
+        // The analysis did not ask a question; the selected historical version has an explicit decision section.
+        var older = new java.util.LinkedHashMap<>(PortfolioRequirementFixture.version(11, 1, "## Offene Entscheidung\n\n" + question));
+        older.put("decisionSectionPresent", true);
+        fixture.versions.set(List.of(fixture.versions.get().getFirst(), older));
+        var analysis = Map.of("analysisCoverage", Map.of("nodes", Map.of()));
+        page.route("GET", REQUIREMENT + "/snapshots", request -> json(200, List.of(summary)));
+        page.route("GET", ROOT + "/snapshots/qa-partial", request -> json(200, Map.of("summary", summary, "analysis", analysis)));
+        var item = Map.of("id", "analysis-1", "state", "OPEN", "wording", question, "discoveries", List.of(),
+                "affectedStatementIds", List.of(), "answerSchema", Map.of("kind", "TEXT"));
+        var offer = Map.of("id", "clarification-offer", "baseline", Map.of("sourceVersionId", 11, "snapshotId", "qa-partial",
+                        "originalText", "Original", "frozenContext", Map.of("questionSource", "ANALYSIS_SNAPSHOT")),
+                "currentRevision", Map.of("number", 1, "text", "Original", "questions", List.of(item),
+                        "validation", Map.of("findings", List.of()), "statements", List.of(), "answers", List.of()));
+        page.route("POST", REQUIREMENT + "/reformulations", request -> json(200, offer));
+        page.route("GET", REQUIREMENT + "/reformulations/clarification-offer", request -> json(200, offer));
+        page.route("GET", REQUIREMENT + "/reformulations/clarification-offer/synthesis-runs", request -> json(200, List.of()));
+        fixture.open("de", "&snapshot=qa-partial");
+        var action = By.cssSelector("button[data-clarify-snapshot]");
+        fixture.click(action);
+        var input = fixture.wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("#question-analysis-1 textarea")));
+        assertThat(input.getDomAttribute("aria-label")).isEqualTo(question);
+        input.sendKeys("Eingangsprüfung");
+        fixture.click(action);
+        assertThat(input.getDomProperty("value")).isEqualTo("Eingangsprüfung");
+        var creates = page.requests().stream().filter(r -> r.method().equals("POST") && r.path().equals(REQUIREMENT+"/reformulations")).toList();
+        assertThat(creates).singleElement().satisfies(request -> {
+            var sent = JSON.readTree(request.body());
+            assertThat(sent.path("includeAnalysisQuestions").asBoolean()).isTrue();
+            assertThat(sent.path("sourceVersionId").asInt()).isEqualTo(11);
+            assertThat(sent.path("snapshotId").asText()).isEqualTo("qa-partial");
+        });
+    }
+
     @ParameterizedTest
     @CsvSource({"en,Analyze selected version", "de,Ausgewählte Version analysieren"})
     void analysisActionNamesAndSubmitsTheSelectedVersion(String locale, String label) {

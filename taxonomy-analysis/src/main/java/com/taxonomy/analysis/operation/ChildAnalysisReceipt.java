@@ -22,7 +22,7 @@ public final class ChildAnalysisReceipt {
     /** Returns null when an independent parent or retained architecture source needs a separate authorized remapping. */
     public static JsonNode restoreResult(String kind, String sourceId, String targetId, JsonNode stored) {
         validate(kind, sourceId, stored);
-        if ("FOCUS_INVESTIGATION".equals(kind) || stored.path("source").hasNonNull("parentId")) return null;
+        if ("FOCUS_INVESTIGATION".equals(kind) || "ARCHITECTURE_DIALOGUE".equals(kind) || stored.path("source").hasNonNull("parentId")) return null;
         if ("LEAF_JUSTIFICATION".equals(kind)) return stored;
         var restored = (tools.jackson.databind.node.ObjectNode) stored.deepCopy();
         ((tools.jackson.databind.node.ObjectNode) restored.get("result")).put("analysisOperationId", targetId);
@@ -72,6 +72,27 @@ public final class ChildAnalysisReceipt {
                 var leaf = JSON.treeToValue(stored.path("result"), JustifyLeafResult.class);
                 if (!source.nodeCode().equals(leaf.nodeCode())) throw invalid();
             }
+            case "ARCHITECTURE_DIALOGUE" -> {
+                allowed(stored, Set.of("source", "context", "sourceHash", "provider", "outcome", "suppliedFacts", "totalFacts", "statements"));
+                architecturePin(stored);
+                int supplied = stored.path("suppliedFacts").asInt(-1);
+                if (stored.hasNonNull("context") == stored.hasNonNull("source")
+                        || !stored.path("sourceHash").asString("").matches("[a-f0-9]{64}")
+                        || !stored.path("provider").isString() || supplied < 1 || supplied > 40
+                        || stored.path("totalFacts").asInt(-1) < supplied || !stored.path("statements").isArray()
+                        || stored.path("statements").size() > 4
+                        || !(stored.path("statements").isEmpty() ? "INSUFFICIENT_EVIDENCE" : "ANSWERED")
+                                .equals(stored.path("outcome").asString(""))) throw invalid();
+                for (var statement : stored.path("statements")) {
+                    allowed(statement, Set.of("text", "evidence"));
+                    if (!dialogueText(statement.path("text"), 700) || !statement.path("evidence").isArray()
+                            || statement.path("evidence").isEmpty() || statement.path("evidence").size() > 4) throw invalid();
+                    for (var citation : statement.path("evidence")) {
+                        allowed(citation, Set.of("source", "text"));
+                        if (!dialogueText(citation.path("source"), 1024) || !dialogueText(citation.path("text"), 2048)) throw invalid();
+                    }
+                }
+            }
             case "FOCUS_INVESTIGATION" -> {
                 allowed(stored, Set.of("source", "context", "sourceId", "sourceHash", "method", "outcome", "modelCalls",
                         "candidateCount", "suggestions"));
@@ -82,10 +103,7 @@ public final class ChildAnalysisReceipt {
                         || !stored.path("candidateCount").isIntegralNumber() || stored.path("candidateCount").asInt(-1) < 1
                         || stored.path("candidateCount").asInt() > 24 || !stored.path("suggestions").isArray()
                         || stored.path("suggestions").size() > stored.path("candidateCount").asInt()) throw invalid();
-                if (stored.hasNonNull("context"))
-                    allowed(stored.get("context"), Set.of("repositoryId", "workspaceScopeKey", "branch", "commit", "revision", "actor", "writeMode"));
-                else allowed(stored.get("source"), Set.of("kind", "repositoryId", "workspaceScopeKey", "workspaceId", "branch", "version",
-                        "projectId", "requirementId", "requirementVersionId", "snapshotId"));
+                architecturePin(stored);
                 for (var item : stored.path("suggestions")) {
                     allowed(item, Set.of("id", "sourceId", "targetId", "relationType", "rationale", "evidence", "properties"));
                     if (!item.path("evidence").isArray() || !item.path("properties").isObject()) throw invalid();
@@ -101,6 +119,17 @@ public final class ChildAnalysisReceipt {
             }
             default -> throw invalid();
         }
+    }
+
+    private static boolean dialogueText(JsonNode node, int max) {
+        return node.isString() && !node.asString().isBlank() && node.asString().length() <= max;
+    }
+
+    private static void architecturePin(JsonNode stored) {
+        if (stored.hasNonNull("context"))
+            allowed(stored.get("context"), Set.of("repositoryId", "workspaceScopeKey", "branch", "commit", "revision", "actor", "writeMode"));
+        else allowed(stored.get("source"), Set.of("kind", "repositoryId", "workspaceScopeKey", "workspaceId", "branch", "version",
+                "projectId", "requirementId", "requirementVersionId", "snapshotId"));
     }
 
     private static AnalysisNodeReceipts.Source source(JsonNode stored, String operationId) {

@@ -1,6 +1,7 @@
 package com.taxonomy.dsl.admbw;
 
 import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.sparx.mapping.AdmbwRequirementField;
 import com.taxonomy.sparx.mapping.AdmbwSourceProfile;
 import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
 import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
@@ -59,7 +60,13 @@ public final class AdmbwFffmlvProfile {
 
     public record Element(String ref, String stereotype, String name, String notes,
                           String catalogueGuid, String catalogueReference,
-                          Integer requirementVersion, String requirementContentHash) { }
+                          Integer requirementVersion, String requirementContentHash, Map<String, String> assessedTags) {
+        public Element { assessedTags = assessedTags == null ? Map.of() : Map.copyOf(assessedTags); }
+        public Element(String ref, String stereotype, String name, String notes, String catalogueGuid,
+                       String catalogueReference, Integer requirementVersion, String requirementContentHash) {
+            this(ref, stereotype, name, notes, catalogueGuid, catalogueReference, requirementVersion, requirementContentHash, Map.of());
+        }
+    }
 
     public record Connector(String stereotype, String client, String supplier) { }
 
@@ -187,8 +194,13 @@ public final class AdmbwFffmlvProfile {
                 view.issue("STALE_R7_PLANNING", id, "Review and save the R7 assignment for the exact requirement revision.");
                 continue;
             }
+            var assessedTags = new TreeMap<String, String>();
+            for (var field : AdmbwRequirementField.values()) {
+                String value = plan.get(field.planningKey());
+                if (value != null) assessedTags.put(field.nativeTag(), value);
+            }
             view.add(new Element(id, plan.get(AdmbwRequirementProfile.KIND), requirement.getTitle(),
-                    requirement.getText(), null, null, version, hash));
+                    requirement.getText(), null, null, version, hash, assessedTags));
             ArchitectureElement source = lookup(elements, plan.get(AdmbwRequirementProfile.DERIVED_FROM));
             if (!CONSTRAINT.equals(r7Role(source))) {
                 view.issue("OPERATIONAL_CONSTRAINT_REQUIRED", id, "Select exactly one modeled OperationalConstraint as the derivation source.");

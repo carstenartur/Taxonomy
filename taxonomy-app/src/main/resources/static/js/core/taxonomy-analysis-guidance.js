@@ -65,12 +65,12 @@
             control.setAttribute('aria-disabled', String(busy || c.running || c.stale || c.unpersisted || !c.ready || !c.text.trim()));
             control.title = t(c.running ? 'running' : c.unpersisted ? 'workspace' : c.stale ? 'stale' : !c.ready ? 'unavailable' : saved ? 'saved' : 'unsaved');
         });
-        ['analysisLensAction', 'architectureLensAction'].forEach(function (id) {
-            var control = el(id); if (!control) return;
-            control.href = '#architecture';
-            control.setAttribute('aria-disabled', String(busy || c.running || c.unpersisted || !c.ready));
-            control.title = t(c.unpersisted ? 'workspace' : 'lens.hint');
-        });
+        var lens = el('analysisLensAction');
+        if (lens) {
+            lens.href = '#architecture';
+            lens.setAttribute('aria-disabled', String(busy || c.running || c.unpersisted || !c.ready));
+            lens.title = t(c.unpersisted ? 'workspace' : 'lens.hint');
+        }
         el('analysisClarifyAction').hidden = !c.partial || c.running || c.stale;
         el('analysisClarifyAction').disabled = busy || !c.ready;
         el('analysisReanalyzeAction').hidden = (!c.stale && !changedPlan) || c.running;
@@ -106,22 +106,19 @@
             window.TaxonomyAnalysisSession.addAsRequirement({preserveDraft: true});
         });
     });
-    ['analysisLensAction', 'architectureLensAction'].forEach(function (id) {
-        el(id)?.addEventListener('click', async function (event) {
-            render();
-            if (this.getAttribute('aria-disabled') === 'true') { event.preventDefault(); return; }
-            event.preventDefault();
-            if (busy) return;
-            busy = true; render(); el('analysisGuideError').hidden = true;
-            try {
-                var workspace = window.TaxonomyArchitectureWorkspace;
-                if (!workspace || !workspace.openLens) throw new Error(t('unavailable'));
-                if (await workspace.open('analysis') !== false) await workspace.openLens();
-            } catch (failure) {
-                el('analysisGuideError').textContent = failure.message || t('unavailable');
-                el('analysisGuideError').hidden = false;
-            } finally { busy = false; render(); }
-        });
+    el('analysisLensAction')?.addEventListener('click', async function (event) {
+        render();
+        event.preventDefault();
+        if (this.getAttribute('aria-disabled') === 'true' || busy) return;
+        busy = true; render(); el('analysisGuideError').hidden = true;
+        try {
+            var workspace = window.TaxonomyArchitectureWorkspace;
+            if (!workspace || !workspace.openLens) throw new Error(t('unavailable'));
+            if (await workspace.open('analysis') !== false) await workspace.openLens();
+        } catch (failure) {
+            el('analysisGuideError').textContent = failure.message || t('unavailable');
+            el('analysisGuideError').hidden = false;
+        } finally { busy = false; render(); }
     });
     el('analysisClarifyAction').addEventListener('click', function () {
         var c = condition(); if (busy || !c.ready || c.running || c.stale) return;

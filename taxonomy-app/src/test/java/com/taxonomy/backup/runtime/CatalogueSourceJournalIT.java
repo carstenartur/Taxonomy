@@ -92,6 +92,21 @@ class CatalogueSourceJournalIT {
         }
     }
 
+    @Test void translationUpgradeRetainsPreviousWorkbookAndRelationEvidence() throws Exception {
+        try (var f = new Fixture()) {
+            var original = bytes("original workbook");
+            var translated = bytes("additional translation column");
+            var relations = SourceUse.applied(bytes("original relation rows"));
+            var old = f.tx.execute(s -> f.journal.initialize(original, SourceUse.notUsed(), relations));
+            var updated = f.tx.execute(s -> f.journal.reconcileOverlay(SourceUse.notUsed(), translated));
+            assertThat(updated.workbook().sha256()).isEqualTo(translated.sha256());
+            assertThat(updated.relations()).isEqualTo(old.relations());
+            assertThat(f.journal.retainedWorkbook(old.workbook()).sha256()).isEqualTo(original.sha256());
+            assertThat(f.tx.execute(s -> f.journal.reconcileOverlay(SourceUse.notUsed(), translated)).id())
+                    .isEqualTo(updated.id());
+        }
+    }
+
     @Test void replacingTheWorkbookKeepsPriorInputAsHistoryAndMovesTheCurrentPointer() throws Exception {
         try (var f = new Fixture()) {
             var oldInput = bytes("old catalogue"); var newInput = bytes("new catalogue");

@@ -70,6 +70,22 @@ public final class DiagramEdgeRouting {
         }
     }
 
+    /** Try the middle first, then look along a clear straight segment for space beside the edge. */
+    static List<Point> captionAnchors(DiagramSceneEdge edge, Detour detour) {
+        if (detour != null) return List.of(detour.labelAnchor());
+        double dx = edge.targetX() - edge.sourceX(), dy = edge.targetY() - edge.sourceY();
+        double centerX = edge.sourceX() + dx / 2, centerY = edge.sourceY() + dy / 2;
+        var anchors = new ArrayList<Point>();
+        anchors.add(new Point(centerX, centerY));
+        int intervals = Math.min(32, (int) Math.ceil(Math.hypot(dx, dy) / 48));
+        for (int i = 1; i < intervals; i++) {
+            double fraction = .5 * i / intervals;
+            anchors.add(new Point(centerX + dx * fraction, centerY + dy * fraction));
+            anchors.add(new Point(centerX - dx * fraction, centerY - dy * fraction));
+        }
+        return anchors;
+    }
+
     public Detour detourForLine(DiagramSceneEdge edge) {
         return detour(edge, new Line2D.Double(edge.sourceX(), edge.sourceY(), edge.targetX(), edge.targetY()));
     }

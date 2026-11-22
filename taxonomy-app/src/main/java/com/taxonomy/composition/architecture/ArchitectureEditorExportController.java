@@ -23,6 +23,7 @@ import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import org.eclipse.jgit.lib.ObjectId;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -124,6 +125,8 @@ public final class ArchitectureEditorExportController {
                 throw admbwExporterUnavailable();
             var delivery = new AdmbwQeaExport.Delivery(report.projectCode(), checked.commit(),
                     views.stream().map(ArchitectureEditorExportController::nativeView).toList(), report.coverage().notes());
+            if (!writer.supportsAssessedRequirementTags() && report.requirementDerivation().elements().stream()
+                    .anyMatch(element -> !element.assessedTags().isEmpty())) throw admbwExporterUnavailable();
             byte[] bytes = readQeaBasis(request);
             var checkpoint = exports.readCheckpoint(readContext(repositoryId, workspaceScopeKey, branch), commit);
             if (AdmbwPreparation.requiresBasisInspection(checkpoint.dsl(), report)) {
@@ -168,7 +171,7 @@ public final class ArchitectureEditorExportController {
     private static AdmbwQeaExport.View nativeView(AdmbwFffmlvProfile.View view) {
         return new AdmbwQeaExport.View(view.viewpoint(), view.name(), view.packagePath(),
                 view.elements().stream().map(e -> new AdmbwQeaExport.Element(e.ref(), e.stereotype(), e.name(), e.notes(),
-                        e.catalogueGuid(), e.requirementVersion(), e.requirementContentHash())).toList(),
+                        e.catalogueGuid(), e.requirementVersion(), e.requirementContentHash(), e.assessedTags())).toList(),
                 view.connectors().stream().map(c -> new AdmbwQeaExport.Connector(c.stereotype(), c.client(), c.supplier())).toList());
     }
 
@@ -210,7 +213,7 @@ public final class ArchitectureEditorExportController {
         return documentResponse(document)
                 .header("X-Taxonomy-Layout-Source", document.layoutMode())
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=architecture.svg")
-                .body(svg.renderCanonical(document.scene(), document.evidence()));
+                .body(svg.renderCanonical(document.scene(), document.evidence(), LocaleContextHolder.getLocale()));
     }
 
     @GetMapping(value = "/api/architecture/editor.pdf", produces = "application/pdf")
@@ -239,7 +242,7 @@ public final class ArchitectureEditorExportController {
         return documentResponse(document)
                 .header("X-Taxonomy-Layout-Source", document.layoutMode())
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=architecture.pdf")
-                .body(pdf.renderCanonical(document.scene(), provenance, document.evidence()));
+                .body(pdf.renderCanonical(document.scene(), provenance, document.evidence(), LocaleContextHolder.getLocale()));
     }
 
     public ResponseEntity<String> svg(String repositoryId, String workspaceScopeKey, String branch,

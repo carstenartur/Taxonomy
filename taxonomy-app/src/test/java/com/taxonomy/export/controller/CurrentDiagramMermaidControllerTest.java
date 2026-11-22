@@ -27,7 +27,7 @@ class CurrentDiagramMermaidControllerTest {
         var registry = new ExportFormatExtensionRegistry(List.of(new MermaidExportExtension(new MermaidExportService())));
         var controller = new ExportApiController(facade, registry);
         var view = new RequirementArchitectureView();
-        view.setViewTitle("Erfasste Übergabe");
+        view.setViewTitle("archview.policy.title.defaultImpact");
         view.setIncludedElements(List.of(element("fixture-source", "Leitstelle", "BP"),
                 element("fixture-target", "Übergabenachweis", "IP")));
         var relation = new RequirementRelationshipView();
@@ -43,7 +43,12 @@ class CurrentDiagramMermaidControllerTest {
                 .andExpect(status().isOk()).andReturn().getResponse();
 
         assertThat(response.getContentAsString(StandardCharsets.UTF_8))
-                .contains("Geschäftsprozesse", "Informationsprodukte", "-->|konsumiert|", "Übergabenachweis");
+                .contains("Architektur-Wirkungsansicht", "Geschäftsprozesse", "Informationsprodukte", "-->|konsumiert|", "Übergabenachweis")
+                .doesNotContain("archview.policy.title.");
+        assertThat(facade.buildCurrentDiagram(view, "en").title()).isEqualTo("Architecture Impact View");
+        assertThat(view.getViewTitle()).isEqualTo("archview.policy.title.defaultImpact");
+        view.setViewTitle("Erfasste Übergabe");
+        assertThat(facade.buildCurrentDiagram(view, "en").title()).isEqualTo("Erfasste Übergabe");
     }
 
     private static RequirementElementView element(String code, String title, String root) {

@@ -76,11 +76,13 @@ class ReformulationSynthesisTest extends RetainedPortfolioCatalogue {
                 RequirementStatus.APPROVED,50,Criticality.HIGH,RequirementType.FUNCTIONAL,ReviewStatus.CONFIRMED,
                 "architect","original",null),"architect",context);
     }
-    String snapshot(RequirementView req) {
+    String snapshot(RequirementView req) { return snapshot(req, result -> { }); }
+    String snapshot(RequirementView req, java.util.function.Consumer<AnalysisResult> configure) {
         var job = analyses.createOrReuseJob(project.id(),List.of(req.id()),null,25,UUID.randomUUID().toString(),"architect",context);
         var node = new TaxonomyNodeDto(); node.setCode("BP-1"); node.setNameEn("Time capture");
         node.setDescriptionEn("Frozen catalogue description");
         var result = new AnalysisResult(Map.of("BP-1",45),List.of(node)); result.setStatus("PARTIAL");
+        configure.accept(result);
         String id = UUID.randomUUID().toString();
         analyses.persistSnapshot(job.items().getFirst().id(),job.id(),project.id(),PortfolioScope.key("architect",context),
                 id,"session-"+id,result,null,null,null,null,null,"prompt-fingerprint","catalogue-fingerprint","architect",context,1);
@@ -98,6 +100,95 @@ class ReformulationSynthesisTest extends RetainedPortfolioCatalogue {
     }
     @Autowired org.springframework.web.client.RestTemplate restTemplate;
     @Autowired ReformulationService reformulations;
+
+    @Test void opensAnAuthoredDecisionEvenWhenTheAnalysisRecordedNoModelQuestion() {
+        String question = "Welche der vorgesehenen Rollen darf diese Protokolle einsehen?";
+        String source = "Ereignisse werden protokolliert.\n\n## Offene Entscheidung\n\nDie Leseberechtigung ist noch offen. " + question;
+        var req = projects.createRequirement(project.id(), new CreateRequirementRequest("LOG", "Protokollzugriff", source,
+                RequirementStatus.DRAFT, 50, Criticality.HIGH, RequirementType.FUNCTIONAL, ReviewStatus.PROPOSED,
+                "architect", "Quelle", null), "architect", context);
+        String saved = snapshot(req);
+        var offer = reformulations.create(project.id(), req.id(), new ReformulationDtos.CreateRequest(req.currentVersionId(), saved, "de", true),
+                "architect", context);
+        var decision = offer.currentRevision().questions().getFirst();
+        assertThat(offer.currentRevision().questions()).hasSize(1);
+        assertThat(decision.wording()).isEqualTo(question);
+        assertThat(decision.discoveries().getFirst().nodeIds()).isEmpty();
+        assertThat(decision.discoveries().getFirst().sourceSpans()).allMatch(span -> span.matches(source));
+        var revised = reformulations.answer(project.id(), req.id(), offer.id(), 1, new ReformulationDtos.AnswerRequest(
+                decision.id(), "ANSWER", List.of("Nur die Rolle Revision"), "", "Entscheidung des Fachverantwortlichen"), "architect", context);
+        assertThat(revised.currentRevision().impact().sectionIds()).containsExactly(decision.key().scope());
+        assertThat(revised.currentRevision().impact().boundaryEdgeIds()).isEmpty();
+        assertThat(revised.currentRevision().questions().getFirst().state()).isEqualTo(com.taxonomy.reformulation.DecisionQuestion.State.ANSWERED);
+        var resumed = reformulations.create(project.id(), req.id(), new ReformulationDtos.CreateRequest(req.currentVersionId(), saved, "de", true),
+                "architect", context);
+        assertThat(resumed.currentRevision().answers()).isEqualTo(revised.currentRevision().answers());
+    }
+
+    @Test void answersRecordedSnapshotQuestionAndRewordsOnlyItsAffectedSection() throws Exception {
+        var node = new com.taxonomy.dto.RelationSearchModel.Node("BP-1", "BP", "Time capture", "", false);
+        var independent = new com.taxonomy.dto.RelationSearchModel.Node("BP-2", "BP", "Billing", "", false);
+        String source = snapshot(requirement, result -> result.setRelationSearchReport(new com.taxonomy.dto.RelationSearchReport(
+                1, com.taxonomy.identity.StableIdentityHash.sha256(ORIGINAL), "TEST", List.of(
+                        new com.taxonomy.dto.RelationSearchModel.SourceAssessment(node, List.of(), "Unspecified", "Wer bestätigt die Erfassung?"),
+                        new com.taxonomy.dto.RelationSearchModel.SourceAssessment(independent, List.of(), "Unspecified", "Wer prüft Rechnungen?")),
+                new com.taxonomy.dto.RelationSearchModel.Result(List.of(), List.of(
+                        new com.taxonomy.dto.RelationSearchModel.Unfinished("BP-1", "FLOW", com.taxonomy.dto.RelationSearchModel.Direction.OUTGOING,
+                                List.of("BP-2"), "INVALID_RESPONSE", "Provider diagnostic")), List.of(), 1, 1, 1),
+                1, 5, 1, List.of(), "")));
+        var proposal = json.readTree(mvc.perform(post(base()).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("sourceVersionId", requirement.currentVersionId(), "snapshotId", source,
+                                "includeAnalysisQuestions", true, "language", "de"))))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        String id = proposal.path("id").asText();
+        assertThat(reformulations.runs(project.id(),requirement.id(),id,"architect",context)).isEmpty();
+        var initial = reformulations.get(project.id(), requirement.id(), id, "architect", context).currentRevision();
+        assertThat(initial.questions()).extracting(com.taxonomy.reformulation.DecisionQuestion::wording)
+                .containsExactly("Wer bestätigt die Erfassung?", "Wer prüft Rechnungen?");
+        var question = initial.questions().getFirst();
+        assertThat(question.discoveries().getFirst().location()).isEqualTo(source);
+        var answered = reformulations.answer(project.id(), requirement.id(), id, 1,
+                new ReformulationDtos.AnswerRequest(question.id(), "ANSWER", List.of("Die Schichtleitung"), "", "Fachentscheidung"),
+                "architect", context).currentRevision();
+        assertThat(answered.impact().sectionIds()).containsExactly("BP-1");
+        var resumed = reformulations.create(project.id(), requirement.id(), new ReformulationDtos.CreateRequest(
+                requirement.currentVersionId(), source, "de", true), "architect", context);
+        assertThat(resumed.id()).isEqualTo(id);
+        assertThat(resumed.currentRevision()).isEqualTo(answered);
+        var server = org.springframework.test.web.client.MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(org.springframework.test.web.client.match.MockRestRequestMatchers.anything()).andRespond(request -> {
+            String prompt = json.readTree(((org.springframework.mock.http.client.MockClientHttpRequest) request).getBodyAsString())
+                    .at("/messages/0/content").asText();
+            assertThat(prompt).contains("Wer bestätigt die Erfassung?", "Die Schichtleitung").doesNotContain("Wer prüft Rechnungen?");
+            var reply = Map.of("summary", "Die Schichtleitung bestätigt die Erfassung.", "statementProposals", List.of(),
+                    "preservedStatementIds", List.of(), "questionProposals", List.of(), "preservedQuestionIds", List.of(question.id()),
+                    "uncoveredSourceRefs", List.of(), "conflictCandidates", List.of());
+            return org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess(json.writeValueAsString(
+                    Map.of("choices", List.of(Map.of("message", Map.of("content", json.writeValueAsString(reply)))))),
+                    MediaType.APPLICATION_JSON).createResponse(request);
+        });
+        mvc.perform(post(base()+"/"+id+"/synthesis-runs").with(csrf()).header("If-Match", "\"2\""))
+                .andExpect(status().isAccepted());
+        org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(30)).untilAsserted(() ->
+                assertThat(reformulations.get(project.id(),requirement.id(),id,"architect",context).currentRevision().number()).isEqualTo(3));
+        var revised = reformulations.get(project.id(), requirement.id(), id, "architect", context).currentRevision();
+        assertThat(revised.text()).contains("Die Schichtleitung", "Wer prüft Rechnungen?");
+        assertThat(revised.sections().get(1)).isEqualTo(initial.sections().get(1));
+        assertThat(projects.getRequirement(project.id(), requirement.id(), "architect", context).currentVersion().text()).isEqualTo(ORIGINAL);
+        var adoption = app.getBean(ReformulationAdoptionService.class);
+        var preview = adoption.preview(project.id(), requirement.id(), id, 3, "architect", context);
+        assertThat(preview.content().analysisSnapshotId()).isEqualTo(source);
+        assertThat(preview.content().unresolvedQuestionIds()).containsExactly(initial.questions().get(1).id());
+        var receipt = adoption.adopt(project.id(), requirement.id(), id, 3, new ReformulationAdoptionDtos.ConfirmRequest(
+                UUID.randomUUID().toString(), preview.content().id(), preview.hash(), true, true, "Reviewed capture decision"),
+                "architect", context);
+        assertThat(receipt.analysisNeedsRefresh()).isTrue();
+        assertThat(receipt.targetVersionId()).isNotEqualTo(requirement.currentVersionId());
+        assertThat(projects.getRequirement(project.id(), requirement.id(), "architect", context).currentVersion().text()).isEqualTo(revised.text());
+        assertThat(analyses.getSnapshot(project.id(), source, "architect", context).summary().requirementVersionId())
+                .isEqualTo(requirement.currentVersionId());
+        server.verify();
+    }
 
     @Test void createDispatchesRealGatewaySynthesisAndPreservesOriginalAndStructureOnManualEdit() throws Exception {
         var server=org.springframework.test.web.client.MockRestServiceServer.bindTo(restTemplate).build();

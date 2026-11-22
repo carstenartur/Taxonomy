@@ -10,7 +10,8 @@ import com.taxonomy.portfolio.dto.PortfolioDtos.*;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.portfolio.service.PortfolioJsonCodec;
 import com.taxonomy.reformulation.ReformulationBaseline;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.util.List;
@@ -19,8 +20,9 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class FrozenReformulationResponsibilityTest {
-    @Test
-    void frozenArchitectureRetainsResponsibilityFromTheSavedAnalysisProjection() {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void frozenArchitectureRetainsResponsibilityAndConsistentCatalogueIdentity(boolean conflictingUuid) {
         var json = new PortfolioJsonCodec(JsonMapper.builder().build());
         var scope = new ReformulationBaseline.Scope("repo", "workspace", "draft", 1L, 2L);
         var source = new ReformulationBaseline.Source(scope, 3L, "Original requirement");
@@ -28,9 +30,12 @@ class FrozenReformulationResponsibilityTest {
         var node = new TaxonomyNodeDto();
         node.setCode("CP-1023");
         node.setNameEn("Capability A");
+        node.setLevel(1);
+        node.setUuid("76ac92c2-fe90-4bc2-9f7c-4ec1ca901f34");
         var element = new RequirementElementView();
         element.setNodeCode(node.getCode());
         element.setResponsibility(responsibility);
+        if (conflictingUuid) element.setCatalogueUuid("0a5bc58c-c75c-4dc3-8768-ec49423e5aa2");
         var view = new RequirementArchitectureView();
         view.setIncludedElements(List.of(element));
         var analysis = new AnalysisResult(Map.of(), List.of(node));
@@ -55,5 +60,6 @@ class FrozenReformulationResponsibilityTest {
         var assigned = new FrozenReformulationArchitectureAssembler(json).assemble(baseline).graph().nodes().getFirst();
         assertEquals(responsibility, assigned.responsibility());
         assertEquals("Capability A", assigned.label());
+        assertEquals(conflictingUuid ? null : node.getUuid(), assigned.catalogueUuid());
     }
 }

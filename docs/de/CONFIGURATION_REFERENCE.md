@@ -60,6 +60,12 @@ Git-gestützte Einstellungen (`taxonomy.llm.*`, `taxonomy.analysis.min-score`, `
 | `TAXONOMY_BACKUP_MAX_RETAINED_BYTES` | `taxonomy.backup.jobs.max-retained-bytes` | `68719476736` | 64 GiB Kontingent für aufbewahrte Archive; abgelaufene Dateien zählen bis zur erfolgreichen Löschung. |
 | `TAXONOMY_BACKUP_MAX_TEMPORARY_BYTES` | `taxonomy.backup.jobs.max-temporary-bytes` | `77309411328` | 72 GiB temporäres Kontingent, 24 GiB reserviert je Worker. Fehlgeschlagene Aufträge behalten die Reservierung bis zur Bereinigung. Mindestens 24 GiB. |
 
+Die mitgelieferte Arbeitsmappe `data/bilingual/C3_Taxonomy_Catalogue_25AUG2025.xlsx` enthält deutsche Projektübersetzungen in den Spalten `Title DE` und `Description DE`. Die Quellausgabe liegt unter `data/C3_Taxonomy_Catalogue_25AUG2025.xlsx`. Bei einer Standardinstallation mit gespeicherter Originalausgabe oder der früheren Ausgabe mit deutschen Titeln ergänzt der Startvorgang passende bestehende Knoten um die Übersetzungen. Frühere Kataloggenerationen bleiben für historische Projekte abrufbar. Eigene Arbeitsmappen können die beiden Übersetzungsspalten an beliebiger Stelle zwischen benannten Spalten einfügen. Fehlt eine Übersetzung, zeigt die deutsche Oberfläche den englischen Text.
+
+Die deutschen Beschreibungen sind maschinell erstellte und stichprobenweise redigierte Arbeitsübersetzungen. Im Taxonomiebaum zeigt der Titel beim Überfahren das englische Original. Im Architektureditor lässt sich die zweisprachige Katalogdefinition im Abschnitt **Katalogeintrag** öffnen.
+
+Beim vollständigen DSL-Katalogexport und bei der Übernahme aus einer gebundenen Katalogrevision bleiben die Seitenkennung und die Quell-UUID des Elements erhalten. Die UUID steht in `x-catalogue-uuid`. Eine native ADMBw-Referenz wird anhand des tatsächlichen Zielkatalogs zugeordnet.
+
 ### Katalogwurzeln konfigurieren
 
 Das optionale Arbeitsblatt `Catalogue Definition` legt die Datenblätter, Wurzelkennungen, DSL-Elementtypen und zulässigen Relationsrichtungen fest. Arbeitsmappen ohne dieses Blatt verwenden die acht Standardwurzeln. Die folgenden Zeilen ergänzen eine Museumssammlung.

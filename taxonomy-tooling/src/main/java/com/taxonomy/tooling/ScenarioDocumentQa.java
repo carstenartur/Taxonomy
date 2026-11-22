@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -202,6 +203,7 @@ final class ScenarioDocumentQa {
                     : expectedDiagramText(architecture));
             if(word) {
                 expected.addAll(expectedRecordedArchitectureText(architecture));
+                expected.addAll(expectedScopedEvidenceText(architecture));
                 expected.add(wordGraphHash);
                 for(String collection:List.of("nodes","edges"))for(Object value:array(object(architecture.get("diagram")).get(collection)))expected.add(text(object(value),"id"));
             }
@@ -450,6 +452,30 @@ final class ScenarioDocumentQa {
             if (Boolean.FALSE.equals(node.get("container"))) expected.add(text(node, "label"));
         }
         return expected;
+    }
+
+    /** Check all distinct populated scope fields against the rendered Word body, including both ends of a relation. */
+    static Set<String> expectedScopedEvidenceText(Map<String, Object> architecture) {
+        var expected = new LinkedHashSet<String>();
+        for (Object edge : array(object(architecture.get("diagram")).get("edges"))) {
+            if (!(object(edge).get("metadata") instanceof Map<?, ?> metadata)
+                    || !(metadata.get("requirementEvidence") instanceof List<?> scopes)) continue;
+            for (Object scope : scopes) {
+                var evidence = object(scope);
+                addRecordedFields(expected, object(evidence.get("contribution")), List.of("text", "quote", "condition"));
+                if (evidence.get("evidence") instanceof Map<?, ?> decision) {
+                    addRecordedFields(expected, decision, List.of("outcome", "necessity", "contribution", "quote",
+                            "condition", "alternativeGroup", "rationale", "question"));
+                }
+            }
+        }
+        return expected;
+    }
+
+    private static void addRecordedFields(Set<String> expected, Map<?, ?> fields, List<String> keys) {
+        for (String key : keys) {
+            if (fields.get(key) instanceof String text && !text.isBlank()) expected.add(text);
+        }
     }
 
     private static Map<?, ?> object(Object value) {
