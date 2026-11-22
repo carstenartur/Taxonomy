@@ -256,12 +256,101 @@ Die Verbindungsübersicht zeigt Werkzeug, externes Projekt, Branch, Arbeitsstand
 
 Die gemeinsame Anwendungsnavigation bleibt auch auf dieser Seite verfügbar. Beim Wechsel zwischen Architektureditor und Werkzeugintegrationen bleiben Repository, Arbeitsbereich und Branch erhalten; über **Projekte** gelangen Sie zurück zur Projektübersicht.
 
+<a id="architecture-delivery-guide"></a>
+## Von der Anforderung zur geprüften ADMBw-Liefersicht
+
+Das Beispiel verwendet ein fiktives Ausbildungsportal. Für einen eigenen Lauf
+brauchen Sie ein Projekt mit einer gespeicherten Anforderung, einen bearbeitbaren
+Arbeitsbereich und einen erreichbaren generativen KI-Anbieter. Für die native
+Lieferung kommen das Sparx-Plugin und eine geschlossene `.qea`-Basis (bis 32 MiB)
+mit dem vereinbarten ADMBw-Katalog hinzu. Das öffentliche MASC-Beispiel eignet
+sich als Referenz für eine Übung.
+[KI-Anbieter einrichten](AI_PROVIDERS.md) · [Sparx-Plugin installieren](https://github.com/carstenartur/Taxonomy/blob/main/docs/features/sparx-integration-de.md)
+
+### 1. Anforderung analysieren und offene Fragen klären
+
+Öffnen Sie **Projekte → Anforderung → Analysen** und wählen Sie **Copilot starten**
+für die aktuelle Anforderungsversion. Für einen Lauf aus der allgemeinen Analyse
+wählen Sie **Mit KI analysieren** oder **Copilot**. In der automatischen Analyse
+sind **Alle Teiltaxonomien**, **Knotenbewertung und Relationssuche** und bei neuen
+Entwürfen die **Architekturansicht** vorausgewählt. Lassen Sie den interaktiven Modus aus, wenn der Lauf die
+Teiltaxonomien selbstständig untersuchen soll. Der Server verwendet seinen
+konfigurierten Standardanbieter. Die hierarchische Relationssuche ist aktiviert
+und setzt bei Bedarf im verfügbaren Gesamtbudget automatisch fort.
+
+Prüfen Sie unter **Nächste Schritte** den Umfang und den Bearbeitungsstand.
+Erledigen Sie offene Bewertungen oder setzen Sie eine budgetbegrenzt beendete
+Suche fort. Öffnen Sie bei fachlichen Rückfragen **Analysefragen beantworten…**.
+Im Beispiel muss der Auftraggeber entscheiden, wer die Auditprotokolle lesen
+darf. Übernehmen Sie eine geprüfte Neuformulierung als neue Version und starten
+Sie die Analyse für diese Version erneut.
+
+![Offene Analysefrage zur Leseberechtigung für Auditprotokolle](../images/admbw-quickstart-01-offene-analysefrage.png)
+
+### 2. Beziehungen prüfen und den analysierten Stand übernehmen
+
+Öffnen Sie **Architektur** und wählen Sie die aktuelle Analyse oder den
+gewünschten gespeicherten Snapshot. Öffnen Sie die **Architektur-Lupe**, wählen
+Sie ein Element aus und verwenden Sie **Auswahl untersuchen**. Prüfen Sie für
+jeden Kandidaten Richtung, Zweck und Originalbeleg. **Fragen zu dieser
+Architektur** beantwortet Fragen zum ausgewählten Stand mit Modellbelegen.
+
+![Architektur-Lupe untersucht den gewählten schreibgeschützten Snapshot](../images/admbw-quickstart-02-lupe-im-snapshot.png)
+
+Wählen Sie **Übernahme in die Arbeitsarchitektur prüfen**. Kontrollieren Sie
+Anforderungsversion, Ausgangsstand und die betroffenen Elemente und Beziehungen
+in der Vorschau. Nehmen Sie die Änderung ausdrücklich an. In der Arbeitsarchitektur
+können Sie anschließend einzelne belegte Beziehungen prüfen, übernehmen und über
+die Editor-Historie zurücknehmen.
+
+![Vorschau der Übernahme aus dem gewählten Snapshot in die Arbeitsarchitektur](../images/admbw-quickstart-03-uebernahmevorschau.png)
+
+### 3. Native Grundlage und fachliche Herleitung wählen
+
+Öffnen Sie in der bearbeitbaren **Arbeitsarchitektur** den Bereich **C1–S1 und R7
+aus diesem Arbeitsbereich vorbereiten**. Wählen Sie die geschlossene `.qea` und
+**QEA-Basis einlesen**. Geben Sie das Projektkürzel an und wählen Sie Modellwurzel,
+Dienst, Fähigkeit und Anforderung. Für R7 wählen Sie Anforderungstyp und Subjekt
+aus der Basis. Markieren Sie den einschlägigen Ausschnitt im **Aktuellen
+Anforderungstext** und übernehmen Sie ihn als wörtlichen Beleg. Tragen Sie die
+daraus abgeleitete operationelle Vorgabe ein. Die native Referenz stammt aus der
+eingelesenen QEA. Wenn eine Dienstspezifikation eindeutig auf den ursprünglichen
+C3-Dienst verweist, zeigt Taxonomy den nativen Typbeleg für Ihre Prüfung an.
+
+![Ausgefüllte Liefermaske mit nativer Referenz und wörtlichem R7-Beleg](../images/admbw-quickstart-04-native-referenz.png)
+
+### 4. Liefervorschlag prüfen, speichern und öffnen
+
+Erfassen Sie die Begründung und wählen Sie **Änderung vorschauen**. Vergleichen
+Sie in der Vorschau die vorgeschlagenen Änderungen, den genauen
+Quellenausschnitt und die Abdeckung von Liefersicht und Gesamtmodell. Prüfen Sie
+die Dienst-Fähigkeits-Zuordnung und die R7-Herleitung einzeln. Wenn die Vorgabe
+nur einen von mehreren Anforderungsteilen abdeckt, prüfen Sie die übrigen Teile
+und erfassen Sie bei Bedarf eine separat versionierte Anforderung. Bestätigen Sie
+beide Prüfungen und wählen Sie **Geprüfte Änderungen
+speichern und Checkpoint erstellen**.
+
+![Liefervorschau mit Prüfergebnissen für C1–S1 und R7 und der Abdeckung der gewählten Sicht](../images/admbw-quickstart-05-liefervorschau.png)
+
+Öffnen Sie den Checkpoint und verwenden Sie **ADMBw-Abgabe am Checkpoint prüfen**. Der
+JSON-Prüfbericht führt die ausgewählte Sicht und die offenen Punkte auf. Öffnen
+Sie die heruntergeladene QEA-Kopie in Enterprise Architect mit der vereinbarten
+ADMBw-MDG. Prüfen Sie dort Diagramme, native Identitäten, Verbindungsrollen,
+Require.7-Felder und die im Vorhaben vereinbarten Sichten. **Fachliche und
+technische Prüfung erforderlich** bedeutet, dass Abnahmepunkte offen sind.
+
+![Gerenderte C1–S1-Liefersicht des Ausbildungsportals mit gerichteter Beziehung](../images/admbw-quickstart-06-liefersicht.png)
+
+Die Bildschirmaufnahmen zeigen gespeicherte Teststände des fiktiven
+Ausbildungsportals. Die Prüfzahlen und der Vergleich mit der Musterarchitektur
+stehen bei den [ADMBw-Liefernachweisen](https://github.com/carstenartur/Taxonomy/blob/main/docs/features/admbw-conformance-de.md#vergleich-am-ausbildungsportal).
+
 ## ADMBw-Abgabe vorbereiten
 
 Unter **ADMBw-Elementzuordnung** können Sie offizielle Katalogreferenzen und
 Stereotype am Element erfassen. Das Profil **ADMBw R7 Anforderungsherleitung**
 verbindet versionierte Anforderungen mit den zugehörigen Modellelementen.
-Öffnen Sie einen Git-Checkpoint und laden Sie unter **ADMBw-Abgabe vorbereiten**
+Öffnen Sie einen Git-Checkpoint und laden Sie unter **ADMBw-Abgabe am Checkpoint prüfen**
 den Prüfbericht für C1–S1 und R7. [Regeln und Liefernachweise](https://github.com/carstenartur/Taxonomy/blob/main/docs/features/admbw-conformance-de.md)
 
 ### Architekturauftrag und Quellenzuordnungen

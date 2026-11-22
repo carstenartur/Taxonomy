@@ -38,6 +38,23 @@ class AdmbwBasisInspectionTest {
         }
     }
 
+    @Test void readsSourceTaggedServiceSpecificationsAsEvidenceWithoutAddingSelectableReferences() throws Exception {
+        try (var fixture = basis()) {
+            fixture.sql("INSERT INTO t_object (Object_ID,Object_Type,Name,Package_ID,ea_guid,Stereotype) VALUES (12,'Class','Records service',2,?,'ServiceSpecification')", QeaFixture.C);
+            fixture.sql("INSERT INTO t_xref (Name,Type,Client,Description) VALUES ('Stereotypes','element property',?,'@STEREO;Name=ServiceSpecification;FQName=NAFv4-ADMBw::ServiceSpecification;@ENDSTEREO;')", QeaFixture.C);
+            fixture.sql("INSERT INTO t_objectproperties (Object_ID,Property,Value) VALUES (12,'Quelle','NATO C3 Taxonomy')");
+            var result = connector.inspectAdmbwBasis(fixture.bytes());
+            assertEquals(List.of(new AdmbwQeaExport.ServiceSpecification(QeaFixture.C, "Records service",
+                    List.of("Root", "Child"), QeaFixture.ROOT, "NATO C3 Taxonomy")), result.serviceSpecifications());
+            assertFalse(result.references().stream().anyMatch(reference -> reference.guid().equals(QeaFixture.C)));
+
+            fixture.sql("INSERT INTO t_objectproperties (Object_ID,Property,Value) VALUES (12,'Source','Ambiguous alternative')");
+            assertNull(connector.inspectAdmbwBasis(fixture.bytes()).serviceSpecifications().getFirst().source());
+            fixture.sql("UPDATE t_xref SET Description=replace(Description,'NAFv4-ADMBw','Other') WHERE Client=?", QeaFixture.C);
+            assertTrue(connector.inspectAdmbwBasis(fixture.bytes()).serviceSpecifications().isEmpty());
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {
             "UPDATE usys_system SET value='{00000000-0000-0000-0000-000000000000}'",

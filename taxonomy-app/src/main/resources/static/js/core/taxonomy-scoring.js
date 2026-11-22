@@ -118,8 +118,12 @@
         return elements.map(function (element) {
             var titles = element.catalogueTitles;
             return titles && element.title === titles.en && typeof titles.de === 'string' && titles.de.trim()
-                ? Object.assign({}, element, {title: titles.de}) : element;
+                ? Object.assign({}, element, {title: titles.de, originalTitle: titles.en !== titles.de ? titles.en : null}) : element;
         });
+    }
+
+    function architectureTitleWithOriginal(element) {
+        return (element.title || '') + (element.originalTitle ? ' (' + element.originalTitle + ')' : '');
     }
 
     function scoreLabel(code, effective, raw, detail) {
@@ -1586,7 +1590,7 @@
         if (el.anchor) nodeClasses += ' impact-node-anchor';
         if (hotspotCodes.has(el.nodeCode)) nodeClasses += ' impact-node-hotspot';
         var opacity = 0.6 + (el.relevance * 0.4);
-        var titleParts = el.nodeCode + ' ' + (el.title || '') + ' — ' + (el.includedBecause || '');
+        var titleParts = el.nodeCode + ' ' + architectureTitleWithOriginal(el) + ' — ' + (el.includedBecause || '');
         if (hotspotCodes.has(el.nodeCode)) {
             titleParts += ' | ⚠️ hotspot: ' + (hotspotReasons[el.nodeCode] || t('analyze.hotspot.risk'));
         }
@@ -2427,7 +2431,7 @@
                 var pct = scoreText(el.relevance * 100);
                 // Use full hierarchy path from backend (e.g. "CP > CP-1000 > CP-1023")
                 var path = el.hierarchyPath || el.nodeCode;
-                var titleParts = [path, el.title || '', el.includedBecause || '']
+                var titleParts = [path, architectureTitleWithOriginal(el), el.includedBecause || '']
                     .filter(function (p) { return p.length > 0; });
                 html += '<button type="button" class="summary-layer-element" aria-pressed="false" aria-controls="summarySelectionDetails" data-code="' + escapeHtml(el.nodeCode) +
                     '" title="' + escapeHtml(titleParts.join(' — ')) + '">';
@@ -2472,7 +2476,7 @@
             details.hidden = false;
             var heading = document.createElement('h3');
             heading.className = 'h6';
-            heading.textContent = code + (selected.title ? ' — ' + selected.title : '');
+            heading.textContent = code + (selected.title ? ' — ' + architectureTitleWithOriginal(selected) : '');
             details.appendChild(heading);
             [selected.hierarchyPath, selected.includedBecause, (S.currentReasons || {})[code]].forEach(function (value) {
                 if (!value) return;

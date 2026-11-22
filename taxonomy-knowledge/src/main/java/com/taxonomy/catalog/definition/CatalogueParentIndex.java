@@ -23,7 +23,10 @@ import java.util.Map;
 public class CatalogueParentIndex {
     private final CatalogueSourceJournal sources;
     private final CatalogueOverlayService overlays;
-    private record IndexedNode(Node node, int level) {}
+    record Entry(Node node, String descriptionEn, String descriptionDe) {}
+    private record IndexedNode(Entry entry, int level) {
+        Node node() { return entry.node(); }
+    }
     private String cachedRevision;
     private Map<String, IndexedNode> cached;
 
@@ -72,6 +75,12 @@ public class CatalogueParentIndex {
         return index(revision).containsKey(code);
     }
 
+    synchronized Map<String, Entry> sourceEntries(String revision) {
+        Map<String, Entry> entries = new HashMap<>();
+        index(revision).forEach((code, indexed) -> entries.put(code, indexed.entry()));
+        return entries;
+    }
+
     private Map<String, IndexedNode> index(String revision) {
         if (cached == null || !java.util.Objects.equals(revision, cachedRevision)) {
             cached = read(revision);
@@ -110,8 +119,8 @@ public class CatalogueParentIndex {
             overlays.applyRetainedHierarchy(hierarchy.nodes(), hierarchy.uuidToCode(), overlay);
             Map<String, IndexedNode> result = new HashMap<>();
             hierarchy.nodes().forEach((id, node) -> result.put(id, new IndexedNode(
-                    new Node(id, node.getTaxonomyRoot(), node.getParentCode(), node.getNameEn(), node.getNameDe(),
-                            node.getSortOrder(), node.getUuid()), node.getLevel())));
+                    new Entry(new Node(id, node.getTaxonomyRoot(), node.getParentCode(), node.getNameEn(), node.getNameDe(),
+                            node.getSortOrder(), node.getUuid()), node.getDescriptionEn(), node.getDescriptionDe()), node.getLevel())));
             return Map.copyOf(result);
         }
     }

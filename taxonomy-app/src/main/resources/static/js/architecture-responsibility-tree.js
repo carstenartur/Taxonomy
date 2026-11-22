@@ -131,6 +131,11 @@
                         select.className = 'responsibility-select';
                         select.setAttribute('aria-current', String(node.id === selected));
                         select.textContent = node.label;
+                        const sourceTitle = node.item.title && node.item.title !== node.label ? node.item.title : '';
+                        if (sourceTitle) {
+                            select.title = sourceTitle;
+                            select.setAttribute('aria-description', sourceTitle);
+                        }
                         if (node.label !== node.id) {
                             const id = document.createElement('small'); id.textContent = node.id;
                             select.append(id);
@@ -140,7 +145,7 @@
                             select.className += ' responsibility-assigned';
                             select.style.setProperty('--responsible-unit-color', unit.color);
                             const label = t('views.diagram.responsibleUnit', unit.name);
-                            select.title = label;
+                            select.title = [sourceTitle, label].filter(Boolean).join(' · ');
                             const parentUnit = assignments.get(group.parent);
                             if (parentUnit?.unitId !== unit.unitId || parentUnit.sourceId !== unit.sourceId) {
                                 const name = document.createElement('small');

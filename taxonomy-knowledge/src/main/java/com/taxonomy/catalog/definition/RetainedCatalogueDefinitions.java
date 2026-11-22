@@ -1,6 +1,8 @@
 package com.taxonomy.catalog.definition;
 
 import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
+import com.taxonomy.catalog.definition.CatalogueParentIndex.Entry;
+import com.taxonomy.dsl.model.ArchitectureElement;
 import com.taxonomy.dsl.model.CatalogueDefinition;
 import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
 import com.taxonomy.dsl.model.CatalogueReference;
@@ -10,9 +12,11 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Objects;
 
 /** A descriptor belongs to the bytes of one recorded workbook, including after an import or restart. */
 @Service
@@ -66,41 +70,83 @@ public class RetainedCatalogueDefinitions implements CatalogueDefinitionResolver
     public Map<String, String> translatedTitles(CanonicalArchitectureModel model, String language) {
         var embedded = CatalogueDefinitionResolver.super.translatedTitles(model, language);
         if (!"de".equals(language) || embedded.size() == model.getElements().size()) return embedded;
-        var result = new java.util.HashMap<>(embedded);
-        String revision = model.getCatalogueRevision();
-        var generation = revision == null ? null : sources.findRevision(revision).orElse(null);
-        if (generation != null && generation.workbook().use() == CatalogueSourceJournal.Use.APPLIED) {
-            var definition = forGeneration(generation);
-            if (BundledCatalogue.ORIGINAL_SHA256.equals(generation.workbook().sha256())) {
-                // This project's bilingual edition preserves every cell (including source UUIDs) of the exact original.
-                addMatchingTitles(model, definition, BundledCatalogue.originalEditionTranslations(), false, result);
-            } else if (hierarchy != null) {
-                var nodes = new java.util.HashMap<String, Node>();
-                hierarchy.catalogueNodes(revision).forEach(node -> nodes.put(node.code(), node));
-                addMatchingTitles(model, definition, nodes, false, result);
-            }
-        }
+        var result = new HashMap<>(embedded);
+        addMatchingTitles(model, sourceIndex(model.getCatalogueRevision()), false, result);
         // An adopted source may come from a different edition than the target workspace, or predate its pin.
         if (model.getElements().stream().anyMatch(e -> !result.containsKey(e.getId())
                 && e.getExtensions().containsKey(CatalogueReference.UUID_PROPERTY))) {
-            addMatchingTitles(model, CatalogueDefinition.standard(), BundledCatalogue.originalEditionTranslations(), true, result);
+            addMatchingTitles(model, bundledIndex(), true, result);
         }
         return result;
     }
 
-    private static void addMatchingTitles(CanonicalArchitectureModel model, CatalogueDefinition definition,
-                                          Map<String, Node> nodes, boolean requireUuid, Map<String, String> result) {
+    private static void addMatchingTitles(CanonicalArchitectureModel model, SourceIndex index,
+                                          boolean requireUuid, Map<String, String> result) {
         for (var element : model.getElements()) {
-            var node = nodes.get(element.getId());
-            String uuid = element.getExtensions().get(CatalogueReference.UUID_PROPERTY);
-            if (node != null && node.uuid() != null && node.nameDe() != null && !node.nameDe().isBlank()
-                    && node.nameEn().equals(element.getTitle()) && java.util.Objects.equals(definition.typeFor(node.root()), element.getType())
-                    && (element.getTaxonomy() == null || element.getTaxonomy().equals(node.root()))
-                    && (uuid == null ? !requireUuid : uuid.equalsIgnoreCase(node.uuid()))) {
-                result.putIfAbsent(element.getId(), node.nameDe());
+            var entry = index.entries().get(element.getId());
+            if (entry != null && entry.node().uuid() != null && hasText(entry.node().nameDe())
+                    && entry.node().nameEn().equals(element.getTitle()) && matches(element, index, entry, requireUuid)) {
+                result.putIfAbsent(element.getId(), entry.node().nameDe());
             }
         }
     }
+
+    @Override
+    public Map<String, SourceText> sourceTexts(CanonicalArchitectureModel model, String language) {
+        if (model.getElements().isEmpty()) return Map.of();
+        String modelRevision = model.getCatalogueRevision();
+        boolean requireUuid = modelRevision == null;
+        if (requireUuid && model.getElements().stream().noneMatch(
+                element -> element.getExtensions().containsKey(CatalogueReference.UUID_PROPERTY))) return Map.of();
+        var index = requireUuid ? bundledIndex() : sourceIndex(modelRevision);
+        Map<String, SourceText> result = new HashMap<>();
+        for (var element : model.getElements()) {
+            var text = sourceText(element, index, requireUuid, language);
+            if (text != null) result.put(element.getId(), text);
+        }
+        return result;
+    }
+
+    private record SourceIndex(CatalogueDefinition definition, Map<String, Entry> entries) {}
+
+    private static SourceIndex bundledIndex() {
+        return new SourceIndex(CatalogueDefinition.standard(), BundledCatalogue.originalEditionTranslations());
+    }
+
+    private SourceIndex sourceIndex(String revision) {
+        var generation = revision == null ? null : sources.findRevision(revision).orElse(null);
+        if (generation == null || generation.workbook().use() != CatalogueSourceJournal.Use.APPLIED)
+            return new SourceIndex(CatalogueDefinition.standard(), Map.of());
+        if (BundledCatalogue.needsTranslationUpgrade(generation.workbook().sha256())) {
+            // The bilingual edition preserves every original English cell and source UUID.
+            return bundledIndex();
+        }
+        var entries = hierarchy == null ? Map.<String, Entry>of() : hierarchy.sourceEntries(revision);
+        return new SourceIndex(forGeneration(generation), entries);
+    }
+
+    private static SourceText sourceText(ArchitectureElement element, SourceIndex index,
+                                         boolean requireUuid, String language) {
+        var entry = index.entries().get(element.getId());
+        if (entry == null || !matches(element, index, entry, requireUuid)) return null;
+        var node = entry.node();
+        boolean german = "de".equals(language);
+        String title = german && hasText(node.nameDe()) ? node.nameDe() : node.nameEn();
+        boolean translated = german && hasText(entry.descriptionDe());
+        return new SourceText(title, title.equals(node.nameEn()) ? null : node.nameEn(),
+                translated ? entry.descriptionDe() : entry.descriptionEn(), translated ? "de" : "en");
+    }
+
+    private static boolean matches(ArchitectureElement element, SourceIndex index, Entry entry, boolean requireUuid) {
+        var node = entry.node();
+        String uuid = element.getExtensions().get(CatalogueReference.UUID_PROPERTY);
+        return !node.code().equals(node.root())
+                && Objects.equals(index.definition().typeFor(node.root()), element.getType())
+                && (element.getTaxonomy() == null || element.getTaxonomy().equals(node.root()))
+                && (uuid == null ? !requireUuid && node.nameEn().equals(element.getTitle()) : uuid.equalsIgnoreCase(node.uuid()));
+    }
+
+    private static boolean hasText(String value) { return value != null && !value.isBlank(); }
 
     @Override
     public AssignmentTarget assignmentTarget(CanonicalArchitectureModel model, String code) {

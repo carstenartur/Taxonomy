@@ -591,12 +591,12 @@ public class TaxonomyService {
         return SourceUse.applied(bytes);
     }
 
-    /** Only the exact original distribution is eligible for this additive, in-place upgrade. */
+    /** Only the exact earlier shipped editions are eligible for this additive, in-place upgrade. */
     private CatalogueSourceBytes upgradeBundledTranslations(Map<String, TaxonomyNode> persisted) throws IOException {
         if (!BundledCatalogue.BILINGUAL_RESOURCE.equals(catalogueResource)) return null;
         var previous = catalogueSourceJournal.current();
         if (previous == null || previous.workbook().use() != Use.APPLIED
-                || !BundledCatalogue.ORIGINAL_SHA256.equals(previous.workbook().sha256())) return null;
+                || !BundledCatalogue.needsTranslationUpgrade(previous.workbook().sha256())) return null;
         var bytes = CatalogueSourceBytes.capture(() -> resourceLoader.getResource(catalogueResource).getInputStream());
         try (var input = bytes.openStream(); var workbook = new XSSFWorkbook(input)) {
             var incoming = readWorkbookNodes(workbook).nodes();
@@ -604,6 +604,7 @@ public class TaxonomyService {
                 var stored = persisted.get(candidate.getCode());
                 if (stored == null || !Objects.equals(stored.getUuid(), candidate.getUuid())
                         || !Objects.equals(stored.getNameEn(), candidate.getNameEn())
+                        || !Objects.equals(stored.getDescriptionEn(), candidate.getDescriptionEn())
                         || stored.getNameDe() != null && !stored.getNameDe().equals(candidate.getNameDe())
                         || stored.getDescriptionDe() != null && !stored.getDescriptionDe().equals(candidate.getDescriptionDe())) {
                     log.info("Retaining customized catalogue translations for existing generation {}", previous.id());
@@ -648,7 +649,10 @@ public class TaxonomyService {
             var catalogueRoot = nodeMap.get(sheetRoot.code() + "-1000");
             if (catalogueRoot != null && catalogueRoot.getTaxonomyRoot().equals(sheetRoot.code())
                     && CatalogueDefinition.standard().roots().contains(sheetRoot)) {
-                nodeMap.get(sheetRoot.code()).setNameDe(catalogueRoot.getNameDe());
+                var root = nodeMap.get(sheetRoot.code());
+                root.setNameDe(catalogueRoot.getNameDe());
+                if (catalogueRoot.getNameDe() != null)
+                    root.setDescriptionDe("C3-Taxonomie – " + catalogueRoot.getNameDe());
             }
         }
 

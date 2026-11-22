@@ -68,7 +68,7 @@ class WorkbookCatalogueDefinitionTest {
         }
     }
 
-    @Test void bilingualEditionAddsEveryProjectTitleAndPreservesEverySourceCell() throws Exception {
+    @Test void bilingualEditionAddsEveryProjectTitleAndDescriptionAndPreservesEverySourceCell() throws Exception {
         try (var original = getClass().getResourceAsStream("/data/C3_Taxonomy_Catalogue_25AUG2025.xlsx");
              var translated = getClass().getResourceAsStream("/" + BundledCatalogue.BILINGUAL_PATH);
              var sourceBook = new XSSFWorkbook(original); var translatedBook = new XSSFWorkbook(translated)) {
@@ -80,6 +80,7 @@ class WorkbookCatalogueDefinitionTest {
                 var copy = translatedBook.getSheet(sheet.getSheetName());
                 assertThat(copy.getLastRowNum()).isEqualTo(sheet.getLastRowNum());
                 assertThat(copy.getRow(0).getCell(12).getStringCellValue()).isEqualTo("Title DE");
+                assertThat(copy.getRow(0).getCell(13).getStringCellValue()).isEqualTo("Description DE");
                 for (var row : sheet) {
                     var translatedRow = copy.getRow(row.getRowNum());
                     for (var cell : row) {
@@ -90,7 +91,15 @@ class WorkbookCatalogueDefinitionTest {
                 }
             }
             assertThat(translatedNodes.nodes().values()).allSatisfy(node -> assertThat(node.getNameDe()).isNotBlank());
-            assertThat(translatedNodes.nodes().get("BP-1016").getNameDe()).isEqualTo("Rechnungswesen");
+            assertThat(translatedNodes.uuidToCode().values()).allSatisfy(code -> {
+                var node = translatedNodes.nodes().get(code);
+                var originalDescription = sourceNodes.nodes().get(code).getDescriptionEn();
+                assertThat(node.getDescriptionEn()).as(code).isEqualTo(originalDescription);
+                assertThat(node.getDescriptionDe()).as(code).isNotBlank().isNotEqualTo(originalDescription);
+            });
+            var accounting = translatedNodes.nodes().get("BP-1016");
+            assertThat(accounting.getNameDe()).isEqualTo("Rechnungswesen");
+            assertThat(accounting.getDescriptionDe()).startsWith("Militärische Organisationen müssen die Anforderungen");
         }
     }
 
@@ -107,22 +116,39 @@ class WorkbookCatalogueDefinitionTest {
             var model = new CanonicalArchitectureModel();
             model.setCatalogueRevision("old");
             var entry = new ArchitectureElement("BP-1016", "Process", "Accounting", null, "BP");
+            entry.setDescription("Local architecture observation");
             model.getElements().add(entry);
             assertThat(reader.translatedTitles(model, "de")).isEqualTo(java.util.Map.of("BP-1016", "Rechnungswesen"));
             assertThat(entry.getTitle()).isEqualTo("Accounting");
             assertThat(reader.translatedTitles(model, "en")).isEmpty();
+            var translation = reader.sourceTexts(model, "de").get(entry.getId());
+            assertThat(translation.title()).isEqualTo("Rechnungswesen");
+            assertThat(translation.originalTitle()).isEqualTo("Accounting");
+            assertThat(translation.description()).startsWith("Militärische Organisationen müssen die Anforderungen");
+            assertThat(translation.descriptionLanguage()).isEqualTo("de");
+            var english = reader.sourceTexts(model, "en").get(entry.getId());
+            assertThat(english.title()).isEqualTo("Accounting");
+            assertThat(english.originalTitle()).isNull();
+            assertThat(english.description()).startsWith("Military organizations shall adhere to the accounting requirements");
+            assertThat(entry.getDescription()).isEqualTo("Local architecture observation");
             entry.getExtensions().put("x-catalogue-uuid", "d3483d54-ed70-420e-8da9-f4851258cb65");
             assertThat(reader.translatedTitles(model, "de")).isEmpty();
+            assertThat(reader.sourceTexts(model, "de")).isEmpty();
             entry.getExtensions().clear();
             entry.setTitle("Project costing");
             assertThat(reader.translatedTitles(model, "de")).isEmpty();
+            assertThat(reader.sourceTexts(model, "de")).isEmpty();
             entry.setTitle("Accounting");
             model.setCatalogueRevision(null);
             assertThat(reader.translatedTitles(model, "de")).isEmpty();
             entry.getExtensions().put("x-catalogue-uuid", "4ec1702a-929e-42a8-807b-cb7c82e1ab47");
             assertThat(reader.translatedTitles(model, "de")).isEqualTo(java.util.Map.of("BP-1016", "Rechnungswesen"));
+            entry.setTitle("Project costing");
+            assertThat(reader.translatedTitles(model, "de")).isEmpty();
+            assertThat(reader.sourceTexts(model, "de")).containsEntry(entry.getId(), translation);
             entry.setType("System");
             assertThat(reader.translatedTitles(model, "de")).isEmpty();
+            assertThat(reader.sourceTexts(model, "de")).isEmpty();
         }
     }
 

@@ -139,11 +139,16 @@ public final class AdmbwPreparation {
         var assessment = new AdmbwFffmlvProfile().assess(prepared, projectCode, viewId);
         var missingPins = verifyDeliveryReferences(inventory, root, projectGuid, assessment, ArchitectureSemanticPatch.index(prepared));
         prepared = commands.applyAll(prepared, missingPins).dsl();
-        return new Prepared(prepared, viewId, requirementId, version, contentHash, basisHash, List.of(
+        var notes = new ArrayList<>(List.of(
                 "This preview represents the changes after explicit review of service fulfilment and requirement derivation.",
                 "The operational constraint is a proposed restatement grounded in the quoted requirement; independent upstream evidence was not supplied.",
                 "The selected QEA reference identities apply to the inspected basis; independent architecture review remains required."
-        ), assessment);
+        ));
+        if (!quote.equals(requirementText)) {
+            notes.add("The quote is an excerpt from the requirement. Review whether the operational constraint supports the entire requirement. "
+                    + "If it supports a narrower scope, select a separately versioned requirement for that scope.");
+        }
+        return new Prepared(prepared, viewId, requirementId, version, contentHash, basisHash, notes, assessment);
     }
 
     private static void declareService(BlockAst block, String service, List<ArchitectureCommand> changes) {

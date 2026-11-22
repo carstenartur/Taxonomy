@@ -188,6 +188,18 @@ class AdmbwPreparationTest {
     }
 
     @Test
+    void doesNotShowExcerptGuidanceWhenTheQuoteIsTheEntireRequirement() {
+        var result = planner.prepare(SOURCE, selection("CI-1", CAPABILITY, "REQ-1", SUBJECT, DRIVER, TEXT), basis());
+        var excerpt = planner.prepare(SOURCE, selection("CI-1", CAPABILITY, "REQ-1", SUBJECT, DRIVER, QUOTE), basis());
+
+        assertThat(result.notes()).noneMatch(note -> note.startsWith("The quote is an excerpt from the requirement."));
+        assertThat(result.assessment().requirementDerivation().status())
+                .isEqualTo(excerpt.assessment().requirementDerivation().status());
+        assertThat(result.assessment().requirementDerivation().issues())
+                .isEqualTo(excerpt.assessment().requirementDerivation().issues());
+    }
+
+    @Test
     void plansExactVersionedEvidenceAndPreservesTheFrozenScopeAndWholeModelGaps() {
         var result = planner.prepare(SOURCE, selection("CI-1", CAPABILITY, "REQ-1", SUBJECT, DRIVER, QUOTE), basis());
         var blocks = ArchitectureSemanticPatch.index(result.dsl());
@@ -197,6 +209,9 @@ class AdmbwPreparationTest {
         assertThat(result.requirementContentHash()).isEqualTo(TEXT_HASH);
         assertThat(result.basisSha256()).isEqualTo(DIGEST);
         assertThat(result.notes()).anyMatch(note -> note.contains("restatement"));
+        assertThat(result.notes()).anySatisfy(note -> assertThat(note)
+                .startsWith("The quote is an excerpt from the requirement.")
+                .contains("supports the entire requirement", "separately versioned requirement"));
         assertThat(capability).isNotEqualTo("CP-1");
         assertThat(blocks.get("element:CP-1").property(AdmbwFffmlvProfile.CATALOGUE_GUID)).isNull();
         assertThat(blocks.get("element:CI-1").property(AdmbwFffmlvProfile.TYPE)).isEqualTo("ServiceSpecification");

@@ -20,6 +20,7 @@ public interface CatalogueDefinitionResolver {
         }
     }
     record AssignmentTarget(boolean known, String catalogueRevision) {}
+    record SourceText(String title, String originalTitle, String description, String descriptionLanguage) {}
 
     static Map<String, String> parentLinks(List<Node> nodes) {
         var parents = new HashMap<String, String>();
@@ -33,6 +34,9 @@ public interface CatalogueDefinitionResolver {
     default List<Node> catalogueNodes(CanonicalArchitectureModel model) { return List.of(); }
 
     default List<Node> analysisNodes(String revision) { return List.of(); }
+
+    /** Read-only workbook content for elements with an identifiable catalogue source. */
+    default Map<String, SourceText> sourceTexts(CanonicalArchitectureModel model, String language) { return Map.of(); }
 
     /** Presentation-only titles resolved from source identity and the exact catalogue revision. */
     default Map<String, String> translatedTitles(CanonicalArchitectureModel model, String language) {

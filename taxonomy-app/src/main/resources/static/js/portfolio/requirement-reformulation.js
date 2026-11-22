@@ -147,7 +147,14 @@
         detail.replaceChildren(el('h3', t('architecture')+' '+id, 'h5'),
             el('p', t('snapshot')+': '+baseline.snapshotId, 'small'));
         if (node) {
-            detail.append(el('h4', (lang==='de'?node.nameDe:node.nameEn) || node.name || node.code, 'h6'),
+            const title = (lang==='de'?node.nameDe:node.nameEn) || node.name || node.code;
+            const heading = el('h4', title, 'h6');
+            if (lang === 'de' && node.nameEn && node.nameEn !== title) {
+                const original = el('span', ' (' + node.nameEn + ')');
+                original.lang = 'en';
+                heading.append(original);
+            }
+            detail.append(heading,
                 pre((lang==='de'?node.descriptionDe:node.descriptionEn) || node.description || ''));
         } else if (edge) {
             detail.append(el('h4', edge.sourceCode+' → '+edge.targetCode, 'h6'),

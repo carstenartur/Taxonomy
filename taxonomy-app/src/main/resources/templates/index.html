@@ -243,7 +243,7 @@
                             </label>
                         </div>
                         <div class="form-check form-check-inline ms-2 mt-2">
-                            <input class="form-check-input" type="checkbox" id="includeArchitectureView">
+                            <input class="form-check-input" type="checkbox" id="includeArchitectureView" checked>
                             <label class="form-check-label" for="includeArchitectureView" th:title="#{analyze.archview.title}" title="When enabled, the analysis also produces an Architecture View showing how matched taxonomy nodes relate to each other through cross-taxonomy relations (REALIZES, SUPPORTS, etc.)">
                                 <span th:text="#{analyze.archview.label}">🏗️ Architecture View</span> <small class="text-muted" th:text="#{analyze.archview.hint}">(relation-aware expansion)</small>
                             </label>
@@ -308,9 +308,12 @@
                             <a id="analysisLensAction" href="#architecture" class="btn btn-sm btn-outline-primary"
                                data-taxonomy-feature="architecture"
                                th:text="#{analysis.guide.lens}">Architecture focus lens</a>
+                            <a th:href="@{/(lang=${#locale.language})} + '#help/ARCHITECTURE_EDITOR/architecture-delivery-guide'"
+                               target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-link"
+                               th:text="#{editor.deliveryGuide}">Illustrated architecture delivery guide</a>
                         </div>
                         <p id="analysisReformulationHint" class="small text-muted mt-2 mb-1"></p>
-                        <p class="small text-muted mb-0" th:text="#{analysis.guide.lens.hint}">The lens investigates the editable workspace model. Analysis proposals require review before adoption.</p>
+                        <p class="small text-muted mb-0" th:text="#{analysis.guide.lens.hint}">Investigate relationships in this analysis. Review its proposals before adopting them into the working architecture.</p>
                         <p id="analysisGuideError" class="small text-danger mt-2 mb-0" role="alert" hidden></p>
                     </div>
                 </section>
@@ -533,11 +536,15 @@
                     <div class="architecture-source-toolbar">
                         <h2 id="architectureWorkspaceTitle" th:text="#{nav.architecture}">Architecture</h2>
                         <label for="architectureSource" th:text="#{architecture.workspace.source}">Displayed architecture</label>
-                        <select id="architectureSource" class="form-select" aria-describedby="architectureSourceDescription">
-                            <option value="analysis" th:text="#{architecture.workspace.analysis}">Current analysis</option>
-                            <option value="snapshot" th:text="#{architecture.workspace.snapshot}">Saved analysis snapshot</option>
-                            <option value="working" th:text="#{architecture.workspace.working}">Working architecture</option>
-                        </select>
+                        <div class="architecture-source-selection">
+                            <select id="architectureSource" class="form-select" aria-describedby="architectureSourceDescription">
+                                <option value="analysis" th:text="#{architecture.workspace.analysis}">Current analysis</option>
+                                <option value="snapshot" th:text="#{architecture.workspace.snapshot}">Saved analysis snapshot</option>
+                                <option value="working" th:text="#{architecture.workspace.working}">Working architecture</option>
+                            </select>
+                            <button id="architectureLensAction" type="button" class="btn btn-outline-primary"
+                                    th:text="#{analysis.guide.lens}">Architecture focus lens</button>
+                        </div>
                     </div>
                     <p id="architectureSourceDescription" class="text-muted" th:text="#{architecture.workspace.analysis.help}">The architecture from the current analysis. Your input and results stay available when switching sources.</p>
                     <p id="architectureWorkspaceError" role="alert" hidden></p>
@@ -561,8 +568,6 @@
                 <div id="subtab-arch-overview">
                 <div class="view-help"><a th:replace="~{fragments/context-help :: button('USER_GUIDE', 'guide-section-7')}"></a></div>
                 <div class="d-flex flex-wrap gap-2 mb-3">
-                    <a id="architectureLensAction" href="#architecture" class="btn btn-outline-primary"
-                        th:text="#{analysis.guide.lens}">Architecture focus lens</a>
                     <a href="#analysisNextSteps" class="btn btn-outline-secondary" id="architectureNextStepsAction"
                        th:text="#{analysis.guide.title}">Next steps</a>
                 </div>

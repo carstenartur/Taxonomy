@@ -1672,6 +1672,11 @@
             const label = document.createElement('span');
             label.className = 'tax-container-title';
             label.textContent = title;
+            const sourceTitle = originalTitle(node);
+            if (sourceTitle) {
+                label.title = sourceTitle;
+                button.setAttribute('aria-description', sourceTitle);
+            }
             button.appendChild(label);
             button.addEventListener('click', function () { toggleNode(wrapper); });
             heading.appendChild(button);
@@ -1706,6 +1711,10 @@
         return wrapper;
     }
 
+    function originalTitle(node) {
+        return node.nameEn && node.name === node.nameDe && node.nameEn !== node.name ? node.nameEn : '';
+    }
+
     function buildNodeEl(node, scores) {
         if (window.TaxonomyUtils.isTaxonomyContainer(node)) {
             return buildContainerEl(node, scores);
@@ -1736,6 +1745,8 @@
         }
         if (unit) ariaLabel += ', ' + t('views.diagram.responsibleUnit', unit.name);
         wrapper.setAttribute('aria-label', ariaLabel);
+        const sourceTitle = originalTitle(node);
+        if (sourceTitle) wrapper.setAttribute('aria-description', sourceTitle);
         if (hasChildren) {
             wrapper.setAttribute('aria-expanded', 'false');
         }
@@ -1775,9 +1786,8 @@
         const name = document.createElement('span');
         name.className = 'tax-name';
         name.textContent = node.name;
-        if (node.description) {
-            name.title = node.description;
-        }
+        const tooltip = [sourceTitle, node.description].filter(Boolean).join('\n\n');
+        if (tooltip) name.title = tooltip;
         header.appendChild(name);
 
         if (unit) {

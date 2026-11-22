@@ -363,6 +363,14 @@
     workspace.openLens = function () {
         if (workspace.getSource().kind === 'working') editor?.openLens(); else { lens?.select(workspace.getSource().element);lens?.open(); }
     };
+    el('architectureLensAction')?.addEventListener('click', async function () {
+        try {
+            if (sourceActivation) await awaitSelectedSource(sourceActivation);
+            if (workspace.isActive()) workspace.openLens();
+        } catch (error) {
+            report(error);
+        }
+    });
     workspace.restoreUrl=function(){pendingAnalysisHistory=null;writeUrl(workspace.getSource(),{replace:true});};
     window.TaxonomyArchitectureWorkspace = workspace;
     if (window.TaxonomyArchitectureSourceLens) lens = window.TaxonomyArchitectureSourceLens.create({root:el('architectureSourceLens'),workspace:workspace,idPrefix:'architectureSourceLens'});

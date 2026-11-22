@@ -21,8 +21,16 @@ public interface AdmbwQeaExport extends IntegrationConnectorExtension {
         throw new UnsupportedOperationException("Native basis inspection is unavailable");
     }
 
-    record Basis(String sha256, String projectGuid, List<Root> roots, List<Reference> references) {
-        public Basis { roots = List.copyOf(roots); references = List.copyOf(references); }
+    record Basis(String sha256, String projectGuid, List<Root> roots, List<Reference> references,
+                 List<ServiceSpecification> serviceSpecifications) {
+        public Basis {
+            roots = List.copyOf(roots);
+            references = List.copyOf(references);
+            serviceSpecifications = serviceSpecifications == null ? List.of() : List.copyOf(serviceSpecifications);
+        }
+        public Basis(String sha256, String projectGuid, List<Root> roots, List<Reference> references) {
+            this(sha256, projectGuid, roots, references, List.of());
+        }
     }
 
     record Root(String guid, String name) { }
@@ -30,6 +38,11 @@ public interface AdmbwQeaExport extends IntegrationConnectorExtension {
     record Reference(String guid, String stereotype, String name, String notes, List<String> packagePath,
                      String rootGuid, String ownerGuid) {
         public Reference { packagePath = List.copyOf(packagePath); }
+    }
+
+    /** An inspected object can support a type decision without establishing a native identity binding. */
+    record ServiceSpecification(String guid, String name, List<String> packagePath, String rootGuid, String source) {
+        public ServiceSpecification { packagePath = List.copyOf(packagePath); }
     }
 
     /** Older plugins must not silently discard a host's delivery-scope disclosure. */

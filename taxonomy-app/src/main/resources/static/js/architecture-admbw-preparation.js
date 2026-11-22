@@ -14,6 +14,8 @@
         const status = value => { el('prepStatus').textContent = value; };
         const ctx = () => view.document.context;
         const working = () => view?.document.source === 'WORKSPACE_REVISION';
+        const services = () => (view?.model?.elements || []).filter(e => ['CoreService','COIService'].includes(e.type));
+        const requirements = () => view?.model?.requirements || [];
         function scopeOf(context) {
             return JSON.stringify([context.repositoryId, context.workspaceScopeKey,
                 context.workspaceId !== undefined ? (context.workspaceId ?? '') : context.workspaceScopeKey === '__shared__' ? '' : context.workspaceScopeKey,
@@ -25,6 +27,10 @@
             for (const [key, label] of choices) field.add(new Option(label, key));
             field.value = choices.some(([key]) => key === value) ? value : '';
         }
+        function selectModelObject(id, rows) {
+            const value = rows.length === 1 ? rows[0].id : el(id).value;
+            select(id, rows.map(row => [row.id, (row.title || row.id) + ' · ' + row.id]), value);
+        }
         function selectReferences() {
             const items = (basis?.references || []).filter(r => r.rootGuid === el('prepRoot').value);
             const choices = rows => rows.map(r => [r.guid, r.name + ' · ' + r.packagePath.join(' / ') + ' · ' + r.guid]);
@@ -32,9 +38,10 @@
             select('prepSubject', choices(items.filter(r => ['OperationalRole','OperationalArchitecture'].includes(r.stereotype))));
         }
         function requirementText() {
-            const req = view?.model.requirements.find(r => r.id === el('prepRequirement').value);
+            const req = requirements().find(r => r.id === el('prepRequirement').value);
             el('prepSource').value = req?.text || '';
             el('prepQuote').setCustomValidity('');
+            el('prepUseSelection').disabled = !el('prepSource').value;
         }
         function resetReview() {
             read?.abort();
@@ -50,7 +57,16 @@
             const pending = ['SENDING','UNKNOWN','CHECKPOINT_PENDING'].includes(state);
             const retry = state === 'UNKNOWN' || state === 'CHECKPOINT_PENDING';
             panel.hidden = !working() || !view.mayEdit && !operation;
-            el('prepInputs').disabled = !available || !view?.mayEdit || pending;
+            const missing = !requirements().length ? 'missingRequirement' : !services().length ? 'missingService' : null;
+            const prerequisites = el('prepPrerequisites');
+            prerequisites.hidden = !missing;
+            if (missing) prerequisites.textContent = text(missing);
+            const evidence = el('prepServiceTypeEvidence');
+            const detail = window.TaxonomyAdmbwCoverage.serviceTypeEvidence(basis,
+                view?.document.context.revision, el('prepRoot').value, el('prepService').value, t);
+            if (evidence.textContent !== detail) evidence.textContent = detail;
+            evidence.hidden = !detail;
+            el('prepInputs').disabled = !available || !view?.mayEdit || pending || !!missing;
             el('prepInspect').disabled = !file() || !!read;
             el('prepPreview').disabled = !basis || !!read;
             el('prepReview').hidden = !preview || pending || operation?.preview === preview;
@@ -86,11 +102,12 @@
             if (standKey !== nextStand) {
                 standKey = nextStand;
                 resetReview();
-                const model = view?.model;
-                const choices = rows => rows.map(row => [row.id, (row.title || row.id) + ' · ' + row.id]);
-                select('prepService', choices((model?.elements || []).filter(e => ['CoreService','COIService'].includes(e.type))), el('prepService').value);
-                select('prepRequirement', choices(model?.requirements || []), el('prepRequirement').value);
+                const priorRequirement = el('prepRequirement').value;
+                const priorText = el('prepSource').value;
+                selectModelObject('prepService', services());
+                selectModelObject('prepRequirement', requirements());
                 requirementText();
+                if (el('prepRequirement').value !== priorRequirement || el('prepSource').value !== priorText) el('prepQuote').value = '';
             }
             controls();
         }
@@ -122,9 +139,8 @@
             }
             area.hidden = false;
         }
-        function exactQuote() {
-            const source = view.model.requirements.find(r => r.id === el('prepRequirement').value)?.text || '';
-            const quote = el('prepQuote').value;
+        function exactQuote(quote) {
+            const source = requirements().find(r => r.id === el('prepRequirement').value)?.text || '';
             if (source.includes(quote)) return quote;
             // HTML textareas normalize all line endings to LF. Recover the original
             // source slice so the server can verify a verbatim quote, including CRLF.
@@ -142,7 +158,12 @@
             return {projectCode:el('prepProject').value.trim(), rootPackageGuid:el('prepRoot').value,
                 serviceId:el('prepService').value, capabilityGuid:el('prepCapability').value,
                 requirementId:el('prepRequirement').value, requirementType:el('prepType').value,
-                subjectGuid:el('prepSubject').value, constraintText:el('prepConstraint').value, evidenceQuote:exactQuote()};
+                subjectGuid:el('prepSubject').value, constraintText:el('prepConstraint').value, evidenceQuote:exactQuote(el('prepQuote').value)};
+        }
+        function quoteProblem(quote, maxLength) {
+            if (quote == null) return text('quoteMismatch');
+            if (quote.length > maxLength) return text('selectionTooLong');
+            return '';
         }
         function inputChanged(event) {
             const id = event.target.id;
@@ -157,6 +178,19 @@
         el('prepInputs').addEventListener('input', inputChanged);
         el('prepInputs').addEventListener('change', inputChanged);
         el('prepReview').addEventListener('change', controls);
+        el('prepUseSelection').addEventListener('click', () => {
+            const source = el('prepSource'), quote = el('prepQuote');
+            const selected = source.value.slice(source.selectionStart, source.selectionEnd);
+            const problem = selected.trim() ? quoteProblem(exactQuote(selected), quote.maxLength) : text('selectQuote');
+            if (problem) {
+                status(problem);
+                source.focus();
+                return;
+            }
+            quote.value = selected;
+            inputChanged({target: quote});
+            quote.focus();
+        });
         el('prepInspect').addEventListener('click', async () => {
             const sourceFile = file();
             if (!available || !view?.mayEdit || !sourceFile) return;
@@ -179,7 +213,8 @@
             event.preventDefault();
             if (!basis || !available || !view?.mayEdit || read) return;
             const choice = selection();
-            el('prepQuote').setCustomValidity(choice.evidenceQuote == null ? text('quoteMismatch') : '');
+            const quote = el('prepQuote');
+            quote.setCustomValidity(quoteProblem(choice.evidenceQuote, quote.maxLength));
             el('prepRationale').setCustomValidity(el('prepRationale').value.trim() ? '' : text('rationaleRequired'));
             if (!el('prepForm').reportValidity()) return;
             resetReview();

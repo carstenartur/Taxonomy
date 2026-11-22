@@ -61,13 +61,13 @@ public class ArchitectureEditorProjection {
     public record View(ArchitectureEditorService.Document document, CanonicalArchitectureModel model,
                        DiagramScene scene, Schema schema, boolean mayEdit, List<SearchEntry> searchIndex,
                        WorkspaceCollaborationService.Status collaboration, Map<String, ArchitectureResponsibility.Entry> hierarchy,
-                       Map<String, String> displayTitles) {
+                       Map<String, String> displayTitles, Map<String, CatalogueDefinitionResolver.SourceText> catalogueTexts) {
         public View(ArchitectureEditorService.Document document, CanonicalArchitectureModel model,
                     DiagramScene scene, Schema schema, boolean mayEdit, List<SearchEntry> searchIndex) {
-            this(document, model, scene, schema, mayEdit, searchIndex, null, Map.of(), Map.of());
+            this(document, model, scene, schema, mayEdit, searchIndex, null, Map.of(), Map.of(), Map.of());
         }
         public View withCollaboration(WorkspaceCollaborationService.Status status) {
-            return new View(document, model, scene, schema, mayEdit, searchIndex, status, hierarchy, displayTitles);
+            return new View(document, model, scene, schema, mayEdit, searchIndex, status, hierarchy, displayTitles, catalogueTexts);
         }
         public ArchitectureBrief.Snapshot getArchitectureBrief() { return ArchitectureBrief.read(model); }
         public Map<String, List<com.taxonomy.dsl.planning.PlanningInformation.View>> getPlanningInformation() {
@@ -126,7 +126,7 @@ public class ArchitectureEditorProjection {
         return new View(document, model, scene, schema, editable(document, mayEdit),
                 model.getElements().stream().map(element -> new SearchEntry(element.getId(),
                         (element.getId() + " " + element.getTitle() + " " + displayTitles.getOrDefault(element.getId(), "") + " " + element.getType()).toLowerCase(java.util.Locale.ROOT))).toList(), null,
-                hierarchy, displayTitles);
+                hierarchy, displayTitles, catalogues.sourceTexts(model, language));
     }
 
     public static boolean editable(ArchitectureEditorService.Document document, boolean mayEdit) {

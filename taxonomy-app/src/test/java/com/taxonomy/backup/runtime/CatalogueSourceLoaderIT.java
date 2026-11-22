@@ -167,6 +167,7 @@ class CatalogueSourceLoaderIT {
             var relationIds = f.relations.findAll().stream().map(TaxonomyRelation::getId).sorted().toList();
             assertThat(relationIds).isNotEmpty();
             assertThat(account.getNameDe()).isNull();
+            assertThat(account.getDescriptionDe()).isNull();
             assertThat(f.service.appliedWorkbookSha256()).contains(BundledCatalogue.ORIGINAL_SHA256);
             f.tx.executeWithoutResult(s -> f.em.find(TaxonomyNode.class, account.getId()).setNameDe("Custom accounting title"));
             assertThat(f.start(true, false, resources, BundledCatalogue.BILINGUAL_RESOURCE, overlay).isReady()).isTrue();
@@ -179,6 +180,8 @@ class CatalogueSourceLoaderIT {
             assertThat(updated.getId()).isEqualTo(account.getId());
             assertThat(updated.getUuid()).isEqualTo(account.getUuid());
             assertThat(updated.getNameDe()).isEqualTo("Rechnungswesen");
+            assertThat(updated.getDescriptionEn()).isEqualTo(account.getDescriptionEn());
+            assertThat(updated.getDescriptionDe()).startsWith("Militärische Organisationen müssen die Anforderungen");
             assertThat(f.relations.findAll().stream().map(TaxonomyRelation::getId).sorted().toList()).isEqualTo(relationIds);
             var translated = f.journal.current();
             assertThat(translated.id()).isNotEqualTo(originalGeneration.id());

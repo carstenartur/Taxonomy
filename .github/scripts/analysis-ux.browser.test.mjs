@@ -211,6 +211,39 @@ async function renderNode(page) {
         TaxonomyBrowse.renderView(nodes, TaxonomyState.currentScores);
     });
 }
+
+test('German catalogue tree displays the translated definition and exposes the original title', async () => {
+    const page = await fixture('de');
+    try {
+        await renderNode(page);
+        await page.evaluate(() => {
+            TaxonomyState.taxonomyData = [{
+                code: 'BP-1016', nameEn: 'Accounting', nameDe: 'Rechnungswesen',
+                descriptionEn: 'Military organizations follow accounting requirements.',
+                descriptionDe: 'Militärische Organisationen halten Rechnungslegungsvorgaben ein.',
+                children: []
+            }];
+            TaxonomyBrowse.renderView(TaxonomyState.taxonomyData, {});
+        });
+        const node = page.locator('.tax-node[data-code="BP-1016"]');
+        const title = node.locator('.tax-name');
+        assert.equal(await title.textContent(), 'Rechnungswesen');
+        assert.match(await title.getAttribute('title'), /^Accounting\n\nMilitärische/);
+        assert.equal(await node.getAttribute('aria-description'), 'Accounting');
+        assert.match(await node.locator('.tax-description').textContent(), /^Militärische/);
+
+        await page.evaluate(() => {
+            document.documentElement.lang = 'en';
+            TaxonomyState.taxonomyData = TaxonomyState.taxonomyData;
+            TaxonomyBrowse.renderView(TaxonomyState.taxonomyData, {});
+        });
+        assert.equal(await title.textContent(), 'Accounting');
+        assert.match(await title.getAttribute('title'), /^Military organizations/);
+        assert.equal(await node.getAttribute('aria-description'), null);
+        assert.match(await node.locator('.tax-description').textContent(), /^Military organizations/);
+    } finally { await finish(page); }
+});
+
 test('node Graph action reveals the Graph page and an initial result through the real action dialog', async () => {
     const page = await fixture();
     try {

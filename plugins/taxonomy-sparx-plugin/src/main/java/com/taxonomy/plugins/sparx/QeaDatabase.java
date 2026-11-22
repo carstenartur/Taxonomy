@@ -29,7 +29,7 @@ final class QeaDatabase {
     private static final List<String> TABLES = List.of("usys_system", "t_package", "t_object", "t_connector",
             "t_diagram", "t_diagramobjects", "t_diagramlinks", "t_objectproperties", "t_connectortag", "t_xref");
     private enum ReadMode { EXCHANGE, ADMBW_EXPORT, ADMBW_REFERENCES }
-    private static final List<String> REFERENCE_TABLES = List.of("usys_system", "t_package", "t_object", "t_xref", "t_connector");
+    private static final List<String> REFERENCE_TABLES = List.of("usys_system", "t_package", "t_object", "t_xref", "t_connector", "t_objectproperties");
     private static final Map<String, List<String>> ADMBW_COLUMNS = Map.of(
             "usys_system", List.of("property", "value"),
             "t_package", List.of("package_id", "parent_id", "name", "ea_guid"),
@@ -183,6 +183,11 @@ final class QeaDatabase {
                     : "SELECT " + String.join(", ", required) + from;
             case "t_xref" -> "SELECT xrefid, name, type, client, CASE WHEN lower(name) = 'stereotypes' THEN description END AS description" + from;
             case "usys_system" -> "SELECT property, CASE WHEN lower(property) = 'projectguid' THEN value END AS value" + from;
+            case "t_objectproperties" -> mode == ReadMode.ADMBW_REFERENCES
+                    ? "SELECT " + String.join(", ", required) + ", value" + from
+                        + " WHERE lower(property) IN ('quelle', 'source') AND object_id IN ("
+                        + "SELECT object_id FROM t_object WHERE stereotype = 'ServiceSpecification')"
+                    : "SELECT " + String.join(", ", required) + from;
             case "t_diagramobjects" -> """
                     SELECT placement.object_id, NULL AS diagram_id FROM t_diagramobjects placement
                     WHERE placement.object_id IS NOT NULL AND NOT EXISTS (

@@ -170,6 +170,47 @@ async function fixture(standaloneUrl=null){
     return page;
 }
 
+test('the editor shows bilingual catalogue text separately from editable architecture text', async () => {
+    const page = await fixture();
+    try {
+        await page.evaluate(async () => {
+            const load = ArchitectureEditorApi.load;
+            ArchitectureEditorApi.exportUrl = () => '/export';
+            ArchitectureEditorApi.load = async (...args) => {
+                const view = await load(...args);
+                view.model.elements = [
+                    {id:'BP-1016', type:'Process', title:'Accounting',
+                        description:'Project-specific observation', extensions:{}},
+                    {id:'local-process', type:'Process', title:'Local process', extensions:{}}
+                ];
+                view.scene.nodes = view.model.elements.map(item => ({id:item.id, label:item.title}));
+                view.schema.elementTypes = ['Process'];
+                view.displayTitles = {'BP-1016':'Rechnungswesen'};
+                view.catalogueTexts = {'BP-1016':{title:'Rechnungswesen', originalTitle:'Accounting',
+                    description:'Militärische Organisationen halten Rechnungslegungsvorgaben ein.',
+                    descriptionLanguage:'de'}};
+                return view;
+            };
+            const editor = TaxonomyArchitectureEditor.mount(document.getElementById('architectureWorkingSource'));
+            await editor.activate({kind:'working', repositoryId:'repo', workspaceScopeKey:'private-a', branch:'draft/a'});
+        });
+        await page.locator('#editorTree [data-select-id="BP-1016"]').click();
+        const entry = page.locator('#editorCatalogue');
+        const summary = entry.locator('summary');
+        assert.match(await summary.textContent(), /Rechnungswesen\s*\(Accounting\)/);
+        assert.equal(await entry.locator('#editorCatalogueOriginal').getAttribute('lang'), 'en');
+        await summary.focus();
+        await page.keyboard.press('Enter');
+        assert.match(await entry.locator('#editorCatalogueDescription').innerText(), /^Militärische/);
+        assert.equal(await page.locator('#editorTitle').inputValue(), 'Accounting');
+        assert.equal(await page.locator('#editorDescription').inputValue(), 'Project-specific observation');
+        await page.locator('#editorTree [data-select-id="local-process"]').click();
+        assert.equal(await entry.isVisible(), false);
+    } finally {
+        await page.close();
+    }
+});
+
 for (const workspaceId of ['private-a', '__shared__'])
 test(`working tree updates a responsibility through preview, accept and reload in ${workspaceId}`, async () => {
     const page = await fixture();
@@ -714,7 +755,8 @@ for (const blockedNative of [false,true]) test('guided ADMBw review pins the ori
         await page.evaluate(scope => {
             Object.defineProperty(scope,'workspaceId',{value:'__shared__'});
             const view = {mayEdit:true,document:{context:scope,source:'WORKSPACE_REVISION',projectionState:'READY'},
-                model:{elements:[{id:'svc',title:'Learning service',type:'COIService'}],requirements:[{id:'req',title:'Training',text:'Provide\r\ntraining.'}]}};
+                model:{elements:[{id:'svc',title:'Learning service',type:'COIService'}],requirements:[{
+                    id:'req',title:'Training',text:'Provide\r\ntraining.\r\n' + 'A\r\n'.repeat(2700)}]}};
             window.guided = TaxonomyAdmbwPreparation.create({root:document,api:ArchitectureEditorApi,t:TaxonomyI18n.t,
                 report:(e,target)=>{target.textContent=e.message;},onAccepted:r=>{window.receipt=r;}});
             window.guided.update(view,true);
@@ -724,20 +766,32 @@ for (const blockedNative of [false,true]) test('guided ADMBw review pins the ori
             window.advance = () => {view.document.context={...scope,revision:5};Object.defineProperty(view.document.context,'workspaceId',{value:'__shared__'});guided.update(view,true);};
         },scope);
         await page.locator('#editorAdmbwPreparation summary').first().click();
+        assert.equal(await page.locator('#prepService').inputValue(),'svc');
+        assert.equal(await page.locator('#prepRequirement').inputValue(),'req');
         await page.locator('#prepBasis').setInputFiles({name:'test.qea',mimeType:'application/vnd.sparx.qea',buffer:Buffer.from('fixture QEA')});
         await page.locator('#prepInspect').click();
         await page.locator('#prepRoot').selectOption('root');
-        await page.locator('#prepService').selectOption('svc');
         await page.locator('#prepCapability').selectOption('cap');
         assert.match(await page.locator('#prepCapability option:checked').innerText(),/Training capability.*Capabilities/);
         assert.equal(await page.locator('#prepCapability option[value="wrong"]').count(),0);
         await page.locator('#prepSubject').selectOption('sub');
-        await page.locator('#prepRequirement').selectOption('req');
         await page.locator('#prepType').selectOption('FunctionalRequirement');
         await page.locator('#prepProject').fill('TRAIN');
         await page.locator('#prepConstraint').fill('Provide access to training.');
-        await page.locator('#prepQuote').fill('Provide\ntraining.');
         await page.locator('#prepRationale').fill('Reviewed source and native requirements.');
+        await page.locator('#prepUseSelection').click();
+        assert.equal(await page.locator('#prepStatus').innerText(),'editor.prep.selectQuote');
+        await page.locator('#prepSource').evaluate(field => field.setSelectionRange(0, field.value.length));
+        await page.locator('#prepUseSelection').click();
+        assert.equal(await page.locator('#prepStatus').innerText(),'editor.prep.selectionTooLong');
+        assert.equal(await page.locator('#prepQuote').inputValue(),'');
+        await page.locator('#prepQuote').fill(await page.locator('#prepSource').inputValue());
+        await page.locator('#prepPreview').click();
+        assert.equal(await page.locator('#prepQuote').evaluate(field => field.validationMessage),'editor.prep.selectionTooLong');
+        assert.equal(calls.length,0);
+        await page.locator('#prepSource').evaluate(field => field.setSelectionRange(0, 'Provide\ntraining.'.length));
+        await page.locator('#prepUseSelection').click();
+        assert.equal(await page.locator('#prepQuote').inputValue(),'Provide\ntraining.');
         await page.locator('#prepPreview').click();
         await page.locator('#prepResult').getByText(requirementHash,{exact:false}).first().waitFor();
         assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth <= document.documentElement.clientWidth),true,

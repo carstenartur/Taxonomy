@@ -611,7 +611,8 @@ test('architecture result cards use the frozen German title and preserve edits a
     window.TaxonomyScoring.renderSummaryView([], {});
     assert.match(tree.innerHTML, /Rechnungswesen/);
     assert.match(tree.innerHTML, /My process/);
-    assert.doesNotMatch(tree.innerHTML, /Daten beschaffen|Accounting/);
+    assert.match(tree.innerHTML, /title="[^"]*Rechnungswesen \(Accounting\)[^"]*"/);
+    assert.doesNotMatch(tree.innerHTML, /Daten beschaffen|Acquire Data/);
     language = 'en';
     window.TaxonomyScoring.renderSummaryView([], {});
     assert.match(tree.innerHTML, /Accounting/);

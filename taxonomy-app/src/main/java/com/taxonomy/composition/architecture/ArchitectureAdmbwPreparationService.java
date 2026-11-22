@@ -2,7 +2,12 @@ package com.taxonomy.composition.architecture;
 
 import com.taxonomy.dsl.admbw.AdmbwFffmlvProfile;
 import com.taxonomy.dsl.admbw.AdmbwPreparation;
+import com.taxonomy.dsl.command.ArchitectureDslCommands;
 import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
+import com.taxonomy.dsl.model.CanonicalArchitectureModel;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver.Node;
+import com.taxonomy.dsl.model.CatalogueReference;
 import com.taxonomy.editor.ArchitectureCommandPort.Context;
 import com.taxonomy.editor.ArchitectureCommandPort.Metadata;
 import com.taxonomy.editor.ArchitectureEditorService;
@@ -20,9 +25,14 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import static com.taxonomy.composition.architecture.ArchitectureLifecycleService.*;
 
@@ -30,14 +40,16 @@ import static com.taxonomy.composition.architecture.ArchitectureLifecycleService
 @Service
 @com.taxonomy.shared.features.ConditionalOnFeature("portfolio")
 public class ArchitectureAdmbwPreparationService {
+    private static final Set<String> SERVICE_TYPES = Set.of("CoreService", "COIService");
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+", Pattern.UNICODE_CHARACTER_CLASS);
     private final ArchitectureEditorService editor;
     private final ArchitectureLifecycleService lifecycle;
     private final ExtensionCatalog extensions;
     private final TransactionTemplate transactions;
-    private com.taxonomy.dsl.model.CatalogueDefinitionResolver catalogues = com.taxonomy.dsl.model.CatalogueDefinitionResolver.standard();
+    private CatalogueDefinitionResolver catalogues = CatalogueDefinitionResolver.standard();
 
     @org.springframework.beans.factory.annotation.Autowired
-    public void setCatalogueDefinitionResolver(com.taxonomy.dsl.model.CatalogueDefinitionResolver catalogues) {
+    public void setCatalogueDefinitionResolver(CatalogueDefinitionResolver catalogues) {
         this.catalogues = Objects.requireNonNull(catalogues);
     }
 
@@ -66,9 +78,68 @@ public class ArchitectureAdmbwPreparationService {
                           List<String> notes, AdmbwFffmlvProfile.Report assessment,
                           List<AdmbwFffmlvProfile.Issue> qeaIssues, List<ArchitectureSemanticPatch.BlockChange> changes) { }
 
-    public AdmbwQeaExport.Basis inspect(RepositoryContext context, byte[] bytes) {
+    public record InspectedBasis(String sha256, String projectGuid, List<AdmbwQeaExport.Root> roots,
+                                 List<AdmbwQeaExport.Reference> references, Long revision,
+                                 List<ServiceTypeEvidence> serviceTypeEvidence) { }
+    public record ServiceTypeEvidence(String serviceId, String catalogueUuid, AdmbwQeaExport.ServiceSpecification specification) { }
+
+    public InspectedBasis inspect(RepositoryContext context, byte[] bytes) throws IOException {
         lifecycle.authorize(context, true);
-        return inspect(bytes);
+        var basis = inspect(bytes);
+        if (basis.serviceSpecifications().isEmpty()) {
+            return new InspectedBasis(basis.sha256(), basis.projectGuid(), basis.roots(), basis.references(), null, List.of());
+        }
+        var document = editor.read(context, null);
+        var evidence = "READY".equals(document.projectionState())
+                ? serviceTypeEvidence(new ArchitectureDslCommands().model(document.dsl()), catalogues, basis.serviceSpecifications())
+                : List.<ServiceTypeEvidence>of();
+        return new InspectedBasis(basis.sha256(), basis.projectGuid(), basis.roots(), basis.references(), document.context().revision(), evidence);
+    }
+
+    /** An exact name and explicit source can corroborate the stereotype; the IDs stay distinct. */
+    static List<ServiceTypeEvidence> serviceTypeEvidence(CanonicalArchitectureModel model, CatalogueDefinitionResolver catalogues,
+            List<AdmbwQeaExport.ServiceSpecification> specifications) {
+        if (model.getCatalogueRevision() == null || model.getCatalogueRevision().isBlank()) return List.of();
+        var nodes = catalogues.catalogueNodes(model);
+        if (nodes.isEmpty()) return List.of();
+        var definition = catalogues.forModel(model);
+        var catalogueNames = nodes.stream()
+                .filter(node -> isServiceType(definition.typeFor(node.root())) && !normalized(node.nameEn()).isEmpty())
+                .collect(Collectors.groupingBy(node -> normalized(node.nameEn())));
+        var nativeNames = specifications.stream().filter(spec -> !normalized(spec.name()).isEmpty())
+                .collect(Collectors.groupingBy(spec -> normalized(spec.name()),
+                        Collectors.groupingBy(AdmbwQeaExport.ServiceSpecification::rootGuid)));
+        var evidence = new ArrayList<ServiceTypeEvidence>();
+        for (var element : model.getElements()) {
+            if (!isServiceType(element.getType())) continue;
+            String title = normalized(element.getTitle());
+            List<Node> candidates = catalogueNames.getOrDefault(title, List.of());
+            if (candidates.size() != 1) continue;
+            Node node = candidates.getFirst();
+            if (!node.code().equals(element.getId()) || !element.getType().equals(definition.typeFor(node.root()))
+                    || element.getTaxonomy() != null && !node.root().equals(element.getTaxonomy())) continue;
+            var reference = CatalogueReference.from(node.uuid(), null, null);
+            String suppliedUuid = element.getExtensions().get(CatalogueReference.UUID_PROPERTY);
+            if (reference == null || suppliedUuid != null && !reference.uuid().equalsIgnoreCase(suppliedUuid)) continue;
+            var byRoot = nativeNames.get(title);
+            if (byRoot == null) continue;
+            for (var matches : byRoot.values()) {
+                if (matches.size() != 1) continue;
+                var specification = matches.getFirst();
+                if ("NATO C3 Taxonomy".equals(specification.source())) {
+                    evidence.add(new ServiceTypeEvidence(element.getId(), reference.uuid(), specification));
+                }
+            }
+        }
+        evidence.sort(Comparator.comparing(ServiceTypeEvidence::serviceId)
+                .thenComparing(item -> item.specification().rootGuid()));
+        return List.copyOf(evidence);
+    }
+
+    private static boolean isServiceType(String value) { return value != null && SERVICE_TYPES.contains(value); }
+
+    private static String normalized(String value) {
+        return value == null ? "" : WHITESPACE.matcher(value).replaceAll(" ").strip();
     }
 
     public Preview preview(RepositoryContext context, Request request, byte[] bytes) throws IOException {

@@ -232,12 +232,33 @@ The connection summary shows the tool, external project, branch, workspace revis
 
 The shared application navigation remains available on this page. Repository, workspace and branch are retained when moving between the architecture editor and tool integrations; **Projects** returns to the project overview.
 
+<a id="architecture-delivery-guide"></a>
+## From a requirement to a reviewed ADMBw delivery view
+
+1. Open the saved requirement and run Copilot. The automatic analysis defaults
+   to all taxonomies, node assessment and relation search, with the architecture
+   view selected for a new draft. It uses the configured
+   server provider and continues relation searches within its remaining budget.
+   Resolve analysis questions and rerun any newly accepted requirement version.
+2. Open Architecture and select the analysis or saved snapshot. Use the
+   Architecture Lens to review proposed relationships and their source evidence.
+   Preview and explicitly accept the adoption into the working architecture.
+3. Open **Prepare C1–S1 and R7 from this workspace**. Inspect the agreed closed
+   `.qea` file, select the native references, and review the service contribution
+   and the operational constraint against the current requirement quotation.
+4. Check the selected delivery coverage in the preview. Save the reviewed
+   changes to a checkpoint, export its assessment and QEA copy, and verify the
+   native delivery in Enterprise Architect with the agreed ADMBw MDG.
+
+The Sparx plugin is required for native QEA delivery. See the
+[illustrated walkthrough (German)](https://github.com/carstenartur/Taxonomy/blob/main/docs/de/ARCHITECTURE_EDITOR.md#architecture-delivery-guide).
+
 ## Prepare an ADMBw delivery
 
 Use **ADMBw element assignment** to record catalogue references and stereotypes,
 and **ADMBw R7 derivation** under requirement planning information to bind the
 derivation to an exact requirement version. Open a Git checkpoint and use
-**Prepare ADMBw delivery** to download the structural assessment and modeling
+**Assess ADMBw delivery at this checkpoint** to download the structural assessment and modeling
 data for C1–S1 and R7. The report identifies the reviews required for native
 delivery. [Rules and delivery evidence (German)](https://github.com/carstenartur/Taxonomy/blob/main/docs/features/admbw-conformance-de.md)
 

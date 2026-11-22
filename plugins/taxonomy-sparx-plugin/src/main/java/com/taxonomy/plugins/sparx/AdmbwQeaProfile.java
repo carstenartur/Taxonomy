@@ -6,6 +6,7 @@ import com.taxonomy.extension.api.integration.AdmbwQeaExport.Element;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import com.taxonomy.sparx.mapping.AdmbwSourceProfile;
 import java.util.Set;
 
@@ -22,7 +23,8 @@ final class AdmbwQeaProfile {
     /** Source objects available for inspection. Only catalogue types can be bound by this writer. */
     static final Set<String> REFERENCE_TYPES = Set.of("Capability", "OperationalArchitecture", "OperationalRole",
             "CapabilityConfiguration", "ResourceRole");
-    static final String REFERENCE_FILTER = "stereotype IN (" + REFERENCE_TYPES.stream().sorted()
+    static final String REFERENCE_FILTER = "stereotype IN (" + Stream.concat(REFERENCE_TYPES.stream(),
+            Stream.of("ServiceSpecification")).sorted()
             .map(type -> "'" + type + "'").collect(Collectors.joining(",")) + ")";
 
     static boolean nativeIdentity(QeaDatabase.Row object, String stereotype, List<QeaDatabase.Row> xrefs) {

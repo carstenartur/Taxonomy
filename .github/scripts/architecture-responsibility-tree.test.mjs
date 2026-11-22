@@ -76,6 +76,8 @@ test('German projected titles are searchable alongside the authored catalogue ti
     render('medizinische beratung');
     assert.ok(f.by('selectId', 'BR-1081'));
     assert.ok(f.all().some(node => node.textContent === 'Medizinische Beratung'));
+    assert.equal(f.by('selectId', 'BR-1081').title, 'Medical Advisor Roles');
+    assert.equal(f.by('selectId', 'BR-1081').getAttribute('aria-description'), 'Medical Advisor Roles');
     render('medical advisor');
     assert.ok(f.by('selectId', 'BR-1081'));
 });

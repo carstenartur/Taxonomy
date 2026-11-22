@@ -41,7 +41,7 @@
         <a id="editorPdf" hidden data-i18n="editor.pdf">Download PDF</a>
     </div>
     <details id="editorAdmbwOptions" hidden>
-        <summary data-i18n="editor.admbw.title">Prepare ADMBw delivery</summary>
+        <summary data-i18n="editor.admbw.title">Check ADMBw delivery at this checkpoint</summary>
         <p data-i18n="editor.admbw.help">Check C1–S1 and R7 against the public FFFmLV 2.0 profile. The report includes modeling data and the reviews needed for native delivery.</p>
         <label for="editorAdmbwProjectCode" data-i18n="editor.admbw.projectCode">Project code</label>
         <input id="editorAdmbwProjectCode" type="text" maxlength="32" autocomplete="off"/>
@@ -63,6 +63,9 @@
     <details id="editorAdmbwPreparation" hidden>
         <summary data-i18n="editor.prep.title">Prepare C1–S1 and R7 from this workspace</summary>
         <p data-i18n="editor.prep.basisHelp">Select objects from the agreed project catalogue. The public MASC example provides training references.</p>
+        <a th:href="@{/(lang=${#locale.language})} + '#help/ARCHITECTURE_EDITOR/architecture-delivery-guide'"
+           target="_blank" rel="noopener noreferrer" data-i18n="editor.deliveryGuide">Illustrated architecture delivery guide</a>
+        <p id="prepPrerequisites" role="status" hidden></p>
         <form id="prepForm">
             <fieldset id="prepInputs">
                 <legend data-i18n="editor.prep.inputs">Sources and proposed derivation</legend>
@@ -75,7 +78,8 @@
                     <div><label for="prepRoot" data-i18n="editor.prep.root">Model root from the QEA</label>
                         <select id="prepRoot" required></select></div>
                     <div><label for="prepService" data-i18n="editor.prep.service">Canonical service</label>
-                        <select id="prepService" required></select></div>
+                        <select id="prepService" required aria-describedby="prepServiceTypeEvidence"></select>
+                        <p id="prepServiceTypeEvidence" class="small text-break" role="status" hidden></p></div>
                     <div><label for="prepCapability" data-i18n="editor.prep.capability">Native capability</label>
                         <select id="prepCapability" required></select></div>
                     <div><label for="prepRequirement" data-i18n="editor.planning.requirement">Requirement</label>
@@ -88,7 +92,9 @@
                         </select></div>
                 </div>
                 <label for="prepSource" data-i18n="editor.prep.source">Current requirement text</label>
-                <textarea id="prepSource" readonly rows="5"></textarea>
+                <p id="prepQuoteHelp" data-i18n="editor.prep.quoteHelp">Select the relevant passage in the requirement text and use it as the evidence.</p>
+                <textarea id="prepSource" readonly rows="5" aria-describedby="prepQuoteHelp"></textarea>
+                <button id="prepUseSelection" type="button" data-i18n="editor.prep.useSelection">Use selected text as evidence</button>
                 <label for="prepQuote" data-i18n="editor.prep.quote">Verbatim evidence from this requirement</label>
                 <textarea id="prepQuote" rows="2" maxlength="8000" required></textarea>
                 <label for="prepConstraint" data-i18n="editor.prep.constraint">Proposed operational constraint</label>
@@ -168,7 +174,7 @@
                 <button id="editorArrange" type="button" data-i18n="editor.arrange">Rearrange explicitly</button>
             </div>
             <section class="editor-lens-panel" aria-labelledby="editorLensTitle">
-                <h2 id="editorLensTitle" data-i18n="editor.lens.title">Architecture focus lens</h2>
+                <h2 id="editorLensTitle" tabindex="-1" data-i18n="editor.lens.title">Architecture focus lens</h2>
                 <label class="editor-check"><input id="editorLensEnabled" type="checkbox" disabled/><span data-i18n="editor.lens.enable">Enable focus lens</span></label>
                 <p data-i18n="editor.lens.help">Move slowly over elements to investigate connections across the model. For keyboard or touch, select an element and investigate the selection. Results remain hypotheses until reviewed.</p>
                 <div class="editor-toolbar">
@@ -190,6 +196,13 @@
         <section aria-labelledby="editorPropertiesTitle">
             <h2 id="editorPropertiesTitle" data-i18n="editor.properties">Element properties</h2>
             <p id="editorSelection"></p>
+            <details id="editorCatalogue" hidden>
+                <summary>
+                    <span data-i18n="editor.catalogue.source">Catalogue entry</span> ·
+                    <span id="editorCatalogueTitle"></span><span id="editorCatalogueOriginal" lang="en"></span>
+                </summary>
+                <p id="editorCatalogueDescription" class="text-break"></p>
+            </details>
             <p id="editorDraft" hidden data-i18n="editor.draft">Unaccepted draft. Native text undo affects this form only.</p>
             <form id="editorForm">
                 <fieldset id="editorFields" disabled>

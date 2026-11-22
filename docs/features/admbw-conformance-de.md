@@ -48,7 +48,7 @@ ergibt sich aus dem Vorhaben. [Sparx-EA-Anleitung der Bundeswehr](https://www.bu
    Felder bleiben in der QEA unbewertet. Importierte R7-Zuordnungen brauchen diese lokale Prüfung auch
    bei gleichem Text und gleicher Versionsnummer.
 3. Einen Checkpoint erstellen und ihn in der Versionshistorie öffnen. Unter
-   **ADMBw-Abgabe vorbereiten** das Projektkürzel eintragen und bei Bedarf
+   **ADMBw-Abgabe am Checkpoint prüfen** das Projektkürzel eintragen und bei Bedarf
    die Ausgangssicht für C1–S1 wählen. **Checkpoint prüfen** zeigt die Befunde
    direkt an. Der JSON-Download enthält zusätzlich die Modellierungsdaten. Die Sichten zeigen getrennt `CHANGES_REQUIRED` mit Befunden oder
    `REVIEW_REQUIRED` mit den offenen fachlichen und technischen Prüfungen.
@@ -78,6 +78,32 @@ und der [MDG 2026.05](https://github.com/Mitchel85/EAM-Toolfamilie/blob/6b1baa03
 abgeglichen. Die SQLite-Prüfung deckt Modellstruktur und Kopiererhalt ab.
 Das Öffnen und Prüfen in der vereinbarten EA-Version, die Require.7-Pflichtfelder
 und die projektbezogene Abnahme stehen separat an.
+
+## Vergleich am Ausbildungsportal
+
+Der Stand R6 des fiktiven Ausbildungsportals wurde mit nativen Modellmustern
+der öffentlichen MASC-QEA abgeglichen. Die beiden Modelle bearbeiten
+unterschiedliche Aufgaben. Die MASC-Diagramme zeigen, welche nativen Typen und
+Verbindungen Taxonomy in der jeweiligen Liefersicht abbilden kann.
+
+| Gegenstand | MASC-Referenz und Ergebnis in R6 |
+|---|---|
+| C1–S1 | MASC enthält `Exhibits` vom Dienst zur Fähigkeit und in ausgewählten Sichten zusätzliche Umweltbedingungen oder Fähigkeitsabhängigkeiten. R6 enthält eine geprüfte `Exhibits`-Verbindung für die ausgewählte Dienst-Fähigkeits-Zuordnung. |
+| R7 | MASC enthält `DerivedFrom`, `Satisfy` und in ausgewählten Sichten Verbindungen zu geplanten Realisierern. R6 enthält `DerivedFrom` und `Satisfy`. Ein geplanter Realisierer bleibt offen. Der native Anforderungstext ist vorhanden, fünf fachliche Bewertungsfelder sind zur Prüfung leer. |
+| Abdeckung | Der R6-Checkpoint `c6ac3ebd843e1d9f10d88c9c356ccd2d0dace702` enthält 40 Elemente, drei Beziehungen und 21 Anforderungszuordnungen. Die gewählte Liefersicht umfasst vier Elemente, eine Beziehung und das Anforderungsdokument. Die 21 Analysezuordnungen bleiben im Gesamtmodell. Für 8 von 12 Anforderungsklauseln liegen konkrete Elementbeiträge mit wörtlichen Belegen vor. |
+| Prüfergebnis | Das R6-Gesamtmodell hat 28 C1–S1-Befunde. Die ausgewählte Liefersicht und R7 stehen auf `REVIEW_REQUIRED`. Die QEA-Kopie bestand 454 Strukturprüfungen. Die fachliche Abnahme und die Sichtprüfung in Enterprise Architect stehen aus. |
+
+Für CR-1038 *Information Management Services* belegt ein gleichnamiges Objekt
+in MASC mit dem Quelltag `NATO C3 Taxonomy` den Typ `ServiceSpecification`.
+Ein separat geprüfter Entwurf mit dieser Typisierung senkt die Zahl der
+C1–S1-Befunde von 28 auf 27. Die native Objekt-GUID und die C3-UUID bezeichnen
+unterschiedliche Identitäten. Die Fähigkeitszuordnung für diesen Dienst bleibt
+offen. Die Liefermaske zeigt den Typbeleg bei eindeutigem Treffer an.
+
+Die Analyse- und Lupenprüfung verwendete gespeicherte Testläufe und einen
+kontrollierten OpenAI-kompatiblen Testdienst. Eine Qualitätsmessung mit einem
+eigenständig antwortenden vLLM-Modell steht aus.
+[Bebilderter Ablauf](../de/ARCHITECTURE_EDITOR.md#architecture-delivery-guide)
 
 ## API
 
