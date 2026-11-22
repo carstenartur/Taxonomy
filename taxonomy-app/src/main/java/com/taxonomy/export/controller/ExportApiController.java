@@ -232,16 +232,21 @@ public class ExportApiController {
     @PostMapping("/diagram/current/pdf")
     public ResponseEntity<?> exportCurrentDiagramPdf(
             @Parameter(description = "Captured working architecture view with its saved labels and relationship evidence", required = true)
-            @RequestBody RequirementArchitectureView view) {
+            @RequestBody RequirementArchitectureView view,
+            @Parameter(description = "Optional document language for PDF labels and the captured view title")
+            @RequestParam(name = "locale", required = false) String locale) {
         final DiagramModel diagram;
         try {
-            diagram = exportFacade.buildCurrentDiagram(view);
+            diagram = exportFacade.buildCurrentDiagram(view, locale);
         } catch (IllegalArgumentException invalid) {
             return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON)
                     .body(Map.of("error", "A valid architecture view within export capacity is required."));
         }
         try {
-            byte[] bytes = currentDiagramPdf.renderWorkingView(currentDiagramLayout.layout(diagram), elementReasons(view));
+            var language = com.taxonomy.dto.DocumentLanguage.resolve(com.taxonomy.dto.DocumentLanguage.optionalOverride(locale),
+                    null, org.springframework.context.i18n.LocaleContextHolder.getLocale());
+            byte[] bytes = currentDiagramPdf.renderWorkingView(currentDiagramLayout.layout(diagram), elementReasons(view),
+                    Map.of(), language);
             if (bytes == null || bytes.length == 0) throw new IllegalStateException("Empty architecture PDF");
             return ResponseEntity.ok().contentType(MediaType.APPLICATION_PDF).cacheControl(CacheControl.noStore())
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"requirement-architecture.pdf\"")
@@ -251,6 +256,10 @@ public class ExportApiController {
             return ResponseEntity.internalServerError().contentType(MediaType.APPLICATION_JSON)
                     .body(Map.of("error", "The architecture PDF could not be created. The working state was not changed."));
         }
+    }
+
+    public ResponseEntity<?> exportCurrentDiagramPdf(RequirementArchitectureView view) {
+        return exportCurrentDiagramPdf(view, null);
     }
 
     @Operation(summary = "Export the existing architecture without AI analysis",

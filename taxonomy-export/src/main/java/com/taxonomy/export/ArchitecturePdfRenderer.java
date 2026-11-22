@@ -138,12 +138,21 @@ public final class ArchitecturePdfRenderer {
 
     public byte[] renderWorkingView(DiagramScene scene, Map<String, String> nodeReasons,
                                     Map<String, Map<String, String>> relationReasons) {
+        return renderWorkingView(scene, nodeReasons, relationReasons, Locale.ENGLISH);
+    }
+
+    public byte[] renderWorkingView(DiagramScene scene, Map<String, String> nodeReasons,
+                                    Map<String, Map<String, String>> relationReasons, Locale locale) {
         requireScene(scene);
-        return renderScene(scene, document -> configureSource(document, scene, "Client-provided working view"),
-                new Decoration("Requirement architecture - working view", List.of(
-                        "Client-provided working view; source authority has not been verified.", scene.title()),
-                        List.of("Generated server layout | Client-provided working view | No re-analysis or persistence"),
-                        List.of(), null), nodeReasons, relationReasons, DiagramLanguage.ENGLISH);
+        var language = DiagramLanguage.from(locale);
+        String source = language.text("Client-provided working view", "Vom Client übermittelte Arbeitsansicht");
+        return renderScene(scene, document -> configureSource(document, scene, source),
+                new Decoration(language.text("Requirement architecture - working view", "Anforderungsarchitektur - Arbeitsansicht"),
+                        List.of(language.text("Client-provided working view; source authority has not been verified.",
+                                "Vom Client übermittelte Arbeitsansicht. Die Herkunft ist ungeprüft."), scene.title()),
+                        List.of(language.text("Generated server layout | Client-provided working view | No re-analysis or persistence",
+                                "Serverlayout | Vom Client übermittelte Arbeitsansicht | Keine erneute Analyse oder Speicherung")),
+                        List.of(), null), nodeReasons, relationReasons, language);
     }
 
     private static void requireScene(DiagramScene scene) {

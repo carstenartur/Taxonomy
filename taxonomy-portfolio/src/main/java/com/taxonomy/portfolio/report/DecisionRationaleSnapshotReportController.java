@@ -153,13 +153,15 @@ public class DecisionRationaleSnapshotReportController {
                 && sections == null && !Boolean.TRUE.equals(showResponsibilities) && !drawing;
         DecisionReportOptions options = useDefault ? null
                 : new DecisionReportOptions(profile, taxonomyRoots, contents, treeLayout, sections, showResponsibilities, visio);
+        boolean word = "docx".equals(format.id().strip().toLowerCase(Locale.ROOT));
+        if (options == null && !word && wordReportService != null) options = DecisionReportOptions.full();
         DecisionRationaleReport report;
         if (options == null) {
-            report = "docx".equals(format.id().trim().toLowerCase(Locale.ROOT))
+            report = word
                     ? wordReportService.load(projectId, snapshotId, username, context, resolveLocale(language)).decision()
                     : snapshotReportService.generate(projectId, snapshotId, username, context, resolveLocale(language));
         } else if (options.includes(DecisionReportOptions.Section.ARCHITECTURE) && wordReportService != null) {
-            report = ("docx".equals(format.id().trim().toLowerCase(Locale.ROOT))
+            report = (word
                     ? wordReportService.load(projectId, snapshotId, username, context, resolveLocale(language), options)
                     : wordReportService.loadEvidence(projectId, snapshotId, username, context, resolveLocale(language), options)).decision();
         } else report = snapshotReportService.generate(projectId, snapshotId, username, context, resolveLocale(language), options);

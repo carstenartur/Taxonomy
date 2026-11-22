@@ -22,7 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 class DecisionReportOptionsHttpTest {
     @ParameterizedTest
-    @CsvSource({"html,FULL,false", "json,FULL,false", "visio,,false", "visio-pdf,,false",
+    @CsvSource({"html,FULL,false", "json,FULL,false", "html,,false", "json,,false", "visio,,false", "visio-pdf,,false",
             "visio,,true", "visio-pdf,,true"})
     void fullReportsAndDrawingExportsLoadSavedStructuralEvidence(String format, String profile, boolean wall) throws Exception {
         var service = mock(DecisionRationaleSnapshotReportService.class);
