@@ -71,8 +71,8 @@ class ArchitectureSourceFocusContinuationPersistenceTest {
                     .setProperty("hibernate.hbm2ddl.auto","create-drop").setProperty("hibernate.search.enabled","false")
                     .setStatementInspector(sql -> { statements.add(sql); return sql; }).buildSessionFactory();
             transaction(em -> {
-                var first=new RequirementElementView(); first.setNodeCode("CP-1000"); first.setTaxonomySheet("CP"); first.setTitle("Retained capability");
-                var second=new RequirementElementView(); second.setNodeCode("UA-1000"); second.setTaxonomySheet("UA"); second.setTitle("Retained application");
+                var first=new RequirementElementView(); first.setNodeCode("CP-1000"); first.setTaxonomySheet("CP"); first.setTitle("Dispatch capability");
+                var second=new RequirementElementView(); second.setNodeCode("UA-1000"); second.setTaxonomySheet("UA"); second.setTitle("Dispatch application");
                 var graph=new RequirementArchitectureView(); graph.setIncludedElements(List.of(first,second));
                 var result=new AnalysisResult(); result.setArchitectureView(graph); result.setStatus("PARTIAL"); result.setAnalysisOperationId("operation");
                 var request=new AnalysisRequest("Retained requirement");

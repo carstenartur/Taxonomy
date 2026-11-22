@@ -9,14 +9,17 @@ import com.taxonomy.editor.ArchitectureEditorService;
 import com.taxonomy.portfolio.dto.PortfolioDtos.*;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
+import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.workspace.model.*;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.service.*;
 import org.junit.jupiter.api.*;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import tools.jackson.databind.json.JsonMapper;
 import java.time.Instant;
 import java.util.*;
 import static org.assertj.core.api.Assertions.*;
+import static com.taxonomy.dto.RelationSearchModel.*;
 import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 
@@ -226,17 +229,153 @@ class ArchitectureSourceFocusServiceTest {
         verify(llm,never()).callLlmRaw(anyString(),any()); verifyNoInteractions(editor,budget);
     }
     @Test void canonicalSourceUsesTheSameBudgetedGenerativeAssessmentEngineWithTypedEvidenceValidation() throws Exception {
+        generative("{\"suggestions\":[]}");
+        var response = service.investigate(selected,request(draftSource,"CP-1000",true));
+        assertThat(response.outcome()).isEqualTo("ASSESSED"); assertThat(response.modelCalls()).isEqualTo(1);
+        var prompt = org.mockito.ArgumentCaptor.forClass(String.class); verify(llm).callLlmRaw(prompt.capture(),any());
+        assertThat(prompt.getValue()).contains("CP-1000","UA-1000","Retained order").doesNotContain("Never use browser graph");
+        verifyNoInteractions(editor);
+    }
+
+    private void generative(String reply) {
         when(llm.supportsGenerativeCompletion()).thenReturn(true); when(llm.getActiveProviderName()).thenReturn("fixture-provider");
         when(llm.getActiveProviderId()).thenReturn(new com.taxonomy.extension.api.llm.ProviderId("FIXTURE"));
         when(budget.requireWithinBudget(anyString(),eq("FIXTURE"))).thenReturn(new com.taxonomy.analysis.dto.AiTargetDtos.AiTargetDescriptor(
                 "fixture","Fixture","FIXTURE","model",com.taxonomy.analysis.dto.AiTargetDtos.AiTargetMode.REMOTE,
                 com.taxonomy.analysis.dto.AiTargetDtos.AiTargetHealth.READY,true,false,false,
                 new com.taxonomy.analysis.dto.AiTargetDtos.PromptBudget(120_000,120_000,30_000),"fixture",null));
-        when(llm.callLlmRaw(anyString(),any())).thenReturn("{\"suggestions\":[]}");
-        var response = service.investigate(selected,request(draftSource,"CP-1000",true));
-        assertThat(response.outcome()).isEqualTo("ASSESSED"); assertThat(response.modelCalls()).isEqualTo(1);
-        var prompt = org.mockito.ArgumentCaptor.forClass(String.class); verify(llm).callLlmRaw(prompt.capture(),any());
-        assertThat(prompt.getValue()).contains("CP-1000","UA-1000","Retained order").doesNotContain("Never use browser graph");
+        when(llm.callLlmRaw(anyString(),any())).thenReturn(reply);
+    }
+
+    @Test void generatedPresenceReasonsNeverCreateEvidenceForUnrelatedRetainedElements() {
+        var radar = node("CP-1000", "CP", "Radar tracking");
+        var payroll = node("CR-1000", "CR", "Payroll accounting");
+        radar.setPresenceReason("Included via propagation, LLM score 100.0, traffic records");
+        payroll.setPresenceReason(radar.getPresenceReason());
+        retained.getArchitectureView().setIncludedElements(List.of(radar, payroll));
+        var response = service.investigate(selected, request(snapshotSource, "CP-1000", true));
+        assertThat(response.outcome()).isEqualTo("NO_CANDIDATES");
+        verifyNoInteractions(llm, budget, editor);
+    }
+
+    @Test void anExactFrozenReportPreservesOptionalScopeAndRejectionAcrossDifferentRequirementContexts() {
+        String original = "Maintain a release register. Notify the duty officer only during a declared exercise. Use radio for live operations.";
+        pinSnapshotRequirement(original);
+        var capability = new Node("CP-1000", "CP", "Readiness", "", false);
+        var serviceNode = new Node("CR-1000", "CR", "Pager", "", false);
+        var rejectedPeer = new Node("CR-1001", "CR", "Readiness catalogue", "", false);
+        var graph = retained.getArchitectureView();
+        assertThat(graph.getOriginalRequirementText()).isNull();
+        graph.setIncludedElements(List.of(node(capability.id(), capability.root(), capability.name()),
+                node(serviceNode.id(), serviceNode.root(), serviceNode.name()),
+                node(rejectedPeer.id(), rejectedPeer.root(), rejectedPeer.name())));
+        var contribution = new Contribution(capability, "Preparing exercise readiness", "Maintain a release register.", "Exercise mode");
+        var optional = new Decision(serviceNode.id(), Outcome.VERIFIED, "Page the duty officer",
+                "Notify the duty officer only during a declared exercise.", Necessity.OPTIONAL, "During an exercise", null,
+                "Exercise scope only", null);
+        var edge = new Edge(contribution, serviceNode, "REALIZES", Direction.OUTGOING, optional);
+        var rejections = List.of(new Trace(capability.id(), "REALIZES", Direction.OUTGOING, Phase.VERIFY, serviceNode.id(),
+                        Outcome.REJECT, "The live scope specifies radio", "live-scope"),
+                new Trace(capability.id(), "REALIZES", Direction.OUTGOING, Phase.VERIFY, rejectedPeer.id(),
+                        Outcome.REJECT, "A catalogue is outside this requirement", "exercise-scope"));
+        String originalHash = com.taxonomy.identity.StableIdentityHash.sha256(original);
+        retained.setRelationSearchReport(new RelationSearchReport(2, originalHash, "fixture",
+                List.of(), new Result(List.of(edge), List.of(), rejections, 0, 0, 0), 0, 0, 0, List.of(), ""));
+
+        var response = service.investigate(selected, request(snapshotSource, capability.id(), false));
+        assertThat(response.outcome()).isEqualTo("LOCAL_CANDIDATES");
+        assertThat(response.suggestions()).singleElement().satisfies(s -> {
+            assertThat(s.relationType()).isEqualTo("REALIZES");
+            assertThat(s.targetId()).isEqualTo(serviceNode.id());
+            assertThat(s.rationale()).contains("OPTIONAL", "Exercise mode", "During an exercise", "rejected");
+            assertThat(s.evidence()).extracting(ArchitectureFocusSuggestionService.Evidence::quote)
+                    .containsExactly(contribution.quote(), optional.quote());
+            assertThat(s.properties()).containsEntry("x-focus-source-hash", response.sourceHash());
+        });
+        graph.setOriginalRequirementText("A stale display copy that differs from the pinned requirement.");
+        assertCode(() -> service.investigate(selected, request(snapshotSource, capability.id(), true)), "SOURCE_IDENTITY_MISMATCH");
+        graph.setOriginalRequirementText(null);
+        var fabricated = new Decision(serviceNode.id(), Outcome.VERIFIED, optional.contribution(), "Fabricated witness",
+                optional.necessity(), optional.condition(), null, optional.rationale(), null);
+        retained.setRelationSearchReport(new RelationSearchReport(2, originalHash, "fixture", List.of(),
+                new Result(List.of(new Edge(contribution, serviceNode, edge.type(), edge.direction(), fabricated)),
+                        List.of(), rejections, 0, 0, 0), 0, 0, 0, List.of(), ""));
+        assertThat(service.investigate(selected, request(snapshotSource, capability.id(), false)).suggestions()).isEmpty();
+
+        String exactScope = AnalysisCheckpointSession.digest(capability.id(), contribution.text(), contribution.quote(),
+                contribution.condition(), edge.type(), edge.direction().name());
+        var exactRejection = new Trace(capability.id(), edge.type(), edge.direction(), Phase.VERIFY, serviceNode.id(),
+                Outcome.REJECT, "This specific exercise scope was rejected", exactScope);
+        retained.setRelationSearchReport(new RelationSearchReport(2, originalHash, "fixture", List.of(),
+                new Result(List.of(edge), List.of(), List.of(exactRejection, rejections.getLast()), 0, 0, 0),
+                0, 0, 0, List.of(), ""));
+        assertThat(service.investigate(selected, request(snapshotSource, capability.id(), false)).suggestions()).isEmpty();
+        verifyNoInteractions(llm, budget, editor);
+    }
+
+    @Test void matchingButStaleGraphAndReportTextCannotOverrideThePinnedRequirementVersion() {
+        String stale = "Maintain an archived register. Prefer a pager during exercises.";
+        pinSnapshotRequirement("Maintain a frozen release register. Use radio in the field.");
+        var assessed = new Node("CP-1000", "CP", "Readiness", "", false);
+        var target = new Node("CR-1000", "CR", "Pager", "", false);
+        var contribution = new Contribution(assessed, "Readiness", "Maintain an archived register.", "");
+        var optional = new Decision(target.id(), Outcome.VERIFIED, "Page the officer", "Prefer a pager during exercises.",
+                Necessity.OPTIONAL, "Only during exercises", null, "Older scope", null);
+        var graph = retained.getArchitectureView();
+        graph.setIncludedElements(List.of(node(assessed.id(), assessed.root(), assessed.name()), node(target.id(), target.root(), target.name())));
+        graph.setOriginalRequirementText(stale);
+        retained.setRelationSearchReport(new RelationSearchReport(2, com.taxonomy.identity.StableIdentityHash.sha256(stale), "fixture", List.of(),
+                new Result(List.of(new Edge(contribution, target, "REALIZES", Direction.OUTGOING, optional)), List.of(), List.of(), 0, 0, 0),
+                0, 0, 0, List.of(), ""));
+        assertCode(() -> service.investigate(selected, request(snapshotSource, assessed.id(), true)), "SOURCE_IDENTITY_MISMATCH");
+        verifyNoInteractions(llm, budget, editor);
+    }
+
+    private void pinSnapshotRequirement(String original) {
+        var projects = mock(ProjectPortfolioService.class);
+        when(projects.listRequirementVersions(1L, 2L, "alice", new WorkspaceContext("alice", null, "old", "repo")))
+                .thenReturn(List.of(new RequirementVersionView(4L, 2, "Different newest requirement", null, null, "alice", Instant.EPOCH, null),
+                        new RequirementVersionView(3L, 1, original, null, null, "alice", Instant.EPOCH, null)));
+        try (var context = new AnnotationConfigApplicationContext()) {
+            context.registerBean(com.taxonomy.dsl.model.CatalogueDefinitionResolver.class,
+                    com.taxonomy.dsl.model.CatalogueDefinitionResolver::standard);
+            context.registerBean(AnalysisSnapshotAdoptionService.class, () ->
+                    new AnalysisSnapshotAdoptionService(editor, snapshots, projects, workspaces, repositories, membership));
+            context.refresh();
+            context.getAutowireCapableBeanFactory().autowireBean(service);
+        }
+    }
+
+    @Test void modelSelectionCannotTurnARecordedDraftAlternativeIntoAnUnconditionalRelation() {
+        String original = "Use radio in the field. Prefer a pager during exercises.";
+        var assessed = new Node("CP-1000", "CP", "Field readiness", "", false);
+        var target = new Node("CR-1000", "CR", "Pager", "", false);
+        var contribution = new Contribution(assessed, "Field readiness", "Use radio in the field.", "Field exercise");
+        var alternative = new Decision(target.id(), Outcome.VERIFIED, "Use a pager", "Prefer a pager during exercises.",
+                Necessity.ALTERNATIVE, "Only during exercises", "notification channel", "Exercise scope", null);
+        var edge = new Edge(contribution, target, "REALIZES", Direction.OUTGOING, alternative);
+        var graph = retained.getArchitectureView();
+        graph.setIncludedElements(List.of(node(assessed.id(), assessed.root(), assessed.name()), node(target.id(), target.root(), target.name())));
+        graph.setOriginalRequirementText("Presentation copy with no authority over the retained operation.");
+        retained.setRelationSearchReport(new RelationSearchReport(2, com.taxonomy.identity.StableIdentityHash.sha256(original), "fixture",
+                List.of(), new Result(List.of(edge), List.of(), List.of(), 0, 0, 0), 0, 0, 0, List.of(), ""));
+        when(operations.request("operation", "alice", scope)).thenReturn(new ClusterAnalysisObservation.RecoveryInput("operation",
+                original, null, null, new ClusterAnalysisView.ObservationScope("copy", "repo", "draft", null)));
+        generative("""
+                {"suggestions":[{"sourceId":"CP-1000","targetId":"CR-1000","relationType":"REALIZES",
+                  "rationale":"Pager is deployed everywhere.","evidence":[
+                    {"elementId":"CP-1000","field":"requirement","quote":"Use radio in the field."},
+                    {"elementId":"CR-1000","field":"requirement","quote":"Prefer a pager during exercises."}]}]}
+                """);
+        var response = service.investigate(selected, request(draftSource, assessed.id(), true));
+        assertThat(response.outcome()).isEqualTo("ASSESSED");
+        assertThat(response.suggestions()).singleElement().satisfies(s -> {
+            assertThat(s.rationale()).contains("ALTERNATIVE", "Field exercise", "Only during exercises", "notification channel")
+                    .doesNotContain("deployed everywhere");
+            assertThat(s.evidence()).extracting(ArchitectureFocusSuggestionService.Evidence::quote)
+                    .containsExactly(contribution.quote(), alternative.quote());
+        });
+        verify(llm).callLlmRaw(anyString(), any());
         verifyNoInteractions(editor);
     }
     @Test void unchangedDraftVersionCannotAuthorizeANewerMutableContinuationResult() {
@@ -271,7 +410,7 @@ class ArchitectureSourceFocusServiceTest {
         when(archives.forRevision("generation-A")).thenReturn(generation);
         service.useCatalogueDefinitions(archives);
         var graph = retained.getArchitectureView();
-        graph.setIncludedElements(List.of(node("PR-1","PR","Register"),node("OF-1","OF","Office")));
+        graph.setIncludedElements(List.of(node("PR-1","PR","Permit register"),node("OF-1","OF","Permit office")));
         graph.setIncludedRelationships(List.of());
         for (var source : List.of(draftSource, snapshotSource)) {
             retained.setModelBinding(new AnalysisModelBinding(AnalysisModelBinding.State.CATALOGUE_UNRESOLVED,

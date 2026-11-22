@@ -6,19 +6,32 @@ window.ArchitectureFocusSession = function (options) {
     var sourceMode = options.sourceMode === true;
     var budget = 16, used = 0, modelCalls = 0, useAi = !sourceMode, active = null;
     var states = Object.create(null), errors = Object.create(null), queue = [], dwell = new Map(), suggestions = [], reviewed = null;
+    var investigations = new Map();
+    function workspaceId(c) {
+        return c.workspaceId !== undefined ? (c.workspaceId ?? '')
+            : c.workspaceScopeKey === '__shared__' ? '' : c.workspaceScopeKey;
+    }
     function scopeIdentity(c) {
         if (!c) return '';
-        var pins = [c.repositoryId, c.workspaceScopeKey, c.branch];
-        if (sourceMode) {
-            var workspace = c.workspaceId !== undefined ? (c.workspaceId ?? '')
-                : c.workspaceScopeKey === '__shared__' ? '' : c.workspaceScopeKey;
-            return pins.concat(workspace, c.kind, c.snapshotId).join('\u001f');
-        }
-        return pins.concat(c.actor, c.writeMode).join('\u001f');
+        var pins = [c.repositoryId, c.workspaceScopeKey, c.branch, workspaceId(c)];
+        return (sourceMode ? pins.concat(c.kind, c.snapshotId) : pins.concat(c.actor, c.writeMode)).join('\u001f');
     }
     function identity(c) { return c ? scopeIdentity(c) + '\u001f' + (sourceMode
         ? [c.version, c.projectId, c.requirementId, c.requirementVersionId].join('\u001f')
         : c.commit + '\u001f' + c.revision) : ''; }
+    function captureContext(value) {
+        if (!value) return null;
+        var captured = Object.assign({}, value);
+        // Working editor contexts use a transport-only workspace pin outside the Java Context DTO.
+        if (!sourceMode && value.workspaceId !== undefined)
+            Object.defineProperty(captured, 'workspaceId', { value: value.workspaceId, enumerable: false });
+        return Object.freeze(captured);
+    }
+    function matchesResponse(value, captured) {
+        if (sourceMode) return identity(value) === identity(captured);
+        return value && ['repositoryId', 'workspaceScopeKey', 'branch', 'actor', 'writeMode', 'commit', 'revision']
+            .every(function (pin) { return value[pin] === captured[pin]; });
+    }
     function changed() { if (options.changed) options.changed(snapshot()); }
     function snapshot() {
         return { enabled: enabled, available: available, paused: paused, locked: locked, budget: budget, used: used,
@@ -28,16 +41,62 @@ window.ArchitectureFocusSession = function (options) {
     }
     function clearDwell() { dwell.forEach(cancel); dwell.clear(); }
     function canQueue(id) { return id && (!states[id] || states[id] === 'stale'); }
+    function canInspect(id, retry) {
+        return Boolean(enabled && available && !paused && !locked && id && used + queue.length < budget
+            && (canQueue(id) || retry && (states[id] === 'failed' || states[id] === 'unassessed' && useAi)));
+    }
     function enqueue(id, retry) {
-        if (!enabled || !available || paused || locked || !canQueue(id) || used + queue.length >= budget) return;
+        if (!canInspect(id, retry)) return;
+        queue.push({ id: id, retry: Boolean(retry), previousState: states[id], previousError: errors[id] });
         if (retry) delete errors[id];
-        states[id] = 'queued'; queue.push({ id: id, retry: Boolean(retry) }); changed(); pump();
+        states[id] = 'queued'; changed(); pump();
+    }
+    function restoreAttempt(attempt) {
+        if (attempt.previousState) states[attempt.id] = attempt.previousState;
+        else delete states[attempt.id];
+        if (attempt.previousError) errors[attempt.id] = attempt.previousError;
+    }
+    function retainSuggestions(request, result) {
+        var returned = result.suggestions.slice(0, 8);
+        if (result.outcome === 'ASSESSED') {
+            var returnedIds = new Set(returned.map(function (value) { return key + '\u001f' + value.id; }));
+            suggestions = suggestions.flatMap(function (item) {
+                if (item.dismissed || item.accepted || item.command || item.stale || item.outcome === 'ASSESSED' || returnedIds.has(item.id)) return [item];
+                var sources = investigations.get(item.id);
+                if (!sources || !sources.has(request.id)) return [item];
+                var obsolete = sources.get(request.id);
+                sources.delete(request.id);
+                if (!sources.size) { investigations.delete(item.id); return []; }
+                return [item === obsolete ? sources.values().next().value : item];
+            });
+        }
+        returned.forEach(function (value) {
+            var id = key + '\u001f' + value.id;
+            var index = suggestions.findIndex(function (item) { return item.id === id; });
+            var previous = suggestions[index];
+            // An investigation can refresh evidence without rewriting a reviewer's decision or command.
+            if (previous && (previous.dismissed || previous.accepted || previous.command)) return;
+            var retained = Object.assign({}, value, { id: id, method: result.method,
+                outcome: result.outcome, sourceHash: result.sourceHash, stale: false });
+            retained[sourceMode ? 'source' : 'context'] = request.context;
+            if (!investigations.has(id)) investigations.set(id, new Map());
+            var sources = investigations.get(id);
+            var priorEvidence = sources.get(request.id);
+            if (!priorEvidence || priorEvidence.outcome !== 'ASSESSED' || result.outcome === 'ASSESSED') sources.set(request.id, retained);
+            if (!previous) { suggestions.push(retained); return; }
+            var upgraded = result.outcome === 'ASSESSED' && previous.outcome !== 'ASSESSED';
+            var refreshed = request.retry && (result.outcome === 'ASSESSED' || previous.outcome !== 'ASSESSED');
+            if (previous.stale || upgraded || refreshed) suggestions[index] = retained;
+        });
+        if (!suggestions.some(function (s) { return s.id === reviewed && !s.dismissed; }))
+            reviewed = (suggestions.find(function (s) { return !s.dismissed; }) || {}).id || null;
     }
     function pump() {
         if (!enabled || !available || paused || locked || active || used >= budget || !queue.length) return;
-        var queued = queue.shift();
-        var request = { id: queued.id, retry: queued.retry, epoch: epoch, context: context,
-            controller: sourceMode ? new AbortController() : null };
+        var request = queue.shift();
+        request.epoch = epoch;
+        request.context = context;
+        request.controller = sourceMode ? new AbortController() : null;
         active = request; used++; states[request.id] = 'examining'; changed();
         Promise.resolve().then(function () {
             if (request.epoch !== epoch) return null;
@@ -52,7 +111,7 @@ window.ArchitectureFocusSession = function (options) {
         }).then(function (result) {
             // A request may finish after navigation or a semantic edit; its evidence belongs only to its captured revision.
             if (request.epoch !== epoch) return;
-            if (!result || identity(result[sourceMode ? 'source' : 'context']) !== key || result.sourceId !== request.id
+            if (!result || !matchesResponse(result[sourceMode ? 'source' : 'context'], request.context) || result.sourceId !== request.id
                     || sourceMode && !/^[a-f0-9]{64}$/i.test(result.sourceHash || '')
                     || !Array.isArray(result.suggestions) || !['ASSESSED', 'LOCAL_CANDIDATES', 'UNASSESSED', 'NO_CANDIDATES', 'FAILED'].includes(result.outcome)) {
                 throw Object.assign(new Error('Invalid focus response'), sourceMode ? { responseBody: { code: 'INVALID_RESPONSE' } } : {});
@@ -62,20 +121,7 @@ window.ArchitectureFocusSession = function (options) {
                 : result.outcome === 'NO_CANDIDATES' ? 'noCandidates'
                 : result.outcome === 'LOCAL_CANDIDATES' || result.outcome === 'UNASSESSED' ? 'unassessed'
                 : result.suggestions.length ? 'suggestions' : 'examined';
-            result.suggestions.slice(0, 8).forEach(function (value) {
-                var id = key + '\u001f' + value.id;
-                var previous = suggestions.find(function (s) { return s.id === id; });
-                // A retried investigation may replace fallback evidence, never a reviewed decision or uncertain command.
-                if (previous && (previous.dismissed || previous.accepted || previous.command
-                        || (!previous.stale && previous.outcome === 'ASSESSED' && result.outcome !== 'ASSESSED')
-                        || (!previous.stale && !request.retry))) return;
-                if (previous) suggestions = suggestions.filter(function (s) { return s.id !== id; });
-                var retained = Object.assign({}, value, { id: id, method: result.method,
-                    outcome: result.outcome, sourceHash: result.sourceHash, stale: false });
-                retained[sourceMode ? 'source' : 'context'] = request.context;
-                suggestions.push(retained);
-                if (!reviewed) reviewed = id;
-            });
+            retainSuggestions(request, result);
         }).catch(function (error) {
             if (request.epoch !== epoch) return;
             states[request.id] = 'failed'; errors[request.id] = options.errorMessage ? options.errorMessage(error)
@@ -89,10 +135,18 @@ window.ArchitectureFocusSession = function (options) {
             if (nextKey !== key) {
                 if (sourceMode && active) { active.controller.abort(); active = null; }
                 if (scopeIdentity(value) !== scopeIdentity(context)) { suggestions = []; states = Object.create(null); reviewed = null; }
-                epoch++; key = nextKey; context = value && Object.freeze(Object.assign({}, value)); queue = []; clearDwell();
+                epoch++; key = nextKey; context = captureContext(value); queue = []; clearDwell(); investigations.clear();
                 Object.keys(states).forEach(function (id) { states[id] = 'stale'; });
                 suggestions.forEach(function (s) { s.stale = true; });
                 errors = Object.create(null);
+            } else if (available && !writable) {
+                if (active && active.epoch === epoch) {
+                    restoreAttempt(active);
+                    if (active.controller) { active.controller.abort(); active = null; }
+                }
+                epoch++;
+                queue.forEach(restoreAttempt);
+                queue = [];
             }
             available = Boolean(writable);
             if (!available) { enabled = false; clearDwell(); queue = []; }
@@ -103,6 +157,7 @@ window.ArchitectureFocusSession = function (options) {
         setLocked: function (value) { locked = Boolean(value); if (locked) clearDwell(); changed(); pump(); },
         setBudget: function (value) { budget = Math.max(1, Math.min(128, Math.floor(Number(value) || 16))); changed(); pump(); },
         setUseAi: function (value) { useAi = Boolean(value); changed(); },
+        canInspect: canInspect,
         observe: function (ids) {
             var present = new Set(ids);
             dwell.forEach(function (timer, id) { if (!present.has(id)) { cancel(timer); dwell.delete(id); } });
@@ -113,8 +168,6 @@ window.ArchitectureFocusSession = function (options) {
             });
         },
         inspect: function (id, retry) {
-            if (retry && enabled && available && !paused && !locked && used + queue.length < budget
-                    && (states[id] === 'failed' || states[id] === 'unassessed' && useAi)) delete states[id];
             if (dwell.has(id)) { cancel(dwell.get(id)); dwell.delete(id); }
             enqueue(id, retry);
         },
@@ -160,19 +213,32 @@ window.ArchitectureFocusPanel = function (options) {
         el('editorLensEnabled').disabled = !state.available || state.locked;
         el('editorLensPause').disabled = !state.enabled || state.locked;
         el('editorLensPause').textContent = t(state.paused ? 'editor.lens.resume' : 'editor.lens.pause');
-        el('editorLensInspect').disabled = !selected || !state.enabled || state.paused || state.locked || state.used >= state.budget;
+        el('editorLensInspect').disabled = !session.canInspect(selected, true);
         el('editorLensUseAi').disabled = state.locked;
         el('editorLensUseAi').checked = state.useAi;
         el('editorLensSummary').textContent = t('editor.lens.summary', state.used, state.budget, state.queued, state.modelCalls)
             + ' · ' + t(!state.available ? (readOnly ? 'sourceLens.unavailable' : 'editor.lens.unavailable') : !state.enabled ? 'editor.lens.off' : state.paused ? 'editor.lens.paused'
                 : state.active ? 'editor.lens.running' : state.used >= state.budget ? 'editor.lens.budgetReached' : 'editor.lens.ready');
-        var statuses = el('editorLensStates'); statuses.replaceChildren();
+        var statuses = el('editorLensStates');
+        var focusedRetry = statuses.contains(document.activeElement) ? document.activeElement.dataset.retryElement : null;
+        var restoreRetry = null;
+        statuses.replaceChildren();
         Object.keys(state.states).slice(-16).forEach(function (id) {
             var status = state.states[id]; var row = node('li', id + ' · ' + t('editor.lens.state.' + status), 'editor-lens-state ' + status);
             if (state.errors[id]) row.append(node('span', ' — ' + state.errors[id]));
-            if (status === 'failed') row.append(action(t('editor.lens.retry'), function () { session.inspect(id, true); }, !state.enabled || state.locked || state.used >= state.budget));
+            if (status === 'failed') {
+                var retry = action(t('editor.lens.retry'), function () { session.inspect(id, true); }, !session.canInspect(id, true));
+                retry.dataset.retryElement = id;
+                if (id === focusedRetry && !retry.disabled) restoreRetry = retry;
+                row.append(retry);
+            }
             statuses.append(row);
         });
+        if (focusedRetry) {
+            var retryFocus = restoreRetry || ['editorLensInspect', 'editorLensPause', 'editorLensEnabled', 'editorLensBudget']
+                .map(el).find(function (control) { return !control.disabled; });
+            if (retryFocus) retryFocus.focus({ preventScroll: true });
+        }
         var list = el('editorLensSuggestions');
         var focusedProposal = list.contains(document.activeElement) ? document.activeElement.dataset.proposalId : null;
         list.replaceChildren();

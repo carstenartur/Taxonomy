@@ -70,8 +70,14 @@ final class AnalysisSnapshotAdoption {
                 if (existing.getProperties().stream().map(PropertyAst::key).distinct().count() != existing.getProperties().size())
                     throw problem("DUPLICATE_PROPERTY", "Existing element has ambiguous properties");
             } else {
-                next = commands.apply(next, new CreateArchitectureElement(element.id(), element.type(),
-                        Map.of("title", element.title(), "description", element.description()))).dsl();
+                // The element inputs were validated above. Mark only the generated value we actually install.
+                var properties = new LinkedHashMap<String, String>();
+                properties.put("title", element.title());
+                properties.put("description", element.description());
+                if (!element.description().isBlank())
+                    properties.put(SnapshotEvidence.GENERATED_DESCRIPTION_HASH, SnapshotEvidence.digest(element.description()));
+                next = ArchitectureSemanticPatch.replace(next, null,
+                        ArchitectureDslCommands.block("element", List.of(element.id(), "type", element.type()), properties, null));
             }
             if (element.responsibility() != null) {
                 // Earlier inserts can move source offsets. Use the current block for the exact replacement.

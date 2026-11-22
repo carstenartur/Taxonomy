@@ -30,6 +30,28 @@ class AnalysisSnapshotAdoptionTest {
                 + "relation system CONTAINS component {\n status: \"accepted\";\n provenance: \"reviewed\";\n x-focus-evidence: \"evidence\";\n}\n";
         assertThat(dsl.apply(before, adoption("a".repeat(64))).dsl()).startsWith(before);
     }
+
+    @Test void recordsDescriptionProvenanceOnlyForNewlyCreatedElements() {
+        String before = """
+                element system type System {
+                  title: "Existing";
+                  description: "Authored";
+                }
+                """;
+        var command = new AdoptAnalysisSnapshot("analysis-source", "Frozen analysis", "", "a".repeat(64),
+                List.of(new SnapshotElement("system", "System", "Recorded", "Display reason"),
+                        new SnapshotElement("component", "Component", "Recorded", "Generated display reason")),
+                List.of(), Map.of());
+        var after = dsl.apply(before, command).dsl();
+        var model = dsl.model(after);
+        String field = "x-analysis-generated-description-sha256";
+        assertThat(model.findElement("system").orElseThrow().getExtensions()).doesNotContainKey(field);
+        assertThat(model.findElement("system").orElseThrow().getDescription()).isEqualTo("Authored");
+        assertThat(model.findElement("component").orElseThrow().getExtensions()).containsEntry(field,
+                "78cccaebee466e7b1156347e731fdcc1221c67d5acd7554d70553eb53445572b");
+        var undo = dsl.inverse(after, before, after).dsl();
+        assertThat(undo).isEqualTo(before);
+    }
     @Test void newElementsCarryTheFrozenUnitAndExistingLocalAssignmentsStayInPlace() {
         String before = """
                 organization local {
