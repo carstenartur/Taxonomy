@@ -379,15 +379,16 @@ class ArchitectureWorkbenchUiIT {
             assertThat(driver.findElement(By.id("editorNew")).isEnabled()).isTrue();
             saveEditorOverviewDocumentationScreenshot(language);
 
+            WebElement enableLens = wait.until(ExpectedConditions.elementToBeClickable(By.id("editorLensEnabled")));
+            if (!enableLens.isSelected()) clickDocumentationControl(By.id("editorLensEnabled"));
+            clickDocumentationControl(By.id("editorArchitectureLensAction"));
             clickDocumentationControl(By.cssSelector("#editorLensSettings > summary"));
             WebElement useAi = driver.findElement(By.id("editorLensUseAi"));
             if (useAi.isSelected()) clickDocumentationControl(By.id("editorLensUseAi"));
-            WebElement enableLens = wait.until(ExpectedConditions.elementToBeClickable(By.id("editorLensEnabled")));
-            if (!enableLens.isSelected()) clickDocumentationControl(By.id("editorLensEnabled"));
             assertThat(enableLens.isSelected()).isTrue();
             assertThat(useAi.isSelected()).isFalse();
             saveDocumentationCapture("architecture-editor-focus-" + language + ".png",
-                    driver.findElement(By.cssSelector(".editor-lens-panel")));
+                    driver.findElement(By.id("editorLens")));
         }
     }
 
