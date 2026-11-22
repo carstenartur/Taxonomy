@@ -85,7 +85,8 @@ public class ExportFacade {
         DiagramModel diagram = analyzeAndProject(businessText);
         VisioDocument visioDocument = visioDiagramService.convert(diagram,
                 new VisioExportMetadata(VisioWorkingViewMetadata.document(businessText, workingViewMetadata),
-                        Map.of(), Map.of(), VisioExportMetadata.unbound().losses()));
+                        Map.of(), Map.of(), VisioExportMetadata.unbound().losses())
+                        .withLanguage(org.springframework.context.i18n.LocaleContextHolder.getLocale()));
         return visioPackageBuilder.build(visioDocument);
     }
 

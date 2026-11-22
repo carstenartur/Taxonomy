@@ -21,7 +21,7 @@
 .architecture-editor-surface .editor-columns { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(20rem, 1fr); gap: 1.5rem; }
 .architecture-editor-surface .editor-columns > section { min-width: 0; padding: 1rem; border: 1px solid var(--taxonomy-panel-border, #c8d1dd); background: var(--taxonomy-panel-background, white); border-radius: .5rem; }
 .architecture-editor-surface label { display: block; font-weight: 600; margin: .7rem 0 .25rem; }
-.architecture-editor-surface input, .architecture-editor-surface select, .architecture-editor-surface textarea { display: block; width: 100%; font: inherit; padding: .55rem; border: 1px solid #8795a8; border-radius: .25rem; background: var(--taxonomy-panel-background, white); color: var(--taxonomy-surface-foreground, #17243a); }
+.architecture-editor-surface :is(input:not([type=checkbox], [type=radio]), select, textarea) { display: block; width: 100%; font: inherit; padding: .55rem; border: 1px solid #8795a8; border-radius: .25rem; background: var(--taxonomy-panel-background, white); color: var(--taxonomy-surface-foreground, #17243a); }
 .architecture-editor-surface textarea { resize: vertical; }
 .architecture-editor-surface #editorBrief select { white-space: normal; overflow-wrap: anywhere; }
 .architecture-editor-surface fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
@@ -71,9 +71,10 @@
 
 .architecture-editor-surface .editor-layout-controls select { width: auto; flex: 1; min-width: 10rem; }
 .architecture-editor-surface .editor-lens-panel { border-top: 1px solid #aab5c4; margin-top: 1rem; }
-.architecture-editor-surface .editor-check { display: flex; gap: .6rem; align-items: center; }
-.architecture-editor-surface .editor-check input { width: 1.2rem; height: 1.2rem; }
-.architecture-editor-surface #editorLensBudget { width: 5rem; }
+.architecture-editor-surface .editor-check { display: flex; gap: .6rem; align-items: start; min-height: 44px; padding-block: .45rem; cursor: pointer; }
+.architecture-editor-surface .editor-check input { flex: none; inline-size: 1.2rem; block-size: 1.2rem; margin: .15rem 0 0; }
+.architecture-editor-surface .editor-lens-budget { display: flex; flex-wrap: wrap; gap: .55rem; align-items: center; margin: 0; }
+.architecture-editor-surface .editor-lens-budget input { flex: none; inline-size: 5.25rem; max-inline-size: 100%; }
 .architecture-editor-surface .editor-lens-states, .architecture-editor-surface .editor-lens-suggestions { padding-left: 1.3rem; overflow-wrap: anywhere; }
 .architecture-editor-surface .editor-lens-state { margin: .4rem 0; }
 .architecture-editor-surface .editor-lens-state.examining { font-weight: 700; text-decoration: underline; }
@@ -104,9 +105,12 @@
 #editorAdmbwPreparation { margin-block: 1rem; max-width: 66rem; overflow-wrap: anywhere; }
 #editorAdmbwPreparation .prep-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: .5rem 1rem; }
 #editorAdmbwPreparation fieldset, #editorAdmbwPreparation .prep-grid > div { min-width: 0; }
-#editorAdmbwPreparation label { display: block; margin-top: .5rem; }
+#editorAdmbwPreparation label { margin-top: .5rem; }
 #editorAdmbwPreparation :is(select, textarea, input:not([type=checkbox])) { display: block; width: 100%; max-width: 100%; box-sizing: border-box; }
 #editorAdmbwPreparation button { margin-block: .5rem; white-space: normal; }
-#prepReview input + label { display: inline; }
+#prepResult .editor-admbw-profile { padding: .7rem .9rem; margin-block: .7rem; border-inline-start: 3px solid var(--taxonomy-panel-border, #8795a8); background: var(--taxonomy-panel-background, white); }
+#prepResult .editor-admbw-profile h4 { margin: 0 0 .35rem; font-size: 1rem; }
+#prepResult .editor-admbw-profile p, #prepResult .editor-admbw-profile ul { margin: 0; }
+#prepResult .editor-admbw-profile ul { margin-block-start: .35rem; padding-inline-start: 1.25rem; }
 #prepResult pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow: auto; }
 #prepResult table { width: 100%; }

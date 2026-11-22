@@ -110,10 +110,10 @@
         <section id="prepResult" aria-labelledby="prepResultTitle" hidden></section>
         <fieldset id="prepReview" hidden>
             <legend data-i18n="editor.prep.review">Review before saving</legend>
-            <div><input id="prepRelationshipReviewed" type="checkbox" />
-                <label for="prepRelationshipReviewed" data-i18n="editor.prep.relationshipReviewed">I reviewed the service-to-capability relationship.</label></div>
-            <div><input id="prepDerivationReviewed" type="checkbox" />
-                <label for="prepDerivationReviewed" data-i18n="editor.prep.derivationReviewed">I reviewed the R7 derivation against the quoted requirement and its native subject.</label></div>
+            <label class="editor-check"><input id="prepRelationshipReviewed" type="checkbox" />
+                <span data-i18n="editor.prep.relationshipReviewed">I reviewed the service-to-capability relationship.</span></label>
+            <label class="editor-check"><input id="prepDerivationReviewed" type="checkbox" />
+                <span data-i18n="editor.prep.derivationReviewed">I reviewed the R7 derivation against the quoted requirement and its native subject.</span></label>
             <button id="prepAccept" type="button" disabled data-i18n="editor.prep.accept">Save reviewed changes and checkpoint</button>
         </fieldset>
         <p id="prepReceipt" role="status" aria-live="polite"></p>
@@ -180,8 +180,10 @@
                 <div class="editor-toolbar">
                     <button id="editorLensInspect" type="button" disabled data-i18n="editor.lens.inspect">Investigate selection</button>
                     <button id="editorLensPause" type="button" disabled data-i18n="editor.lens.pause">Pause new investigations</button>
-                    <label for="editorLensBudget" data-i18n="editor.lens.budget">Investigation limit</label>
-                    <input id="editorLensBudget" type="number" min="1" max="128" value="16"/>
+                    <label class="editor-lens-budget">
+                        <span data-i18n="editor.lens.budget">Investigation limit</span>
+                        <input id="editorLensBudget" type="number" min="1" max="128" value="16"/>
+                    </label>
                 </div>
                 <label class="editor-check"><input id="editorLensUseAi" type="checkbox" checked/><span data-i18n="editor.lens.useAi">Ask the configured AI provider when available</span></label>
                 <p data-i18n="editor.lens.cost">Each investigation may send one request to the configured provider. Pausing lets an active request finish. Local text candidates remain unassessed.</p>

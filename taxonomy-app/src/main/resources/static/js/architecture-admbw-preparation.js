@@ -117,18 +117,31 @@
         function showPreview(result, selection) {
             const area = el('prepResult');
             const heading = node('h3', text('review')); heading.id = 'prepResultTitle';
-            area.replaceChildren(heading,
+            area.replaceChildren(heading);
+            for (const [profile, viewpoint] of [[result.assessment.capabilityToService, 'C1–S1'],
+                    [result.assessment.requirementDerivation, 'R7']]) {
+                const section = document.createElement('section');
+                section.className = 'editor-admbw-profile';
+                section.append(node('h4', profile.viewpoint || profile.name || viewpoint),
+                    node('p', t('editor.admbw.status.' + profile.status)));
+                const findings = [
+                    ...profile.issues.map(issue => issue.object + ' · ' + issue.detail),
+                    ...(profile.requiredReviews || []).map(item => window.TaxonomyAdmbwCoverage.message(item, t))
+                ];
+                if (findings.length) {
+                    const list = document.createElement('ul');
+                    list.append(...findings.map(item => node('li', item)));
+                    section.append(list);
+                }
+                area.append(section);
+            }
+            area.append(
                 node('p', el('prepService').selectedOptions[0].textContent + ' → ' + el('prepCapability').selectedOptions[0].textContent),
                 node('p', result.requirementId + ' · ' + text('version', result.requirementVersion) + ' · SHA-256 ' + result.requirementContentHash),
-                node('p', selection.requirementType + ' · ' + el('prepSubject').selectedOptions[0].textContent),
+                node('p', t('editor.planning.choice.' + selection.requirementType) + ' · ' + el('prepSubject').selectedOptions[0].textContent),
                 node('p', 'QEA SHA-256 ' + result.basisSha256));
             for (const note of result.notes) area.append(node('p', window.TaxonomyAdmbwCoverage.message(note, t)));
             for (const issue of result.qeaIssues || []) area.append(node('p', issue.object + ' · ' + issue.detail));
-            for (const profile of [result.assessment.capabilityToService, result.assessment.requirementDerivation]) {
-                area.append(node('p', (profile.viewpoint || profile.name || '') + ' · ' + t('editor.admbw.status.' + profile.status)));
-                for (const issue of profile.issues) area.append(node('p', issue.object + ' · ' + issue.detail));
-                for (const item of profile.requiredReviews || []) area.append(node('p', window.TaxonomyAdmbwCoverage.message(item, t)));
-            }
             area.append(window.TaxonomyAdmbwCoverage.render(result.assessment.coverage, t));
             for (const change of result.changes) {
                 const details = document.createElement('details');

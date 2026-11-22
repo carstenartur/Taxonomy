@@ -56,6 +56,22 @@ async function appendFocusPanel(page, prefix) {
     }, { template, prefix });
     await page.addScriptTag({ path: path.join(resources, 'static/js/architecture-focus.js') });
 }
+test('the source lens keeps its numeric limit next to its label at desktop and mobile widths', async () => {
+    const page = await fixture();
+    try {
+        await appendFocusPanel(page, 'nativeSourceLens');
+        await page.locator('#nativeSourceLens').evaluate(panel => { panel.hidden = false; });
+        for (const width of [1200, 375]) {
+            await page.setViewportSize({ width, height: 800 });
+            const input = page.getByRole('spinbutton', { name: 'Investigation limit' });
+            assert.deepEqual(await input.evaluate(field => {
+                const box = field.getBoundingClientRect(), label = field.labels[0].querySelector('span').getBoundingClientRect();
+                return { compact: box.width < 100, adjacent: box.left > label.right && box.left - label.right < 15,
+                    fits: box.right <= window.innerWidth };
+            }), { compact: true, adjacent: true, fits: true }, `viewport ${width}`);
+        }
+    } finally { await page.close(); }
+});
 async function attachSourceLens(page, source, enabled) {
     await appendFocusPanel(page, 'nativeSourceLens');
     for (const file of ['api/architecture-source-focus-api.js', 'shared/architecture-source-lens.js']) {
@@ -251,15 +267,27 @@ test('working diagram fits after hidden mount, preserves server geometry and res
     const page = await fixture();
     try {
         await page.addScriptTag({ path: path.join(resources, 'static/js/architecture-editor-renderer.js') });
-        await page.evaluate(() => {
+        const label = 'Standortübergreifender Zugangs- und Verbindungsdienst für das Ausbildungsportal';
+        await page.evaluate(label => {
+            document.body.classList.add('architecture-editor-surface');
             const svg = document.getElementById('editorGraph'); svg.style.display = 'none';
-            const scene = { nodes: [{ id: 'A', label: 'Working element', x: 105, y: 207, width: 230, height: 86 }], edges: [], width: 2000, height: 700 };
+            const scene = { nodes: [
+                { id: 'A', label, x: 105, y: 207, width: 230, height: 86 },
+                { id: 'B', label: 'Fachgemeinschaftsspezifische Dienste', x: 365, y: 207, width: 230, height: 86 }
+            ], edges: [], width: 2000, height: 700 };
             window.renderer = ArchitectureEditorRenderer(svg, id => renderer.select(id)); renderer.render(scene, 'A'); renderer.fit();
-        });
+        }, label);
         assert.deepEqual(await page.evaluate(() => renderer.captureViewport()), { x: 0, y: 0, k: 1 });
         await page.evaluate(() => document.getElementById('editorGraph').style.display = '');
         await page.waitForFunction(() => renderer.captureViewport().k < 1);
-        assert.equal(await page.locator('.editor-node').getAttribute('transform'), 'translate(105,207)');
+        const card = page.getByRole('button', { name: label + ' · A' });
+        assert.equal(await card.getAttribute('transform'), 'translate(105,207)');
+        assert.equal(await card.locator('title').textContent(), label);
+        const lines = card.locator('.editor-node-title');
+        assert.equal(await lines.count(), 3);
+        assert.equal(await lines.evaluateAll(items => items.every(line => line.getBBox().x + line.getBBox().width < 230)), true);
+        assert.deepEqual(await page.locator('[data-node-id="B"] .editor-node-title').allTextContents(),
+            ['Fachgemeinschaftsspezifische', 'Dienste'], 'A visually fitting long word stays intact');
         await page.evaluate(() => renderer.restoreViewport({ x: 21, y: 43, k: 0.8 }));
         await page.evaluate(() => { renderer.focus(); renderer.unfocus(); });
         assert.deepEqual(await page.evaluate(() => renderer.captureViewport()), { x: 21, y: 43, k: 0.8 });
@@ -313,6 +341,9 @@ for (const embedded of [false,true]) test(`snapshot adapter keeps exact geometry
         assert.equal(await page.locator('.architecture-node').count(), 2);
         await page.evaluate(() => TaxonomySnapshotDiagram.unfocus());
         assert.equal(await page.locator('.architecture-node').count(), 3);
+        const context = page.locator('[data-node-id="C"]');
+        assert.equal(await context.evaluate(node => node.classList.contains('is-muted') && getComputedStyle(node).opacity === '1'), true,
+            'De-emphasized context remains legible after exiting focus');
         assert.equal(await page.locator('[data-node-id="A"]').getAttribute('transform'), 'translate(105,207)');
         await page.evaluate(() => { TaxonomySnapshotDiagram.focus('A'); TaxonomySnapshotDiagram.restoreViewport({ x: 23, y: 41, k: 0.8 }); });
         await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));

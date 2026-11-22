@@ -37,6 +37,7 @@ public class VisioPageContentsConverter implements Converter {
     private final ExportTheme theme;
     private final VisioPageLayout layout;
     private final VisioDrawingOptions options;
+    private final boolean german;
 
     public VisioPageContentsConverter() { this(null, ExportTheme.defaults()); }
 
@@ -46,19 +47,24 @@ public class VisioPageContentsConverter implements Converter {
     }
 
     public VisioPageContentsConverter(VisioNativeShape masterDefinition, ExportTheme theme) {
-        this(masterDefinition, theme, VisioPageLayout.NATURAL, null);
+        this(masterDefinition, theme, VisioPageLayout.NATURAL, null, false);
     }
 
     public VisioPageContentsConverter(ExportTheme theme, VisioPageLayout layout, VisioDrawingOptions options) {
-        this(null, theme, layout, options);
+        this(theme, layout, options, options != null && options.german());
+    }
+
+    public VisioPageContentsConverter(ExportTheme theme, VisioPageLayout layout, VisioDrawingOptions options, boolean german) {
+        this(null, theme, layout, options, german);
     }
 
     private VisioPageContentsConverter(VisioNativeShape masterDefinition, ExportTheme theme, VisioPageLayout layout,
-                                       VisioDrawingOptions options) {
+                                       VisioDrawingOptions options, boolean german) {
         this.layout = layout;
         this.options = options;
         this.masterDefinition = masterDefinition;
         this.theme = java.util.Objects.requireNonNull(theme, "theme");
+        this.german = german;
     }
 
     @Override
@@ -326,11 +332,12 @@ public class VisioPageContentsConverter implements Converter {
 
     private String containerHeaderHeight() {
         // Preserve the original master formula literal on standard exports.
-        return poster() ? decimal(layout.length(VisioContainers.HEADER_HEIGHT)) : Double.toString(VisioContainers.HEADER_HEIGHT);
+        return poster() || layout.scale() != 1 ? decimal(layout.length(VisioContainers.HEADER_HEIGHT))
+                : Double.toString(VisioContainers.HEADER_HEIGHT);
     }
 
     private String translated(String english, String german) {
-        return options != null && options.german() ? german : english;
+        return this.german ? german : english;
     }
 
     private boolean poster() {
@@ -377,7 +384,7 @@ public class VisioPageContentsConverter implements Converter {
             writer.startNode("Row");
             // Hex encoding is injective and uses only portable ShapeSheet row-name characters.
             writer.addAttribute("N", "t" + java.util.HexFormat.of().formatHex(entry.getKey().getBytes(java.nio.charset.StandardCharsets.UTF_8)));
-            writeCell(writer, "Label", options == null ? entry.getKey() : VisioPropertyLabels.label(entry.getKey(), options.german()));
+            writeCell(writer, "Label", options == null && !german ? entry.getKey() : VisioPropertyLabels.label(entry.getKey(), german));
             writeCell(writer, "Type", entry.getValue().shapeType());
             writer.startNode("Cell");
             writer.addAttribute("N", "Value");

@@ -29,8 +29,19 @@ class ArchitectureFigureRendererTest {
         long connectorPixels = java.util.stream.IntStream.range(0, image.getHeight())
                 .filter(y -> (image.getRGB(x, y) & 0xffffff) == 0x64748b).count();
         assertThat(connectorPixels).as("connector remains visible across the center of CI-1047's column").isPositive();
-        int centerY = (int) Math.round((441 - 28) * figure.rasterScale());
-        assertThat(image.getRGB(x, centerY) & 0xffffff).isEqualTo(0xFEF3C7);
+        int cardTopY = (int) Math.round((416 - 28) * figure.rasterScale());
+        assertThat(image.getRGB(x, cardTopY) & 0xffffff).isEqualTo(0xFEF3C7);
+        for (var card : cards) {
+            double scale = figure.rasterScale();
+            int left = (int) Math.round((card.x() + 25 - 28) * scale);
+            int right = (int) Math.round((card.x() + card.width() - 25 - 28) * scale);
+            int top = (int) Math.round((card.y() + 20 - 28) * scale);
+            int bottom = (int) Math.round((card.y() + card.height() - 20 - 28) * scale);
+            assertThat(java.util.stream.IntStream.range(top, bottom).anyMatch(y ->
+                    java.util.stream.IntStream.range(left, right).anyMatch(px ->
+                            (image.getRGB(px, y) & 0xffffff) == 0x1e293b)))
+                    .as("overview paints an identifier inside %s", card.id()).isTrue();
+        }
         assertThat(figure.altDescription()).contains("CI-1151 → BP-2125");
     }
 

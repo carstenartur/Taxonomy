@@ -2,6 +2,7 @@
 (function () {
     'use strict';
     var NS = 'http://www.w3.org/2000/svg';
+    var compactCaptionContext;
     function element(tag, attributes) {
         var result = document.createElementNS(NS, tag);
         Object.keys(attributes || {}).forEach(function (key) {
@@ -28,6 +29,15 @@
             if (focus) target.removeEventListener('dblclick', doubleClick);
         };
     }
+    function compactCaption(label, width, lineCount) {
+        if (compactCaptionContext === undefined) {
+            compactCaptionContext = document.createElement?.('canvas')?.getContext?.('2d') || null;
+            if (compactCaptionContext) compactCaptionContext.font = '14px system-ui, sans-serif';
+        }
+        return compactCaptionContext
+            ? wrapLabel(label, width, lineCount, function (value) { return compactCaptionContext.measureText(value).width; })
+            : wrapLabel(label, Math.floor(width / 8), lineCount);
+    }
     function renderNode(parent, node, callbacks) {
         callbacks = callbacks || {};
         var prefix = node.prefix || 'architecture';
@@ -35,7 +45,16 @@
             'data-node-id': node.id, tabindex: 0, role: 'button', 'aria-label': node.ariaLabel || node.label || node.id,
             'aria-pressed': Boolean(node.selected) });
         group.appendChild(element('rect', { 'class': prefix + '-node-card', x: 0, y: 0, width: node.width, height: node.height, rx: node.compact ? 6 : 9, fill: node.color }));
-        if (node.compact) text(group, prefix + '-node-title', 12, 30, node.label || node.id, node.textColor);
+        if (node.compact) {
+            var lineHeight = 16;
+            var availableHeight = node.responsibleUnit ? Math.min(44, node.height) : node.height;
+            var lineCount = Math.min(3, Math.max(1, Math.floor((availableHeight - 8) / lineHeight)));
+            var lines = compactCaption(node.label || node.id, node.width - 24, lineCount);
+            var baseline = (availableHeight - (lines.length - 1) * lineHeight) / 2 + 5;
+            lines.forEach(function (line, index) {
+                text(group, prefix + '-node-title', 12, baseline + index * lineHeight, line, node.textColor);
+            });
+        }
         else {
             text(group, prefix + '-node-code', 12, 19, node.id, node.textColor);
             var scoreWidth = node.scoreWidth || 58;
@@ -53,7 +72,8 @@
             var caption = name.length > 28 ? name.slice(0, 27).join('') + '…' : unit.name;
             text(group, prefix + '-node-responsibility', 25, y, caption, node.textColor).setAttribute('font-size', '11');
         }
-        if (node.tooltip) { var title = element('title'); title.textContent = node.tooltip; group.appendChild(title); }
+        var tooltip = node.tooltip || (node.compact && (node.label || node.id));
+        if (tooltip) { var title = element('title'); title.textContent = tooltip; group.appendChild(title); }
         activate(group, function () { if (callbacks.select) callbacks.select(node.id); }, callbacks.focus && function () { callbacks.focus(node.id); });
         parent.appendChild(group); return group;
     }
@@ -266,17 +286,28 @@
         var end = Math.min(target.width / (2 * Math.abs(dx || 0.001)), target.height / (2 * Math.abs(dy || 0.001)));
         return 'M' + (x + dx * start) + ',' + (y + dy * start) + ' L' + (x + dx * (1 - end)) + ',' + (y + dy * (1 - end));
     }
-    function wrapLabel(value, maximumCharacters, maximumLines) {
+    function wrapLabel(value, maximumWidth, maximumLines, measure) {
+        maximumWidth = Math.max(1, maximumWidth);
+        measure = measure || function (value) { return value.length; };
         var words = String(value || '').trim().split(/\s+/).filter(Boolean), lines = [], current = '';
         words.forEach(function (word) {
             var candidate = current ? current + ' ' + word : word;
-            if (candidate.length <= maximumCharacters || !current) current = candidate;
-            else { lines.push(current); current = word; }
+            if (measure(candidate) <= maximumWidth) { current = candidate; return; }
+            if (current) { lines.push(current); current = ''; }
+            if (measure(word) <= maximumWidth) current = word;
+            else for (var character of word) {
+                if (current && measure(current + character) > maximumWidth) {
+                    lines.push(current); current = '';
+                }
+                current += character;
+            }
         });
         if (current) lines.push(current);
         if (lines.length > maximumLines) {
             lines.splice(maximumLines);
-            lines[maximumLines - 1] = lines[maximumLines - 1].substring(0, Math.max(1, maximumCharacters - 1)).replace(/[\s.,;:]+$/, '') + '…';
+            var end = Array.from(lines[maximumLines - 1].replace(/[\s.,;:]+$/, ''));
+            while (end.length && measure(end.join('') + '…') > maximumWidth) end.pop();
+            lines[maximumLines - 1] = end.join('').replace(/[\s.,;:]+$/, '') + '…';
         }
         return lines.length ? lines : [''];
     }
@@ -620,8 +651,7 @@ window.TaxonomyArchitectureDiagram.create = function (svg, options) {
         drawLayers(); canvas.append(relationships, overlay, cards); drawRelationships(focused);
         drawnNodes.forEach(function (node) {
             var label = node.label || node.title || node.id;
-            var spec = Object.assign({ prefix: prefix, compact: compact, titleLines: common.wrapLabel(label, 32, 2), score: '', meta: '' }, node);
-            spec.label = compact && label.length > 28 ? label.substring(0, 27) + '…' : label;
+            var spec = Object.assign({ prefix: prefix, compact: compact, titleLines: compact ? [] : common.wrapLabel(label, 32, 2), score: '', meta: '' }, node, { label: label });
             spec.selected = node.id === state.selectedNodeId;
             var group = common.renderNode(cards, spec, { select: requestSelection, focus: focus }); nodeElements.set(node.id, group);
             if (focused.kind === 'node' && focused.id === node.id) group.focus({ preventScroll: true });

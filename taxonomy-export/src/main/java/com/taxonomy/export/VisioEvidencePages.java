@@ -1,6 +1,7 @@
 package com.taxonomy.export;
 
 import com.taxonomy.visio.*;
+import com.taxonomy.visio.converter.VisioPropertyLabels;
 
 import java.awt.Font;
 import java.util.*;
@@ -11,15 +12,18 @@ final class VisioEvidencePages {
     private static final int LINES_PER_PAGE = 54;
     private static final double WIDTH = 7.5;
     private static final double LINE_HEIGHT = .185;
+    private static final List<String> SUMMARY_FIELDS = List.of("taxonomy.evidence1quote", "taxonomy.evidence1contribution",
+            "taxonomy.evidence1condition", "taxonomy.evidence1rationale", "taxonomy.decisionRationale");
     private static final Map<String, String> REASON_FIELDS = reasonFields();
 
     private VisioEvidencePages() { }
 
     static void append(VisioDocument document, VisioPage overview) {
+        boolean german = document.isGerman();
         var entries = new ArrayList<Entry>();
         for (var node : overview.getShapes()) {
             var values = node.getProperties();
-            var reasons = reasons(values);
+            var reasons = reasons(values, german);
             String label = value(values, "taxonomy.label");
             String id = value(values, "taxonomy.id");
             String key = value(values, "taxonomy.displayKey");
@@ -28,20 +32,23 @@ final class VisioEvidencePages {
             boolean assigned = values.containsKey("taxonomy.responsibilityUnitId");
             boolean clipped = !VisioPresentation.display(label, 24, 3).replace("\n", "").equals(label.replace("\n", ""))
                     || !VisioPresentation.display(identity, 24, 1).replace("\n", "").equals(identity.replace("\n", ""))
-                    || (assigned && !VisioPresentation.nodeFooter("", unitName, 24).equals("Unit: " + unitName));
+                    || (assigned && !VisioPresentation.nodeFooter("", unitName, 24, german)
+                        .equals(VisioPresentation.unitLabel(unitName, german)));
             if (reasons.isEmpty() && !clipped) continue;
             var fields = new ArrayList<String>();
             fields.add(key + " · " + id + " · " + label);
             if (assigned) {
-                fields.add("Responsible unit: " + unitName + " (" + value(values, "taxonomy.responsibilityUnitId") + ")");
-                fields.add("Assignment source: " + value(values, "taxonomy.responsibilitySourceId"));
+                fields.add((german ? "Zuständige Einheit: " : "Responsible unit: ") + unitName + " ("
+                        + value(values, "taxonomy.responsibilityUnitId") + ")");
+                fields.add((german ? "Quelle der Zuständigkeit: " : "Assignment source: ")
+                        + value(values, "taxonomy.responsibilitySourceId"));
             }
             fields.addAll(reasons);
             entries.add(new Entry(key, fields, values));
         }
         for (var relation : overview.getConnects()) {
             var values = relation.getProperties();
-            var reasons = reasons(values);
+            var reasons = reasons(values, german);
             boolean clipped = !VisioPresentation.display(relation.getRelationType(), 52, 4).replace("\n", "")
                     .equals(relation.getRelationType().replace("\n", ""));
             if (reasons.isEmpty() && !clipped) continue;
@@ -49,13 +56,17 @@ final class VisioEvidencePages {
             var fields = new ArrayList<String>();
             fields.add(key + " · " + value(values, "taxonomy.id") + " · "
                     + value(values, "taxonomy.sourceId") + " → " + value(values, "taxonomy.targetId"));
-            fields.add("Type: " + relation.getRelationType());
-            if (values.containsKey("taxonomy.provenanceStatus")) fields.add("Status: " + value(values, "taxonomy.provenanceStatus"));
+            fields.add(german ? "Typ: " + VisioPresentation.relationLabel(relation.getRelationType(), true)
+                    : "Type: " + relation.getRelationType());
+            if (values.containsKey("taxonomy.provenanceStatus")) fields.add("Status: "
+                    + VisioPresentation.statusLabel(value(values, "taxonomy.provenanceStatus"), german));
             fields.addAll(reasons);
             entries.add(new Entry(key, fields, values));
         }
         if (entries.isEmpty()) return;
-        appendTextPages(document, entries, "Evidence ", "Full recorded evidence · ", " · N = node, R = relationship");
+        appendTextPages(document, entries, german ? "Nachweise " : "Evidence ",
+                german ? "Vollständige Nachweise · " : "Full recorded evidence · ",
+                german ? " · N = Knoten, R = Beziehung" : " · N = node, R = relationship");
 
         var links = new HashMap<String, VisioProperty>();
         entries.forEach(entry -> links.put(entry.key(), entry.properties().get("taxonomy.evidencePage")));
@@ -64,7 +75,8 @@ final class VisioEvidencePages {
             page.getShapes().forEach(shape -> copyLink(shape.getProperties(), links));
             page.getConnects().forEach(relation -> copyLink(relation.getProperties(), links));
         }
-        String notice = "Full recorded reasons and labels: Evidence pages, matched by N/R keys.";
+        String notice = german ? "Vollständige Begründungen und Bezeichnungen auf den Nachweisseiten (Kürzel N/R)."
+                : "Full recorded reasons and labels: Evidence pages, matched by N/R keys.";
         var legend = overview.getLegend();
         double top = overview.getShapes().stream().mapToDouble(shape -> shape.getY() + shape.getHeight() / 2).max().orElse(0);
         top = Math.max(top, overview.getConnects().stream()
@@ -95,6 +107,36 @@ final class VisioEvidencePages {
         if (!entries.isEmpty()) {
             appendTextPages(document, entries, german ? "Entscheidungsgründe " : "Decision reasons ", "", "");
         }
+    }
+
+    /** Show the most useful recorded values beside a single native relationship; link to their complete record. */
+    static VisioShape relationExcerpt(String shapeId, VisioConnect relation, boolean german) {
+        var values = relation.getProperties();
+        var evidencePage = values.get("taxonomy.evidencePage");
+        if (evidencePage == null) return null;
+
+        double width = 10;
+        var lines = new ArrayList<String>();
+        lines.add(german ? "Beziehungsbeleg · " + value(values, "taxonomy.displayKey")
+                : "Relationship evidence · " + value(values, "taxonomy.displayKey"));
+        var shown = new LinkedHashSet<String>();
+        for (String field : SUMMARY_FIELDS) {
+            String recorded = value(values, field);
+            if (recorded.isBlank() || !shown.add(recorded)) continue;
+            var wrapped = DiagramTextWrapper.wrapMeasured(VisioPropertyLabels.label(field, german) + ": " + recorded.strip(),
+                    FONT, (width * 72 - 20) / 1.15, 6, "…");
+            lines.add("");
+            lines.addAll(wrapped);
+        }
+        if (shown.isEmpty()) return null;
+        lines.add("");
+        lines.add((german ? "Vollständige Nachweise: " : "Complete evidence: ") + evidencePage.value());
+        double height = .45 + lines.size() * LINE_HEIGHT;
+        var shape = new VisioShape(shapeId, String.join("\n", lines), 5.5, .5 + height / 2,
+                width, height, "Evidence", false);
+        shape.getProperties().put("taxonomy.presentationOnly", VisioProperty.bool(true));
+        shape.getProperties().put("taxonomy.evidencePage", evidencePage);
+        return shape;
     }
 
     private static void appendTextPages(VisioDocument document, List<Entry> entries, String prefix,
@@ -150,15 +192,17 @@ final class VisioEvidencePages {
         if (link != null) values.put("taxonomy.evidencePage", link);
     }
 
-    private static List<String> reasons(Map<String, VisioProperty> values) {
+    private static List<String> reasons(Map<String, VisioProperty> values, boolean german) {
         var grouped = new LinkedHashMap<String, List<String>>();
         for (var entry : values.entrySet()) {
             String label = REASON_FIELDS.get(entry.getKey());
             if (label == null && entry.getKey().matches("taxonomy\\.evidence[0-9]+.+")) {
                 label = entry.getKey().substring("taxonomy.".length());
             }
-            if (label != null && entry.getValue() != null && !entry.getValue().value().isBlank())
+            if (label != null && entry.getValue() != null && !entry.getValue().value().isBlank()) {
+                if (german) label = VisioPropertyLabels.label(entry.getKey(), true);
                 grouped.computeIfAbsent(entry.getValue().value(), ignored -> new ArrayList<>()).add(label);
+            }
         }
         return grouped.entrySet().stream().map(entry -> String.join(" / ", entry.getValue()) + ": " + entry.getKey()).toList();
     }

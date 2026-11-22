@@ -285,7 +285,6 @@
 .impact-map-node {
     cursor: pointer;
     outline: none;
-    transition: opacity 120ms ease;
 }
 
 .impact-map-node-card {
@@ -316,8 +315,8 @@
     filter: drop-shadow(0 0 6px rgba(var(--bs-primary-rgb, 13, 110, 253), 0.58));
 }
 
-.impact-map-node.is-muted {
-    opacity: 0.22;
+.impact-map-node.is-muted:not(:hover, :focus-visible) .impact-map-node-card {
+    filter: none;
 }
 
 .impact-map-node.is-search-match .impact-map-node-card {

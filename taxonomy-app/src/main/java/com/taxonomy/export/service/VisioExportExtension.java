@@ -1,5 +1,6 @@
 package com.taxonomy.export.service;
 
+import com.taxonomy.dto.DocumentLanguage;
 import com.taxonomy.export.VisioDiagramService;
 import com.taxonomy.export.VisioPackageBuilder;
 import com.taxonomy.export.spi.ExportContext;
@@ -9,6 +10,7 @@ import com.taxonomy.export.spi.ExportResult;
 import com.taxonomy.visio.VisioDocument;
 import com.taxonomy.visio.VisioExportMetadata;
 import com.taxonomy.visio.VisioProperty;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -64,9 +66,11 @@ public class VisioExportExtension implements ExportFormatExtension {
             });
         }
         String originalText = context.options().get("originalRequirementText") instanceof String text ? text : null;
+        String locale = context.options().get("locale") instanceof String configured ? configured : null;
+        var language = DocumentLanguage.resolve(DocumentLanguage.optionalOverride(locale), null, LocaleContextHolder.getLocale());
         VisioDocument document = visioDiagramService.convert(context.diagram(),
                 new VisioExportMetadata(VisioWorkingViewMetadata.document(originalText, workingViewMetadata),
-                        elements, Map.of(), VisioExportMetadata.unbound().losses()));
+                        elements, Map.of(), VisioExportMetadata.unbound().losses()).withLanguage(language));
         try {
             return new ExportResult(visioPackageBuilder.build(document));
         } catch (IOException e) {

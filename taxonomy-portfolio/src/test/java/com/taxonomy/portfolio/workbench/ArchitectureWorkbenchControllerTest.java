@@ -214,7 +214,7 @@ class ArchitectureWorkbenchControllerTest {
                 42L,
                 "snapshot-1",
                 "alice",
-                context))
+                context, java.util.Locale.GERMAN))
                 .thenReturn(artifact(
                         Format.VISIO_VSDX,
                         "application/vnd.ms-visio.drawing",
@@ -223,7 +223,7 @@ class ArchitectureWorkbenchControllerTest {
                         "vsdx-hash",
                         "PK-test".getBytes(
                                 StandardCharsets.ISO_8859_1)));
-        when(snapshotExportService.exportVisioBundle(42L, "snapshot-1", "alice", context))
+        when(snapshotExportService.exportVisioBundle(42L, "snapshot-1", "alice", context, java.util.Locale.GERMAN))
                 .thenReturn(artifact(Format.VISIO_BUNDLE, "application/zip",
                         "architecture-snapshot-1-abcdef123456.visio.zip",
                         "visio-2012-opc-supported-subset-v3", "bundle-hash",
@@ -232,15 +232,15 @@ class ArchitectureWorkbenchControllerTest {
         var archiMate =
                 controller.archiMate(42L, "snapshot-1");
         var visio =
-                controller.visio(42L, "snapshot-1");
-        var bundle = controller.visioBundle(42L, "snapshot-1");
+                controller.visio(42L, "snapshot-1", "de");
+        var bundle = controller.visioBundle(42L, "snapshot-1", "de");
         assertThat(bundle.getHeaders().getContentType().toString()).isEqualTo("application/zip");
         assertThat(bundle.getHeaders().getCacheControl()).isEqualTo("no-store");
         assertThat(bundle.getHeaders().getFirst("X-Taxonomy-Artifact-Sha256")).isEqualTo("bundle-hash");
         assertThat(bundle.getHeaders().getFirst("X-Taxonomy-Canonical-Graph-Sha256")).isEqualTo("graph-hash");
         assertThat(bundle.getHeaders().getFirst("X-Taxonomy-Snapshot-Id")).isEqualTo("snapshot-1");
         assertThat(bundle.getHeaders().getFirst("Content-Disposition")).contains(".visio.zip");
-        verify(snapshotExportService).exportVisioBundle(42L, "snapshot-1", "alice", context);
+        verify(snapshotExportService).exportVisioBundle(42L, "snapshot-1", "alice", context, java.util.Locale.GERMAN);
 
         assertThat(archiMate.getHeaders()
                 .getContentType().toString())
@@ -298,7 +298,7 @@ class ArchitectureWorkbenchControllerTest {
                         42L,
                         "snapshot-1",
                         "alice",
-                        context);
+                        context, java.util.Locale.GERMAN);
     }
 
     @Test

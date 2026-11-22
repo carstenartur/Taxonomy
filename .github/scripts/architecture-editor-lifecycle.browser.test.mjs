@@ -713,7 +713,8 @@ for (const blockedNative of [false,true]) test('guided ADMBw review pins the ori
         assert.ok(panel, 'The editor needs an accessible guided ADMBw form');
         await page.route('https://admbw.test/**', async route => {
             const request = route.request(), url = new URL(request.url());
-            if (!url.pathname.startsWith('/api/')) return route.fulfill({contentType:'text/html',body:panel[0]});
+            if (!url.pathname.startsWith('/api/')) return route.fulfill({contentType:'text/html',
+                body:`<main class="architecture-editor-surface">${panel[0]}</main>`});
             assert.equal(url.searchParams.get('workspaceId'),'__shared__');
             if (url.pathname.endsWith('/basis')) {
                 assert.equal(request.postData(),'fixture QEA');
@@ -796,10 +797,19 @@ for (const blockedNative of [false,true]) test('guided ADMBw review pins the ori
         await page.locator('#prepResult').getByText(requirementHash,{exact:false}).first().waitFor();
         assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth <= document.documentElement.clientWidth),true,
             'The source paths, hashes, coverage and controls must fit a 375px viewport');
+        assert.deepEqual(await page.locator('#prepResult .editor-admbw-profile h4').allTextContents(), ['C1–S1', 'R7']);
         if (blockedNative) assert.match(await page.locator('#prepResult').innerText(),/element:resource-role.*no owned EA Part/);
         assert.equal(await page.locator('#prepAccept').isEnabled(),false);
-        await page.locator('#prepRelationshipReviewed').check();
-        await page.locator('#prepDerivationReviewed').check();
+        const review = page.locator('#prepReview .editor-check');
+        assert.deepEqual(await review.evaluateAll(items => items.map(label => {
+            const box = label.querySelector('input').getBoundingClientRect();
+            const text = label.querySelector('span').getBoundingClientRect();
+            const gap = text.left - box.right;
+            return box.width < 25 && gap > 0 && gap < 16 && text.top >= box.top - 8 && text.top < box.bottom;
+        })), [true, true], 'Checkbox and label start on the same line');
+        await review.nth(0).locator('span').click();
+        await review.nth(1).locator('span').click();
+        assert.equal(await page.locator('#prepAccept').isEnabled(),true);
         await page.locator('#prepConstraint').fill('Provide access to assigned training.');
         assert.equal(await page.locator('#prepAccept').isEnabled(),false);
         await page.locator('#prepPreview').click();

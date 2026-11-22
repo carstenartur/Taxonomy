@@ -5,14 +5,14 @@ import java.util.ResourceBundle;
 import java.util.regex.Pattern;
 
 /** Localized display labels; the native Property row names identify the canonical keys. */
-final class VisioPropertyLabels {
+public final class VisioPropertyLabels {
     private static final ResourceBundle EN = ResourceBundle.getBundle("visio.shape-data", Locale.ROOT);
     private static final ResourceBundle DE = ResourceBundle.getBundle("visio.shape-data", Locale.GERMAN);
     private static final Pattern EVIDENCE = Pattern.compile("evidence([0-9]+)([a-zA-Z]+)");
 
     private VisioPropertyLabels() { }
 
-    static String label(String key, boolean german) {
+    public static String label(String key, boolean german) {
         var labels = german ? DE : EN;
         String field = key.substring("taxonomy.".length());
         if (labels.containsKey(field)) return labels.getString(field);

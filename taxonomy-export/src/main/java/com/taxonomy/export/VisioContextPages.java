@@ -68,8 +68,10 @@ final class VisioContextPages {
                         .4, TOP - headingHeight - .4, PAGE_WIDTH);
                 body.getProperties().put("taxonomy.requirementContent", VisioProperty.bool(true));
                 page.getShapes().add(body);
-                page.setLegend(new VisioTextBox("Original requirement · " + (index + 1) + " / " + count
-                        + " · complete source text", 4.15, 11.05, PAGE_WIDTH, .4));
+                page.setLegend(new VisioTextBox(text(document, "Original requirement", "Ursprüngliche Anforderung")
+                        + " · " + (index + 1) + " / " + count
+                        + text(document, " · complete source text", " · vollständiger Quelltext"),
+                        4.15, 11.05, PAGE_WIDTH, .4));
                 document.getPages().add(page);
             }
             document.getProperties().put("taxonomy.requirementContextPages", VisioProperty.number(count));
@@ -117,13 +119,16 @@ final class VisioContextPages {
             String source = value(document, "requirementText");
             if (source != null && !source.isBlank()) {
                 var original = wrap(List.of(source), 10);
-                fields.add("Original requirement" + (original.size() > 4 ? " (excerpt):" : ":"));
+                fields.add(text(document, "Original requirement", "Ursprüngliche Anforderung")
+                        + (original.size() > 4 ? text(document, " (excerpt):", " (Auszug):") : ":"));
                 fields.addAll(original.subList(0, Math.min(4, original.size())));
-                fields.add("Complete original text: " + value(document, "requirementStartPage")
+                fields.add(text(document, "Complete original text: ", "Vollständiger Quelltext: ")
+                        + value(document, "requirementStartPage")
                         + (document.getProperties().containsKey("taxonomy.requirementContextPages")
-                        && Integer.parseInt(value(document, "requirementContextPages")) > 1 ? " and following pages." : "."));
+                        && Integer.parseInt(value(document, "requirementContextPages")) > 1
+                        ? text(document, " and following pages.", " und Folgeseiten.") : "."));
             } else {
-                fields.add("Original requirement: " + UNKNOWN + ".");
+                fields.add(text(document, "Original requirement: " + UNKNOWN + ".", "Ursprüngliche Anforderung: Nicht erfasst."));
             }
             double top = page.getShapes().stream().mapToDouble(s -> s.getY() + s.getHeight() / 2).max().orElse(.5);
             top = Math.max(top, page.getConnects().stream().filter(c -> c.getTextBox() != null)
@@ -143,23 +148,29 @@ final class VisioContextPages {
 
     private static ArrayList<String> contextLines(VisioDocument document) {
         var lines = new ArrayList<String>();
-        lines.add("Requirement: " + label(document, "requirementKey") + " · " + label(document, "requirementTitle"));
-        lines.add("Project: " + label(document, "projectKey") + " | Requirement version: " + label(document, "requirementVersionId"));
-        lines.add("Version author: " + label(document, "requirementVersionCreatedBy")
-                + " | Version created: " + label(document, "requirementVersionCreatedAt"));
-        lines.add("Analysis created: " + label(document, "snapshotCreatedAt") + " | Snapshot: " + label(document, "snapshotId"));
-        lines.add("Exported by: " + label(document, "exportedBy") + " | Export created: " + label(document, "exportedAt"));
-        lines.add("Created with: " + label(document, "generatorName") + " " + label(document, "generatorVersion"));
-        lines.add("Workspace: " + label(document, "workspaceId") + " | Branch: " + label(document, "branch"));
+        lines.add(text(document, "Requirement: ", "Anforderung: ")
+                + label(document, "requirementKey") + " · " + label(document, "requirementTitle"));
+        lines.add(text(document, "Project: ", "Projekt: ") + label(document, "projectKey")
+                + text(document, " | Requirement version: ", " | Anforderungsversion: ") + label(document, "requirementVersionId"));
+        lines.add(text(document, "Version author: ", "Autor der Version: ") + label(document, "requirementVersionCreatedBy")
+                + text(document, " | Version created: ", " | Version erstellt am: ") + label(document, "requirementVersionCreatedAt"));
+        lines.add(text(document, "Analysis created: ", "Analyse erstellt am: ")
+                + label(document, "snapshotCreatedAt") + " | Snapshot: " + label(document, "snapshotId"));
+        lines.add(text(document, "Exported by: ", "Exportiert durch: ") + label(document, "exportedBy")
+                + text(document, " | Export created: ", " | Export erstellt am: ") + label(document, "exportedAt"));
+        lines.add(text(document, "Created with: ", "Erstellt mit: ") + label(document, "generatorName") + " " + label(document, "generatorVersion"));
+        lines.add(text(document, "Workspace: ", "Arbeitsbereich: ") + label(document, "workspaceId") + " | Branch: " + label(document, "branch"));
         if (value(document, "requirementTextProvenance") != null)
             lines.add(label(document, "requirementTextProvenance"));
         String link = value(document, "requirementUrl");
         if (link != null && !link.isBlank()) {
-            lines.add("Edit in Taxonomy: " + label(document, "requirementUrl"));
-            lines.add("Sign in and select the source workspace/branch to edit. The link grants no access.");
+            lines.add(text(document, "Edit in Taxonomy: ", "In Taxonomy bearbeiten: ") + label(document, "requirementUrl"));
+            lines.add(text(document, "Sign in and select the source workspace/branch to edit. The link grants no access.",
+                    "Zum Bearbeiten anmelden und den Arbeitsbereich und Branch der Quelle auswählen. Der Link erteilt keine Zugriffsrechte."));
         } else {
-            lines.add("Edit in Taxonomy: " + (value(document, "requirementUrlStatus") == null
-                    ? "No saved requirement link is available." : label(document, "requirementUrlStatus")));
+            lines.add(text(document, "Edit in Taxonomy: ", "In Taxonomy bearbeiten: ") + (value(document, "requirementUrlStatus") == null
+                    ? text(document, "No saved requirement link is available.", "Kein gespeicherter Link zur Anforderung vorhanden.")
+                    : label(document, "requirementUrlStatus")));
         }
         return lines;
     }
@@ -175,10 +186,10 @@ final class VisioContextPages {
     private static double height(List<String> lines) { return .25 + lines.size() * LINE_HEIGHT; }
 
     private static String requirementPageName(VisioDocument document, int index) {
-        String base = "Requirement " + index;
+        String base = text(document, "Requirement ", "Anforderung ") + index;
         String candidate = base;
         int suffix = 1;
-        while (nameExists(document, candidate)) candidate = base + " (source " + suffix++ + ")";
+        while (nameExists(document, candidate)) candidate = base + text(document, " (source ", " (Quelle ") + suffix++ + ")";
         return candidate;
     }
 
@@ -207,7 +218,15 @@ final class VisioContextPages {
 
     private static String label(VisioDocument document, String key) {
         String value = value(document, key);
-        if (value == null || value.isBlank()) return UNKNOWN;
+        if (value == null || value.isBlank()) return text(document, UNKNOWN, "Nicht erfasst");
+        if (document.isGerman()) {
+            value = switch (value) {
+                case "Unavailable: public base URL is not configured." -> "Die öffentliche Basis-URL ist nicht konfiguriert.";
+                case "Unavailable: this working view has no saved requirement editing target." -> "Für die Arbeitsansicht ist kein Bearbeitungsziel gespeichert.";
+                case "Client-provided working source; no saved requirement version authority." -> "Übergebener Arbeitstext ohne gespeicherte Anforderungsversion.";
+                default -> value;
+            };
+        }
         String displayed = VisioPresentation.display(value, 120, 1);
         if (!displayed.equals(value)) {
             var loss = new VisioLoss("document", "", key, "TRUNCATED",
@@ -226,6 +245,10 @@ final class VisioContextPages {
         Map<String, VisioProperty> values = document.getProperties();
         return values.containsKey("taxonomy.requirementText") || values.containsKey("taxonomy.generatorName")
                 || values.containsKey("taxonomy.exportedBy");
+    }
+
+    private static String text(VisioDocument document, String english, String german) {
+        return document.isGerman() ? german : english;
     }
 
     private static IllegalArgumentException capacity() {
